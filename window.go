@@ -132,6 +132,8 @@ type WindowOptions struct {
 	// a flash of another color while it loads. CSS syntax: "#1e1e1e",
 	// "#rgba", "rgb(30 30 30)", or "light-dark(#f5f5f7, #1e1e1e)" for a
 	// page that follows the light or dark appearance.
+	// On iOS it also fills the surrounding safe area. Without an explicit
+	// color, native UI's opaque root background fills that area automatically.
 	BackgroundColor string
 	// Vibrancy puts a translucent, blurred material behind a transparent
 	// page (macOS and Windows 11 22H2), e.g. VibrancySidebar, or behind
@@ -192,7 +194,8 @@ type Window struct {
 	shown     bool
 	readyShow bool
 	// background is the BackgroundColor, if any. Main thread only.
-	background *background
+	background        *background
+	contentBackground *platform.Color // Last automatic mobile root fill; UI thread only.
 	// hiddenTitleBar is a TitleBarStyle that hides the title bar: the pages
 	// hear the room the window controls take. Main thread only.
 	hiddenTitleBar bool
@@ -233,6 +236,8 @@ type Window struct {
 	onShow             listeners[func()]
 	onHide             listeners[func()]
 	onReadyToShow      listeners[func()]
+	onFirstFrame       listeners[func()]
+	firstFrame         bool // UI thread only
 	onResize           listeners[func()]
 	onFileDrop         listeners[func(*FileDropEvent)]
 	onWillDownload     listeners[func(*DownloadEvent)]
@@ -529,11 +534,26 @@ func get[T any](w *Window, fn func(n platform.Window) T) T {
 }
 
 // Close closes the window as if the user clicked its close button, so
-// OnClose listeners can cancel it.
-func (w *Window) Close() { onMain(func() { w.close() }) }
+// OnClose listeners can cancel it. On iOS this does nothing;
+// TryClose reports ErrUnsupported.
+func (w *Window) Close() { _ = w.TryClose() }
+
+// TryClose is Close with an error for system-managed windows (iOS).
+func (w *Window) TryClose() error {
+	return onMainValue(func() error {
+		if backend().SystemManagedLifetime() {
+			return platform.ErrUnsupported
+		}
+		w.close()
+		return nil
+	})
+}
 
 // close runs on the main thread and reports whether the window was closed.
 func (w *Window) close() bool {
+	if backend().SystemManagedLifetime() {
+		return false
+	}
 	if w.native == nil {
 		return true
 	}
@@ -546,8 +566,15 @@ func (w *Window) close() bool {
 	return true
 }
 
-// Destroy closes the window without emitting OnClose.
-func (w *Window) Destroy() { onMain(w.destroy) }
+// Destroy closes the window without emitting OnClose. On iOS the system
+// owns the scene lifetime, so this method does nothing.
+func (w *Window) Destroy() {
+	onMain(func() {
+		if !backend().SystemManagedLifetime() {
+			w.destroy()
+		}
+	})
+}
 
 func (w *Window) destroy() {
 	if n := w.native; n != nil {
@@ -780,6 +807,7 @@ func (w *Window) IsAlwaysOnTop() bool { return get(w, platform.Window.IsAlwaysOn
 
 // SetBackgroundColor sets the color shown behind the page, in the syntax of
 // WindowOptions.BackgroundColor.
+// On iOS this also sets the safe-area background and updates status-bar contrast.
 func (w *Window) SetBackgroundColor(color string) error {
 	bg, err := parseBackground(color)
 	if err != nil {
@@ -1443,6 +1471,9 @@ func (w *Window) readyToShow() {
 type windowHandler struct{ w *Window }
 
 func (h *windowHandler) ShouldClose() bool {
+	if backend().SystemManagedLifetime() {
+		return false
+	}
 	e := &CloseEvent{Window: h.w}
 	fire1(&h.w.onClose, e)
 	if !e.prevented {

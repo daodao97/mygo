@@ -42,6 +42,7 @@ func (v *Content) AttachContent(conn *surface.Conn) {
 	rt := newRuntime(v.view, h)
 	h.rt = rt
 	conn.Event = h.event
+	conn.TextGeometry = rt.textGeometry
 	conn.ThemeChanged = func() {
 		// The interface font is part of the appearance.
 		h.uiFont()
@@ -121,6 +122,16 @@ var newGPU = newGPURenderer
 // event handles an event of the surface, noting when it asks for a frame:
 // only then may renderers draw (OpenGL's context is current only then).
 func (h *windowHost) event(ev platform.SurfaceEvent) bool {
+	if ev.Kind == platform.SurfaceMemoryPressure {
+		h.soft.Release()
+		if h.gpu != nil {
+			h.gpu.Release()
+			h.gpu = nil
+		}
+		h.gpuTried = false
+		h.rt.changed()
+		return false
+	}
 	if ev.Kind == platform.SurfaceFrame {
 		h.framing = true
 		defer func() { h.framing = false }()
@@ -260,6 +271,16 @@ func (h *windowHost) present(s *scene.Scene) {
 		// the surface's next.
 		h.conn.Surface.RequestFrame()
 		return
+	}
+	if h.conn.ContentBackground != nil && h.rt.c.root != nil {
+		root := h.rt.c.root
+		c := root.bg
+		if c.A == 255 && root.fill == fillColor && (!root.opacitySet || root.opacity >= 1) {
+			h.conn.ContentBackground(platform.Color{R: c.R, G: c.G, B: c.B, A: c.A})
+		}
+	}
+	if h.conn.FrameSubmitted != nil {
+		defer h.conn.FrameSubmitted()
 	}
 	due := !h.retryAt.IsZero() && !time.Now().Before(h.retryAt)
 	switch {
@@ -541,6 +562,11 @@ func (h *windowHost) makeGPU() {
 		h.degraded = false
 	}
 	h.gpu, h.gpuSince = r, time.Now()
+	if s, ok := h.conn.Surface.(platform.DrawableSurface); ok {
+		if p, ok := r.(interface{ SetPresentationHook(func(uintptr)) }); ok {
+			p.SetPresentationHook(s.WatchDrawable)
+		}
+	}
 	h.wide = false // the renderer draws sRGB until told otherwise
 }
 
@@ -613,6 +639,11 @@ func (h *windowHost) uiFont() {
 func (h *windowHost) setCursor(c Cursor) { h.conn.Surface.SetCursor(platform.Cursor(c)) }
 
 func (h *windowHost) setTextInput(t platform.TextInputState) { h.conn.Surface.SetTextInput(t) }
+
+func (h *windowHost) nativeTextSelection() bool {
+	s, ok := h.conn.Surface.(platform.NativeTextSelectionSurface)
+	return ok && s.NativeTextSelection()
+}
 
 func (h *windowHost) updateAccessibility(tree *platform.AccessTree) {
 	h.conn.Surface.UpdateAccessibility(tree)

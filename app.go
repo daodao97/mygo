@@ -50,17 +50,23 @@ type Application struct {
 	// Dock controls the Dock icon on macOS.
 	Dock *Dock
 
-	onReady           listeners[func()]
-	onWindowAllClosed listeners[func()]
-	onBeforeQuit      listeners[func(*QuitEvent)]
-	onWillQuit        listeners[func(*QuitEvent)]
-	onQuit            listeners[func()]
-	onActivate        listeners[func(bool)]
-	onDidBecomeActive listeners[func()]
-	onDidResignActive listeners[func()]
-	onOpenURL         listeners[func(string)]
-	onOpenFile        listeners[func(string)]
-	onWindowCreated   listeners[func(*Window)]
+	onReady               listeners[func()]
+	onWindowAllClosed     listeners[func()]
+	onBeforeQuit          listeners[func(*QuitEvent)]
+	onWillQuit            listeners[func(*QuitEvent)]
+	onQuit                listeners[func()]
+	onActivate            listeners[func(bool)]
+	onDidBecomeActive     listeners[func()]
+	onDidResignActive     listeners[func()]
+	onDidEnterBackground  listeners[func()]
+	onWillEnterForeground listeners[func()]
+	onLifecycleChanged    listeners[func(LifecycleState)]
+	onStateSaveError      listeners[func(error)]
+	lifecycle             LifecycleState
+	state                 appStateStore // UI thread only
+	onOpenURL             listeners[func(string)]
+	onOpenFile            listeners[func(string)]
+	onWindowCreated       listeners[func(*Window)]
 
 	onNotificationClick listeners[func(string)]
 }
@@ -82,9 +88,22 @@ func (a *Application) Run() error {
 	if out := os.Getenv("MYGO_GENERATE"); out != "" {
 		return WriteTypeScript(out)
 	}
+	if host, ok := backend().(platform.ApplicationHost); ok {
+		return host.RunApplication(a.start, a.finish)
+	}
 	if !isMainThread() {
 		return errors.New("mygo: App.Run must be called from the main goroutine")
 	}
+	if err := a.start(); err != nil {
+		return err
+	}
+	err := backend().Run()
+	a.finish()
+	return err
+}
+
+// start initializes the application on its UI thread.
+func (a *Application) start() error {
 	a.mu.Lock()
 	if a.running {
 		a.mu.Unlock()
@@ -110,9 +129,7 @@ func (a *Application) Run() error {
 	quitOnSignals()
 	// Run whatever was scheduled before the event loop existed.
 	b.Signal()
-	err := b.Run()
-	a.finish()
-	return err
+	return nil
 }
 
 // needsApp panics when main calls something that needs the running app
@@ -148,9 +165,12 @@ func (a *Application) IsReady() bool {
 
 // Quit closes all windows and then quits. OnBeforeQuit and OnWillQuit
 // listeners, as well as the OnClose listeners of every window, can cancel
-// it.
+// it. On iOS this does nothing; TryQuit reports ErrUnsupported.
 func (a *Application) Quit() {
 	postMain(func() {
+		if backend().SystemManagedLifetime() {
+			return
+		}
 		if a.prepareQuit() {
 			backend().Quit()
 		}
@@ -158,8 +178,12 @@ func (a *Application) Quit() {
 }
 
 // Exit terminates the process immediately with the given exit code,
-// without emitting quit events or asking windows.
+// without emitting quit events or asking windows. On iOS this does nothing;
+// the system owns the process lifetime.
 func (a *Application) Exit(code int) {
+	if backend().SystemManagedLifetime() {
+		return
+	}
 	onMain(func() {
 		for _, w := range Windows() {
 			w.destroy()
@@ -172,7 +196,7 @@ func (a *Application) Exit(code int) {
 // prepareQuit runs the quit sequence on the main thread and reports whether
 // the application may quit.
 func (a *Application) prepareQuit() bool {
-	if a.quitting {
+	if a.IsSystemManaged() || a.quitting {
 		return false
 	}
 	before := &QuitEvent{}
@@ -199,6 +223,8 @@ func (a *Application) prepareQuit() bool {
 // finish runs once after the event loop has stopped.
 func (a *Application) finish() {
 	a.finished.Do(func() {
+		a.checkpoint()
+		a.setLifecycle(LifecycleStopped)
 		saveWindowStates()
 		fire(&a.onQuit)
 		if a.relaunch {
@@ -222,6 +248,9 @@ func (a *Application) lastWindowClosed() {
 }
 
 func (a *Application) handleReady() {
+	if a.Lifecycle() == LifecycleStarting {
+		a.setLifecycle(LifecycleInactive)
+	}
 	a.mu.Lock()
 	menuSet := a.menuSet
 	a.mu.Unlock()
@@ -570,8 +599,27 @@ func (appHandler) Terminating()        { App.finish() }
 func (appHandler) Activated(visible bool) {
 	fire1(&App.onActivate, visible)
 }
-func (appHandler) DidBecomeActive() { fire(&App.onDidBecomeActive) }
-func (appHandler) DidResignActive() { fire(&App.onDidResignActive) }
+func (appHandler) DidBecomeActive() {
+	if App.setLifecycle(LifecycleActive) {
+		fire(&App.onDidBecomeActive)
+	}
+}
+func (appHandler) DidResignActive() {
+	if App.setLifecycle(LifecycleInactive) {
+		fire(&App.onDidResignActive)
+	}
+}
+func (appHandler) DidEnterBackground() {
+	if App.setLifecycle(LifecycleBackground) {
+		fire(&App.onDidEnterBackground)
+		App.checkpoint()
+	}
+}
+func (appHandler) WillEnterForeground() {
+	if App.setLifecycle(LifecycleInactive) {
+		fire(&App.onWillEnterForeground)
+	}
+}
 func (appHandler) OpenURLs(urls []string) {
 	for _, u := range urls {
 		fire1(&App.onOpenURL, u)

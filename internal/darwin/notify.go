@@ -101,6 +101,10 @@ type waitingNotification struct {
 const notifyOptions = 1<<0 | 1<<1 | 1<<2
 
 func (b *Backend) ShowNotification(n *platform.Notification, done func(error)) {
+	if n.DelaySeconds > 0 {
+		done(platform.ErrUnsupported)
+		return
+	}
 	if !b.NotificationsSupported() {
 		done(platform.ErrUnsupported)
 		return

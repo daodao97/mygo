@@ -109,14 +109,20 @@ func TestConfigTypes(t *testing.T) {
 	src = bytes.ReplaceAll(src, []byte("\r\n"), []byte("\n")) // a Windows checkout
 	property := regexp.MustCompile(`(?m)^  (\w+)\??:`)
 	for name, typ := range map[string]reflect.Type{
-		"Config":          reflect.TypeFor[Config](),
-		"FileAssociation": reflect.TypeFor[FileAssociation](),
-		"UpdatesConfig":   reflect.TypeFor[Updates](),
-		"S3Config":        reflect.TypeFor[S3](),
-		"MacOSConfig":     reflect.TypeFor[MacOS](),
-		"NotarizeConfig":  reflect.TypeFor[Notarize](),
-		"WindowsConfig":   reflect.TypeFor[Windows](),
-		"LinuxConfig":     reflect.TypeFor[Linux](),
+		"Config":                reflect.TypeFor[Config](),
+		"FileAssociation":       reflect.TypeFor[FileAssociation](),
+		"UpdatesConfig":         reflect.TypeFor[Updates](),
+		"S3Config":              reflect.TypeFor[S3](),
+		"MacOSConfig":           reflect.TypeFor[MacOS](),
+		"IOSConfig":             reflect.TypeFor[IOS](),
+		"IOSPrivacyConfig":      reflect.TypeFor[IOSPrivacy](),
+		"IOSPrivacyAPI":         reflect.TypeFor[IOSPrivacyAPI](),
+		"IOSPrivacyData":        reflect.TypeFor[IOSPrivacyData](),
+		"IOSSigningConfig":      reflect.TypeFor[IOSSigning](),
+		"IOSLaunchScreenConfig": reflect.TypeFor[IOSLaunchScreen](),
+		"NotarizeConfig":        reflect.TypeFor[Notarize](),
+		"WindowsConfig":         reflect.TypeFor[Windows](),
+		"LinuxConfig":           reflect.TypeFor[Linux](),
 	} {
 		m := regexp.MustCompile(`(?s)export interface ` + name + ` \{\n(.*?)\n\}`).FindSubmatch(src)
 		if m == nil {

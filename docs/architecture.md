@@ -15,11 +15,12 @@ framework safely. Read it before changing anything under `internal/`.
   to half of a 4K display at scale 2, 15 MB of it the window's buffer,
   without loading Mesa (122 to 155 MB with it). Nothing
   polls: all work is driven by native events or explicit wake-ups.
-- **No cgo.** Everything builds with `CGO_ENABLED=0`, so any platform can be
+- **No cgo on desktop.** Desktop builds use `CGO_ENABLED=0`, so they can be
   cross-compiled from any machine. Native APIs are called at run time through
   [purego](https://github.com/ebitengine/purego) (`dlopen` + assembly
   trampolines) on macOS and Linux and through the `syscall` package on
-  Windows, never through `import "C"`.
+  Windows. The experimental iOS backend uses a cgo UIKit bridge; shared
+  views, layout, scenes and rendering remain in Go.
 - **Two kinds of windows.** Web pages show in the system webview:
   WKWebView on macOS, WebKitGTK 4.1 (4.0 as a fallback) on Linux, WebView2
   on Windows (amd64 and arm64); no browser engine is bundled. Native UI is
@@ -62,6 +63,7 @@ framework safely. Read it before changing anything under `internal/`.
 ├── internal/
 │   ├── platform/       the contract every backend implements
 │   ├── darwin/         macOS: AppKit + WKWebView through the Objective-C runtime
+│   ├── ios/            iOS: UIKit host and input bridge (cgo), native Go UI
 │   ├── linux/          Linux: GTK 3 + WebKitGTK through dlopen
 │   ├── windows/        Windows: Win32 + WebView2 through syscall and COM
 │   ├── unsupported/    stub for other platforms
@@ -131,10 +133,10 @@ behavior without a GUI, and keeps each backend a thin translation layer.
 
 ## Threading model
 
-Cocoa and GTK must be driven from the thread that started the process. The
+Cocoa, UIKit and GTK must be driven from the thread that started the process. The
 rules are:
 
-1. **The main goroutine is locked to the main thread** (`runtime.LockOSThread`
+1. **On desktop, the main goroutine is locked to the main thread** (`runtime.LockOSThread`
    in `mygo.go`'s `init`), and `App.Run` must be called from it. `Run`
    initializes the backend and blocks in the native event loop. Before
    that no backend is initialized (the Linux one has not even loaded GTK),
@@ -178,7 +180,122 @@ Main-thread-only fields are marked as such in comments (for example
 `Window.native`, `Window.trusted`). Fields shared with other goroutines are
 guarded by a mutex or atomic.
 
-## Native interop without cgo
+### iOS application host
+
+`mygo build -platform ios/arm64` builds the user main package as a Go
+`c-archive`. A Go build overlay adds an exported `MyGoIOSMain` wrapper
+without modifying the user's sources. A small Objective-C executable calls
+`UIApplicationMain`; the first Scene connection calls that wrapper on a
+background thread once UIKit has launched. `ApplicationHost.RunApplication` dispatches
+the shared `Application.start`, readiness callbacks and `finish` to the OS
+main thread, waiting off that thread. It preserves `onMain`, `postMain` and
+the threading contract of existing views. `Step` pumps UIKit's run loop only
+for an explicit synchronous await.
+
+The iOS CLI owns local packaging: a generated Xcode host, app, archive, IPA,
+privacy declarations, signing/export options and matching Go/native dSYMs.
+It checks artifacts before replacing build output and supports a numeric
+build-number override without changing the project configuration. Environment
+diagnostics use Go, Xcode and macOS utilities. Uploads, App Store Connect
+credentials and TestFlight management belong to the application release
+pipeline; the framework has no external release-CLI dependency.
+
+`UIWindowSceneDelegate` translates activation, background, foreground and
+reconnection into the shared application handler. `package mygo` owns
+lifecycle deduplication, typed JSON state restoration/checkpoints and the
+system-managed close/quit policy. The iOS backend pauses presentation when
+inactive and keeps the Go content window across Scene disconnection. UIKit
+termination callbacks are best-effort; background checkpoints happen within
+a bounded background task, and apps can save important edits explicitly.
+Cold URL/file entries are queued until shared readiness callbacks complete.
+
+The CLI compiles a launch Storyboard and packages matching overlay metadata.
+The shared `icon` setting generates a 1024-pixel opaque PNG in an Xcode app
+icon asset catalog; Xcode derives device sizes and bundle icon metadata.
+The startup image is configured independently by `ios.launchScreen.image`.
+The UIKit overlay remains until Metal's drawable presentation callback (or a
+software layer transaction completion) and then fades away. A generation
+counter ignores presentation callbacks from a disconnected Scene. A shared
+`SurfacePresented` event fires `Window.OnFirstFrame` once; other native UI
+backends report submission through `surface.Conn.FrameSubmitted`. No purego
+callback is allocated per drawable: the iOS bridge uses an Objective-C block
+that retains only native objects and copies integer identities.
+
+Native UI reports its opaque solid root fill through `surface.Conn` when
+presenting a frame. Shared window policy applies it to the mobile backdrop
+unless an explicit window background takes precedence, and avoids redundant
+native calls. UIKit paints the surrounding safe area with that color and
+selects status-bar text contrast through the view controller. The content
+retains its safe-area bounds, and Scene reconnection restores the backdrop.
+
+The single content window is a `UIView` inside the safe area. Its bounds
+shrink above the software keyboard. Only actual bounds-size or display-scale
+changes produce resize notifications; relayout of UIKit selection subviews
+must not interrupt the Go router's interactive Back preview. `CADisplayLink` coalesces frame requests
+and pauses when idle or backgrounded. CoreText shaping and the Metal
+renderer are shared with macOS; iOS compiles the shared shader source
+instead of loading the embedded macOS metallib, omits CALayer's macOS
+autoresizing API and uses shared rather than managed render textures.
+The CoreGraphics pixel presenter remains available as a software fallback.
+The simulator uses this CPU path: its SDK omits drawable presentation
+callbacks, so the Core Animation pixel completion handles first-frame handoff.
+
+UIKit touch events carry contact identities and a pointer type. The Go UI
+arbitrates taps and scrolling, cancels pressed widgets at the scroll
+threshold, and handles cancellation separately from pointer release.
+Deactivating a keyboard for a pressed non-editable control waits until its
+primary touch ends, so synchronous viewport resizing cannot move that control
+away before release. Editor-to-editor focus changes remain immediate.
+UIKit supplies momentum scrolling and the editable text proxy for its
+keyboard and input methods; the bridge converts UTF-16 indices to runes,
+flushes text snapshots before the next replacement, and synchronizes
+selection back to the proxy. On iOS 17 and later, UIKit selection display
+interactions draw the caret, highlight and handles above the Metal layer.
+Their caret/selection/hit geometry comes from the existing Go text layout,
+with focused-field identity checks and visible-paragraph-only queries.
+System cut/copy/paste/select-all actions use the shared Go editor, clipboard
+and undo history. Older iOS versions retain Go selection visuals. Password
+input does not export surrounding text or offer copy/cut; custom TextCaret
+handlers continue drawing their own selection. Accessibility nodes become UIKit accessibility elements with actions
+routed back to the existing Go tree. Memory warnings release renderer
+buffers; activation, theme and termination notify the existing handlers.
+
+Marked-text snapshots update committed surrounding text and provisional text
+atomically in one Go frame. The input context stays pinned while UIKit keeps
+its marked proxy; committing/canceling releases it. Snapshot editing changes
+only differing runes, retaining paragraph caches and shared undo grouping.
+UIKit hardware key commands route focus traversal and edit actions through
+the same Go input engine; the surface becomes first responder when no editor
+is active so keyboard traversal continues without a software keyboard.
+The UITextView undo manager queries Go history availability and calls shared
+undo/redo. Captured hardware presses consume their matching release/cancel
+events; marked text retains input-method handling. Read-only and secure-entry
+traits reload after the proxy has received its new field state.
+
+LocalAuthentication preflight runs on a worker queue. A main-thread context
+and token keep one prompt alive and route its reply once, removing it before
+calling Go. Cancellation invalidates that context; late replies cannot finish
+a newer request. Background/disconnection cancel authentication, whereas
+temporary inactivity from the system authentication UI does not. Biometric
+authentication remains separate from Keychain access-control policies.
+
+System file and photo pickers share the main-thread presentation registry
+with alerts and sharing. Document selection coordinates reads on a worker
+queue and copies files into private cache storage; photo providers are copied
+inside their temporary-file completion handlers. Successful results transfer
+copy ownership to the caller. Failed batches and late results after Scene
+disconnection remove their copies. Export copies existing files through UIKit;
+it never returns an external writable path. Directory leases and persistent
+security-scoped bookmarks are outside this API.
+
+The CLI exports the UIKit host as an Xcode project alongside the `.app`.
+Unsigned device and Apple Silicon simulator builds need no signing account;
+installing on a device requires `ios.developmentTeam` and an authenticated
+Xcode account with a matching provisioning profile. See [iOS](ios.md) for
+build commands and the current scope. Mobile cgo is confined to
+`internal/ios`; desktop backends retain their existing no-cgo build path.
+
+## Native interop without cgo (desktop)
 
 purego gives three primitives, used everywhere:
 
@@ -195,6 +312,33 @@ purego gives three primitives, used everywhere:
   **callbacks are created once per signature at startup** and user data (a
   window id, a request id) identifies the target. Never create callbacks per
   window, per request or per call.
+
+Notifications use the existing shared Notification lifecycle, with iOS-only
+one-shot delay triggers, badge and string payloads. The native notification
+center delegate is installed before Go starts and queues cold responses until
+readiness, deduplicating Scene/delegate delivery. `platform.Mobile` translates
+haptics, status bars, checked badges and APNs registration; `MobileHandler`
+returns notification and token/error events to shared listeners on the UI thread.
+Desktop mobile-service implementations explicitly return unsupported.
+
+Interactive keyboard dismissal uses a native UIScrollView around the surface
+only while an opted-in editable field is active. It tracks the keyboard through
+public UIKit APIs, forwards pan deltas, and keeps the Go surface visually fixed;
+Go owns content scrolling/history. Read-only selection supplies an empty input
+view and disables editing while retaining Go text geometry. Opt-in native
+pinch/rotation recognizers probe Go hit eligibility, then deliver captured gesture
+deltas without activating the cancelled single-contact press.
+
+The CLI writes typed iOS entitlements/document declarations and Release project
+configurations. Archive/export runs in staging; exported options always select
+local export. The root privacy manifest merges framework/runtime, app and
+dependency declarations. Go/native DWARF is retained into matching dSYMs;
+Release app symbols are stripped after dSYM generation. Artifact checks verify
+privacy, signatures, UUIDs and Go source-address resolution before replacing
+outputs, with JSON reports for CI. Manual signing accepts existing profiles;
+the unsigned iOS workflow checks archives and simulator builds. No upload is
+implicit. App Store Connect capabilities, hosted AASA
+and APNs delivery remain external application configuration.
 
 ### macOS (`internal/darwin`)
 
@@ -1398,6 +1542,25 @@ either.
   their insets as relative positioning; others fade in alone. The first
   router of a frame takes the back and forward keys for the window, each
   one also for the focus inside it, which comes first.
+  `NewRouter` enables `InteractiveBack` on iOS (other platforms can opt in).
+  Touches within 24 DIPs of a view's left edge are reserved without blurring
+  an editor. A rightward drag previews the preceding entry at the first
+  differing page level; shared layouts stay fixed. The current page keeps
+  focus and IME, while the preceding page is inert. Vertical movement yields
+  to scrolling and a stationary edge tap is replayed normally. Release uses
+  progress and recent velocity to settle forward or cancel; history changes
+  only after completion. Cancellation, surface blur/resize and navigation
+  overriding the gesture preserve or discard the preview without a stale
+  Back. Reduce Motion removes settling animation. Root entries cannot go
+  back. All completed gestures navigate through `Pop`/`Go`, as Back buttons
+  and shortcuts do. `Pop` traverses backward while preserving forward entries;
+  `Reset` clears both directions. Routers own and JSON-serialize complete
+  history and its cursor, so a router can live directly in `PersistState`
+  without application-side mirrors or path replay. Deserialization validates
+  the version, bounds and canonical local locations before changing anything;
+  runtime state is rebuilt, and initialized routers keep their options and
+  host attachment. Legacy location-array snapshots are accepted. `History()`
+  is a read-only copy through the current entry, excluding forward entries.
 - **Comboboxes** (`ui/combobox.go`). A combobox is a text input with a
   popup of options in the overlay, without a backdrop: the input keeps
   the focus while the user types and picks, as presses in the popup do not
@@ -1821,11 +1984,15 @@ either.
     it adds to the surface view's layer. The command queue, shaders,
     sampler and placeholder texture are made on demand: a window that
     only presents CPU frames keeps the device and layer alone. Its frames
-    present with the Core Animation transaction (`presentsWithTransaction`), so a live resize
-    shows no stretched frames, and each frame waits for the GPU to finish
+    present with the Core Animation transaction (`presentsWithTransaction`) on
+    macOS, so a live resize shows no stretched frames. iOS uses asynchronous
+    command-buffer presentation and the default three drawables, paced by
+    `CADisplayLink`; transactional presentation with two drawables caused
+    consecutive GPU-completion and drawable waits on the main thread.
+    Each frame waits for the GPU to finish
     the last before it updates the textures and the instance buffer the
-    last read, so two drawables do rather than the three a layer makes
-    while a window animates. Two seconds after the last frame, as the
+    last read; the desktop uses two drawables to spare memory.
+    Two seconds after the last frame, as the
     driver frees its own memory of frames, a timer shrinks the drawables,
     which frees all but the one shown, until the next frame makes them
     again, and releases GPU instance buffers, atlas/image textures and

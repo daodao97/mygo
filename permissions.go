@@ -1,5 +1,10 @@
 package mygo
 
+import (
+	"fmt"
+	"github.com/egoist/mygo/internal/platform"
+)
+
 // Permission is something a page asks the user for.
 type Permission string
 
@@ -9,7 +14,83 @@ const (
 	PermissionMicrophone    Permission = "microphone"
 	PermissionGeolocation   Permission = "geolocation"
 	PermissionNotifications Permission = "notifications"
+	PermissionPhotos        Permission = "photos"
+	PermissionPhotosAddOnly Permission = "photos-add-only"
 )
+
+// PermissionStatus is the operating system's authorization decision. Limited
+// permits only user-selected photos; Provisional permits quiet notifications.
+type PermissionStatus string
+
+const (
+	PermissionNotDetermined PermissionStatus = "not-determined"
+	PermissionDenied        PermissionStatus = "denied"
+	PermissionRestricted    PermissionStatus = "restricted"
+	PermissionGranted       PermissionStatus = "granted"
+	PermissionLimited       PermissionStatus = "limited"
+	PermissionProvisional   PermissionStatus = "provisional"
+)
+
+// PermissionModule manages native application permissions. These decisions
+// are separate from a web page's SetPermissionHandler policy.
+type PermissionModule struct{}
+
+var Permissions PermissionModule
+
+// Query reads authorization without presenting a prompt. Currently supported
+// on iOS. Unsupported backends return ErrUnsupported, rather than a denial.
+func (PermissionModule) Query(kind Permission) (PermissionStatus, error) {
+	return nativePermission(kind, false)
+}
+
+// Request asks the OS for authorization and returns its resulting status.
+// It may wait for the user; native events continue on the UI thread. Denial
+// is a status, not an error. iOS requires the corresponding non-empty purpose
+// string in ios.infoPlist; a missing string returns an error before calling
+// the native API. Geolocation requests authorization while the app is in use.
+func (PermissionModule) Request(kind Permission) (PermissionStatus, error) {
+	return nativePermission(kind, true)
+}
+
+func nativePermission(kind Permission, request bool) (PermissionStatus, error) {
+	needsApp("Permissions")
+	switch kind {
+	case PermissionCamera, PermissionMicrophone, PermissionGeolocation, PermissionNotifications, PermissionPhotos, PermissionPhotosAddOnly:
+	default:
+		return "", fmt.Errorf("mygo: unknown permission %q", kind)
+	}
+	type result struct {
+		status PermissionStatus
+		err    error
+	}
+	ch := make(chan result, 1)
+	if !postMain(func() {
+		done := func(status string, err error) { deliver(ch, result{PermissionStatus(status), err}) }
+		if request {
+			backend().Permissions().Request(string(kind), done)
+		} else {
+			backend().Permissions().Query(string(kind), done)
+		}
+	}) {
+		return "", errLoopStopped
+	}
+	r := await(ch)
+	return r.status, r.err
+}
+
+// OpenSettings opens this application's system settings so the user can
+// revise a denial. After returning to the foreground, Query again; opening
+// settings itself does not grant permission.
+func (PermissionModule) OpenSettings() error {
+	needsApp("Permissions.OpenSettings")
+	ch := make(chan error, 1)
+	if !postMain(func() { backend().Permissions().OpenSettings(func(err error) { deliver(ch, err) }) }) {
+		return errLoopStopped
+	}
+	return await(ch)
+}
+
+var _ platform.Permissions
 
 // PermissionRequest is passed to the permission handler of a window.
 type PermissionRequest struct {

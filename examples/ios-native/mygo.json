@@ -1,0 +1,40 @@
+{
+  "name": "MyGo iOS",
+  "identifier": "com.mygo.iosnative",
+  "version": "0.1.0",
+  "out": "build",
+  "icon": "resources/icon.png",
+  "urlSchemes": [
+    "mygo-native"
+  ],
+  "ios": {
+    "infoPlist": {
+      "NSCameraUsageDescription": "Allow camera access to test the camera permission request in this demo; no photos or videos are recorded.",
+      "NSMicrophoneUsageDescription": "Allow microphone access to test the microphone permission request in this demo; no audio is recorded.",
+      "NSLocationWhenInUseUsageDescription": "Location access is used to demonstrate requesting permission while this demo is open; your coordinates are not collected or tracked.",
+      "NSPhotoLibraryUsageDescription": "Allow photo library access to test MyGo's photo library permission APIs in this demo.",
+      "NSPhotoLibraryAddUsageDescription": "Allow permission to add photos to test MyGo's add-only photo authorization APIs in this demo; no photos are saved automatically.",
+      "NSFaceIDUsageDescription": "Use Face ID to test local authentication in this demo.",
+      "UIFileSharingEnabled": true,
+      "LSSupportsOpeningDocumentsInPlace": true
+    },
+    "launchScreen": {
+      "title": "MyGo",
+      "image": "assets/launch-logo.png",
+      "backgroundColor": "#f6f7f9",
+      "foregroundColor": "#172238",
+      "fadeDurationMs": 250
+    },
+    "buildNumber": "1"
+  },
+  "fileAssociations": [
+    {
+      "ext": [
+        "txt"
+      ],
+      "name": "Text Document",
+      "mimeType": "text/plain",
+      "role": "Viewer"
+    }
+  ]
+}

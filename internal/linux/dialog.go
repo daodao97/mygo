@@ -157,3 +157,10 @@ func (d dialogs) ShowMessageBox(parent platform.Window, o *platform.MessageBoxOp
 	gtkWidgetDestroy(dlg)
 	cb(res, nil)
 }
+
+func (dialogs) ShowExportDialog(_ platform.Window, _ *platform.ExportDialogOptions, cb func(bool, error)) {
+	cb(false, platform.ErrUnsupported)
+}
+func (dialogs) ShowPhotoDialog(_ platform.Window, _ *platform.PhotoDialogOptions, cb func([]string, error)) {
+	cb(nil, platform.ErrUnsupported)
+}

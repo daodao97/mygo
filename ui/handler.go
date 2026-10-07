@@ -34,6 +34,8 @@ const (
 	// InputScroll scrolls by DX, DY DIPs at X, Y; Precise marks
 	// touchpads, which scroll by pixels rather than by lines.
 	InputScroll
+	// InputPointerCancel aborts a press taken by this handler.
+	InputPointerCancel
 )
 
 // InputEvent is input an element takes as it comes (HandleInput).

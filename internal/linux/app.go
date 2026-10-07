@@ -73,6 +73,8 @@ func (b *Backend) Name() string { return "linux/webkitgtk" }
 
 // windowManager reports an X11 window manager, which places windows once
 // they show; Wayland compositors do not tell where windows are.
+func (*Backend) SystemManagedLifetime() bool { return false }
+
 func (b *Backend) windowManager(win ptr) bool {
 	return b.onX11 && goStr(b.wmName(gtkWidgetGetScreen(win))) != "unknown"
 }

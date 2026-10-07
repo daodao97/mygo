@@ -53,9 +53,18 @@ import (
 // The zero Router shows "/". As the rest of the app's state, it is read
 // and changed on the main thread: from another goroutine, change it in
 // Window.Update.
+//
+// A Router supports JSON persistence of its full history and current index.
+// Keep it directly in state registered with mygo.PersistState. The router
+// restores navigation itself; persist editor and scroll values separately.
 type Router struct {
 	// Transition is how pages replace each other.
 	Transition Transition
+	// InteractiveBack enables a primary touch starting within 24 DIPs of
+	// the View's left edge to drag back. NewRouter enables it on iOS.
+	// History changes only when the gesture completes; cancellation keeps
+	// the current page, its scroll position and keyboard focus.
+	InteractiveBack bool
 
 	entries []*routeEntry
 	at      int
@@ -65,12 +74,17 @@ type Router struct {
 	rt *engine
 	// view is the state of View; the views of Route.View keep theirs in
 	// their elements.
-	view routeView
+	view                 routeView
+	back                 *routeBack
+	suppressTransitionAt uint64
 }
 
 // routeEntry is an entry of the history: a location of a page.
 type routeEntry struct {
 	loc string // the path, escaped, and the query
+	// restoring discovers layout sharing when this restored entry first
+	// builds. No element state exists yet to preserve in unvisited entries.
+	restoring bool
 	// pages are the pages showing the entry: View's, then those of each
 	// Route.View inside, made as they are first built. An entry pushed
 	// shares the pages of the layouts whose part of the path it keeps,
@@ -122,7 +136,7 @@ const (
 
 // NewRouter returns a router showing the page at path.
 func NewRouter(path string) *Router {
-	r := &Router{}
+	r := &Router{InteractiveBack: runtime.GOOS == "ios"}
 	r.Replace(path)
 	return r
 }
@@ -141,6 +155,9 @@ func (r *Router) pageAt(e *routeEntry, level int) uint64 {
 	for len(e.pages) <= level {
 		r.pages++
 		e.pages = append(e.pages, r.pages)
+		if e.restoring {
+			r.restoreSharing(e, len(e.pages)-1, -1)
+		}
 	}
 	return e.pages[level]
 }
@@ -193,7 +210,7 @@ func (r *Router) Push(target string) {
 	if !ok || loc == cur.loc {
 		return
 	}
-	e := &routeEntry{loc: loc}
+	e := &routeEntry{loc: loc, restoring: cur.restoring}
 	e.pages, e.layouts = shared(cur, p)
 	r.entries = append(r.entries[:r.at+1], e)
 	if len(r.entries) > maxHistory {
@@ -217,6 +234,7 @@ func (r *Router) Replace(target string) {
 		r.entries = []*routeEntry{e}
 	} else {
 		old := r.entries[r.at]
+		e.restoring = old.restoring
 		e.pages, e.layouts = shared(old, p)
 		if p == pathOf(old.loc) {
 			e.title = old.title
@@ -228,6 +246,27 @@ func (r *Router) Replace(target string) {
 
 // Back shows the page before, if any.
 func (r *Router) Back() { r.Go(-1) }
+
+// Pop returns to the previous entry, if any, as Back does. It keeps the
+// entry left in forward history; a subsequent Push replaces that branch.
+func (r *Router) Pop() { r.Back() }
+
+// Reset shows target as the only entry, clearing back and forward history.
+// Relative targets resolve against the current location as Push does.
+func (r *Router) Reset(target string) {
+	loc, p, ok := r.resolve(target)
+	if !ok {
+		return
+	}
+	cur := r.current()
+	e := cur
+	if loc != cur.loc {
+		e = &routeEntry{loc: loc, restoring: cur.restoring}
+		e.pages, e.layouts = shared(cur, p)
+	}
+	r.entries, r.at = []*routeEntry{e}, 0
+	r.changed()
+}
 
 // Forward shows the page after, which Back left, if any.
 func (r *Router) Forward() { r.Go(1) }
@@ -257,6 +296,18 @@ func (r *Router) Path() string { return pathOf(r.current().loc) }
 // again when the app starts.
 func (r *Router) Location() string { return r.current().loc }
 
+// History returns a copy of the locations up to and including the current
+// entry, oldest first. Forward entries are excluded. To persist complete
+// navigation, including its current index, marshal the Router itself as JSON.
+func (r *Router) History() []string {
+	r.current()
+	h := make([]string, r.at+1)
+	for i := range h {
+		h[i] = r.entries[i].loc
+	}
+	return h
+}
+
 // Query returns the value of the query parameter name of the page shown,
 // "" if it has none.
 func (r *Router) Query(name string) string { return queryOf(r.current().loc, name) }
@@ -268,6 +319,7 @@ func (r *Router) Title() string { return r.current().title }
 // changed asks for a frame showing the page now current: another pass of
 // the frame being built, or a frame.
 func (r *Router) changed() {
+	r.back = nil // programmatic navigation takes precedence over a gesture
 	if rt := r.rt; rt != nil {
 		if rt.inFrame {
 			rt.consumed = true
@@ -444,7 +496,11 @@ func (r *Route) View(c *Context, fn func(r *Route)) *Element {
 		e.layouts = append(e.layouts, -1)
 	}
 	e.layouts[r.level] = r.offset + r.rest
+	if e.restoring {
+		r.router.restoreSharing(e, r.level, e.layouts[r.level])
+	}
 	v := Local(box, "view", func() routeView { return routeView{} })
+	box.router, box.routerLevel = r.router, r.level+1
 	r.router.build(c, box, v, r, fn)
 	return box
 }
@@ -457,6 +513,7 @@ func (r *Router) View(c *Context, fn func(r *Route)) *Element {
 	box := Column(c).Grow(1).AlignSelf(Stretch).MinWidth(0).MinHeight(0)
 	box.widget = "Router"
 	r.keys(c, box)
+	box.router = r
 	r.build(c, box, &r.view, nil, fn)
 	return box
 }
@@ -464,11 +521,18 @@ func (r *Router) View(c *Context, fn func(r *Route)) *Element {
 // build builds the pages of view v in box: the router's, or those inside
 // the page of route parent, a layout.
 func (r *Router) build(c *Context, box *Element, v *routeView, parent *Route, fn func(*Route)) {
+	if parent == nil && r.back != nil {
+		r.advanceBack(c)
+	}
 	// The entry to show: the router's, or the layout's, which is going
 	// away while it slides out.
 	cur, level := r.current(), 0
 	if parent != nil {
 		cur, level = parent.entry, parent.level+1
+	}
+	if g := r.back; g != nil && level == g.level && cur == g.from {
+		r.buildBack(c, box, v, parent, fn)
+		return
 	}
 	switch {
 	case v.shown == nil:
@@ -576,7 +640,7 @@ func (r *Router) show(c *Context, box *Element, v *routeView, parent *Route, cur
 		v.focusing, v.announcing = false, true
 	}
 	v.leaving, v.dir, v.start = nil, 0, c.now
-	if r.Transition == TransitionNone {
+	if r.Transition == TransitionNone || r.suppressTransitionAt == rt.frame {
 		return
 	}
 	v.leaving = old
@@ -619,6 +683,7 @@ func (r *Router) page(c *Context, parent *Route, e *routeEntry, fn func(*Route),
 		c.router = r
 	}
 	pg.Children(func() { fn(route) })
+	e.restoring = false
 	c.router, c.inert = saved, inert
 	pg.Label(e.title)
 	return pg

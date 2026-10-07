@@ -3,9 +3,12 @@ package mygo
 import (
 	"crypto/rand"
 	"errors"
+	"fmt"
+	"maps"
 	"math"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo/internal/accelerator"
 	"github.com/egoist/mygo/internal/platform"
@@ -512,7 +515,7 @@ func (t *Tray) OnClick(fn func()) (off func()) { return t.onClick.add(fn, false)
 // OnRightClick is called when the icon is right-clicked.
 func (t *Tray) OnRightClick(fn func()) (off func()) { return t.onRight.add(fn, false) }
 
-// NotificationOptions configures a desktop notification.
+// NotificationOptions configures a system notification.
 type NotificationOptions struct {
 	// ID identifies the notification: App.OnNotificationClick receives
 	// it, also after the app has quit and been launched again, and showing
@@ -525,12 +528,16 @@ type NotificationOptions struct {
 	// Silent suppresses the notification sound.
 	Silent bool
 	// Group gathers the notifications that share it in one stack of
-	// Notification Center (macOS), such as the messages of a conversation.
+	// Notification Center (macOS and iOS), such as the messages of a conversation.
 	// Empty leaves them in the app's.
 	Group string
+	// Badge sets the iOS app badge when delivered; nil leaves it unchanged.
+	Badge *int
+	// Data survives notification delivery and a cold launch on iOS.
+	Data map[string]string
 }
 
-// Notification is a desktop notification.
+// Notification is a system notification.
 type Notification struct {
 	id      string
 	opts    NotificationOptions
@@ -542,7 +549,7 @@ var notifications struct {
 	byID map[string]*Notification
 }
 
-// NotificationsSupported reports whether desktop notifications can be
+// NotificationsSupported reports whether system notifications can be
 // shown. On macOS they require a packaged app, which `mygo dev` and
 // `mygo build` produce.
 func NotificationsSupported() bool {
@@ -556,6 +563,11 @@ func NewNotification(opts NotificationOptions) *Notification {
 	if id == "" {
 		// Unique across runs too, as notifications outlive them.
 		id = "mygo-" + rand.Text()
+	}
+	opts.Data = maps.Clone(opts.Data)
+	if opts.Badge != nil {
+		n := *opts.Badge
+		opts.Badge = &n
 	}
 	return &Notification{id: id, opts: opts}
 }
@@ -572,31 +584,54 @@ var ErrNotificationsDenied = platform.ErrNotificationsDenied
 // macOS the first notification asks the user whether to allow them, and
 // Show waits for the answer; it returns ErrNotificationsDenied when they
 // are not allowed.
-func (n *Notification) Show() error {
+func (n *Notification) Show() error { return n.show(0) }
+
+// Schedule submits a one-shot local notification on iOS. Close cancels pending
+// and delivered requests with its ID. Delivery survives process termination.
+// iOS rounds sub-second delays up to one second. Other platforms return
+// ErrUnsupported for delayed notifications.
+func (n *Notification) Schedule(after time.Duration) error {
+	if after <= 0 {
+		return fmt.Errorf("mygo: notification delay must be positive")
+	}
+	return n.show(after)
+}
+func (n *Notification) show(after time.Duration) error {
 	needsApp("Notification.Show")
+	if n.opts.Badge != nil && *n.opts.Badge < 0 {
+		return fmt.Errorf("mygo: notification badge cannot be negative")
+	}
 	notifications.Lock()
 	if notifications.byID == nil {
 		notifications.byID = map[string]*Notification{}
 	}
-	_, shown := notifications.byID[n.id]
+	previous := notifications.byID[n.id]
 	notifications.byID[n.id] = n
 	notifications.Unlock()
 	ch := make(chan error, 1)
 	onMain(func() {
 		backend().ShowNotification(&platform.Notification{
-			ID:       n.id,
-			Title:    n.opts.Title,
-			Subtitle: n.opts.Subtitle,
-			Body:     n.opts.Body,
-			Silent:   n.opts.Silent,
-			Group:    n.opts.Group,
+			ID:           n.id,
+			Title:        n.opts.Title,
+			Subtitle:     n.opts.Subtitle,
+			Body:         n.opts.Body,
+			Silent:       n.opts.Silent,
+			Group:        n.opts.Group,
+			DelaySeconds: after.Seconds(), Badge: n.opts.Badge, Data: maps.Clone(n.opts.Data),
 		}, func(err error) { deliver(ch, err) })
 	})
 	err := await(ch)
-	if err != nil && !shown {
-		// Nothing will be clicked.
+	if err != nil {
 		notifications.Lock()
-		delete(notifications.byID, n.id)
+		// A failed replacement must retain the earlier notification's listener,
+		// and a late error must not erase a newer concurrent request.
+		if notifications.byID[n.id] == n {
+			if previous != nil {
+				notifications.byID[n.id] = previous
+			} else {
+				delete(notifications.byID, n.id)
+			}
+		}
 		notifications.Unlock()
 	}
 	return err

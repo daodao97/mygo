@@ -128,6 +128,8 @@ const (
 	// flagDividers marks an element drawing lines between its children,
 	// listed in Context.dividers.
 	flagDividers
+	// flagHideScrollbars suppresses scroll thumbs and their pointer targets.
+	flagHideScrollbars
 
 	// flagClip clips both ways.
 	flagClip = flagClipX | flagClipY
@@ -191,17 +193,20 @@ const (
 //
 // An element only lives during the frame that built it.
 type Element struct {
-	c      *Context
-	id     uint64
-	kind   kind
-	flags  uint32
-	parent *Element
-	first  *Element
-	last   *Element
-	next   *Element
-	nchild int
-	depth  int
-	st     *state
+	gestureEnabled bool
+	c              *Context
+	id             uint64
+	kind           kind
+	flags          uint32
+	parent         *Element
+	first          *Element
+	last           *Element
+	next           *Element
+	nchild         int
+	depth          int
+	st             *state
+	router         *Router // the router whose View this element holds
+	routerLevel    int
 	// track is the ScrollState of a scroll container (TrackScroll).
 	track *ScrollState
 
@@ -577,6 +582,12 @@ func (e *Element) MarginY(v float32) *Element { e.margin[0], e.margin[2] = v, v;
 //
 //	ui.Scroll(c).Fill().Padding(64, 16, 16).ScrollbarInsets(64, 0, 0)
 func (e *Element) ScrollbarInsets(v ...float32) *Element { e.barInset = edges(v); return e }
+
+// HideScrollbars hides both scroll bars and their pointer targets. Scrolling,
+// keyboard navigation, accessibility and tracked offsets remain available.
+// Apply to Scroll, ScrollHorizontal, ScrollBoth, List, GridView or TextArea
+// each frame.
+func (e *Element) HideScrollbars() *Element { e.flags |= flagHideScrollbars; return e }
 
 // Width sets the width in DIPs.
 func (e *Element) Width(v float32) *Element { e.width = px(v); return e }

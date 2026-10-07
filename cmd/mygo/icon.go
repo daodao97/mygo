@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"sync"
 )
 
@@ -133,7 +134,7 @@ func resize(img image.Image, size int) *image.NRGBA {
 				}
 			} else {
 				fx, fy := (float64(x)+0.5)*sx-0.5, (float64(y)+0.5)*sy-0.5
-				x0, y0 := int(fx), int(fy)
+				x0, y0 := int(math.Floor(fx)), int(math.Floor(fy))
 				dx, dy := fx-float64(x0), fy-float64(y0)
 				for _, s := range [4]struct {
 					x, y int

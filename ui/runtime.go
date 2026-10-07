@@ -46,6 +46,7 @@ type host interface {
 // the view function, lays them out, paints them and routes input to the
 // elements of the last frame. Main thread only, except where noted.
 type engine struct {
+	gestures map[string]gestureCapture
 	view     func(*Context)
 	host     host
 	c        Context
@@ -122,9 +123,19 @@ type engine struct {
 	pointerIn          bool
 	hover              []uint64
 	// chain is a buffer for the elements under the pointer.
-	chain         []uint64
-	pressed       *state
-	pressButton   int
+	chain       []uint64
+	pressed     *state
+	pressButton int
+	touch       struct {
+		id                 uint64
+		active, scrolling  bool
+		keyboardTap        bool
+		x, y, lastX, lastY float32
+		back               *Router
+		backEntry          *routeEntry
+		backWidth          float32
+		backLevel          int
+	}
 	focused       uint64
 	focusVisible  bool
 	windowFocused bool
@@ -174,8 +185,10 @@ type engine struct {
 	// ime is the text input state the host has, and base the rune of the
 	// focused editor its text starts at.
 	ime struct {
-		state platform.TextInputState
-		base  int
+		state             platform.TextInputState
+		base              int
+		compositionID     uint64
+		compositionLength int
 	}
 	// drag is the value being dragged within the window.
 	drag *valueDrag
@@ -519,6 +532,7 @@ func (rt *engine) forgetInput() {
 		s.clicks, s.rightClicks, s.doubleClicks = 0, 0, 0
 		s.dragX, s.dragY = 0, 0
 		s.changed, s.submitted, s.typing = false, false, false
+		s.gestures = nil
 		s.dropped = nil
 		s.droppedValue, s.hasDropped = nil, false
 	}
@@ -674,7 +688,10 @@ func (rt *engine) commitElement(e *Element, clip Rect, hidden bool) {
 	} else {
 		s.parent = 0
 	}
+	s.gestureEnabled = e.gestureEnabled
 	s.flags = e.flags
+	s.router = e.router
+	s.routerLevel = e.routerLevel
 	s.anchor = 0
 	if e.popover != nil {
 		s.anchor = e.popover.id

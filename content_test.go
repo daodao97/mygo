@@ -306,3 +306,43 @@ func TestContentDuplicateKeyTellsWhere(t *testing.T) {
 		t.Errorf("a duplicate key logs %q", s)
 	}
 }
+
+func TestContentBackgroundFollowsMobileRoot(t *testing.T) {
+	fb.SystemManaged.Store(true)
+	theme := ui.DarkTheme()
+	theme.Background = ui.Hex("#14213d")
+	w, fw, s := contentWindow(t, func(c *ui.Context) { c.SetTheme(theme); ui.Text(c, "Theme") })
+	t.Cleanup(func() { fb.SystemManaged.Store(false) })
+	background := func() platform.Color { return onMainValue(func() platform.Color { return fw.Background }) }
+	if got := background(); got != (platform.Color{R: 20, G: 33, B: 61, A: 255}) {
+		t.Fatalf("mobile background = %+v", got)
+	}
+	onMain(func() { theme = ui.LightTheme(); theme.Background = ui.Hex("#eef4f8") })
+	w.Invalidate()
+	onMain(func() { s.Frame() })
+	if got := background(); got != (platform.Color{R: 238, G: 244, B: 248, A: 255}) {
+		t.Fatalf("changed root background = %+v", got)
+	}
+	// An explicit native background remains under the application's control.
+	if err := w.SetBackgroundColor("#123456"); err != nil {
+		t.Fatal(err)
+	}
+	onMain(func() { theme = ui.DarkTheme() })
+	w.Invalidate()
+	onMain(func() { s.Frame() })
+	if got := background(); got != (platform.Color{R: 18, G: 52, B: 86, A: 255}) {
+		t.Fatalf("root overrode explicit background: %+v", got)
+	}
+}
+
+func TestContentBackgroundKeepsDesktopPolicy(t *testing.T) {
+	theme := ui.DarkTheme()
+	w, fw, s := contentWindow(t, func(c *ui.Context) { c.SetTheme(theme) })
+	before := onMainValue(func() platform.Color { return fw.Background })
+	onMain(func() { theme = ui.LightTheme() })
+	w.Invalidate()
+	onMain(func() { s.Frame() })
+	if got := onMainValue(func() platform.Color { return fw.Background }); got != before {
+		t.Fatalf("desktop native background changed from %+v to %+v", before, got)
+	}
+}

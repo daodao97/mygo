@@ -11,6 +11,9 @@ import (
 // event handles a surface event on the main thread. It reports whether
 // an element takes files dragged over or dropped at the event's position.
 func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
+	if ev.PointerType == platform.PointerTouch && rt.touchEvent(ev) {
+		return rt.touch.scrolling
+	}
 	if ev.Kind != platform.SurfaceFrame {
 		// Whatever the event changes, the next frame builds anew.
 		rt.redraw = false
@@ -27,6 +30,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.SurfaceFrame:
 		rt.surfaceFrame()
 	case platform.SurfaceResize:
+		rt.cancelTouchBack()
 		rt.requestFrame()
 	case platform.SurfaceShown:
 		if rt.held {
@@ -37,11 +41,24 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.PointerMove:
 		rt.pointerMove(x, y)
 	case platform.PointerDown:
+		previousFocus := rt.focused
 		rt.pointerMove(x, y)
 		rt.pointerDown(x, y, ev.Button, Modifiers(ev.Mods), ev.Clicks)
+		// UIKit must keep its first responder while deciding whether a contact
+		// is an interactive keyboard pan. A completed tap still blurs on Up;
+		// a native pan cancels the tap and keeps the editor until UIKit resigns it.
+		if ev.PointerType == platform.PointerTouch && rt.ime.state.Active && rt.ime.state.Options.Dismiss == "interactive" && rt.focused != previousFocus {
+			next := rt.states[rt.focused]
+			if next == nil || next.editor == nil {
+				rt.focused = previousFocus
+				rt.touch.keyboardTap = true
+			}
+		}
 	case platform.PointerUp:
 		rt.pointerMove(x, y)
 		rt.pointerUp(ev.Button, ev.Clicks)
+	case platform.PointerCancel:
+		rt.cancelPointer()
 	case platform.PointerLeave:
 		rt.pointerIn = false
 		if rt.pressed == nil {
@@ -60,9 +77,23 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 			rt.deliver(h, InputEvent{Kind: InputKeyUp, Key: Key(ev.Key), Mods: Modifiers(ev.Mods)})
 		}
 	case platform.TextInput:
-		rt.editEvent(rt.replaced(editEvent{kind: editInsert, text: ev.Text}, ev))
+		rt.ime.compositionID = 0
+		rt.editEvent(rt.replaced(editEvent{kind: editInsert, text: ev.Text, caret: ev.Caret, snapshot: ev.Snapshot}, ev))
 	case platform.TextComposition:
-		rt.editEvent(rt.replaced(editEvent{kind: editCompose, text: ev.Text, caret: ev.Caret}, ev))
+		if ev.Snapshot {
+			rt.ime.compositionID = rt.focused
+			n := len([]rune(ev.Text))
+			a, b := max(0, min(ev.MarkedStart, n)), max(0, min(ev.MarkedEnd, n))
+			rt.ime.compositionLength = n - max(0, b-a)
+		}
+		rt.editEvent(rt.replaced(editEvent{kind: editCompose, text: ev.Text, caret: ev.Caret, snapshot: ev.Snapshot, markedStart: ev.MarkedStart, markedEnd: ev.MarkedEnd}, ev))
+	case platform.TextSelection:
+		rt.editEvent(editEvent{kind: editSelect, from: rt.ime.base + ev.From, to: rt.ime.base + ev.To})
+	case platform.SurfaceKeyboardDismiss:
+		rt.focused = 0
+		rt.requestFrame()
+	case platform.SurfaceGesture:
+		taken = rt.gestureEvent(ev)
 	case platform.SurfaceCommand:
 		rt.editEvent(editEvent{kind: editCommand, text: ev.Text})
 	case platform.SurfaceFocus:
@@ -70,6 +101,14 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.blinkStart = time.Now()
 		rt.requestFrame()
 	case platform.SurfaceBlur:
+		if rt.touch.active {
+			// Losing focus may end a contact without another pointer event.
+			// Cancel its handlers and release arbitration for the next touch.
+			rt.cancelPointer()
+			rt.touch.active, rt.touch.scrolling = false, false
+			rt.pointerIn = false
+		}
+		rt.cancelTouchBack()
 		rt.windowFocused = false
 		if p := rt.pressed; p != nil {
 			// The release will not come: an element taking its input
@@ -91,6 +130,10 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.accessibilityOn()
 	case platform.AccessAction:
 		rt.accessAction(ev)
+	}
+	if ev.PointerType == platform.PointerTouch && (ev.Kind == platform.PointerUp || ev.Kind == platform.PointerCancel) {
+		rt.pointerIn = false
+		rt.setHover(nil)
 	}
 	if ev.Kind != platform.SurfaceFrame {
 		// A press or Tab may have moved the focus: tell the host now, not
@@ -710,8 +753,8 @@ func (rt *engine) editEvent(ev editEvent) {
 	if s == nil || s.editor == nil {
 		return
 	}
-	// Selectable text takes the menus' commands, as Copy, not text.
-	if s.flags&flagEditable == 0 && (s.flags&flagSelectable == 0 || ev.kind != editCommand) {
+	// Selectable text takes selection changes and menu commands, not edits.
+	if s.flags&flagEditable == 0 && (s.flags&flagSelectable == 0 || ev.kind != editCommand && ev.kind != editSelect) {
 		return
 	}
 	s.editor.queue = append(s.editor.queue, ev)
@@ -731,19 +774,45 @@ func (rt *engine) updateTextInput() {
 		// An element taking text itself: no text around the caret.
 		t.Active = true
 		t.Caret = platform.RectF{X: float64(s.x + s.caret.X), Y: float64(s.y + s.caret.Y), W: float64(s.caret.W), H: float64(s.caret.H)}
-	} else if s != nil && s.editor != nil && s.flags&flagEditable != 0 && !s.editor.readOnly && rt.windowFocused {
+	} else if s != nil && s.editor != nil && s.flags&(flagEditable|flagSelectable) != 0 && (!s.editor.readOnly || rt.nativeSelection(s)) && rt.windowFocused {
 		ed := s.editor
 		r := ed.caretRect(s)
 		t.Active = true
 		t.Caret = platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)}
+		t.ReadOnly = ed.readOnly
+		t.Password = ed.password
+		t.Multiline = ed.multiline
+		t.CanUndo, t.CanRedo = !ed.readOnly && len(ed.undo) > 0, !ed.readOnly && len(ed.redo) > 0
+		t.Options = ed.inputOptions
 		if !ed.password {
 			a, z := ed.selection()
 			base = max(0, a-imeContext)
 			end := min(ed.buf.n, z+imeContext)
+			// UIKit keeps its proxy unchanged while marked text exists. Pin
+			// the committed context to that proxy, even as a long composition
+			// accepts candidates past the usual surrounding-text boundary.
+			if rt.ime.compositionID == rt.focused {
+				base = min(rt.ime.base, ed.buf.n)
+				end = min(ed.buf.n, base+rt.ime.compositionLength)
+			}
 			t.Text, t.Start, t.End = ed.buf.slice(base, end), a-base, z-base
 		}
 	}
-	if t != rt.ime.state {
+	if t.Active {
+		s := rt.states[rt.focused]
+		if s.editor != nil {
+			t.ID = rt.focused
+			t.Bounds = platform.RectF{X: float64(s.vx), Y: float64(s.vy), W: float64(s.vw), H: float64(s.vh)}
+		}
+	}
+	// Resigning a mobile keyboard can synchronously resize the surface. Keep
+	// it until a non-editable control's touch ends, so the control cannot move
+	// away from the finger between down and up. Text focus still changes now;
+	// switching between editors and losing window focus remain immediate.
+	if !t.Active && rt.ime.state.Active && rt.windowFocused && rt.touch.active && !rt.touch.scrolling && rt.pressed != nil {
+		return
+	}
+	if t != rt.ime.state || base != rt.ime.base {
 		rt.ime.state, rt.ime.base = t, base
 		rt.host.setTextInput(t)
 	}

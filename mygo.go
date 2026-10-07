@@ -1,5 +1,5 @@
-// Package mygo is a desktop application framework written in pure Go,
-// without cgo. Each window shows a web page, in the system webview
+// Package mygo is an application framework with desktop builds without
+// cgo and an experimental iOS native UI host using cgo. Desktop windows show a web page, in the system webview
 // (WKWebView on macOS, WebKitGTK on Linux, WebView2 on Windows), or native
 // UI that MyGo draws itself, written in Go with package
 // [github.com/egoist/mygo/ui]; one app can have windows of both kinds.
@@ -44,6 +44,9 @@
 // The system's UI toolkits (AppKit, GTK, Win32) must be driven from the
 // process' main thread. MyGo locks the main goroutine to the main thread
 // during package initialization, so App.Run must be called from main().
+// On iOS, the generated UIKit host owns that thread and invokes the Go
+// main function on a background thread; App.Run dispatches initialization
+// and lifecycle callbacks to UIKit's main thread.
 // Every other function and method in this package is safe to call from any
 // goroutine: calls made off the main thread are forwarded to it and wait for
 // the result.
@@ -69,10 +72,16 @@ import (
 // Version is the MyGo version.
 const Version = "0.2.16"
 
+// ErrUnsupported identifies a feature unavailable on the current platform.
+// Use errors.Is to check errors returned by TryClose, TryQuit and other APIs.
+var ErrUnsupported = platform.ErrUnsupported
+
 func init() {
 	// Cocoa, GTK and Win32 all require the UI to live on the thread that
 	// started the process. Keep the main goroutine there.
-	runtime.LockOSThread()
+	if runtime.GOOS != "ios" {
+		runtime.LockOSThread()
+	}
 }
 
 var (

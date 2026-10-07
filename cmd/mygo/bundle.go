@@ -159,6 +159,12 @@ func writePlistValue(b *bytes.Buffer, v any, indent string) {
 			writePlistValue(b, v[k], indent+"\t")
 		}
 		b.WriteString(indent + "</dict>\n")
+	case []string:
+		values := make([]any, len(v))
+		for i, x := range v {
+			values[i] = x
+		}
+		writePlistValue(b, values, indent)
 	case []any:
 		b.WriteString(indent + "<array>\n")
 		for _, x := range v {

@@ -101,10 +101,76 @@ export interface Config {
   updates?: UpdatesConfig;
   /** macOS packaging. */
   macos?: MacOSConfig;
+  /** iOS native UI packaging (requires macOS and Xcode). */
+  ios?: IOSConfig;
   /** Windows packaging. */
   windows?: WindowsConfig;
   /** Linux packaging. */
   linux?: LinuxConfig;
+}
+
+/** The UIKit host of a native UI application. */
+export interface IOSConfig {
+ /** CFBundleVersion, independent of the marketing version. */
+  buildNumber?: string;
+ /** Entitlement values, e.g. ["applinks:example.com"]. Requires a hosted AASA file. */
+  associatedDomains?: string[];
+ /** Signing capabilities, e.g. { "aps-environment": "development" }. */
+  entitlements?: Record<string, unknown>;
+
+  /** Static launch screen and matching overlay until the first Go frame. */
+  launchScreen?: IOSLaunchScreenConfig;
+  /** Oldest supported iOS version (default: "15.0"). */
+  minimumSystemVersion?: string;
+  /** Apple development team for automatic signing; unset builds unsigned. */
+  developmentTeam?: string;
+  /** Bundle keys, including permission descriptions. */
+  infoPlist?: Record<string, unknown>;
+  /** App/dependency privacy declarations merged with MyGo's required reasons. */
+  privacy?: IOSPrivacyConfig;
+  /** Automatic by default; manual signing requires identity and profile. */
+  signing?: IOSSigningConfig;
+}
+
+export interface IOSPrivacyConfig {
+  tracking?: boolean;
+  trackingDomains?: string[];
+  collectedData?: IOSPrivacyData[];
+  accessedAPIs?: IOSPrivacyAPI[];
+  /** Paths to XML or binary PrivacyInfo.xcprivacy files to merge. */
+  manifests?: string[];
+}
+
+export interface IOSPrivacyAPI {
+  category: string;
+  reasons: string[];
+}
+
+export interface IOSPrivacyData {
+  type: string;
+  linked?: boolean;
+  tracking?: boolean;
+  purposes: string[];
+}
+
+export interface IOSSigningConfig {
+  style?: "automatic" | "manual";
+  identity?: string;
+  provisioningProfile?: string;
+  exportProfiles?: Record<string, string>;
+  exportCertificate?: string;
+}
+
+export interface IOSLaunchScreenConfig {
+  title?: string;
+  /** PNG path relative to the project. */
+  image?: string;
+  /** #RRGGBB; unset follows the system appearance. */
+  backgroundColor?: string;
+  /** #RRGGBB; unset follows the system appearance. */
+  foregroundColor?: string;
+  /** Overlay fade in milliseconds; default 0. Respects Reduce Motion. */
+  fadeDurationMs?: number;
 }
 
 /** A type of file the app opens. */

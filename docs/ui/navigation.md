@@ -53,7 +53,7 @@ build those pages, as `view` builds the window.
 ## Going to pages
 
 `Push` goes to a page, after the page shown, `Replace` shows one in its
-place, and `Back`, `Forward` and `Go` move through the history; paths
+place, and `Pop`/`Back`, `Forward` and `Go` move through the history; paths
 relative to the page shown resolve as links in a web page do, so
 `Push("?tab=info")` changes the query and `Push("edit")` goes to a sibling.
 A [link](link.md) to a path in a page goes there in its router, and
@@ -88,6 +88,24 @@ buttons of a mouse and the keys of keyboards that have them, and the
 whose right click lists the pages to go back or forward to, by their
 titles. The keys go to the router holding the keyboard focus, else to the
 first of the window.
+
+`Pop()` is the same as `Back()` / `Go(-1)`: it returns to the previous
+entry and retains forward history. A new `Push` after returning replaces the
+forward branch. `Replace` changes only the current entry. `Reset("/home")`
+clears both directions and shows that location as the only entry. History
+ownership stays in the router; page code calls these methods directly.
+This follows the traversal model of [Vue Router](https://router.vuejs.org/guide/essentials/navigation.html)
+and the [history library](https://github.com/remix-run/history/blob/main/docs/api-reference.md).
+
+On iOS, `ui.NewRouter` enables `InteractiveBack`: a touch within 24 DIPs of
+the view's left edge can drag the current page right, revealing the previous
+page. Release beyond halfway, or flick right, to finish returning; a short
+or reversed drag cancels. Cancellation retains the current page's editing,
+keyboard focus and scroll position. Shared layouts remain fixed and the
+root page cannot return further. Vertical edge gestures still scroll.
+Set `router.InteractiveBack = false` to disable it, or `true` to opt in on
+another platform with touch input. Entries differing only by query share
+one page and use the ordinary Back controls rather than a drag preview.
 
 ## Layouts
 
@@ -127,6 +145,56 @@ pages either way: going back to one finds it scrolled where it was, with
 its text and the keyboard focus where they were. A path with another query
 is the same page, in another entry of the history, keeping its state, as a
 page whose tabs or search are in its query.
+
+A Router serializes its complete history and current index itself. Keep it
+directly in state registered with `mygo.PersistState`, rather than copying
+locations or replaying Push calls in the application:
+
+```go
+type State struct {
+    Router *ui.Router
+    Draft  string
+    Scroll ui.ScrollState
+}
+
+state := State{}
+mygo.App.WhenReady(func() {
+    if _, err := mygo.PersistState("main", &state); err != nil {
+        log.Fatal(err)
+    }
+    if state.Router == nil {
+        state.Router = ui.NewRouter("/home")
+    }
+    // Build content with state.Router.View(c, ...).
+})
+
+// Inside page handlers:
+state.Router.Push("/settings")
+state.Router.Pop()
+```
+
+Automatic background checkpoints include navigation from methods, links,
+keyboard shortcuts and completed edge gestures. Back and forward entries
+and the selected index survive relaunch; a cancelled gesture does not change
+the checkpoint. Invalid navigation JSON returns an error without changing
+the live router. A fresh restored router uses `NewRouter`'s platform defaults;
+restoring into an initialized router retains its configuration. Options,
+widget caches, focus and animations are not serialized.
+
+`History()` remains a read-only copy of locations through the current entry,
+excluding forward history. Legacy JSON location arrays are also accepted on
+restore, with their last entry selected.
+
+On the first restored build, `Route.View` reconstructs shared layouts across
+adjacent history entries. Back, Forward and edge gestures then retain the
+layout's running element state, including edits made after restoration.
+Nested query variants share their leaf state; a separate history branch
+does not reuse another branch's layout. Existing checkpoint formats need
+no migration.
+
+Element state belongs to the running UI tree; persist editor values and
+tracked [scroll positions](scroll.md) separately. For a tabbed app, keep
+one router per tab. See the [iOS feature demo](../../examples/ios-native/README.md).
 
 ## The focus and screen readers
 

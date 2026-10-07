@@ -6,6 +6,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/text"
 )
@@ -17,6 +18,7 @@ const (
 	editInsert
 	editCompose
 	editCommand
+	editSelect
 )
 
 type editEvent struct {
@@ -27,8 +29,10 @@ type editEvent struct {
 	caret int
 	// replace makes an insertion or a composition take the runes from to
 	// to instead of the selection, as an input method asked.
-	replace  bool
-	from, to int
+	replace                bool
+	snapshot               bool
+	from, to               int
+	markedStart, markedEnd int
 }
 
 // change is an edit of the text: the runes at at held removed, and hold
@@ -77,6 +81,7 @@ type editor struct {
 	readOnly      bool   // selectable text: selected and copied, not edited
 	source        string // the text of selectable text
 	password      bool
+	inputOptions  platform.TextInputOptions
 	// leaveEmptyBackspace leaves Backspace to shortcuts while the text is
 	// empty, as a token field's input does to take out a token.
 	leaveEmptyBackspace bool
@@ -652,6 +657,40 @@ func (ed *editor) commitCompose() {
 	}
 }
 
+// snapshot applies only the changed runes of a native editor's surrounding
+// text. Repeated IME snapshots must not create edits for unchanged context,
+// replace the whole document in undo history, or invalidate every paragraph.
+func (ed *editor) snapshot(ev editEvent) {
+	if ed.readOnly {
+		return
+	}
+	a, b := ed.selection()
+	if ev.replace {
+		a, b = min(ev.from, ed.buf.n), min(ev.to, ed.buf.n)
+	}
+	before, after := []rune(ed.buf.slice(a, b)), []rune(ev.text)
+	prefix := 0
+	for prefix < min(len(before), len(after)) && before[prefix] == after[prefix] {
+		prefix++
+	}
+	x, y := len(before), len(after)
+	for x > prefix && y > prefix && before[x-1] == after[y-1] {
+		x--
+		y--
+	}
+	if x != prefix || y != prefix {
+		ed.record(x == prefix && y-prefix == 1)
+		ed.replace(a+prefix, a+x, string(after[prefix:y]))
+		ed.hasDesired = false
+	}
+	caret := max(0, min(a+ev.caret, ed.buf.n))
+	if ed.caret != caret || ed.anchor != caret {
+		ed.move(caret, false)
+	} else if ed.area != nil {
+		ed.area.reveal = true
+	}
+}
+
 func (ed *editor) lineHeight() float32 {
 	if ed.area != nil && ed.area.line.Height > 0 {
 		return ed.area.line.Height
@@ -680,22 +719,42 @@ func (ed *editor) caretRect(st *state) Rect {
 func (ed *editor) process(c *Context, e *Element) {
 	st := e.st
 	for _, ev := range ed.queue {
-		if ev.replace {
+		if ev.replace && !ev.snapshot {
 			ed.anchor, ed.caret = min(ev.from, ed.buf.n), min(ev.to, ed.buf.n)
 		}
 		switch ev.kind {
+		case editSelect:
+			ed.anchor = max(0, min(ev.from, ed.buf.n))
+			ed.caret = max(0, min(ev.to, ed.buf.n))
+			if ed.area != nil {
+				ed.area.reveal = true
+			}
 		case editKey:
 			ed.commitCompose()
 			ed.key(c, st, ev)
 		case editInsert:
 			ed.compose = ""
-			ed.insert(ev.text)
+			if ev.snapshot {
+				ed.snapshot(ev)
+			} else {
+				ed.insert(ev.text)
+			}
 		case editCompose:
 			if ed.readOnly {
 				break
 			}
 			if ed.area != nil {
 				ed.area.reveal = true
+			}
+			if ev.snapshot {
+				text := []rune(ev.text)
+				ed.coalesce = false
+				a, b := max(0, min(ev.markedStart, len(text))), max(0, min(ev.markedEnd, len(text)))
+				b = max(a, b)
+				ed.snapshot(editEvent{replace: ev.replace, from: ev.from, to: ev.to, text: string(text[:a]) + string(text[b:]), caret: a})
+				ed.compose = string(text[a:b])
+				ed.composeCaret = max(0, min(ev.caret-a, b-a))
+				break
 			}
 			ed.compose = ev.text
 			ed.composeCaret = max(0, min(ev.caret, utf8.RuneCountInString(ev.text)))
@@ -751,6 +810,7 @@ func textInputBase(c *Context, value *string, multiline bool) *Element {
 	}
 	ed := st.editor
 	ed.multiline = multiline
+	ed.inputOptions = platform.TextInputOptions{}
 	if multiline && ed.area == nil {
 		ed.area = &area{reveal: true}
 	}
@@ -939,7 +999,7 @@ func (e *Element) paintInput(p *Painter) {
 		p.clip = saved
 		return
 	}
-	if a, b := ed.selection(); a != b && focused {
+	if a, b := ed.selection(); a != b && focused && !e.c.rt.nativeSelection(e.st) {
 		for _, r := range l.Selection(ed.displayIndex(a), ed.displayIndex(b)) {
 			p.Fill(Rect{ox + r.X, oy + r.Y, r.W, r.H}, t.Selection, 0)
 		}
@@ -952,7 +1012,7 @@ func (e *Element) paintInput(p *Painter) {
 			p.Fill(Rect{ox + r.X, oy + r.Y + r.H - 2, r.W, 1}, ts.color, 0)
 		}
 	}
-	if focused && !ed.readOnly {
+	if focused && !ed.readOnly && !e.c.rt.nativeSelection(e.st) {
 		rt := e.c.rt
 		phase := time.Since(rt.blinkStart)
 		const blink = 530 * time.Millisecond

@@ -1,6 +1,7 @@
 package mygo
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -88,7 +89,21 @@ type MessageOptions struct {
 	CancelButton    int
 	CheckboxLabel   string
 	CheckboxChecked bool
+	// Style defaults to an alert. Action sheets use iOS's native action
+	// sheet presentation; desktop backends show their usual message box.
+	Style MessageStyle
+	// DestructiveButtons marks action indices that delete or discard data.
+	// Currently iOS renders them with the system's destructive style.
+	DestructiveButtons []int
 }
+
+// MessageStyle selects a native message presentation.
+type MessageStyle string
+
+const (
+	MessageAlert       MessageStyle = ""
+	MessageActionSheet MessageStyle = "actionSheet"
+)
 
 // MessageResult is the outcome of Dialog.Message.
 type MessageResult struct {
@@ -115,6 +130,9 @@ func toFilters(fs []FileFilter) []platform.FileFilter {
 
 // Open shows a dialog to pick files or directories and returns the chosen
 // paths, or nil when canceled.
+// On iOS, files are imported as private cache copies: remove them with
+// os.Remove when finished, and copy to user data for persistence. Directory
+// selection is unsupported. See Dialog.Export to send existing files to Files.
 func (DialogModule) Open(opts OpenDialogOptions) ([]string, error) {
 	needsApp("Dialog.Open")
 	type result struct {
@@ -148,6 +166,7 @@ func (DialogModule) Open(opts OpenDialogOptions) ([]string, error) {
 
 // Save shows a dialog to choose where to save a file and returns the path,
 // or "" when canceled.
+// iOS returns ErrUnsupported; use Dialog.Export with an existing file.
 func (DialogModule) Save(opts SaveDialogOptions) (string, error) {
 	needsApp("Dialog.Save")
 	type result struct {
@@ -188,6 +207,14 @@ func (DialogModule) Message(opts MessageOptions) (MessageResult, error) {
 	if len(buttons) == 0 {
 		buttons = []string{"OK"}
 	}
+	if opts.Style != MessageAlert && opts.Style != MessageActionSheet {
+		return MessageResult{}, fmt.Errorf("mygo: invalid message style %q", opts.Style)
+	}
+	for _, id := range opts.DestructiveButtons {
+		if id < 0 || id >= len(buttons) {
+			return MessageResult{}, fmt.Errorf("mygo: destructive button index %d is out of range", id)
+		}
+	}
 	cancel := opts.CancelButton
 	if cancel == 0 {
 		for i, b := range buttons {
@@ -198,15 +225,17 @@ func (DialogModule) Message(opts MessageOptions) (MessageResult, error) {
 		}
 	}
 	popts := &platform.MessageBoxOptions{
-		Type:            string(opts.Type),
-		Title:           opts.Title,
-		Message:         opts.Message,
-		Detail:          opts.Detail,
-		Buttons:         buttons,
-		DefaultID:       opts.DefaultButton,
-		CancelID:        cancel,
-		CheckboxLabel:   opts.CheckboxLabel,
-		CheckboxChecked: opts.CheckboxChecked,
+		Type:               string(opts.Type),
+		Title:              opts.Title,
+		Message:            opts.Message,
+		Detail:             opts.Detail,
+		Buttons:            buttons,
+		DefaultID:          opts.DefaultButton,
+		CancelID:           cancel,
+		CheckboxLabel:      opts.CheckboxLabel,
+		CheckboxChecked:    opts.CheckboxChecked,
+		Style:              string(opts.Style),
+		DestructiveButtons: append([]int(nil), opts.DestructiveButtons...),
 	}
 	ch := make(chan result, 1)
 	if !postMain(func() {

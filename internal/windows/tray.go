@@ -228,6 +228,10 @@ type notification struct{ tray *tray }
 func (b *Backend) NotificationsSupported() bool { return true }
 
 func (b *Backend) ShowNotification(n *platform.Notification, done func(error)) {
+	if n.DelaySeconds > 0 {
+		done(platform.ErrUnsupported)
+		return
+	}
 	done(b.showNotification(n))
 }
 

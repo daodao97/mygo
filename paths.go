@@ -32,7 +32,8 @@ const (
 	// directories for the app's platform (such as resources/darwin-arm64)
 	// merged in, and the resources listed in mygo.config.ts, which
 	// `mygo dev` and `mygo build` copy there. It is Contents/Resources in a
-	// macOS app bundle and the executable's directory elsewhere. Under
+	// macOS app bundle, MyGoResources in an iOS app bundle, and the
+	// executable's directory elsewhere. Under
 	// `go run` and `go test`, whose executables are temporary, it is the
 	// resources directory in the working directory, as it is.
 	PathResources PathName = "resources"
@@ -94,7 +95,7 @@ func defaultPath(name PathName) (path string, create bool, err error) {
 		dir, err := os.UserCacheDir()
 		return filepath.Join(dir, App.Name()), true, err
 	case PathLogs:
-		if runtime.GOOS == "darwin" {
+		if runtime.GOOS == "darwin" || runtime.GOOS == "ios" {
 			return filepath.Join(home, "Library", "Logs", App.Name()), true, nil
 		}
 		dir, err := os.UserConfigDir()
@@ -112,6 +113,9 @@ func defaultPath(name PathName) (path string, create bool, err error) {
 		exe, err := os.Executable()
 		return exe, false, err
 	case PathDesktop, PathDocuments, PathDownloads, PathMusic, PathPictures, PathVideos:
+		if runtime.GOOS == "ios" && name != PathDocuments {
+			return "", false, fmt.Errorf("mygo: path %q is unavailable in the iOS sandbox", name)
+		}
 		return userDir(home, name), false, nil
 	}
 	return "", false, fmt.Errorf("mygo: unknown path %q", name)
@@ -124,6 +128,9 @@ func resourcesDir(exe, wd string) string {
 		exe = real
 	}
 	dir := filepath.Dir(exe)
+	if runtime.GOOS == "ios" {
+		return filepath.Join(dir, "MyGoResources")
+	}
 	if filepath.Base(dir) == "MacOS" && filepath.Base(filepath.Dir(dir)) == "Contents" {
 		return filepath.Join(filepath.Dir(dir), "Resources")
 	}

@@ -10,13 +10,18 @@ import (
 )
 
 type buildOptions struct {
-	debug        bool
-	sign         string // macOS signing identity
-	skipDMG      bool
-	skipNotarize bool
-	pkg          string            // directory of the main package
-	work         string            // for generated files
-	overlay      map[string]string // go build -overlay entries (the frontend)
+	debug           bool
+	sign            string // macOS signing identity
+	skipDMG         bool
+	skipNotarize    bool
+	iosSimulator    bool
+	iosTeam         string
+	iosArchive      bool
+	iosExportMethod string
+	iosDevice       string
+	pkg             string            // directory of the main package
+	work            string            // for generated files
+	overlay         map[string]string // go build -overlay entries (the frontend)
 }
 
 func runBuild(args []string) error {
@@ -33,8 +38,11 @@ the bundle's Contents/Resources, or next to the executable, and the programs
 among them are signed with the app. Directories of resources named after a
 platform, such as resources/darwin or resources/linux-amd64, only ship with
 that platform's apps; darwin/universal combines darwin-arm64 and
-darwin-amd64. MyGo needs no cgo, so any platform can be compiled from any
-machine; signing and disk images need macOS. Windows also gets
+darwin-amd64. Desktop builds need no cgo and can be cross-compiled;
+signing and disk images need macOS. ios/arm64 builds a native UI app and
+its Xcode host project, with cgo and the iOS SDK on macOS. Use -ios-team
+for development signing, or -ios-simulator for an Apple Silicon simulator.
+Windows also gets
 "<name> Setup <version>.exe", made with NSIS, which mygo build downloads
 on Windows when it is not installed.
 
@@ -45,7 +53,13 @@ With updates in mygo.json and the key of mygo keygen in
 MYGO_UPDATER_PRIVATE_KEY, each platform also gets a signed update archive,
 delta updates from the last versions published (updates.deltas), and
 update-<platform>.json: publish them where updates point to.`)
-	platforms := flags.String("platform", runtime.GOOS+"/"+runtime.GOARCH, "comma separated GOOS/GOARCH targets, e.g. darwin/universal,linux/amd64,windows/amd64")
+	platforms := flags.String("platform", runtime.GOOS+"/"+runtime.GOARCH, "comma separated GOOS/GOARCH targets, e.g. darwin/universal,linux/amd64,windows/amd64,ios/arm64")
+	iosSimulator := flags.Bool("ios-simulator", false, "build ios/arm64 for the iOS simulator")
+	iosTeam := flags.String("ios-team", "", "Apple development team (default: ios.developmentTeam; unset builds unsigned)")
+	iosDevice := flags.String("ios-device", "", "iPhone/iPad UDID to include in development provisioning (requires -ios-team)")
+	iosArchive := flags.Bool("ios-archive", false, "create an iOS Release .xcarchive (device target only)")
+	iosExportMethod := flags.String("ios-export-method", "", "export an IPA from an archive: debugging, release-testing, app-store-connect or enterprise; never uploads")
+	iosNumber := flags.String("ios-build-number", "", "numeric ios.buildNumber override for this build (does not modify configuration)")
 	debug := flags.Bool("debug", false, "keep development features such as the web inspector")
 	skipBuildCommand := flags.Bool("skip-build-command", false, "do not run buildCommand")
 	skipDMG := flags.Bool("skip-dmg", false, "do not create a disk image for macOS")
@@ -63,12 +77,27 @@ update-<platform>.json: publish them where updates point to.`)
 	if *out != "" {
 		c.Out = *out
 	}
+	if *iosNumber != "" && !slices.Contains(splitList(*platforms), "ios/arm64") {
+		return fmt.Errorf("iOS build number flags require an ios/arm64 target")
+	}
+	if err := overrideIOSBuildNumber(c, *iosNumber); err != nil {
+		return err
+	}
+	if *upload && slices.Contains(splitList(*platforms), "ios/arm64") {
+		return fmt.Errorf("iOS builds export local artifacts; use your release tooling to upload them")
+	}
 	if *upload {
 		if err := checkUpload(c); err != nil {
 			return err
 		}
 	}
 	opts := buildOptions{debug: *debug, sign: c.MacOS.SigningIdentity, skipDMG: *skipDMG, skipNotarize: *skipNotarize}
+	opts.iosSimulator, opts.iosTeam = *iosSimulator, c.IOS.DevelopmentTeam
+	opts.iosArchive, opts.iosExportMethod = *iosArchive, *iosExportMethod
+	opts.iosDevice = *iosDevice
+	if *iosTeam != "" {
+		opts.iosTeam = *iosTeam
+	}
 	if *sign != "" {
 		opts.sign = *sign
 	}
@@ -132,6 +161,9 @@ update-<platform>.json: publish them where updates point to.`)
 // in a staging directory that then replaces the platform directory, so a
 // failed build keeps the previous one and nothing stale remains.
 func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string, error) {
+	if goos == "ios" {
+		return buildIOS(c, goarch, opts)
+	}
 	out := c.path(c.Out)
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return nil, err

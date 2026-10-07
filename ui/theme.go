@@ -6,7 +6,8 @@ import "runtime"
 // LightTheme or DarkTheme and set it with Context.SetTheme.
 type Theme struct {
 	Dark bool
-	// Background fills the window.
+	// Background fills the window. On iOS an opaque root background also
+	// fills the surrounding safe area, unless the window has an explicit color.
 	Background Color
 	// Surface is the face of buttons, inputs and other controls;
 	// SurfaceHover and SurfacePressed while hovered or pressed.

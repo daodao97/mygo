@@ -57,6 +57,25 @@ type softGPU struct{ testGPU }
 
 func (g *softGPU) Software() bool { return true }
 
+func TestMemoryPressureReleasesRenderer(t *testing.T) {
+	var made []*testGPU
+	h, _, frame := gpuHost(t, func() (gpuRenderer, error) {
+		g := &testGPU{}
+		made = append(made, g)
+		return g, nil
+	})
+	t.Cleanup(h.detach)
+	frame()
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceMemoryPressure})
+	if len(made) != 1 || made[0].released != 1 || h.gpu != nil {
+		t.Fatal("memory pressure retained the renderer")
+	}
+	frame()
+	if len(made) != 2 || made[1].frames != 1 {
+		t.Fatal("a frame did not recreate the renderer after memory pressure")
+	}
+}
+
 func TestGPUComesBack(t *testing.T) {
 	var made []*testGPU
 	gone := false

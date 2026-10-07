@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build (darwin && !ios) || (ios && cgo)
 
 package ui
 

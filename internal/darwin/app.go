@@ -72,6 +72,8 @@ var theBackend *Backend
 
 func (b *Backend) Name() string { return "darwin/wkwebview" }
 
+func (*Backend) SystemManagedLifetime() bool { return false }
+
 func (b *Backend) IsMainThread() bool {
 	r, _, _ := purego.SyscallN(mainNPFn)
 	return int32(r) != 0

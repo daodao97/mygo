@@ -44,6 +44,12 @@ type Conn struct {
 	// the content shows (Window.Update, Window.Invalidate); the content
 	// sets it, else the window asks the surface for a frame.
 	Changed func()
+	// FrameSubmitted tells that a frame was committed for display. Backends
+	// with native presentation callbacks report their completion separately.
+	FrameSubmitted func()
+	// ContentBackground reports the opaque root fill of a presented UI frame.
+	// The window may use it to match surrounding system chrome on mobile.
+	ContentBackground func(platform.Color)
 	// Post runs fn on the main thread soon, unless the window has closed;
 	// it is safe from any goroutine.
 	Post func(fn func())
@@ -56,6 +62,9 @@ type Conn struct {
 	// window. It reports whether the content takes dragged files, as
 	// WindowHandler.SurfaceEvent does.
 	Event func(ev platform.SurfaceEvent) bool
+	// TextGeometry answers selection/caret queries using the content's actual
+	// text layout. It is optional and runs on the UI thread.
+	TextGeometry func(platform.TextGeometryQuery) platform.TextGeometry
 	// ThemeChanged is called when the system appearance changes, and
 	// TitleBarChanged when TitleBar does.
 	ThemeChanged    func()

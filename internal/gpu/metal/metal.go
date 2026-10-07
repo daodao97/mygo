@@ -324,6 +324,7 @@ type formatState struct {
 
 // Renderer draws scenes into a CAMetalLayer it adds to a view's layer.
 type Renderer struct {
+	presentationHook       func(uintptr)
 	device, queue, sampler id
 	// formats has what draws into BGRA8 targets, as frames do, and into
 	// RGBA16Float ones, as frames showing colors outside the sRGB gamut do
@@ -376,6 +377,10 @@ type Renderer struct {
 	b gpu.Builder
 }
 
+// SetPresentationHook observes a drawable before it is presented. The hook
+// must arrange an asynchronous native callback, without retaining Go memory.
+func (r *Renderer) SetPresentationHook(fn func(uintptr)) { r.presentationHook = fn }
+
 // New creates a renderer drawing into a CAMetalLayer that it adds to
 // layer, the layer of a view, and sizes as it.
 func New(layer uintptr) (r *Renderer, err error) {
@@ -392,7 +397,7 @@ func New(layer uintptr) (r *Renderer, err error) {
 		}
 		ml := send(send(class("CAMetalLayer"), "alloc"), "init")
 		if err = need(ml, "CAMetalLayer", "setDevice:", "setPixelFormat:", "setFramebufferOnly:", "setPresentsWithTransaction:",
-			"setColorspace:", "setDrawableSize:", "setContentsScale:", "setFrame:", "setAutoresizingMask:", "nextDrawable"); err != nil {
+			"setColorspace:", "setDrawableSize:", "setContentsScale:", "setFrame:", "nextDrawable"); err != nil {
 			release(&ml)
 			return
 		}
@@ -401,18 +406,25 @@ func New(layer uintptr) (r *Renderer, err error) {
 		// Frames drawn in memory are copied into drawables, which the
 		// CPU writes then.
 		send(ml, "setFramebufferOnly:", 0)
-		// Frames wait for the last to finish, so two drawables do,
-		// rather than the three Core Animation makes otherwise while a
-		// window animates: one less frame of memory.
-		if respondsTo(ml, "setMaximumDrawableCount:") {
+		// Desktop frames synchronize with live resize and use two
+		// drawables to spare a frame of memory. iOS frames are paced by
+		// CADisplayLink: keep the default three drawables and present
+		// asynchronously, so acquiring one does not wait for another
+		// Core Animation transaction on the UI thread.
+		if runtime.GOOS != "ios" && respondsTo(ml, "setMaximumDrawableCount:") {
 			send(ml, "setMaximumDrawableCount:", 2)
 		}
 		// Frames show with the window's other changes, as during a live
 		// resize, instead of a moment after them.
-		send(ml, "setPresentsWithTransaction:", 1)
+		if runtime.GOOS != "ios" {
+			send(ml, "setPresentsWithTransaction:", 1)
+		}
 		send(ml, "setColorspace:", srgb)
 		send(ml, "setOpaque:", 0)
-		send(ml, "setAutoresizingMask:", layerWidthSizable|layerHeightSizable)
+		// CALayer's autoresizingMask is a macOS API. fit sizes each iOS frame.
+		if runtime.GOOS != "ios" {
+			send(ml, "setAutoresizingMask:", layerWidthSizable|layerHeightSizable)
+		}
 		send(layer, "addSublayer:", ml)
 		r.layer, r.superlayer = ml, layer
 	})
@@ -650,6 +662,10 @@ func (r *Renderer) passPipeline(lib id, name string, format uint) (id, error) {
 // time, or 0 when it was compiled from another shader.metal (go generate
 // was not run since it changed) or Metal cannot load it.
 func (r *Renderer) compiledLibrary() id {
+	// The embedded metallib targets macOS. iOS compiles the shared shader source.
+	if runtime.GOOS == "ios" {
+		return 0
+	}
 	if gpu.SourceSum(shaderSource) != shaderLibrarySum {
 		return 0
 	}
@@ -684,7 +700,7 @@ func (r *Renderer) newTexture(w, h int, format, usage uint, pix []byte, stride i
 		return 0
 	}
 	send(desc, "setUsage:", uintptr(usage))
-	if usage&usageRenderTarget != 0 {
+	if usage&usageRenderTarget != 0 && runtime.GOOS != "ios" {
 		send(desc, "setStorageMode:", storageManaged)
 	}
 	tex := send(r.device, "newTextureWithDescriptor:", desc)
@@ -983,9 +999,20 @@ func (r *Renderer) render(s *scene.Scene) error {
 	if err != nil {
 		return err
 	}
-	send(cb, "commit")
-	send(cb, "waitUntilScheduled")
-	send(drawable, "present")
+	if r.presentationHook != nil {
+		r.presentationHook(drawable)
+	}
+	if runtime.GOOS == "ios" {
+		// Present through the command buffer without waiting for a Core
+		// Animation transaction. waitLast still protects shared textures
+		// and instance buffers before the following frame updates them.
+		send(cb, "presentDrawable:", drawable)
+		send(cb, "commit")
+	} else {
+		send(cb, "commit")
+		send(cb, "waitUntilScheduled")
+		send(drawable, "present")
+	}
 	r.last = send(cb, "retain")
 	r.lastRender = time.Now()
 	r.lastGPU = r.lastRender
@@ -1080,6 +1107,9 @@ func (r *Renderer) presentPixels(pix []byte, stride, width, height int, scale fl
 		r.shown = map[uint32]uint64{}
 	}
 	r.shown[key] = n
+	if r.presentationHook != nil {
+		r.presentationHook(drawable)
+	}
 	send(drawable, "present")
 	r.lastRender = time.Now()
 	r.armTrim()

@@ -11,9 +11,9 @@ wire protocol, TypeScript generation, and the checklist for adding features.
 
 ## Hard rules
 
-- **No cgo.** Everything must build with `CGO_ENABLED=0`. Call native code
-  through purego (`internal/darwin`, `internal/linux`) or `syscall`
-  (`internal/windows`), never `import "C"`.
+- **Desktop builds have no cgo.** macOS, Linux and Windows must build with
+  `CGO_ENABLED=0`, using purego or syscall. Mobile builds may enable cgo;
+  keep native bridges in their platform backend and shared UI/logic in Go.
 - **Bun is dev tooling only.** The repository is a Bun workspace
   (`packages/bridge`, `packages/runtime`, `packages/cli` with its platform
   packages, the plugins' packages in `plugins/`, and examples with a frontend, which keep it at their root like
@@ -22,8 +22,8 @@ wire protocol, TypeScript generation, and the checklist for adding features.
 - **Scope:** system webview on macOS, Linux and Windows (WebView2), and
   native UI that MyGo draws itself (`WindowOptions.Content`, package `ui`;
   see "Native UI" in the architecture guide). The bundled CEF option is out
-  of scope until asked. Other platforms must keep compiling through
-  `internal/unsupported`.
+  of scope until asked. iOS native UI is also in scope. Other platforms
+  must keep compiling through `internal/unsupported`.
 - **Great DX over Electron parity.** Keep the familiar feel (app lifecycle,
   windows, menus) but design Go-first APIs: typed IPC via `mygo.Bind` and
   `mygo.NewEvent[T]` with the generated client, not string channels.

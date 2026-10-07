@@ -17,7 +17,9 @@ them:
 Either way, an app is a single Go binary of a few megabytes, focused on low
 memory and CPU use.
 
-- **Pure Go, no cgo**: build for every platform from any machine.
+- **Desktop without cgo**: cross-compile macOS, Linux and Windows from any machine.
+- **Experimental iOS native UI**: a UIKit host with Go views, CoreText and
+  Metal; build with cgo on macOS and Xcode. See [iOS](docs/ios.md).
 - **Typed IPC** for pages: bind Go services, stream values through channels
   and send typed events; the TypeScript client is generated from your Go
   code.

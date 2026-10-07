@@ -1,0 +1,47 @@
+name: iOS toolchain
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md", LICENSE]
+  pull_request:
+    paths-ignore: ["**/*.md", LICENSE]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Test CLI configuration, privacy, signing and verification
+        run: go test ./cmd/mygo -run 'IOS|ConfigTypes'
+      - name: Unsigned Release archive with Go symbols
+        run: |
+          go run ./cmd/mygo build -platform ios/arm64 -ios-archive -o "$PWD/.mygo/ios-ci-device" examples/ios-native
+          go run ./cmd/mygo ios check -archive '.mygo/ios-ci-device/ios-arm64/MyGo iOS.xcarchive' -unsigned -json > .mygo/ios-ci-device/check.json
+      - name: Simulator Debug build with source symbols
+        run: |
+          go run ./cmd/mygo build -platform ios/arm64 -ios-simulator -debug -o "$PWD/.mygo/ios-ci-simulator" examples/ios-native
+          go run ./cmd/mygo ios check -app '.mygo/ios-ci-simulator/ios-simulator-arm64/MyGo iOS.app' -symbols '.mygo/ios-ci-simulator/ios-simulator-arm64/MyGo iOS.app.dSYM' -unsigned -json > .mygo/ios-ci-simulator/check.json
+      - name: Preserve archives, symbols and verification reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-archives-symbols-reports
+          retention-days: 14
+          path: |
+            .mygo/ios-ci-device/**/*.xcarchive/**
+            .mygo/ios-ci-device/**/*.json
+            .mygo/ios-ci-simulator/**/*.dSYM/**
+            .mygo/ios-ci-simulator/**/*.json

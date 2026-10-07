@@ -1,0 +1,157 @@
+name: iOS signed archive and IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Native iOS project directory (mygo.json)
+        default: examples/ios-native
+        required: true
+      build_number:
+        description: Optional numeric CFBundleVersion (default GitHub run number)
+        default: ''
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-package-${{ inputs.project }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    environment: ios-signing
+    timeout-minutes: 60
+    env:
+      IOS_PROJECT: ${{ inputs.project }}
+      IOS_BUILD_NUMBER: ${{ inputs.build_number || github.run_number }}
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+      IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Validate inputs and prepare isolated signing files
+        shell: bash
+        run: |
+          umask 077
+          python3 - <<'PY'
+          import base64, json, os, pathlib, re, secrets, subprocess
+          env = os.environ
+          if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){0,2}', env['IOS_BUILD_NUMBER']):
+              raise SystemExit('build_number must be numeric')
+          root = pathlib.Path(env['GITHUB_WORKSPACE']).resolve()
+          project = (root / env['IOS_PROJECT']).resolve()
+          if not project.is_relative_to(root):
+              raise SystemExit('project must be inside the checkout')
+          config_path = project / 'mygo.json'
+          config = json.loads(config_path.read_text())
+          ios = config.setdefault('ios', {})
+          if not isinstance(ios.get('infoPlist', {}).get('ITSAppUsesNonExemptEncryption'), bool):
+              raise SystemExit('declare encryption use in the project ios.infoPlist before distribution')
+          for name in ['IOS_TEAM_ID','IOS_CERTIFICATE_BASE64','IOS_PROFILE_BASE64']:
+              if not env.get(name): raise SystemExit(f'missing {name} secret')
+          private = pathlib.Path(env['RUNNER_TEMP']) / 'mygo-ios-signing'
+          private.mkdir(mode=0o700)
+          for filename, name in [('certificate.p12','IOS_CERTIFICATE_BASE64'), ('profile.mobileprovision','IOS_PROFILE_BASE64')]:
+              (private / filename).write_bytes(base64.b64decode(env[name], validate=True))
+          (private / 'keychain-password').write_text(secrets.token_hex(32))
+          old = subprocess.check_output(['security','list-keychains','-d','user'], text=True)
+          (private / 'original-keychains').write_text(old)
+          with open(env['GITHUB_ENV'],'a') as f:
+              f.write(f'IOS_SIGNING_DIR={private}\nIOS_PROJECT_PATH={project}\n')
+          PY
+      - name: Import the distribution identity and profile
+        shell: bash
+        run: |
+          umask 077
+          task_keychain_password=$(cat "$IOS_SIGNING_DIR/keychain-password")
+          security create-keychain -p "$task_keychain_password" "$IOS_SIGNING_DIR/signing.keychain-db"
+          security set-keychain-settings -lut 3600 "$IOS_SIGNING_DIR/signing.keychain-db"
+          security unlock-keychain -p "$task_keychain_password" "$IOS_SIGNING_DIR/signing.keychain-db"
+          security list-keychains -d user -s "$IOS_SIGNING_DIR/signing.keychain-db"
+          security import "$IOS_SIGNING_DIR/certificate.p12" -k "$IOS_SIGNING_DIR/signing.keychain-db" -P "$IOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$task_keychain_password" "$IOS_SIGNING_DIR/signing.keychain-db" > /dev/null
+          security cms -D -i "$IOS_SIGNING_DIR/profile.mobileprovision" > "$IOS_SIGNING_DIR/profile.plist"
+          python3 - <<'PY'
+          import json, os, pathlib, plistlib, re, shutil
+          env = os.environ; private = pathlib.Path(env['IOS_SIGNING_DIR'])
+          profile = plistlib.loads((private/'profile.plist').read_bytes())
+          uuid = profile['UUID']
+          if not re.fullmatch(r'[A-Za-z0-9-]{1,100}', uuid): raise SystemExit('invalid profile UUID')
+          if profile.get('TeamIdentifier') != [env['IOS_TEAM_ID']]: raise SystemExit('profile team differs')
+          if 'ProvisionedDevices' in profile or profile.get('ProvisionsAllDevices'): raise SystemExit('App Store profile required')
+          config_path = pathlib.Path(env['IOS_PROJECT_PATH']) / 'mygo.json'
+          config = json.loads(config_path.read_text())
+          if not profile['Entitlements']['application-identifier'].endswith('.'+config['identifier']):
+              raise SystemExit('profile does not match the configured app')
+          profile_dir = pathlib.Path.home() / 'Library/Developer/Xcode/UserData/Provisioning Profiles'
+          profile_dir.mkdir(parents=True, exist_ok=True)
+          dest = profile_dir / (uuid+'.mobileprovision')
+          if dest.exists(): raise SystemExit('refusing to replace a runner profile')
+          (private/'installed-profile-path').write_text(str(dest))
+          shutil.copyfile(private/'profile.mobileprovision', dest)
+          config['ios']['developmentTeam'] = env['IOS_TEAM_ID']
+          config['ios']['signing'] = {'style':'manual', 'identity':'Apple Distribution',
+              'provisioningProfile':uuid, 'exportCertificate':'Apple Distribution',
+              'exportProfiles':{config['identifier']:uuid}}
+          config_path.write_text(json.dumps(config, indent=2)+'\n')
+          PY
+      - name: Test the release CLI and check native tools
+        shell: bash
+        run: |
+          go test ./cmd/mygo -run 'IOS|ConfigTypes'
+          go run ./cmd/mygo ios doctor -release
+      - name: Build and check the distribution archive and IPA
+        shell: bash
+        run: |
+          go run ./cmd/mygo build -platform ios/arm64 -ios-archive -ios-export-method app-store-connect -ios-build-number "$IOS_BUILD_NUMBER" -o "$PWD/.mygo/ios-release" "$IOS_PROJECT_PATH"
+          python3 - <<'PY'
+          import os, pathlib
+          out = pathlib.Path('.mygo/ios-release/ios-arm64')
+          ipas = list(out.glob('Export/*.ipa')); archives = list(out.glob('*.xcarchive'))
+          if len(ipas)!=1 or len(archives)!=1: raise SystemExit('ambiguous release outputs')
+          symbols = list((archives[0]/'dSYMs').glob('*.dSYM'))
+          if len(symbols)!=1: raise SystemExit('ambiguous symbols')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write(f'IOS_IPA={ipas[0].resolve()}\nIOS_SYMBOLS={symbols[0].resolve()}\n')
+          PY
+      - name: Verify the exported IPA independently
+        shell: bash
+        run: go run ./cmd/mygo ios check -ipa "$IOS_IPA" -symbols "$IOS_SYMBOLS" -distribution -json
+      - name: Preserve archive, IPA, symbols and reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-package-${{ github.run_number }}
+          retention-days: 30
+          path: .mygo/ios-release/**
+      - name: Remove job signing material
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, shlex, shutil, subprocess
+          private = pathlib.Path(os.environ['RUNNER_TEMP']) / 'mygo-ios-signing'
+          original = private / 'original-keychains'
+          failures = []
+          try:
+              if original.exists():
+                  result = subprocess.run(['security','list-keychains','-d','user','-s',*shlex.split(original.read_text())])
+                  if result.returncode: failures.append('keychain search list restore')
+              keychain = private / 'signing.keychain-db'
+              if keychain.exists():
+                  result = subprocess.run(['security','delete-keychain',str(keychain)])
+                  if result.returncode: failures.append('temporary keychain removal')
+              installed = private / 'installed-profile-path'
+              if installed.exists(): pathlib.Path(installed.read_text()).unlink(missing_ok=True)
+          finally:
+              shutil.rmtree(private, ignore_errors=True)
+          if failures: raise SystemExit(', '.join(failures))
+          PY

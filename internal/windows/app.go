@@ -93,6 +93,8 @@ func New() *Backend {
 
 func (b *Backend) Name() string { return "windows/webview2" }
 
+func (*Backend) SystemManagedLifetime() bool { return false }
+
 func (b *Backend) IsMainThread() bool { return currentThreadID() == mainThreadID }
 
 func (b *Backend) Init(h platform.AppHandler, opts platform.AppOptions) error {

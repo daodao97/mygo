@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -21,11 +22,25 @@ var ErrNoReply = errors.New("fake: no reply")
 
 // Backend is a fake platform backend.
 type Backend struct {
-	h      platform.AppHandler
-	mainID uint64
-	signal chan struct{}
-	wake   chan struct{}
-	quit   chan struct{}
+	BiometricStatus       platform.BiometricStatus
+	LastAuthentication    platform.AuthenticationOptions
+	AuthenticationError   error
+	AuthenticationPending bool
+	authenticationDone    func(error)
+	authenticationID      uint64
+	HapticCalls           []string
+	BadgeCount            int
+	StatusBarStyle        string
+	StatusBarHidden       bool
+	PushRegistrations     int
+	MobileError           error
+
+	SystemManaged atomic.Bool // Simulate an OS-owned application lifetime in tests.
+	h             platform.AppHandler
+	mainID        uint64
+	signal        chan struct{}
+	wake          chan struct{}
+	quit          chan struct{}
 
 	mu        sync.Mutex
 	windows   []*Window
@@ -48,9 +63,24 @@ type Backend struct {
 	// Cleared counts ClearBrowsingData calls.
 	Cleared int
 	// Dialog results returned by the next dialog.
-	OpenResult    []string
-	SaveResult    string
-	MessageResult platform.MessageBoxResult
+	OpenResult         []string
+	LastExport         platform.ExportDialogOptions
+	ExportResult       bool
+	ExportError        error
+	LastPhoto          platform.PhotoDialogOptions
+	PhotoResult        []string
+	PhotoError         error
+	SaveResult         string
+	MessageResult      platform.MessageBoxResult
+	LastShare          platform.ShareOptions
+	ShareResult        platform.ShareResult
+	ShareError         error
+	PermissionStatuses map[string]string
+	PermissionDecision string
+	PermissionError    error
+	SettingsOpened     int
+	secrets            map[string][]byte
+	SecretError        error
 	// NotificationError, when set, is what showing a notification fails
 	// with.
 	NotificationError error
@@ -79,6 +109,8 @@ func goroutineID() uint64 {
 }
 
 func (b *Backend) Name() string { return "fake" }
+
+func (b *Backend) SystemManagedLifetime() bool { return b.SystemManaged.Load() }
 
 func (b *Backend) Init(h platform.AppHandler, _ platform.AppOptions) error {
 	b.h = h
@@ -856,4 +888,13 @@ func (s *Surface) Accessibility() (*platform.AccessTree, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.access, s.accessN
+}
+
+func (d dialogs) ShowExportDialog(_ platform.Window, o *platform.ExportDialogOptions, cb func(bool, error)) {
+	d.b.LastExport = *o
+	cb(d.b.ExportResult, d.b.ExportError)
+}
+func (d dialogs) ShowPhotoDialog(_ platform.Window, o *platform.PhotoDialogOptions, cb func([]string, error)) {
+	d.b.LastPhoto = *o
+	cb(d.b.PhotoResult, d.b.PhotoError)
 }

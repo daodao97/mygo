@@ -74,8 +74,12 @@ var startDir, _ = os.Getwd()
 // happens when OnBeforeQuit, OnWillQuit or a window cancels the quit.
 // Under `mygo dev` the build exits once it has quit and mygo dev starts it
 // again.
+// iOS leaves relaunching to the system; this method does nothing there.
 func (a *Application) Relaunch() {
 	postMain(func() {
+		if a.IsSystemManaged() {
+			return
+		}
 		a.relaunch = true
 		if a.prepareQuit() {
 			backend().Quit()

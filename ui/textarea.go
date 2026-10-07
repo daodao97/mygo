@@ -320,7 +320,7 @@ func (a *area) paint(e *Element, p *Painter, ox, oy float32) {
 		l := a.paraLayout(ed, i)
 		y := oy + float32(a.hs.top(i)-a.scroll)
 		start, end := b.paras[i].rune, b.end(i)
-		if focused && sa != sz && sa <= end && sz >= start && !(sz == start && i > 0 && sa < start) {
+		if focused && !e.c.rt.nativeSelection(e.st) && sa != sz && sa <= end && sz >= start && !(sz == start && i > 0 && sa < start) {
 			from, to := a.local(ed, i, max(sa, start)), a.local(ed, i, min(sz, end))
 			for _, r := range l.SelectionOn(from, to, sz > end && i < last) {
 				p.Fill(Rect{ox + r.X, y + r.Y, r.W, r.H}, t.Selection, 0)
@@ -334,7 +334,7 @@ func (a *area) paint(e *Element, p *Painter, ox, oy float32) {
 			}
 		}
 	}
-	if focused && !ed.readOnly {
+	if focused && !ed.readOnly && !e.c.rt.nativeSelection(e.st) {
 		rt := e.c.rt
 		phase := time.Since(rt.blinkStart)
 		const blink = 530 * time.Millisecond

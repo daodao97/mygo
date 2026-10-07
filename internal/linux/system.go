@@ -506,6 +506,10 @@ func (b *Backend) NotificationsSupported() bool {
 }
 
 func (b *Backend) ShowNotification(n *platform.Notification, done func(error)) {
+	if n.DelaySeconds > 0 {
+		done(platform.ErrUnsupported)
+		return
+	}
 	done(b.showNotification(n))
 }
 

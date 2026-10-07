@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build (darwin && !ios) || (ios && cgo)
 
 package text
 
@@ -24,7 +24,7 @@ import (
 // to others for what a font lacks, shapes, and suggests line breaks, and
 // Core Graphics rasterizes glyphs, in color for color fonts such as Apple
 // Color Emoji, and the others with font smoothing, as AppKit draws text.
-// The system font comes from NSFont, which knows its weights.
+// The system font comes from NSFont on macOS and CoreText on iOS.
 
 func newEngine() engine {
 	e, err := newCoreText()
@@ -204,7 +204,9 @@ func loadCoreText() error {
 	text := lib("/System/Library/Frameworks/CoreText.framework/CoreText")
 	cg := lib("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
 	objcLib := lib("/usr/lib/libobjc.A.dylib")
-	lib("/System/Library/Frameworks/AppKit.framework/AppKit") // NSFont
+	if runtime.GOOS != "ios" {
+		lib("/System/Library/Frameworks/AppKit.framework/AppKit") // NSFont
+	}
 	if len(missing) > 0 {
 		return fmt.Errorf("cannot load %s", strings.Join(missing, ", "))
 	}
@@ -456,6 +458,9 @@ func newCoreText() (*coreText, error) {
 // turns it off when AppleFontSmoothing is 0, or not a number, which Core
 // Graphics' bitmap contexts do not heed.
 func fontSmoothing() bool {
+	if runtime.GOOS == "ios" {
+		return false
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	pool := ct.poolPush()
@@ -543,6 +548,20 @@ func (e *coreText) systemFont(size float32, weight int, italic, mono bool) uintp
 		} else {
 			font = ct.uiFontForLanguage(ctFontUIFontSystem, float64(size), 0)
 		}
+	}
+	if font != 0 && runtime.GOOS == "ios" && weight != 400 {
+		w := cfFloat(nsWeight(weight))
+		traits := cfDictionary([]uintptr{ct.weightTrait}, []uintptr{w})
+		attrs := cfDictionary([]uintptr{ct.traitsAttribute}, []uintptr{traits})
+		desc := ct.descriptorWithAttrs(attrs)
+		if f := ct.fontWithAttrs(font, 0, 0, desc); f != 0 {
+			ct.release(font)
+			font = f
+		}
+		ct.release(desc)
+		ct.release(attrs)
+		ct.release(traits)
+		ct.release(w)
 	}
 	if font != 0 && italic {
 		if f := ct.fontWithTraits(font, 0, 0, ctFontItalicTrait, ctFontItalicTrait); f != 0 {

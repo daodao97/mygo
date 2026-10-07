@@ -103,14 +103,14 @@ const (
 	Shift = Modifiers(platform.ModShift)
 	Ctrl  = Modifiers(platform.ModCtrl)
 	Alt   = Modifiers(platform.ModAlt)
-	// Super is Command on macOS and the Windows key elsewhere.
+	// Super is Command on Apple platforms and the Windows key elsewhere.
 	Super = Modifiers(platform.ModSuper)
 )
 
-// Cmd is the modifier of the platform's shortcuts: Command on macOS,
+// Cmd is the modifier of the platform's shortcuts: Command on macOS/iOS,
 // Control elsewhere, as in Cmd+C.
 var Cmd = func() Modifiers {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "ios" {
 		return Super
 	}
 	return Ctrl

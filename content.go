@@ -29,9 +29,15 @@ func (w *Window) attachContent() {
 		panic("mygo: the backend " + backend().Name() + " created no surface for the window's Content")
 	}
 	w.conn = &surface.Conn{
-		Surface:   s,
-		Window:    w,
-		Clipboard: backend().Clipboard(),
+		Surface:           s,
+		Window:            w,
+		Clipboard:         backend().Clipboard(),
+		ContentBackground: w.syncContentBackground,
+		FrameSubmitted: func() {
+			if _, native := s.(platform.DrawableSurface); !native {
+				postMain(w.presented)
+			}
+		},
 		StartDrag: func() {
 			if w.native != nil {
 				w.native.StartDrag()
@@ -88,6 +94,19 @@ func (w *Window) attachContent() {
 		},
 	}
 	w.content.AttachContent(w.conn)
+}
+
+// syncContentBackground fills the mobile safe area around native UI. Explicit
+// window backgrounds take precedence; desktop backgrounds keep their policy.
+func (w *Window) syncContentBackground(c platform.Color) {
+	if w.native == nil || w.background != nil || !App.IsSystemManaged() || c.A != 255 {
+		return
+	}
+	if w.contentBackground != nil && *w.contentBackground == c {
+		return
+	}
+	w.contentBackground = &c
+	w.native.SetBackgroundColor(c)
 }
 
 // contentMenu returns the items of a context menu of the Content, whose
@@ -204,9 +223,21 @@ func (w *Window) captureContent() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// TextGeometry forwards optional native selection queries to the content.
+func (h *windowHandler) TextGeometry(q platform.TextGeometryQuery) platform.TextGeometry {
+	if c := h.w.conn; c != nil && c.TextGeometry != nil {
+		return c.TextGeometry(q)
+	}
+	return platform.TextGeometry{}
+}
+
 // SurfaceEvent passes the surface's events to the Content. Files the
 // Content does not take go to OnFileDrop, when it has listeners.
 func (h *windowHandler) SurfaceEvent(ev platform.SurfaceEvent) bool {
+	if ev.Kind == platform.SurfacePresented {
+		h.w.presented()
+		return false
+	}
 	c := h.w.conn
 	if c == nil || c.Event == nil {
 		return false

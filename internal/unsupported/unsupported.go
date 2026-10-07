@@ -18,7 +18,9 @@ func New() *Backend { return &Backend{} }
 
 var errUnsupported = errors.New("mygo: " + runtime.GOOS + "/" + runtime.GOARCH + " is not supported yet")
 
-func (*Backend) Name() string                                        { return "unsupported" }
+func (*Backend) Name() string                { return "unsupported" }
+func (*Backend) SystemManagedLifetime() bool { return false }
+
 func (*Backend) Init(platform.AppHandler, platform.AppOptions) error { return errUnsupported }
 func (*Backend) Run() error                                          { return errUnsupported }
 func (*Backend) Quit()                                               {}
@@ -127,3 +129,10 @@ func (power) Watch()                        {}
 func (power) KeepAwake(bool, string) func() { return func() {} }
 func (power) OnBattery() bool               { return false }
 func (power) IdleTime() time.Duration       { return 0 }
+
+func (dialogs) ShowExportDialog(_ platform.Window, _ *platform.ExportDialogOptions, cb func(bool, error)) {
+	cb(false, platform.ErrUnsupported)
+}
+func (dialogs) ShowPhotoDialog(_ platform.Window, _ *platform.PhotoDialogOptions, cb func([]string, error)) {
+	cb(nil, platform.ErrUnsupported)
+}

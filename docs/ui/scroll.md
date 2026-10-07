@@ -59,6 +59,15 @@ scroll bars over its content while the pointer is over it, which the user
 drags; they take no room. The theme's `ScrollbarWidth` sets their width and
 its `Scrollbar` their color.
 
+`HideScrollbars()` hides both thumbs and disables their pointer targets,
+while retaining touch/wheel scrolling, keyboard navigation, accessibility
+scrolling and saved offsets. Apply it to the container each frame; omit it
+to show the bars again. It also works on `List`, `GridView` and `TextArea`.
+
+```go
+ui.Scroll(c).HideScrollbars().TrackScroll(&app.scroll).Fill().Children(func() { /* ... */ })
+```
+
 `ScrollbarInsets` moves the bars in from the container's edges, CSS style
 as `Padding`: the vertical bar runs from the top inset to the bottom one,
 the right inset in from the right, and the horizontal bar from the left

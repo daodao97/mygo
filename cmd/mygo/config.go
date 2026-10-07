@@ -78,6 +78,7 @@ type Config struct {
 	// Updates configures signed updates, which mygo.Updater installs.
 	Updates *Updates `json:"updates"`
 	MacOS   MacOS    `json:"macos"`
+	IOS     IOS      `json:"ios"`
 	Windows Windows  `json:"windows"`
 	Linux   Linux    `json:"linux"`
 
@@ -144,6 +145,68 @@ type MacOS struct {
 	// Notarize submits production disk images to Apple's notary service and
 	// staples the ticket. It needs a Developer ID signing identity.
 	Notarize *Notarize `json:"notarize"`
+}
+
+// IOS configures the UIKit host of a native UI application.
+type IOS struct {
+	// BuildNumber is CFBundleVersion, independent of the marketing version.
+	BuildNumber string `json:"buildNumber"`
+	// AssociatedDomains contains entitlement values, e.g. applinks:example.com.
+	AssociatedDomains []string `json:"associatedDomains"`
+	// Entitlements are merged into the generated signing property list.
+	Entitlements map[string]any `json:"entitlements"`
+
+	LaunchScreen IOSLaunchScreen `json:"launchScreen"`
+	// MinimumSystemVersion defaults to 15.0.
+	MinimumSystemVersion string `json:"minimumSystemVersion"`
+	// DevelopmentTeam enables automatic development signing. Without a
+	// team, the build is unsigned and cannot be installed on a device.
+	DevelopmentTeam string `json:"developmentTeam"`
+	// InfoPlist overrides bundle keys, including permission descriptions.
+	InfoPlist map[string]any `json:"infoPlist"`
+	// Privacy adds app/dependency declarations to MyGo's required-reason APIs.
+	Privacy IOSPrivacy `json:"privacy"`
+	// Signing defaults to automatic signing through DevelopmentTeam.
+	Signing IOSSigning `json:"signing"`
+}
+
+type IOSPrivacy struct {
+	Tracking        bool             `json:"tracking"`
+	TrackingDomains []string         `json:"trackingDomains"`
+	CollectedData   []IOSPrivacyData `json:"collectedData"`
+	AccessedAPIs    []IOSPrivacyAPI  `json:"accessedAPIs"`
+	// Manifests are .xcprivacy property lists merged into the app manifest.
+	Manifests []string `json:"manifests"`
+}
+
+type IOSPrivacyAPI struct {
+	Category string   `json:"category"`
+	Reasons  []string `json:"reasons"`
+}
+
+type IOSPrivacyData struct {
+	Type     string   `json:"type"`
+	Linked   bool     `json:"linked"`
+	Tracking bool     `json:"tracking"`
+	Purposes []string `json:"purposes"`
+}
+
+type IOSSigning struct {
+	Style               string            `json:"style"`
+	Identity            string            `json:"identity"`
+	ProvisioningProfile string            `json:"provisioningProfile"`
+	ExportProfiles      map[string]string `json:"exportProfiles"`
+	ExportCertificate   string            `json:"exportCertificate"`
+}
+
+// IOSLaunchScreen configures the system launch screen and the matching UIKit
+// overlay held until the first Go frame is presented.
+type IOSLaunchScreen struct {
+	Title           string `json:"title"`           // Defaults to the application name.
+	Image           string `json:"image"`           // Optional PNG path relative to the project.
+	BackgroundColor string `json:"backgroundColor"` // #RRGGBB; empty follows the system.
+	ForegroundColor string `json:"foregroundColor"` // #RRGGBB; empty follows the system.
+	FadeDurationMs  int    `json:"fadeDurationMs"`  // 0 disables the overlay fade.
 }
 
 // Notarize holds notarytool credentials stored in the keychain with
