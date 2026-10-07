@@ -136,7 +136,8 @@ func TestPersistStateRestorationAndRegistration(t *testing.T) {
 		t.Fatalf("new launch = %+v", final)
 	}
 	info, _ := os.Stat(file)
-	if info.Mode().Perm() != 0o600 {
+	// Windows does not expose Unix permission bits through os.Stat.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("snapshot permissions = %v", info.Mode())
 	}
 }
