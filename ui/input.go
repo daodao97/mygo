@@ -101,6 +101,10 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.TextSelectionChanged:
 		rt.editEvent(editEvent{kind: editSelect, from: rt.ime.base + ev.From, to: rt.ime.base + ev.To})
 	case platform.SurfaceKeyboardDismiss:
+		if s := rt.states[rt.focused]; s != nil {
+			s.inputComposing = false
+			clear(s.inputReleaseMods)
+		}
 		rt.focused = 0
 		rt.requestFrame()
 	case platform.SurfaceGesture:
@@ -1066,6 +1070,10 @@ func (e *Element) Focused() bool {
 // its editor again.
 func (c *Context) Blur() {
 	if c.rt.focused != 0 {
+		if s := c.rt.states[c.rt.focused]; s != nil {
+			s.inputComposing = false
+			clear(s.inputReleaseMods)
+		}
 		c.rt.focused = 0
 		c.rt.requestFrame()
 	}

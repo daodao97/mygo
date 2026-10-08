@@ -8,8 +8,13 @@ import "encoding/json"
 type InputAction struct {
 	ID     string
 	Label  string
-	Symbol string        `json:",omitempty"`
-	Items  []InputAction `json:",omitempty"`
+	Symbol string `json:",omitempty"`
+	// LongPressID is sent instead of ID after a long press. Selected and
+	// Locked describe app-owned modifier state; locking never generates a tap.
+	LongPressID string        `json:",omitempty"`
+	Selected    bool          `json:",omitempty"`
+	Locked      bool          `json:",omitempty"`
+	Items       []InputAction `json:",omitempty"`
 }
 
 // InputAccessory attaches actions above the iOS system keyboard while this

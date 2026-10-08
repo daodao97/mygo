@@ -387,6 +387,21 @@ and `ContentOneTimeCode` describe autofill semantics; password fields still
 need `.Password()`. Autofill suggestions depend on system configuration.
 Omitting `InputOptions` on a later frame restores system defaults.
 
+Custom `HandleInput`/`TextCaret` widgets can attach a keyboard action bar with
+`InputAccessory`. Each `ui.InputAction` accepts a `LongPressID`, `Selected`
+and `Locked` state; native taps and holds route their IDs to the same callback.
+The app owns modifier state and can add it to single ASCII input and control
+keys with `InputModifiers(mods, consumed)`. `consumed` runs after a handled key
+so one-shot modifiers can be released; keeping locked bits allows repeated
+combinations. Composition, candidate commits and multi-character paste are
+left intact. `ui.InputEvent.Software` identifies these virtual modifiers.
+Clear app modifier state when leaving the input session or hiding its keyboard.
+
+Use `KeyboardASCII` while a modifier is enabled to request the system alphabet
+keyboard, then restore the original keyboard hint. A keyboard type change
+waits until marked text is committed or cancelled, preserving ongoing IME input.
+Updating accessory selection keeps its expanded rows and the current editor.
+
 The default Go theme follows iOS Dynamic Type, darker system colors and
 Reduce Motion through `Context.Preferences`, including change notifications.
 Explicit font sizes remain application-controlled. Complete VoiceOver

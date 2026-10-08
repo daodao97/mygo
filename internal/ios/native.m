@@ -162,11 +162,19 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @property(nonatomic, strong) MyGoUndoManager *goUndoManager;
 @property(nonatomic) BOOL goCanUndo, goCanRedo;
 @property(nonatomic, copy) NSString *accessoryJSON;
+@property(nonatomic) UIKeyboardType pendingKeyboardType;
+@property(nonatomic) BOOL hasPendingKeyboardType;
+- (BOOL)applyKeyboardType:(UIKeyboardType)type;
+- (void)applyPendingKeyboard;
 @property(nonatomic, strong) UITextSelectionDisplayInteraction *selectionDisplay API_AVAILABLE(ios(17.0));
 @end
 
 // Native buttons stay outside the Go focus chain. Expanding secondary keys
 // preserves the same UITextView and its marked-text/candidate session.
+@interface MyGoAccessoryLongPress : UILongPressGestureRecognizer
+@property(nonatomic, copy) NSString *actionID;
+@end
+@implementation MyGoAccessoryLongPress @end
 @interface MyGoInputAccessory : UIInputView
 @property(nonatomic) uint64_t windowID, ownerID;
 @property(nonatomic, weak) MyGoEditor *editor;
@@ -207,13 +215,14 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
  NSString *symbol=action[@"Symbol"];
  UIImage *image=symbol.length ? [UIImage systemImageNamed:symbol] : nil;
  BOOL expanded=[action[@"Items"] count] && self.expanded;
+ BOOL selected=[action[@"Selected"] boolValue], locked=[action[@"Locked"] boolValue];
  UIButtonConfiguration *configuration=[UIButtonConfiguration plainButtonConfiguration];
- configuration.baseForegroundColor=UIColor.labelColor;
+ configuration.baseForegroundColor=selected ? UIColor.systemBlueColor : UIColor.labelColor;
  configuration.contentInsets=NSDirectionalEdgeInsetsMake(0,2,0,2);
  configuration.background.backgroundInsets=NSDirectionalEdgeInsetsMake(3,0,3,0);
  configuration.background.cornerRadius=8;
- configuration.background.backgroundColor=expanded ? UIColor.tertiarySystemFillColor : UIColor.tertiarySystemBackgroundColor;
- configuration.background.strokeColor=[UIColor.separatorColor colorWithAlphaComponent:0.12];
+ configuration.background.backgroundColor=selected ? [UIColor.systemBlueColor colorWithAlphaComponent:locked ? 0.20 : 0.10] : expanded ? UIColor.tertiarySystemFillColor : UIColor.tertiarySystemBackgroundColor;
+ configuration.background.strokeColor=selected ? [UIColor.systemBlueColor colorWithAlphaComponent:locked ? 0.5 : 0.3] : [UIColor.separatorColor colorWithAlphaComponent:0.12];
  configuration.background.strokeWidth=0.5;
  configuration.preferredSymbolConfigurationForImage=[UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightMedium scale:UIImageSymbolScaleMedium];
  if (image) configuration.image=image;
@@ -223,13 +232,31 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
   result[NSFontAttributeName]=[UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
   return result;
  };
+ if (locked) {
+  configuration.subtitle=@"锁定";
+  configuration.imagePlacement=NSDirectionalRectEdgeTop;
+  configuration.imagePadding=1;
+  configuration.subtitleTextAttributesTransformer=^NSDictionary *(NSDictionary *attributes) {
+   NSMutableDictionary *result=[attributes mutableCopy];
+   result[NSFontAttributeName]=[UIFont systemFontOfSize:9 weight:UIFontWeightMedium];
+   return result;
+  };
+ }
  button.configuration=configuration;
  button.configurationUpdateHandler=^(UIButton *key) {
   UIButtonConfiguration *updated=key.configuration;
-  updated.background.backgroundColor=key.highlighted || key.selected ? UIColor.tertiarySystemFillColor : UIColor.tertiarySystemBackgroundColor;
+  if (selected) updated.background.backgroundColor=[UIColor.systemBlueColor colorWithAlphaComponent:locked ? 0.20 : key.highlighted ? 0.18 : 0.10];
+  else updated.background.backgroundColor=key.highlighted || key.selected ? UIColor.tertiarySystemFillColor : UIColor.tertiarySystemBackgroundColor;
   key.configuration=updated;
  };
- button.selected=expanded;
+ button.selected=expanded || selected;
+ if ([action[@"LongPressID"] length]) {
+  MyGoAccessoryLongPress *hold=[[MyGoAccessoryLongPress alloc] initWithTarget:self action:@selector(lockAction:)];
+  hold.actionID=action[@"LongPressID"];hold.minimumPressDuration=0.4;hold.cancelsTouchesInView=YES;
+  [button addGestureRecognizer:hold];
+  button.accessibilityHint=@"点按用于下一次输入，长按锁定，再点解除";
+  button.accessibilityValue=locked ? @"已锁定" : selected ? @"下一次输入" : @"未启用";
+ }
  __weak MyGoInputAccessory *weakSelf=self;
  [button addAction:[UIAction actionWithHandler:^(UIAction *event) {
   MyGoInputAccessory *accessory=weakSelf;
@@ -246,6 +273,11 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
   button.accessibilityValue=@"已展开";
  }
  return button;
+}
+- (void)lockAction:(MyGoAccessoryLongPress *)gesture {
+ if (gesture.state!=UIGestureRecognizerStateBegan) return;
+ goIOSInputAction(self.windowID,self.ownerID,(char *)gesture.actionID.UTF8String);
+ UISelectionFeedbackGenerator *feedback=[UISelectionFeedbackGenerator new];[feedback selectionChanged];
 }
 - (UIStackView *)row:(NSArray *)actions columns:(NSUInteger)columns height:(CGFloat)height {
  UIStackView *row=[UIStackView new];
@@ -322,6 +354,20 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @end
 
 @implementation MyGoEditor
+- (BOOL)applyKeyboardType:(UIKeyboardType)type {
+ if (self.markedTextRange && self.keyboardType!=type) {
+  self.pendingKeyboardType=type;self.hasPendingKeyboardType=YES;
+  return NO;
+ }
+ self.hasPendingKeyboardType=NO;
+ if (self.keyboardType==type) return NO;
+ self.keyboardType=type;return YES;
+}
+- (void)applyPendingKeyboard {
+ if (!self.hasPendingKeyboardType || self.markedTextRange) return;
+ UIKeyboardType type=self.pendingKeyboardType;
+ if ([self applyKeyboardType:type] && self.isFirstResponder) [self reloadInputViews];
+}
 - (NSUndoManager *)undoManager {
   if (!self.goUndoManager) {
     self.goUndoManager = [MyGoUndoManager new];
@@ -811,6 +857,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
   }
   self.sending = NO;
   goIOSInputSync(self.windowID);
+  [self.editor applyPendingKeyboard];
 }
 - (void)commitText {
   if (self.editor.markedTextRange) {
@@ -1289,9 +1336,10 @@ void mygo_ios_input_accessory(uintptr_t view, uint64_t owner, const char *json) 
  BOOL installed=accessory!=nil;
  NSArray *actions=value.length ? [NSJSONSerialization JSONObjectWithData:[value dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
  if (actions.count) {
+  BOOL expanded=accessory && accessory.ownerID==owner && accessory.expanded;
   if (!accessory) accessory=[MyGoInputAccessory new];
   accessory.editor=editor;accessory.windowID=editor.windowID;accessory.ownerID=owner;
-  accessory.actions=actions;accessory.expanded=NO;
+  accessory.actions=actions;accessory.expanded=expanded;
   [accessory rebuild];
   editor.inputAccessoryView=accessory;
  } else editor.inputAccessoryView=nil;
@@ -1375,7 +1423,7 @@ bool mygo_ios_native_selection(void) {
 }
 void mygo_ios_input_options(uintptr_t view, const char *json) {
   MyGoSurface *s = (__bridge MyGoSurface *)(void *)view;
-  UITextView *e = s.editor;
+  MyGoEditor *e = s.editor;
   NSDictionary *options = [NSJSONSerialization JSONObjectWithData:[str(json) dataUsingEncoding:NSUTF8StringEncoding]
                                                         options:0 error:nil];
  MyGoController *controller=(MyGoController *)hostWindow.rootViewController;
@@ -1400,9 +1448,9 @@ void mygo_ios_input_options(uintptr_t view, const char *json) {
   UITextAutocapitalizationType capitals = [capitalization isEqual:@"none"] ? UITextAutocapitalizationTypeNone :
     [capitalization isEqual:@"words"] ? UITextAutocapitalizationTypeWords :
     [capitalization isEqual:@"all"] ? UITextAutocapitalizationTypeAllCharacters : UITextAutocapitalizationTypeSentences;
-  BOOL changed = e.keyboardType != keyboard || e.returnKeyType != returnKey ||
+  BOOL keyboardChanged=[e applyKeyboardType:keyboard];
+  BOOL changed = keyboardChanged || e.returnKeyType != returnKey ||
     ![e.textContentType isEqual:content] || e.autocorrectionType != correct || e.autocapitalizationType != capitals;
-  e.keyboardType = keyboard;
   e.returnKeyType = returnKey;
   e.textContentType = content;
   e.autocorrectionType = correct;

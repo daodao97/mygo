@@ -269,6 +269,8 @@ type Element struct {
 	inputOptions   InputOptions
 	inputAccessory string
 	inputAction    func(string)
+	inputModifiers Modifiers
+	inputConsumed  func()
 	textClient     TextInputClient
 
 	// Content.

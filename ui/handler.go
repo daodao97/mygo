@@ -47,6 +47,8 @@ type InputEvent struct {
 	Key    Key
 	Mods   Modifiers
 	Repeat bool
+	// Software marks modifiers supplied by InputModifiers rather than hardware.
+	Software bool
 	// Text of InputText, InputCompose and InputCommand, and Caret the
 	// rune of an InputCompose's caret.
 	Text  string
@@ -132,8 +134,38 @@ func (rt *engine) deliver(s *state, ev InputEvent) bool {
 		return false
 	}
 	ev.X, ev.Y = rt.pointerX-s.x, rt.pointerY-s.y
+	softwareKey := !s.inputComposing && (ev.Kind == InputText && len(ev.Text) == 1 && ev.Text[0] < 128 || ev.Kind == InputKeyDown && softwareControlKey(ev.Key))
+	if ev.Kind == InputCompose {
+		s.inputComposing = ev.Text != ""
+	}
+	if ev.Kind == InputText {
+		s.inputComposing = false
+	}
+	if softwareKey && s.inputModifiers != 0 {
+		ev.Mods |= s.inputModifiers
+		ev.Software = true
+		if ev.Kind == InputKeyDown {
+			if s.inputReleaseMods == nil {
+				s.inputReleaseMods = make(map[Key]Modifiers)
+			}
+			s.inputReleaseMods[ev.Key] = ev.Mods
+		}
+	}
+	if ev.Kind == InputKeyUp {
+		if mods, ok := s.inputReleaseMods[ev.Key]; ok {
+			ev.Mods = mods
+			ev.Software = true
+			delete(s.inputReleaseMods, ev.Key)
+		}
+	}
 	if !s.input(ev) {
+		if ev.Kind == InputKeyDown && ev.Software {
+			delete(s.inputReleaseMods, ev.Key)
+		}
 		return false
+	}
+	if softwareKey && s.inputModifiers != 0 && s.inputConsumed != nil {
+		s.inputConsumed()
 	}
 	rt.requestFrame()
 	return true
@@ -146,4 +178,22 @@ func (rt *engine) focusHandler() *state {
 		return s
 	}
 	return nil
+}
+
+func softwareControlKey(key Key) bool {
+	switch key {
+	case KeyEnter, KeyBackspace, KeyTab, KeyEscape, KeyDelete, KeyInsert, KeyHome, KeyEnd, KeyPageUp, KeyPageDown, KeyLeft, KeyRight, KeyUp, KeyDown:
+		return true
+	}
+	return key >= KeyF1 && key <= KeyF12
+}
+
+// InputModifiers adds software modifiers to ASCII text and control keys of
+// a custom HandleInput/TextCaret widget. It leaves IME composition, commits
+// and multi-character paste untouched. consumed runs on the UI thread after
+// a key is handled, allowing an app to release one-shot modifiers. Omitting
+// the call clears the modifiers. Standard text editors are unaffected.
+func (e *Element) InputModifiers(mods Modifiers, consumed func()) *Element {
+	e.inputModifiers, e.inputConsumed = mods&(Shift|Ctrl|Alt|Super), consumed
+	return e
 }

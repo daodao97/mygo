@@ -207,6 +207,10 @@ func goIOSText(id C.uint64_t, kind C.int, text *C.char, from, to, caret C.int) {
 			}
 		}
 		w.h.SurfaceEvent(event)
+		if kind == 4 || kind == 5 {
+			event.Kind = platform.KeyReleased
+			w.h.SurfaceEvent(event)
+		}
 		// UITextView may send several edits before the next display tick.
 		// Apply each snapshot before accepting another replacement, while
 		// the delegate's sending guard prevents echoing text into UIKit.

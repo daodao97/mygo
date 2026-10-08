@@ -759,6 +759,7 @@ func (rt *engine) commitElement(e *Element, clip Rect, hidden bool) {
 	s.caretFn = e.caretFn
 	s.inputOptions = e.inputOptions
 	s.inputAccessory, s.inputAction = e.inputAccessory, e.inputAction
+	s.inputModifiers, s.inputConsumed = e.inputModifiers, e.inputConsumed
 	s.touchScroll = e.touchScroll
 	s.touchSelection = e.touchSelection
 	if s.textClient != e.textClient {
