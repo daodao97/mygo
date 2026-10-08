@@ -15,8 +15,9 @@ work area. There is no Dock icon on macOS or taskbar button on Windows.
 Type a note and use Copy note to put it on the clipboard. Hiding and
 reopening the window preserves its text, selection, and undo history;
 notes stay in memory until you quit. Quit is available in the window and
-in the icon's right-click menu. Cmd+W/Ctrl+W hides the panel, and
-Cmd+Q/Ctrl+Q quits while it has focus.
+in the icon's right-click menu, which opens below the menu bar on macOS
+with AppKit's status-item placement and highlighting. Cmd+W/Ctrl+W hides
+the panel, and Cmd+Q/Ctrl+Q quits while it has focus.
 
 Linux uses AppIndicator, which supports menus but no click events or icon
 bounds. Choose **Open Quick Notes** from the tray menu to open the same

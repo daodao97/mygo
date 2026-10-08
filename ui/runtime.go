@@ -188,11 +188,12 @@ type engine struct {
 	// frame built anew; repainting as it paints when only drawings move
 	// (Painter.AnimationFrame), for a frame painting its elements again,
 	// and repaintAt to when drawings change next (Painter.After). redraw
-	// tells that the next frame may paint again, as nothing else asked for
-	// one since; painted is the size and scale of the window, and gen the
-	// text system's Generation, as the last frame was built. repaintTimer
-	// asks for that frame at repaintDue. held tells that what moves waits
-	// for the window to show.
+	// tells that the next frame may paint again, as no event came and
+	// nothing else asked for one since; painted is the size and scale of
+	// the window, and gen the text system's Generation, as the last frame
+	// was built. repaintTimer asks for a frame at repaintDue, unless one
+	// came or was asked for since. held tells that what moves waits for
+	// the window to show.
 	animating    bool
 	repainting   bool
 	repaintAt    time.Time
@@ -342,7 +343,7 @@ func (rt *engine) defaultTheme() *Theme {
 // desktop's preferences.
 func (rt *engine) themeChanged() {
 	rt.darkKnown, rt.prefsKnown = false, false
-	rt.redraw = false
+	rt.redraw, rt.repaintDue = false, time.Time{}
 	rt.host.requestFrame()
 }
 
@@ -508,10 +509,13 @@ func (rt *engine) next() {
 	}
 }
 
-// repaintNow asks for the frame painting drawings again that Painter.After
-// asked for, unless another frame came since.
+// repaintNow asks for the frame that Painter.After asked for, unless
+// another frame came, or was asked for, since. An event since that asked
+// for none, as the pointer moving over elements that do not look at it,
+// leaves it due: it builds the view anew, in case the event changed what
+// the view shows.
 func (rt *engine) repaintNow() {
-	if rt.redraw && !rt.repaintDue.IsZero() && !rt.now().Before(rt.repaintDue.Add(-time.Millisecond)) {
+	if !rt.repaintDue.IsZero() && !rt.now().Before(rt.repaintDue.Add(-time.Millisecond)) {
 		rt.repaintDue = time.Time{}
 		rt.host.requestFrame()
 	}
@@ -670,19 +674,19 @@ func (rt *engine) keptAlive(s *state) bool {
 }
 
 // requestFrame asks the host for a frame built anew, unless one is being
-// built.
+// built. It comes in place of one Painter.After has due.
 func (rt *engine) requestFrame() {
 	if rt.inFrame {
 		return
 	}
-	rt.redraw = false
+	rt.redraw, rt.repaintDue = false, time.Time{}
 	rt.host.requestFrame()
 }
 
 // changed asks the host for a frame built anew after the app changed what
 // the view shows, from outside the view (surface.Conn.Changed).
 func (rt *engine) changed() {
-	rt.redraw = false
+	rt.redraw, rt.repaintDue = false, time.Time{}
 	rt.host.requestFrame()
 }
 

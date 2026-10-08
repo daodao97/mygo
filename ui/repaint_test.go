@@ -130,12 +130,34 @@ func TestPainterAfter(t *testing.T) {
 		t.Errorf("the frame: built %v, asked for another now %v, painted %d times, next due in %v", built, more, draws-n, tt.rt.repaintDue.Sub(tt.clock))
 	}
 	// A frame built since replaces the one due.
+	due = tt.rt.repaintDue
 	tt.rt.changed()
-	tt.clock = tt.rt.repaintDue
+	tt.clock = due
 	tt.h.requested.Store(false)
 	tt.rt.repaintNow()
 	if tt.h.requested.Load() {
 		t.Error("a frame asked for though one building the view comes")
+	}
+	if built, _ := tt.frame(time.Millisecond); !built {
+		t.Fatal("the frame asked for did not build the view")
+	}
+	// An event that asks for no frame, as the pointer moving over an
+	// element that does not look at it, leaves the frame due: it comes,
+	// and builds the view anew (issue 149).
+	due = tt.rt.repaintDue
+	tt.h.requested.Store(false)
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerMove, X: 50, Y: 10})
+	if tt.h.requested.Load() {
+		t.Fatal("the pointer moving asked for a frame")
+	}
+	tt.clock = due
+	tt.rt.repaintNow()
+	if !tt.h.requested.Load() {
+		t.Fatal("no frame asked for once due, after the pointer moved")
+	}
+	n = draws
+	if built, _ := tt.frame(time.Millisecond); !built || draws != n+1 || !tt.rt.repaintDue.Equal(tt.clock.Add(30*time.Millisecond)) {
+		t.Errorf("the frame after the pointer moved: built %v, painted %d times, next due in %v", built, draws-n, tt.rt.repaintDue.Sub(tt.clock))
 	}
 }
 

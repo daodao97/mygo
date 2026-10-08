@@ -157,7 +157,12 @@ func (s *notes) ready() {
 		s.tray.OnClick(s.toggle)
 		s.tray.OnRightClick(func() {
 			s.win.Hide()
-			menu.Popup(nil)
+			// Install the menu for this popup only, so AppKit opens it
+			// beneath the status item and primary clicks keep toggling
+			// the notes window after the menu closes.
+			s.tray.SetMenu(menu)
+			defer s.tray.SetMenu(nil)
+			s.tray.PopUpMenu()
 		})
 	}
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { s.tray.Destroy() })

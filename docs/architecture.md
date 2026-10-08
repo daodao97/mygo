@@ -418,6 +418,15 @@ and APNs delivery remain external application configuration.
   report of the previous size was sent before the window manager took the
   request (openbox sends one when the size hints change); GTK would ask
   for that size again from it, so the backend asks for the new one again.
+- On Wayland, the configure event that activates a window can carry the
+  size of the last buffer it drew, from before a resize GTK already took
+  (Mutter sends one when native UI drawing with GL resizes from its first
+  frames), and GTK goes back to that size. So a window drawing with GL
+  keeps the latest bounds asked for while it is not focused, and once it
+  is, an idle callback asks for them again if the window went back to the
+  size it had, unless it is maximized, full screen or tiled. GTK skips a
+  request for the size it asked for last: the callback first takes the
+  configure and asks for the size the window has.
 - A window the user cannot resize is never smaller than its default size,
   which `SetBounds` sets too, and `SetResizable(false)` to the size it has,
   or than its natural size, which GTK makes 200x200 when the window's child
@@ -1430,14 +1439,18 @@ either.
   paints the elements of the last frame again at its own time
   (`repaintFrame`), without building or laying out; elements out of view
   are not painted, so they ask for none. Such a frame is asked for with
-  `redraw` set, which anything else asking for a frame clears: every event
-  of the surface, `requestFrame`, `Conn.Changed` (`Window.Update`,
-  `Invalidate`, and `After`'s timer through them) and a change of the
-  appearance. A frame of another size, or after the text system forgot
-  its layouts (`text.System.Generation`, as it lets go of fonts the
-  elements' layouts hold), builds anew all the same. The timers the last
-  frame built armed stay; `Painter.After` has a timer of its own, which
-  posts to the main thread.
+  `redraw` set, which every event of the surface clears, so that the frame
+  builds anew in case the event changed what the view shows; anything
+  asking for a frame clears it too, and the frame `Painter.After` has due
+  with it, which the frame asked for replaces: `requestFrame`,
+  `Conn.Changed` (`Window.Update`, `Invalidate`, and `After`'s timer
+  through them) and a change of the appearance. An event that asks for no
+  frame, as the pointer moving over elements that do not look at it,
+  leaves that frame due. A frame of another size, or after the text
+  system forgot its layouts (`text.System.Generation`, as it lets go of
+  fonts the elements' layouts hold), builds anew all the same. The timers
+  the last frame built armed stay; `Painter.After` has a timer of its
+  own, which posts to the main thread.
   While nothing of the window shows (`platform.OccludableSurface`: a macOS
   window hidden, minimized or covered by other windows, whose display link
   still ticks, at the display's rate for half a minute, then at about 40
