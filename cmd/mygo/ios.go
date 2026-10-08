@@ -315,7 +315,10 @@ func iosProject(c *Config, minimum, team string) string {
 		settings = strings.Replace(settings, `CODE_SIGN_IDENTITY = "Apple Development";`, "CODE_SIGN_IDENTITY = "+strconv.Quote(c.IOS.Signing.Identity)+";", 1)
 	}
 
-	releaseSettings := strings.Replace(settings, "STRIP_INSTALLED_PRODUCT = NO;", "STRIP_INSTALLED_PRODUCT = YES;", 1)
+	// Ordinary xcodebuild builds do not enable deployment postprocessing by
+	// default. Let Xcode collect the dSYM, strip local symbols, then sign the
+	// app for both Release build and archive actions. Keep exported symbols.
+	releaseSettings := strings.Replace(settings, "STRIP_INSTALLED_PRODUCT = NO;", "STRIP_INSTALLED_PRODUCT = YES; DEPLOYMENT_POSTPROCESSING = YES; STRIP_STYLE = non-global;", 1)
 
 	return `// !$*UTF8*$!
 { archiveVersion = 1; classes = {}; objectVersion = 56; objects = {

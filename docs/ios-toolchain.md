@@ -51,9 +51,11 @@ app-level merging does not replace [Apple's SDK packaging requirements](https://
 ## Source symbols
 
 iOS Go archives retain DWARF, including in Release. Native cgo objects compile
-with debug information. Xcode creates matching dSYMs; Release strips the
-installed application's symbols after collecting its dSYM, while Debug keeps
-them and disables Go optimization/inlining for source debugging.
+with debug information. Xcode creates matching dSYMs; ordinary Release builds
+and archives enable deployment postprocessing to strip local symbols after
+collecting the dSYM and before signing the application. Exported symbols are
+preserved. Debug builds retain their local symbols and disable Go
+optimization/inlining for source debugging.
 
 Archives contain `dSYMs/MyGoApp.app.dSYM`. Ordinary app builds include a sibling
 `<name>.app.dSYM`. Preserve these with the exact corresponding binary/build;
