@@ -172,16 +172,16 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @property(nonatomic, weak) MyGoEditor *editor;
 @property(nonatomic, strong) NSArray *actions;
 @property(nonatomic, strong) UIStackView *stack;
-@property(nonatomic, strong) NSLayoutConstraint *height;
+@property(nonatomic, strong) NSLayoutConstraint *height, *leading, *trailing;
 @property(nonatomic) BOOL expanded;
 @end
 @implementation MyGoInputAccessory
 - (instancetype)init {
- self=[super initWithFrame:CGRectMake(0,0,390,44) inputViewStyle:UIInputViewStyleKeyboard];
+ self=[super initWithFrame:CGRectMake(0,0,390,48) inputViewStyle:UIInputViewStyleKeyboard];
  if (self) {
   self.allowsSelfSizing=YES;
   self.autoresizingMask=UIViewAutoresizingFlexibleHeight;
-  self.height=[self.heightAnchor constraintEqualToConstant:44];
+  self.height=[self.heightAnchor constraintEqualToConstant:48];
   self.height.active=YES;
   self.backgroundColor=UIColor.secondarySystemBackgroundColor;
   self.accessibilityIdentifier=@"Input accessory";
@@ -191,7 +191,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 - (CGSize)intrinsicContentSize {
  NSUInteger count=0;
  if (self.expanded) for (NSDictionary *action in self.actions) count+= [action[@"Items"] count];
- return CGSizeMake(UIViewNoIntrinsicMetric,44+(count ? ceil(count/5.0)*44+8 : 0));
+ return CGSizeMake(UIViewNoIntrinsicMetric,48+(count ? ceil(count/5.0)*44+8 : 0));
 }
 - (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize {
  return CGSizeMake(targetSize.width,self.intrinsicContentSize.height);
@@ -203,12 +203,33 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
  UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem];
  button.accessibilityLabel=action[@"Label"];
  button.accessibilityIdentifier=action[@"Label"];
+ NSString *label=action[@"Label"] ?: @"";
  NSString *symbol=action[@"Symbol"];
  UIImage *image=symbol.length ? [UIImage systemImageNamed:symbol] : nil;
- if (image) [button setImage:[image imageWithConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightRegular]] forState:UIControlStateNormal];
- else [button setTitle:action[@"Label"] forState:UIControlStateNormal];
- button.titleLabel.font=[UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
- button.tintColor=UIColor.labelColor;
+ BOOL expanded=[action[@"Items"] count] && self.expanded;
+ UIButtonConfiguration *configuration=[UIButtonConfiguration plainButtonConfiguration];
+ configuration.baseForegroundColor=UIColor.labelColor;
+ configuration.contentInsets=NSDirectionalEdgeInsetsMake(0,2,0,2);
+ configuration.background.backgroundInsets=NSDirectionalEdgeInsetsMake(5,0,5,0);
+ configuration.background.cornerRadius=8;
+ configuration.background.backgroundColor=expanded ? UIColor.tertiarySystemFillColor : UIColor.tertiarySystemBackgroundColor;
+ configuration.background.strokeColor=[UIColor.separatorColor colorWithAlphaComponent:0.12];
+ configuration.background.strokeWidth=0.5;
+ configuration.preferredSymbolConfigurationForImage=[UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightMedium scale:UIImageSymbolScaleMedium];
+ if (image) configuration.image=image;
+ else configuration.title=[label hasPrefix:@"Ctrl+"] ? [@"⌃" stringByAppendingString:[label substringFromIndex:5]] : label;
+ configuration.titleTextAttributesTransformer=^NSDictionary *(NSDictionary *attributes) {
+  NSMutableDictionary *result=[attributes mutableCopy];
+  result[NSFontAttributeName]=[UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+  return result;
+ };
+ button.configuration=configuration;
+ button.configurationUpdateHandler=^(UIButton *key) {
+  UIButtonConfiguration *updated=key.configuration;
+  updated.background.backgroundColor=key.highlighted || key.selected ? UIColor.tertiarySystemFillColor : UIColor.tertiarySystemBackgroundColor;
+  key.configuration=updated;
+ };
+ button.selected=expanded;
  __weak MyGoInputAccessory *weakSelf=self;
  [button addAction:[UIAction actionWithHandler:^(UIAction *event) {
   MyGoInputAccessory *accessory=weakSelf;
@@ -222,20 +243,18 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
   } else goIOSInputAction(accessory.windowID,accessory.ownerID,(char *)[action[@"ID"] UTF8String]);
  }] forControlEvents:UIControlEventTouchUpInside];
  if ([action[@"Items"] count] && self.expanded) {
-  button.backgroundColor=UIColor.tertiarySystemFillColor;
-  button.layer.cornerRadius=8;
   button.accessibilityValue=@"已展开";
  }
  return button;
 }
-- (UIStackView *)row:(NSArray *)actions columns:(NSUInteger)columns {
+- (UIStackView *)row:(NSArray *)actions columns:(NSUInteger)columns height:(CGFloat)height {
  UIStackView *row=[UIStackView new];
  row.axis=UILayoutConstraintAxisHorizontal;
  row.distribution=UIStackViewDistributionFillEqually;
- row.spacing=2;
+ row.spacing=4;
  for (NSDictionary *action in actions) [row addArrangedSubview:[self button:action]];
  while (row.arrangedSubviews.count<columns) [row addArrangedSubview:[UIView new]];
- [row.heightAnchor constraintEqualToConstant:44].active=YES;
+ [row.heightAnchor constraintEqualToConstant:height].active=YES;
  return row;
 }
 - (void)rebuild {
@@ -247,18 +266,19 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
  if (self.expanded) {
   NSMutableArray *items=[NSMutableArray array];
   for (NSDictionary *action in self.actions) [items addObjectsFromArray:action[@"Items"] ?: @[]];
-  for (NSUInteger i=0;i<items.count;i+=5) [stack addArrangedSubview:[self row:[items subarrayWithRange:NSMakeRange(i,MIN(5,items.count-i))] columns:5]];
+  for (NSUInteger i=0;i<items.count;i+=5) [stack addArrangedSubview:[self row:[items subarrayWithRange:NSMakeRange(i,MIN(5,items.count-i))] columns:5 height:44]];
   if (items.count) {
    UIView *gap=[UIView new];
    [gap.heightAnchor constraintEqualToConstant:8].active=YES;
    [stack addArrangedSubview:gap];
   }
  }
- [stack addArrangedSubview:[self row:self.actions columns:self.actions.count]];
+ [stack addArrangedSubview:[self row:self.actions columns:self.actions.count height:48]];
  [self addSubview:stack];
+ self.leading=[stack.leadingAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.leadingAnchor constant:8];
+ self.trailing=[stack.trailingAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.trailingAnchor constant:-8];
  [NSLayoutConstraint activateConstraints:@[
-  [stack.leadingAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.leadingAnchor constant:8],
-  [stack.trailingAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.trailingAnchor constant:-8],
+  self.leading, self.trailing,
   [stack.topAnchor constraintEqualToAnchor:self.topAnchor],
   [stack.bottomAnchor constraintEqualToAnchor:self.bottomAnchor]
  ]];
@@ -268,6 +288,21 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
  [self setNeedsLayout];
  [self.superview setNeedsLayout];
 }
+- (void)layoutSubviews {
+ // Keep at least 44pt tap targets for the primary row, including narrow
+ // phones. Insets and gaps yield first; the visual keycaps remain compact.
+ CGFloat width=CGRectGetWidth(self.safeAreaLayoutGuide.layoutFrame);
+ if (width<=0) width=CGRectGetWidth(self.bounds);
+ NSUInteger count=self.actions.count;
+ CGFloat spacing=count>1 ? MIN(4,MAX(0,(width-16-count*44)/(count-1))) : 4;
+ CGFloat inset=MIN(8,MAX(0,(width-count*44-(count>1 ? count-1 : 0)*spacing)/2));
+ self.leading.constant=inset; self.trailing.constant=-inset;
+ for (UIView *view in self.stack.arrangedSubviews) {
+  if ([view isKindOfClass:UIStackView.class]) ((UIStackView *)view).spacing=spacing;
+ }
+ [super layoutSubviews];
+}
+
 @end
 @implementation MyGoUndoManager
 - (BOOL)canUndo { return self.editor.editable && self.editor.goCanUndo; }
