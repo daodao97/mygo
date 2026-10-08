@@ -558,7 +558,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @interface MyGoSurface : UIView <UITextViewDelegate, UIGestureRecognizerDelegate>
 @property(nonatomic) uint64_t windowID;
 @property(nonatomic, strong) CADisplayLink *displayLink;
-@property(nonatomic, strong) UITextView *editor;
+@property(nonatomic, strong) MyGoEditor *editor;
 @property(nonatomic, strong) UITouch *contact;
 @property(nonatomic) uint64_t contactID;
 @property(nonatomic) CGPoint origin;
