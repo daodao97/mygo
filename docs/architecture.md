@@ -54,7 +54,7 @@ framework safely. Read it before changing anything under `internal/`.
 ├── protocol.go         custom schemes served by http.Handler, FileServer
 ├── frontend.go         the app's frontend: relative URLs, devUrl, mygo://localhost
 ├── menu.go             Menu/MenuItem model, roles, native item updates
-├── dialog.go modules.go shell, clipboard, screen, theme, tray, shortcuts, notifications
+├── dialog.go modules.go clipboard.go: shell, clipboard, screen, theme, tray, shortcuts, notifications
 ├── loop.go             main-thread queue: postMain / onMain / await
 ├── events.go           listener lists and the Preventable event types
 ├── single_instance.go  RequestSingleInstanceLock over a Unix socket
@@ -96,6 +96,7 @@ framework safely. Read it before changing anything under `internal/`.
 │                       terminal, a view of native UI running programs with
 │                       libghostty-vt
 ├── ui/                 native UI: views, layout, widgets, text editing, Tester
+├── transfer/           immutable data items, representations, lazy providers and drag effects
 ├── cmd/mygo/           the CLI: init, generate, dev, build, doctor
 ├── examples/           hello, todo, frameless, native, vibrancy; counter-native
 │                       and gallery (native UI)
@@ -941,8 +942,7 @@ build` like mygo-runtime and released with the same version.
   `glass.Glass`, a `ui.Material` (interactive glass builds with its
   element, following its press with `Animate`, and paints itself grown
   while pressed, as macOS 27's: by a fixed 1.1 DIPs left and right and
-  0.45 above and below, measured from `NSGlassEffectView`), paints a
-  shadow and an
+  0.45 above and below, measured from `NSGlassEffectView`), paints an
   effect (`glass.Effect`, see Effects under Native UI), whose parameters
   are a pane's material in device pixels. Its shader (`glass.metal`,
   `glass.hlsl`, `glass.glsl`, and `pixels.go` for the CPU) takes what is
@@ -1207,6 +1207,35 @@ backend, which:
 macOS gets a default menu bar (App, File, Edit, View, Window), which is what
 makes Cmd+C/V/Q work; other platforms get none unless the app sets one.
 
+## Clipboard and drag data (`transfer`)
+
+`transfer.Data` is the immutable serialized model shared by clipboard writes
+and native drags: ordered items with alternative byte representations, MIME
+formats, file/URI lists, and lazy providers. Each clipboard write or drag
+starts an independent provider cache; discovery reads no bytes, and success,
+errors and recovered provider panics are cached once. Typed `Drag(value)`
+remains process-local, resolved by the core's temporary drag registry; its
+token is rejected by clipboard writes.
+
+`clipboard.go` owns validation, main-thread dispatch, provider reentry guards,
+and deferred, exactly-once release hooks. `platform.Clipboard` accepts a
+snapshot, returns materialized reads, discovers formats without rendering,
+and flushes/closes native ownership. Clipboard providers belong to the app,
+not a source window. Quit flushes them before stopping the loop, and finish
+releases remaining providers. Linux requires a clipboard manager for data
+to remain after exit; a failed provider prevents flushing its offer.
+
+macOS owns NSPasteboardItemDataProvider objects until AppKit finishes them,
+with eager NSPasteboardItems after flush. GTK uses application-owned selection
+get/clear callbacks and owner-change generation checks; clipboard-only apps
+bind selection primitives without requiring a surface. Windows shares the
+drag adapter's IDataObject, vtables, native conversions and reference-counted
+objects with OleSetClipboard/OleFlushClipboard; foreign reads hold a Win32
+clipboard lock. Callback signatures are allocated once and routed by native
+object or user data. Native reads copy bytes so application data outlives
+native handles. See [Clipboard and drag data](data-transfer.md) for API and
+format mappings.
+
 ## Native UI (`ui`)
 
 A window with `WindowOptions.Content` shows a user interface MyGo draws
@@ -1224,9 +1253,8 @@ either.
 
 - **The surface.** With `platform.WindowOptions.Surface`, a backend creates
   a view MyGo draws in place of the webview: a layer-backed NSView on
-  macOS, a GtkGLArea on Linux, without an OpenGL context until the content
-  asks for the GPU (a GtkDrawingArea where OpenGL would not run
-  on a GPU), a child window of class `MyGoSurface` on Windows.
+  macOS, a GtkGLArea on Linux (a GtkDrawingArea where OpenGL would not
+  run on a GPU), a child window of class `MyGoSurface` on Windows.
   `platform.Surface` gives its native handles (for a swap chain, a layer,
   or the GtkGLArea while its `render` signal draws a frame, with its
   context current), size and scale, and the refresh rate of the display
@@ -1350,7 +1378,12 @@ either.
   paints a `scene.Scene`; and presents it. Input between frames goes to the
   states of the last frame's elements. An element's identity hashes its
   parent's with its position or `Key`, so focus, scroll offsets, editors and
-  animations survive rebuilding. Scroll offsets move in the layout too
+  animations survive rebuilding. `Context` and `Element` are temporary
+  build objects, including between passes of the same frame; an old element
+  pointer may point at cleared or reused arena storage. `ListState` resolves
+  its focus owner only for the current context, frame and pass, exposing
+  focus and shortcuts without retaining an element in app state. Scroll
+  offsets move in the layout too
   (`ui/scroll.go`): elements that asked to `ScrollIntoView`, and the focus,
   come into view before the boxes are placed, and placing keeps each offset
   within its content; a `ScrollState` mirrors an offset both ways, and a
@@ -1453,6 +1486,15 @@ either.
   it. `ui.Shape` lays out text without the cache of layouts, for widgets
   that keep their glyphs, and `Painter.Glyphs` draws them where they
   placed them.
+  `HandleTextInput` connects a custom element's application-owned
+  `TextInputClient` to the same platform services. A stable, focus-checked
+  adapter supplies absolute UTF-16 text ranges, selection, marked text,
+  mutation callbacks, range geometry and hit testing. It is invalidated on
+  replacement/disposal, and focus changes unmark the old client and reset
+  native composition. GTK and IMM32 use bounded surrounding context while
+  macOS can query arbitrary document ranges directly. `ShapeText` and
+  `ShapeRichText` retain per-paragraph `TextLayout` geometry; an application
+  owns its buffer, selections, rendering, editing and undo policy.
 - **Preferences.** `platform.Theme.Preferences` reads the settings of the
   desktop that controls follow: on macOS, `controlAccentColor` and
   `NSWorkspace`'s accessibility display options, with their notifications;
@@ -1590,20 +1632,69 @@ either.
   changes of each step (`undoStep`), not copies of the text; a text the app
   sets makes the last step one change from the text before it, which
   undoing takes back, so that a log the app keeps setting holds two texts
-  there, not one a frame. Grapheme boundaries come from the paragraph of
-  the caret. A text area lays its
+  there, not one a frame. Deleted fragments own their bytes, and
+  discarded history and input events give up their references, so a
+  one-character deletion does not retain an entire old document.
+  The paragraph index is allocated for the newline count up front;
+  scanning ASCII counts runes a word at a time, with the standard UTF-8
+  decoder for other text. A much smaller replacement releases the large
+  paragraph and height indexes. Grapheme boundaries come from the
+  paragraph of the caret. A text area lays its
   text out a paragraph at a time (`area`), as the text system breaks
   lines anyway, so that the lines are those of the text laid out whole:
   each paragraph keeps its layout until an edit changes it or the width
   does, those in view are laid out from the paragraph the view starts in
   (the anchor) down, those far from view give their layouts up and keep
-  their heights, and the heights not measured are estimated by those
-  measured. Two Fenwick trees, of the heights measured and of how many are
+  their heights, and layouts own their paragraphs' text rather than
+  keeping old document strings alive. The heights not measured are
+  estimated by those measured. Two Fenwick trees, of the heights measured and of how many are
   not, give the top of a paragraph and the paragraph at a height in
   O(log n) whatever the estimate. The area scrolls as a scroll container,
   its offset the state's (`flagScrollY`, the content as high as its
   paragraphs), kept by the anchor as heights above the view are measured;
   an edit, a move of the caret or a press reveals the caret once.
+- **Editing layers.** `ui/editor.go` holds the widget's editing state;
+  `editor_history.go` owns delta undo, `editor_selection.go` the visual
+  range set and caret affinity, `editor_navigation.go` keys and pointer
+  gestures, and `editor_layout.go` layout and painting. `textinput.go`
+  builds the public string widgets. They use the same `TextInputClient`
+  contract as custom controls through `editor_input.go`: native callbacks
+  query and mutate state synchronously, while the widget publishes its
+  bound string during its next build, preserving change propagation in
+  composed controls. Preedit is a virtual document insertion, and its
+  replacement and commit form one delta undo transaction. The paragraph
+  index carries rune, byte and UTF-16 starts; bounded native queries own
+  their bytes so they do not retain old document allocations.
+  Single-line controls retain their current layout themselves, keeping
+  changing input strings out of the system's cache of display text.
+  `internal/text/caret.go` keeps both logical edges of bidi boundaries and
+  wrapped lines, and moves between whole graphemes in visual order.
+  Selection gestures produce logical range sets: highlight, copy,
+  replacement and undo use the same ranges, preserving unselected gaps.
+- **Indexed text storage.** `ui/text_buffer.go` is a persistent AVL tree of
+  bounded, owned UTF-8 chunks, summarized by byte, rune, UTF-16 and newline
+  counts. Edits copy affected chunks and tree paths; snapshots share other
+  chunks, and export can stream them. `TextInputBuffer`/`TextAreaBuffer` in
+  `textbuffer_input.go` bind those roots to the existing editing client.
+  Native mutations publish a new root immediately, using a version check
+  to preserve concurrent program edits. External root changes refresh the
+  widget and clear stale history. The indexed buffer adapter derives line
+  starts from the text tree rather than moving every later paragraph's
+  absolute offsets. Paragraph layout and height caches remain with the
+  widget; newline-count changes update those indexes. Full text is produced
+  for explicit export/value queries, never as a binding update per edit.
+- **Text selection** (`ui/textselection.go`). `Selectable` on a text
+  selects that paragraph; on a container it gives its text descendants
+  one selection. The window keeps endpoints as stable element IDs and
+  rune offsets, and each frame collects participating paragraphs in
+  build order. After layout the shared range is projected onto their
+  editors, whose layouts paint the highlights. Pointer gestures,
+  keyboard extension, native editing commands and context menus use
+  the same endpoints. Nested containers have independent scopes;
+  controls and `Unselectable` subtrees do not participate. A drag near
+  a scroll edge asks for frames until scrolling stops. Inline children
+  contribute to their paragraph once, and preparation waits for their
+  final text so a rebuild preserves the selection.
 - **Tables** (`ui/table.go`, `ui/editable.go`). A table's rows are a
   `List`'s that scrolls both ways: the list lays its rows out at least as
   wide as the columns ask (`rowMinW`), and the header, outside the list,
@@ -1643,6 +1734,24 @@ either.
   shifting it there and back, with a count beside the pointer for
   several rows. Lists and grids take their own rows (`rowDrag`,
   `itemDrag`), placing them by the middles of the rows of the last frame.
+- **Native data drags** (`transfer`, `drag.go`, `ui/data_drag.go`). An
+  element with `DragData` promotes the gesture to the native drag tracker.
+  `transfer.Data` holds immutable items with MIME-tagged representations;
+  providers are advertised lazily and cached per session. `DropData`
+  accepts matching formats with a negotiated copy/move effect. The core
+  owns one live source, identified by a random token: backends transfer the
+  token as data, never a Go pointer. Only the core resolves it to the
+  original items and optional typed value, while the source lives. A
+  completion or cancellation invalidates the token and calls Done once.
+  `Surface.StartDataDrag`, `CancelDataDrag` and `SetDropFormats` translate
+  to AppKit sessions/pasteboard item providers, GTK selections, or OLE
+  IDataObject/IDropSource/IDropTarget. GTK collects accepted formats through
+  asynchronous callbacks after drop; OLE runs its native modal tracker
+  after the source input callback returns. None waits on the main thread
+  for data that needs that thread. Dropped bytes outlive native objects;
+  unhandled file transfers still reach the existing file-drop path, with
+  copy semantics. The unsupported backend cannot create windows/surfaces,
+  and continues to fail at Init without linking any native drag code.
 - **Grid views** (`ui/gridview.go`). A grid view is a `List` of rows of
   items, whose columns it takes from the width its rows had in the last
   frame: the layout asks for another frame when the width calls for
@@ -1982,8 +2091,7 @@ either.
     source until it has cached it; a library older than `shader.metal`
     falls back to that, and its test fails. It draws into a CAMetalLayer
     it adds to the surface view's layer. The command queue, shaders,
-    sampler and placeholder texture are made on demand: a window that
-    only presents CPU frames keeps the device and layer alone. Its frames
+    sampler and placeholder texture are made on demand. Its frames
     present with the Core Animation transaction (`presentsWithTransaction`) on
     macOS, so a live resize shows no stretched frames. iOS uses asynchronous
     command-buffer presentation and the default three drawables, paced by
@@ -1996,15 +2104,9 @@ either.
     driver frees its own memory of frames, a timer shrinks the drawables,
     which frees all but the one shown, until the next frame makes them
     again, and releases GPU instance buffers, atlas/image textures and
-    backdrop textures: an idle window keeps one frame of memory. It also
-    presents frames drawn on the CPU without the GPU (`PresentPixels`): it locks
-    the next drawable's IOSurface and copies what changed since the frame
-    drawn in memory that drawable holds (it keeps the damage of the last
-    four, and whether the GPU drew into a drawable since), all of it after
-    the GPU did, and presents it, with no command buffer: the driver
-    allocates its 32 to 44 MB only for frames that run on the GPU, and the
-    CPU draws a small change in a fraction of the time the GPU takes to
-    start. Its drawables are not `framebufferOnly` for that. Colors
+    backdrop textures: an idle window keeps one frame of memory. Its
+    drawables are not `framebufferOnly`, as effects sample the drawable
+    for their backdrops. Colors
     outside the sRGB gamut (`ui.Oklch`, as CSS's `oklch()`) are in a
     table of the scene (`scene.Scene.Wide`), which ops and glyphs point
     into with a 16-bit index (`Op.Wide`, in room the op's other fields
@@ -2037,19 +2139,12 @@ either.
     else OpenGL ES 3.0, as GPUs with OpenGL ES alone have, and so does
     the probe below (`glContext`).
 
-  Linux draws with OpenGL only where it runs on a GPU, and only once a
-  window needs it. A GL context loads Mesa for good: some 50 MB of
-  libraries (LLVM, which distributions' Mesa links, takes 19 MB as it
-  loads), its threads and heap, as much as the rest of a small app. So a
-  surface's GtkGLArea makes no context until the content asks for the GPU
-  (`platform.LazyGPUSurface`): its `create-context` handler stops the
-  signal, as GTK's own handler would make one, and the area paints frames
-  drawn in memory with cairo, in a window GTK paints without OpenGL.
-  `UseGPU` realizes the area anew, which makes the context, moving the
-  input method's focus with it, and lowers the area's new input window
-  under a hidden title bar's controls, which mapping it raised it over.
-  Before that, the backend makes one context,
-  on a window that never shows, and reads its renderer. A software
+  Linux draws with OpenGL only where it runs on a GPU. A GL context loads
+  Mesa for good: some 50 MB of libraries (LLVM, which distributions' Mesa
+  links, takes 19 MB as it loads), its threads and heap, as much as the
+  rest of a small app; the first window of native UI loads it.
+  Before a surface has one, the backend makes one context, on a window
+  that never shows, and reads its renderer. A software
   renderer such as Mesa's llvmpipe (in virtual machines, in WSL without
   `GALLIUM_DRIVER=d3d12`) redraws every pixel of every frame on the CPU,
   ten times the CPU renderer's work on an animated page; and once a window
@@ -2066,11 +2161,14 @@ either.
 
   `internal/raster` draws the same scene with the same formulas on the CPU,
   solid spans inside shapes and only the edges of shadows computed, and
+  blends ordinary opaque mask glyphs in integers, retaining the general
+  path for gradients, corrected/subpixel text and rounded clip edges. It
   redraws only what differs from the last scene (`raster.Renderer`), with
   the effects reading their backdrops that meets and those backdrops, in
   rectangles apart from each other (`addBackdrops`): it is
-  the renderer of tests, of `MYGO_GPU=0` and of Linux until a window needs
-  the GPU, and the one a window falls back to when its GPU renderer fails.
+  the renderer of tests, of `MYGO_GPU=0` and of Linux where OpenGL would not
+  run on a GPU, and the one a window falls back to when its GPU renderer
+  fails.
   Frames that are not the surface's (a capture before the first frame) are
   kept, not drawn: OpenGL's context is current only in the surface's. An
   area drawn goes through the operations whose bounds (those the damage is
@@ -2101,47 +2199,10 @@ either.
   signal, and repaints in the next frame what it changed outside GTK's
   clip.
 
-  Where the GPU renderer presents frames drawn in memory (Metal's), the
-  window host draws on the CPU the frames that change little, measuring
-  first what `raster.Renderer` would redraw and what changed since the
-  frame before (`Changes`): a frame after a pause of 50 ms or more, unless
-  it redraws more than 8 million pixels, and in a burst of frames one that
-  changes at most a sixteenth of the window: clocks, typing, the pointer
-  over a button, a progress bar. Scrolling, resizing and animations of
-  much of the window draw on the GPU, whose scenes the CPU's renderer
-  notes (`Skip`) to compare the next with, and redraws where its frame no
-  longer shows them: the first frame changing little draws on the CPU
-  again, catching up, so that a progress bar moving on after a page slid
-  in draws on the CPU though its frames never pause. Once the GPU has
-  drawn alone for a second, the host frees the pixels of the CPU's frame,
-  which keeps the scene to compare with (`ReleaseImage`) and draws whole
-  next. Frames that change little may still cost the CPU much, as an
-  animation repainting translucent layers over gradients and shadows at
-  the display's rate: the host measures the CPU's frames of each burst as
-  it does those of a lazy surface below (`cpuLoad`, `noteCPUFrame`), and
-  once they take more than a quarter of a burst lasting 250 ms or more,
-  the rest of the burst draws on the GPU, which Metal does in a millisecond
-  or two of the CPU's time; a pause of 50 ms after the last frame was done
-  starts a burst on the CPU again. A dot pulsing at 60 Hz in the headers of
-  a terminal's translucent panes took 4.0 to 4.5 CPU seconds over 10 s on
-  the CPU, and 1.5 to 1.8 this way. A frame the CPU draws that changes
-  nothing presents nothing. The
-  gallery, which updates once a second, takes 0.2 to 0.4% of a core and
-  67 to 77 MB on macOS this way, against 0.4 to 0.5% and 110 to 116 MB on
-  the GPU alone.
-
-  On a surface that gives the GPU on demand (Linux's), the host measures
-  how long drawing and presenting each frame in memory takes, over bursts
-  of frames each begun within 50 ms of the last one's end (`cpuLoad`),
-  however long they take. Once that is more than a quarter of a burst
-  lasting 250 ms or more, as scrolling or animating much of a large window
-  may on a slow CPU or a fast display, it asks for the GPU when the window
-  has been idle for 250 ms, so that loading the driver delays no frame, or
-  at once, after the frame, when the burst goes on for a second or its
-  frames take longer than a refresh of the display (`noteCPU`). The next
-  frame makes the GPU renderer; a surface without one to give is not asked
-  again. A whole frame of a window 1834×2044 pixels takes 3.4 ms on a
-  Ryzen 7 8745HS, so it stays in memory there at 60 Hz.
+  With a GPU renderer, every frame draws on the GPU, small changes too, so
+  a gesture never switches renderers mid-way: on the CPU, a frame
+  redrawing glass or a blur that content scrolls under takes 30 to 70 ms
+  on a large window, where Metal takes 2 to 3.
 
   Two seconds after the last frame (`frameIdle`), the host frees the frame
   drawn in memory, as large as the window, which the next frame draws whole,
@@ -2207,6 +2268,10 @@ renderer's (`gputest.Compare`).
   -tool`, or a `tool` line beside the `replace` of a checkout), for
   `go tool mygo dev` and `build`; no Bun. Without a frontend in the
   configuration, `bindings` stays empty and the CLI writes no client.
+- Both templates install the agent skills embedded under
+  `cmd/mygo/template/shared/.agents/skills`. `install-skills [dir]` refreshes
+  the same bundled files in an existing directory, without reading project
+  configuration or replacing unrelated skills and extra custom files.
 - The configuration is `mygo.config.ts`, or `mygo.json` (`config.go`,
   `config_ts.go`). For the former, Bun, else Node.js 22.6 or later (with
   `--experimental-strip-types` before 22.18 and 23.6), runs a loader that
@@ -2612,6 +2677,6 @@ which npm allows only for packages that exist: the first release uses an
 | custom scheme origin | `<scheme>://localhost` | `<scheme>://localhost` | `http://<scheme>.localhost` (the page's `location`) |
 | window.open | keeps the opener | independent window | independent window |
 | native UI surface | layer-backed NSView, frames from `CADisplayLink` (a timer at the display's rate before macOS 14), input methods through NSTextInputClient | GtkGLArea (GtkDrawingArea without a GPU), GtkIMMulticontext | `MyGoSurface` child window, IMM32 |
-| native UI file drops | NSDraggingDestination | GTK drag destination (`text/uri-list`) | OLE `IDropTarget` |
+| native UI data drags | NSDraggingSession, NSPasteboardItemDataProvider, NSDraggingDestination | GTK drag contexts, MIME selections, text/uri-list | OLE IDataObject, IDropSource, IDropTarget, Shell drag images |
 | native UI accessibility | `NSAccessibilityElement` subclasses | ATK objects (GObject types registered through purego), bridged to AT-SPI by GTK | UI Automation fragments (COM objects; assembly thunks for the methods taking doubles) |
 | native UI rendering | Metal, into a CAMetalLayer presenting with the Core Animation transaction | OpenGL 3.3 or ES 3.0 in the GtkGLArea's render signal; on the CPU, painted with cairo, where OpenGL runs on the CPU | Direct3D 11 (WARP without a GPU), flip-model swap chain |

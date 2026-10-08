@@ -242,6 +242,9 @@ func (e *Element) resolvedText() textStyle {
 		if take&setBackground != 0 {
 			out.background = t.background
 		}
+		if take&setSelection != 0 {
+			out.selection = t.selection
+		}
 		out.set |= take
 	}
 	return out
@@ -390,7 +393,7 @@ func contentHeight(e *Element, cw float32) float32 {
 		}
 		return 0
 	case kindInput:
-		return e.inputHeight()
+		return e.inputHeight(cw)
 	}
 	if f := e.list; f != nil && f.n > 0 {
 		// A List is as high as all its rows, as far as the heights known
@@ -425,6 +428,8 @@ func layoutBox(e *Element, w, h float32) {
 	cw, ch := max(w-e.padX(), 0), max(h-e.padY(), 0)
 	switch e.kind {
 	case kindText:
+		// Lists may build paragraphs while laying out, after the view's pass.
+		e.prepareSelectable()
 		e.tl = textSystem().Layout(e.textParams(max(cw, 1)))
 		if ed := e.st.editor; ed != nil && e.flags&flagSelectable != 0 {
 			// Selectable text hit-tests and selects in what it shows.

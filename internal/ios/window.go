@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/egoist/mygo/internal/platform"
+	"github.com/egoist/mygo/transfer"
 )
 
 type window struct {
@@ -113,3 +114,12 @@ func (w *window) Close() {
 
 var _ platform.Window = (*window)(nil)
 var _ platform.Surface = (*window)(nil)
+
+// Native desktop transfers are not available on the UIKit surface yet.
+func (*window) StartDataDrag(r platform.DragRequest) {
+	if r.Done != nil {
+		r.Done(transfer.Result{Err: platform.ErrUnsupported})
+	}
+}
+func (*window) CancelDataDrag()                  {}
+func (*window) SetDropFormats([]transfer.Format) {}

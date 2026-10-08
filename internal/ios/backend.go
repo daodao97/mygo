@@ -196,7 +196,7 @@ func goIOSText(id C.uint64_t, kind C.int, text *C.char, from, to, caret C.int) {
 			k = platform.TextComposition
 		}
 		if kind == 2 {
-			k = platform.TextSelection
+			k = platform.TextSelectionChanged
 		}
 		event := platform.SurfaceEvent{Kind: k, Text: C.GoString(text), Replace: kind < 3, Snapshot: kind == 0, From: int(from), To: int(to), Caret: int(caret)}
 		if kind == 4 || kind == 5 {

@@ -19,19 +19,20 @@ Usage:
 
 Commands:
 
-	init [dir]     create a new project (Go + TypeScript frontend built with Vite)
-	generate       write the typed TypeScript client for bound Go services
-	dev            run a development build with live reload
-	build          build production apps (a .app and a .dmg on macOS)
-	keygen         create the key pair that signs updates
-	doctor         check that the development environment is ready
-	ios            iOS artifact verification and platform tooling
-	version        print the MyGo version
+	init [dir]           create a new project (Go + TypeScript frontend built with Vite)
+	install-skills [dir] install or update the bundled MyGo agent skills
+	generate             write the typed TypeScript client for bound Go services
+	dev                  run a development build with live reload
+	build                build production apps (a .app and a .dmg on macOS)
+	keygen               create the key pair that signs updates
+	doctor               check that the development environment is ready
+	ios                  iOS artifact verification and platform tooling
+	version              print the MyGo version
 
 Run "mygo <command> -h" for the flags of a command.
 `
 
-const version = "0.2.16"
+const version = "0.2.18"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -47,6 +48,8 @@ func main() {
 	switch cmd {
 	case "init":
 		err = runInit(args)
+	case "install-skills":
+		err = runInstallSkills(args)
 	case "generate", "gen":
 		err = runGenerate(args)
 	case "dev":

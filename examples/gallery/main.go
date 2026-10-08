@@ -876,6 +876,13 @@ func (g *gallery) text(c *ui.Context) {
 		ui.Text(c, strings.Repeat("Long text wraps to the width it gets. ", 6)).TextColor(t.TextMuted)
 		ui.Text(c, strings.Repeat("A single line that ends with an ellipsis when it does not fit. ", 4)).SingleLine()
 	})
+	card(c, "Text selection", func() {
+		ui.Column(c).Selectable().Gap(12).Children(func() {
+			ui.Text(c, "Drag from this paragraph into the next, then copy the selected text.")
+			ui.RichText(c, ui.Span{Text: "Each paragraph keeps its own layout. "}, ui.Span{Text: "They share one selection.", Weight: 700})
+			ui.Text(c, "This hint is excluded from selection.").Unselectable().TextColor(t.TextMuted)
+		})
+	})
 }
 
 func (g *gallery) list(c *ui.Context) {

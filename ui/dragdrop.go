@@ -1,5 +1,7 @@
 package ui
 
+import "github.com/egoist/mygo/transfer"
+
 // Elements drag values to others within a window: Drag makes an element
 // the source of a value, which a press moving a few DIPs starts dragging,
 // with a copy of the element following the pointer; Drop and DragOver make
@@ -22,6 +24,7 @@ type valueDrag struct {
 	over     uint64
 	elem     *Element
 	canceled bool
+	native   bool
 }
 
 // Drag makes the element the source of value, dragged within the window
@@ -35,7 +38,9 @@ func (e *Element) Drag(value any) *Element {
 	if d := e.c.rt.drag; d != nil && d.src == e.id {
 		d.elem = e
 		// The value as the frame has it, as of rows that moved.
-		d.value = value
+		if !d.native {
+			d.value = value
+		}
 	}
 	return e
 }
@@ -81,6 +86,10 @@ func DragOver[T any](e *Element) (T, bool) {
 	var zero T
 	e.flags |= flagValueDrop
 	e.st.accepts = func(v any) bool { _, ok := v.(T); return ok }
+	if in := e.c.rt.incoming; in != nil && e.c.rt.dataOver == e.id {
+		v, ok := in.Local.(T)
+		return v, ok
+	}
 	d := e.c.rt.drag
 	if d == nil || d.canceled || d.over != e.id {
 		return zero, false
@@ -103,7 +112,7 @@ func (rt *engine) valueTarget(x, y float32, value any) uint64 {
 // far enough, and follows the element under it.
 func (rt *engine) dragMove(x, y float32) {
 	s := rt.pressed
-	if s == nil || rt.pressButton != 0 || (s.dragValue == nil && s.dragFn == nil) {
+	if s == nil || rt.pressButton != 0 || (s.dragValue == nil && s.dragFn == nil && s.dataSource == nil) {
 		return
 	}
 	d := rt.drag
@@ -116,11 +125,40 @@ func (rt *engine) dragMove(x, y float32) {
 		if s.dragFn != nil {
 			value = s.dragFn()
 		}
-		if value == nil {
+		if value == nil && s.dataSource == nil {
 			return
 		}
 		d = &valueDrag{src: s.id, value: value, offX: s.pressX, offY: s.pressY}
 		rt.drag = d
+		if src := s.dataSource; src != nil {
+			d.native = true
+			options := src.options
+			if options.Preview == nil {
+				options.Preview, options.Hotspot = rt.dataPreview(s)
+			}
+			done := options.Done
+			options.Done = func(result transfer.Result) {
+				rt.drag = nil
+				if p := rt.pressed; p != nil {
+					p.pressed = false
+					rt.pressed = nil
+				}
+				rt.clearDataOver()
+				if !rt.closed {
+					rt.requestFrame()
+				}
+				if done != nil {
+					done(result)
+				}
+			}
+			if err := rt.host.startDataDrag(src.data(), value, options, x, y); err != nil {
+				options.Done(transfer.Result{Err: err})
+			}
+			return
+		}
+	}
+	if d.native {
+		return
 	}
 	if d.canceled {
 		return
@@ -136,6 +174,9 @@ func (rt *engine) dragEnd() bool {
 	if d == nil {
 		return false
 	}
+	if d.native {
+		return true
+	}
 	rt.drag = nil
 	if !d.canceled {
 		if t := rt.states[rt.valueTarget(rt.pointerX, rt.pointerY, d.value)]; t != nil {
@@ -150,6 +191,10 @@ func (rt *engine) dragEnd() bool {
 // dragCancel gives up the drag, as Escape does.
 func (rt *engine) dragCancel() bool {
 	if d := rt.drag; d != nil && !d.canceled {
+		if d.native {
+			rt.host.cancelDataDrag()
+			return true
+		}
 		d.canceled, d.over = true, 0
 		rt.requestFrame()
 		return true
@@ -161,7 +206,7 @@ func (rt *engine) dragCancel() bool {
 // is dragged near one of its edges, faster nearer to it.
 func (rt *engine) dragScroll() {
 	d := rt.drag
-	if d == nil || d.canceled {
+	if d == nil || d.canceled || d.native {
 		return
 	}
 	const edge = 32
@@ -190,7 +235,7 @@ func (rt *engine) dragScroll() {
 // pointer, above the rest.
 func (rt *engine) paintDrag(p *Painter, w, h float32) {
 	d := rt.drag
-	if d == nil || d.canceled || d.elem == nil || d.elem.c == nil {
+	if d == nil || d.canceled || d.native || d.elem == nil || d.elem.c == nil {
 		return
 	}
 	e := d.elem

@@ -441,7 +441,7 @@ func (rt *engine) accessDetails(e *Element, n *platform.AccessNode) {
 		if ed.password {
 			n.States |= platform.AccessPassword
 		} else {
-			n.Value = ed.buf.s
+			n.Value = ed.buf.string()
 			n.SelStart, n.SelEnd = ed.selection()
 		}
 	}

@@ -59,12 +59,33 @@ icon. The module has the CLI as a [tool](https://go.dev/doc/modules/managing-dep
 so `go tool mygo dev` and `go tool mygo build` run the version it pins,
 without Bun. See [native UI](getting-started.md#native-ui).
 
+Both templates include the `mygo-maintenance` agent skill in
+`.agents/skills/mygo-maintenance/`, with guidance on element lifetimes,
+stable identity, threading, and testing when maintaining the app.
+
 | Flag | |
 |---|---|
 | `-template` | `web`, a TypeScript frontend (the default), or `native`, native UI in Go |
 | `-name` | the app's name (default: the directory's name) |
 | `-module` | the Go module path (default: the directory's name) |
 | `-mygo` | a checkout of MyGo to use, through a `replace` directive, instead of the released module; the scripts then run the checkout's CLI with `go run`; run `bun install && bun run build` in the checkout first, for the web template |
+
+## mygo install-skills
+
+```sh
+mygo install-skills [dir]
+```
+
+Installs or updates the agent skills bundled with the CLI version you run
+in an existing project's `.agents/skills/`. The directory defaults to the
+current directory; no project configuration, Go build, or frontend tools
+are needed. New projects receive these skills through `mygo init` too.
+
+The command overwrites bundled files such as
+`mygo-maintenance/SKILL.md` and `mygo-maintenance/agents/openai.yaml`,
+including local edits to those files. Other skills and extra custom files
+are preserved. Upgrade the CLI, then run the command again to refresh its
+guidance.
 
 ## mygo dev
 

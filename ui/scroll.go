@@ -43,6 +43,9 @@ func (e *Element) TrackScroll(s *ScrollState) *Element {
 // as when it is added or chosen: in every frame, it would keep the user
 // from scrolling it away.
 func (e *Element) ScrollIntoView() *Element {
+	if !e.hasState() {
+		return e
+	}
 	e.c.reveal = append(e.c.reveal, e)
 	return e
 }

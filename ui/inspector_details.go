@@ -351,6 +351,9 @@ func textStyles(ts *textStyle, set uint16) []inspDecl {
 	if set&setBackground != 0 {
 		ds = append(ds, inspDecl{name: "background-color", value: colorText(ts.background), color: ts.background, swatch: true})
 	}
+	if set&setSelection != 0 {
+		ds = append(ds, inspDecl{name: "selection-color", value: colorText(ts.selection), color: ts.selection, swatch: true})
+	}
 	return ds
 }
 

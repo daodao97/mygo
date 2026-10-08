@@ -7,6 +7,18 @@ something animates. Elements live for one frame: the state that lasts is
 yours, in your own types, plus what MyGo keeps for each element from frame
 to frame (focus, hover, scrolling, the text being edited, animations).
 
+Keep `*ui.Context` and `*ui.Element` out of app state and background work.
+A frame can rebuild the view several times; each pass creates its own
+elements, and a pointer from an earlier pass may be cleared or reused for
+another element. Checking that it is non-nil does not establish its
+lifetime. Keep semantic keys, pending actions and widget state instead.
+For a list's focus and shortcuts, use its [ListState](list.md#the-focus).
+
+Common input queries such as `Clicked`, `Focused`, `FocusWithin` and
+`Shortcut` return false for nil or cleared elements. Refresh any optional
+element variables within each build; these checks cannot identify a
+pointer whose storage has been reused.
+
 ```go
 // todoList is the app's state, which lasts.
 type todoList struct {

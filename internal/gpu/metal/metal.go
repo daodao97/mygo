@@ -106,9 +106,6 @@ var (
 
 	dispatchDataCreate, dispatchRelease uintptr
 
-	// IOSurface's functions, for frames drawn in memory.
-	ioSurfaceLock, ioSurfaceUnlock, ioSurfaceBaseAddress, ioSurfaceBytesPerRow, ioSurfaceID uintptr
-
 	// Timers that trim the drawables of renderers drawing nothing for a
 	// while (see trim), by the handle in their info.
 	cfAbsoluteTimeGetCurrent      func() float64
@@ -163,15 +160,9 @@ func load() error {
 		colorSpace := sym(cg, "CGColorSpaceCreateWithName")
 		system := lib("/usr/lib/libSystem.B.dylib")
 		cf := lib("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
-		ioSurface := lib("/System/Library/Frameworks/IOSurface.framework/IOSurface")
 		if errLoad != nil {
 			return
 		}
-		ioSurfaceLock = sym(ioSurface, "IOSurfaceLock")
-		ioSurfaceUnlock = sym(ioSurface, "IOSurfaceUnlock")
-		ioSurfaceBaseAddress = sym(ioSurface, "IOSurfaceGetBaseAddress")
-		ioSurfaceBytesPerRow = sym(ioSurface, "IOSurfaceGetBytesPerRow")
-		ioSurfaceID = sym(ioSurface, "IOSurfaceGetID")
 		dispatchDataCreate = sym(system, "dispatch_data_create")
 		dispatchRelease = sym(system, "dispatch_release")
 		timeNow := sym(cf, "CFAbsoluteTimeGetCurrent")
@@ -356,16 +347,6 @@ type Renderer struct {
 	err     error
 	checked bool
 
-	// Frames drawn in memory (PresentPixels): pixelFrames counts them,
-	// pixelDamage has what each of the last changed, and shown the frame
-	// each drawable holds, by the ID of its IOSurface, unless the GPU drew
-	// into it since.
-	pixelFrames uint64
-	pixelDamage [pixelHistory][]image.Rectangle
-	shown       map[uint32]uint64
-	// lastGPU is when the GPU last drew a frame.
-	lastGPU time.Time
-
 	// lastRender is when the last frame drew; trimTimer trims the
 	// drawables once none has for a while, armed until it fires, and
 	// trimmed is whether it did.
@@ -403,8 +384,8 @@ func New(layer uintptr) (r *Renderer, err error) {
 		}
 		send(ml, "setDevice:", r.device)
 		send(ml, "setPixelFormat:", pixelFormatBGRA8Unorm)
-		// Frames drawn in memory are copied into drawables, which the
-		// CPU writes then.
+		// Effects read their backdrops from the drawable, which their
+		// passes sample then.
 		send(ml, "setFramebufferOnly:", 0)
 		// Desktop frames synchronize with live resize and use two
 		// drawables to spare a frame of memory. iOS frames are paced by
@@ -556,7 +537,6 @@ func (r *Renderer) setLayerWide(on bool) {
 	send(r.layer, "setColorspace:", space)
 	send(tx, "commit")
 	r.layerWide = on
-	clear(r.shown)
 }
 
 // newPipeline returns a pipeline drawing instances with the vertex
@@ -990,11 +970,6 @@ func (r *Renderer) render(s *scene.Scene) error {
 		return nil // none came within a second: skip the frame
 	}
 	texture := send(drawable, "texture")
-	// The GPU draws all of the drawable, which holds no frame drawn in
-	// memory anymore.
-	if surface := send(texture, "iosurface"); surface != 0 {
-		delete(r.shown, surfaceID(surface))
-	}
 	cb, err := r.encode(s, texture)
 	if err != nil {
 		return err
@@ -1015,7 +990,6 @@ func (r *Renderer) render(s *scene.Scene) error {
 	}
 	r.last = send(cb, "retain")
 	r.lastRender = time.Now()
-	r.lastGPU = r.lastRender
 	r.armTrim()
 	// Forget the textures of images no frame drew for a while.
 	if r.frame%120 == 0 {
@@ -1045,84 +1019,10 @@ func (r *Renderer) fit(w, h int, scale float64) {
 	msgSetSize(r.layer, sel("setDrawableSize:"), cgSize{float64(w), float64(h)})
 	send(tx, "commit")
 	r.w, r.h, r.scale, r.bounds, r.trimmed = w, h, scale, bounds, false
-	clear(r.shown) // new drawables
 }
 
-// pixelHistory is how many frames drawn in memory a drawable may lag
-// behind for PresentPixels to copy only what changed since.
-const pixelHistory = 4
-
-// PresentPixels shows a frame drawn in memory without the GPU, which takes
-// longer to start than the CPU takes to draw small changes, and whose
-// driver holds memory for a couple of seconds after each frame it draws.
-// pix holds rows of stride bytes of premultiplied BGRA, width×height pixels
-// at scale, and damage is where it changed since the last frame drawn in
-// memory. Only what changed since the frame the next drawable holds goes
-// into it, through its IOSurface.
-func (r *Renderer) PresentPixels(pix []byte, stride, width, height int, scale float64, damage []image.Rectangle) (err error) {
-	if width <= 0 || height <= 0 || r.layer == 0 {
-		return nil
-	}
-	if ioSurfaceLock == 0 || len(pix) < (height-1)*stride+width*4 {
-		return errors.New("metal: cannot present pixels")
-	}
-	pool(func() { err = r.presentPixels(pix, stride, width, height, scale, damage) })
-	return err
-}
-
-func (r *Renderer) presentPixels(pix []byte, stride, width, height int, scale float64, damage []image.Rectangle) error {
-	r.waitLast()
-	if r.err != nil {
-		return r.err
-	}
-	if scale <= 0 {
-		scale = 1
-	}
-	r.setLayerWide(false)
-	r.fit(width, height, scale)
-	r.pixelFrames++
-	n := r.pixelFrames
-	r.pixelDamage[n%pixelHistory] = append(r.pixelDamage[n%pixelHistory][:0], damage...)
-	drawable := send(r.layer, "nextDrawable")
-	if drawable == 0 {
-		return nil // none came within a second: skip the frame
-	}
-	surface := send(send(drawable, "texture"), "iosurface")
-	if surface == 0 {
-		return errors.New("metal: a drawable without an IOSurface")
-	}
-	if kr, _, _ := purego.SyscallN(ioSurfaceLock, surface, 0, 0); kr != 0 {
-		return fmt.Errorf("metal: cannot lock a drawable (%#x)", kr)
-	}
-	base, _, _ := purego.SyscallN(ioSurfaceBaseAddress, surface)
-	bpr, _, _ := purego.SyscallN(ioSurfaceBytesPerRow, surface)
-	dst := unsafe.Slice((*byte)(ptr(base)), int(bpr)*height)
-	key := surfaceID(surface)
-	frame := image.Rect(0, 0, width, height)
-	for _, rc := range r.changedSince(key, n, width, height) {
-		copyRect(dst, int(bpr), pix, stride, rc.Intersect(frame))
-	}
-	purego.SyscallN(ioSurfaceUnlock, surface, 0, 0)
-	if r.shown == nil {
-		r.shown = map[uint32]uint64{}
-	}
-	r.shown[key] = n
-	if r.presentationHook != nil {
-		r.presentationHook(drawable)
-	}
-	send(drawable, "present")
-	r.lastRender = time.Now()
-	r.armTrim()
-	if !r.lastGPU.IsZero() && r.lastRender.Sub(r.lastGPU) > trimAfter {
-		r.releaseTextures()
-		r.lastGPU = time.Time{}
-	}
-	return nil
-}
-
-// releaseTextures frees what only frames the GPU draws use, once the
-// window is idle or only frames drawn in memory came for a while. The next
-// frame the GPU draws makes them again, uploading the atlases whole.
+// releaseTextures frees what the GPU's frames use, once the window is
+// idle. The next frame makes them again, uploading the atlases whole.
 func (r *Renderer) releaseTextures() {
 	release(&r.mask.tex)
 	release(&r.color.tex)
@@ -1139,34 +1039,6 @@ func (r *Renderer) releaseTextures() {
 		}
 	}
 	r.b = gpu.Builder{}
-}
-
-// changedSince returns what changed between the frame drawn in memory the
-// drawable of IOSurface key holds and frame n: everything when it holds
-// none or one too old.
-func (r *Renderer) changedSince(key uint32, n uint64, width, height int) []image.Rectangle {
-	shown, ok := r.shown[key]
-	if !ok || n-shown > pixelHistory {
-		return []image.Rectangle{image.Rect(0, 0, width, height)}
-	}
-	var rects []image.Rectangle
-	for k := shown + 1; k <= n; k++ {
-		rects = append(rects, r.pixelDamage[k%pixelHistory]...)
-	}
-	return rects
-}
-
-// copyRect copies rc of src, rows of srcStride bytes of 4-byte pixels,
-// into dst, rows of dstStride bytes. Both hold rc.
-func copyRect(dst []byte, dstStride int, src []byte, srcStride int, rc image.Rectangle) {
-	for y := rc.Min.Y; y < rc.Max.Y; y++ {
-		copy(dst[y*dstStride+rc.Min.X*4:y*dstStride+rc.Max.X*4], src[y*srcStride+rc.Min.X*4:])
-	}
-}
-
-func surfaceID(surface id) uint32 {
-	n, _, _ := purego.SyscallN(ioSurfaceID, surface)
-	return uint32(n)
 }
 
 // trimAfter is how long a window draws nothing before its spare drawables
@@ -1218,7 +1090,6 @@ func (r *Renderer) trim() {
 	pool(func() {
 		r.waitLast()
 		r.releaseTextures()
-		r.lastGPU = time.Time{}
 		tx := class("CATransaction")
 		send(tx, "begin")
 		send(tx, "setDisableActions:", 1)
@@ -1226,7 +1097,6 @@ func (r *Renderer) trim() {
 		send(tx, "commit")
 	})
 	r.trimmed = true
-	clear(r.shown)
 }
 
 // renderOffscreen draws s into a texture of its own and returns its

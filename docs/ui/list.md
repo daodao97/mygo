@@ -144,6 +144,37 @@ See [drag and drop](drag-and-drop.md).
 
 ## The focus
 
+`ListState.Focused(c)` reports focus on the list itself, and
+`FocusWithin(c)` includes its descendants. `Shortcut(c, mods, key)` handles
+a key while the focus is in the list, and `Focus(c)` gives it focus and
+reports whether it was built. They also work with a `Table` or an
+`Outline`'s `List` state.
+
+Call these methods after building the list, or inside its row builder:
+they resolve only the current build pass. A hidden list reports false,
+takes no focus and registers no shortcuts, without needing to keep or
+reset an `*ui.Element` field. Row builders can query focus before `List`
+returns:
+
+```go
+ui.List(c, &app.list, len(app.files), func(i int) {
+	row := ui.Text(c, app.files[i].Name).Padding(6, 12)
+	if i == app.current && app.list.FocusWithin(c) {
+		row.TextColor(c.Theme().Accent)
+	}
+}).Grow(1)
+if app.focusFiles && app.list.Focus(c) {
+	app.focusFiles = false
+}
+if app.list.Shortcut(c, ui.Cmd, ui.KeyK) {
+	app.openCurrentFile()
+}
+```
+
+Keep a focus request pending until `Focus(c)` returns true when a loading
+or empty view temporarily leaves out the list. Process its shortcuts
+after the part of the view that conditionally builds it.
+
 The row holding the keyboard focus stays built when it scrolls out of view,
 so that what is being edited in it stays, and Tab moves the focus from row
 to row, scrolling them into view.

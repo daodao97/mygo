@@ -140,10 +140,10 @@ func (p *Painter) element(e *Element) {
 		case kindText:
 			ts := e.resolvedText()
 			ox, oy := e.x+e.contentX(), e.y+e.contentY()
-			if ed := e.st.editor; ed != nil && e.flags&flagSelectable != 0 && e.Focused() {
+			if ed := e.st.editor; ed != nil && e.flags&flagSelectable != 0 && p.rt.textSelectionVisible(e.st) {
 				if a, b := ed.selection(); a != b {
 					for _, r := range e.tl.Selection(a, b) {
-						p.Fill(Rect{ox + r.X, oy + r.Y, r.W, r.H}, e.c.theme.Selection, 0)
+						p.Fill(Rect{ox + r.X, oy + r.Y, r.W, r.H}, ts.selectionColor(e.c.theme), 0)
 					}
 				}
 			}
@@ -741,7 +741,7 @@ type scrollGeometry struct {
 // edges by inset (top, right, bottom, left, ScrollbarInsets): those of the
 // directions its flags scroll that overflow, which leave each other the
 // corner where both show.
-func scrollBars(box Rect, inset [4]float32, w, h, x, y float32, flags uint32, width float32) scrollGeometry {
+func scrollBars(box Rect, inset [4]float32, w, h, x, y float32, flags uint64, width float32) scrollGeometry {
 	var g scrollGeometry
 	if flags&flagHideScrollbars != 0 {
 		return g

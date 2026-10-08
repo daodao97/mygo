@@ -22,6 +22,9 @@
 // input, such as Clicked, where they are built. What an element keeps
 // between frames (focus, scrolling, text being edited, animations) follows
 // its position among its siblings, or its Key.
+// Context and Element are temporary build objects: do not save them in
+// app state or use them from background goroutines. Lists expose their
+// current build's focus and shortcuts through the app's ListState.
 //
 // Widgets take the theme's look, whose Spacing sizes them all. Each is
 // built on a base without a look, such as ButtonBase, CheckboxBase,

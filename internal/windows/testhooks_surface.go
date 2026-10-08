@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/egoist/mygo/internal/platform"
+	"github.com/egoist/mygo/transfer"
 )
 
 // Hooks for tests of native UI with input methods, file drops and
@@ -172,6 +173,28 @@ func TestDropFiles(hwnd uintptr, x, y float64, paths []string) (over, dropped bo
 	effect = all
 	comCall(s.dropTarget, 6, data, 0, pl, uintptr(unsafe.Pointer(&effect))) // Drop
 	return over, effect == dropEffectCopy
+}
+
+// TestDropData uses the production IDataObject and OLE destination with
+// no process-local token, exercising serialized data and delayed rendering.
+func TestDropData(hwnd uintptr, x, y float64, d transfer.Data, ops transfer.Operation) (operation transfer.Operation, dropped bool) {
+	s := surfaceByHandle(hwnd)
+	if s == nil {
+		return
+	}
+	data := newDragData(platform.DragRequest{Data: d.Snapshot()})
+	defer release(data)
+	scale := float64(s.dpi()) / 96
+	pt := point{int32(x * scale), int32(y * scale)}
+	procClientToScreen.Call(s.hwnd, uintptr(unsafe.Pointer(&pt)))
+	pl := uintptr(uint32(pt.X)) | uintptr(uint32(pt.Y))<<32
+	effect := uint32(ops)
+	comCall(s.dropTarget, 3, data, 0, pl, uintptr(unsafe.Pointer(&effect)))
+	operation = transfer.Operation(effect)
+	effect = uint32(ops)
+	comCall(s.dropTarget, 6, data, 0, pl, uintptr(unsafe.Pointer(&effect)))
+	dropped = effect != 0
+	return
 }
 
 // TestAccessNode is an element of native UI as UI Automation reads it: the

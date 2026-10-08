@@ -3,6 +3,12 @@
 Elements report what the user did to them since the last frame, as you
 build them: ask, and handle it where the element is built.
 
+The pointer and focus queries below, `Shortcut`, `Changed` and `Submitted`
+return false or zero for nil or cleared elements; `Focus` and `AutoFocus`
+do nothing. Element storage can also be reused, so keep element variables
+local to the current build. A [ListState](list.md#the-focus) gives access to
+its current list's focus and shortcuts without a saved element pointer.
+
 ```go
 card := ui.Column(c).Padding(12).Radius(8).Focusable()
 if card.Hovered() {
@@ -18,7 +24,10 @@ if card.DoubleClicked() {
 `Hovered`, `Pressed`, `Clicked`, `DoubleClicked`, `RightClicked`, `Dragged`
 (how far the pointer moved since the last frame while pressing the
 element) and `PointerPosition`. `ClickModifiers` returns the modifier keys
-held for the last click, as Shift for a Shift-click. `PassThrough` lets the
+held for the last click, as Shift for a Shift-click. `c.Modifiers()` returns the modifier
+keys held now, as one goes down or up on its own too, and the view draws
+again as they change: a list showing each row's Cmd+1–9 while Cmd is held
+reads it. `PassThrough` lets the
 pointer through to what is below.
 
 Elements that take the pointer give it to the innermost under it: a button
@@ -122,7 +131,8 @@ if zone.FileDragOver() {
 }
 ```
 
-Values dragged within the window are [drag and drop](drag-and-drop.md).
+Values dragged within or between windows, and serialized data exchanged
+with other applications, are [drag and drop](drag-and-drop.md).
 
 ## Every key, as it comes
 

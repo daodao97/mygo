@@ -3,11 +3,14 @@ package ui
 import (
 	"image"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
+	"unsafe"
 	"weak"
 
 	"github.com/egoist/mygo/internal/scene"
+	"github.com/egoist/mygo/internal/text"
 )
 
 // Removed elements must give up their resources while the window stays
@@ -72,4 +75,97 @@ func TestElementArenaFollowsViewSize(t *testing.T) {
 	if n := testing.AllocsPerRun(20, tt.Frame); n > 2 {
 		t.Fatalf("the steady view allocates %.0f times per frame", n)
 	}
+}
+
+func editorWithLargeText() (*editor, weak.Pointer[byte]) {
+	ed := newEditor()
+	ed.multiline = true
+	ed.buf.set(strings.Repeat("a", 64<<10))
+	return ed, weak.Make(unsafe.StringData(ed.buf.s))
+}
+
+// A deletion's undo holds its removed bytes, not every old document that
+// contains them. Undo and redo must still restore the exact text.
+func TestEditorUndoReleasesOldDocument(t *testing.T) {
+	ed, old := editorWithLargeText()
+	ed.deleteRange(10, 11)
+	runtime.GC()
+	if old.Value() != nil {
+		t.Fatal("a one-character deletion keeps the old document alive")
+	}
+	ed.takeBack(false)
+	if ed.buf.s != strings.Repeat("a", 64<<10) {
+		t.Fatal("undo did not restore the document")
+	}
+	ed.takeBack(true)
+	if len(ed.buf.s) != (64<<10)-1 {
+		t.Fatal("redo did not restore the deletion")
+	}
+	runtime.KeepAlive(ed)
+}
+
+func editorWithLargeRedo() (*editor, weak.Pointer[byte]) {
+	ed := newEditor()
+	ed.multiline = true
+	ed.buf.set("small")
+	s := strings.Repeat("x", 64<<10)
+	old := weak.Make(unsafe.StringData(s))
+	ed.insert(s)
+	ed.takeBack(false)
+	return ed, old
+}
+
+func TestEditorDiscardedRedoReleasesDocument(t *testing.T) {
+	ed, old := editorWithLargeRedo()
+	ed.insert("z")
+	runtime.GC()
+	if old.Value() != nil {
+		t.Fatal("discarded redo still keeps its document alive")
+	}
+	if len(ed.redo) != 0 {
+		t.Fatal("an edit did not discard redo")
+	}
+	runtime.KeepAlive(ed)
+}
+
+func editorWithLargeIndexes() (*editor, weak.Pointer[paragraph], weak.Pointer[float64]) {
+	ed := newEditor()
+	ed.buf.set(strings.Repeat("a\n", 10000))
+	ed.area = &area{}
+	ed.area.hs.reset(ed.buf.paras)
+	return ed, weak.Make(&ed.buf.paras[0]), weak.Make(&ed.area.hs.measured[0])
+}
+
+func TestEditorSmallDocumentReleasesIndexes(t *testing.T) {
+	ed, paragraphs, heights := editorWithLargeIndexes()
+	ed.setText("small\nfile")
+	ed.area.hs.reset(ed.buf.paras)
+	runtime.GC()
+	if paragraphs.Value() != nil || heights.Value() != nil {
+		t.Fatal("the small document keeps the old paragraph or height index")
+	}
+	runtime.KeepAlive(ed)
+}
+
+func editorWithParagraphLayout() (*editor, weak.Pointer[byte]) {
+	ed := newEditor()
+	ed.multiline = true
+	ed.buf.set(strings.Repeat("short line\n", 10000))
+	ed.area = &area{params: text.Params{Style: text.Style{Size: 14}}, version: ed.buf.version}
+	ed.area.hs.reset(ed.buf.paras)
+	ed.area.paraLayout(ed, 5)
+	return ed, weak.Make(unsafe.StringData(ed.buf.s))
+}
+
+func TestEditorParagraphLayoutReleasesOldDocument(t *testing.T) {
+	ed, old := editorWithParagraphLayout()
+	ed.deleteRange(1, 2)
+	runtime.GC()
+	if old.Value() != nil {
+		t.Fatal("an unchanged paragraph's layout keeps the old document alive")
+	}
+	if ed.buf.paras[5].layout == nil {
+		t.Fatal("the edit discarded the unchanged paragraph's layout")
+	}
+	runtime.KeepAlive(ed)
 }

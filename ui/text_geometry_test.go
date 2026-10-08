@@ -14,7 +14,7 @@ func (*selectionTestHost) nativeTextSelection() bool { return true }
 
 func TestReadOnlyNativeSelection(t *testing.T) {
 	const text = "Read-only text: Hello MyGo 👋 中文"
-	tt := NewTester(func(c *Context) {
+	tt := snapshotTester(func(c *Context) {
 		Text(c, text).Selectable().Label("sample").Width(280)
 	}, 320, 100)
 	tt.rt.host = &selectionTestHost{tt.h}
@@ -23,7 +23,7 @@ func TestReadOnlyNativeSelection(t *testing.T) {
 	if !state.Active || !state.ReadOnly || state.ID == 0 || state.Text != text {
 		t.Fatalf("missing read-only selection proxy: %+v", state)
 	}
-	tt.send(platform.SurfaceEvent{Kind: platform.TextSelection, From: 16, To: 21})
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: 16, To: 21})
 	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "copy"})
 	if tt.h.clipboard != "Hello" {
 		t.Fatalf("native read-only selection was not retained: %q", tt.h.clipboard)
@@ -51,7 +51,7 @@ func TestTextGeometryUsesVisibleGoLayout(t *testing.T) {
 			if multiline {
 				value += "\nSecond line with emoji 👋\nThird line"
 			}
-			tt := NewTester(func(c *Context) {
+			tt := snapshotTester(func(c *Context) {
 				Column(c).Padding(17).Children(func() {
 					var e *Element
 					if multiline {
@@ -101,7 +101,7 @@ func TestTextGeometryUsesVisibleGoLayout(t *testing.T) {
 }
 
 func TestCustomTextCaretDoesNotEnableNativeSelection(t *testing.T) {
-	tt := NewTester(func(c *Context) {
+	tt := snapshotTester(func(c *Context) {
 		Box(c).Size(200, 60).Focusable().AutoFocus().HandleInput(func(InputEvent) bool { return true }).TextCaret(Rect{10, 10, 1, 20})
 	}, 300, 100)
 	if !tt.h.ime.Active || tt.h.ime.ID != 0 || tt.h.ime.Bounds != (platform.RectF{}) {
@@ -111,7 +111,7 @@ func TestCustomTextCaretDoesNotEnableNativeSelection(t *testing.T) {
 
 func TestNativeSelectionGeometryKeepsLargeAreaVirtual(t *testing.T) {
 	value := strings.Repeat("A long document with 中文 👋\n", 2000)
-	tt := NewTester(func(c *Context) { TextArea(c, &value).Size(260, 120).AutoFocus() }, 300, 180)
+	tt := snapshotTester(func(c *Context) { TextArea(c, &value).Size(260, 120).AutoFocus() }, 300, 180)
 	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "selectAll"})
 	ed := tt.rt.states[tt.rt.focused].editor
 	before := ed.area.laid
@@ -121,7 +121,7 @@ func TestNativeSelectionGeometryKeepsLargeAreaVirtual(t *testing.T) {
 	}
 	// A native handle moving below the viewport should reveal the endpoint
 	// through Go scrolling, without scrolling TextKit's invisible document.
-	tt.send(platform.SurfaceEvent{Kind: platform.TextSelection, From: 0, To: 400})
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: 0, To: 400})
 	if ed.area.scroll <= 0 {
 		t.Fatal("native selection did not reveal the endpoint")
 	}
@@ -129,7 +129,7 @@ func TestNativeSelectionGeometryKeepsLargeAreaVirtual(t *testing.T) {
 
 func TestTextSelectionGeometryDirection(t *testing.T) {
 	value := "مرحبا بالعالم"
-	tt := NewTester(func(c *Context) { TextInput(c, &value).Width(260).AutoFocus() }, 300, 100)
+	tt := snapshotTester(func(c *Context) { TextInput(c, &value).Width(260).AutoFocus() }, 300, 100)
 	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "selectAll"})
 	g := tt.rt.textGeometry(platform.TextGeometryQuery{ID: tt.h.ime.ID, Kind: "selection", End: utf8.RuneCountInString(value)})
 	if !g.Valid || len(g.Rects) == 0 {
@@ -144,7 +144,7 @@ func TestTextSelectionGeometryDirection(t *testing.T) {
 
 func TestTextGeometrySurroundingWindowAndPassword(t *testing.T) {
 	value, password := strings.Repeat("中文👋 ", 400), false
-	tt := NewTester(func(c *Context) {
+	tt := snapshotTester(func(c *Context) {
 		e := TextInput(c, &value).Label("Editor").Width(260).AutoFocus()
 		if password {
 			e.Password()
@@ -172,4 +172,14 @@ func TestTextGeometrySurroundingWindowAndPassword(t *testing.T) {
 	if tt.h.ime.Text != "" || tt.rt.textGeometry(platform.TextGeometryQuery{ID: tt.h.ime.ID, Kind: "caret"}).Valid {
 		t.Fatal("password exposed text or geometry")
 	}
+}
+
+type snapshotTestHost struct{ *headless }
+
+func (*snapshotTestHost) snapshotTextInput() bool { return true }
+func snapshotTester(view func(*Context), width, height int) *Tester {
+	tt := NewTester(view, width, height)
+	tt.rt.host = &snapshotTestHost{tt.h}
+	tt.Frame()
+	return tt
 }

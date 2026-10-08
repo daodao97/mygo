@@ -193,7 +193,7 @@ func (e *Element) Modal() *Element {
 //		app.open = false
 //	}
 func (e *Element) OverlayShortcut(mods Modifiers, key Key) bool {
-	if e.c.inert {
+	if !e.hasState() || e.c.inert {
 		return false
 	}
 	return e.c.rt.overlayShortcut(e, mods, key)
@@ -206,6 +206,9 @@ func (e *Element) OverlayShortcut(mods Modifiers, key Key) bool {
 // closes then, the press going on to what is under the pointer, as
 // PopoverBase does.
 func (e *Element) PressedOutside() bool {
+	if !e.hasState() {
+		return false
+	}
 	rt := e.c.rt
 	for _, id := range rt.downs {
 		if !rt.pressedWithin(id, e) {

@@ -256,7 +256,7 @@ func TestPictureOfAWideColor(t *testing.T) {
 
 // wideGPU is a GPU renderer that draws wide colors, as Metal's does.
 type wideGPU struct {
-	pixelGPU
+	testGPU
 	can, wide bool
 	set       []bool
 }
@@ -277,9 +277,8 @@ func (s *wideSurface) WideGamut() bool { return s.wide }
 
 var _ platform.WideGamutSurface = (*wideSurface)(nil)
 
-// TestWideFramesOnGPU checks that frames with wide colors draw on the GPU
-// in a wide gamut, only on a screen showing one, and for a while after the
-// last, and on the CPU otherwise.
+// TestWideFramesOnGPU checks that frames with wide colors draw in a wide
+// gamut, only on a screen showing one, and for a while after the last.
 func TestWideFramesOnGPU(t *testing.T) {
 	for _, c := range []struct {
 		name        string
@@ -299,16 +298,13 @@ func TestWideFramesOnGPU(t *testing.T) {
 				})
 			}, h)
 			wide := c.screen && c.can
-			step := func(what string, show, gpu bool) {
+			step := func(what string, show, inWide bool) {
 				t.Helper()
 				caret = show
-				h.lastFrame = time.Now().Add(-time.Second) // after a pause
-				pixels, frames := g.pixels, g.frames
+				frames := g.frames
 				frame()
-				// A frame like the one the CPU drew last is not drawn again.
-				onCPU := g.pixels > pixels || h.path == "unchanged"
-				if onGPU := g.frames > frames; onGPU != gpu || onCPU == gpu || g.wide != (gpu && wide) {
-					t.Fatalf("%s: on the GPU %v, on the CPU %v, wide %v", what, onGPU, onCPU, g.wide)
+				if g.frames != frames+1 || g.wide != inWide {
+					t.Fatalf("%s: %d frames on the GPU, wide %v", what, g.frames-frames, g.wide)
 				}
 			}
 			step("no wide color", false, false)
@@ -317,7 +313,7 @@ func TestWideFramesOnGPU(t *testing.T) {
 			step("the caret off", false, wide)
 			step("the caret on", true, wide)
 			step("the caret off again", false, wide)
-			// Long after the last, the CPU draws again.
+			// Long after the last, the frames are sRGB again.
 			h.wideUntil = time.Now().Add(-time.Millisecond)
 			step("long after", false, false)
 			switch {

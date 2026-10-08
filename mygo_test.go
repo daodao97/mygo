@@ -25,6 +25,7 @@ import (
 
 	"github.com/egoist/mygo/internal/fake"
 	"github.com/egoist/mygo/internal/platform"
+	"github.com/egoist/mygo/transfer"
 )
 
 var fb *fake.Backend
@@ -1503,6 +1504,13 @@ var needsAppCalls = []struct {
 	{"Clipboard.WriteImage", func() { Clipboard.WriteImage(nil) }},
 	{"Clipboard.Clear", func() { Clipboard.Clear() }},
 	{"Clipboard.AvailableFormats", func() { Clipboard.AvailableFormats() }},
+	{"Clipboard.Write", func() { Clipboard.Write(transfer.Data{}) }},
+	{"Clipboard.Read", func() { Clipboard.Read() }},
+	{"Clipboard.Formats", func() { Clipboard.Formats() }},
+	{"Clipboard.ReadFormat", func() { Clipboard.ReadFormat(transfer.Text) }},
+	{"Clipboard.ReadFiles", func() { Clipboard.ReadFiles() }},
+	{"Clipboard.WriteFiles", func() { Clipboard.WriteFiles() }},
+	{"Clipboard.Flush", func() { Clipboard.Flush() }},
 	{"Screen.Displays", func() { Screen.Displays() }},
 	{"Screen.PrimaryDisplay", func() { Screen.PrimaryDisplay() }},
 	{"Screen.CursorScreenPoint", func() { Screen.CursorScreenPoint() }},

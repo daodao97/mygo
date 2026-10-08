@@ -49,8 +49,21 @@ notes it, for the change once the loop is done (see
 
 The innermost element with a menu gets the click, as a row's button with a
 menu of its own inside a row with another. [Text inputs](text-input.md)
-have the editing commands of their platform's text fields, unless
-`ContextMenu` gives them another menu.
+have the editing commands of their platform's text fields, and selectable
+[text](text.md) has Copy and Select All. `ContextMenu` on the input, the
+text, or the `Selectable` container replaces that menu, and `EditItems`
+adds those commands to a menu of one's own, acting on the text that was
+clicked, as a chat message's text offers Reply above Copy:
+
+```go
+message.Selectable().ContextMenu(func(m *ui.Menu) {
+	if m.Item("Reply").Chosen() {
+		app.reply(msg)
+	}
+	m.Separator()
+	m.EditItems()
+})
+```
 
 The same menu opens below a button with `Element.Menu`: see
 [menu button](menu-button.md). In tests, `tt.RightClick` opens a context

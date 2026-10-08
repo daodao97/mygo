@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/raster"
 	"github.com/egoist/mygo/internal/scene"
+	"github.com/egoist/mygo/transfer"
 )
 
 // headless renders frames in memory with the software renderer.
@@ -43,7 +44,10 @@ type headless struct {
 	hz     float32
 	hidden bool
 	// last is the scene of the last frame, which tests inspect.
-	last *scene.Scene
+	last        *scene.Scene
+	dragData    transfer.Data
+	dragLocal   any
+	dragOptions transfer.DragOptions
 }
 
 func (h *headless) size() (float32, float32, float32) { return h.w, h.h, h.scale }
@@ -61,11 +65,24 @@ func (h *headless) updateAccessibility(t *platform.AccessTree) { h.keepAccess(t)
 func (h *headless) readClipboard() string                      { return h.clipboard }
 func (h *headless) writeClipboard(s string)                    { h.clipboard = s }
 func (h *headless) startDrag()                                 {}
-func (h *headless) titleBarDoubleClicked()                     {}
-func (h *headless) isDark() bool                               { return h.dark }
-func (h *headless) preferences() platform.Preferences          { return h.prefs }
-func (h *headless) titleBar() TitleBar                         { return h.bar }
-func (h *headless) invalidate()                                { h.requested.Store(true) }
+func (h *headless) setDropFormats([]transfer.Format)           {}
+func (h *headless) startDataDrag(d transfer.Data, local any, o transfer.DragOptions, x, y float32) error {
+	h.dragData, h.dragLocal, h.dragOptions = d.Snapshot(), local, o
+	return nil
+}
+func (h *headless) cancelDataDrag() { h.finishDataDrag(transfer.Result{Canceled: true}) }
+func (h *headless) finishDataDrag(r transfer.Result) {
+	done := h.dragOptions.Done
+	h.dragData, h.dragLocal, h.dragOptions = transfer.Data{}, nil, transfer.DragOptions{}
+	if done != nil {
+		done(r)
+	}
+}
+func (h *headless) titleBarDoubleClicked()            {}
+func (h *headless) isDark() bool                      { return h.dark }
+func (h *headless) preferences() platform.Preferences { return h.prefs }
+func (h *headless) titleBar() TitleBar                { return h.bar }
+func (h *headless) invalidate()                       { h.requested.Store(true) }
 
 // openURL notes the link, and gives done the error FailOpenURL set before
 // the next frame, as a window gives it after the system opened the link.
@@ -342,6 +359,12 @@ func (t *Tester) Move(x, y float32) {
 // Scroll scrolls by dx, dy DIPs with the pointer at (x, y).
 func (t *Tester) Scroll(x, y, dx, dy float32) {
 	t.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy)})
+}
+
+// HoldModifiers presses or lets go of modifier keys on their own, as holding
+// Cmd does, leaving mods held.
+func (t *Tester) HoldModifiers(mods Modifiers) {
+	t.send(platform.SurfaceEvent{Kind: platform.ModifiersChanged, Mods: platform.Modifiers(mods)})
 }
 
 // Key presses a key with modifiers.

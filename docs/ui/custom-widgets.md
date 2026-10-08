@@ -60,6 +60,9 @@ its own, with `Painter.FocusRing` while `FocusVisible`.
 
 ## Widgets of your own
 
+For text controls with their own buffer or selection model, use
+[`HandleTextInput` and retained text geometry](text-input-client.md).
+
 Build your own widgets from elements. An element keeps state of its own
 from frame to frame with `ui.Local`:
 

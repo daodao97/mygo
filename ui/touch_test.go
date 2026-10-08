@@ -17,7 +17,7 @@ func TestTouchBlurReleasesContact(t *testing.T) {
 		t.Run(fmt.Sprint("scrolling=", scrolling), func(t *testing.T) {
 			clicks := 0
 			var scroll ScrollState
-			tt := NewTester(func(c *Context) {
+			tt := snapshotTester(func(c *Context) {
 				Scroll(c).Fill().TrackScroll(&scroll).Children(func() {
 					for i := range 20 {
 						if Button(c, fmt.Sprint("Row ", i)).Height(48).Clicked() {
@@ -53,7 +53,7 @@ func TestTouchBlurReleasesContact(t *testing.T) {
 
 func TestTouchBlurCancelsInputHandler(t *testing.T) {
 	cancels, releases := 0, 0
-	tt := NewTester(func(c *Context) {
+	tt := snapshotTester(func(c *Context) {
 		Box(c).Size(100, 100).HandleInput(func(ev InputEvent) bool {
 			switch ev.Kind {
 			case InputPointerCancel:
@@ -74,7 +74,7 @@ func TestTouchBlurCancelsInputHandler(t *testing.T) {
 func TestTouchScrollCancelsButton(t *testing.T) {
 	clicks := 0
 	var scroll ScrollState
-	tt := NewTester(func(c *Context) {
+	tt := snapshotTester(func(c *Context) {
 		Scroll(c).Fill().TrackScroll(&scroll).Children(func() {
 			for i := range 20 {
 				if Button(c, fmt.Sprint("Row ", i)).Height(48).Clicked() {
@@ -107,7 +107,7 @@ func TestTouchScrollCancelsButton(t *testing.T) {
 
 func TestTouchCancelAndExtraContact(t *testing.T) {
 	clicks := 0
-	tt := NewTester(func(c *Context) {
+	tt := snapshotTester(func(c *Context) {
 		if Button(c, "Tap").Clicked() {
 			clicks++
 		}
@@ -134,12 +134,12 @@ func TestTouchCancelAndExtraContact(t *testing.T) {
 
 func TestNativeTextSnapshotAndSelection(t *testing.T) {
 	value := "你好 👋 world"
-	tt := NewTester(func(c *Context) { TextInput(c, &value).Label("Message").Width(300).AutoFocus() }, 320, 240)
+	tt := snapshotTester(func(c *Context) { TextInput(c, &value).Label("Message").Width(300).AutoFocus() }, 320, 240)
 	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "你好 🌏 world", Replace: true, From: 0, To: 10, Snapshot: true, Caret: 4})
 	if value != "你好 🌏 world" || tt.h.ime.Start != 4 || tt.h.ime.End != 4 {
 		t.Fatalf("snapshot: text=%q selection=%d:%d", value, tt.h.ime.Start, tt.h.ime.End)
 	}
-	tt.send(platform.SurfaceEvent{Kind: platform.TextSelection, From: 3, To: 4})
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: 3, To: 4})
 	tt.Type("😀")
 	if value != "你好 😀 world" {
 		t.Fatalf("rune selection split an emoji: %q", value)
@@ -148,7 +148,7 @@ func TestNativeTextSnapshotAndSelection(t *testing.T) {
 
 func TestNativeCompositionSnapshot(t *testing.T) {
 	value := "Hello "
-	tt := NewTester(func(c *Context) { TextInput(c, &value).Width(300).AutoFocus() }, 320, 240)
+	tt := snapshotTester(func(c *Context) { TextInput(c, &value).Width(300).AutoFocus() }, 320, 240)
 	tt.send(platform.SurfaceEvent{Kind: platform.TextComposition, Text: "Hello zhong", Replace: true, From: 0, To: 6, Caret: 11})
 	tt.send(platform.SurfaceEvent{Kind: platform.TextComposition, Text: "Hello 中", Replace: true, From: 0, To: len([]rune(tt.h.ime.Text)), Caret: 7})
 	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "Hello 中文👋", Replace: true, From: 0, To: len([]rune(tt.h.ime.Text)), Snapshot: true, Caret: 9})
@@ -159,7 +159,7 @@ func TestNativeCompositionSnapshot(t *testing.T) {
 
 func TestNativeMarkedTextKeepsCommittedContext(t *testing.T) {
 	value := "Before 👋 after"
-	tt := NewTester(func(c *Context) { TextArea(c, &value).Width(300).AutoFocus() }, 320, 240)
+	tt := snapshotTester(func(c *Context) { TextArea(c, &value).Width(300).AutoFocus() }, 320, 240)
 	snapshot := func(text string, caret int) {
 		tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: text, Replace: true,
 			To: len([]rune(tt.h.ime.Text)), Snapshot: true, Caret: caret})
@@ -199,9 +199,9 @@ func TestNativeMarkedTextKeepsCommittedContext(t *testing.T) {
 func TestNativeCompositionPinsLongSurroundingContext(t *testing.T) {
 	value := strings.Repeat("前", 1200) + "👋"
 	original := value
-	tt := NewTester(func(c *Context) { TextArea(c, &value).Width(300).AutoFocus() }, 320, 240)
+	tt := snapshotTester(func(c *Context) { TextArea(c, &value).Width(300).AutoFocus() }, 320, 240)
 	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "selectAll"})
-	tt.send(platform.SurfaceEvent{Kind: platform.TextSelection, From: len([]rune(tt.h.ime.Text)), To: len([]rune(tt.h.ime.Text))})
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: len([]rune(tt.h.ime.Text)), To: len([]rune(tt.h.ime.Text))})
 	base, context := tt.rt.ime.base, tt.h.ime.Text
 	if base == 0 {
 		t.Fatal("test did not reach a bounded surrounding context")
@@ -224,7 +224,7 @@ func TestNativeCompositionPinsLongSurroundingContext(t *testing.T) {
 
 func TestNativeEditorHistoryAvailability(t *testing.T) {
 	value := "Hello 👋"
-	tt := NewTester(func(c *Context) { TextInput(c, &value).AutoFocus() }, 320, 240)
+	tt := snapshotTester(func(c *Context) { TextInput(c, &value).AutoFocus() }, 320, 240)
 	if tt.h.ime.CanUndo || tt.h.ime.CanRedo {
 		t.Fatal("new editor advertised history")
 	}
@@ -247,7 +247,7 @@ func TestTouchKeyboardDismissDoesNotMovePressedControl(t *testing.T) {
 	for _, cancelled := range []bool{false, true} {
 		t.Run(fmt.Sprint("cancelled=", cancelled), func(t *testing.T) {
 			value, clicks := "", 0
-			tt := NewTester(func(c *Context) {
+			tt := snapshotTester(func(c *Context) {
 				Column(c).Fill().Children(func() {
 					TextInput(c, &value).Label("Message").Height(44).AutoFocus()
 					Box(c).Grow(1)

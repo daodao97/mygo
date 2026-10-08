@@ -1487,6 +1487,7 @@ func (h *windowHandler) Closed() {
 	if w.native == nil {
 		return
 	}
+	w.cancelDataDrag()
 	w.detachContent()
 	w.native = nil
 	w.destroyed.Store(true)

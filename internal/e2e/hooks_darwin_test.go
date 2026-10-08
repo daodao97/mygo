@@ -3,6 +3,8 @@
 package e2e
 
 import (
+	"testing"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/internal/darwin"
 )
@@ -196,9 +198,7 @@ func observe(w *mygo.Window) (stop func(), supported bool) {
 // Only Linux draws native UI in a GtkGLArea, nor waits to load the GPU's
 // driver.
 func glSurface(*mygo.Window) (string, []byte, int, int, bool) { return "", nil, 0, 0, false }
-func lazyGPU(bool) bool                                       { return false }
-func useGPU(*mygo.Window) bool                                { return false }
-func surfaceInputLowest(*mygo.Window) bool                    { return true }
+func memoryUI(*testing.T) bool                                { return false }
 func surfaceOnScreen(*mygo.Window) ([]byte, bool)             { return nil, false }
 
 // Context menus are not automated on macOS: one shown waits for the user.

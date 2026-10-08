@@ -35,12 +35,6 @@ func (e *Element) inlineText() {
 		b.WriteString(ch.text)
 	}
 	e.text = b.String()
-	// Selectable before Children selects in the whole text.
-	if ed := e.st.editor; ed != nil && e.flags&flagSelectable != 0 && ed.source != e.text {
-		ed.source = e.text
-		ed.setText(e.text)
-		ed.caret, ed.anchor = 0, 0
-	}
 }
 
 // inlineSpans returns the spans of a paragraph: its own, then those of the

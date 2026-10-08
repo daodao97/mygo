@@ -286,13 +286,14 @@ func TestInputMethodContext(t *testing.T) {
 	tt.ClickAt(r.X+20, r.Y+40+r.H/2)
 	tt.Key(0, KeyEnd)
 	ime := tt.h.ime
-	if !ime.Active || ime.Text != "caf" || ime.Start != 3 || ime.End != 3 {
+	ctx := platform.ClientTextContext(ime.Client)
+	if !ime.Active || ime.Client == nil || ctx.Text != "caf" || ctx.Start != 3 || ctx.End != 3 {
 		t.Fatalf("text input state %+v", ime)
 	}
 	// Typing e, then holding it: the input method composes over the e
 	// it typed, then commits the accented letter in its place.
 	tt.Type("e")
-	if tt.h.ime.Text != "cafe" {
+	if platform.ClientTextContext(tt.h.ime.Client).Text != "cafe" {
 		t.Fatalf("after typing: %+v", tt.h.ime)
 	}
 	tt.send(platform.SurfaceEvent{Kind: platform.TextComposition, Text: "e", Caret: 1, Replace: true, From: 3, To: 4})
@@ -303,16 +304,17 @@ func TestInputMethodContext(t *testing.T) {
 	if d.name != "café" {
 		t.Errorf("committing: %q", d.name)
 	}
-	// Replacements count from the start of the text the input method got,
-	// which ends imeContext runes before the selection in long texts.
+	// Client replacements use absolute UTF-16 document offsets, even beyond
+	// the surrounding window supplied to GTK and IMM32.
 	d.name = strings.Repeat("x", 2*imeContext) + "ab"
 	tt.Frame()
 	tt.Key(0, KeyEnd)
 	ime = tt.h.ime
-	if len([]rune(ime.Text)) != imeContext || ime.Start != imeContext || !strings.HasSuffix(ime.Text, "xab") {
-		t.Fatalf("long text: %d runes, selection %d", len([]rune(ime.Text)), ime.Start)
+	ctx = platform.ClientTextContext(ime.Client)
+	if !strings.HasSuffix(ctx.Text, "xab") || ime.Client.Selection().Caret() != len(d.name) {
+		t.Fatalf("long text: %+v", ctx)
 	}
-	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "B", Replace: true, From: imeContext - 1, To: imeContext})
+	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "B", Replace: true, From: len(d.name) - 1, To: len(d.name)})
 	if !strings.HasSuffix(d.name, "xaB") {
 		t.Errorf("replacing in a long text: ...%q", d.name[len(d.name)-5:])
 	}

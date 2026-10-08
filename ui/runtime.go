@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/text"
+	"github.com/egoist/mygo/transfer"
 )
 
 // host is where a runtime's frames go: a window's surface, or memory for
@@ -28,6 +29,9 @@ type host interface {
 	readClipboard() string
 	writeClipboard(string)
 	startDrag()
+	startDataDrag(transfer.Data, any, transfer.DragOptions, float32, float32) error
+	cancelDataDrag()
+	setDropFormats([]transfer.Format)
 	titleBarDoubleClicked()
 	isDark() bool
 	preferences() platform.Preferences
@@ -46,14 +50,15 @@ type host interface {
 // the view function, lays them out, paints them and routes input to the
 // elements of the last frame. Main thread only, except where noted.
 type engine struct {
-	gestures map[string]gestureCapture
-	view     func(*Context)
-	host     host
-	c        Context
-	text     *text.System
-	scene    scene.Scene
-	painter  Painter
-	glyphRun glyphRun
+	gestures        map[string]gestureCapture
+	textInputClosed bool
+	view            func(*Context)
+	host            host
+	c               Context
+	text            *text.System
+	scene           scene.Scene
+	painter         Painter
+	glyphRun        glyphRun
 	// measured are the last spans laid out outside elements (richParams).
 	measured     [8]measuredSpans
 	nextMeasured int
@@ -136,7 +141,11 @@ type engine struct {
 		backWidth          float32
 		backLevel          int
 	}
-	focused       uint64
+	focused uint64
+	// texts are selectable paragraphs in build order; selection spans those
+	// of one Selectable container (textselection.go).
+	texts         []*state
+	selection     textSelection
 	focusVisible  bool
 	windowFocused bool
 	keys          []keyEvent
@@ -191,7 +200,12 @@ type engine struct {
 		compositionLength int
 	}
 	// drag is the value being dragged within the window.
-	drag *valueDrag
+	drag        *valueDrag
+	incoming    *platform.DataDragEvent
+	dataOver    uint64
+	closed      bool
+	dropFormats []transfer.Format
+	dropScratch []transfer.Format
 	// kept are the pages of the history that Routers keep, and commitPage
 	// the page around the elements being committed.
 	kept       map[uint64]bool
@@ -253,7 +267,7 @@ type labelNode struct {
 type hit struct {
 	st    *state
 	r     Rect
-	flags uint32
+	flags uint64
 }
 
 type shortcutReg struct {
@@ -334,6 +348,7 @@ func (rt *engine) runFrame() {
 		rt.drag.elem = nil
 		rt.dragScroll()
 	}
+	rt.scrollTextSelection()
 
 	if rt.exitsBuilt {
 		// The last frame's elements stay as they are while this one builds,
@@ -359,6 +374,7 @@ func (rt *engine) runFrame() {
 		if rt.insp.open {
 			rt.buildInspector(&rt.c, appW, w, h)
 		}
+		rt.prepareSelectable(rt.c.root)
 		rt.resolveMenu()
 		rt.endPass()
 		if !rt.consumed {
@@ -373,6 +389,10 @@ func (rt *engine) runFrame() {
 	root := rt.c.root
 	layoutTree(root, appW, h)
 	rt.commit(root, w, h)
+	clear(rt.texts)
+	rt.texts = rt.texts[:0]
+	rt.collectSelectable(root, false)
+	rt.syncTextSelection()
 	rt.stats.lap(phaseLayout)
 	rt.insp.lap(1)
 	if rt.insp.open {
@@ -390,6 +410,7 @@ func (rt *engine) runFrame() {
 	rt.host.present(&rt.scene)
 	rt.stats.lap(phasePresent)
 	rt.prune()
+	rt.syncDropFormats()
 	rt.prunePictures()
 	rt.text.EndFrame()
 	rt.regs, rt.nextRegs = rt.nextRegs, rt.regs
@@ -535,12 +556,18 @@ func (rt *engine) forgetInput() {
 		s.gestures = nil
 		s.dropped = nil
 		s.droppedValue, s.hasDropped = nil, false
+		s.dataDropped = nil
 	}
 }
 
 // prune forgets the elements the frame did not build, but those of the
 // pages Routers keep.
 func (rt *engine) prune() {
+	if d := rt.drag; d != nil && d.native {
+		if s := rt.states[d.src]; s == nil || s.seen != rt.frame || s.pass != rt.pass {
+			rt.host.cancelDataDrag()
+		}
+	}
 	unpressed := false
 	for id, s := range rt.states {
 		if s.seen != rt.frame || s.pass != rt.pass {
@@ -548,6 +575,9 @@ func (rt *engine) prune() {
 				rt.pressed, unpressed = nil, true
 			}
 			if !rt.keptAlive(s) {
+				if s.textAdapter != nil {
+					s.textAdapter.release()
+				}
 				delete(rt.states, id)
 				if rt.scrollDrag.st == s {
 					rt.scrollDrag.st = nil
@@ -644,6 +674,17 @@ func (rt *engine) armTimer() {
 }
 
 func (rt *engine) close() {
+	rt.closed = true
+	rt.textInputClosed = true
+	if rt.drag != nil && rt.drag.native {
+		rt.host.cancelDataDrag()
+	}
+	rt.drag, rt.incoming = nil, nil
+	for _, s := range rt.states {
+		if s.textAdapter != nil {
+			s.textAdapter.release()
+		}
+	}
 	if rt.timer != nil {
 		rt.timer.Stop()
 	}
@@ -704,7 +745,16 @@ func (rt *engine) commitElement(e *Element, clip Rect, hidden bool) {
 	s.cursor, s.tip = e.cursor, e.tip
 	s.role = e.role
 	s.input, s.caret, s.takesText = e.inputFn, e.caret, e.takesText
-	if e.flags&(flagEditable|flagSelectable) != 0 && s.cursor == 0 {
+	if s.textClient != e.textClient {
+		if s.textAdapter != nil {
+			s.textAdapter.release()
+		}
+		s.textClient, s.textAdapter = e.textClient, nil
+	}
+	if s.textClient != nil && s.textAdapter == nil {
+		s.textAdapter = &textInputAdapter{rt: rt, id: s.id}
+	}
+	if (e.flags&flagEditable != 0 || e.flags&flagSelectable != 0 && s.editor != nil) && s.cursor == 0 {
 		s.cursor = CursorText + 1
 	}
 	v := intersect(Rect{e.x, e.y, e.w, e.h}, clip)

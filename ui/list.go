@@ -187,6 +187,56 @@ func (s *ListState) AtEnd() bool {
 	return s.atEnd
 }
 
+// Focused reports whether the List, Table or Outline using s has
+// the keyboard focus. Call it from the view, after building the list or
+// while building its rows. It returns false when s was not built in the
+// current pass of c, including when the list is hidden.
+func (s *ListState) Focused(c *Context) bool { return s.current(c).Focused() }
+
+// FocusWithin reports whether the list or one of its descendants has the
+// keyboard focus, with the same lifetime as Focused. Row builders can use
+// it before List returns, without saving an Element from an earlier frame.
+func (s *ListState) FocusWithin(c *Context) bool { return s.current(c).FocusWithin() }
+
+// Focus gives the list the keyboard focus and reports whether it was
+// built in the current pass of c. A pending focus request can wait until
+// a hidden list returns:
+//
+//	if app.focusFiles && app.files.Focus(c) {
+//		app.focusFiles = false
+//	}
+//
+// Call it after building the list, or while building its rows.
+func (s *ListState) Focus(c *Context) bool {
+	e := s.current(c)
+	if e == nil {
+		return false
+	}
+	e.Focus()
+	return true
+}
+
+// Shortcut reports whether mods+key was pressed while the list or one of
+// its descendants had the focus, as Element.Shortcut does. Call it after
+// building the list, or while building its rows. A list not built in the
+// current pass of c registers and handles no shortcuts.
+func (s *ListState) Shortcut(c *Context, mods Modifiers, key Key) bool {
+	return s.current(c).Shortcut(mods, key)
+}
+
+// current resolves the focus owner of this pass before reading an arena
+// pointer: an absent list's old slot may now hold an unrelated element.
+func (s *ListState) current(c *Context) *Element {
+	if s == nil || c == nil || c.rt == nil || c.rt.closed || !c.rt.inFrame {
+		return nil
+	}
+	f := &s.frame
+	if f.c != c || f.frame != c.rt.frame || f.pass != c.rt.pass {
+		return nil
+	}
+	return f.owner
+}
+
 // listFrame is what a List built in the frame, for laying it out.
 type listFrame struct {
 	c *Context
