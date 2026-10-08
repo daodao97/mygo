@@ -333,6 +333,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, count in
 		// It takes the moves and the release.
 		rt.pressed, rt.pressButton = h, button
 		h.pressed = true
+		h.pressPending = true
 		h.pressX, h.pressY = x-h.x, y-h.y
 		return
 	}
@@ -367,6 +368,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, count in
 	}
 	rt.pressed, rt.pressButton = target, button
 	target.pressed, target.pressMods = true, mods
+	target.pressPending = true
 	target.pressX, target.pressY = x-target.x, y-target.y
 	if button == 0 && rt.pressTextSelection(target, x, y, mods, clicks) {
 		return
@@ -1066,7 +1068,17 @@ func (e *node) Pressed() bool {
 	}
 	e.flags |= flagClickable | flagHover
 	s := e.st
-	return s.pressed && !e.disabled() && Rect{s.vx, s.vy, s.vw, s.vh}.Contains(e.c.rt.pointerX, e.c.rt.pointerY)
+	rt := e.c.rt
+	if !s.pressed || e.disabled() || !(Rect{s.vx, s.vy, s.vw, s.vh}).Contains(rt.pointerX, rt.pointerY) {
+		return false
+	}
+	if s.pressPending {
+		// A press may choose a row after the view built its selection and
+		// focus colors. Show that choice in this frame, as for a click,
+		// without rebuilding again while the pointer remains held.
+		rt.consumed = true
+	}
+	return true
 }
 
 // Focused reports whether the element has the keyboard focus.

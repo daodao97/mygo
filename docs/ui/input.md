@@ -35,6 +35,13 @@ pointer through to what is below.
 Elements that take the pointer give it to the innermost under it: a button
 in a clickable row takes its own clicks.
 
+`Pressed` stays true while the pointer is held inside the element. Observing
+the start of a press rebuilds the view before painting, so a row chosen by
+`if row.Pressed() || row.Clicked()` shows its new selection and focus colors
+in that frame. Guard the choice against selecting the same item again.
+`Clicked` reports activation on release inside the element, or through the
+keyboard or assistive technology; buttons use that activation.
+
 While the pointer presses an element, the elements it was over as the
 press began, as the row around a button, stay `Hovered` as long as it is
 over them, as in CSS, and the others hover no more: dragging over other

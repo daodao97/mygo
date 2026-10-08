@@ -434,6 +434,7 @@ type state struct {
 	pressX, pressY float32
 	dragX, dragY   float32
 	pressed        bool
+	pressPending   bool // the press began since the last build pass
 
 	// scrollX and scrollY are float64, as the content a List scrolls
 	// may be taller than float32 counts to a fraction of a DIP.

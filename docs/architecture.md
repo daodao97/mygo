@@ -1404,7 +1404,10 @@ either.
   nothing.
 - **Frames.** The engine (`ui/runtime.go`) calls the view to build a frame,
   again (up to three times) when a handler changed the state while it built,
-  so the frame shows the outcome; lays it out with flexbox (`layout.go`) or
+  so the frame shows the outcome. Observing `Pressed` when a pointer press
+  begins also rebuilds before painting, so selection made on press and its
+  focus colors appear together; holding the pointer asks for no further
+  build passes. The engine lays it out with flexbox (`layout.go`) or
   as a grid (`grid.go`, CSS grid's placement and track sizing for fixed,
   fractional and content-sized tracks); commits the boxes to the elements'
   states with the hit list in paint order, the focus order and the labels;
