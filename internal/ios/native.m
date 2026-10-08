@@ -177,11 +177,11 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @end
 @implementation MyGoInputAccessory
 - (instancetype)init {
- self=[super initWithFrame:CGRectMake(0,0,390,48) inputViewStyle:UIInputViewStyleKeyboard];
+ self=[super initWithFrame:CGRectMake(0,0,390,44) inputViewStyle:UIInputViewStyleKeyboard];
  if (self) {
   self.allowsSelfSizing=YES;
   self.autoresizingMask=UIViewAutoresizingFlexibleHeight;
-  self.height=[self.heightAnchor constraintEqualToConstant:48];
+  self.height=[self.heightAnchor constraintEqualToConstant:44];
   self.height.active=YES;
   self.backgroundColor=UIColor.secondarySystemBackgroundColor;
   self.accessibilityIdentifier=@"Input accessory";
@@ -191,7 +191,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 - (CGSize)intrinsicContentSize {
  NSUInteger count=0;
  if (self.expanded) for (NSDictionary *action in self.actions) count+= [action[@"Items"] count];
- return CGSizeMake(UIViewNoIntrinsicMetric,48+(count ? ceil(count/5.0)*44+8 : 0));
+ return CGSizeMake(UIViewNoIntrinsicMetric,44+(count ? ceil(count/5.0)*44 : 0));
 }
 - (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize {
  return CGSizeMake(targetSize.width,self.intrinsicContentSize.height);
@@ -210,7 +210,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
  UIButtonConfiguration *configuration=[UIButtonConfiguration plainButtonConfiguration];
  configuration.baseForegroundColor=UIColor.labelColor;
  configuration.contentInsets=NSDirectionalEdgeInsetsMake(0,2,0,2);
- configuration.background.backgroundInsets=NSDirectionalEdgeInsetsMake(5,0,5,0);
+ configuration.background.backgroundInsets=NSDirectionalEdgeInsetsMake(3,0,3,0);
  configuration.background.cornerRadius=8;
  configuration.background.backgroundColor=expanded ? UIColor.tertiarySystemFillColor : UIColor.tertiarySystemBackgroundColor;
  configuration.background.strokeColor=[UIColor.separatorColor colorWithAlphaComponent:0.12];
@@ -267,13 +267,8 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
   NSMutableArray *items=[NSMutableArray array];
   for (NSDictionary *action in self.actions) [items addObjectsFromArray:action[@"Items"] ?: @[]];
   for (NSUInteger i=0;i<items.count;i+=5) [stack addArrangedSubview:[self row:[items subarrayWithRange:NSMakeRange(i,MIN(5,items.count-i))] columns:5 height:44]];
-  if (items.count) {
-   UIView *gap=[UIView new];
-   [gap.heightAnchor constraintEqualToConstant:8].active=YES;
-   [stack addArrangedSubview:gap];
-  }
  }
- [stack addArrangedSubview:[self row:self.actions columns:self.actions.count height:48]];
+ [stack addArrangedSubview:[self row:self.actions columns:self.actions.count height:44]];
  [self addSubview:stack];
  self.leading=[stack.leadingAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.leadingAnchor constant:8];
  self.trailing=[stack.trailingAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.trailingAnchor constant:-8];
