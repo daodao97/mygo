@@ -165,3 +165,23 @@ rects := layout.SelectionRects(ranges...)
 The built-in controls use these visual edges and range sets too. Copy joins
 the selected fragments in logical order; replacement preserves text in the
 gaps, and undo restores the visual selection as well as the text.
+
+### Lightweight surrounding text for custom keyboard handlers
+
+A terminal can keep drawing and handling keys with `TextCaretFunc`, while
+exposing only known, locally typed text to native input methods:
+
+```go
+box.HandleInput(onInput).
+    TextCaretFunc(caretRect).
+    TextContext(func() (string, int) { return committed, caretRune })
+```
+
+The context callback runs on the UI thread and returns committed text and a
+caret in rune offsets. The handler applies `InputSelection` (native caret
+movement) and `InputTextReplace` (`From:To`, replacement `Text`, final `Caret`).
+UIKit document snapshots are reduced to the changed range; unchanged context
+is never emitted as new input. `InputCompose` contains only provisional text.
+Candidate commits retain software modifiers for the next ordinary character.
+This creates no visible text field and does not take over pointer selection.
+Use `HandleTextInput` for full document selection and indexed geometry.

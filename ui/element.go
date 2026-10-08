@@ -263,6 +263,7 @@ type Element struct {
 	inputFn        func(InputEvent) bool
 	caret          Rect
 	caretFn        func() Rect
+	textContext    func() (string, int)
 	takesText      bool
 	touchScroll    bool
 	touchSelection bool

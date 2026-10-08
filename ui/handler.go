@@ -39,6 +39,10 @@ const (
 	// InputLongPress starts a stationary touch selection. Subsequent pointer
 	// moves and Up/Cancel are captured without focusing or opening the keyboard.
 	InputLongPress
+	// InputTextReplace replaces the rune range From:To in TextContext.
+	InputTextReplace
+	// InputSelection moves the caret in TextContext, in runes.
+	InputSelection
 )
 
 // InputEvent is input an element takes as it comes (HandleInput).
@@ -51,8 +55,9 @@ type InputEvent struct {
 	Software bool
 	// Text of InputText, InputCompose and InputCommand, and Caret the
 	// rune of an InputCompose's caret.
-	Text  string
-	Caret int
+	Text     string
+	Caret    int
+	From, To int
 	// X and Y locate the pointer relative to the element's box.
 	X, Y float32
 	// Button is 0 for the primary button, 1 the secondary and 2 the
@@ -116,6 +121,17 @@ func (e *Element) TextCaretFunc(fn func() Rect) *Element {
 	return e
 }
 
+// TextContext supplies committed surrounding text and its caret (in runes)
+// for a custom TextCaret handler. fn runs on the UI thread. The handler owns
+// the document and applies InputTextReplace and InputSelection events;
+// native composition remains virtual until committed. This does not create
+// an editor or change pointer selection/rendering. Use HandleTextInput when
+// full indexed geometry or document selection is required.
+func (e *Element) TextContext(fn func() (string, int)) *Element {
+	e.textContext = fn
+	return e
+}
+
 // handler returns the state of the innermost element of chain that
 // handles its input.
 func (rt *engine) handler(chain []uint64) *state {
@@ -134,11 +150,11 @@ func (rt *engine) deliver(s *state, ev InputEvent) bool {
 		return false
 	}
 	ev.X, ev.Y = rt.pointerX-s.x, rt.pointerY-s.y
-	softwareKey := !s.inputComposing && (ev.Kind == InputText && len(ev.Text) == 1 && ev.Text[0] < 128 || ev.Kind == InputKeyDown && softwareControlKey(ev.Key))
+	softwareKey := !s.inputComposing && ((ev.Kind == InputText || ev.Kind == InputTextReplace) && len(ev.Text) == 1 && ev.Text[0] < 128 || ev.Kind == InputKeyDown && softwareControlKey(ev.Key))
 	if ev.Kind == InputCompose {
 		s.inputComposing = ev.Text != ""
 	}
-	if ev.Kind == InputText {
+	if ev.Kind == InputText || ev.Kind == InputTextReplace {
 		s.inputComposing = false
 	}
 	if softwareKey && s.inputModifiers != 0 {

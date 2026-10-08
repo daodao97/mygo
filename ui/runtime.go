@@ -757,6 +757,7 @@ func (rt *engine) commitElement(e *Element, clip Rect, hidden bool) {
 	s.role = e.role
 	s.input, s.caret, s.takesText = e.inputFn, e.caret, e.takesText
 	s.caretFn = e.caretFn
+	s.textContext = e.textContext
 	s.inputOptions = e.inputOptions
 	s.inputAccessory, s.inputAction = e.inputAccessory, e.inputAction
 	s.inputModifiers, s.inputConsumed = e.inputModifiers, e.inputConsumed

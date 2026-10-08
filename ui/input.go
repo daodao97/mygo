@@ -802,6 +802,9 @@ func (rt *engine) editEvent(ev editEvent) {
 		}
 	}
 	if h := rt.focusHandler(); h != nil && h.editor == nil {
+		if h.textContext != nil && rt.contextEdit(h, ev) {
+			return
+		}
 		kind := map[editKind]InputKind{editInsert: InputText, editCompose: InputCompose, editCommand: InputCommand}[ev.kind]
 		if kind != 0 && rt.deliver(h, InputEvent{Kind: kind, Text: ev.text, Caret: ev.caret}) {
 			rt.blinkStart = time.Now()
@@ -846,6 +849,11 @@ func (rt *engine) updateTextInput() {
 		// An element taking text itself: no text around the caret.
 		t.Options = s.inputOptions.nativeOptions()
 		t.Active = true
+		if s.textContext != nil {
+			t.Text, t.Start = s.textContext()
+			t.Start = max(0, min(t.Start, len([]rune(t.Text))))
+			t.End = t.Start
+		}
 		r := s.caret
 		if s.caretFn != nil {
 			r = s.caretFn()
@@ -1241,4 +1249,63 @@ func (rt *engine) snapshotTextInput(s *state) bool {
 		return h.nativeTextSelection()
 	}
 	return false
+}
+
+// Context-aware custom controls receive only the changed part of UIKit's
+// snapshot. Unchanged text must never be re-sent to a terminal/remote editor.
+func (rt *engine) contextEdit(s *state, ev editEvent) bool {
+	switch ev.kind {
+	case editSelect:
+		rt.deliver(s, InputEvent{Kind: InputSelection, Caret: ev.to, From: ev.from, To: ev.to})
+		return true
+	case editCompose:
+		if ev.snapshot {
+			text := []rune(ev.text)
+			a := max(0, min(ev.markedStart, len(text)))
+			b := max(a, min(ev.markedEnd, len(text)))
+			// Nine-key input can commit a candidate while continuing to compose.
+			// Reconcile committed context without treating candidate text as a
+			// software shortcut, then keep only the marked portion provisional.
+			s.inputComposing = true
+			rt.contextSnapshot(s, string(text[:a])+string(text[b:]), a, false)
+			rt.deliver(s, InputEvent{Kind: InputCompose, Text: string(text[a:b]), Caret: max(0, ev.caret-a)})
+			return true
+		}
+	case editInsert:
+		if ev.snapshot {
+			if !rt.contextSnapshot(s, ev.text, ev.caret, true) {
+				rt.deliver(s, InputEvent{Kind: InputCompose})
+			}
+			return true
+		}
+		if ev.replace {
+			rt.deliver(s, InputEvent{Kind: InputTextReplace, Text: ev.text, From: ev.from, To: ev.to, Caret: ev.from + len([]rune(ev.text))})
+			return true
+		}
+	}
+	return false
+}
+func (rt *engine) contextSnapshot(s *state, text string, caret int, modifiedDelete bool) bool {
+	before, after := []rune(rt.ime.state.Text), []rune(text)
+	a := 0
+	for a < min(len(before), len(after)) && before[a] == after[a] {
+		a++
+	}
+	b, z := len(before), len(after)
+	for b > a && z > a && before[b-1] == after[z-1] {
+		b--
+		z--
+	}
+	if a == b && a == z {
+		return false
+	}
+	// UIKit deletes surrounding text locally. Armed terminal modifiers must
+	// still reach the actual Delete key encoder, including its release.
+	if modifiedDelete && s.inputModifiers != 0 && !s.inputComposing && a == z && b == rt.ime.state.Start && caret == a {
+		rt.deliver(s, InputEvent{Kind: InputKeyDown, Key: KeyBackspace})
+		rt.deliver(s, InputEvent{Kind: InputKeyUp, Key: KeyBackspace})
+	} else {
+		rt.deliver(s, InputEvent{Kind: InputTextReplace, Text: string(after[a:z]), From: a, To: b, Caret: caret})
+	}
+	return true
 }

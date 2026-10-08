@@ -156,6 +156,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @property(nonatomic) uint64_t windowID;
 @property(nonatomic) uint64_t fieldID;
 @property(nonatomic) BOOL multiline;
+@property(nonatomic) NSInteger contextCaret;
 @property(nonatomic) CGRect goAccessibilityFrame;
 @property(nonatomic) CGRect goCaret;
 @property(nonatomic, strong) NSMutableSet<NSNumber *> *hardwareKeys;
@@ -439,6 +440,15 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 }
 - (CGRect)caretRectForPosition:(UITextPosition *)position {
   NSInteger i = [self offsetFromPosition:self.beginningOfDocument toPosition:position];
+  if (!self.fieldID && self.text.length && !self.markedTextRange) {
+    // Translate the hidden document to the custom drawing's visible caret.
+    // The keyboard trackpad must see more than one fixed cursor rectangle.
+    UITextPosition *anchor = [self positionFromPosition:self.beginningOfDocument offset:MIN(self.contextCaret,self.text.length)];
+    CGRect base = [super caretRectForPosition:anchor];
+    CGRect rect = [super caretRectForPosition:position];
+    CGRect caret = [self convertRect:self.goCaret fromView:self.superview];
+    return CGRectOffset(rect,caret.origin.x-base.origin.x,caret.origin.y-base.origin.y);
+  }
   NSDictionary *g = [self geometry:"caret" from:i to:i point:CGPointZero];
   return g ? [self localRect:g[@"Caret"]] :
       ((self.secureTextEntry || !self.fieldID || self.markedTextRange)
@@ -467,6 +477,14 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
   return rects.count ? rects.firstObject.rect : [self caretRectForPosition:range.start];
 }
 - (UITextPosition *)closestPositionToPoint:(CGPoint)point {
+  if (!self.fieldID && self.text.length && !self.markedTextRange) {
+    UITextPosition *anchor = [self positionFromPosition:self.beginningOfDocument offset:MIN(self.contextCaret,self.text.length)];
+    CGRect base = [super caretRectForPosition:anchor];
+    CGRect caret = [self convertRect:self.goCaret fromView:self.superview];
+    point.x += base.origin.x-caret.origin.x;
+    point.y += base.origin.y-caret.origin.y;
+    return [super closestPositionToPoint:point];
+  }
   NSDictionary *g = [self geometry:"hit" from:0 to:0 point:point];
   if (!g) return self.selectedTextRange.end ?: self.beginningOfDocument;
   return [self positionFromPosition:self.beginningOfDocument offset:units(self.text, [g[@"Index"] intValue])];
@@ -546,7 +564,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 }
 - (void)deleteBackward {
  if (!self.editable) return;
-  if (!self.secureTextEntry && (self.fieldID || self.markedTextRange)) {
+  if (!self.secureTextEntry && (self.fieldID || self.markedTextRange || self.text.length > 0)) {
     [super deleteBackward];
     return;
   }
@@ -839,7 +857,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
   BOOL composing = textView.markedTextRange != nil;
   NSUInteger caret =
       MIN(NSMaxRange(textView.selectedRange), textView.text.length);
-  if (composing && ((MyGoEditor *)textView).fieldID) {
+  if (composing) {
     // UIKit's marked range is provisional; surrounding text is committed.
     // Reconcile both in one Go frame, including incremental candidate commits.
     // The sending/markedTextRange guards prevent echoing into UIKit.
@@ -1381,6 +1399,7 @@ void mygo_ios_input(uintptr_t view, bool active, bool readonly, bool password, b
       e.text = t;
     s.synchronizedText = t;
     NSUInteger a = units(t, start), z = units(t, end);
+    ((MyGoEditor *)e).contextCaret = a;
     e.selectedRange = NSMakeRange(a, z - a);
     s.contextLength = runes(t);
   }
@@ -1414,7 +1433,9 @@ void mygo_ios_input_bounds(uintptr_t view, const char *id, double x, double y, d
   uint64_t field = strtoull(id, NULL, 10);
   if (e.fieldID != field) [UIMenuController.sharedMenuController hideMenuFromView:e];
   e.fieldID = field;
-  e.frame = CGRectMake(x, y, MAX(0, w), MAX(0, h));
+  // Custom TextCaret proxies stay outside surface hit testing, but need
+  // a real layout width for software keyboard caret navigation.
+  e.frame = field ? CGRectMake(x,y,MAX(0,w),MAX(0,h)) : s.bounds;
   s.syncing = syncing;
 }
 bool mygo_ios_native_selection(void) {
