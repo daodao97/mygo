@@ -176,3 +176,10 @@ JavaScript runtime to read; `mygo init -template native` makes one:
 
 It has the same fields. A project has either `mygo.config.ts` or
 `mygo.json`, not both.
+
+## APNs push
+
+`ios.pushNotifications: true` generates the APNs development entitlement unless
+`ios.entitlements["aps-environment"]` overrides it. Import sender credentials once
+with `mygo push setup`; provider keys never enter project configuration or the
+mobile bundle. See [the push guide](push.md) for setup, senders and environments.

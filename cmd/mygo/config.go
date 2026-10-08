@@ -149,6 +149,9 @@ type MacOS struct {
 
 // IOS configures the UIKit host of a native UI application.
 type IOS struct {
+	// PushNotifications generates the APNs development entitlement unless an
+	// explicit aps-environment is supplied. Export signing determines the final environment.
+	PushNotifications bool `json:"pushNotifications"`
 	// BuildNumber is CFBundleVersion, independent of the marketing version.
 	BuildNumber string `json:"buildNumber"`
 	// AssociatedDomains contains entitlement values, e.g. applinks:example.com.

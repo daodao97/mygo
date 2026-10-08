@@ -98,6 +98,9 @@ that must start instantly.
   notarizes the apps of every platform, and publishes them with their
   updates, when you push a tag.
 
+- [APNs push notifications](push.md): project configuration, one-command key
+  import, configured senders and iOS notification delivery.
+
 ## Web frontends
 
 - [The frontend](frontend.md): how pages load during development and in

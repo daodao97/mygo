@@ -158,6 +158,10 @@ controls whether the requested presentation appears. Cold responses are queued u
 Go readiness; duplicate Scene/delegate responses are delivered once. Route
 navigation remains application policy, using the existing `ui.Router`.
 
+For new projects, use `ios.pushNotifications: true` and the one-command sender
+setup described in [APNs push notifications](push.md). Existing explicit
+`ios.entitlements["aps-environment"]` configurations remain supported.
+
 For APNs, configure `ios.entitlements["aps-environment"]` and a matching
 provisioning profile, then call `App.RegisterPushNotifications`. Tokens (including
 registration updates) and errors arrive through `OnPushToken` and

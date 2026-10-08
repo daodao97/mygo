@@ -111,6 +111,8 @@ export interface Config {
 
 /** The UIKit host of a native UI application. */
 export interface IOSConfig {
+  /** Enable APNs; generates aps-environment=development unless explicitly overridden. */
+  pushNotifications?: boolean;
  /** CFBundleVersion, independent of the marketing version. */
   buildNumber?: string;
  /** Entitlement values, e.g. ["applinks:example.com"]. Requires a hosted AASA file. */

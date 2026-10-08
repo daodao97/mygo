@@ -86,6 +86,9 @@ func iosEntitlements(c *Config) []byte {
 	for k, v := range c.IOS.Entitlements {
 		d[k] = v
 	}
+	if c.IOS.PushNotifications && d["aps-environment"] == nil {
+		d["aps-environment"] = "development"
+	}
 	if len(c.IOS.AssociatedDomains) > 0 {
 		d["com.apple.developer.associated-domains"] = c.IOS.AssociatedDomains
 	}
