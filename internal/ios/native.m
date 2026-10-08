@@ -406,19 +406,23 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
   return [self.tokenizer rangeEnclosingPosition:p withGranularity:UITextGranularityCharacter inDirection:UITextStorageDirectionForward];
 }
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
+  // Custom TextCaret handlers own their paste command, including image data.
+  // Native text fields keep their text-only menu and password restrictions.
+  BOOL canPaste = self.editable && (UIPasteboard.generalPasteboard.hasStrings ||
+      (!self.fieldID && !self.secureTextEntry && UIPasteboard.generalPasteboard.hasImages));
   if (action == @selector(undoManager)) return YES;
   if (action == @selector(mygoHardwareCommand:)) {
     if (self.markedTextRange) return NO;
     if (![sender isKindOfClass:UIKeyCommand.class]) return YES;
     NSString *input = ((UIKeyCommand *)sender).input;
     if ([input isEqual:@"\t"] || [input isEqual:UIKeyInputEscape]) return YES;
-    if ([input isEqual:@"v"]) return self.editable && UIPasteboard.generalPasteboard.hasStrings;
+    if ([input isEqual:@"v"]) return canPaste;
     if ([input isEqual:@"z"]) return self.editable;
     if (self.secureTextEntry) return NO;
     if ([input isEqual:@"x"] && !self.editable) return NO;
     return YES;
   }
-  if (action == @selector(paste:)) return self.editable && UIPasteboard.generalPasteboard.hasStrings;
+  if (action == @selector(paste:)) return canPaste;
   if (action == @selector(cut:) && !self.editable) return NO;
   if (self.secureTextEntry) return NO;
   if (action == @selector(copy:) || action == @selector(cut:))
@@ -1469,6 +1473,45 @@ char *mygo_ios_clipboard(void) {
 }
 void mygo_ios_set_clipboard(const char *text) {
   UIPasteboard.generalPasteboard.string = str(text);
+}
+uint32_t mygo_ios_clipboard_formats(void) {
+  UIPasteboard *p = UIPasteboard.generalPasteboard;
+  return (p.hasStrings ? 1 : 0) | (p.hasImages ? 2 : 0);
+}
+int64_t mygo_ios_clipboard_change(void) { return UIPasteboard.generalPasteboard.changeCount; }
+void *mygo_ios_clipboard_png(size_t *length) {
+  *length = 0;
+  @autoreleasepool {
+    UIImage *image = UIPasteboard.generalPasteboard.image;
+    if (!image) return NULL;
+    // PNG has no UIImage orientation metadata. Draw rotated photo copies upright.
+    if (image.imageOrientation != UIImageOrientationUp) {
+      UIGraphicsBeginImageContextWithOptions(image.size, NO, image.scale);
+      [image drawInRect:(CGRect){CGPointZero, image.size}];
+      image = UIGraphicsGetImageFromCurrentImageContext();
+      UIGraphicsEndImageContext();
+    }
+    NSData *data = UIImagePNGRepresentation(image);
+    if (!data.length || data.length > 64 * 1024 * 1024) return NULL;
+    void *bytes = malloc(data.length);
+    if (!bytes) return NULL;
+    memcpy(bytes, data.bytes, data.length);
+    *length = data.length;
+    return bytes;
+  }
+}
+bool mygo_ios_set_clipboard_data(const char *text, const void *png, size_t length) {
+  @autoreleasepool {
+    NSMutableDictionary *item = [NSMutableDictionary dictionary];
+    if (text) item[@"public.utf8-plain-text"] = str(text);
+    if (png && length) {
+      NSData *data = [NSData dataWithBytes:png length:length];
+      if (![UIImage imageWithData:data]) return false;
+      item[@"public.png"] = data;
+    }
+    UIPasteboard.generalPasteboard.items = item.count ? @[item] : @[];
+    return true;
+  }
 }
 char *mygo_ios_locale(void) {
   return strdup(NSLocale.currentLocale.localeIdentifier.UTF8String);

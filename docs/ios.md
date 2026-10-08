@@ -118,6 +118,14 @@ supports the system edit menu; iOS 17+ adds native selection visuals and handles
 including read-only selectable text without a software keyboard. Older versions
 retain Go selection visuals. Pinch/rotation are opt-in through `Element.Gestures`.
 
+The clipboard supports text and PNG through `Clipboard.ReadImage`, `WriteImage`
+and the shared `transfer` APIs. UIKit image copies are converted to upright PNG.
+`Clipboard.Formats` discovers image/text availability without reading their data;
+read content only from a user paste action, allowing UIKit's normal paste prompt.
+Custom TextCaret handlers receive image-capable system paste commands; native
+text fields keep text-only paste actions. HTML and file clipboard formats are
+currently unsupported on iOS.
+
 The iOS archive currently compiles the shared Metal shader source at runtime.
 Distribution signing and upload still depend on the application's Apple account,
 provisioning capabilities and App Store Connect setup. The CLI can create local

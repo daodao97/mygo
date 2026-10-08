@@ -401,10 +401,11 @@ func (clipboard) ReadText() string               { return ownedString(C.mygo_ios
 func (clipboard) WriteText(s string)             { cString(s, func(p *C.char) { C.mygo_ios_set_clipboard(p) }) }
 func (c clipboard) Clear()                       { c.WriteText("") }
 func (c clipboard) AvailableFormats() []string {
-	if c.ReadText() != "" {
-		return []string{"text/plain"}
+	var formats []string
+	for _, f := range c.Formats() {
+		formats = append(formats, string(f))
 	}
-	return nil
+	return formats
 }
 
 type theme struct{ platform.Theme }
