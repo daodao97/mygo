@@ -184,7 +184,7 @@ func goIOSTouch(id, pointer C.uint64_t, kind C.int, x, y C.double) C.bool {
 //export goIOSScroll
 func goIOSScroll(id C.uint64_t, x, y, dx, dy C.double) {
 	if w := find(uint64(id)); w != nil {
-		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.PointerScroll, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy), Precise: true})
+		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerTouch, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy), Precise: true})
 	}
 }
 

@@ -68,6 +68,9 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 			t.holdUntil = time.Time{}
 			if t.scrollTarget != 0 {
 				t.scrolling = true
+				if abs32(y-t.y) > 8 && abs32(y-t.y) > abs32(x-t.x) {
+					rt.dismissKeyboardOnDrag()
+				}
 			}
 			// Custom drags and text selection keep their press. Other widgets
 			// yield to a scrollable ancestor once a finger starts moving.
@@ -77,10 +80,7 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 					if s != nil && (s.flags&flagScrollY != 0 && abs32(y-t.y) > 8 || s.flags&flagScrollX != 0 && abs32(x-t.x) > 8) {
 						rt.cancelPointer()
 						t.scrolling = true
-						if rt.ime.state.Options.Dismiss == "on-drag" {
-							rt.focused = 0
-							rt.updateTextInput()
-						}
+						rt.dismissKeyboardOnDrag()
 						break
 					}
 				}
@@ -140,6 +140,13 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 		}
 	}
 	return false
+}
+
+func (rt *engine) dismissKeyboardOnDrag() {
+	if rt.ime.state.Active && rt.ime.state.Options.Dismiss == "on-drag" {
+		rt.focused = 0
+		rt.updateTextInput()
+	}
 }
 
 func (rt *engine) advanceTouch() {

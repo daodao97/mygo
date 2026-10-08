@@ -30,7 +30,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.SurfaceFrame:
 		rt.surfaceFrame()
 	case platform.SurfaceResize:
-		if rt.touch.active && (rt.touch.selecting || rt.touch.scrollTarget != 0) {
+		if rt.touch.active && (rt.touch.selecting || rt.touch.scrollTarget != 0 && !rt.touch.scrolling) {
 			rt.cancelPointer()
 			rt.touch.active = false
 		}
@@ -72,6 +72,9 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 			rt.requestFrame()
 		}
 	case platform.PointerScroll:
+		if ev.PointerType == platform.PointerTouch && abs32(float32(ev.DY)) > abs32(float32(ev.DX)) {
+			rt.dismissKeyboardOnDrag()
+		}
 		rt.pointerMove(x, y)
 		rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise)
 	case platform.KeyPressed:
