@@ -477,6 +477,11 @@ func (h *windowHost) titleBar() TitleBar {
 	return TitleBar{Height: float32(t.Height), Left: float32(t.Left), Right: float32(t.Right)}
 }
 
+func (h *windowHost) vibrancy() bool {
+	s, ok := h.conn.Surface.(platform.MaterialSurface)
+	return ok && s.ShowsMaterial()
+}
+
 func (h *windowHost) invalidate() { h.conn.Invalidate() }
 
 func (h *windowHost) openURL(u string, done func(error)) {

@@ -184,6 +184,10 @@ func (s *surface) Native() platform.SurfaceNative {
 	return platform.SurfaceNative{View: uintptr(s.view), Layer: uintptr(send(s.view, "layer"))}
 }
 
+// ShowsMaterial reports whether the window has a material, whose effect
+// view, behind the surface, shows where its frames are transparent.
+func (s *surface) ShowsMaterial() bool { return s.w.effect != 0 }
+
 func (s *surface) scale() float64 {
 	if f := msgFloat(s.w.win, sel("backingScaleFactor")); f > 0 {
 		return f

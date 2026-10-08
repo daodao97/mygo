@@ -9,7 +9,9 @@ import (
 // WindowOptions.Surface, which shows content MyGo draws itself (package
 // ui) instead of a webview. Its methods run on the main thread.
 type Surface interface {
-	// Native returns the native objects a GPU renderer draws into.
+	// Native returns the native objects a GPU renderer draws into, which it
+	// calls before making one: a surface that shows frames drawn in memory
+	// through those objects (Windows' Composed) lets go of them then.
 	Native() SurfaceNative
 	// Size returns the size of the drawing area in DIPs and how many
 	// device pixels a DIP is.
@@ -67,6 +69,15 @@ type WideGamutSurface interface {
 	// WideGamut reports whether the screen showing most of the window
 	// shows colors outside the sRGB gamut, as Display P3 screens do.
 	WideGamut() bool
+}
+
+// MaterialSurface is a Surface whose window can show a material
+// (vibrancy) behind the content, wherever its frames are transparent.
+type MaterialSurface interface {
+	// ShowsMaterial reports whether the window shows a material behind the
+	// content now: what its frames leave transparent shows it, rather than
+	// nothing.
+	ShowsMaterial() bool
 }
 
 // IdleSurface is a Surface that can give back memory once frames stop.
@@ -152,6 +163,11 @@ type TextInputOptions struct {
 type SurfaceNative struct {
 	// HWND is the surface's child window (Windows).
 	HWND uintptr
+	// Composed tells that the window has no redirection bitmap, which
+	// would hide its material (Windows): a GPU renderer presents through
+	// DirectComposition, with the frames' alpha, which the material shows
+	// through.
+	Composed bool
 	// View is the surface's NSView (macOS) or UIView (iOS), and Layer its layer.
 	View, Layer uintptr
 	// Widget is the surface's GtkGLArea or GtkDrawingArea, and GLArea the

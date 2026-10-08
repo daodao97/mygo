@@ -2731,6 +2731,61 @@ func TestContentWindow(t *testing.T) {
 	}
 }
 
+// TestContentWindowVibrancy shows native UI over the window's material,
+// which the view learns shows (ui.Context.Vibrancy) on macOS and on Windows
+// 11 22H2 and later: there the window has no redirection bitmap, and the
+// screen shows the material where the view draws nothing, beside its
+// opaque pane, not black. Without a material, the view is told so.
+func TestContentWindowVibrancy(t *testing.T) {
+	var frames atomic.Int32
+	var shows atomic.Bool
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		shows.Store(c.Vibrancy())
+		if c.Vibrancy() {
+			c.Root().Background(ui.Transparent)
+		}
+		ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+			ui.Box(c).Width(200)
+			ui.Box(c).Grow(1).Background(ui.RGB(255, 0, 0))
+		})
+	}
+	w := newWindow(t, mygo.WindowOptions{X: 40, Y: 40, Width: 400, Height: 300, Vibrancy: mygo.VibrancyMica, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	noRedirect, _, onWindows := composition(w)
+	want := runtime.GOOS == "darwin" || onWindows && noRedirect
+	eventually(t, fmt.Sprintf("the view told the material shows: %v", want), func() bool { return shows.Load() == want })
+
+	if onWindows && noRedirect {
+		red := func(x float64) bool {
+			r, g, b, _ := screenColor(w, x, 150)
+			return r > 200 && g < 60 && b < 60
+		}
+		readable := false
+		for deadline := time.Now().Add(3 * time.Second); !readable && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+			readable = red(300)
+		}
+		if readable {
+			if r, g, b, _ := screenColor(w, 100, 150); int(r)+int(g)+int(b) < 24 {
+				t.Errorf("the screen shows %d, %d, %d beside the pane, not the material", r, g, b)
+			}
+			// As the window changes size, its frames show as drawn, not
+			// magnified: the pane still starts 200 DIPs in. Only until the
+			// renderer settles, a second after, would they show otherwise.
+			w.SetSize(440, 320)
+			resized := time.Now()
+			if !red(215) && time.Since(resized) < 500*time.Millisecond {
+				t.Error("once the window grew, the screen shows the pane magnified")
+			}
+		} else {
+			t.Log("the screen does not show the window's pane: not reading the material")
+		}
+	}
+
+	w.SetVibrancy(mygo.VibrancyNone)
+	eventually(t, "the view told no material shows", func() bool { return !shows.Load() })
+}
+
 // TestContentWindowRepaintsWhatChanged moves the red row of a window of
 // native UI drawing in memory under a menu bar, and reads what the display
 // shows. On Linux, GTK repaints only what frames drawn in memory changed,

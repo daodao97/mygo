@@ -569,3 +569,19 @@ func TestRangeSteps(t *testing.T) {
 		}
 	}
 }
+
+// GTK reads the clipboard in a nested event loop, which may draw a frame
+// while the paste is being applied: the frame must not apply it again.
+func TestPasteDuringFrame(t *testing.T) {
+	text := ""
+	tt := coreNewTester(func(c *context) {
+		coreTextInputBase(c, &text).Width(100).Label("name")
+	}, 200, 50)
+	tt.Click("name")
+	tt.SetClipboard("ab")
+	tt.h.reading = tt.Frame
+	tt.Command("paste")
+	if text != "ab" {
+		t.Fatalf("pasted %q", text)
+	}
+}

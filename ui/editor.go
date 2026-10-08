@@ -185,7 +185,11 @@ func (ed *editor) snapshot(ev editEvent) {
 // process applies the input queued for the editor.
 func (ed *editor) process(c *context, e *node) {
 	st := e.st
-	for _, ev := range ed.queue {
+	// The queue is taken first: a command may draw a nested frame, as GTK's
+	// clipboard read does, which must not apply the same input again.
+	queue := ed.queue
+	ed.queue = nil
+	for _, ev := range queue {
 		if ev.replace && !ev.snapshot {
 			ed.anchor, ed.caret = min(ev.from, ed.buf.n), min(ev.to, ed.buf.n)
 		}
@@ -235,8 +239,10 @@ func (ed *editor) process(c *context, e *node) {
 			ed.command(c, ev.text)
 		}
 	}
-	clear(ed.queue)
-	ed.queue = ed.queue[:0]
+	clear(queue)
+	if ed.queue == nil {
+		ed.queue = queue[:0]
+	}
 	if ed.dragging && st.pressed {
 		rt := c.rt
 		ed.drag(rt.pointerX-st.x, rt.pointerY-st.y)

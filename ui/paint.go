@@ -3,6 +3,7 @@ package ui
 import (
 	"math"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/egoist/mygo/internal/scene"
@@ -17,9 +18,13 @@ type Painter struct {
 	scale   float32
 	opacity float32
 	clip    Rect
-	// opaque tells that the root's background covers the window, which
-	// subpixel glyphs need.
+	// opaque tells that the glyphs painted now land on an opaque
+	// background, which subpixel glyphs need: the root's, covering the
+	// window, or that of an element around them, as a pane beside a
+	// sidebar over the window's material. under holds the boxes of the
+	// elements painting with an opaque background around the one painting.
 	opaque bool
+	under  []Rect
 }
 
 // continuousCorners curves rounded corners as Apple does, on macOS, where
@@ -39,13 +44,19 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	opaque := root.bg.A == 255 && root.fill == fillColor && (!root.opacitySet || root.opacity >= 1)
 	// The painter is the engine's, which draw callbacks get, so that
 	// painting allocates none.
-	rt.painter = Painter{rt: rt, s: s, scale: scale, opacity: 1, clip: Rect{0, 0, w, h}, opaque: opaque}
+	under := rt.under[:0]
+	if opaque {
+		// Under all the window paints, as what it drags.
+		under = append(under, Rect{0, 0, w, h})
+	}
+	rt.painter = Painter{rt: rt, s: s, scale: scale, opacity: 1, clip: Rect{0, 0, w, h}, opaque: opaque, under: under}
 	p := &rt.painter
 	p.element(root)
 	if rt.insp.open {
 		rt.insp.paintHighlight(rt, p, h)
 	}
 	rt.paintDrag(p, w, h)
+	rt.under = p.under[:0] // kept for the next frame's
 }
 
 // Now returns the time of the frame being painted, which drawings that
@@ -118,6 +129,13 @@ func (p *Painter) element(e *node) {
 		return
 	}
 	box := Rect{e.x, e.y, e.w, e.h}
+	savedOpaque, under := p.opaque, len(p.under)
+	if e.fill == fillColor && e.bg.A == 255 && p.opacity >= 1 {
+		p.under = append(p.under, box)
+	}
+	// What the element paints lands on an opaque background when all of
+	// it that shows does.
+	p.opaque = p.covered(intersect(box, p.clip))
 	margin := float32(0)
 	for _, sh := range e.shadows {
 		margin = max(margin, abs32(sh.x)+abs32(sh.y)+sh.blur+sh.spread)
@@ -209,6 +227,21 @@ func (p *Painter) element(e *node) {
 		p.FocusRing(box, e.radius)
 	}
 	p.opacity = saved
+	p.opaque, p.under = savedOpaque, p.under[:under]
+}
+
+// covered reports whether an opaque background around the element painting
+// holds all of r, when r has an area.
+func (p *Painter) covered(r Rect) bool {
+	if r.W <= 0 || r.H <= 0 {
+		return true
+	}
+	for _, b := range slices.Backward(p.under) {
+		if r.X >= b.X && r.Y >= b.Y && r.X+r.W <= b.X+b.W && r.Y+r.H <= b.Y+b.H {
+			return true
+		}
+	}
+	return false
 }
 
 // clipRect returns the box an element clips its children to, inside its

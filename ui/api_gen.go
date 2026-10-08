@@ -470,6 +470,32 @@ func (_handle *Context) ToastAction(message string, label string, action func())
 	_ctx.ToastAction(message, label, func() { action() })
 }
 
+// Vibrancy reports whether the window shows its material
+// (mygo.WindowOptions.Vibrancy) wherever the view draws no background: on
+// macOS, and on Windows 11 22H2 and later in a window created with one.
+// Elsewhere, what the view leaves transparent shows no material: draw a
+// background there instead. The root draws the theme's background unless
+// told otherwise; a sidebar over the material, beside opaque content:
+//
+//	if c.Vibrancy() {
+//		c.Root().Background(ui.Transparent)
+//	}
+//	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+//		sidebar := ui.Column(c).Width(240)
+//		if !c.Vibrancy() {
+//			sidebar.Background(c.Theme().Surface)
+//		}
+//		sidebar.Children(func() { app.sidebar(c) })
+//		ui.Column(c).Grow(1).Background(c.Theme().Background).Children(func() { app.content(c) })
+//	})
+func (_handle *Context) Vibrancy() bool {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return false
+	}
+	return _ctx.Vibrancy()
+}
+
 func (_handle *Context) WriteClipboard(s string) {
 	_ctx := _handle.build()
 	if _ctx == nil {

@@ -37,6 +37,9 @@ type host interface {
 	isDark() bool
 	preferences() platform.Preferences
 	titleBar() TitleBar
+	// vibrancy reports whether the window shows a material where the
+	// frames are transparent.
+	vibrancy() bool
 	// invalidate asks for a frame from any goroutine.
 	invalidate()
 	// post runs fn on the main thread soon; it is safe from any goroutine.
@@ -83,6 +86,9 @@ type engine struct {
 	svgs         svgs
 	flex         flexScratch
 	grid         gridScratch
+	// under is the painter's stack of opaque backgrounds, kept from one
+	// frame to the next.
+	under []Rect
 
 	states map[uint64]*state
 	// free are states pruned, which new elements take: rows coming into
@@ -363,6 +369,7 @@ func (rt *engine) runFrame() {
 	appW := rt.insp.contentWidth(w)
 	rt.insp.lap(-1)
 	rt.c.titleBar = rt.host.titleBar()
+	rt.c.vibrancy = rt.host.vibrancy()
 	rt.text.BeginFrame()
 	rt.gen = rt.text.Generation()
 	rt.painted = [3]float32{w, h, scale}

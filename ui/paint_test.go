@@ -118,3 +118,56 @@ func TestFramesRedrawOnlyWhatChanged(t *testing.T) {
 	tt.SetDark(true)
 	check("going dark")
 }
+
+// Glyphs land on an opaque background, which subpixel antialiasing needs,
+// where the root's covers the window, or, under a transparent root over a
+// window's material, where an element's opaque background holds all of
+// what shows of them: a pane beside a sidebar, as the pane's list scrolls.
+func TestOpaqueUnderElements(t *testing.T) {
+	transparent := false
+	opaque := map[string]bool{}
+	probe := func(c *context, name string) *node {
+		return coreBox(c).Height(20).FillWidth().Draw(func(p *Painter, r Rect) { opaque[name] = p.opaque })
+	}
+	var list ListState
+	tt := coreNewTester(func(c *context) {
+		if transparent {
+			c.Root().Background(Transparent)
+		}
+		coreRow(c).Fill().AlignItems(Stretch).Children(func() {
+			coreColumn(c).Width(100).Children(func() { probe(c, "sidebar") })
+			coreColumn(c).Grow(1).Background(RGB(255, 255, 255)).Children(func() {
+				coreList(c, &list, 40, func(i int) {
+					if i == 3 {
+						probe(c, "row")
+					} else {
+						coreBox(c).Height(20)
+					}
+				}).Height(100)
+				probe(c, "pane")
+				// Over the sidebar, out of the pane.
+				probe(c, "overflow").Absolute().Left(-50).Top(150).Width(100)
+				coreColumn(c).Background(RGB(255, 255, 255).Alpha(0.5)).Children(func() { probe(c, "translucent") })
+			})
+		})
+	}, 400, 300)
+	frame := func(when string, want map[string]bool) {
+		t.Helper()
+		clear(opaque)
+		tt.Frame()
+		for name, w := range want {
+			if got, ok := opaque[name]; !ok || got != w {
+				t.Errorf("%s: %s opaque %v (painted %v), want %v", when, name, got, ok, w)
+			}
+		}
+	}
+	frame("an opaque root", map[string]bool{"sidebar": true, "pane": true, "row": true, "overflow": true, "translucent": true})
+	transparent = true
+	frame("a transparent root", map[string]bool{"sidebar": false, "pane": true, "row": true, "overflow": false, "translucent": true})
+	// The row half out of the list's top, and so of the pane's: what shows
+	// of it is in the pane.
+	list.ScrollTo(3, Start)
+	tt.Frame()
+	tt.Scroll(250, 50, 0, 10)
+	frame("a row the list clips", map[string]bool{"row": true})
+}

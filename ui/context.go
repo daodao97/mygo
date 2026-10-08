@@ -27,6 +27,7 @@ type context struct {
 	now      time.Time
 	w, h     float32
 	titleBar TitleBar
+	vibrancy bool
 	overlay  *node
 	nextKey  any
 	keySet   bool
@@ -300,6 +301,26 @@ type TitleBar struct{ Height, Left, Right float32 }
 //	bar := c.TitleBar()
 //	ui.Row(c).Height(max(bar.Height, 32)).Padding(0, bar.Right, 0, bar.Left).DragWindow()
 func (c *context) TitleBar() TitleBar { return c.titleBar }
+
+// Vibrancy reports whether the window shows its material
+// (mygo.WindowOptions.Vibrancy) wherever the view draws no background: on
+// macOS, and on Windows 11 22H2 and later in a window created with one.
+// Elsewhere, what the view leaves transparent shows no material: draw a
+// background there instead. The root draws the theme's background unless
+// told otherwise; a sidebar over the material, beside opaque content:
+//
+//	if c.Vibrancy() {
+//		c.Root().Background(ui.Transparent)
+//	}
+//	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+//		sidebar := ui.Column(c).Width(240)
+//		if !c.Vibrancy() {
+//			sidebar.Background(c.Theme().Surface)
+//		}
+//		sidebar.Children(func() { app.sidebar(c) })
+//		ui.Column(c).Grow(1).Background(c.Theme().Background).Children(func() { app.content(c) })
+//	})
+func (c *context) Vibrancy() bool { return c.vibrancy }
 
 // Now returns the time the frame started, for animations.
 func (c *context) Now() time.Time { return c.now }

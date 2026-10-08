@@ -236,6 +236,13 @@ func glSurface(*mygo.Window) (string, []byte, int, int, bool) { return "", nil, 
 func memoryUI(*testing.T) bool                                { return false }
 func surfaceOnScreen(*mygo.Window) ([]byte, bool)             { return nil, false }
 
+// screenColor returns the color the screen shows at (x, y), in DIPs, in a
+// window showing native UI, or false when the screen cannot be read.
+func screenColor(w *mygo.Window, x, y float64) (r, g, b uint8, ok bool) {
+	mygo.RunOnMain(func() { r, g, b, ok = win.TestSurfacePixel(w.NativeHandle(), x, y) })
+	return r, g, b, ok
+}
+
 // Only macOS has key-value observing.
 func observe(*mygo.Window) (func(), bool) { return nil, false }
 

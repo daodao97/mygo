@@ -238,6 +238,9 @@ func memoryUI(t *testing.T) bool {
 
 // surfaceOnScreen returns, as a PNG, what the display shows of a window's
 // native UI.
+// Only Windows reads the screen over native UI.
+func screenColor(*mygo.Window, float64, float64) (uint8, uint8, uint8, bool) { return 0, 0, 0, false }
+
 func surfaceOnScreen(w *mygo.Window) (png []byte, supported bool) {
 	mygo.RunOnMain(func() { png = linux.TestSurfaceOnScreen(w.NativeHandle()) })
 	return png, true

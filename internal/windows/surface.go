@@ -133,6 +133,11 @@ type surface struct {
 	dropTarget uintptr // IDropTarget
 	access     *uiaTree
 	dragSource *oleDragSource
+
+	// comp shows the frames drawn in memory in a window without a
+	// redirection bitmap, where GDI cannot (compositor.go); nil while none
+	// shows.
+	comp *compositor
 }
 
 func registerSurfaceClass() {
@@ -175,7 +180,24 @@ func (s *surface) dpi() int { return dpiOf(s.w.hwnd) }
 
 func (s *surface) toDIP(v int32) float64 { return float64(v) * 96 / float64(s.dpi()) }
 
-func (s *surface) Native() platform.SurfaceNative { return platform.SurfaceNative{HWND: s.hwnd} }
+// Native returns the surface's window, which a GPU renderer is about to
+// draw into: in a window without a redirection bitmap, it composes the
+// window from then on, and the frames drawn in memory let go of it.
+func (s *surface) Native() platform.SurfaceNative {
+	s.freeComp()
+	return platform.SurfaceNative{HWND: s.hwnd, Composed: s.w.noRedirect}
+}
+
+// ShowsMaterial reports whether the window shows its material behind the
+// content: it has one, and no redirection bitmap to cover it.
+func (s *surface) ShowsMaterial() bool { return s.w.noRedirect && s.w.vibrancy != "" }
+
+func (s *surface) freeComp() {
+	if s.comp != nil {
+		s.comp.free()
+		s.comp = nil
+	}
+}
 
 func (s *surface) Size() (float64, float64, float64) {
 	var r rect
@@ -202,6 +224,19 @@ func (s *surface) RefreshRate() float64 {
 
 func (s *surface) PresentPixels(pix []byte, stride, width, height int) {
 	if len(pix) < stride*height || width == 0 || height == 0 {
+		return
+	}
+	if s.w.noRedirect {
+		// GDI draws nothing in a window without a redirection bitmap: the
+		// frame shows through DirectComposition, with its alpha.
+		if s.comp == nil {
+			s.comp = newCompositor(s.w.b, s.hwnd)
+		}
+		px := s.comp.pixels(width * height)
+		for y := range height {
+			copy(px[y*width:(y+1)*width], unsafe.Slice((*uint32)(unsafe.Pointer(&pix[y*stride])), width))
+		}
+		s.comp.show(px, int32(width), int32(height))
 		return
 	}
 	dc := s.paintDC
@@ -557,6 +592,7 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		s.CancelDataDrag()
 		s.destroyAccess()
 		s.revokeFileDrops()
+		s.freeComp()
 		delete(s.w.b.surfaces, hwnd)
 		return 0, true
 	}

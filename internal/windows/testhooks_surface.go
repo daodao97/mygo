@@ -331,3 +331,24 @@ func TestAccessibilityPerform(hwnd uintptr, label, action, value string) bool {
 	}
 	return false
 }
+
+// TestSurfacePixel returns the color the screen shows at (x, y), in DIPs,
+// in a window showing native UI, once what was drawn shows: there, in a
+// window without a redirection bitmap, the frames over the material.
+func TestSurfacePixel(hwnd uintptr, x, y float64) (r, g, b uint8, ok bool) {
+	s := surfaceByHandle(hwnd)
+	if s == nil {
+		return 0, 0, 0, false
+	}
+	dwmapi.NewProc("DwmFlush").Call()
+	scale := float64(s.dpi()) / 96
+	pt := point{int32(math.Round(x * scale)), int32(math.Round(y * scale))}
+	procClientToScreen.Call(s.hwnd, uintptr(unsafe.Pointer(&pt)))
+	screen, _, _ := procGetDC.Call(0)
+	defer procReleaseDC.Call(0, screen)
+	px, _, _ := gdi32.NewProc("GetPixel").Call(screen, uintptr(pt.X), uintptr(pt.Y))
+	if px == 0xFFFFFFFF { // CLR_INVALID
+		return 0, 0, 0, false
+	}
+	return uint8(px), uint8(px >> 8), uint8(px >> 16), true
+}
