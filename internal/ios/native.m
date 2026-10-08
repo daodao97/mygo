@@ -161,7 +161,113 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @property(nonatomic, strong) NSMutableSet<NSNumber *> *hardwareKeys;
 @property(nonatomic, strong) MyGoUndoManager *goUndoManager;
 @property(nonatomic) BOOL goCanUndo, goCanRedo;
+@property(nonatomic, copy) NSString *accessoryJSON;
 @property(nonatomic, strong) UITextSelectionDisplayInteraction *selectionDisplay API_AVAILABLE(ios(17.0));
+@end
+
+// Native buttons stay outside the Go focus chain. Expanding secondary keys
+// preserves the same UITextView and its marked-text/candidate session.
+@interface MyGoInputAccessory : UIInputView
+@property(nonatomic) uint64_t windowID, ownerID;
+@property(nonatomic, weak) MyGoEditor *editor;
+@property(nonatomic, strong) NSArray *actions;
+@property(nonatomic, strong) UIStackView *stack;
+@property(nonatomic, strong) NSLayoutConstraint *height;
+@property(nonatomic) BOOL expanded;
+@end
+@implementation MyGoInputAccessory
+- (instancetype)init {
+ self=[super initWithFrame:CGRectMake(0,0,390,44) inputViewStyle:UIInputViewStyleKeyboard];
+ if (self) {
+  self.allowsSelfSizing=YES;
+  self.autoresizingMask=UIViewAutoresizingFlexibleHeight;
+  self.height=[self.heightAnchor constraintEqualToConstant:44];
+  self.height.active=YES;
+  self.backgroundColor=UIColor.secondarySystemBackgroundColor;
+  self.accessibilityIdentifier=@"Input accessory";
+ }
+ return self;
+}
+- (CGSize)intrinsicContentSize {
+ NSUInteger count=0;
+ if (self.expanded) for (NSDictionary *action in self.actions) count+= [action[@"Items"] count];
+ return CGSizeMake(UIViewNoIntrinsicMetric,44+(count ? ceil(count/5.0)*44+8 : 0));
+}
+- (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize {
+ return CGSizeMake(targetSize.width,self.intrinsicContentSize.height);
+}
+- (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize withHorizontalFittingPriority:(UILayoutPriority)horizontalFittingPriority verticalFittingPriority:(UILayoutPriority)verticalFittingPriority {
+ return [self systemLayoutSizeFittingSize:targetSize];
+}
+- (UIButton *)button:(NSDictionary *)action {
+ UIButton *button=[UIButton buttonWithType:UIButtonTypeSystem];
+ button.accessibilityLabel=action[@"Label"];
+ button.accessibilityIdentifier=action[@"Label"];
+ NSString *symbol=action[@"Symbol"];
+ UIImage *image=symbol.length ? [UIImage systemImageNamed:symbol] : nil;
+ if (image) [button setImage:[image imageWithConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightRegular]] forState:UIControlStateNormal];
+ else [button setTitle:action[@"Label"] forState:UIControlStateNormal];
+ button.titleLabel.font=[UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+ button.tintColor=UIColor.labelColor;
+ __weak MyGoInputAccessory *weakSelf=self;
+ [button addAction:[UIAction actionWithHandler:^(UIAction *event) {
+  MyGoInputAccessory *accessory=weakSelf;
+  if (!accessory) return;
+  if ([action[@"Items"] count]) {
+   accessory.expanded=!accessory.expanded;
+   [accessory rebuild];
+   // UIKit caches the accessory's height. Reload its layout without changing
+   // first responder or replacing the editor's marked-text session.
+   [accessory.editor reloadInputViews];
+  } else goIOSInputAction(accessory.windowID,accessory.ownerID,(char *)[action[@"ID"] UTF8String]);
+ }] forControlEvents:UIControlEventTouchUpInside];
+ if ([action[@"Items"] count] && self.expanded) {
+  button.backgroundColor=UIColor.tertiarySystemFillColor;
+  button.layer.cornerRadius=8;
+  button.accessibilityValue=@"已展开";
+ }
+ return button;
+}
+- (UIStackView *)row:(NSArray *)actions columns:(NSUInteger)columns {
+ UIStackView *row=[UIStackView new];
+ row.axis=UILayoutConstraintAxisHorizontal;
+ row.distribution=UIStackViewDistributionFillEqually;
+ row.spacing=2;
+ for (NSDictionary *action in actions) [row addArrangedSubview:[self button:action]];
+ while (row.arrangedSubviews.count<columns) [row addArrangedSubview:[UIView new]];
+ [row.heightAnchor constraintEqualToConstant:44].active=YES;
+ return row;
+}
+- (void)rebuild {
+ [self.stack removeFromSuperview];
+ UIStackView *stack=[UIStackView new];
+ self.stack=stack;
+ stack.axis=UILayoutConstraintAxisVertical;
+ stack.translatesAutoresizingMaskIntoConstraints=NO;
+ if (self.expanded) {
+  NSMutableArray *items=[NSMutableArray array];
+  for (NSDictionary *action in self.actions) [items addObjectsFromArray:action[@"Items"] ?: @[]];
+  for (NSUInteger i=0;i<items.count;i+=5) [stack addArrangedSubview:[self row:[items subarrayWithRange:NSMakeRange(i,MIN(5,items.count-i))] columns:5]];
+  if (items.count) {
+   UIView *gap=[UIView new];
+   [gap.heightAnchor constraintEqualToConstant:8].active=YES;
+   [stack addArrangedSubview:gap];
+  }
+ }
+ [stack addArrangedSubview:[self row:self.actions columns:self.actions.count]];
+ [self addSubview:stack];
+ [NSLayoutConstraint activateConstraints:@[
+  [stack.leadingAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.leadingAnchor constant:8],
+  [stack.trailingAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.trailingAnchor constant:-8],
+  [stack.topAnchor constraintEqualToAnchor:self.topAnchor],
+  [stack.bottomAnchor constraintEqualToAnchor:self.bottomAnchor]
+ ]];
+ self.height.constant=self.intrinsicContentSize.height;
+ CGRect frame=self.frame;frame.size.height=self.height.constant;self.frame=frame;
+ [self invalidateIntrinsicContentSize];
+ [self setNeedsLayout];
+ [self.superview setNeedsLayout];
+}
 @end
 @implementation MyGoUndoManager
 - (BOOL)canUndo { return self.editor.editable && self.editor.goCanUndo; }
@@ -353,9 +459,14 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
             (char *)text.UTF8String, 0, 0, 0);
   goIOSInputSync(self.windowID);
 }
+- (BOOL)hasText {
+  // A custom widget (terminal) owns its text outside this empty UIKit proxy.
+  if (!self.fieldID && self.editable && self.isFirstResponder) return YES;
+  return super.hasText;
+}
 - (void)deleteBackward {
  if (!self.editable) return;
-  if (!self.secureTextEntry) {
+  if (!self.secureTextEntry && (self.fieldID || self.markedTextRange)) {
     [super deleteBackward];
     return;
   }
@@ -486,7 +597,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
   return hit;
 }
 - (void)selectText:(UILongPressGestureRecognizer *)gesture {
-  if (gesture.state != UIGestureRecognizerStateBegan || !self.editor.isFirstResponder) return;
+  if (gesture.state != UIGestureRecognizerStateBegan || !((MyGoEditor *)self.editor).fieldID || !self.editor.isFirstResponder) return;
   CGPoint p = [gesture locationInView:self];
   if (p.x < 24 || !CGRectContainsPoint(self.editor.frame, p)) return;
   if (self.contact) {
@@ -520,7 +631,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
  }
   if (![gesture isKindOfClass:UIPanGestureRecognizer.class]) return YES;
   CGPoint p = [gesture locationInView:self], v = [(UIPanGestureRecognizer *)gesture velocityInView:self];
-  return self.editor.isFirstResponder && !self.editor.secureTextEntry &&
+  return ((MyGoEditor *)self.editor).fieldID && self.editor.isFirstResponder && !self.editor.secureTextEntry &&
       self.editor.selectedRange.length == 0 && p.x >= 24 &&
       CGRectContainsPoint(self.editor.frame, p) && fabs(v.y) > fabs(v.x);
 }
@@ -1131,6 +1242,26 @@ void mygo_ios_input_history(uintptr_t view, bool undo, bool redo) {
   MyGoEditor *editor = (MyGoEditor *)((__bridge MyGoSurface *)(void *)view).editor;
   editor.goCanUndo = undo;
   editor.goCanRedo = redo;
+}
+void mygo_ios_input_accessory(uintptr_t view, uint64_t owner, const char *json) {
+ MyGoEditor *editor=(MyGoEditor *)((__bridge MyGoSurface *)(void *)view).editor;
+ NSString *value=str(json);
+ MyGoInputAccessory *accessory=[editor.inputAccessoryView isKindOfClass:MyGoInputAccessory.class] ? (MyGoInputAccessory *)editor.inputAccessoryView : nil;
+ if ([editor.accessoryJSON isEqual:value]) {
+  accessory.ownerID=owner;
+  return;
+ }
+ editor.accessoryJSON=value;
+ BOOL installed=accessory!=nil;
+ NSArray *actions=value.length ? [NSJSONSerialization JSONObjectWithData:[value dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil] : nil;
+ if (actions.count) {
+  if (!accessory) accessory=[MyGoInputAccessory new];
+  accessory.editor=editor;accessory.windowID=editor.windowID;accessory.ownerID=owner;
+  accessory.actions=actions;accessory.expanded=NO;
+  [accessory rebuild];
+  editor.inputAccessoryView=accessory;
+ } else editor.inputAccessoryView=nil;
+ if (editor.isFirstResponder && installed!=(actions.count>0)) [editor reloadInputViews];
 }
 void mygo_ios_input(uintptr_t view, bool active, bool readonly, bool password, bool multiline,
                     const char *text, int start, int end, double x, double y,

@@ -10,8 +10,15 @@ type Mobile interface {
 
 // MobileHandler receives system events, including events from an earlier run.
 type MobileHandler interface {
-	NotificationReceived(id string, data map[string]string, clicked bool)
+	// NotificationReceived returns the foreground presentation bitmask.
+	NotificationReceived(NotificationEvent) uint32
 	PushRegistered(token string, err error)
+}
+
+type NotificationEvent struct {
+	ID, Source, Action string
+	Data               map[string]string
+	Clicked            bool
 }
 
 type UnsupportedMobile struct{}

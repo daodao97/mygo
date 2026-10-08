@@ -91,14 +91,20 @@ type InputOptions struct {
 	Capitalization Capitalization
 }
 
-// InputOptions supplies this frame's keyboard traits for an editable field.
-// Omitting the call on a subsequent frame restores the default traits.
+// InputOptions supplies this frame's keyboard traits for an editable field or
+// a custom HandleInput/TextCaret element, such as a terminal. Omitting the call
+// on a subsequent frame restores the default traits.
 func (e *Element) InputOptions(o InputOptions) *Element {
+	e.inputOptions = o
 	if ed := e.st.editor; ed != nil && e.flags&flagEditable != 0 {
-		ed.inputOptions = platform.TextInputOptions{
-			Keyboard: string(o.Keyboard), Return: string(o.Return), Content: string(o.Content),
-			Correction: string(o.Correction), Capitalization: string(o.Capitalization), Dismiss: string(o.Dismiss),
-		}
+		ed.inputOptions = o.nativeOptions()
 	}
 	return e
+}
+
+func (o InputOptions) nativeOptions() platform.TextInputOptions {
+	return platform.TextInputOptions{
+		Keyboard: string(o.Keyboard), Return: string(o.Return), Content: string(o.Content),
+		Correction: string(o.Correction), Capitalization: string(o.Capitalization), Dismiss: string(o.Dismiss),
+	}
 }

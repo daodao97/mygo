@@ -221,6 +221,14 @@ func goIOSInputSync(id C.uint64_t) {
 	}
 }
 
+//export goIOSInputAction
+func goIOSInputAction(id, owner C.uint64_t, action *C.char) {
+	if w := find(uint64(id)); w != nil {
+		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceInputAction, ID: uint64(owner), Text: C.GoString(action)})
+		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+	}
+}
+
 //export goIOSComposition
 func goIOSComposition(id C.uint64_t, text *C.char, start, end, caret C.int) {
 	if w := find(uint64(id)); w != nil {

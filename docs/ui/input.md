@@ -113,6 +113,32 @@ around the caret: macOS's press and hold replaces the letter it accents,
 Japanese input methods convert typed text again, and others predict from
 what comes before.
 
+### Software-keyboard actions
+
+`InputAccessory` attaches a compact action row to the iOS system keyboard.
+The keyboard keeps its language, candidate input and first responder while
+an action runs. A button with `Items` expands secondary actions above the row;
+other platforms ignore the native accessory. Labels are also accessible names,
+and an optional `Symbol` uses a system symbol on iOS.
+
+```go
+field.InputAccessory([]ui.InputAction{
+    {ID: "tab", Label: "Tab"},
+    {ID: "more", Label: "More", Symbol: "ellipsis", Items: []ui.InputAction{
+        {ID: "paste", Label: "Paste"},
+    }},
+}, func(id string) {
+    // Perform the action without moving focus out of the field.
+})
+```
+
+It also works on custom `HandleInput`/`TextCaret` widgets. Omitting the call
+on a later frame removes the accessory. For Go-rendered input toolbars or
+selection menus, `KeepFocus` preserves the existing editor on pointer presses;
+keyboard navigation still visits those controls normally.
+Call `c.Blur()` from a dismiss action to clear input focus and return to reading
+without the next frame reopening the software keyboard.
+
 ## Dropped files
 
 `DroppedFiles` returns the paths of the files dropped on the element from
@@ -161,7 +187,10 @@ ui.Box(c).Fill().Focusable().HandleInput(func(ev ui.InputEvent) bool {
 		return true
 	}
 	return false
-}).TextCaret(app.caretRect())
+}).TextCaret(app.caretRect()).InputOptions(ui.InputOptions{
+    Keyboard: ui.KeyboardASCII, Correction: ui.CorrectionOff,
+    Capitalization: ui.CapitalizeNone,
+})
 
 c.OpenURLThen(url, func(err error) {
 	if err != nil {
@@ -169,6 +198,22 @@ c.OpenURLThen(url, func(err error) {
 	}
 })
 ```
+
+When a custom drawing computes its cursor during painting, use
+`.TextCaretFunc(app.caretRect)` instead. Its callback returns the caret
+relative to the element's box using the current painted layout, so resizing
+the window or showing the keyboard keeps the input method at the visible
+cursor.
+
+For a terminal or another custom scrolling widget, add `.TouchScroll()`.
+Finger swipes arrive as precise `InputScroll` events; stationary taps still
+deliver pointer presses and focus the widget. Scrolling does not open the
+keyboard or start text selection. Mouse dragging is unchanged.
+
+Use `.TouchSelection()` instead when the widget also selects text. Holding
+still for 500 ms delivers `InputLongPress`, followed by captured pointer
+moves and Up/Cancel if the handler takes it. The hold does not focus the
+widget or open the keyboard. Movement before the hold still scrolls.
 
 ## See also
 

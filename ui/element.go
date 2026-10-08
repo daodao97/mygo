@@ -260,10 +260,16 @@ type Element struct {
 
 	// Input the element takes itself (HandleInput), and where the caret of
 	// the text it takes is (TextCaret).
-	inputFn    func(InputEvent) bool
-	textClient TextInputClient
-	caret      Rect
-	takesText  bool
+	inputFn        func(InputEvent) bool
+	caret          Rect
+	caretFn        func() Rect
+	takesText      bool
+	touchScroll    bool
+	touchSelection bool
+	inputOptions   InputOptions
+	inputAccessory string
+	inputAction    func(string)
+	textClient     TextInputClient
 
 	// Content.
 	text     string
@@ -1061,6 +1067,11 @@ func (e *Element) hasState() bool {
 
 // Focusable lets the element take the keyboard focus, by a click or Tab.
 func (e *Element) Focusable() *Element { e.flags |= flagFocusable; return e }
+
+// KeepFocus preserves the current editor's focus when this element is
+// pressed. Keyboard navigation still focuses it normally. Use it for
+// input toolbars and selection actions that should keep an IME alive.
+func (e *Element) KeepFocus() *Element { e.flags |= flagKeepFocus; return e }
 
 // DragWindow makes the element a handle that moves the window, such as the
 // title bar of a frameless window. A double click on it maximizes the

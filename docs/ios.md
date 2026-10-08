@@ -146,9 +146,15 @@ The existing `App.SetBadgeCount` convenience also works on iOS, retaining its
 original void signature.
 
 Register `App.OnNotification` before `App.Run` for foreground delivery and
-responses from a cold launch. Its typed event contains ID, Data and Clicked.
-Foreground notifications show a system banner/list entry; the system controls
-actual presentation, sound and badge delivery. Cold responses are queued until
+responses from a cold launch. Its typed event contains ID, Data, Clicked,
+Source (`NotificationLocal` or `NotificationRemote`) and Action (empty for the
+default tap). Foreground notifications show a system banner/list entry by default.
+`App.SetNotificationPresentationHandler` can return a combination of
+`PresentNotificationBanner`, `PresentNotificationList`, `PresentNotificationSound`
+and `PresentNotificationBadge`, or zero to suppress presentation for an already
+visible conversation. The callback runs on the UI thread before `OnNotification`;
+keep it fast. Passing nil restores `PresentNotificationDefault`. The system still
+controls whether the requested presentation appears. Cold responses are queued until
 Go readiness; duplicate Scene/delegate responses are delivered once. Route
 navigation remains application policy, using the existing `ui.Router`.
 
@@ -157,8 +163,38 @@ provisioning profile, then call `App.RegisterPushNotifications`. Tokens (includi
 registration updates) and errors arrive through `OnPushToken` and
 `OnPushRegistrationError`. Request visible notification permission separately.
 Remote custom string fields arrive in event Data; an optional `mygoID` overrides
-the OS request identifier. Sending remote pushes needs your APNs delivery service.
+the OS request identifier. Closing a notification with this logical ID also removes
+delivered remote notifications that use it.
 Silent background push handling is not provided by this notification API.
+
+The independent `github.com/egoist/mygo/push/apns` package sends notifications
+from a desktop process or server; it does not require a running MyGo application.
+Keep provider keys on that sender, never inside an iOS app. It uses HTTP/2 and
+ES256 token authentication, refreshes its JWT, bounds transient retries, and
+returns typed `*apns.Error` responses, including invalid-device-token timestamps.
+
+```go
+client, err := apns.New(apns.Config{
+    TeamID: "YOURTEAMID", KeyID: "YOURKEYID0", PrivateKey: privateKeyPEM,
+    Environment: apns.Sandbox, // use Production for distribution builds
+})
+if err != nil { return err }
+_, err = client.Send(ctx, apns.Notification{
+    DeviceToken: token, Topic: "dev.example.app", CollapseID: "message-42",
+    Payload: apns.Payload{
+        ID: "message-42", Title: "New message", Body: "Tap to open",
+        Data: map[string]string{"route": "/messages/42"},
+    },
+})
+```
+
+Payload ID and Data use the native `mygoID`/`mygo` contract above. Expiration
+defaults to 15 minutes; set it explicitly for application policy. `Silent` creates
+a background payload, but receiving background callbacks requires a separate
+native integration. Authorization, foreground suppression, device subscriptions,
+event deduplication and navigation remain application policy. See Apple's
+[APNs request contract](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns)
+and [token authentication](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns).
 
 `Haptics.Play` supports Selection, Light/Medium/Heavy/Soft/Rigid impacts and
 Success/Warning/Error feedback. Native generators are reused. Success means the

@@ -12,6 +12,58 @@ func touch(tt *Tester, kind platform.SurfaceEventKind, id uint64, x, y float32) 
 	tt.send(platform.SurfaceEvent{Kind: kind, PointerType: platform.PointerTouch, PointerID: id, X: float64(x), Y: float64(y), Clicks: 1})
 }
 
+func TestTouchScrollCustomWidgetDefersKeyboardAndSelection(t *testing.T) {
+	var events []InputEvent
+	tt := NewTester(func(c *Context) {
+		e := Box(c).Fill().Focusable().TouchScroll().TextCaret(Rect{W: 1, H: 20})
+		e.PointerPosition() // Pointer tracking must not steal finger scrolling.
+		e.HandleInput(func(ev InputEvent) bool { events = append(events, ev); return true })
+	}, 320, 240)
+	touch(tt, platform.PointerDown, 1, 120, 180)
+	touch(tt, platform.PointerMove, 1, 120, 177)
+	if len(events) != 0 || tt.h.ime.Active {
+		t.Fatal("a reserved contact selected text or opened the keyboard")
+	}
+	touch(tt, platform.PointerMove, 1, 120, 140)
+	touch(tt, platform.PointerMove, 1, 120, 100)
+	touch(tt, platform.PointerUp, 1, 120, 100)
+	var dy float32
+	for _, ev := range events {
+		if ev.Kind != InputScroll || !ev.Precise {
+			t.Fatalf("swipe delivered pointer selection: %+v", ev)
+		}
+		dy += ev.DY
+	}
+	if dy != 80 || tt.h.ime.Active || tt.rt.pressed != nil {
+		t.Fatalf("swipe offset=%v keyboard=%v pressed=%v", dy, tt.h.ime.Active, tt.rt.pressed)
+	}
+	events = nil
+	touch(tt, platform.PointerDown, 2, 120, 100)
+	touch(tt, platform.PointerMove, 2, 120, 102)
+	touch(tt, platform.PointerUp, 2, 120, 102)
+	downs, ups := 0, 0
+	for _, ev := range events {
+		if ev.Kind == InputPointerDown {
+			downs++
+		}
+		if ev.Kind == InputPointerUp {
+			ups++
+		}
+	}
+	if downs != 1 || ups != 1 || !tt.h.ime.Active {
+		t.Fatalf("tap did not focus and deliver a complete click: %+v", events)
+	}
+	events = nil
+	tt.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: 120, Y: 100})
+	tt.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: 120, Y: 60})
+	tt.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: 120, Y: 60})
+	for _, ev := range events {
+		if ev.Kind == InputScroll {
+			t.Fatal("mouse selection became a touch scroll")
+		}
+	}
+}
+
 func TestTouchBlurReleasesContact(t *testing.T) {
 	for _, scrolling := range []bool{false, true} {
 		t.Run(fmt.Sprint("scrolling=", scrolling), func(t *testing.T) {

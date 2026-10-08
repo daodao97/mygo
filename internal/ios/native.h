@@ -26,6 +26,7 @@ void mygo_ios_input_options(uintptr_t view, const char *json);
 void mygo_ios_input_bounds(uintptr_t view, const char *id, double x, double y, double w, double h);
 bool mygo_ios_native_selection(void);
 void mygo_ios_input_history(uintptr_t view, bool undo, bool redo);
+void mygo_ios_input_accessory(uintptr_t view, uint64_t owner, const char *json);
 void mygo_ios_preferences(bool *motion, bool *contrast, double *scale);
 void mygo_ios_access(uintptr_t view, const char *json);
 bool mygo_ios_dark(void);

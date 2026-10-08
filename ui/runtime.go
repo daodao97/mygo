@@ -135,6 +135,9 @@ type engine struct {
 		id                 uint64
 		active, scrolling  bool
 		keyboardTap        bool
+		selecting          bool
+		holdUntil          time.Time
+		scrollTarget       uint64
 		x, y, lastX, lastY float32
 		back               *Router
 		backEntry          *routeEntry
@@ -342,6 +345,7 @@ func (rt *engine) runFrame() {
 	rt.gen = rt.text.Generation()
 	rt.painted = [3]float32{w, h, scale}
 	rt.animating, rt.repainting, rt.repaintAt = false, false, time.Time{}
+	rt.advanceTouch()
 	rt.routeKeys()
 	if rt.drag != nil {
 		// The source's element is this frame's, if it builds one.
@@ -447,6 +451,9 @@ func (rt *engine) now() time.Time {
 // (SurfaceShown) rather than draw frames nobody sees, as browsers pause
 // the animation frames of windows out of sight.
 func (rt *engine) next() {
+	if rt.touch.active && !rt.touch.holdUntil.IsZero() {
+		rt.scheduleAt(rt.touch.holdUntil)
+	}
 	rt.redraw, rt.repaintDue, rt.held = false, time.Time{}, false
 	moving := rt.animating || rt.repainting || !rt.repaintAt.IsZero()
 	switch {
@@ -485,6 +492,9 @@ func (rt *engine) repaintNow() {
 // elements painted again when only drawings moved since, else a frame
 // built anew.
 func (rt *engine) surfaceFrame() {
+	if rt.touch.active && !rt.touch.holdUntil.IsZero() && !rt.now().Before(rt.touch.holdUntil) {
+		rt.redraw = false // A long press changes widget state, not just paint.
+	}
 	if w, h, scale := rt.host.size(); rt.redraw && !rt.inFrame && rt.c.root != nil &&
 		rt.painted == [3]float32{w, h, scale} && rt.text.Generation() == rt.gen {
 		rt.repaintFrame(w, h, scale)
@@ -517,6 +527,7 @@ func (rt *engine) repaintFrame(w, h, scale float32) {
 	rt.host.present(&rt.scene)
 	rt.stats.lap(phasePresent)
 	rt.text.EndFrame()
+	rt.updateTextInput()
 	rt.next()
 	rt.stats.end(rt)
 }
@@ -745,6 +756,11 @@ func (rt *engine) commitElement(e *Element, clip Rect, hidden bool) {
 	s.cursor, s.tip = e.cursor, e.tip
 	s.role = e.role
 	s.input, s.caret, s.takesText = e.inputFn, e.caret, e.takesText
+	s.caretFn = e.caretFn
+	s.inputOptions = e.inputOptions
+	s.inputAccessory, s.inputAction = e.inputAccessory, e.inputAction
+	s.touchScroll = e.touchScroll
+	s.touchSelection = e.touchSelection
 	if s.textClient != e.textClient {
 		if s.textAdapter != nil {
 			s.textAdapter.release()

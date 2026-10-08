@@ -36,6 +36,9 @@ const (
 	InputScroll
 	// InputPointerCancel aborts a press taken by this handler.
 	InputPointerCancel
+	// InputLongPress starts a stationary touch selection. Subsequent pointer
+	// moves and Up/Cancel are captured without focusing or opening the keyboard.
+	InputLongPress
 )
 
 // InputEvent is input an element takes as it comes (HandleInput).
@@ -77,12 +80,37 @@ func (e *Element) HandleInput(fn func(ev InputEvent) bool) *Element {
 	return e
 }
 
+// TouchScroll makes a custom input widget take finger drags as precise
+// InputScroll events. A stationary tap still delivers pointer Down/Up and
+// focuses the widget; a swipe does neither, so it can scroll without
+// opening the keyboard. Mouse input and pointer tracking are unchanged.
+func (e *Element) TouchScroll() *Element {
+	e.touchScroll = true
+	return e
+}
+
+// TouchSelection lets a TouchScroll widget reserve a stationary long press
+// for its InputLongPress handler. Moving before the hold still scrolls.
+func (e *Element) TouchSelection() *Element {
+	e.touchScroll, e.touchSelection = true, true
+	return e
+}
+
 // TextCaret has the element take text from the system's input methods
 // while it has the keyboard focus, with their composition at r, the caret,
 // relative to the element's box: candidate windows show there. Its
 // InputText and Compose events (HandleInput) bring the text.
 func (e *Element) TextCaret(r Rect) *Element {
-	e.caret, e.takesText = r, true
+	e.caret, e.caretFn, e.takesText = r, nil, true
+	return e
+}
+
+// TextCaretFunc is TextCaret for a custom drawing whose cursor depends on its
+// final layout or rendered grid. fn runs on the UI thread after painting, so
+// the input method and the visible cursor use the same frame's geometry.
+// The returned rectangle is relative to the element's box.
+func (e *Element) TextCaretFunc(fn func() Rect) *Element {
+	e.caretFn, e.takesText = fn, fn != nil
 	return e
 }
 

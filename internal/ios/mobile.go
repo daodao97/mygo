@@ -37,18 +37,23 @@ func (*Backend) RemoveNotification(id string) {
 func (*Backend) RemoveAllNotifications() { C.mygo_ios_clear_notifications() }
 
 //export goIOSNotification
-func goIOSNotification(id *C.char, data *C.char, clicked C.bool) {
+func goIOSNotification(id *C.char, data *C.char, clicked C.bool, remote C.bool, action *C.char) C.uint32_t {
 	b := current.Load()
 	if b == nil || b.h == nil {
-		return
+		return 15
 	}
 	var values map[string]string
 	if json.Unmarshal([]byte(C.GoString(data)), &values) != nil {
-		return
+		return 15
 	}
 	if h, ok := b.h.(platform.MobileHandler); ok {
-		h.NotificationReceived(C.GoString(id), values, bool(clicked))
+		source := "local"
+		if bool(remote) {
+			source = "remote"
+		}
+		return C.uint32_t(h.NotificationReceived(platform.NotificationEvent{ID: C.GoString(id), Data: values, Clicked: bool(clicked), Source: source, Action: C.GoString(action)}))
 	}
+	return 15
 }
 
 //export goIOSPush

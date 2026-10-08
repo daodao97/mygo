@@ -30,6 +30,10 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.SurfaceFrame:
 		rt.surfaceFrame()
 	case platform.SurfaceResize:
+		if rt.touch.active && (rt.touch.selecting || rt.touch.scrollTarget != 0) {
+			rt.cancelPointer()
+			rt.touch.active = false
+		}
 		rt.cancelTouchBack()
 		rt.requestFrame()
 	case platform.SurfaceShown:
@@ -100,6 +104,11 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		taken = rt.gestureEvent(ev)
 	case platform.SurfaceCommand:
 		rt.editEvent(editEvent{kind: editCommand, text: ev.Text})
+	case platform.SurfaceInputAction:
+		if s := rt.states[ev.ID]; s != nil && ev.ID == rt.focused && s.inputAction != nil && s.flags&(flagDisabled|flagInert) == 0 {
+			s.inputAction(ev.Text)
+			rt.requestFrame()
+		}
 	case platform.SurfaceFocus:
 		rt.windowFocused = true
 		rt.blinkStart = time.Now()
@@ -828,8 +837,13 @@ func (rt *engine) updateTextInput() {
 		}
 	} else if s != nil && s.editor == nil && s.input != nil && s.takesText && rt.windowFocused {
 		// An element taking text itself: no text around the caret.
+		t.Options = s.inputOptions.nativeOptions()
 		t.Active = true
-		t.Caret = platform.RectF{X: float64(s.x + s.caret.X), Y: float64(s.y + s.caret.Y), W: float64(s.caret.W), H: float64(s.caret.H)}
+		r := s.caret
+		if s.caretFn != nil {
+			r = s.caretFn()
+		}
+		t.Caret = platform.RectF{X: float64(s.x + r.X), Y: float64(s.y + r.Y), W: float64(r.W), H: float64(r.H)}
 	} else if s != nil && s.editor != nil && s.flags&(flagEditable|flagSelectable) != 0 && (!s.editor.readOnly || rt.nativeSelection(s)) && rt.windowFocused {
 		ed := s.editor
 		r := ed.caretRect(s)
@@ -856,6 +870,7 @@ func (rt *engine) updateTextInput() {
 	}
 	if t.Active {
 		s := rt.states[rt.focused]
+		t.Accessory, t.AccessoryID = s.inputAccessory, rt.focused
 		if s.editor != nil {
 			ed := s.editor
 			t.ReadOnly, t.Password, t.Multiline = ed.readOnly, ed.password, ed.multiline
@@ -1041,6 +1056,16 @@ func (e *Element) Pressed() bool {
 // Focused reports whether the element has the keyboard focus.
 func (e *Element) Focused() bool {
 	return e.hasState() && e.c.rt.focused == e.id && e.c.rt.windowFocused
+}
+
+// Blur clears keyboard focus and dismisses the software keyboard. It is useful
+// for a keyboard accessory's reading-mode action; the next input tap can focus
+// its editor again.
+func (c *Context) Blur() {
+	if c.rt.focused != 0 {
+		c.rt.focused = 0
+		c.rt.requestFrame()
+	}
 }
 
 // FocusVisible reports whether the element has the keyboard focus and

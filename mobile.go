@@ -2,6 +2,7 @@ package mygo
 
 import (
 	"fmt"
+	"github.com/egoist/mygo/internal/platform"
 	"maps"
 )
 
@@ -72,12 +73,47 @@ type NotificationEvent struct {
 	ID      string
 	Data    map[string]string
 	Clicked bool
+	// Source identifies local scheduling or remote push delivery.
+	Source NotificationSource
+	// Action is a custom system action identifier; empty means ordinary delivery
+	// or opening the notification. Clicked remains true for an ordinary open.
+	Action string
 }
+
+type NotificationSource string
+
+const (
+	NotificationLocal  NotificationSource = "local"
+	NotificationRemote NotificationSource = "remote"
+)
+
+// NotificationPresentation controls iOS foreground presentation. Zero suppresses
+// system UI while still delivering OnNotification. Background presentation is
+// controlled by the push payload and the user's system settings.
+type NotificationPresentation uint32
+
+const (
+	PresentNotificationBanner NotificationPresentation = 1 << iota
+	PresentNotificationList
+	PresentNotificationSound
+	PresentNotificationBadge
+	PresentNotificationDefault = PresentNotificationBanner | PresentNotificationList | PresentNotificationSound | PresentNotificationBadge
+)
 
 var mobileEvents struct {
 	notifications listeners[func(NotificationEvent)]
 	tokens        listeners[func(string)]
 	errors        listeners[func(error)]
+	presentation  func(NotificationEvent) NotificationPresentation // main thread
+}
+
+// SetNotificationPresentationHandler chooses iOS foreground presentation per
+// notification. Register before Run; nil restores the default banner, list,
+// sound and badge. The callback runs synchronously on the UI thread before
+// OnNotification and must return promptly. It does not request authorization.
+// Other platforms retain their native presentation behavior.
+func (a *Application) SetNotificationPresentationHandler(fn func(NotificationEvent) NotificationPresentation) {
+	onMain(func() { mobileEvents.presentation = fn })
 }
 
 // OnNotification receives foreground delivery and notification clicks, also
@@ -97,11 +133,18 @@ func (a *Application) OnPushToken(fn func(string)) func() { return mobileEvents.
 func (a *Application) OnPushRegistrationError(fn func(error)) func() {
 	return mobileEvents.errors.add(fn, false)
 }
-func (appHandler) NotificationReceived(id string, data map[string]string, clicked bool) {
-	if clicked {
-		notificationClicked(id)
+func (appHandler) NotificationReceived(input platform.NotificationEvent) uint32 {
+	event := NotificationEvent{ID: input.ID, Data: maps.Clone(input.Data), Clicked: input.Clicked, Source: NotificationSource(input.Source), Action: input.Action}
+	presentation := PresentNotificationDefault
+	if !event.Clicked && mobileEvents.presentation != nil {
+		presentation = mobileEvents.presentation(event) & PresentNotificationDefault
 	}
-	fire1(&mobileEvents.notifications, NotificationEvent{ID: id, Data: maps.Clone(data), Clicked: clicked})
+	if event.Clicked {
+		notificationClicked(event.ID)
+	}
+	event.Data = maps.Clone(input.Data)
+	fire1(&mobileEvents.notifications, event)
+	return uint32(presentation)
 }
 func (appHandler) PushRegistered(token string, err error) {
 	if err != nil {

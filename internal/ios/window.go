@@ -53,6 +53,9 @@ func (w *window) PresentPixels(p []byte, stride, width, height int) {
 func (w *window) SetCursor(platform.Cursor) {}
 func (w *window) NativeTextSelection() bool { return bool(C.mygo_ios_native_selection()) }
 func (w *window) SetTextInput(t platform.TextInputState) {
+	if t.Accessory != w.input.Accessory || t.AccessoryID != w.input.AccessoryID {
+		cString(t.Accessory, func(p *C.char) { C.mygo_ios_input_accessory(C.uintptr_t(w.view), C.uint64_t(t.AccessoryID), p) })
+	}
 	if t.Options != w.input.Options || t.Password != w.input.Password {
 		data, _ := json.Marshal(t.Options)
 		cString(string(data), func(p *C.char) { C.mygo_ios_input_options(C.uintptr_t(w.view), p) })

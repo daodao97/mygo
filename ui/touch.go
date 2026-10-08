@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/egoist/mygo/internal/platform"
+import (
+	"github.com/egoist/mygo/internal/platform"
+	"time"
+)
 
 // touchEvent arbitrates a primary touch between a press and a scroll.
 // Extra contacts are ignored by widgets while the primary contact owns input.
@@ -14,6 +17,8 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 		}
 		t.id, t.active, t.scrolling = ev.PointerID, true, false
 		t.keyboardTap = false
+		t.selecting, t.holdUntil = false, time.Time{}
+		t.scrollTarget = 0
 		t.x, t.y, t.lastX, t.lastY = x, y, x, y
 		t.back, t.backWidth, t.backLevel = rt.backAt(x, y)
 		t.backEntry = nil
@@ -23,9 +28,21 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 			// is replayed on release; vertical movement can still scroll.
 			return true
 		}
+		if s := rt.handler(rt.hitChain(x, y)); s != nil && s.touchScroll {
+			// Delay the press and focus until this contact becomes a tap.
+			t.scrollTarget = s.id
+			if s.touchSelection {
+				t.holdUntil = rt.now().Add(500 * time.Millisecond)
+				rt.requestFrame()
+			}
+			return true
+		}
 	case platform.PointerMove:
 		if !t.active || ev.PointerID != t.id {
 			return true
+		}
+		if t.selecting {
+			return false
 		}
 		if r := t.back; r != nil {
 			if r.back != nil {
@@ -48,6 +65,10 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 			t.back = nil // vertical/leftward motion yields to scrolling
 		}
 		if !t.scrolling && (abs32(x-t.x) > 8 || abs32(y-t.y) > 8) {
+			t.holdUntil = time.Time{}
+			if t.scrollTarget != 0 {
+				t.scrolling = true
+			}
 			// Custom drags and text selection keep their press. Other widgets
 			// yield to a scrollable ancestor once a finger starts moving.
 			if rt.pressed == nil || rt.pressed.flags&(flagDraggable|flagEditable|flagTrackPointer) == 0 {
@@ -71,6 +92,9 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 			t.lastX, t.lastY = x, y
 			return true
 		}
+		if t.scrollTarget != 0 {
+			return true
+		}
 		t.lastX, t.lastY = x, y
 	case platform.PointerUp, platform.PointerCancel:
 		if !t.active || ev.PointerID != t.id {
@@ -81,7 +105,21 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 		}
 		t.keyboardTap = false
 		t.active = false
+		t.holdUntil = time.Time{}
 		rt.pointerIn = false
+		if t.selecting {
+			t.selecting = false
+			return false
+		}
+		if id := t.scrollTarget; id != 0 {
+			t.scrollTarget = 0
+			if !t.scrolling && ev.Kind == platform.PointerUp && rt.handler(rt.hitChain(x, y)) == rt.states[id] {
+				rt.pointerMove(t.x, t.y)
+				rt.pointerDown(t.x, t.y, ev.Button, 0, ev.Clicks)
+				return false
+			}
+			return true
+		}
 		if r := t.back; r != nil {
 			entry := t.backEntry
 			t.back = nil
@@ -102,6 +140,24 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 		}
 	}
 	return false
+}
+
+func (rt *engine) advanceTouch() {
+	t := &rt.touch
+	if !t.active || t.scrolling || t.holdUntil.IsZero() || rt.now().Before(t.holdUntil) {
+		return
+	}
+	t.holdUntil = time.Time{}
+	s := rt.states[t.scrollTarget]
+	if s == nil || !s.touchSelection || s.flags&(flagDisabled|flagInert) != 0 || rt.handler(rt.hitChain(t.x, t.y)) != s {
+		return
+	}
+	rt.pointerX, rt.pointerY = t.x, t.y
+	if rt.deliver(s, InputEvent{Kind: InputLongPress, Button: 0}) {
+		t.scrollTarget, t.selecting = 0, true
+		rt.pressed, rt.pressButton = s, 0
+		s.pressed = true
+	}
 }
 
 func (rt *engine) cancelPointer() {

@@ -11,20 +11,22 @@ static NSString *string(const char *s) { return s ? [NSString stringWithUTF8Stri
 static void result(uint64_t token, NSError *error, int code) {
  goIOSSystemResult(token,"null",error ? code : 0,(char *)(error.localizedDescription ?: @"").UTF8String);
 }
-static void event(NSDictionary *e) {
+static uint32_t event(NSDictionary *e) {
  if (!servicesReady) {
   if (!notificationEvents) notificationEvents=[NSMutableArray array];
-  [notificationEvents addObject:e];return;
+  [notificationEvents addObject:e];
+  if (notificationEvents.count>128) [notificationEvents removeObjectAtIndex:0];
+  return 15;
  }
  NSData *data=[NSJSONSerialization dataWithJSONObject:e[@"data"] options:0 error:nil];
  NSString *json=[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
- goIOSNotification((char *)[e[@"id"] UTF8String],(char *)json.UTF8String,[e[@"clicked"] boolValue]);
+ return goIOSNotification((char *)[e[@"id"] UTF8String],(char *)json.UTF8String,[e[@"clicked"] boolValue], [e[@"remote"] boolValue], (char *)[e[@"action"] UTF8String]);
 }
-static void notificationEvent(UNNotification *n,BOOL clicked,NSString *action) {
+static uint32_t notificationEvent(UNNotification *n,BOOL clicked,NSString *action) {
  if (clicked) {
   if (!responses) responses=[NSMutableSet set];
   NSString *key=[NSString stringWithFormat:@"%@:%f:%@",n.request.identifier,n.date.timeIntervalSince1970,action];
-  if ([responses containsObject:key]) return;
+  if ([responses containsObject:key]) return 0;
   if (responses.count>128) [responses removeAllObjects];
   [responses addObject:key];
  }
@@ -33,14 +35,22 @@ static void notificationEvent(UNNotification *n,BOOL clicked,NSString *action) {
  NSDictionary *source=[info[@"mygo"] isKindOfClass:NSDictionary.class] ? info[@"mygo"] : info;
  for (id key in source) if ([key isKindOfClass:NSString.class] && [source[key] isKindOfClass:NSString.class]) values[key]=source[key];
  NSString *identity=[info[@"mygoID"] isKindOfClass:NSString.class] ? info[@"mygoID"] : n.request.identifier;
- event(@{@"id":identity,@"data":values,@"clicked":@(clicked)});
+ if ([action isEqual:UNNotificationDefaultActionIdentifier]) action=@"";
+ return event(@{@"id":identity,@"data":values,@"clicked":@(clicked),@"remote":@([n.request.trigger isKindOfClass:UNPushNotificationTrigger.class]),@"action":action ?: @""});
 }
 @interface MyGoNotifications : NSObject <UNUserNotificationCenterDelegate>
 @end
 @implementation MyGoNotifications
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center willPresentNotification:(UNNotification *)n withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completion {
- dispatch_async(dispatch_get_main_queue(), ^{ notificationEvent(n,NO,@""); });
- completion(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionList | UNNotificationPresentationOptionSound | UNNotificationPresentationOptionBadge);
+ dispatch_async(dispatch_get_main_queue(), ^{
+  uint32_t mask=notificationEvent(n,NO,@"");
+  UNNotificationPresentationOptions options=0;
+  if (mask & 1) options |= UNNotificationPresentationOptionBanner;
+  if (mask & 2) options |= UNNotificationPresentationOptionList;
+  if (mask & 4) options |= UNNotificationPresentationOptionSound;
+  if (mask & 8) options |= UNNotificationPresentationOptionBadge;
+  completion(options);
+ });
 }
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)r withCompletionHandler:(void (^)(void))completion {
  dispatch_async(dispatch_get_main_queue(), ^{
@@ -92,6 +102,14 @@ void mygo_ios_remove_notification(const char *id) {
  NSArray *ids=@[string(id)];
  [UNUserNotificationCenter.currentNotificationCenter removePendingNotificationRequestsWithIdentifiers:ids];
  [UNUserNotificationCenter.currentNotificationCenter removeDeliveredNotificationsWithIdentifiers:ids];
+ // APNs gives each request a system identifier. Resolve MyGo's stable logical
+ // ID as well, so Close removes both local and remote reminders uniformly.
+ NSString *identity=string(id);
+ [UNUserNotificationCenter.currentNotificationCenter getDeliveredNotificationsWithCompletionHandler:^(NSArray<UNNotification *> *delivered){
+  NSMutableArray *matches=[NSMutableArray array];
+  for (UNNotification *n in delivered) if ([n.request.content.userInfo[@"mygoID"] isEqual:identity]) [matches addObject:n.request.identifier];
+  if (matches.count) [UNUserNotificationCenter.currentNotificationCenter removeDeliveredNotificationsWithIdentifiers:matches];
+ }];
 }
 void mygo_ios_clear_notifications(void) {
  [UNUserNotificationCenter.currentNotificationCenter removeAllPendingNotificationRequests];

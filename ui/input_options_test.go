@@ -59,3 +59,31 @@ func TestInputReturnPreservesSubmitAndMultiline(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomTextCaretKeyboardOptions(t *testing.T) {
+	enabled := true
+	var received string
+	tt := NewTester(func(c *Context) {
+		e := Box(c).Size(300, 100).AutoFocus().TextCaret(Rect{X: 8, Y: 8, W: 1, H: 18}).HandleInput(func(ev InputEvent) bool {
+			if ev.Kind == InputText {
+				received += ev.Text
+			}
+			return true
+		})
+		if enabled {
+			e.InputOptions(InputOptions{Keyboard: KeyboardASCII, Correction: CorrectionOff, Capitalization: CapitalizeNone})
+		}
+	}, 320, 200)
+	if got := tt.h.ime.Options; !tt.h.ime.Active || got.Keyboard != "ascii" || got.Correction != "off" || got.Capitalization != "none" {
+		t.Fatalf("custom input did not receive keyboard options: %+v", tt.h.ime)
+	}
+	tt.Type("echo 中文")
+	if received != "echo 中文" {
+		t.Fatalf("custom input changed committed text: %q", received)
+	}
+	enabled = false
+	tt.Frame()
+	if tt.h.ime.Options != (platform.TextInputOptions{}) {
+		t.Fatal("custom input retained omitted keyboard options")
+	}
+}
