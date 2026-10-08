@@ -176,6 +176,8 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @property(nonatomic, copy) NSString *actionID;
 @end
 @implementation MyGoAccessoryLongPress @end
+// Six secondary keys fit even a 320pt phone at 44pt per tap target.
+static const NSUInteger MyGoAccessoryColumns = 6;
 @interface MyGoInputAccessory : UIInputView
 @property(nonatomic) uint64_t windowID, ownerID;
 @property(nonatomic, weak) MyGoEditor *editor;
@@ -200,7 +202,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 - (CGSize)intrinsicContentSize {
  NSUInteger count=0;
  if (self.expanded) for (NSDictionary *action in self.actions) count+= [action[@"Items"] count];
- return CGSizeMake(UIViewNoIntrinsicMetric,44+(count ? ceil(count/5.0)*44 : 0));
+ return CGSizeMake(UIViewNoIntrinsicMetric,44+(count ? ceil((double)count/MyGoAccessoryColumns)*44 : 0));
 }
 - (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize {
  return CGSizeMake(targetSize.width,self.intrinsicContentSize.height);
@@ -299,7 +301,8 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
  if (self.expanded) {
   NSMutableArray *items=[NSMutableArray array];
   for (NSDictionary *action in self.actions) [items addObjectsFromArray:action[@"Items"] ?: @[]];
-  for (NSUInteger i=0;i<items.count;i+=5) [stack addArrangedSubview:[self row:[items subarrayWithRange:NSMakeRange(i,MIN(5,items.count-i))] columns:5 height:44]];
+  NSUInteger columns=MIN(MyGoAccessoryColumns,items.count);
+  for (NSUInteger i=0;i<items.count;i+=columns) [stack addArrangedSubview:[self row:[items subarrayWithRange:NSMakeRange(i,MIN(columns,items.count-i))] columns:columns height:44]];
  }
  [stack addArrangedSubview:[self row:self.actions columns:self.actions.count height:44]];
  [self addSubview:stack];
