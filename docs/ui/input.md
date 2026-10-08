@@ -3,11 +3,13 @@
 Elements report what the user did to them since the last frame, as you
 build them: ask, and handle it where the element is built.
 
-The pointer and focus queries below, `Shortcut`, `Changed` and `Submitted`
-return false or zero for nil or cleared elements; `Focus` and `AutoFocus`
-do nothing. Element storage can also be reused, so keep element variables
-local to the current build. A [ListState](list.md#the-focus) gives access to
-its current list's focus and shortcuts without a saved element pointer.
+A `ui.Element` value is valid for one build pass. Its zero value is absent,
+and queries on that value return false or zero. Use `Valid` to check optional
+controls. Stale use is diagnosed in development and `Tester`; production
+methods return empty results or ignore the operation.
+
+Store a `ui.Handle` for focus or shortcuts across builds. Each window has
+its own binding for the handle; use that window's Context when querying it.
 
 ```go
 card := ui.Column(c).Padding(12).Radius(8).Focusable()
@@ -60,6 +62,49 @@ field of a dialog, and `Focus` keeps it there while you call it; `Focused`,
 button or link, and Space toggles a focused check box, switch, toggle or
 radio button.
 
+## Persistent focus
+
+Bind an app-owned handle to a control on each build:
+
+```go
+ui.TextInput(c.Key("search"), &app.query).Bind(&app.search)
+```
+
+Declare `search ui.Handle` in your app state. `app.search.Focus()` requests
+focus and waits while the control is hidden. `CancelFocus()` cancels the
+request. `Focused(c)` and `FocusWithin(c)` read the control's identity before
+or after it is built. `c.Resolve(app.search)` returns only this pass's element.
+`app.search.Bounds(c)` reads its box from the committed frame, including
+between builds in an input callback. Closing a window cancels its focus
+request.
+
+A handle can bind in several windows. Queries take that window's Context;
+use `Focus(c)` or `CancelFocus(c)` to select a window explicitly. The
+no-argument focus form requires at most one open binding.
+
+## Focus bound to data
+
+```go
+type pane int
+const (none pane = iota; files; diff)
+
+ui.Column(c.Key("files")).FocusBind(&app.pane, files).Children(func() { app.filesView(c) })
+ui.Column(c.Key("diff")).FocusBind(&app.pane, diff).Children(func() { app.diffView(c) })
+
+// In an action:
+app.pane = diff
+
+// Actual focus in this window:
+focused := ui.FocusedValue(c, &app.pane)
+```
+
+`FocusBind` takes a pointer to a comparable field and a matching value.
+Each value names one control in the window; reserve zero for no focus.
+The field holds desired focus. A request waits if its control is hidden,
+so use `FocusedValue` to read actual focus while it waits. Assigning zero
+clears focus. User focus changes update the field when no request is pending.
+Use separate fields for separate windows.
+
 ## Focus groups
 
 The controls of a toolbar, a radio group, a segmented control or a tab list
@@ -105,6 +150,22 @@ A focused text input takes the editing keys of the platform first: on
 macOS, Option and Command with the arrows and Backspace, and Control with
 A, E, B, F, N, P, D, H and K, as in other Mac apps; elsewhere, it leaves Alt
 and the arrows, which go back and forward, and the function keys.
+
+A shortcut action can be declared before binding its control:
+
+```go
+app.filesView.OnShortcut(c, ui.Cmd, ui.KeyK, app.openSelected)
+ui.List(c.Key("files"), &app.list, len(app.files)).Bind(&app.filesView).
+    Rows(func(row ui.ListRow) {
+        ui.Text(row.Context, app.files[row.Index].Name)
+    })
+```
+
+`Handle.OnShortcut` runs after construction only when the window built an
+enabled control for that handle. Hidden controls take no command.
+`c.OnShortcut` declares an action in the current parent scope; the root
+Context handles keys left by the focused control and active overlays.
+Use `Element.OnShortcut` for an action inside an element's focus subtree.
 
 ## Input methods
 

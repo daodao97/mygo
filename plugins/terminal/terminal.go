@@ -4,7 +4,7 @@
 //
 //	term, err := terminal.New(terminal.Options{})
 //	...
-//	mygo.NewWindow(mygo.WindowOptions{Title: "Terminal", Content: ui.View(func(c *ui.Context) {
+//	mygo.NewWindow(mygo.WindowOptions{Title: "Terminal", Content: ui.View(func(c ui.Frame) {
 //		terminal.View(c, term).Fill()
 //	})})
 //

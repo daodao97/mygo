@@ -13,7 +13,7 @@ import (
 )
 
 func inputTester(value *string, multiline bool) *Tester {
-	return NewTester(func(c *Context) { textInput(c, value, multiline).Fill().AutoFocus() }, 300, 120)
+	return coreNewTester(func(c *context) { textInput(c, value, multiline).Fill().AutoFocus() }, 300, 120)
 }
 
 func TestWidgetInputUsesClientBetweenFrames(t *testing.T) {
@@ -75,7 +75,7 @@ func TestWidgetCompositionHasOneUndoTransaction(t *testing.T) {
 func TestWidgetInputPrivacyAndReadonly(t *testing.T) {
 	s := "secret😀"
 	readonly := false
-	tt := NewTester(func(c *Context) { TextInput(c, &s).Fill().AutoFocus().Password().ReadOnly(readonly) }, 300, 100)
+	tt := coreNewTester(func(c *context) { coreTextInput(c, &s).Fill().AutoFocus().Password().ReadOnly(readonly) }, 300, 100)
 	defer tt.rt.close()
 	c := tt.h.ime.Client
 	if got, _ := c.TextForRange(TextInputRange{End: 1000}); got != "" {

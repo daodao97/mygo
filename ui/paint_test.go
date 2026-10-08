@@ -22,10 +22,10 @@ func countBlue(img *image.RGBA) int {
 
 func TestAnimatedPathShowsInEveryFrame(t *testing.T) {
 	n := 0
-	view := func(c *Context) {
-		Column(c).Fill().Children(func() {
-			Text(c, "Wave")
-			Box(c).Grow(1).FillWidth().Draw(func(p *Painter, r Rect) {
+	view := func(c *context) {
+		coreColumn(c).Fill().Children(func() {
+			coreText(c, "Wave")
+			coreBox(c).Grow(1).FillWidth().Draw(func(p *Painter, r Rect) {
 				var path Path
 				for i := 0; i <= 100; i++ {
 					x := r.X + 10 + float32(i)*(r.W-20)/100
@@ -40,7 +40,7 @@ func TestAnimatedPathShowsInEveryFrame(t *testing.T) {
 			})
 		})
 	}
-	tt := NewTester(view, 600, 400)
+	tt := coreNewTester(view, 600, 400)
 	tt.SetScale(2)
 	// Each frame draws another wave: the atlas must not fill up with the
 	// old ones and leave a frame without its wave.
@@ -56,8 +56,8 @@ func TestAnimatedPathShowsInEveryFrame(t *testing.T) {
 }
 
 func TestFramesStayWholeWhenTheAtlasFills(t *testing.T) {
-	view := func(c *Context) {
-		Box(c).Fill().Draw(func(p *Painter, r Rect) {
+	view := func(c *context) {
+		coreBox(c).Fill().Draw(func(p *Painter, r Rect) {
 			// 48 different discs, together larger than the atlas starts.
 			for i := 0; i < 48; i++ {
 				var path Path
@@ -68,7 +68,7 @@ func TestFramesStayWholeWhenTheAtlasFills(t *testing.T) {
 			}
 		})
 	}
-	tt := NewTester(view, 900, 700)
+	tt := coreNewTester(view, 900, 700)
 	tt.SetScale(2)
 	want := bytes.Clone(tt.Image().Pix)
 	if countBlue(tt.Image()) < 48*3000 {
@@ -84,7 +84,7 @@ func TestFramesStayWholeWhenTheAtlasFills(t *testing.T) {
 
 func TestFramesRedrawOnlyWhatChanged(t *testing.T) {
 	d := &demo{choice: "a", size: "Medium", volume: 40}
-	tt := NewTester(d.view, 640, 600)
+	tt := coreNewTester(d.view, 640, 600)
 	tt.SetScale(2)
 	full := raster.NewImage(1, 1)
 	check := func(what string) {

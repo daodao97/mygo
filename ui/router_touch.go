@@ -81,7 +81,7 @@ func (rt *engine) cancelTouchBack() {
 	}
 }
 
-func (r *Router) advanceBack(c *Context) {
+func (r *Router) advanceBack(c *context) {
 	g := r.back
 	if g.from != r.current() || !r.CanGoBack() || r.entries[r.at-1] != g.to {
 		r.back = nil
@@ -109,7 +109,7 @@ func (r *Router) advanceBack(c *Context) {
 	g.progress = progress
 }
 
-func (r *Router) buildBack(c *Context, box *Element, v *routeView, parent *Route, fn func(*Route)) {
+func (r *Router) buildBack(c *context, box *node, v *routeView, parent *Route, fn func(*Route)) {
 	g := r.back
 	progress := g.progress
 	box.Clip()

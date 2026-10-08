@@ -18,14 +18,14 @@ type dataSource struct {
 // DIPs. Data can go to other windows and applications. A source also given
 // Drag(value) offers that value to typed targets in this process only.
 // The default operation is copy and the default preview is the element.
-func (e *Element) DragData(data transfer.Data, options ...transfer.DragOptions) *Element {
+func (e *node) DragData(data transfer.Data, options ...transfer.DragOptions) *node {
 	return e.DragDataFrom(func() transfer.Data { return data }, options...)
 }
 
 // DragDataFrom obtains a transfer when the gesture starts, useful for a
 // changing selection. The function and options.Done run on the main thread.
 // See transfer.Lazy for deferring individual serialized representations.
-func (e *Element) DragDataFrom(data func() transfer.Data, options ...transfer.DragOptions) *Element {
+func (e *node) DragDataFrom(data func() transfer.Data, options ...transfer.DragOptions) *node {
 	if data == nil {
 		panic("ui: nil drag data source")
 	}
@@ -44,7 +44,7 @@ func (e *Element) DragDataFrom(data func() transfer.Data, options ...transfer.Dr
 // DropData makes e take native transfers matching options, and reports a
 // completed drop once, in the next frame. Decode custom formats explicitly
 // from the returned Data. Empty Formats accepts nothing.
-func DropData(e *Element, options transfer.DropOptions) (transfer.Drop, bool) {
+func coreDropData(e *node, options transfer.DropOptions) (transfer.Drop, bool) {
 	e.st.dataTarget = &options
 	if d := e.st.dataDropped; d != nil {
 		e.c.rt.consumed = true
@@ -56,7 +56,7 @@ func DropData(e *Element, options transfer.DropOptions) (transfer.Drop, bool) {
 // DataDragOver makes e a native destination, as DropData does, and returns
 // the advertised formats and operations while a matching drag is over it.
 // Hover never invokes a data provider.
-func DataDragOver(e *Element, options transfer.DropOptions) (transfer.Offer, bool) {
+func coreDataDragOver(e *node, options transfer.DropOptions) (transfer.Offer, bool) {
 	e.st.dataTarget = &options
 	rt := e.c.rt
 	if rt.dataOver == e.id && rt.incoming != nil {

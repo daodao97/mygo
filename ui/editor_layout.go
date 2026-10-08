@@ -47,7 +47,7 @@ func (ed *editor) displayText() string {
 	return t
 }
 
-func (e *Element) inputParams(width float32) text.Params {
+func (e *node) inputParams(width float32) text.Params {
 	p := e.textParams(width)
 	ed := e.st.editor
 	p.Text = ed.displayText()
@@ -74,7 +74,7 @@ func (ed *editor) shapeInput(params text.Params) *text.Layout {
 	return ed.layout
 }
 
-func (e *Element) inputHeight(cw float32) float32 {
+func (e *node) inputHeight(cw float32) float32 {
 	ed := e.st.editor
 	if ed.area != nil {
 		p := e.textParams(0)
@@ -93,7 +93,7 @@ func (e *Element) inputHeight(cw float32) float32 {
 	return l.Lines[0].Height
 }
 
-func (e *Element) layoutInput(cw, ch float32) {
+func (e *node) layoutInput(cw, ch float32) {
 	ed := e.st.editor
 	if a := ed.area; a != nil {
 		ed.contentW = cw
@@ -136,14 +136,14 @@ func (e *Element) layoutInput(cw, ch float32) {
 // content box width wide: in the input's style, its line height too, fixed
 // or not. A text area's placeholder wraps; a single-line input's stays on
 // its line, cut off at the box.
-func (e *Element) placeholderParams(width float32) text.Params {
+func (e *node) placeholderParams(width float32) text.Params {
 	ed := e.st.editor
 	params := e.textParams(width)
 	params.Text, params.Spans, params.MaxLines, params.NoWrap, params.Ellipsis = ed.placeholder, "", 0, !ed.multiline, ""
 	return params
 }
 
-func (e *Element) paintInput(p *Painter) {
+func (e *node) paintInput(p *Painter) {
 	ed := e.st.editor
 	l := ed.layout
 	t := e.c.theme

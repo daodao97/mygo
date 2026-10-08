@@ -10,7 +10,7 @@ import (
 func TestHideScrollbarsRetainsContentInteraction(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
-		container    func(*Context) *Element
+		container    func(*Context) Element
 		x, y         int
 		wantX, wantY float32
 	}{

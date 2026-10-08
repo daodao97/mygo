@@ -38,12 +38,8 @@ func main() {
 }
 ```
 
-`examples/terminal` is this app, whose window takes the shell's title and
-closes when the shell exits:
-
-```sh
-go run ./examples/terminal
-```
+The [terminal example](../../examples/terminal) shows this app. Its window
+uses the shell's title and closes when the shell exits.
 
 `terminal.View` is an element like any other: size it with `Fill` or
 `Grow`, and put it next to other elements, as in a pane of an editor. Its

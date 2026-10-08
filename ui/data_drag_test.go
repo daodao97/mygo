@@ -21,17 +21,17 @@ func TestNativeDataDropNegotiatesAndReadsOnDrop(t *testing.T) {
 	calls, clicks := 0, 0
 	custom := transfer.Format("application/vnd.mygo.test+json")
 	data := transfer.New(transfer.NewItem(transfer.Bytes(transfer.Text, []byte("fallback")), transfer.Lazy(custom, func() ([]byte, error) { calls++; return []byte(`{"id":7}`), nil })))
-	source := NewTester(func(c *Context) {
-		s := Box(c).Size(100, 50).DragData(data, transfer.DragOptions{Operations: transfer.Copy | transfer.Move, Done: func(r transfer.Result) { results = append(results, r) }})
+	source := coreNewTester(func(c *context) {
+		s := coreBox(c).Size(100, 50).DragData(data, transfer.DragOptions{Operations: transfer.Copy | transfer.Move, Done: func(r transfer.Result) { results = append(results, r) }})
 		if s.Clicked() {
 			clicks++
 		}
 	}, 200, 200)
-	target := NewTester(func(c *Context) {
-		zone := Box(c).Size(100, 100)
+	target := coreNewTester(func(c *context) {
+		zone := coreBox(c).Size(100, 100)
 		opts := transfer.DropOptions{Formats: []transfer.Format{custom}, Operations: transfer.Copy | transfer.Move}
-		_, over = DataDragOver(zone, opts)
-		if d, ok := DropData(zone, opts); ok {
+		_, over = coreDataDragOver(zone, opts)
+		if d, ok := coreDropData(zone, opts); ok {
 			got = append(got, d)
 		}
 	}, 200, 200)
@@ -65,11 +65,11 @@ func TestNativeTypedDropKeepsGoValue(t *testing.T) {
 	value := &struct{ Name string }{"same object"}
 	var got any
 	var over bool
-	source := NewTester(func(c *Context) { Box(c).Size(80, 40).Drag(value).DragData(transfer.TextData(value.Name)) }, 200, 200)
-	target := NewTester(func(c *Context) {
-		e := Box(c).Size(100, 100)
-		_, over = DragOver[*struct{ Name string }](e)
-		if v, ok := Drop[*struct{ Name string }](e); ok {
+	source := coreNewTester(func(c *context) { coreBox(c).Size(80, 40).Drag(value).DragData(transfer.TextData(value.Name)) }, 200, 200)
+	target := coreNewTester(func(c *context) {
+		e := coreBox(c).Size(100, 100)
+		_, over = coreDragOver[*struct{ Name string }](e)
+		if v, ok := coreDrop[*struct{ Name string }](e); ok {
 			got = v
 		}
 	}, 200, 200)
@@ -89,9 +89,9 @@ func TestNativeDragCancellationAndSourceRemoval(t *testing.T) {
 		t.Run(map[bool]string{false: "escape", true: "source removal"}[remove], func(t *testing.T) {
 			show := true
 			var results []transfer.Result
-			tt := NewTester(func(c *Context) {
+			tt := coreNewTester(func(c *context) {
 				if show {
-					Box(c).Size(80, 40).DragData(transfer.TextData("a"), transfer.DragOptions{Done: func(r transfer.Result) { results = append(results, r) }})
+					coreBox(c).Size(80, 40).DragData(transfer.TextData("a"), transfer.DragOptions{Done: func(r transfer.Result) { results = append(results, r) }})
 				}
 			}, 200, 200)
 			beginNativeDrag(tt)
@@ -114,8 +114,8 @@ func TestNativeDragCloseReleasesTextInputClient(t *testing.T) {
 	client := &primitiveClient{text: "draft", mark: &TextInputRange{Start: 0, End: 5}}
 	var results []transfer.Result
 	var tt *Tester
-	tt = NewTester(func(c *Context) {
-		Box(c).Size(80, 40).HandleTextInput(client).AutoFocus().DragData(transfer.TextData("draft"), transfer.DragOptions{
+	tt = coreNewTester(func(c *context) {
+		coreBox(c).Size(80, 40).HandleTextInput(client).AutoFocus().DragData(transfer.TextData("draft"), transfer.DragOptions{
 			Done: func(r transfer.Result) {
 				results = append(results, r)
 				tt.h.ime.Client.ReplaceText(nil, "stale completion")
@@ -146,9 +146,9 @@ func TestNativeDragCloseReleasesTextInputClient(t *testing.T) {
 
 func TestNativeDestinationRejectsMismatchDisabledAndFailedData(t *testing.T) {
 	disabled, drops := false, 0
-	tt := NewTester(func(c *Context) {
-		e := Box(c).Size(100, 100).Disabled(disabled)
-		if _, ok := DropData(e, transfer.DropOptions{Formats: []transfer.Format{transfer.Text}, Operations: transfer.Copy}); ok {
+	tt := coreNewTester(func(c *context) {
+		e := coreBox(c).Size(100, 100).Disabled(disabled)
+		if _, ok := coreDropData(e, transfer.DropOptions{Formats: []transfer.Format{transfer.Text}, Operations: transfer.Copy}); ok {
 			drops++
 		}
 	}, 200, 200)

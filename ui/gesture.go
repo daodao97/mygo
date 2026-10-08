@@ -20,7 +20,7 @@ type gestureCapture struct {
 // Gestures opts an element into pinch/rotation input and returns updates since
 // its last frame. A gesture stays with its starting element until it ends or
 // that element disappears. Currently iOS supplies these events.
-func (e *Element) Gestures() []GestureEvent {
+func (e *node) Gestures() []GestureEvent {
 	e.gestureEnabled = true
 	e.flags |= flagTrackPointer
 	if len(e.st.gestures) > 0 {

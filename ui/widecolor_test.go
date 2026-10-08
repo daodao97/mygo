@@ -99,8 +99,8 @@ func TestMixWide(t *testing.T) {
 }
 
 func TestBackgroundDrawsNearestSRGB(t *testing.T) {
-	tt := NewTester(func(c *Context) {
-		Box(c).Size(20, 20).Background(wideGreen)
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(20, 20).Background(wideGreen)
 	}, 20, 20)
 	want, got := wideGreen, tt.Image().RGBAAt(10, 10)
 	d := func(a, b uint8) int { return max(int(a)-int(b), int(b)-int(a)) }
@@ -124,13 +124,13 @@ func wideOf(t *testing.T, s *scene.Scene, i uint16) scene.WideColors {
 func TestWideShadowStripesGradientAndText(t *testing.T) {
 	w := wideGreen
 	wa, _ := w.wideRGBA()
-	tt := NewTester(func(c *Context) {
-		Column(c).Gap(10).Padding(20).Children(func() {
-			Box(c).Size(40, 20).Shadow(0, 4, 8, 0, RGB(0, 0, 0)).Shadow(0, 4, 8, 0, w).Background(RGB(255, 255, 255))
-			Box(c).Size(40, 20).Background(RGB(255, 255, 255)).Stripes(w, 4, 4, 0)
-			Box(c).Size(40, 20).Gradient(w, RGB(0, 0, 0), 90)
-			Text(c, "wide").TextColor(w)
-			RichText(c, Span{Text: "span", Weight: 700, Color: w}, Span{Text: " plain"})
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Gap(10).Padding(20).Children(func() {
+			coreBox(c).Size(40, 20).Shadow(0, 4, 8, 0, RGB(0, 0, 0)).Shadow(0, 4, 8, 0, w).Background(RGB(255, 255, 255))
+			coreBox(c).Size(40, 20).Background(RGB(255, 255, 255)).Stripes(w, 4, 4, 0)
+			coreBox(c).Size(40, 20).Gradient(w, RGB(0, 0, 0), 90)
+			coreText(c, "wide").TextColor(w)
+			coreRichText(c, Span{Text: "span", Weight: 700, Color: w}, Span{Text: " plain"})
 		})
 	}, 200, 250)
 	s := tt.h.last
@@ -183,19 +183,19 @@ func TestWideShadowStripesGradientAndText(t *testing.T) {
 }
 
 func TestWideOnlyWhereItShows(t *testing.T) {
-	cases := map[string]func(c *Context){
-		"an sRGB text color after a wide one": func(c *Context) {
-			Text(c, "plain").TextColor(wideGreen).TextColor(RGB(10, 20, 30))
+	cases := map[string]func(c *context){
+		"an sRGB text color after a wide one": func(c *context) {
+			coreText(c, "plain").TextColor(wideGreen).TextColor(RGB(10, 20, 30))
 		},
-		"a border color without a border": func(c *Context) {
-			Box(c).Size(20, 20).Background(RGB(255, 255, 255)).BorderColor(wideGreen)
+		"a border color without a border": func(c *context) {
+			coreBox(c).Size(20, 20).Background(RGB(255, 255, 255)).BorderColor(wideGreen)
 		},
-		"a transparent wide color": func(c *Context) {
-			Box(c).Size(20, 20).Background(wideGreen.Alpha(0)).Border(1, RGB(0, 0, 0))
+		"a transparent wide color": func(c *context) {
+			coreBox(c).Size(20, 20).Background(wideGreen.Alpha(0)).Border(1, RGB(0, 0, 0))
 		},
 	}
 	for name, view := range cases {
-		if tt := NewTester(view, 100, 40); len(tt.h.last.Wide) != 0 {
+		if tt := coreNewTester(view, 100, 40); len(tt.h.last.Wide) != 0 {
 			t.Errorf("%s: wide colors %+v", name, tt.h.last.Wide)
 		}
 	}
@@ -203,11 +203,11 @@ func TestWideOnlyWhereItShows(t *testing.T) {
 
 func TestWideDecorationsDividersAndTextBackground(t *testing.T) {
 	wa, _ := wideGreen.wideRGBA()
-	tt := NewTester(func(c *Context) {
-		RichText(c, Span{Text: "marked", Underline: true, DecorationColor: wideGreen}, Span{Text: "bg", Background: wideGreen})
-		Column(c).Dividers(1, wideGreen).Children(func() {
-			Box(c).Size(20, 10)
-			Box(c).Size(20, 10)
+	tt := coreNewTester(func(c *context) {
+		coreRichText(c, Span{Text: "marked", Underline: true, DecorationColor: wideGreen}, Span{Text: "bg", Background: wideGreen})
+		coreColumn(c).Dividers(1, wideGreen).Children(func() {
+			coreBox(c).Size(20, 10)
+			coreBox(c).Size(20, 10)
 		})
 	}, 200, 80)
 	s := tt.h.last
@@ -238,7 +238,7 @@ func TestThemeAccentTakesOklch(t *testing.T) {
 func TestPictureOfAWideColor(t *testing.T) {
 	logo := MustParseSVG([]byte(logoSVG))
 	col := Oklch(0.85, 0.3, 145)
-	tt := NewTester(func(c *Context) { Image(c, logo).TextColor(col) }, 100, 100)
+	tt := coreNewTester(func(c *context) { coreImage(c, logo).TextColor(col) }, 100, 100)
 	other := col
 	other.wide[1]++
 	var version uint64
@@ -289,9 +289,9 @@ func TestWideFramesOnGPU(t *testing.T) {
 			h, _, frame := gpuHost(t, func() (gpuRenderer, error) { return g, nil })
 			h.conn.Surface = &wideSurface{wide: c.screen}
 			caret := false
-			h.rt = newRuntime(func(c *Context) {
-				Box(c).Fill().Background(RGB(200, 200, 200)).Children(func() {
-					b := Box(c).Size(2, 10)
+			h.rt = newRuntime(func(c *context) {
+				coreBox(c).Fill().Background(RGB(200, 200, 200)).Children(func() {
+					b := coreBox(c).Size(2, 10)
 					if caret {
 						b.Background(wideGreen)
 					}
@@ -331,8 +331,8 @@ func TestWideFramesOnGPU(t *testing.T) {
 func TestEffectColor(t *testing.T) {
 	var srgb, wide [4]float32
 	var plain bool
-	tt := NewTester(func(c *Context) {
-		Box(c).Size(10, 10).Draw(func(p *Painter, r Rect) {
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(10, 10).Draw(func(p *Painter, r Rect) {
 			_, w := p.EffectColor(RGB(255, 0, 0))
 			plain = w == [4]float32{1, 0, 0, 1} && len(p.s.Wide) == 0
 			srgb, wide = p.EffectColor(wideGreen.Alpha(0.5))

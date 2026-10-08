@@ -49,7 +49,7 @@ type area struct {
 
 // wrappedHeight returns the height of the text, with an input method's
 // composition, wrapped at the content width cw.
-func (a *area) wrappedHeight(e *Element, ed *editor, cw float32) float32 {
+func (a *area) wrappedHeight(e *node, ed *editor, cw float32) float32 {
 	params := e.textParams(max(cw, 1))
 	if ed.buf.indexed {
 		params.KeepSpaces, params.MaxLines = true, 0
@@ -302,7 +302,7 @@ func (a *area) setScroll(y float64) {
 // layout lays the text area out in a content box of cw×ch: the
 // paragraphs in view, the caret's when it is to be revealed, and where the
 // view is.
-func (a *area) layout(e *Element, cw, ch float32) {
+func (a *area) layout(e *node, cw, ch float32) {
 	ed := e.st.editor
 	b := &ed.buf
 	params := e.textParams(cw)
@@ -389,7 +389,7 @@ func (a *area) forget(b *buffer) {
 
 // paint paints the paragraphs in view, the selection, the composition and
 // the caret, with the content's top at oy.
-func (a *area) paint(e *Element, p *Painter, ox, oy float32) {
+func (a *area) paint(e *node, p *Painter, ox, oy float32) {
 	ed := e.st.editor
 	b := &ed.buf
 	t := e.c.theme

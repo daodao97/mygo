@@ -127,7 +127,7 @@ func (s *demo) appView(c *ui.Context) {
 			ui.Box(c).Width(64).Height(44)
 		})
 		// The keyed container keeps each tab's element IDs independent.
-		ui.Column(c).Key(tabRoots[s.app.Tab]).Grow(1).MinHeight(0).Children(func() {
+		ui.Column(c.Key(tabRoots[s.app.Tab])).Grow(1).MinHeight(0).Children(func() {
 			r.View(c, func(page *ui.Route) {
 				p := page.Path()
 				page.Title(s.pageTitle(p))
@@ -231,7 +231,7 @@ func (s *demo) featureView(c *ui.Context, p string) {
 	case strings.HasSuffix(p, "/navigation/detail"):
 		s.navigationDetail(c, p)
 	default:
-		ui.Scroll(c).HideScrollbars().Key(p).TrackScroll(s.pageScroll(p)).Fill().Padding(20).Gap(16).Children(func() {
+		ui.Scroll(c.Key(p)).HideScrollbars().TrackScroll(s.pageScroll(p)).Fill().Padding(20).Gap(16).Children(func() {
 			switch {
 			case strings.HasSuffix(p, "/text"):
 				ui.Text(c, "Chinese Text").FontSize(24).Bold()

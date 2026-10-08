@@ -8,7 +8,7 @@ import (
 )
 
 func bufferTester(value *TextBuffer, multiline bool) *Tester {
-	return NewTester(func(c *Context) { bufferInputBase(c, value, multiline).Fill().AutoFocus() }, 400, 140)
+	return coreNewTester(func(c *context) { bufferInputBase(c, value, multiline).Fill().AutoFocus() }, 400, 140)
 }
 
 func TestBufferInputsEditComposeAndUndo(t *testing.T) {
@@ -118,11 +118,11 @@ func TestBufferInputBindingSwapAndStringCompatibility(t *testing.T) {
 	b := NewTextBuffer("buffer")
 	s := "string"
 	indexed := true
-	tt := NewTester(func(c *Context) {
+	tt := coreNewTester(func(c *context) {
 		if indexed {
-			TextInputBuffer(c, b).AutoFocus()
+			coreTextInputBuffer(c, b).AutoFocus()
 		} else {
-			TextInput(c, &s).AutoFocus()
+			coreTextInput(c, &s).AutoFocus()
 		}
 	}, 300, 100)
 	defer tt.rt.close()

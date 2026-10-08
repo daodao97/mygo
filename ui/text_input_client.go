@@ -52,7 +52,7 @@ type TextInputClient interface {
 // and Draw for rendering. It adds focus and the text cursor without creating
 // a text buffer, formatting UI or undo history. A nil client disconnects it.
 // Existing TextInput/TextArea widgets and TextCaret handlers are unchanged.
-func (e *Element) HandleTextInput(client TextInputClient) *Element {
+func (e *node) HandleTextInput(client TextInputClient) *node {
 	if client != nil {
 		v := reflect.ValueOf(client)
 		if v.Kind() != reflect.Pointer {

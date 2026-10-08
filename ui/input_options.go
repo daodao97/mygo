@@ -94,7 +94,7 @@ type InputOptions struct {
 // InputOptions supplies this frame's keyboard traits for an editable field or
 // a custom HandleInput/TextCaret element, such as a terminal. Omitting the call
 // on a subsequent frame restores the default traits.
-func (e *Element) InputOptions(o InputOptions) *Element {
+func (e *node) InputOptions(o InputOptions) *node {
 	e.inputOptions = o
 	if ed := e.st.editor; ed != nil && e.flags&flagEditable != 0 {
 		ed.inputOptions = o.nativeOptions()

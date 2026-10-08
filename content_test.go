@@ -295,8 +295,8 @@ func TestContentMenuRoles(t *testing.T) {
 
 func TestContentDuplicateKeyTellsWhere(t *testing.T) {
 	view := func(c *ui.Context) {
-		ui.Row(c).Key(1)
-		ui.Row(c).Key(1)
+		ui.Row(c.Key(1))
+		ui.Row(c.Key(1))
 	}
 	var out bytes.Buffer
 	log.SetOutput(&out)

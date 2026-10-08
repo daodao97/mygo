@@ -40,7 +40,7 @@ import (
 //		m.Separator()
 //		m.EditItems()
 //	})
-func (e *Element) ContextMenu(build func(m *Menu)) *Element {
+func (e *node) ContextMenu(build func(m *Menu)) *node {
 	e.flags |= flagContextMenu
 	e.buildMenu(false, build)
 	return e
@@ -60,7 +60,7 @@ func (e *Element) ContextMenu(build func(m *Menu)) *Element {
 //			app.duplicate()
 //		}
 //	})
-func (e *Element) Menu(build func(m *Menu)) *Element {
+func (e *node) Menu(build func(m *Menu)) *node {
 	e.flags |= flagMenuButton | flagClickable | flagFocusable
 	if e.role == RoleAuto || e.role == RoleButton {
 		e.role = RoleMenuButton
@@ -71,7 +71,7 @@ func (e *Element) Menu(build func(m *Menu)) *Element {
 
 // buildMenu builds the element's menu, its menu button's or its context
 // menu, as it opens, and again for the item chosen from it.
-func (e *Element) buildMenu(button bool, build func(m *Menu)) {
+func (e *node) buildMenu(button bool, build func(m *Menu)) {
 	rt := e.c.rt
 	mr := &rt.menu
 	switch {

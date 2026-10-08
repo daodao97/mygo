@@ -114,8 +114,8 @@ func (h *headless) image() *image.RGBA {
 
 // Render draws a frame of view in a window of width×height DIPs at scale
 // device pixels per DIP, without a window: for snapshots and tests.
-func Render(view func(c *Context), width, height int, scale float32) *image.RGBA {
-	t := NewTester(view, width, height)
+func coreRender(view func(c *context), width, height int, scale float32) *image.RGBA {
+	t := coreNewTester(view, width, height)
 	t.SetScale(scale)
 	return t.Image()
 }
@@ -131,12 +131,13 @@ type Tester struct {
 // NewTester starts testing view in a window of width×height DIPs. Two
 // elements given one key under one parent make it panic where the second
 // was given, as apps only log it.
-func NewTester(view func(c *Context), width, height int) *Tester {
+func coreNewTester(view func(c *context), width, height int) *Tester {
 	h := &headless{w: float32(width), h: float32(height), scale: 1}
 	t := &Tester{rt: newRuntime(view, h), h: h}
 	t.rt.collect = true
 	// Duplicate keys panic, so that the test fails where the key was given.
 	t.rt.strict = true
+	t.rt.handleChecks = true
 	t.settle()
 	return t
 }

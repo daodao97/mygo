@@ -21,7 +21,7 @@ type InputAction struct {
 // input has focus. Other platforms ignore the native controls. The handler
 // runs on the UI thread without changing text focus or committing marked text.
 // Omit the call on later frames to remove the accessory.
-func (e *Element) InputAccessory(actions []InputAction, handler func(string)) *Element {
+func (e *node) InputAccessory(actions []InputAction, handler func(string)) *node {
 	if len(actions) > 0 {
 		data, _ := json.Marshal(actions)
 		e.inputAccessory = string(data)

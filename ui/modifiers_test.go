@@ -6,10 +6,10 @@ import "testing"
 // go with the window's focus.
 func TestModifiersHeld(t *testing.T) {
 	var seen []Modifiers
-	tt := NewTester(func(c *Context) {
+	tt := coreNewTester(func(c *context) {
 		seen = append(seen, c.Modifiers())
 		if c.Modifiers()&Cmd != 0 {
-			Text(c, "Shortcuts")
+			coreText(c, "Shortcuts")
 		}
 	}, 200, 100)
 	if tt.HasText("Shortcuts") {

@@ -23,10 +23,10 @@ func selectableAt(t *testing.T, tt *Tester, text string, at int) (float32, float
 }
 
 func TestSelectableContainerMultiClick(t *testing.T) {
-	tt := NewTester(func(c *Context) {
-		Column(c).Selectable().Padding(12).Gap(8).Children(func() {
-			Text(c, "Alpha beta")
-			Text(c, "Gamma delta")
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Selectable().Padding(12).Gap(8).Children(func() {
+			coreText(c, "Alpha beta")
+			coreText(c, "Gamma delta")
 		})
 	}, 300, 150)
 	for _, unit := range []int{2, 3} {
@@ -51,12 +51,12 @@ func TestSelectableContainerMultiClick(t *testing.T) {
 }
 
 func TestSelectableContainerOrderAndOverlap(t *testing.T) {
-	tt := NewTester(func(c *Context) {
-		Box(c).Selectable().Size(300, 150).Children(func() {
-			Text(c, "Built first").Absolute().Top(80)
-			Text(c, "Underneath").Height(30)
-			Text(c, "On top").Absolute().Top(0).Width(250)
-			Text(c, "")
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Selectable().Size(300, 150).Children(func() {
+			coreText(c, "Built first").Absolute().Top(80)
+			coreText(c, "Underneath").Height(30)
+			coreText(c, "On top").Absolute().Top(0).Width(250)
+			coreText(c, "")
 		})
 	}, 400, 200)
 	selectBetween(t, tt, "On top", 0, "On top", 6)
@@ -77,10 +77,10 @@ func TestSelectableContainerScroll(t *testing.T) {
 	for i := range 12 {
 		paragraphs = append(paragraphs, fmt.Sprintf("Paragraph %02d", i))
 	}
-	tt := NewTester(func(c *Context) {
-		Scroll(c).Selectable().Size(300, 120).TrackScroll(&scroll).Gap(8).Children(func() {
+	tt := coreNewTester(func(c *context) {
+		coreScroll(c).Selectable().Size(300, 120).TrackScroll(&scroll).Gap(8).Children(func() {
 			for _, p := range paragraphs {
-				Text(c, p).Shrink(0)
+				coreText(c, p).Shrink(0)
 			}
 		})
 	}, 400, 200)
@@ -109,10 +109,10 @@ func TestSelectableContainerScroll(t *testing.T) {
 }
 
 func TestSelectableInlineParagraphRebuild(t *testing.T) {
-	tt := NewTester(func(c *Context) {
-		RichText(c).Selectable().Children(func() {
-			Text(c, "First ")
-			Text(c, "second").Bold()
+	tt := coreNewTester(func(c *context) {
+		coreRichText(c).Selectable().Children(func() {
+			coreText(c, "First ")
+			coreText(c, "second").Bold()
 		})
 	}, 300, 100)
 	selectBetween(t, tt, "First second", 0, "First second", 5)
@@ -135,14 +135,14 @@ func selectBetween(t *testing.T, tt *Tester, first string, from int, last string
 
 func TestSelectableContainer(t *testing.T) {
 	const first, middle, last = "First paragraph.", "A styled paragraph.", "Second paragraph."
-	tt := NewTester(func(c *Context) {
+	tt := coreNewTester(func(c *context) {
 		c.Theme().Selection = RGB(180, 210, 250)
-		Column(c).Selectable().Padding(20).Gap(12).Children(func() {
-			Text(c, first)
-			Box(c).Children(func() {
-				RichText(c, Span{Text: "A styled ", Weight: 700}, Span{Text: "paragraph."})
+		coreColumn(c).Selectable().Padding(20).Gap(12).Children(func() {
+			coreText(c, first)
+			coreBox(c).Children(func() {
+				coreRichText(c, Span{Text: "A styled ", Weight: 700}, Span{Text: "paragraph."})
 			})
-			Text(c, last)
+			coreText(c, last)
 		})
 	}, 400, 200)
 	for _, reverse := range []bool{false, true} {
@@ -205,10 +205,10 @@ func TestSelectableContainer(t *testing.T) {
 }
 
 func TestSelectableContainerKeyboard(t *testing.T) {
-	tt := NewTester(func(c *Context) {
-		Column(c).Selectable().Padding(20).Gap(10).Children(func() {
-			Text(c, "Alpha")
-			Text(c, "Beta")
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Selectable().Padding(20).Gap(10).Children(func() {
+			coreText(c, "Alpha")
+			coreText(c, "Beta")
 		})
 	}, 300, 150)
 	selectBetween(t, tt, "Alpha", 5, "Alpha", 5)
@@ -248,24 +248,24 @@ func TestSelectableContainerKeyboard(t *testing.T) {
 
 func TestSelectableContainerScopesAndControls(t *testing.T) {
 	value, clicks := "editable", 0
-	tt := NewTester(func(c *Context) {
-		Column(c).Selectable().Gap(8).Children(func() {
-			Text(c, "Outer start")
-			if Button(c, "Press me").Clicked() {
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Selectable().Gap(8).Children(func() {
+			coreText(c, "Outer start")
+			if coreButton(c, "Press me").Clicked() {
 				clicks++
 			}
-			TextInput(c, &value).Label("Input")
-			Column(c).Selectable().Children(func() {
-				Text(c, "Inner first")
-				Text(c, "Inner second")
+			coreTextInput(c, &value).Label("Input")
+			coreColumn(c).Selectable().Children(func() {
+				coreText(c, "Inner first")
+				coreText(c, "Inner second")
 			})
-			Text(c, "Hidden").Invisible()
-			Box(c).Disabled(true).Children(func() { Text(c, "Disabled") })
-			Text(c, "Excluded").Unselectable()
-			Box(c).Unselectable().Children(func() { Text(c, "Excluded child") })
-			Text(c, "Outer end")
+			coreText(c, "Hidden").Invisible()
+			coreBox(c).Disabled(true).Children(func() { coreText(c, "Disabled") })
+			coreText(c, "Excluded").Unselectable()
+			coreBox(c).Unselectable().Children(func() { coreText(c, "Excluded child") })
+			coreText(c, "Outer end")
 		})
-		Text(c, "Outside").Selectable()
+		coreText(c, "Outside").Selectable()
 	}, 400, 450)
 	selectBetween(t, tt, "Outer start", 0, "Outer end", 9)
 	tt.Key(Cmd, KeyA)
@@ -315,15 +315,15 @@ func TestSelectableContainerScopesAndControls(t *testing.T) {
 
 func TestSelectableContainerInlineAndRebuild(t *testing.T) {
 	first, shown := "café 日本語 🎉", true
-	tt := NewTester(func(c *Context) {
-		Column(c).Selectable().Padding(12).MaxWidth(160).Gap(8).Children(func() {
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Selectable().Padding(12).MaxWidth(160).Gap(8).Children(func() {
 			if shown {
-				Text(c, first).Key("first")
+				coreText(c, first).Key("first")
 			}
-			RichText(c).Key("rich").Selectable().Children(func() {
-				Text(c, "Read ")
-				Link(c, "the guide", "https://example.com")
-				Text(c, " and more.")
+			coreRichText(c).Key("rich").Selectable().Children(func() {
+				coreText(c, "Read ")
+				coreLink(c, "the guide", "https://example.com")
+				coreText(c, " and more.")
 			})
 		})
 	}, 300, 180)
@@ -358,11 +358,11 @@ func TestSelectableContainerInlineAndRebuild(t *testing.T) {
 
 func TestSelectableContainerChangingOtherText(t *testing.T) {
 	other := "Unselected paragraph"
-	tt := NewTester(func(c *Context) {
-		Column(c).Selectable().Gap(8).Children(func() {
-			Text(c, other)
-			Text(c, "Selected first")
-			Text(c, "Selected last")
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Selectable().Gap(8).Children(func() {
+			coreText(c, other)
+			coreText(c, "Selected first")
+			coreText(c, "Selected last")
 		})
 	}, 300, 200)
 	selectBetween(t, tt, "Selected first", 0, "Selected last", 13)
@@ -377,11 +377,11 @@ func TestSelectableContainerChangingOtherText(t *testing.T) {
 func TestSelectableContainerFocusAndDisable(t *testing.T) {
 	disabled := false
 	color := RGB(10, 30, 70)
-	tt := NewTester(func(c *Context) {
+	tt := coreNewTester(func(c *context) {
 		c.Theme().Selection = color
-		Column(c).Selectable().Gap(8).Children(func() {
-			Text(c, "First").Disabled(disabled)
-			Text(c, "Last")
+		coreColumn(c).Selectable().Gap(8).Children(func() {
+			coreText(c, "First").Disabled(disabled)
+			coreText(c, "Last")
 		})
 	}, 200, 100)
 	highlighted := func() bool {
@@ -427,11 +427,11 @@ func TestSelectableContainerFocusAndDisable(t *testing.T) {
 // keeps its menu beside the text.
 func TestSelectableTextContextMenu(t *testing.T) {
 	replied := 0
-	tt := NewTester(func(c *Context) {
-		bubble := Column(c).Padding(20).Gap(10)
+	tt := coreNewTester(func(c *context) {
+		bubble := coreColumn(c).Padding(20).Gap(10)
 		bubble.ContextMenu(func(m *Menu) { m.Item("Bubble") })
 		bubble.Children(func() {
-			Column(c).Selectable().ContextMenu(func(m *Menu) {
+			coreColumn(c).Selectable().ContextMenu(func(m *Menu) {
 				if m.Item("Reply").Chosen() {
 					replied++
 				}
@@ -440,10 +440,10 @@ func TestSelectableTextContextMenu(t *testing.T) {
 				m.Separator()
 				m.Item("After")
 			}).Gap(10).Children(func() {
-				Text(c, "Alpha")
-				Text(c, "Beta")
+				coreText(c, "Alpha")
+				coreText(c, "Beta")
 			})
-			Column(c).Selectable().Children(func() { Text(c, "Gamma") })
+			coreColumn(c).Selectable().Children(func() { coreText(c, "Gamma") })
 		})
 	}, 300, 200)
 	selectBetween(t, tt, "Alpha", 0, "Beta", 4)
@@ -491,8 +491,8 @@ func TestSelectableTextContextMenu(t *testing.T) {
 // EditItems in a text input's ContextMenu adds its editing items, which edit it.
 func TestTextInputContextMenuEditItems(t *testing.T) {
 	value := "hello"
-	tt := NewTester(func(c *Context) {
-		TextInput(c, &value).Label("Field").ContextMenu(func(m *Menu) {
+	tt := coreNewTester(func(c *context) {
+		coreTextInput(c, &value).Label("Field").ContextMenu(func(m *Menu) {
 			m.Item("Custom")
 			m.Separator()
 			m.EditItems()
@@ -517,10 +517,10 @@ func TestTextInputContextMenuEditItems(t *testing.T) {
 // SelectionColor paints a selection's highlight inside the element in its color.
 func TestSelectionColor(t *testing.T) {
 	highlight := RGB(255, 200, 0)
-	tt := NewTester(func(c *Context) {
-		Column(c).Padding(20).Gap(10).Children(func() {
-			Column(c).Selectable().SelectionColor(highlight).Children(func() { Text(c, "Colored") })
-			Column(c).Selectable().Children(func() { Text(c, "Plain") })
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Padding(20).Gap(10).Children(func() {
+			coreColumn(c).Selectable().SelectionColor(highlight).Children(func() { coreText(c, "Colored") })
+			coreColumn(c).Selectable().Children(func() { coreText(c, "Plain") })
 		})
 	}, 300, 150)
 	painted := func(name string, color Color) bool {

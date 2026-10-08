@@ -16,9 +16,9 @@ type repaintTester struct {
 	builds int
 }
 
-func newRepaintTester(view func(c *Context)) *repaintTester {
+func newRepaintTester(view func(c *context)) *repaintTester {
 	rt := &repaintTester{clock: time.Unix(1000, 0)}
-	rt.Tester = NewTester(func(c *Context) {
+	rt.Tester = coreNewTester(func(c *context) {
 		rt.builds++
 		view(c)
 	}, 200, 100)
@@ -41,8 +41,8 @@ func TestRepaintFrames(t *testing.T) {
 	blue := RGB(0, 0, 255)
 	draws := 0
 	var drawn time.Time
-	tt := newRepaintTester(func(c *Context) {
-		Box(c).Size(100, 20).Draw(func(p *Painter, r Rect) {
+	tt := newRepaintTester(func(c *context) {
+		coreBox(c).Size(100, 20).Draw(func(p *Painter, r Rect) {
 			// A bar moving a DIP a millisecond.
 			draws++
 			drawn = p.Now()
@@ -88,10 +88,10 @@ func TestRepaintFrames(t *testing.T) {
 
 func TestRepaintOnlyInView(t *testing.T) {
 	draws := 0
-	tt := newRepaintTester(func(c *Context) {
-		Scroll(c).Height(100).Children(func() {
-			Box(c).Height(300).Shrink(0)
-			Box(c).Size(100, 20).Shrink(0).Draw(func(p *Painter, r Rect) {
+	tt := newRepaintTester(func(c *context) {
+		coreScroll(c).Height(100).Children(func() {
+			coreBox(c).Height(300).Shrink(0)
+			coreBox(c).Size(100, 20).Shrink(0).Draw(func(p *Painter, r Rect) {
 				draws++
 				p.AnimationFrame()
 			})
@@ -104,8 +104,8 @@ func TestRepaintOnlyInView(t *testing.T) {
 
 func TestPainterAfter(t *testing.T) {
 	draws := 0
-	tt := newRepaintTester(func(c *Context) {
-		Box(c).Size(100, 20).Draw(func(p *Painter, r Rect) {
+	tt := newRepaintTester(func(c *context) {
+		coreBox(c).Size(100, 20).Draw(func(p *Painter, r Rect) {
 			draws++
 			p.After(30 * time.Millisecond)
 		})
@@ -141,10 +141,10 @@ func TestPainterAfter(t *testing.T) {
 
 func TestIndicatorsRepaint(t *testing.T) {
 	var value float64
-	tt := newRepaintTester(func(c *Context) {
-		Column(c).Gap(10).Padding(10).Children(func() {
-			Spinner(c)
-			Progress(c, value).Width(100)
+	tt := newRepaintTester(func(c *context) {
+		coreColumn(c).Gap(10).Padding(10).Children(func() {
+			coreSpinner(c)
+			coreProgress(c, value).Width(100)
 		})
 	})
 	// The spinner is painted again for its next spoke, the progress bar of
@@ -168,11 +168,11 @@ func TestIndicatorsRepaint(t *testing.T) {
 // while changes of the state still build frames.
 func TestHeldWhileOccluded(t *testing.T) {
 	count := 0
-	tt := newRepaintTester(func(c *Context) {
-		Textf(c, "%d", count)
-		Progress(c, -1).Width(100)
-		Box(c).Size(10, 10).Draw(func(p *Painter, r Rect) { p.After(50 * time.Millisecond) })
-		spin := Box(c).Size(10, 10)
+	tt := newRepaintTester(func(c *context) {
+		coreTextf(c, "%d", count)
+		coreProgress(c, -1).Width(100)
+		coreBox(c).Size(10, 10).Draw(func(p *Painter, r Rect) { p.After(50 * time.Millisecond) })
+		spin := coreBox(c).Size(10, 10)
 		spin.Rotate(spin.Loop("spin", time.Second, Linear) * 360)
 	})
 	// The frame the view animating asked for comes, and asks for no more.

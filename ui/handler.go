@@ -82,7 +82,7 @@ type InputEvent struct {
 // It is for widgets that need every key as it is pressed, such as a
 // terminal; most widgets ask about their input as they are built instead
 // (Clicked, Shortcut, Dragged).
-func (e *Element) HandleInput(fn func(ev InputEvent) bool) *Element {
+func (e *node) HandleInput(fn func(ev InputEvent) bool) *node {
 	e.inputFn = fn
 	return e
 }
@@ -91,14 +91,14 @@ func (e *Element) HandleInput(fn func(ev InputEvent) bool) *Element {
 // InputScroll events. A stationary tap still delivers pointer Down/Up and
 // focuses the widget; a swipe does neither, so it can scroll without
 // opening the keyboard. Mouse input and pointer tracking are unchanged.
-func (e *Element) TouchScroll() *Element {
+func (e *node) TouchScroll() *node {
 	e.touchScroll = true
 	return e
 }
 
 // TouchSelection lets a TouchScroll widget reserve a stationary long press
 // for its InputLongPress handler. Moving before the hold still scrolls.
-func (e *Element) TouchSelection() *Element {
+func (e *node) TouchSelection() *node {
 	e.touchScroll, e.touchSelection = true, true
 	return e
 }
@@ -107,7 +107,7 @@ func (e *Element) TouchSelection() *Element {
 // while it has the keyboard focus, with their composition at r, the caret,
 // relative to the element's box: candidate windows show there. Its
 // InputText and Compose events (HandleInput) bring the text.
-func (e *Element) TextCaret(r Rect) *Element {
+func (e *node) TextCaret(r Rect) *node {
 	e.caret, e.caretFn, e.takesText = r, nil, true
 	return e
 }
@@ -116,7 +116,7 @@ func (e *Element) TextCaret(r Rect) *Element {
 // final layout or rendered grid. fn runs on the UI thread after painting, so
 // the input method and the visible cursor use the same frame's geometry.
 // The returned rectangle is relative to the element's box.
-func (e *Element) TextCaretFunc(fn func() Rect) *Element {
+func (e *node) TextCaretFunc(fn func() Rect) *node {
 	e.caretFn, e.takesText = fn, fn != nil
 	return e
 }
@@ -127,7 +127,7 @@ func (e *Element) TextCaretFunc(fn func() Rect) *Element {
 // native composition remains virtual until committed. This does not create
 // an editor or change pointer selection/rendering. Use HandleTextInput when
 // full indexed geometry or document selection is required.
-func (e *Element) TextContext(fn func() (string, int)) *Element {
+func (e *node) TextContext(fn func() (string, int)) *node {
 	e.textContext = fn
 	return e
 }
@@ -209,7 +209,7 @@ func softwareControlKey(key Key) bool {
 // and multi-character paste untouched. consumed runs on the UI thread after
 // a key is handled, allowing an app to release one-shot modifiers. Omitting
 // the call clears the modifiers. Standard text editors are unaffected.
-func (e *Element) InputModifiers(mods Modifiers, consumed func()) *Element {
+func (e *node) InputModifiers(mods Modifiers, consumed func()) *node {
 	e.inputModifiers, e.inputConsumed = mods&(Shift|Ctrl|Alt|Super), consumed
 	return e
 }

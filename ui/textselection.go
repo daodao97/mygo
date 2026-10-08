@@ -26,14 +26,14 @@ type textSelection struct {
 
 // prepareSelectable waits until inline children have finished their text,
 // so rebuilding a paragraph does not reset its selection to its own text.
-func (rt *engine) prepareSelectable(e *Element) {
+func (rt *engine) prepareSelectable(e *node) {
 	e.prepareSelectable()
 	for ch := e.first; ch != nil; ch = ch.next {
 		rt.prepareSelectable(ch)
 	}
 }
 
-func (e *Element) prepareSelectable() {
+func (e *node) prepareSelectable() {
 	if e.kind != kindText {
 		return
 	}
@@ -90,7 +90,7 @@ func (e *Element) prepareSelectable() {
 // collectSelectable follows build order, independently of painting order
 // (absolute children paint last). Inline children are already in their
 // paragraph's text, and must not be copied a second time.
-func (rt *engine) collectSelectable(e *Element, hidden bool) {
+func (rt *engine) collectSelectable(e *node, hidden bool) {
 	hidden = hidden || e.flags&(flagInvisible|flagInert) != 0
 	if !hidden && e.kind == kindText && !e.isInline() && e.st.flags&flagDisabled == 0 && e.flags&flagSelectable != 0 {
 		rt.texts = append(rt.texts, e.st)

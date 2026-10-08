@@ -2,31 +2,33 @@ package ui
 
 // TextInputBuffer creates a single-line control editing indexed storage.
 // It shares TextInput's selection, composition, undo and styling behavior.
-func TextInputBuffer(c *Context, value *TextBuffer) *Element {
+func coreTextInputBuffer(c *context, value *TextBuffer) *node {
 	return styledBufferInput(c, value, false)
 }
 
 // TextAreaBuffer creates a multiline control editing indexed storage.
 // Ordinary edits and native queries never materialize the whole document.
 // Layout retains the paragraphs in view, as TextArea does.
-func TextAreaBuffer(c *Context, value *TextBuffer) *Element { return styledBufferInput(c, value, true) }
+func coreTextAreaBuffer(c *context, value *TextBuffer) *node {
+	return styledBufferInput(c, value, true)
+}
 
 // TextInputBufferBase and TextAreaBufferBase are the unstyled buffer controls.
-func TextInputBufferBase(c *Context, value *TextBuffer) *Element {
+func coreTextInputBufferBase(c *context, value *TextBuffer) *node {
 	return bufferInputBase(c, value, false)
 }
-func TextAreaBufferBase(c *Context, value *TextBuffer) *Element {
+func coreTextAreaBufferBase(c *context, value *TextBuffer) *node {
 	return bufferInputBase(c, value, true)
 }
 
-func styledBufferInput(c *Context, value *TextBuffer, multiline bool) *Element {
+func styledBufferInput(c *context, value *TextBuffer, multiline bool) *node {
 	t := c.theme
 	e := bufferInputBase(c, value, multiline)
 	e.Padding(t.Space(1.5), t.Space(2.5)).Radius(t.Radius).Background(t.Surface).Border(1, t.Border)
 	if multiline {
 		e.MinHeight(t.Space(20))
 	}
-	e.styleFn = func(e *Element) { inputBorder(t, e, e) }
+	e.styleFn = func(e *node) { inputBorder(t, e, e) }
 	return e
 }
 
@@ -58,7 +60,7 @@ func (ed *editor) syncBuffer() {
 	}
 }
 
-func bufferInputBase(c *Context, value *TextBuffer, multiline bool) *Element {
+func bufferInputBase(c *context, value *TextBuffer, multiline bool) *node {
 	if value == nil {
 		panic("ui: a buffer input requires a non-nil TextBuffer")
 	}
@@ -86,26 +88,9 @@ func bufferInputBase(c *Context, value *TextBuffer, multiline bool) *Element {
 		ed.client = &widgetTextInput{ed: ed, rt: c.rt, id: e.id}
 	}
 	e.textClient = ed.client
-	if ed.bufferDirty {
-		st.changed = true
-		c.rt.consumed = true
-		ed.bufferDirty = false
-	}
-	if c.rt.focused == e.id || len(ed.queue) > 0 {
-		before := ed.buf.version
-		ed.process(c, e)
-		if ed.buf.version != before {
-			ed.client.publish()
-			st.changed = true
-			c.rt.consumed = true
-			ed.bufferDirty = false
-		}
-	}
-	if c.rt.focused != e.id {
-		ed.compose = ""
-	}
-	ed.readOnly, ed.password = false, false
+	ed.readOnly, ed.password, ed.lines = false, false, [2]int{}
 	ed.ranges = ed.ranges[:0]
-	ed.lines = [2]int{}
+	e.onValueInput(bufferInput)
+
 	return e
 }

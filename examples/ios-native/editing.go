@@ -43,7 +43,7 @@ func (s *demo) editingControls(c *ui.Context) {
 	revealEditingField(c, input)
 }
 
-func revealEditingField(c *ui.Context, field *ui.Element) {
+func revealEditingField(c *ui.Context, field ui.Element) {
 	viewport := ui.Local(field, "editing-viewport", func() inputViewport { return inputViewport{} })
 	w, h := c.Size()
 	focused := field.Focused()

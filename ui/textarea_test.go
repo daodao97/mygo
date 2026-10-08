@@ -188,11 +188,11 @@ func TestHeights(t *testing.T) {
 // them.
 func TestTextAreaLaysOutAsWholeText(t *testing.T) {
 	s := strings.Repeat("A paragraph long enough to wrap in the text area, twice over at least, with words.\n\nshort\n", 4)
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 300, 2000)
-	var e *Element
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 300, 2000)
+	var e *node
 	for _, st := range tt.rt.states {
 		if st.editor != nil {
-			e = &Element{st: st}
+			e = &node{st: st}
 		}
 	}
 	ed := e.st.editor
@@ -215,7 +215,7 @@ func TestTextAreaLaysOutAsWholeText(t *testing.T) {
 // redoes them.
 func TestTextAreaUndo(t *testing.T) {
 	s := "first line\nsecond line\nthird"
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 400, 300)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 400, 300)
 	tt.Press(20, 15)
 	tt.Release(20, 15)
 	var ed *editor
@@ -275,7 +275,7 @@ func TestTextAreaScrolls(t *testing.T) {
 		b.WriteByte('\n')
 	}
 	s := b.String()
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 400, 300)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 400, 300)
 	tt.Press(20, 15)
 	tt.Release(20, 15)
 	// A text area opens with the caret at the end, in view.
@@ -322,7 +322,7 @@ func TestTextAreaScrolls(t *testing.T) {
 // selected newlines and empty lines included.
 func TestTextAreaSelectsAsWholeText(t *testing.T) {
 	s := "A paragraph long enough to wrap in the text area, twice over.\n\nshort\n\nlast one"
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 260, 2000)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 260, 2000)
 	var ed *editor
 	for _, st := range tt.rt.states {
 		if st.editor != nil {
@@ -366,8 +366,8 @@ func TestTextAreaSelectsAsWholeText(t *testing.T) {
 // step takes the app's change back with the typing.
 func TestTextAreaUndoAppChanges(t *testing.T) {
 	s := ""
-	tt := NewTester(func(c *Context) {
-		TextArea(c, &s).Fill()
+	tt := coreNewTester(func(c *context) {
+		coreTextArea(c, &s).Fill()
 		s = strings.ToUpper(s)
 	}, 400, 300)
 	tt.Press(20, 15)
@@ -398,7 +398,7 @@ func textAreaState(tt *Tester) *state {
 // that undoing the step still takes the app's texts back.
 func TestTextAreaUndoAppLog(t *testing.T) {
 	s := ""
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 400, 300)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 400, 300)
 	tt.Press(20, 15)
 	tt.Release(20, 15)
 	tt.Type("x")
@@ -428,7 +428,7 @@ func TestTextAreaUndoAppLog(t *testing.T) {
 // at once.
 func TestTextAreaSharesValue(t *testing.T) {
 	s := strings.Repeat("abc\n", 100) + "x"
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 400, 300)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 400, 300)
 	tt.Press(20, 15)
 	tt.Release(20, 15)
 	ed := textAreaState(tt).editor
@@ -445,7 +445,7 @@ func TestTextAreaSharesValue(t *testing.T) {
 // after short ones.
 func TestTextAreaRevealsWrapped(t *testing.T) {
 	s := strings.Repeat("short\n", 2000) + strings.Repeat(strings.Repeat("word ", 80)+"\n", 300) + "end"
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 400, 300)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 400, 300)
 	st := textAreaState(tt)
 	ed, a := st.editor, st.editor.area
 	check := func(what string) {
@@ -468,7 +468,7 @@ func TestTextAreaRevealsWrapped(t *testing.T) {
 // growing, leaves the view where the wheel put it.
 func TestTextAreaKeepsViewOnAppText(t *testing.T) {
 	s := strings.Repeat("a line of the log\n", 2000)
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 400, 300)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 400, 300)
 	tt.Press(20, 15)
 	tt.Release(20, 15)
 	tt.Key(Ctrl, KeyHome)
@@ -486,7 +486,7 @@ func TestTextAreaKeepsViewOnAppText(t *testing.T) {
 // padding above the view is laid out, as the text is drawn there.
 func TestTextAreaShowsThroughPadding(t *testing.T) {
 	s := strings.Repeat("line\n", 200)
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 400, 300)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 400, 300)
 	tt.Press(20, 15)
 	tt.Release(20, 15)
 	tt.Key(Ctrl, KeyHome)
@@ -502,7 +502,7 @@ func TestTextAreaShowsThroughPadding(t *testing.T) {
 // as multi-line fields have no password mode on any platform.
 func TestTextAreaPassword(t *testing.T) {
 	notes := "first\nsecond"
-	tt := NewTester(func(c *Context) { TextArea(c, &notes).Password().Height(120) }, 400, 200)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &notes).Password().Height(120) }, 400, 200)
 	ed := textAreaState(tt).editor
 	if ed.password {
 		t.Fatal("Password made a text area a password field")
@@ -516,9 +516,9 @@ func TestTextAreaPassword(t *testing.T) {
 // line of its text area.
 func TestTextAreaInForm(t *testing.T) {
 	bio := "The first line"
-	tt := NewTester(func(c *Context) {
-		Form(c, func() {
-			Field(c, "About you", func() { TextArea(c, &bio).Height(110) })
+	tt := coreNewTester(func(c *context) {
+		coreForm(c, func() {
+			coreField(c, "About you", func() { coreTextArea(c, &bio).Height(110) })
 		})
 	}, 500, 300)
 	label, _ := tt.Find("About you")
@@ -532,9 +532,9 @@ func TestTextAreaInForm(t *testing.T) {
 // least lines up to its most, past which it scrolls.
 func TestTextAreaLinesFollowWrappedText(t *testing.T) {
 	draft := ""
-	tt := NewTester(func(c *Context) {
-		Column(c).Width(200).Children(func() {
-			TextAreaBase(c, &draft).Lines(1, 4).Label("Draft")
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Width(200).Children(func() {
+			coreTextAreaBase(c, &draft).Lines(1, 4).Label("Draft")
 		})
 	}, 400, 600)
 	empty, _ := tt.Find("Draft")
@@ -565,10 +565,10 @@ func TestTextAreaLinesFollowWrappedText(t *testing.T) {
 // completed where it was typed.
 func TestTextSelection(t *testing.T) {
 	draft := "hello world"
-	var input *Element
+	var input *node
 	move := -1
-	tt := NewTester(func(c *Context) {
-		input = TextAreaBase(c, &draft).Label("Draft")
+	tt := coreNewTester(func(c *context) {
+		input = coreTextAreaBase(c, &draft).Label("Draft")
 		if move >= 0 {
 			input.SetTextSelection(move, move)
 			move = -1
@@ -600,10 +600,10 @@ func TestTextSelection(t *testing.T) {
 // fixed or not.
 func TestPlaceholderWithFixedLineHeight(t *testing.T) {
 	var a, b string
-	tt := NewTester(func(c *Context) {
-		Column(c).Padding(10).Gap(10).Children(func() {
-			TextAreaBase(c, &a).Lines(1, 4).FixedLineHeight(19).Placeholder("Area").Width(200).Label("A")
-			TextInputBase(c, &b).FixedLineHeight(19).Placeholder("Input").Width(200).Label("B")
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Padding(10).Gap(10).Children(func() {
+			coreTextAreaBase(c, &a).Lines(1, 4).FixedLineHeight(19).Placeholder("Area").Width(200).Label("A")
+			coreTextInputBase(c, &b).FixedLineHeight(19).Placeholder("Input").Width(200).Label("B")
 		})
 	}, 300, 120)
 	img := tt.Image()
@@ -630,10 +630,10 @@ func TestPlaceholderWithFixedLineHeight(t *testing.T) {
 // A single-line input's text goes where TextAlign puts it while it fits.
 func TestInputTextAlign(t *testing.T) {
 	left, right := "abc", "abc"
-	tt := NewTester(func(c *Context) {
-		Column(c).Width(200).Children(func() {
-			TextInputBase(c, &left).Label("Left")
-			TextInputBase(c, &right).TextAlign(End).Label("Right")
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Width(200).Children(func() {
+			coreTextInputBase(c, &left).Label("Left")
+			coreTextInputBase(c, &right).TextAlign(End).Label("Right")
 		})
 	}, 300, 100)
 	img := tt.Image()
@@ -667,9 +667,9 @@ func TestInputTextAlign(t *testing.T) {
 // An input that stops calling Password shows its text again.
 func TestInputPasswordToggles(t *testing.T) {
 	value, hidden := "secret", true
-	var in *Element
-	tt := NewTester(func(c *Context) {
-		in = TextInputBase(c, &value).Width(200).Label("Key")
+	var in *node
+	tt := coreNewTester(func(c *context) {
+		in = coreTextInputBase(c, &value).Width(200).Label("Key")
 		if hidden {
 			in.Password()
 		}
@@ -708,10 +708,10 @@ func inkSpan(tt *Tester, name string) (first, last int, box Rect) {
 // would stop at the last word that fits; a text area's wraps.
 func TestInputPlaceholderStaysOnItsLine(t *testing.T) {
 	var line, area string
-	var lineEl, areaEl *Element
-	NewTester(func(c *Context) {
-		lineEl = TextInputBase(c, &line).Width(120).Placeholder("mmmm mmmm mmmm mmmm mmmm mmmm").Label("Field")
-		areaEl = TextAreaBase(c, &area).Width(120).Placeholder("mmmm mmmm mmmm mmmm mmmm mmmm").Label("Area")
+	var lineEl, areaEl *node
+	coreNewTester(func(c *context) {
+		lineEl = coreTextInputBase(c, &line).Width(120).Placeholder("mmmm mmmm mmmm mmmm mmmm mmmm").Label("Field")
+		areaEl = coreTextAreaBase(c, &area).Width(120).Placeholder("mmmm mmmm mmmm mmmm mmmm mmmm").Label("Area")
 	}, 300, 160)
 	if n := len(textSystem().Layout(lineEl.placeholderParams(120)).Lines); n != 1 {
 		t.Errorf("the input's placeholder takes %d lines", n)
@@ -725,11 +725,11 @@ func TestInputPlaceholderStaysOnItsLine(t *testing.T) {
 // caret's end.
 func TestInputShowsItsStartUnfocused(t *testing.T) {
 	long, other := strings.Repeat("abc ", 60), ""
-	var in *Element
-	tt := NewTester(func(c *Context) {
-		Column(c).Children(func() {
-			in = TextInputBase(c, &long).Width(120).Label("Long")
-			TextInputBase(c, &other).Width(120).Label("Other")
+	var in *node
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Children(func() {
+			in = coreTextInputBase(c, &long).Width(120).Label("Long")
+			coreTextInputBase(c, &other).Width(120).Label("Other")
 		})
 	}, 300, 80)
 	if x := in.st.editor.scrollX; x != 0 {
@@ -754,11 +754,11 @@ func TestTextRanges(t *testing.T) {
 	area, line := "hi @Scout there\nnext", "to @Scout now"
 	styled := true
 	red := RGB(220, 0, 0)
-	var areaEl, lineEl *Element
-	tt := NewTester(func(c *Context) {
-		Column(c).Gap(10).Padding(10).Children(func() {
-			areaEl = TextAreaBase(c, &area).Width(260).Label("Area")
-			lineEl = TextInputBase(c, &line).Width(260).Label("Line")
+	var areaEl, lineEl *node
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Gap(10).Padding(10).Children(func() {
+			areaEl = coreTextAreaBase(c, &area).Width(260).Label("Area")
+			lineEl = coreTextInputBase(c, &line).Width(260).Label("Line")
 			if styled {
 				areaEl.TextRanges(TextRange{Start: 3, End: 9, Color: red, Weight: 700})
 				lineEl.TextRanges(TextRange{Start: 3, End: 9, Color: red})

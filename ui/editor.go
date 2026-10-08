@@ -40,23 +40,24 @@ type editor struct {
 	buf       buffer
 	graphemes graphemes
 	editorSelection
-	compose           string
-	composeCaret      int
-	composeSelected   TextInputRange
-	compositionActive bool // one undo transaction for preedit and its commit
-	client            *widgetTextInput
-	value             *string
-	nativeDirty       bool
-	nativeValue       string // bound value before the next widget build publishes input
-	document          *TextBuffer
-	published         TextSnapshot
-	bufferDirty       bool
-	queue             []editEvent
-	multiline         bool
-	readOnly          bool   // selectable text: selected and copied, not edited
-	source            string // the text of selectable text
-	password          bool
-	inputOptions      platform.TextInputOptions
+	compose            string
+	composeCaret       int
+	composeSelected    TextInputRange
+	compositionActive  bool // one undo transaction for preedit and its commit
+	client             *widgetTextInput
+	value              *string
+	nativeDirty        bool
+	nativeValue        string // bound value before the next widget build publishes input
+	document           *TextBuffer
+	published          TextSnapshot
+	bufferDirty        bool
+	nativeBufferBefore TextSnapshot
+	queue              []editEvent
+	multiline          bool
+	readOnly           bool   // selectable text: selected and copied, not edited
+	source             string // the text of selectable text
+	password           bool
+	inputOptions       platform.TextInputOptions
 	// leaveEmptyBackspace leaves Backspace to shortcuts while the text is
 	// empty, as a token field's input does to take out a token.
 	leaveEmptyBackspace bool
@@ -182,7 +183,7 @@ func (ed *editor) snapshot(ev editEvent) {
 }
 
 // process applies the input queued for the editor.
-func (ed *editor) process(c *Context, e *Element) {
+func (ed *editor) process(c *context, e *node) {
 	st := e.st
 	for _, ev := range ed.queue {
 		if ev.replace && !ev.snapshot {

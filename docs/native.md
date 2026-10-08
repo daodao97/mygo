@@ -132,7 +132,8 @@ lists, custom MIME formats, and lazy providers. `Formats` discovers portable
 names without requesting bytes; `ReadFormat`, `ReadFiles`, `WriteFiles`, and
 `Flush` provide explicit negotiation, file transfer, and persistence. See
 [Clipboard and drag data](data-transfer.md) for provider lifetimes and native
-format mappings, and run `go run ./examples/clipboard` for a working example.
+format mappings. The [clipboard example](../examples/clipboard) demonstrates
+these operations.
 
 ## The shell
 

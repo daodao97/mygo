@@ -132,5 +132,6 @@ Virtual files and file-content promises are outside the current model. Go
 values used by `Drag(value)` are process-local; their temporary drag registry
 token is rejected by clipboard writes and omitted from clipboard discovery.
 
-Run `go run ./examples/clipboard` to copy and drag a note as text, HTML, and lazy
-JSON, inspect provider invocation/release counts, paste file lists, and flush.
+The [clipboard example](../examples/clipboard) copies and drags a note as text,
+HTML and lazy JSON, shows provider invocation/release counts, pastes file lists
+and flushes clipboard data.

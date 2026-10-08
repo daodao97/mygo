@@ -21,7 +21,7 @@ func codeLines(n int) string {
 // window, with the keyboard focus and the caret in its first line.
 func textAreaTester(lines int) (*Tester, *string) {
 	s := codeLines(lines)
-	tt := NewTester(func(c *Context) { TextArea(c, &s).Fill() }, 1200, 800)
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Fill() }, 1200, 800)
 	tt.Press(40, 20)
 	tt.Release(40, 20)
 	return tt, &s

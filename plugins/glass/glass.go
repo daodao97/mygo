@@ -63,7 +63,7 @@ type pressed struct {
 // BuildMaterial follows the press of an interactive glass's element: the
 // glass grows as it is pressed and shrinks back as it is let go, within
 // 150 ms, as AppKit's does.
-func (g Glass) BuildMaterial(e *ui.Element) ui.Material {
+func (g Glass) BuildMaterial(e ui.Element) ui.Material {
 	if !g.Interactive {
 		return g
 	}

@@ -16,7 +16,7 @@ import (
 // Content is a user interface for a window, the value of
 // mygo.WindowOptions.Content. Create it with View.
 type Content struct {
-	view func(*Context)
+	view func(*context)
 }
 
 // View returns the content of a window whose user interface view builds,
@@ -28,7 +28,7 @@ type Content struct {
 // input, after Context.Invalidate or Window.Invalidate, and while
 // something animates. A Content can serve several windows, each with its
 // own state.
-func View(view func(c *Context)) *Content { return &Content{view: view} }
+func coreView(view func(c *context)) *Content { return &Content{view: view} }
 
 // RegisterFont adds a TrueType or OpenType font, or collection, that text
 // can use with Font(family). An empty family keeps the font's own name.

@@ -31,7 +31,7 @@ row.ContextMenu(func(m *ui.Menu) {
 The function runs as the element builds, in the loop building the rows:
 a choice that takes the row out of the notes, as moving or deleting it,
 notes it, for the change once the loop is done (see
-[views](views.md#events-are-questions)).
+[views](views.md#events-and-actions)).
 
 ## Items
 

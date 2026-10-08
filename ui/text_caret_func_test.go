@@ -8,8 +8,8 @@ import (
 func TestTextCaretFuncFollowsThePaintedFrame(t *testing.T) {
 	var painted Rect
 	x := float32(10)
-	tt := newRepaintTester(func(c *Context) {
-		Box(c).Fill().AutoFocus().HandleInput(func(InputEvent) bool { return true }).TextCaretFunc(func() Rect { return painted }).Draw(func(p *Painter, r Rect) {
+	tt := newRepaintTester(func(c *context) {
+		coreBox(c).Fill().AutoFocus().HandleInput(func(InputEvent) bool { return true }).TextCaretFunc(func() Rect { return painted }).Draw(func(p *Painter, r Rect) {
 			painted = Rect{X: x, Y: r.H - 24, W: 2, H: 20}
 			p.AnimationFrame()
 		})

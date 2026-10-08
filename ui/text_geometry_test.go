@@ -53,7 +53,7 @@ func TestTextGeometryUsesVisibleGoLayout(t *testing.T) {
 			}
 			tt := snapshotTester(func(c *Context) {
 				Column(c).Padding(17).Children(func() {
-					var e *Element
+					var e Element
 					if multiline {
 						e = TextArea(c, &value).Height(160)
 					} else {

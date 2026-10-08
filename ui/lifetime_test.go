@@ -6,11 +6,11 @@ import "testing"
 // a loading or empty view replaced it. Both must be inert input scopes.
 func TestOptionalElementInput(t *testing.T) {
 	show := true
-	var removed *Element
-	tt := NewTester(func(c *Context) {
-		Text(c, "Keep the window alive")
+	var removed *node
+	tt := coreNewTester(func(c *context) {
+		coreText(c, "Keep the window alive")
 		if show {
-			removed = Button(c, "Temporary").AutoFocus()
+			removed = coreButton(c, "Temporary").AutoFocus()
 			removed.Shortcut(Cmd, KeyK)
 		}
 	}, 200, 100)
@@ -20,7 +20,7 @@ func TestOptionalElementInput(t *testing.T) {
 		t.Fatal("the removed element's arena slot was not cleared")
 	}
 	focus, regs, reveal := tt.rt.focused, len(tt.rt.nextRegs), len(tt.rt.c.reveal)
-	for name, e := range map[string]*Element{"nil": nil, "zero": {}, "cleared": removed} {
+	for name, e := range map[string]*node{"nil": nil, "zero": {}, "cleared": removed} {
 		t.Run(name, func(t *testing.T) {
 			if e.Clicked() || e.DoubleClicked() || e.RightClicked() || e.Hovered() || e.Pressed() ||
 				e.Focused() || e.FocusVisible() || e.FocusWithin() || e.Changed() || e.Submitted() ||
@@ -52,33 +52,33 @@ func TestListStateFocusAndShortcutsFollowCurrentBuild(t *testing.T) {
 	var s ListState
 	show, focusRequested := true, true
 	listKeys, windowKeys, rebuilds := 0, 0, 0
-	var owner, other *Element
+	var owner, other *node
 	rowFocused := false
-	tt := NewTester(func(c *Context) {
-		if s.Focused(c) || s.FocusWithin(c) || s.Focus(c) || s.Shortcut(c, Cmd, KeyK) {
+	tt := coreNewTester(func(c *context) {
+		if s.coreFocused(c) || s.coreFocusWithin(c) || s.coreFocus(c) || s.coreShortcut(c, Cmd, KeyK) {
 			t.Fatal("the previous build's list was available before this one was built")
 		}
 		if show {
-			owner = List(c, &s, 1, func(i int) {
-				rowFocused = s.FocusWithin(c)
-				Text(c, "File").Height(24)
+			owner = coreList(c, &s, 1, func(i int) {
+				rowFocused = s.coreFocusWithin(c)
+				coreText(c, "File").Height(24)
 			}).Grow(1).Label("Files")
-			if focusRequested && s.Focus(c) {
+			if focusRequested && s.coreFocus(c) {
 				focusRequested = false
 			}
-			if Button(c, "Hide").Clicked() {
+			if coreButton(c, "Hide").Clicked() {
 				show = false
 			}
 		} else {
-			other = Button(c, "Other").Focus()
+			other = coreButton(c, "Other").Focus()
 			if s.frame.frame == c.rt.frame && s.frame.pass != c.rt.pass {
 				rebuilds++
 			}
-			if s.Focused(c) || s.FocusWithin(c) || s.Focus(c) {
+			if s.coreFocused(c) || s.coreFocusWithin(c) || s.coreFocus(c) {
 				t.Fatal("the hidden list acted on its cleared or reused owner")
 			}
 		}
-		if s.Shortcut(c, Cmd, KeyK) {
+		if s.coreShortcut(c, Cmd, KeyK) {
 			listKeys++
 		}
 		if c.Shortcut(Cmd, KeyK) {
@@ -130,33 +130,33 @@ func TestListStateFocusDuringRowBuild(t *testing.T) {
 			keys := 0
 			nested, within := false, false
 			text := ""
-			tt := NewTester(func(c *Context) {
+			tt := coreNewTester(func(c *context) {
 				row := func() {
-					if !s.Focus(c) || !s.Focused(c) || !s.FocusWithin(c) {
+					if !s.coreFocus(c) || !s.coreFocused(c) || !s.coreFocusWithin(c) {
 						t.Fatal("the focus owner was unavailable during row building")
 					}
 					if nested {
-						TextInput(c, &text).Focus().Label("Field")
-						if s.Focused(c) {
+						coreTextInput(c, &text).Focus().Label("Field")
+						if s.coreFocused(c) {
 							t.Fatal("the list did not distinguish its own focus from its child's")
 						}
 					} else {
-						Text(c, "Row")
+						coreText(c, "Row")
 					}
 				}
-				var e *Element
+				var e *node
 				switch name {
 				case "list":
-					e = List(c, s, 1, func(int) { row() })
+					e = coreList(c, s, 1, func(int) { row() })
 				case "table":
-					e = Table(c, s, []TableColumn{{Title: "Name"}}, 1, func(int, int) { row() })
+					e = coreTable(c, s, []TableColumn{{Title: "Name"}}, 1, func(int, int) { row() })
 				case "outline":
-					e = Outline(c, &outline, []string{"file"}, func(string) []string { return nil }, func(string) { row() })
+					e = coreOutline(c, &outline, []string{"file"}, func(string) []string { return nil }, func(string) { row() })
 				}
 				e.Grow(1)
 				id = e.ID()
-				within = s.FocusWithin(c)
-				if s.Shortcut(c, Cmd, KeyK) {
+				within = s.coreFocusWithin(c)
+				if s.coreShortcut(c, Cmd, KeyK) {
 					keys++
 				}
 			}, 200, 150)
@@ -179,19 +179,19 @@ func TestListStateFocusDuringRowBuild(t *testing.T) {
 
 func TestListStateInputRequiresItsActiveContext(t *testing.T) {
 	var s ListState
-	owner := NewTester(func(c *Context) {
-		List(c, &s, 1, func(int) { Text(c, "File") }).Grow(1)
-		s.Focus(c)
+	owner := coreNewTester(func(c *context) {
+		coreList(c, &s, 1, func(int) { coreText(c, "File") }).Grow(1)
+		s.coreFocus(c)
 	}, 200, 100)
-	check := func(c *Context, s *ListState) {
+	check := func(c *context, s *ListState) {
 		t.Helper()
-		if s.Focused(c) || s.FocusWithin(c) || s.Focus(c) || s.Shortcut(c, Cmd, KeyK) {
+		if s.coreFocused(c) || s.coreFocusWithin(c) || s.coreFocus(c) || s.coreShortcut(c, Cmd, KeyK) {
 			t.Fatal("an absent list or inactive context was used")
 		}
 	}
 	check(nil, &s)
 	check(&owner.rt.c, &s) // outside the view
-	NewTester(func(c *Context) {
+	coreNewTester(func(c *context) {
 		check(c, nil)
 		check(c, &ListState{})
 		check(c, &s) // another window, with the same frame and pass numbers

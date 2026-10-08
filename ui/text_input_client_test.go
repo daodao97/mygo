@@ -62,8 +62,8 @@ func (c *primitiveClient) IndexForPoint(p Point) (int, bool) {
 	return max(0, min(int(p.X/4), UTF16Len(c.text))), true
 }
 func primitiveTester(c *primitiveClient) *Tester {
-	return NewTester(func(ctx *Context) {
-		Box(ctx).Size(250, 80).HandleTextInput(c).AutoFocus().HandleInput(func(ev InputEvent) bool { return ev.Kind == InputCommand })
+	return coreNewTester(func(ctx *context) {
+		coreBox(ctx).Size(250, 80).HandleTextInput(c).AutoFocus().HandleInput(func(ev InputEvent) bool { return ev.Kind == InputCommand })
 	}, 300, 100)
 }
 
@@ -125,12 +125,12 @@ func TestTextInputClientNativeEndBeforeCommit(t *testing.T) {
 func TestTextInputClientQueriesGeometryAndLifetime(t *testing.T) {
 	c := &primitiveClient{text: strings.Repeat("a", 10000), selection: TextInputSelection{Range: TextInputRange{Start: 8000, End: 8000}}}
 	show := true
-	tt := NewTester(func(ctx *Context) {
-		Column(ctx).Padding(10).Children(func() {
+	tt := coreNewTester(func(ctx *context) {
+		coreColumn(ctx).Padding(10).Children(func() {
 			if show {
-				Box(ctx).Size(200, 40).HandleTextInput(c).AutoFocus()
+				coreBox(ctx).Size(200, 40).HandleTextInput(c).AutoFocus()
 			}
-			Button(ctx, "Other")
+			coreButton(ctx, "Other")
 		})
 	}, 300, 100)
 	defer tt.rt.close()
@@ -166,7 +166,7 @@ func TestTextInputClientQueriesGeometryAndLifetime(t *testing.T) {
 func TestTextInputClientSwappingAndTypedNil(t *testing.T) {
 	first, second := &primitiveClient{text: "one"}, &primitiveClient{text: "two"}
 	current := first
-	tt := NewTester(func(ctx *Context) { Box(ctx).Size(200, 50).HandleTextInput(current).AutoFocus() }, 250, 60)
+	tt := coreNewTester(func(ctx *context) { coreBox(ctx).Size(200, 50).HandleTextInput(current).AutoFocus() }, 250, 60)
 	defer tt.rt.close()
 	old := tt.h.ime.Client
 	current = second

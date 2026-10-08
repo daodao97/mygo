@@ -21,21 +21,21 @@ func TestRemovedContentReleasesResources(t *testing.T) {
 			show := true
 			var bitmap weak.Pointer[Bitmap]
 			var pixels weak.Pointer[scene.Image]
-			tt, now := clockTester(func(c *Context) {
-				Column(c).Children(func() {
-					Text(c, "Keep the window alive")
+			tt, now := clockTester(func(c *context) {
+				coreColumn(c).Children(func() {
+					coreText(c, "Keep the window alive")
 					if !show {
 						return
 					}
-					e := Box(c).Key("photo")
+					e := coreBox(c).Key("photo")
 					if exits {
 						e.Transition(ElementTransition{Exit: &Motion{}, Duration: 100 * time.Millisecond})
 					}
-					b := *Local(e, "bitmap", func() *Bitmap {
+					b := *coreLocal(e, "bitmap", func() *Bitmap {
 						return NewBitmap(image.NewRGBA(image.Rect(0, 0, 64, 64)))
 					})
 					bitmap, pixels = weak.Make(b), weak.Make(b.img)
-					e.Children(func() { Image(c, b).Size(64, 64) })
+					e.Children(func() { coreImage(c, b).Size(64, 64) })
 				})
 			}, 200, 150)
 			show = false
@@ -61,9 +61,9 @@ func TestRemovedContentReleasesResources(t *testing.T) {
 // small window. A few rows may leave and enter without fresh allocations.
 func TestElementArenaFollowsViewSize(t *testing.T) {
 	rows := 1000
-	tt := NewTester(func(c *Context) {
+	tt := coreNewTester(func(c *context) {
 		for i := range rows {
-			Box(c).Key(i).Height(1)
+			coreBox(c).Key(i).Height(1)
 		}
 	}, 100, 100)
 	large := len(tt.rt.c.chunks)

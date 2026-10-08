@@ -38,7 +38,7 @@ func TestInputReturnPreservesSubmitAndMultiline(t *testing.T) {
 	for _, multiline := range []bool{false, true} {
 		value, submitted := "", false
 		tt := NewTester(func(c *Context) {
-			var e *Element
+			var e Element
 			if multiline {
 				e = TextArea(c, &value)
 			} else {

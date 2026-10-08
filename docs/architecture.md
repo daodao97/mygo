@@ -588,7 +588,7 @@ and APNs delivery remain external application configuration.
 ### The page runtime (`packages/bridge` → `internal/bridge/bridge.js`)
 
 `packages/bridge/src/bridge.ts` is bundled by Bun into an IIFE
-(`bun run build`) and committed, so building an app never needs Bun. The core wraps it with the
+and committed, so building an app never needs Bun. The core wraps it with the
 window's configuration (`bridge.Script`) and every backend injects it at
 document start into the main frame. It installs:
 
@@ -641,10 +641,16 @@ Apps reach the injected runtime through the `mygo-runtime` npm package:
 MyGo window) and the public types (`Runtime`, `WindowControls`, `Platform`),
 which the bridge shares. It holds no transport of its own: it delegates to
 `window.mygo`, so the injected script stays the single implementation of the
-protocol. Its `dist/` is not committed: `bun run build` builds it, as CI
-and releases do, and must have run in a checkout that `mygo init --mygo
-<checkout>` depends on with `file:`. The template depends on `^<version>`
-from npm, released in step with the Go module.
+protocol. The template depends on `^<version>` from npm, released in step
+with the Go module.
+
+<!-- repository-only:start -->
+
+Its `dist/` is not committed. Run `bun run build` before using a checkout
+with `mygo init --mygo <checkout>` and its `file:` dependency. CI and releases
+build the package too.
+
+<!-- repository-only:end -->
 
 ### The `mygo-cli` package (`packages/cli`)
 
@@ -657,11 +663,12 @@ package managers install only the matching one, and its `bin/mygo.js`
 resolves that package and replaces itself with the binary
 (`process.execve` in Node.js 23.11 and later and in Bun; elsewhere it spawns
 the binary, waits and passes its exit status on). `MYGO_CLI_BINARY` points
-it at another build. In a checkout of this repository, where the platform
-packages hold no binary, it builds `cmd/mygo` from source instead: the
-workspace examples run it that way.
+it at another build.
 
 <!-- repository-only:start -->
+
+In this repository's checkout, platform packages hold no binary, so the
+workspace examples build `cmd/mygo` from source.
 
 `bun run --cwd packages/cli binaries [platform...]` cross-compiles the
 binaries (ignored by git) and writes the manifests with the version of
@@ -868,8 +875,7 @@ build` like mygo-runtime and released with the same version.
   tagged cells and confines database files to the Go-configured directory.
   Connections belong to their page and close on navigation or app quit.
   `mygo-plugin.json` names the six native-library assets, which the CLI
-  bundles like libghostty-vt; `go generate ./plugins/sqlite` writes them and
-  their checksums. Go and native UI apps can also open connections directly.
+  bundles like libghostty-vt, with checksums for the library assets. Go and native UI apps can also open connections directly.
 
 - **terminal** is a terminal for native UI: a `Terminal` runs a program in
   a pseudo-terminal and emulates it with libghostty-vt, Ghostty's terminal
@@ -919,8 +925,7 @@ build` like mygo-runtime and released with the same version.
     bar.
   - *Themes.* `ghostty_themes.go` holds the themes the Ghostty it binds
     ships (iTerm2-Color-Schemes' archive that its `build.zig.zon` names),
-    as 22 colors each, which `go generate` writes too
-    (`go run ./internal/libbuild -themes` writes only them, without Zig).
+    as 22 colors each in the generated theme data.
     `GhosttyTheme` looks for a theme file of the user's first, in
     Ghostty's themes directory, as Ghostty does.
   - *Input* comes as it happens (`ui.Element.HandleInput`): keys are
@@ -933,9 +938,8 @@ build` like mygo-runtime and released with the same version.
     gesture of libghostty-vt turns presses and drags into selections, with
     the clicks it counts itself.
   - *Shipping the library.* `mygo-plugin.json` names its build for each
-    platform, published as assets of a release of this repository, with
-    their SHA-256 (`go generate ./plugins/terminal` builds them with Zig
-    from Ghostty's sources and writes it). The CLI puts them into apps
+    platform, published as release assets with their SHA-256 checksums.
+    The CLI puts them into apps
     (see the CLI's resources); other programs download theirs into the
     user's cache once, which packaged apps never do.
 - **glass** is Liquid Glass for native UI, as macOS 26 and later draw it:
@@ -974,8 +978,7 @@ build` like mygo-runtime and released with the same version.
   level; the soft style is a gradient of the background, as macOS 27's
   replays its window's background under a mask, with no blur (measured
   from SwiftUI's `safeAreaBar` over test patterns, its layers dumped).
-  `go generate ./plugins/glass`
-  compiles both effects' shaders ahead of time on macOS
+  Both effects' shaders are compiled ahead of time on macOS
   (`shaders_darwin.go`) and on Windows (`shaders_windows.go`), with
   `internal/gen`.
 
@@ -1238,6 +1241,36 @@ format mappings.
 
 ## Native UI (`ui`)
 
+The public API keeps one stable `*Context` per window. Child builders share
+it and temporarily change its parent. `Element` is a 16-byte checked value:
+a direct owner record, arena slot and 32-bit generation. The owner detaches
+from the engine on close and retires before generation wrap. Old elements
+cannot alias recycled nodes. Development builds and `Tester` diagnose stale
+use; production methods return empty results or ignore it. `Handle` stores
+persistent control identity separately for each window. Focus queries read
+identity without depending on construction order; focus requests wait for a
+hidden control. `Services` offers persistent clipboard, URL and redraw access.
+
+Constructors build and style controls eagerly. `Context.Key` supplies an ID
+before state initialization. `Changed` and `Submitted` apply pending input
+to controls built so far, once per pass, before returning the response. This
+lets polling commit a local bound value immediately. Input options must be
+configured before response queries. Public click and shortcut queries also
+apply pending bound input before returning, so inline actions see the latest
+edits. `ComboboxParts.Chosen` applies input and reports a choice in the same
+pass; it is not carried into a later rebuild. Private widget queries do not
+finalize input during construction, before fluent configuration. Remaining
+input applies after construction. `OnChange` and `OnSubmit` run after construction and bound
+input, before rebuilding. Notices are cleared before another pass so an
+edit cannot be reported again on a fresh local binding. Callback actions
+consume input once and rebuild before paint.
+The private render tree uses `node` and `context`; `internal/uigen` generates
+the checked public facade. `FocusBind` binds desired focus to app data; `FocusedValue` reads actual focus independently of a hidden
+control's pending request.
+
+See the [migration guide](ui/migration.md) for the breaking element API,
+`mygo migrate-ui`, and the Go type-aware lifetime checks in `mygo vet`.
+
 A window with `WindowOptions.Content` shows a user interface MyGo draws
 itself instead of a web page. The layers stay as everywhere else: the
 toolkit (`ui`) is plain Go above the platform contract, a backend only
@@ -1378,9 +1411,8 @@ either.
   paints a `scene.Scene`; and presents it. Input between frames goes to the
   states of the last frame's elements. An element's identity hashes its
   parent's with its position or `Key`, so focus, scroll offsets, editors and
-  animations survive rebuilding. `Context` and `Element` are temporary
-  build objects, including between passes of the same frame; an old element
-  pointer may point at cleared or reused arena storage. `ListState` resolves
+  animations survive rebuilding. `Context` is stable for the window; `Element` values expire between build
+  passes and validate their owner, slot and generation before accessing storage. `ListState` resolves
   its focus owner only for the current context, frame and pass, exposing
   focus and shortcuts without retaining an element in app state. Scroll
   offsets move in the layout too
@@ -2065,8 +2097,7 @@ either.
   OpenGL ES without `EXT_blend_func_extended` blends the mean of their
   subpixels instead. Every GPU renderer draws these instances:
   - `internal/gpu/d3d11` with a shader compiled to DXBC ahead of time
-    (`go generate ./internal/gpu/d3d11` on Windows, with the system's
-    `d3dcompiler_47.dll`), so apps carry no shader compiler. The
+    (on Windows, with the system's `d3dcompiler_47.dll`), so apps carry no shader compiler. The
     generated file records the SHA-256 of the source it came from, line
     endings aside (`gpu.SourceSum`), as Metal's does: bytecode older than
     `shader.hlsl` falls back to compiling that with the same DLL, which
@@ -2085,8 +2116,8 @@ either.
     (`SetSourceSize`), until a frame a second after the last change,
     which a timer asks for, gives it two of the window's size again;
   - `internal/gpu/metal` with a shader in Metal Shading Language
-    compiled into a Metal library ahead of time (`go generate
-    ./internal/gpu/metal` on macOS, with Xcode's `metal` tools), which
+    compiled into a Metal library ahead of time (on macOS, with
+    Xcode's `metal` tools), which
     spares a first launch the 100 to 150 ms Metal takes to compile the
     source until it has cached it; a library older than `shader.metal`
     falls back to that, and its test fails. It draws into a CAMetalLayer
@@ -2455,6 +2486,9 @@ profile).
 <!-- repository-only:start -->
 
 ## Testing
+
+Regenerate checked UI wrappers with `go generate ./ui`. Native library and
+shader generation commands are listed in [AGENTS.md](../AGENTS.md).
 
 | suite | command | covers |
 |---|---|---|

@@ -27,7 +27,7 @@ type Painter struct {
 // elsewhere, as Windows and GTK draw them.
 const continuousCorners = runtime.GOOS == "darwin"
 
-func (rt *engine) paint(root *Element, w, h, scale float32) {
+func (rt *engine) paint(root *node, w, h, scale float32) {
 	s := &rt.scene
 	// The root paints the theme's background: frames start transparent, so
 	// that a transparent root shows what is behind the content, such as a
@@ -92,7 +92,7 @@ func (p *Painter) visible(r Rect, margin float32) bool {
 		r.X+r.W+margin > p.clip.X && r.Y+r.H+margin > p.clip.Y
 }
 
-func (p *Painter) element(e *Element) {
+func (p *Painter) element(e *node) {
 	if e.styleFn != nil {
 		e.styleFn(e)
 	}
@@ -214,7 +214,7 @@ func (p *Painter) element(e *Element) {
 // clipRect returns the box an element clips its children to, inside its
 // border, and its radii: as far as the clip reaches along an axis it does
 // not clip.
-func (e *Element) clipRect() (Rect, [4]float32) {
+func (e *node) clipRect() (Rect, [4]float32) {
 	r := Rect{e.x + e.border[3], e.y + e.border[0], e.w - e.border[1] - e.border[3], e.h - e.border[0] - e.border[2]}
 	var rad [4]float32
 	all := e.flags&(flagScrollX|flagScrollY) != 0 || e.flags&flagClip == flagClip
@@ -259,7 +259,7 @@ func (p *Painter) fill(r Rect, radius [4]float32, bg Color, bw float32, bc Color
 
 // background paints the background of an element, and its border with it
 // unless withBorder is false.
-func (p *Painter) background(e *Element, box Rect, withBorder bool) {
+func (p *Painter) background(e *node, box Rect, withBorder bool) {
 	border := withBorder && scene.HasBorder(e.border) && e.borderC.A > 0
 	if e.fill == fillMaterial {
 		e.material.PaintMaterial(p, box, e.radius)
@@ -304,7 +304,7 @@ func (p *Painter) background(e *Element, box Rect, withBorder bool) {
 }
 
 // border paints e's border alone.
-func (p *Painter) border(e *Element, box Rect) {
+func (p *Painter) border(e *node, box Rect) {
 	p.s.Ops = append(p.s.Ops, scene.Op{Kind: scene.OpFill, Rect: p.snap(box), Radii: p.radii(e.radius), Continuous: continuousCorners, Opacity: p.opacity,
 		Border: p.borders(e.border), BorderColor: e.borderC.scene(), Dashed: e.borderStyle == BorderDashed, Wide: p.wide(Color{}, Color{}, e.borderC)})
 }
@@ -340,7 +340,7 @@ func (p *Painter) gradient(op *scene.Op, g LinearGradient) {
 // middle of the room between each two: after each row of a List but its
 // last, else between children next to each other in the tree, on the same
 // line.
-func (p *Painter) dividers(e *Element) {
+func (p *Painter) dividers(e *node) {
 	var d dividers
 	for _, d = range e.c.dividers {
 		if d.e == e {
@@ -360,7 +360,7 @@ func (p *Painter) dividers(e *Element) {
 	if !row {
 		lo, hi = e.x+e.border[3], e.x+e.w-e.border[1]
 	}
-	var prev *Element
+	var prev *node
 	for c := e.first; c != nil; c = c.next {
 		if c.flags&flagAbsolute != 0 || c.collapsed {
 			continue
@@ -413,11 +413,11 @@ func (p *Painter) divider(row bool, at, lo, hi, width float32, c Color) {
 
 // debug outlines an element and the elements inside it: their margins in
 // orange, borders and padding in green, and content in blue.
-func (p *Painter) debug(e *Element) {
+func (p *Painter) debug(e *node) {
 	saved := p.opacity
 	p.opacity = 1
-	var walk func(e *Element)
-	walk = func(e *Element) {
+	var walk func(e *node)
+	walk = func(e *node) {
 		if e.flags&flagInvisible != 0 {
 			return
 		}
@@ -618,11 +618,11 @@ func (p *Painter) wave(x0, x1, y, thick float32, c Color) {
 }
 
 // contentBox returns the element's box inside its padding and border.
-func (e *Element) contentBox() Rect {
+func (e *node) contentBox() Rect {
 	return Rect{e.x + e.contentX(), e.y + e.contentY(), e.w - e.padX(), e.h - e.padY()}
 }
 
-func (p *Painter) image(e *Element) {
+func (p *Painter) image(e *node) {
 	if s := e.svg; s != nil {
 		p.drawSVG(s, e.contentBox(), e.fit, e.radius, e.resolvedText().color, e.gray)
 		return
@@ -674,7 +674,7 @@ func (p *Painter) drawBitmap(img *Bitmap, box Rect, fit Fit, radius [4]float32, 
 
 // scrollbars draws the thumbs of a scroll container whose content
 // overflows it.
-func (p *Painter) scrollbars(e *Element) {
+func (p *Painter) scrollbars(e *node) {
 	if e.flags&flagHideScrollbars != 0 {
 		return
 	}

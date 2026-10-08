@@ -71,11 +71,13 @@ current accessibility Value protocol can request its complete text. Layout
 continues to shape one logical paragraph at a time. Changes to the number of
 lines update the control's paragraph/height metadata.
 
-Run `go run ./examples/text-buffer` for a 100,000-line editable document.
+The [text-buffer example](../../examples/text-buffer) shows a 100,000-line
+editable document.
 Custom editors can use the same buffer through their `TextInputClient` and
 choose their own selection, history and rendering policy.
 
-Run `go run ./examples/text-input` for a small application-owned text field.
+The [text-input example](../../examples/text-input) shows a small
+application-owned text field.
 It demonstrates composition, pointer selection, Edit-menu commands and custom
 rendering. It is a primitive example, not an editor implementation.
 

@@ -13,7 +13,7 @@ func (s *demo) mobileView(c *ui.Context) {
 		s.secretView(c)
 		return
 	}
-	ui.Scroll(c).HideScrollbars().Key("mobile-services").Fill().Padding(20).Gap(12).Children(func() {
+	ui.Scroll(c.Key("mobile-services")).HideScrollbars().Fill().Padding(20).Gap(12).Children(func() {
 		ui.Text(c, "Mobile services").FontSize(26).Bold()
 		p := c.Preferences()
 		ui.Textf(c, "Text scale: %.2f", p.TextScale)
@@ -99,7 +99,7 @@ func (s *demo) permissionControls(c *ui.Context) {
 }
 
 func (s *demo) secretView(c *ui.Context) {
-	ui.Column(c).Key("secure-storage").Fill().Padding(20).Gap(12).Children(func() {
+	ui.Column(c.Key("secure-storage")).Fill().Padding(20).Gap(12).Children(func() {
 		ui.Text(c, "Secure storage").FontSize(26).Bold()
 		if ui.Button(c, "Set secret").Height(48).Clicked() {
 			s.secretOperation(func() string {

@@ -144,40 +144,38 @@ See [drag and drop](drag-and-drop.md).
 
 ## The focus
 
-`ListState.Focused(c)` reports focus on the list itself, and
-`FocusWithin(c)` includes its descendants. `Shortcut(c, mods, key)` handles
-a key while the focus is in the list, and `Focus(c)` gives it focus and
-reports whether it was built. They also work with a `Table` or an
-`Outline`'s `List` state.
-
-Call these methods after building the list, or inside its row builder:
-they resolve only the current build pass. A hidden list reports false,
-takes no focus and registers no shortcuts, without needing to keep or
-reset an `*ui.Element` field. Row builders can query focus before `List`
-returns:
+A list keeps its control identity in `ListState.Handle`. Focus queries work
+before or after constructing the list, and a focus request waits while the
+list is hidden:
 
 ```go
-ui.List(c, &app.list, len(app.files), func(i int) {
-	row := ui.Text(c, app.files[i].Name).Padding(6, 12)
-	if i == app.current && app.list.FocusWithin(c) {
-		row.TextColor(c.Theme().Accent)
-	}
-}).Grow(1)
-if app.focusFiles && app.list.Focus(c) {
-	app.focusFiles = false
-}
-if app.list.Shortcut(c, ui.Cmd, ui.KeyK) {
-	app.openCurrentFile()
-}
+app.list.Handle.OnShortcut(c, ui.Cmd, ui.KeyK, app.openCurrentFile)
+ui.List(c.Key("files"), &app.list, len(app.files)).Grow(1).
+    Rows(func(row ui.ListRow) {
+        text := ui.Text(row.Context, app.files[row.Index].Name).Padding(6, 12)
+        if row.Selected() && row.ListFocused() {
+            text.TextColor(c.Theme().Accent)
+        }
+    })
 ```
 
-Keep a focus request pending until `Focus(c)` returns true when a loading
-or empty view temporarily leaves out the list. Process its shortcuts
-after the part of the view that conditionally builds it.
+Call `app.list.Handle.Focus()` on the UI thread to request focus, or
+`Focus(c)` to select a window explicitly. `Focused(c)` reports focus on the
+list and `FocusWithin(c)` includes its descendants. A handle's shortcut
+action runs after construction only if its enabled control is present.
 
-The row holding the keyboard focus stays built when it scrolls out of view,
-so that what is being edited in it stays, and Tab moves the focus from row
-to row, scrolling them into view.
+`ListRow` supplies the current Context, row index, selection and list focus.
+`ListState.Selected` or `Selection` enables selection. `ItemKey` gives each
+item a stable key. Configure them before calling Rows.
+
+For custom row builders using `List(c, state, n, func(i int))`, the
+ListState polling helpers resolve this pass's list after construction or
+inside its row callback. Persistent focus and command handling use Handle.
+A Table shares this identity through its ListState, and an Outline through
+its `List` state.
+
+The row holding keyboard focus stays built when it scrolls out of view,
+so editing continues and Tab can scroll the next focused row into view.
 
 ## Accessibility
 

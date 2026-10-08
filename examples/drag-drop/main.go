@@ -41,7 +41,7 @@ func (p *pane) view(c *ui.Context) {
 		ui.Text(c, "Drag a card to the other window, a text editor, or Finder/Explorer. Drop files, text, and URLs here.").Wrap().TextColor(t.TextMuted)
 		for _, n := range p.notes {
 			n := n
-			card := ui.Box(c).Key(n.ID).Padding(14).Radius(8).Border(1, t.Border).Background(t.Surface)
+			card := ui.Box(c.Key(n.ID)).Padding(14).Radius(8).Border(1, t.Border).Background(t.Surface)
 			card.Drag(n).DragDataFrom(func() transfer.Data {
 				frozen := *n
 				return transfer.New(transfer.NewItem(transfer.Bytes(transfer.Text, []byte(frozen.Title)), transfer.Lazy(noteFormat, func() ([]byte, error) { return json.Marshal(frozen) })))
