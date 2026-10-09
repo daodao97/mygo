@@ -222,7 +222,8 @@ func TestPublicRowScopeAndKeyboardActions(t *testing.T) {
 
 func TestWindowServicesOutliveBuild(t *testing.T) {
 	var services Services
-	tt := NewTester(func(f *Context) { services = f.Services(); Text(f, "Window") }, 100, 50)
+	value := ""
+	tt := NewTester(func(f *Context) { services = f.Services(); Text(f, "Window"); TextInput(f, &value).Label("Field").Width(80) }, 100, 80)
 	services.WriteClipboard("value")
 	if services.ReadClipboard() != "value" {
 		t.Fatal("services expired with the frame")
@@ -230,6 +231,15 @@ func TestWindowServicesOutliveBuild(t *testing.T) {
 	services.Invalidate()
 	if !tt.h.requested.Load() {
 		t.Fatal("services did not request a frame")
+	}
+	tt.Click("Field")
+	if !tt.Focused("Field") {
+		t.Fatal("field did not take the focus")
+	}
+	services.Blur()
+	tt.Frame()
+	if tt.Focused("Field") {
+		t.Fatal("services did not blur outside a build pass")
 	}
 	tt.rt.close()
 	if services.ReadClipboard() != "" {
@@ -642,4 +652,11 @@ func TestHandleBoundsBetweenBuilds(t *testing.T) {
 	if b := h.Bounds(c); b != (Rect{}) {
 		t.Fatalf("closed bounds %+v", b)
 	}
+}
+
+func TestNilPublicCallbacksStayNil(t *testing.T) {
+	tt := NewTester(func(c *Context) {
+		Box(c).Label("Terminal").Size(100, 40).AutoFocus().TextCaret(Rect{W: 1, H: 10}).HandleInput(func(InputEvent) bool { return true }).InputModifiers(Ctrl, nil)
+	}, 120, 60)
+	tt.Type("c") // a handled key must not call the omitted consumed callback
 }

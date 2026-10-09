@@ -37,3 +37,12 @@ func (s Services) OpenURL(url string) {
 		rt.host.openURL(url, nil)
 	}
 }
+
+// Blur clears keyboard focus and dismisses the software keyboard, as
+// Context.Blur does, from input handlers and accessory actions that run
+// outside a build pass. UI thread only.
+func (s Services) Blur() {
+	if rt := s.owner.Value(); rt != nil && !rt.closed {
+		rt.c.Blur()
+	}
+}

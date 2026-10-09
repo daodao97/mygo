@@ -342,7 +342,9 @@ func convertArg(fs *token.FileSet, t ast.Expr, name, c string) string {
 		if ft.Results != nil && len(ft.Results.List) > 0 {
 			ret = "return "
 		}
-		return "func(" + strings.Join(rawNames, ",") + ")" + sourceResults(fs, ft.Results) + " {" + ret + name + "(" + strings.Join(args, ",") + ")}"
+		// A nil callback stays nil: widgets test for it to skip optional work.
+		fn := "func(" + strings.Join(rawNames, ",") + ")" + sourceResults(fs, ft.Results)
+		return "func() " + fn + " { if " + name + " == nil { return nil }; return " + fn + " {" + ret + name + "(" + strings.Join(args, ",") + ")} }()"
 	}
 	if _, ok := t.(*ast.Ellipsis); ok {
 		return name + "..."
