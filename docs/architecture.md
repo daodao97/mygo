@@ -276,7 +276,7 @@ traits reload after the proxy has received its new field state.
 Protected iOS APIs are compiled only when enabled in `ios.capabilities`.
 The CLI supplies native compiler defines; disabled permission, camera-scanner
 and biometric calls complete with `ErrUnsupported`. Ordinary Keychain storage
-remains available without linking LocalAuthentication or showing access UI.
+remains available without importing LocalAuthentication APIs or showing access UI.
 
 LocalAuthentication preflight runs on a worker queue. A main-thread context
 and token keep one prompt alive and route its reply once, removing it before
