@@ -33,18 +33,37 @@ func buildDMG(c *Config, app, dir string, opts buildOptions) (_ string, err erro
 	}
 	defer os.RemoveAll(work)
 
-	// The image starts as a copy of a folder holding only the app. ditto
-	// keeps the bundle exactly as signed.
+	// The image starts as a copy of a folder holding all it shows, which
+	// hdiutil sizes: on HFS+ every file takes whole blocks, more than the
+	// sizes add up to. ditto keeps the bundle exactly as signed, and copies
+	// it without cloning: hdiutil counts the blocks a file takes, fewer
+	// than its size in a sparse file, which HFS+ cannot keep sparse.
 	src := filepath.Join(work, "src")
 	appName := filepath.Base(app)
 	if err := os.Mkdir(src, 0o755); err != nil {
 		return "", err
 	}
-	if err := command("ditto", app, filepath.Join(src, appName)); err != nil {
+	if err := command("ditto", "--noclone", app, filepath.Join(src, appName)); err != nil {
 		return "", err
 	}
+	if err := os.Symlink("/Applications", filepath.Join(src, "Applications")); err != nil {
+		return "", err
+	}
+	// Finder hides the .app extension of bundles by default; hiding it with
+	// the Finder flag, like create-dmg does, would make the signature fail
+	// strict verification.
+	if err := writeDSStore(filepath.Join(src, ".DS_Store"), appName); err != nil {
+		return "", err
+	}
+	icon := filepath.Join(app, "Contents", "Resources", bundleIcon)
+	hasIcon := fileExists(icon)
+	if hasIcon {
+		if err := copyFile(icon, filepath.Join(src, ".VolumeIcon.icns"), 0o644); err != nil {
+			return "", err
+		}
+	}
 	rw := filepath.Join(work, "rw.dmg")
-	if err := command("hdiutil", hdiutilCreateArgs(c.MacOS.DMGTitle, src, rw, dirSize(src))...); err != nil {
+	if err := command("hdiutil", hdiutilCreateArgs(c.MacOS.DMGTitle, src, rw)...); err != nil {
 		return "", err
 	}
 
@@ -61,19 +80,7 @@ func buildDMG(c *Config, app, dir string, opts buildOptions) (_ string, err erro
 			_ = exec.Command("hdiutil", "detach", "-quiet", "-force", mnt).Run()
 		}
 	}()
-	if err := os.Symlink("/Applications", filepath.Join(mnt, "Applications")); err != nil {
-		return "", err
-	}
-	// Finder hides the .app extension of bundles by default; hiding it with
-	// the Finder flag, like create-dmg does, would make the signature fail
-	// strict verification.
-	if err := writeDSStore(filepath.Join(mnt, ".DS_Store"), appName); err != nil {
-		return "", err
-	}
-	if icon := filepath.Join(app, "Contents", "Resources", bundleIcon); fileExists(icon) {
-		if err := copyFile(icon, filepath.Join(mnt, ".VolumeIcon.icns"), 0o644); err != nil {
-			return "", err
-		}
+	if hasIcon {
 		if err := setFinderFlags(mnt, finderHasCustomIcon); err != nil {
 			return "", err
 		}
@@ -111,16 +118,15 @@ func buildDMG(c *Config, app, dir string, opts buildOptions) (_ string, err erro
 	return dmg, nil
 }
 
-// hdiutilCreateArgs creates a writable HFS+ image from src with room for the
-// layout files next to its contents (size is in bytes).
-func hdiutilCreateArgs(volume, src, out string, size int64) []string {
+// hdiutilCreateArgs creates a writable HFS+ image of src, as large as its
+// contents need.
+func hdiutilCreateArgs(volume, src, out string) []string {
 	return []string{
 		"create", "-quiet", "-ov",
 		"-volname", volume,
 		"-srcfolder", src,
 		"-fs", "HFS+", "-fsargs", "-c c=64,a=16,e=16",
 		"-format", "UDRW",
-		"-size", fmt.Sprintf("%dm", size>>20+20),
 		out,
 	}
 }
@@ -187,17 +193,6 @@ func notarize(n *Notarize, dmg string) (err error) {
 		return fmt.Errorf("%s\n%s", msg, strings.TrimSpace(string(out)))
 	}
 	return command("xcrun", "stapler", "staple", dmg)
-}
-
-func dirSize(dir string) int64 {
-	var total int64
-	_ = filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
-		if err == nil && info.Mode().IsRegular() {
-			total += info.Size()
-		}
-		return nil
-	})
-	return total
 }
 
 func fileExists(path string) bool {
