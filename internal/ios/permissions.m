@@ -34,6 +34,9 @@ static BOOL canRequest(uint64_t token, NSString *key) {
   }
   return YES;
 }
+bool mygo_ios_can_request(uint64_t token, const char *key) {
+  return canRequest(token, key ? [NSString stringWithUTF8String:key] : nil);
+}
 static NSString *captureStatus(AVAuthorizationStatus status) {
   switch (status) {
     case AVAuthorizationStatusAuthorized: return @"granted";

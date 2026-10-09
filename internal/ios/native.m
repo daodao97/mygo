@@ -7,6 +7,7 @@
 #import <UIKit/UIKit.h>
 #import <Metal/Metal.h>
 #import <PhotosUI/PhotosUI.h>
+#import <AVFoundation/AVFoundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <math.h>
 
@@ -1770,6 +1771,130 @@ void mygo_ios_share(uint64_t token, const char *json) {
   };
   [parent presentViewController:activity animated:YES completion:nil];
   activity.presentationController.delegate = delegate;
+}
+
+// A full-screen camera scanner for QR codes. It joins the presentation
+// registry, so Scene disconnection and another presentation behave as for
+// system sheets. Capture starts and stops on its own serial queue.
+@interface MyGoScanner : UIViewController <AVCaptureMetadataOutputObjectsDelegate>
+@property(nonatomic, weak) MyGoPresentation *delegate;
+@property(nonatomic, copy) NSString *prompt, *cancelLabel;
+@property(nonatomic, strong) AVCaptureSession *capture;
+@property(nonatomic, strong) AVCaptureVideoPreviewLayer *preview;
+@property(nonatomic, strong) dispatch_queue_t queue;
+@end
+@implementation MyGoScanner
+- (void)viewDidLoad {
+  [super viewDidLoad];
+  self.view.backgroundColor = UIColor.blackColor;
+  self.view.accessibilityIdentifier = @"MyGo scanner";
+  self.queue = dispatch_queue_create("mygo.scanner", DISPATCH_QUEUE_SERIAL);
+  self.capture = [AVCaptureSession new];
+  AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+  AVCaptureDeviceInput *input = device ? [AVCaptureDeviceInput deviceInputWithDevice:device error:nil] : nil;
+  AVCaptureMetadataOutput *output = [AVCaptureMetadataOutput new];
+  if (!input || ![self.capture canAddInput:input] || ![self.capture canAddOutput:output]) {
+    dispatch_async(dispatch_get_main_queue(), ^{ [self finish:nil code:7]; });
+    return;
+  }
+  [self.capture addInput:input];
+  [self.capture addOutput:output];
+  [output setMetadataObjectsDelegate:self queue:dispatch_get_main_queue()];
+  output.metadataObjectTypes = @[AVMetadataObjectTypeQRCode];
+  self.preview = [AVCaptureVideoPreviewLayer layerWithSession:self.capture];
+  self.preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
+  [self.view.layer addSublayer:self.preview];
+  UILabel *label = [UILabel new];
+  label.text = self.prompt;
+  label.textColor = UIColor.whiteColor;
+  label.textAlignment = NSTextAlignmentCenter;
+  label.numberOfLines = 0;
+  label.adjustsFontForContentSizeCategory = YES;
+  label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+  label.translatesAutoresizingMaskIntoConstraints = NO;
+  label.hidden = !self.prompt.length;
+  [self.view addSubview:label];
+  UIButton *cancel = [UIButton buttonWithType:UIButtonTypeSystem];
+  [cancel setTitle:self.cancelLabel.length ? self.cancelLabel : NSLocalizedString(@"Cancel", nil) forState:UIControlStateNormal];
+  [cancel setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+  cancel.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+  cancel.translatesAutoresizingMaskIntoConstraints = NO;
+  [cancel addTarget:self action:@selector(cancelScan) forControlEvents:UIControlEventTouchUpInside];
+  [self.view addSubview:cancel];
+  UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+  [NSLayoutConstraint activateConstraints:@[
+    [label.topAnchor constraintEqualToAnchor:safe.topAnchor constant:60],
+    [label.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:24],
+    [label.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
+    [cancel.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-28],
+    [cancel.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+    [cancel.heightAnchor constraintGreaterThanOrEqualToConstant:48],
+    [cancel.widthAnchor constraintGreaterThanOrEqualToConstant:120]
+  ]];
+  AVCaptureSession *capture = self.capture;
+  dispatch_async(self.queue, ^{ [capture startRunning]; });
+}
+- (void)viewDidLayoutSubviews {
+  [super viewDidLayoutSubviews];
+  self.preview.frame = self.view.bounds;
+  UIInterfaceOrientation orientation = self.view.window.windowScene.interfaceOrientation;
+  if (orientation != UIInterfaceOrientationUnknown && self.preview.connection.isVideoOrientationSupported)
+    self.preview.connection.videoOrientation = (AVCaptureVideoOrientation)orientation;
+}
+- (void)viewDidDisappear:(BOOL)animated {
+  [super viewDidDisappear:animated];
+  AVCaptureSession *capture = self.capture;
+  if (capture) dispatch_async(self.queue, ^{ [capture stopRunning]; });
+}
+- (void)cancelScan { [self finish:nil code:5]; }
+// Completes once, after dismissal, so the app can present again right away.
+- (void)finish:(NSString *)value code:(int)code {
+  MyGoPresentation *delegate = self.delegate;
+  if (!delegate.pending) return;
+  uint64_t token = delegate.token;
+  [presentations removeObjectForKey:@(token)];
+  delegate.controller = nil;
+  void (^complete)(void) = ^{
+    NSData *data = [NSJSONSerialization dataWithJSONObject:value ?: @"" options:NSJSONWritingFragmentsAllowed error:nil];
+    goIOSSystemResult(token, (char *)[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding].UTF8String, code, NULL);
+  };
+  if (self.presentingViewController) [self.presentingViewController dismissViewControllerAnimated:YES completion:complete];
+  else complete();
+}
+- (void)captureOutput:(AVCaptureOutput *)output didOutputMetadataObjects:(NSArray<__kindof AVMetadataObject *> *)objects fromConnection:(AVCaptureConnection *)connection {
+  for (AVMetadataObject *object in objects) {
+    if (![object isKindOfClass:AVMetadataMachineReadableCodeObject.class]) continue;
+    NSString *value = ((AVMetadataMachineReadableCodeObject *)object).stringValue;
+    if (value.length) {
+      [self finish:value code:0];
+      return;
+    }
+  }
+}
+@end
+void mygo_ios_scan(uint64_t token, const char *json) {
+  NSDictionary *o = [NSJSONSerialization JSONObjectWithData:[str(json) dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+  if (!mygo_ios_can_request(token, "NSCameraUsageDescription")) return;
+  [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL allowed) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (!allowed) { goIOSSystemResult(token, NULL, 6, NULL); return; }
+      UIViewController *parent = systemPresenter(token);
+      if (!parent) return;
+      [hostWindow endEditing:YES];
+      MyGoScanner *scanner = [MyGoScanner new];
+      scanner.prompt = o[@"Prompt"];
+      scanner.cancelLabel = o[@"CancelLabel"];
+      scanner.modalPresentationStyle = UIModalPresentationFullScreen;
+      MyGoPresentation *delegate = trackPresentation(token, scanner, parent);
+      delegate.cancellationResult = @{};
+      scanner.delegate = delegate;
+      [parent presentViewController:scanner animated:YES completion:nil];
+    });
+  }];
+}
+void mygo_ios_scan_cancel(uint64_t token) {
+  MyGoPresentation *delegate = presentations[@(token)];
+  if ([delegate.controller isKindOfClass:MyGoScanner.class]) [(MyGoScanner *)delegate.controller cancelScan];
 }
 
 // Provider URLs and NSItemProvider representations are temporary. Copy them

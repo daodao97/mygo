@@ -1096,6 +1096,19 @@ func Image(c *Context, src ImageSource) Element {
 	return wrapElement(coreImage(_ctx, src))
 }
 
+// InputAccessoryBar draws actions as Go buttons, the way iOS shows an
+// InputAccessory above its keyboard, for platforms and tests without that
+// native view. It keeps the input's focus. Actions with Items open their
+// panel above the row while *expanded; a long press sends LongPressID. Draw
+// it below the focused input while it has the focus.
+func InputAccessoryBar(c *Context, actions []InputAction, expanded *bool, handler func(arg0 string)) Element {
+	_ctx := c.build()
+	if _ctx == nil {
+		return Element{}
+	}
+	return wrapElement(coreInputAccessoryBar(_ctx, actions, expanded, func(a0 string) { handler(a0) }))
+}
+
 // Link creates a text that opens url in the browser when clicked, or
 // Enter while it has the focus. In a page of a Router, a path without a
 // scheme, as "/notes/42" or "edit", goes there in the router (Push).

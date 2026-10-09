@@ -47,6 +47,14 @@ func goIOSSystemResult(token C.uint64_t, data *C.char, code C.int, message *C.ch
 		err = platform.ErrSecretNotFound
 	case 2:
 		err = errors.New(C.GoString(message))
+	case 5:
+		err = platform.ErrScanCanceled
+	case 6:
+		err = platform.ErrCameraDenied
+	case 7:
+		err = platform.ErrCameraUnavailable
+	case 8:
+		err = &platform.NetworkError{Kind: C.GoString(message)}
 	}
 	done(C.GoString(data), err)
 }

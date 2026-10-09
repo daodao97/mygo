@@ -1,6 +1,10 @@
 package fake
 
-import "github.com/egoist/mygo/internal/platform"
+import (
+	"time"
+
+	"github.com/egoist/mygo/internal/platform"
+)
 
 type mobile struct{ b *Backend }
 
@@ -15,6 +19,50 @@ func (m mobile) SetStatusBar(s string, h bool) error {
 	return m.b.MobileError
 }
 func (m mobile) RegisterPush() error { m.b.PushRegistrations++; return m.b.MobileError }
+func (m mobile) Device() platform.DeviceInfo {
+	if m.b.DeviceInfo != (platform.DeviceInfo{}) {
+		return m.b.DeviceInfo
+	}
+	return platform.HostDevice()
+}
+func (m mobile) DismissKeyboard() { m.b.KeyboardDismissals++ }
+func (m mobile) ScanCode(o platform.ScanOptions, done func(string, error)) func() {
+	m.b.LastScan = o
+	if !m.b.ScanPending {
+		done(m.b.ScanResult, m.b.ScanError)
+		return func() {}
+	}
+	m.b.scanDone = done
+	return func() { m.b.FinishScan("", platform.ErrScanCanceled) }
+}
+
+// FinishScan completes a pending ScanCode, as a recognized code or the
+// scanner's cancel button would.
+func (b *Backend) FinishScan(value string, err error) {
+	if done := b.scanDone; done != nil {
+		b.scanDone = nil
+		done(value, err)
+	}
+}
+func (m mobile) PrepareNetwork(url string, _ time.Duration, done func(error)) func() {
+	m.b.NetworkURLs = append(m.b.NetworkURLs, url)
+	if !m.b.NetworkPending {
+		done(m.b.NetworkError)
+		return func() {}
+	}
+	m.b.networkDone = done
+	return func() { m.b.FinishNetwork(errNetworkCanceled) }
+}
+
+var errNetworkCanceled = &platform.NetworkError{Kind: "canceled"}
+
+// FinishNetwork completes a pending PrepareNetwork request.
+func (b *Backend) FinishNetwork(err error) {
+	if done := b.networkDone; done != nil {
+		b.networkDone = nil
+		done(err)
+	}
+}
 func (b *Backend) ReceiveNotification(id string, data map[string]string, clicked bool) {
 	b.DeliverNotification(platform.NotificationEvent{ID: id, Data: data, Clicked: clicked, Source: "local"})
 }
@@ -31,3 +79,7 @@ func (b *Backend) RegisterPushResult(token string, err error) {
 		h.PushRegistered(token, err)
 	}
 }
+
+// ScanOpen and NetworkOpen report pending requests (main thread).
+func (b *Backend) ScanOpen() bool    { return b.scanDone != nil }
+func (b *Backend) NetworkOpen() bool { return b.networkDone != nil }

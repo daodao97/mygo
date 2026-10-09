@@ -9,6 +9,8 @@ import "C"
 import (
 	"encoding/json"
 	"errors"
+	"time"
+
 	"github.com/egoist/mygo/internal/platform"
 )
 
@@ -26,7 +28,30 @@ func (mobile) SetStatusBar(style string, hidden bool) error {
 	cString(style, func(p *C.char) { C.mygo_ios_status_bar(p, C.bool(hidden)) })
 	return nil
 }
-func (mobile) RegisterPush() error            { C.mygo_ios_register_push(); return nil }
+func (mobile) RegisterPush() error { C.mygo_ios_register_push(); return nil }
+func (mobile) DismissKeyboard()    { C.mygo_ios_dismiss_keyboard() }
+func (mobile) Device() platform.DeviceInfo {
+	var d platform.DeviceInfo
+	_ = json.Unmarshal([]byte(ownedString(C.mygo_ios_device())), &d)
+	return d
+}
+func (mobile) ScanCode(o platform.ScanOptions, done func(string, error)) func() {
+	id := systemRequest(o, func(id C.uint64_t, p *C.char) { C.mygo_ios_scan(id, p) }, func(data string, err error) {
+		var value string
+		// Scene disconnection cancels presentations with an empty object.
+		if err == nil && (json.Unmarshal([]byte(data), &value) != nil || value == "") {
+			err = platform.ErrScanCanceled
+		}
+		done(value, err)
+	})
+	return func() { C.mygo_ios_scan_cancel(C.uint64_t(id)) }
+}
+func (mobile) PrepareNetwork(url string, timeout time.Duration, done func(error)) func() {
+	id := systemRequest(nil, func(id C.uint64_t, _ *C.char) {
+		cString(url, func(p *C.char) { C.mygo_ios_network(id, p, C.double(timeout.Seconds())) })
+	}, func(_ string, err error) { done(err) })
+	return func() { C.mygo_ios_network_cancel(C.uint64_t(id)) }
+}
 func (*Backend) NotificationsSupported() bool { return true }
 func (*Backend) ShowNotification(n *platform.Notification, done func(error)) {
 	systemRequest(n, func(id C.uint64_t, p *C.char) { C.mygo_ios_notification(id, p) }, func(_ string, err error) { done(err) })

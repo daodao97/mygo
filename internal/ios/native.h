@@ -69,3 +69,10 @@ void mygo_ios_haptic(const char *kind);
 void mygo_ios_status_bar(const char *style, bool hidden);
 
 int mygo_ios_badge_count(void);
+bool mygo_ios_can_request(uint64_t token, const char *key);
+void mygo_ios_dismiss_keyboard(void);
+char *mygo_ios_device(void);
+void mygo_ios_scan(uint64_t token, const char *json);
+void mygo_ios_scan_cancel(uint64_t token);
+void mygo_ios_network(uint64_t token, const char *url, double timeout);
+void mygo_ios_network_cancel(uint64_t token);

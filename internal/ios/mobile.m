@@ -144,3 +144,51 @@ void mygo_ios_haptic(const char *kind) {
 }
 
 int mygo_ios_badge_count(void) {return (int)UIApplication.sharedApplication.applicationIconBadgeNumber;}
+
+void mygo_ios_dismiss_keyboard(void) {
+ // Ends UIKit editing anywhere, including system text fields MyGo does not own.
+ [UIApplication.sharedApplication sendAction:@selector(resignFirstResponder) to:nil from:nil forEvent:nil];
+}
+char *mygo_ios_device(void) {
+ UIDevice *d=UIDevice.currentDevice;
+ NSDictionary *info=@{@"Name":d.name ?: @"",@"System":d.systemName ?: @"",@"Version":d.systemVersion ?: @"",@"Model":d.model ?: @""};
+ NSData *data=[NSJSONSerialization dataWithJSONObject:info options:0 error:nil];
+ return strdup(((NSString *)[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]).UTF8String);
+}
+
+// A Foundation request makes iOS ask for local-network or cellular access and
+// brings up VPN/DNS64 routes; BSD sockets opened first can fail silently.
+static NSMutableDictionary<NSNumber *, NSURLSessionDataTask *> *networkTasks;
+void mygo_ios_network(uint64_t token, const char *url, double timeout) {
+ NSURL *u=[NSURL URLWithString:string(url)];
+ if (!u) {goIOSSystemResult(token,"null",2,"mygo: invalid network preparation URL");return;}
+ if (!networkTasks) networkTasks=[NSMutableDictionary dictionary];
+ NSMutableURLRequest *request=[NSMutableURLRequest requestWithURL:u];
+ request.HTTPMethod=@"HEAD";
+ request.timeoutInterval=timeout>0 ? timeout : 10;
+ NSURLSessionDataTask *task=[NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData *data,NSURLResponse *response,NSError *error){
+  dispatch_async(dispatch_get_main_queue(),^{
+   if (!networkTasks[@(token)]) return;
+   [networkTasks removeObjectForKey:@(token)];
+   // Any HTTP response proves the route; only transport failures matter.
+   const char *kind="";
+   if (error) {
+    kind="failed";
+    if ([error.domain isEqual:NSURLErrorDomain]) {
+     if (error.code==NSURLErrorNotConnectedToInternet || error.code==NSURLErrorDataNotAllowed || error.code==NSURLErrorInternationalRoamingOff) kind="offline";
+     else if (error.code==NSURLErrorTimedOut) kind="timeout";
+    }
+   }
+   goIOSSystemResult(token,"null",error ? 8 : 0,(char *)kind);
+  });
+ }];
+ networkTasks[@(token)]=task;
+ [task resume];
+}
+void mygo_ios_network_cancel(uint64_t token) {
+ NSURLSessionDataTask *task=networkTasks[@(token)];
+ if (!task) return;
+ [networkTasks removeObjectForKey:@(token)];
+ [task cancel];
+ goIOSSystemResult(token,"null",8,"canceled");
+}

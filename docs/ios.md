@@ -213,6 +213,32 @@ Success/Warning/Error feedback. Native generators are reused. Success means the
 request reached UIKit, not proof that hardware vibrated: simulators, hardware
 and system settings can suppress feedback. Desktop backends return unsupported.
 
+## Device, camera scanning and network
+
+`App.Device()` returns the device's `Name`, `System`, `Version` and `Model`
+from any goroutine, also before `App.Run` (desktops report the host name).
+iOS returns a generic name such as "iPhone" unless the app has the
+`com.apple.developer.device-information.user-assigned-device-name`
+entitlement.
+
+`Scanner.ScanCode(ctx, ScanOptions{Prompt, CancelLabel})` presents a
+full-screen camera scanner and returns the first QR code. It requests camera
+access as needed (configure `NSCameraUsageDescription` in `ios.infoPlist`) and
+fails with `ErrCameraDenied`, `ErrCameraUnavailable` or `ErrScanCanceled`.
+It shares the system presentation slot with dialogs and sharing; Scene
+disconnection and `ctx` cancellation dismiss it. Desktops return
+`ErrUnsupported`.
+
+Go's `net` sockets bypass the system network stack, so on iOS the first
+connection can fail before the cellular-data or local-network prompt has run,
+and VPN/DNS64 routes may not be up. `Network.Prepare(ctx, httpsURL)` makes one
+HEAD request through Foundation first; any HTTP response succeeds, and later
+calls return at once. Failures are `*NetworkError` with Kind `offline`,
+`timeout`, `canceled` or `failed`. Desktops return nil.
+
+`App.DismissKeyboard()` resigns the first responder anywhere in the app,
+including native text fields; also blur Go focus with `Context.Blur`.
+
 ## Input, gestures and system integration
 
 `InputOptions{Dismiss: ui.KeyboardDismissOnDrag}` dismisses on Go touch scrolling.
@@ -396,6 +422,11 @@ so one-shot modifiers can be released; keeping locked bits allows repeated
 combinations. Composition, candidate commits and multi-character paste are
 left intact. `ui.InputEvent.Software` identifies these virtual modifiers.
 Clear app modifier state when leaving the input session or hiding its keyboard.
+`ui.ModifierLatch` implements the usual model: `Tap` arms a modifier for one
+key (or releases it), `Lock` keeps it, `Consume` is the `InputModifiers`
+callback, and `Decorate` copies action definitions with their Selected/Locked
+state. `ui.InputAccessoryBar` draws the same actions with Go buttons, for
+desktop previews and headless tests where the native accessory is absent.
 
 Use `KeyboardASCII` while a modifier is enabled to request the system alphabet
 keyboard, then restore the original keyboard hint. A keyboard type change

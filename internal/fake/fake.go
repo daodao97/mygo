@@ -35,6 +35,19 @@ type Backend struct {
 	StatusBarHidden       bool
 	PushRegistrations     int
 	MobileError           error
+	DeviceInfo            platform.DeviceInfo
+	KeyboardDismissals    int
+	// ScanResult and ScanError complete ScanCode unless ScanPending holds it
+	// open for FinishScan or cancellation.
+	ScanResult     string
+	ScanError      error
+	ScanPending    bool
+	LastScan       platform.ScanOptions
+	scanDone       func(string, error)
+	NetworkURLs    []string
+	NetworkError   error
+	NetworkPending bool
+	networkDone    func(error)
 
 	SystemManaged atomic.Bool // Simulate an OS-owned application lifetime in tests.
 	h             platform.AppHandler
