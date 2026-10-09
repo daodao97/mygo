@@ -77,9 +77,12 @@ Archive symbol paths are inferred; other checks accept `-symbols`. `-unsigned`
 explicitly permits unsigned local/CI builds. `-distribution` requires an App
 Store profile, distribution identity, matching signed application/team
 entitlements, production APNs entitlement if present, unexpired provisioning,
-compiled icon, source symbols and an encryption declaration in Info.plist.
-Set `ITSAppUsesNonExemptEncryption` through `ios.infoPlist` according to actual
-app use; any required portal documentation remains an application task.
+compiled icon, source symbols and consistent encryption metadata in Info.plist.
+Omit both encryption keys to complete Apple's questionnaire in App Store
+Connect after upload. Set `ITSAppUsesNonExemptEncryption=false` only after
+confirming an exemption. A `true` declaration requires a nonempty
+`ITSEncryptionExportComplianceCode` matching Apple's approved documentation;
+local checks cannot verify that remote match. See [Apple's declaration guide](https://developer.apple.com/documentation/bundleresources/information-property-list/itsappusesnonexemptencryption).
 
 Distribution checks also require purpose strings for detected imports from
 MyGo's enabled protected-resource APIs: camera, microphone, location while in use,
@@ -167,8 +170,9 @@ optional numeric build number (default: the GitHub run number). Configure the
 - `IOS_CERTIFICATE_PASSWORD`: the `.p12` password (can be empty).
 - `IOS_PROFILE_BASE64`: base64-encoded App Store provisioning profile for the app.
 
-The project must declare its actual encryption use through
-`ios.infoPlist.ITSAppUsesNonExemptEncryption`. The job verifies profile/team/app
+The project must use consistent encryption metadata as described above;
+omitted declarations leave the questionnaire to the app's release process.
+The job verifies profile/team/app
 matching, uses a temporary signing keychain, generates a manual-signing
 configuration in the disposable checkout, builds/checks the archive and IPA,
 and retains artifacts for 30 days. Cleanup restores the original keychain

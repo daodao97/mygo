@@ -144,15 +144,40 @@ func iosCheckApp(app, symbols string, unsigned, distribution bool) (iosCheckRepo
 		} else {
 			check("icon", "compiled app icon metadata", nil)
 		}
-		_, hasDeclaration := info["ITSAppUsesNonExemptEncryption"].(bool)
-		if !hasDeclaration {
-			check("encryption", "", fmt.Errorf("declare ITSAppUsesNonExemptEncryption according to the app's actual encryption use in ios.infoPlist"))
-		} else {
-			check("encryption", "export compliance declaration present; portal documentation remains app-specific", nil)
-		}
+		encryptionDetail, encryptionErr := iosCheckEncryptionDeclaration(info)
+		check("encryption", encryptionDetail, encryptionErr)
 		check("distribution-profile", "App Store profile, application identifier, expiry and distribution identity", iosCheckDistributionProfile(app, r.BundleID))
 	}
 	return r, errors.Join(failures...)
+}
+
+// Omitting the declaration deliberately leaves Apple's questionnaire in the
+// app release flow. Declaring non-exempt encryption needs Apple's approved code;
+// accepting YES alone would produce an IPA rejected for an empty code.
+func iosCheckEncryptionDeclaration(info map[string]any) (string, error) {
+	value, declared := info["ITSAppUsesNonExemptEncryption"]
+	code, hasCode := info["ITSEncryptionExportComplianceCode"]
+	if !declared {
+		if hasCode {
+			return "", fmt.Errorf("ITSEncryptionExportComplianceCode requires ITSAppUsesNonExemptEncryption=true")
+		}
+		return "encryption questionnaire deferred to App Store Connect; no exemption declared", nil
+	}
+	nonExempt, ok := value.(bool)
+	if !ok {
+		return "", fmt.Errorf("ITSAppUsesNonExemptEncryption must be a boolean")
+	}
+	if !nonExempt {
+		if hasCode {
+			return "", fmt.Errorf("an exemption declaration cannot include ITSEncryptionExportComplianceCode")
+		}
+		return "app declares exempt encryption; classification remains app-specific", nil
+	}
+	approved, ok := code.(string)
+	if !ok || strings.TrimSpace(approved) == "" || approved != strings.TrimSpace(approved) {
+		return "", fmt.Errorf("ITSAppUsesNonExemptEncryption=true requires Apple's approved ITSEncryptionExportComplianceCode; otherwise omit both keys and complete the App Store Connect questionnaire")
+	}
+	return "non-exempt encryption code present; match against Apple's approved documentation before upload", nil
 }
 
 // Apple's static validation also checks SDK references, even when the app does

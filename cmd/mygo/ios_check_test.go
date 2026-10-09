@@ -118,6 +118,32 @@ func TestIOSPurposeStringsRejectLocationUploadFailure(t *testing.T) {
 	}
 }
 
+func TestIOSEncryptionDeclarationRejectsEmptyComplianceCode(t *testing.T) {
+	for _, info := range []map[string]any{
+		{"ITSAppUsesNonExemptEncryption": true},
+		{"ITSAppUsesNonExemptEncryption": true, "ITSEncryptionExportComplianceCode": ""},
+		{"ITSAppUsesNonExemptEncryption": true, "ITSEncryptionExportComplianceCode": " \n"},
+		{"ITSAppUsesNonExemptEncryption": true, "ITSEncryptionExportComplianceCode": 123},
+		{"ITSAppUsesNonExemptEncryption": true, "ITSEncryptionExportComplianceCode": " CODE "},
+		{"ITSAppUsesNonExemptEncryption": "false"},
+		{"ITSAppUsesNonExemptEncryption": false, "ITSEncryptionExportComplianceCode": "CODE"},
+		{"ITSEncryptionExportComplianceCode": "CODE"},
+	} {
+		if _, err := iosCheckEncryptionDeclaration(info); err == nil {
+			t.Fatalf("invalid encryption declaration accepted: %#v", info)
+		}
+	}
+	for _, info := range []map[string]any{
+		nil,
+		{"ITSAppUsesNonExemptEncryption": false},
+		{"ITSAppUsesNonExemptEncryption": true, "ITSEncryptionExportComplianceCode": "APPROVED-CODE"},
+	} {
+		if detail, err := iosCheckEncryptionDeclaration(info); err != nil || detail == "" {
+			t.Fatalf("valid declaration rejected: %s, %v", detail, err)
+		}
+	}
+}
+
 func TestIOSPurposeStringsCoverLinkedPermissionAPIs(t *testing.T) {
 	imports := []string{"_AVMediaTypeVideo", "_AVMediaTypeAudio", "_OBJC_CLASS_$_PHPhotoLibrary", "_OBJC_CLASS_$_LAContext"}
 	info := map[string]any{
