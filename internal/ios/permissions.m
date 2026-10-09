@@ -3,9 +3,15 @@
 #import "native.h"
 #import "_cgo_export.h"
 #import <UIKit/UIKit.h>
+#if MYGO_IOS_CAMERA || MYGO_IOS_MICROPHONE
 #import <AVFoundation/AVFoundation.h>
+#endif
+#if MYGO_IOS_PHOTOS
 #import <Photos/Photos.h>
+#endif
+#if MYGO_IOS_GEOLOCATION
 #import <CoreLocation/CoreLocation.h>
+#endif
 #import <UserNotifications/UserNotifications.h>
 
 static void permissionResult(uint64_t token, NSString *status, NSError *error) {
@@ -37,6 +43,7 @@ static BOOL canRequest(uint64_t token, NSString *key) {
 bool mygo_ios_can_request(uint64_t token, const char *key) {
   return canRequest(token, key ? [NSString stringWithUTF8String:key] : nil);
 }
+#if MYGO_IOS_CAMERA || MYGO_IOS_MICROPHONE
 static NSString *captureStatus(AVAuthorizationStatus status) {
   switch (status) {
     case AVAuthorizationStatusAuthorized: return @"granted";
@@ -45,6 +52,8 @@ static NSString *captureStatus(AVAuthorizationStatus status) {
     default: return @"not-determined";
   }
 }
+#endif
+#if MYGO_IOS_PHOTOS
 static NSString *photoStatus(PHAuthorizationStatus status) {
   switch (status) {
     case PHAuthorizationStatusAuthorized: return @"granted";
@@ -54,6 +63,8 @@ static NSString *photoStatus(PHAuthorizationStatus status) {
     default: return @"not-determined";
   }
 }
+#endif
+#if MYGO_IOS_GEOLOCATION
 static NSString *locationStatus(CLAuthorizationStatus status) {
   switch (status) {
     case kCLAuthorizationStatusAuthorizedAlways:
@@ -63,6 +74,7 @@ static NSString *locationStatus(CLAuthorizationStatus status) {
     default: return @"not-determined";
   }
 }
+#endif
 static NSString *notificationStatus(UNAuthorizationStatus status) {
   switch (status) {
     case UNAuthorizationStatusAuthorized:
@@ -73,6 +85,7 @@ static NSString *notificationStatus(UNAuthorizationStatus status) {
   }
 }
 
+#if MYGO_IOS_GEOLOCATION
 @interface MyGoLocationPermission : NSObject <CLLocationManagerDelegate>
 @property(nonatomic, strong) CLLocationManager *manager;
 @property(nonatomic, strong) NSMutableArray<NSNumber *> *tokens;
@@ -87,18 +100,29 @@ static MyGoLocationPermission *locationPermission;
 }
 @end
 
+#endif
 void mygo_ios_permission(uint64_t token, const char *kind, bool request) {
   NSString *name = [NSString stringWithUTF8String:kind];
-  if ([name isEqual:@"camera"] || [name isEqual:@"microphone"]) {
-    AVMediaType media = [name isEqual:@"camera"] ? AVMediaTypeVideo : AVMediaTypeAudio;
+#if MYGO_IOS_CAMERA || MYGO_IOS_MICROPHONE
+  AVMediaType media = nil;
+  NSString *purpose = nil;
+#if MYGO_IOS_CAMERA
+  if ([name isEqual:@"camera"]) { media = AVMediaTypeVideo; purpose = @"NSCameraUsageDescription"; }
+#endif
+#if MYGO_IOS_MICROPHONE
+  if ([name isEqual:@"microphone"]) { media = AVMediaTypeAudio; purpose = @"NSMicrophoneUsageDescription"; }
+#endif
+  if (media) {
     AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:media];
     if (!request || status != AVAuthorizationStatusNotDetermined) { permissionResult(token, captureStatus(status), nil); return; }
-    if (!canRequest(token, [name isEqual:@"camera"] ? @"NSCameraUsageDescription" : @"NSMicrophoneUsageDescription")) return;
+    if (!canRequest(token, purpose)) return;
     [AVCaptureDevice requestAccessForMediaType:media completionHandler:^(BOOL granted) {
       permissionResult(token, captureStatus([AVCaptureDevice authorizationStatusForMediaType:media]), nil);
     }];
     return;
   }
+#endif
+#if MYGO_IOS_PHOTOS
   if ([name isEqual:@"photos"] || [name isEqual:@"photos-add-only"]) {
     PHAccessLevel level = [name isEqual:@"photos"] ? PHAccessLevelReadWrite : PHAccessLevelAddOnly;
     PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatusForAccessLevel:level];
@@ -107,6 +131,8 @@ void mygo_ios_permission(uint64_t token, const char *kind, bool request) {
     [PHPhotoLibrary requestAuthorizationForAccessLevel:level handler:^(PHAuthorizationStatus status) { permissionResult(token, photoStatus(status), nil); }];
     return;
   }
+#endif
+#if MYGO_IOS_GEOLOCATION
   if ([name isEqual:@"geolocation"]) {
     if (!locationPermission) {
       locationPermission = [MyGoLocationPermission new];
@@ -121,6 +147,7 @@ void mygo_ios_permission(uint64_t token, const char *kind, bool request) {
     if (locationPermission.tokens.count == 1) [locationPermission.manager requestWhenInUseAuthorization];
     return;
   }
+#endif
   if ([name isEqual:@"notifications"]) {
     UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
     [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {

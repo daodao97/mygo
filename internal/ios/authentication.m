@@ -3,6 +3,7 @@
 #import "native.h"
 #import "_cgo_export.h"
 #import <Foundation/Foundation.h>
+#if MYGO_IOS_BIOMETRICS
 #import <LocalAuthentication/LocalAuthentication.h>
 
 // UIKit-thread registry. Removing before completion makes explicit cancel,
@@ -104,3 +105,10 @@ void mygo_ios_authenticate(uint64_t token, const char *json) {
     });
   });
 }
+#else
+bool mygo_ios_auth_pending(void) { return false; }
+void mygo_ios_auth_cancel(uint64_t token) {}
+void mygo_ios_auth_cancel_all(void) {}
+void mygo_ios_auth_query(uint64_t token) { goIOSSystemResult(token, NULL, 1, NULL); }
+void mygo_ios_authenticate(uint64_t token, const char *json) { goIOSSystemResult(token, NULL, 1, NULL); }
+#endif

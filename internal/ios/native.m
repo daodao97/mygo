@@ -7,7 +7,9 @@
 #import <UIKit/UIKit.h>
 #import <Metal/Metal.h>
 #import <PhotosUI/PhotosUI.h>
+#if MYGO_IOS_CAMERA
 #import <AVFoundation/AVFoundation.h>
+#endif
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <math.h>
 
@@ -1773,6 +1775,7 @@ void mygo_ios_share(uint64_t token, const char *json) {
   activity.presentationController.delegate = delegate;
 }
 
+#if MYGO_IOS_CAMERA
 // A full-screen camera scanner for QR codes. It joins the presentation
 // registry, so Scene disconnection and another presentation behave as for
 // system sheets. Capture starts and stops on its own serial queue.
@@ -1896,6 +1899,10 @@ void mygo_ios_scan_cancel(uint64_t token) {
   MyGoPresentation *delegate = presentations[@(token)];
   if ([delegate.controller isKindOfClass:MyGoScanner.class]) [(MyGoScanner *)delegate.controller cancelScan];
 }
+#else
+void mygo_ios_scan(uint64_t token, const char *json) { goIOSSystemResult(token, NULL, 1, NULL); }
+void mygo_ios_scan_cancel(uint64_t token) {}
+#endif
 
 // Provider URLs and NSItemProvider representations are temporary. Copy them
 // before completing the native delegate, and never hand security-scoped URLs

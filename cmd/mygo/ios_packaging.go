@@ -25,6 +25,13 @@ func overrideIOSBuildNumber(c *Config, number string) error {
 	return nil
 }
 func validateIOSPackaging(c *Config, o buildOptions) error {
+	for _, capability := range c.IOS.Capabilities {
+		switch capability {
+		case "camera", "microphone", "geolocation", "photos", "biometrics":
+		default:
+			return fmt.Errorf("invalid ios.capabilities value %q", capability)
+		}
+	}
 	s := c.IOS.Signing
 	if s.Style != "" && s.Style != "automatic" && s.Style != "manual" {
 		return fmt.Errorf("ios.signing.style must be automatic or manual")
@@ -73,6 +80,23 @@ func validateIOSPackaging(c *Config, o buildOptions) error {
 		return fmt.Errorf("aps-environment must be development or production")
 	}
 	return nil
+}
+
+// Explicit zeroes keep inherited compiler flags from enabling an undeclared API.
+func iosCapabilityFlags(c *Config) string {
+	enabled := make(map[string]bool, len(c.IOS.Capabilities))
+	for _, capability := range c.IOS.Capabilities {
+		enabled[capability] = true
+	}
+	var flags strings.Builder
+	for _, capability := range []string{"camera", "microphone", "geolocation", "photos", "biometrics"} {
+		value := "0"
+		if enabled[capability] {
+			value = "1"
+		}
+		fmt.Fprintf(&flags, " -DMYGO_IOS_%s=%s", strings.ToUpper(capability), value)
+	}
+	return flags.String()
 }
 func iosPropertyList(d map[string]any) []byte {
 	var b bytes.Buffer

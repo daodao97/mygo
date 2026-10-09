@@ -111,6 +111,8 @@ export interface Config {
 
 /** The UIKit host of a native UI application. */
 export interface IOSConfig {
+  /** Opt into protected native APIs; disabled by default. Notifications and ordinary Keychain storage remain available. */
+  capabilities?: ("camera" | "microphone" | "geolocation" | "photos" | "biometrics")[];
   /** Enable APNs; generates aps-environment=development unless explicitly overridden. */
   pushNotifications?: boolean;
  /** CFBundleVersion, independent of the marketing version. */

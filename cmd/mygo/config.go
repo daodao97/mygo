@@ -149,6 +149,9 @@ type MacOS struct {
 
 // IOS configures the UIKit host of a native UI application.
 type IOS struct {
+	// Capabilities opts into protected native APIs. Empty disables them;
+	// notifications and ordinary Keychain storage remain available.
+	Capabilities []string `json:"capabilities"`
 	// PushNotifications generates the APNs development entitlement unless an
 	// explicit aps-environment is supplied. Export signing determines the final environment.
 	PushNotifications bool `json:"pushNotifications"`

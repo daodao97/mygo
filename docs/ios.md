@@ -61,6 +61,7 @@ An application's configuration can persist the team and bundle settings:
   "ios": {
     "developmentTeam": "TEAMID",
     "minimumSystemVersion": "15.0",
+    "capabilities": ["camera"],
     "infoPlist": {
       "NSCameraUsageDescription": "Scan a document."
     }
@@ -488,6 +489,15 @@ pumping native events while waiting on the main thread. When calling from a
 view's build function, start a goroutine and publish the result with
 `window.Update`, so the view can finish building its frame.
 
+Protected native APIs are disabled by default. Opt in through
+`ios.capabilities`: `camera` (also enables the QR scanner), `microphone`,
+`geolocation`, `photos` (read/write and add-only authorization), or
+`biometrics`. The CLI compiles only the selected protected APIs; calls to
+disabled APIs return `ErrUnsupported` without requesting access. Notifications,
+the system photo picker, and ordinary Keychain storage remain available.
+Direct Go builds can opt in with the corresponding `CGO_CFLAGS` definitions,
+for example `-DMYGO_IOS_CAMERA=1`; otherwise all protected APIs stay disabled.
+
 `Permissions.Query` and `Permissions.Request` report the OS authorization
 decision separately from web origin policy. The supported permissions are
 camera, microphone, geolocation (while in use), notifications, photo library
@@ -497,7 +507,8 @@ status rather than an error. Required purpose strings must be nonempty in
 `ios.infoPlist`; the backend checks them before requesting authorization.
 App Store distribution preflight also checks the known protected-resource
 imports in the compiled app. Apple's validation requires purpose strings for
-linked permission APIs even when they are not requested at runtime; see the
+linked permission APIs even when they are not requested at runtime. Enable
+only the capabilities the app uses, and supply their usage descriptions; see the
 [toolchain guide](ios-toolchain.md#artifact-checks) and the native demo's
 `mygo.json` for the required usage descriptions.
 `Permissions.OpenSettings` opens the application's settings. Query again
@@ -545,6 +556,7 @@ err := mygo.Biometrics.Authenticate(ctx, mygo.AuthenticationOptions{
 The zero value requires biometrics alone. Opting into passcode fallback uses
 Apple's system prompt; MyGo receives neither passcodes nor biometric data.
 Every request uses a new [LAContext](https://developer.apple.com/documentation/localauthentication/lacontext).
+Enable `biometrics` in `ios.capabilities` to use these authentication APIs.
 Face ID requires a nonempty `NSFaceIDUsageDescription` in `ios.infoPlist`.
 Requests require an active Scene and reject overlapping authentication or
 other system presentations. Native replies return to the main thread once;

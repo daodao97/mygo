@@ -4,7 +4,9 @@
 #import "_cgo_export.h"
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
+#if MYGO_IOS_BIOMETRICS
 #import <LocalAuthentication/LocalAuthentication.h>
+#endif
 
 void mygo_ios_secret(uint64_t token, const char *json) {
   NSDictionary *o = [NSJSONSerialization JSONObjectWithData:[[NSString stringWithUTF8String:json] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
@@ -33,9 +35,14 @@ void mygo_ios_secret(uint64_t token, const char *json) {
       } else if ([o[@"Operation"] isEqual:@"get"]) {
         query[(__bridge id)kSecReturnData] = @YES;
         query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
+#if MYGO_IOS_BIOMETRICS
         LAContext *context = [LAContext new];
         context.interactionNotAllowed = YES;
         query[(__bridge id)kSecUseAuthenticationContext] = context;
+#else
+        // Ordinary Keychain access must not link Face ID APIs or show UI.
+        query[(__bridge id)kSecUseAuthenticationUI] = (__bridge id)kSecUseAuthenticationUIFail;
+#endif
         CFTypeRef result = NULL;
         status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
         if (result) value = CFBridgingRelease(result);

@@ -113,7 +113,7 @@ func buildIOS(c *Config, arch string, opts buildOptions) ([]string, error) {
 	logf("building iOS native UI (%s, cgo enabled)", sdk)
 	if err := buildBinary(c, filepath.Join(host, "libmygo.a"), []string{
 		"GOOS=ios", "GOARCH=arm64", "CGO_ENABLED=1", "CC=xcrun --sdk " + sdk + " clang",
-		"CGO_CFLAGS=" + compilerFlags, "CGO_LDFLAGS=" + compilerFlags,
+		"CGO_CFLAGS=" + compilerFlags + iosCapabilityFlags(c), "CGO_LDFLAGS=" + compilerFlags,
 	}, flags...); err != nil {
 		return nil, err
 	}

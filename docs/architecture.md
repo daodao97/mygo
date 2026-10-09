@@ -273,6 +273,11 @@ undo/redo. Captured hardware presses consume their matching release/cancel
 events; marked text retains input-method handling. Read-only and secure-entry
 traits reload after the proxy has received its new field state.
 
+Protected iOS APIs are compiled only when enabled in `ios.capabilities`.
+The CLI supplies native compiler defines; disabled permission, camera-scanner
+and biometric calls complete with `ErrUnsupported`. Ordinary Keychain storage
+remains available without linking LocalAuthentication or showing access UI.
+
 LocalAuthentication preflight runs on a worker queue. A main-thread context
 and token keep one prompt alive and route its reply once, removing it before
 calling Go. Cancellation invalidates that context; late replies cannot finish

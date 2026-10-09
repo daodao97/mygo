@@ -82,10 +82,14 @@ Set `ITSAppUsesNonExemptEncryption` through `ios.infoPlist` according to actual
 app use; any required portal documentation remains an application task.
 
 Distribution checks also require purpose strings for detected imports from
-MyGo's protected-resource APIs: camera, microphone, location while in use,
+MyGo's enabled protected-resource APIs: camera, microphone, location while in use,
 photo library, add-only photo access and Face ID. Put these usage descriptions
 in `ios.infoPlist`, using nonempty strings shorter than 4000 bytes that explain
 the application's actual purpose. The iOS native demo includes examples.
+Protected APIs default to disabled; select only the ones the app needs in
+`ios.capabilities` (see [the iOS guide](ios.md#system-dialogs-sharing-and-permissions)). Disabled
+permission/scanner/authentication APIs return `ErrUnsupported`, and ordinary
+Keychain reads do not import LocalAuthentication when biometrics is disabled.
 Apple checks linked SDK references even when the app does not request access
 at runtime, so runtime permission guards alone do not satisfy upload validation.
 This local check covers the bridge's known direct imports; other SDK APIs and

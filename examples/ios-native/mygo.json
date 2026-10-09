@@ -8,6 +8,7 @@
     "mygo-native"
   ],
   "ios": {
+    "capabilities": ["camera", "microphone", "geolocation", "photos", "biometrics"],
     "infoPlist": {
       "NSCameraUsageDescription": "Allow camera access to test the camera permission request in this demo; no photos or videos are recorded.",
       "NSMicrophoneUsageDescription": "Allow microphone access to test the microphone permission request in this demo; no audio is recorded.",

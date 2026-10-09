@@ -1,6 +1,22 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+// Protected APIs are opt-in, including for direct Go builds without the CLI.
+#ifndef MYGO_IOS_CAMERA
+#define MYGO_IOS_CAMERA 0
+#endif
+#ifndef MYGO_IOS_MICROPHONE
+#define MYGO_IOS_MICROPHONE 0
+#endif
+#ifndef MYGO_IOS_GEOLOCATION
+#define MYGO_IOS_GEOLOCATION 0
+#endif
+#ifndef MYGO_IOS_PHOTOS
+#define MYGO_IOS_PHOTOS 0
+#endif
+#ifndef MYGO_IOS_BIOMETRICS
+#define MYGO_IOS_BIOMETRICS 0
+#endif
 int mygo_ios_start(void);
 void mygo_ios_ready(void);
 void mygo_ios_attach(uintptr_t view);
