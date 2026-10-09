@@ -223,7 +223,11 @@ func TestPublicRowScopeAndKeyboardActions(t *testing.T) {
 func TestWindowServicesOutliveBuild(t *testing.T) {
 	var services Services
 	value := ""
-	tt := NewTester(func(f *Context) { services = f.Services(); Text(f, "Window"); TextInput(f, &value).Label("Field").Width(80) }, 100, 80)
+	tt := NewTester(func(f *Context) {
+		services = f.Services()
+		Text(f, "Window")
+		TextInput(f, &value).Label("Field").Width(80)
+	}, 100, 80)
 	services.WriteClipboard("value")
 	if services.ReadClipboard() != "value" {
 		t.Fatal("services expired with the frame")
@@ -659,4 +663,49 @@ func TestNilPublicCallbacksStayNil(t *testing.T) {
 		Box(c).Label("Terminal").Size(100, 40).AutoFocus().TextCaret(Rect{W: 1, H: 10}).HandleInput(func(InputEvent) bool { return true }).InputModifiers(Ctrl, nil)
 	}, 120, 60)
 	tt.Type("c") // a handled key must not call the omitted consumed callback
+}
+
+// TestCloseWhileBuilding closes the window from its view and from a click's
+// callback, as a close button does: Window.Close destroys it at once. The
+// rest of the view builds with a Context that still works, and the frame
+// ends there, without building the view again for the click. The engine
+// closes once the frame ends.
+func TestCloseWhileBuilding(t *testing.T) {
+	for _, callback := range []bool{false, true} {
+		var tt *Tester
+		closed := false
+		close := func() {
+			tt.rt.close()
+			closed = true
+		}
+		tt = NewTester(func(f *Context) {
+			if closed {
+				t.Fatalf("callback %v: the view was built in a closed window", callback)
+			}
+			if f.Theme() == nil {
+				t.Fatal("no theme")
+			}
+			b := Button(f, "Close")
+			if callback {
+				b.OnClick(close)
+			} else if b.Clicked() {
+				close()
+				// What follows the button builds as it would, in the
+				// theme's colors.
+				if !f.Valid() || f.Theme() == nil {
+					t.Fatal("the Context stopped working with the window")
+				}
+				Text(f, "After").TextColor(f.Theme().TextMuted)
+			}
+		}, 200, 100)
+		if err := tt.Click("Close"); err != nil {
+			t.Fatal(err)
+		}
+		if !closed {
+			t.Fatalf("callback %v: the button was not clicked", callback)
+		}
+		if !tt.rt.closed {
+			t.Fatalf("callback %v: the engine did not close after the frame", callback)
+		}
+	}
 }

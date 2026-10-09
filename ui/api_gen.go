@@ -4615,9 +4615,9 @@ func (_handle Element) TextSelection() (int, int) {
 }
 
 // Tooltip shows s by the element when the pointer rests on it, or the
-// keyboard focus comes to it, as TooltipBase does: near the pointer, or
-// below the element for the focus. It describes the element to assistive
-// technology where Description does not.
+// keyboard focus comes to it, as TooltipBase does: above the element,
+// centered, or below it where there is no room above. It describes the
+// element to assistive technology where Description does not.
 func (_handle Element) Tooltip(s string) Element {
 	_node := _handle.node()
 	if _node == nil {

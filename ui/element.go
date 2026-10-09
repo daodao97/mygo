@@ -318,12 +318,9 @@ type node struct {
 	// highlighted is set on the option of a select the pointer or the
 	// arrows are on.
 	highlighted bool
-	// place moves an overlay element to fit in the window, as keepInWindow
-	// asked.
-	place    placement
-	accValue string
-	accRange [3]float64
-	hasRange bool
+	accValue    string
+	accRange    [3]float64
+	hasRange    bool
 	// accStep is how far the keys move the value of a range.
 	accStep float64
 

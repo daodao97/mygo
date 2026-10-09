@@ -23,9 +23,10 @@ func dmgFileName(c *Config) string {
 // returns its path. Opening the image shows the app next to a link to
 // /Applications; the Finder layout comes from a generated .DS_Store (see
 // dsstore.go). Only hdiutil, which ships with macOS, is needed.
-func buildDMG(c *Config, app, dir string, opts buildOptions) (string, error) {
+func buildDMG(c *Config, app, dir string, opts buildOptions) (_ string, err error) {
 	file := dmgFileName(c)
-	logf("creating %s", file)
+	t := con.start("Creating " + file)
+	defer func() { t.end(err, "Created "+file) }()
 	work, err := os.MkdirTemp(dir, ".dmg-")
 	if err != nil {
 		return "", err
@@ -96,6 +97,7 @@ func buildDMG(c *Config, app, dir string, opts buildOptions) (string, error) {
 			return "", err
 		}
 	}
+	t.done("Created " + file)
 	if c.MacOS.Notarize != nil && !opts.skipNotarize {
 		if err := notarize(c.MacOS.Notarize, dmg); err != nil {
 			return "", err
@@ -152,15 +154,19 @@ func detach(mnt string) error {
 
 // notarize submits a disk image to Apple's notary service, waits for the
 // verdict and staples the ticket to the image.
-func notarize(n *Notarize, dmg string) error {
-	logf("notarizing %s, which usually takes a few minutes", filepath.Base(dmg))
+func notarize(n *Notarize, dmg string) (err error) {
+	t := con.start("Notarizing " + filepath.Base(dmg))
+	t.set("usually takes a few minutes")
+	defer func() { t.end(err, "Notarized "+filepath.Base(dmg)) }()
 	args := []string{"notarytool", "submit", dmg, "--keychain-profile", n.KeychainProfile, "--wait", "--output-format", "json"}
 	if n.Keychain != "" {
 		args = append(args, "--keychain", n.Keychain)
 	}
 	cmd := exec.Command("xcrun", args...)
-	cmd.Stderr = os.Stderr
+	errOut := con.output("notarytool", os.Stderr)
+	cmd.Stderr = errOut
 	out, err := cmd.Output()
+	errOut.flush()
 	var result struct {
 		ID      string `json:"id"`
 		Status  string `json:"status"`

@@ -8,7 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 )
 
 const usage = `mygo is the tool for MyGo desktop applications.
@@ -35,7 +37,7 @@ Commands:
 Run "mygo <command> -h" for the flags of a command.
 `
 
-const version = "0.3.3"
+const version = "0.3.6"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -46,6 +48,17 @@ func main() {
 	running = cmd
 	if cmd == "gen" {
 		running = "generate"
+	}
+	// Ctrl+C leaves the line of a step in progress, not its spinner. mygo dev
+	// stops its app first.
+	if cmd == "build" || cmd == "generate" || cmd == "gen" || cmd == "init" {
+		go func() {
+			sig := make(chan os.Signal, 1)
+			signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+			<-sig
+			con.interrupted()
+			os.Exit(130)
+		}()
 	}
 	var err error
 	switch cmd {
@@ -83,7 +96,7 @@ func main() {
 	}
 	if err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(os.Stderr, "mygo:", err)
+			con.fatal(err)
 		}
 		os.Exit(1)
 	}
@@ -97,10 +110,6 @@ func newFlags(name, args, summary string) *flag.FlagSet {
 		fs.PrintDefaults()
 	}
 	return fs
-}
-
-func logf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "\033[2m[mygo]\033[0m "+format+"\n", args...)
 }
 
 func splitList(s string) []string {
