@@ -1534,6 +1534,9 @@ var needsAppCalls = []struct {
 // do before Run, when the backend is not initialized, and what it may
 // not, then exits.
 func beforeRun() {
+	// An event for a frontend, as an app of one declares, so that generate
+	// mode has a client to write.
+	NewEvent[int]("test:before-run")
 	// Settings, which Run applies.
 	Theme.SetSource(ThemeDark)
 	App.Dock.SetMenu(NewMenu([]*MenuItem{{Label: "New Window"}}))

@@ -44,7 +44,8 @@ for _, m := range mentions(app.draft) {
 ```
 
 The ranges are runes of the text, found in it each frame, and do not
-overlap; a password shows none.
+overlap; a password shows none. While an input method composes, its text
+sits unstyled at the caret and the ranges keep their style around it.
 
 A text area is at least a few lines high and grows with its text; given a
 height, it scrolls within it, with the wheel and a scroll bar, and keeps

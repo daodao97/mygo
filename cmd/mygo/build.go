@@ -112,7 +112,7 @@ update-<platform>.json: publish them where updates point to.`)
 	started := time.Now()
 	// The TypeScript client comes first: the frontend build type-checks and
 	// bundles it.
-	if err := writeClient(context.Background(), c); err != nil {
+	if err := writeClient(context.Background(), c, false); err != nil {
 		return err
 	}
 	if c.BuildCommand != "" && !*skipBuildCommand {
