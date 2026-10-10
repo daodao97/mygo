@@ -444,6 +444,16 @@ var (
 // own. It reports whether the surface took the files over that point and
 // whether it took the drop.
 func TestDropFiles(handle uintptr, x, y float64, paths []string) (over, dropped bool) {
+	return testDropFiles(handle, x, y, paths, false)
+}
+
+// TestDropFileReferences uses Finder's file-reference URL representation,
+// which must be resolved before its paths reach DroppedFiles or OnFileDrop.
+func TestDropFileReferences(handle uintptr, x, y float64, paths []string) (over, dropped bool) {
+	return testDropFiles(handle, x, y, paths, true)
+}
+
+func testDropFiles(handle uintptr, x, y float64, paths []string, references bool) (over, dropped bool) {
 	w := theBackend.byNSWindow[id(handle)]
 	if w == nil || w.surface == nil {
 		return false, false
@@ -464,7 +474,15 @@ func TestDropFiles(handle uintptr, x, y float64, paths []string) (over, dropped 
 		send(testDragPB, "clearContents")
 		var urls []id
 		for _, p := range paths {
-			urls = append(urls, send(class("NSURL"), "fileURLWithPath:", uintptr(nsString(p))))
+			url := fileURL(p)
+			if references {
+				url = send(url, "fileReferenceURL")
+				item := autorelease(send(send(class("NSPasteboardItem"), "alloc"), "init"))
+				send(item, "setString:forType:", uintptr(send(url, "absoluteString")), uintptr(nsString("public.file-url")))
+				urls = append(urls, item)
+			} else {
+				urls = append(urls, url)
+			}
 		}
 		send(testDragPB, "writeObjects:", uintptr(nsArray(urls...)))
 		v := w.surface.view

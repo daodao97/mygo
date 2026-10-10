@@ -335,7 +335,14 @@ func (s *surface) nativeDataEvent(info id, kind platform.SurfaceEventKind) bool 
 		}
 	}
 	d.Data = transfer.New(dataItems...)
-	return s.send(platform.SurfaceEvent{Kind: platform.DataDrop, X: x, Y: y, Drag: d})
+	var files []string
+	if d.HasFiles {
+		// Finder may supply file-reference URLs (/.file/id=...), whose URL
+		// path is not a filesystem path. Let NSURL resolve them, as the web
+		// view does, instead of decoding them as ordinary URI-list entries.
+		files = draggedFiles(info)
+	}
+	return s.send(platform.SurfaceEvent{Kind: platform.DataDrop, X: x, Y: y, Files: files, Drag: d})
 }
 
 func (s *surface) nativeDataOperation(info id) uint {
