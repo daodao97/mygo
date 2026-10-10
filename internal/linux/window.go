@@ -1264,15 +1264,17 @@ func initWindowCallbacks() {
 		if webkitNavigationPolicyDecisionGetFrameName != nil {
 			mainFrame = webkitNavigationPolicyDecisionGetFrameName(decision) == 0
 		}
+		// WebKitNavigationType: link, form, back/forward, reload, …
 		nav := platform.Navigation{
 			URL:           goStr(webkitURIRequestGetURI(webkitNavigationActionGetRequest(action))),
 			IsMainFrame:   mainFrame,
 			UserInitiated: webkitNavigationActionIsUserGesture(action) || navType == 0 || navType == 1,
-			IsReload:      navType == 2 || navType == 3,
+			Unasked:       navType == 2 || navType == 3,
+			Reload:        navType == 3,
 		}
 		if nav.IsMainFrame && w.programmatic {
 			w.programmatic = false
-			nav.IsReload = true
+			nav.Unasked = true
 		}
 		if w.h.WillNavigate(nav) {
 			webkitPolicyDecisionUse(decision)

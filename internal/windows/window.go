@@ -77,6 +77,7 @@ type window struct {
 	zoom         float64
 	devTools     bool
 	htmlFor      map[string]string // LoadHTML documents by the URL they load at
+	htmlNext     bool              // LoadHTML started the next navigation
 	calls        map[int]func(string, error)
 	nextCall     int
 }

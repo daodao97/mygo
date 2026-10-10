@@ -553,6 +553,33 @@ func TestChannels(t *testing.T) {
 	}
 }
 
+// TestReloadLoadHTML checks that reloading a page LoadHTML loaded, by the
+// app or the page, loads the HTML again, where the web view would load its
+// URL: a blank page, or what its base URL serves.
+func TestReloadLoadHTML(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{Hidden: true})
+	reloads := []struct {
+		name   string
+		reload func()
+	}{
+		{"Reload", w.Page().Reload},
+		{"location.reload()", func() { w.Page().Eval("setTimeout(() => location.reload())") }},
+	}
+	for _, base := range []string{"", "app://localhost/"} {
+		w.Page().LoadHTML(fmt.Sprintf("<p id=html data-base=%q>html</p>", base), base)
+		shown := fmt.Sprintf("document.getElementById('html')?.dataset.base === %q", base)
+		for _, r := range reloads {
+			t.Logf("base URL %q, %s", base, r.name)
+			waitFor(t, w, shown)
+			if _, err := w.Page().Eval("window.before = true"); err != nil {
+				t.Fatal(err)
+			}
+			r.reload()
+			waitFor(t, w, "!window.before && "+shown)
+		}
+	}
+}
+
 func TestEvalForms(t *testing.T) {
 	w := newWindow(t, mygo.WindowOptions{Hidden: true})
 	w.Page().LoadHTML("<p>eval</p>", "")

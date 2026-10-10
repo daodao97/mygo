@@ -207,6 +207,9 @@ type Window struct {
 	// Main thread only.
 	trusted        bool
 	trustedOrigins []string
+	// html is the document LoadHTML loaded, while it is the page's or
+	// about to be. Main thread only.
+	html *htmlDocument
 
 	mu                sync.Mutex
 	openHandler       func(WindowOpenRequest) *WindowOptions
@@ -932,7 +935,10 @@ func (p *Page) LoadURL(rawURL string) error {
 	if err != nil {
 		return err
 	}
-	p.w.page(func(n platform.Window) { n.LoadURL(resolved) })
+	p.w.page(func(n platform.Window) {
+		p.w.html = nil
+		n.LoadURL(resolved)
+	})
 	return nil
 }
 
@@ -947,7 +953,10 @@ func (p *Page) LoadFile(path string) error {
 	if err != nil {
 		return err
 	}
-	p.w.page(func(n platform.Window) { n.LoadFile(abs, filepath.Dir(abs)) })
+	p.w.page(func(n platform.Window) {
+		p.w.html = nil
+		n.LoadFile(abs, filepath.Dir(abs))
+	})
 	return nil
 }
 
@@ -1006,9 +1015,39 @@ func (w *Window) isTrusted(rawURL string) bool {
 }
 
 // LoadHTML loads an HTML string. Relative URLs in it resolve against
-// baseURL, which may be empty.
+// baseURL, which may be empty, and the page is at baseURL, or about:blank.
+// Reloading the page, with Reload or from the page, loads html again.
 func (p *Page) LoadHTML(html, baseURL string) {
-	p.w.page(func(n platform.Window) { n.LoadHTML(html, baseURL) })
+	p.w.page(func(n platform.Window) { p.w.loadHTML(n, html, baseURL) })
+}
+
+// htmlDocument is a document LoadHTML loaded.
+type htmlDocument struct {
+	html, baseURL string
+	// shown is set once the page committed it.
+	shown bool
+}
+
+// loadHTML loads html into the page and remembers it for its reloads: web
+// views reload the page's URL instead, the base URL or a blank page. Main
+// thread only.
+func (w *Window) loadHTML(n platform.Window, html, baseURL string) {
+	w.html = &htmlDocument{html: html, baseURL: baseURL}
+	n.LoadHTML(html, baseURL)
+}
+
+// isAt reports whether url, which the page committed, is the document's,
+// fragments aside.
+func (d *htmlDocument) isAt(url string) bool {
+	base := d.baseURL
+	if base == "" {
+		base = "about:blank"
+	}
+	trim := func(u string) string {
+		u, _, _ = strings.Cut(u, "#")
+		return strings.TrimSuffix(u, "/")
+	}
+	return trim(url) == trim(base)
 }
 
 // Reload reloads the page.
@@ -1557,7 +1596,16 @@ func (w *Window) sendTitleBar() {
 func (h *windowHandler) Message(msg string) { h.w.handleMessage(msg) }
 
 func (h *windowHandler) WillNavigate(nav platform.Navigation) bool {
-	if !nav.IsMainFrame || nav.IsReload {
+	if doc := h.w.html; nav.IsMainFrame && nav.Reload && doc != nil && doc.shown {
+		// The reload of a document LoadHTML loaded loads it again.
+		postMain(func() {
+			if w := h.w; w.html == doc && w.native != nil {
+				w.loadHTML(w.native, doc.html, doc.baseURL)
+			}
+		})
+		return false
+	}
+	if !nav.IsMainFrame || nav.Unasked {
 		return true
 	}
 	e := &NavigateEvent{URL: nav.URL, UserInitiated: nav.UserInitiated}
@@ -1568,6 +1616,14 @@ func (h *windowHandler) WillNavigate(nav platform.Navigation) bool {
 func (h *windowHandler) NavigationStarted(string) {}
 
 func (h *windowHandler) NavigationCommitted(url string) {
+	if doc := h.w.html; doc != nil {
+		switch {
+		case doc.shown:
+			h.w.html = nil // another document replaced it
+		case doc.isAt(url):
+			doc.shown = true
+		}
+	}
 	h.w.trusted = h.w.isTrusted(url)
 	h.w.outMu.Lock()
 	h.w.domReady = false

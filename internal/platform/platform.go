@@ -442,9 +442,14 @@ type Navigation struct {
 	URL           string
 	IsMainFrame   bool
 	UserInitiated bool
-	// IsReload is true for reloads and history navigations that the app
-	// itself did not start.
-	IsReload bool
+	// Unasked is true for the navigations the app is not asked about
+	// (OnWillNavigate): reloads, history navigations and the loads the app
+	// starts.
+	Unasked bool
+	// Reload is true for a reload of the main frame's document, whoever
+	// started it: Reload, the page's location.reload(), the web view's own
+	// menus.
+	Reload bool
 }
 
 // NewWindowRequest describes a window.open() or target=_blank request.

@@ -1150,15 +1150,17 @@ func registerWindowClasses() {
 				if w := b().windowFor(self); w != nil {
 					frame := send(action, "targetFrame")
 					navType := sendInt(action, "navigationType")
+					// WKNavigationType: link, form, back/forward, reload, …
 					nav := platform.Navigation{
 						URL:           goString(send(send(send(action, "request"), "URL"), "absoluteString")),
 						IsMainFrame:   frame != 0 && sendBool(frame, "isMainFrame"),
 						UserInitiated: navType == 0 || navType == 1,
-						IsReload:      navType == 2 || navType == 3,
+						Unasked:       navType == 2 || navType == 3,
+						Reload:        navType == 3,
 					}
 					if nav.IsMainFrame && w.programmatic {
 						w.programmatic = false
-						nav.IsReload = true
+						nav.Unasked = true
 					}
 					allow = w.h.WillNavigate(nav)
 				}

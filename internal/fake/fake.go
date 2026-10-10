@@ -328,6 +328,8 @@ type Window struct {
 	Dropped []string
 	// PDF holds the options of the last PrintToPDF.
 	PDF platform.PDFOptions
+	// HTML holds the documents LoadHTML loaded, in order.
+	HTML []string
 	// What the window extras were last set to.
 	Background      platform.Color
 	Progress        string
@@ -478,7 +480,7 @@ func (w *Window) SetMenu(*platform.Menu)             {}
 func (w *Window) StartDrag()                         {}
 func (w *Window) TitleBarDoubleClicked()             {}
 func (w *Window) LoadURL(url string)                 { w.mu.Lock(); w.url = url; w.mu.Unlock() }
-func (w *Window) LoadHTML(string, string)            { w.mu.Lock(); w.url = "about:blank"; w.mu.Unlock() }
+func (w *Window) LoadHTML(html, _ string)            { w.addHTML(html) }
 func (w *Window) LoadFile(path, _ string)            { w.mu.Lock(); w.url = "file://" + path; w.mu.Unlock() }
 func (w *Window) Reload(bool)                        {}
 func (w *Window) StopLoading()                       {}
@@ -497,6 +499,14 @@ func (w *Window) CloseDevTools()                     { w.mu.Lock(); w.devtools =
 func (w *Window) IsDevToolsOpened() bool             { w.mu.Lock(); defer w.mu.Unlock(); return w.devtools }
 func (w *Window) CapturePage(cb func([]byte, error)) { cb([]byte("png"), nil) }
 func (w *Window) Print()                             {}
+
+// addHTML records a document LoadHTML loads.
+func (w *Window) addHTML(html string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.HTML = append(w.HTML, html)
+	w.url = "about:blank"
+}
 
 func (w *Window) Eval(js string) {
 	if w.OnEval != nil {
