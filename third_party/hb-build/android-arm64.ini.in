@@ -1,0 +1,18 @@
+[binaries]
+# 编译器来自 NDK。这里的路径要能在任何机器上成立，所以不写死：
+# meson 读 ini 时先看环境变量，所以 CI 和本机都只要设 NDK 就已足够。
+# build.sh 会在调用 meson 前把下面几个值替换成它算出来的真实路径。
+c = '@CC@'
+cpp = '@CXX@'
+ar = '@AR@'
+strip = '@STRIP@'
+pkg-config = 'false'
+
+[host_machine]
+system = 'android'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'
+
+[properties]
+needs_exe_wrapper = true

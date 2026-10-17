@@ -70,6 +70,29 @@ JDK="$(norm "${JAVA_HOME:-$DEF_JDK}")"
 
 PKG="${PKG_ARG:-${MYGO_ANDROID_PKG:-./internal/android}}"
 
+# ---- HarfBuzz / FreeType 静态库 ---------------------------------------------
+# 安卓的字体整形走 C HarfBuzz（shaping/chb.go），链接的是预编译静态库。
+# 它们不进 git（hb-build/.gitignore 挡住 src/），要么本机跑过 build.sh，
+# 要么 CI 从 release 下载解开——两条路都落在同一个位置。
+HB_ROOT="$REPO/third_party/hb-build/src/lib/android"
+if [ -z "${MYGO_HB_ANDROID:-}" ]; then
+  if [ -f "$HB_ROOT/lib/libharfbuzz.a" ] && [ -f "$HB_ROOT/lib/libfreetype.a" ]; then
+    MYGO_HB_ANDROID="$HB_ROOT"
+  fi
+fi
+if [ -z "${MYGO_HB_ANDROID:-}" ]; then
+  printf '\360\237\224\264 \346\211\276\344\270\215\345\210\260 HarfBuzz \351\235\231\346\200\201\345\272\223\n'
+  printf '   \351\242\204\346\234\237\357\274\232%s/lib/libharfbuzz.a\n' "$HB_ROOT"
+  printf '   \342\206\263 \344\272\214\351\200\211\344\270\200\357\274\232\n'
+  printf '     a) \346\234\254\346\234\272\347\274\226\357\274\232bash third_party/hb-build/build.sh android\n'
+  printf '     b) \344\270\213\350\275\275\357\274\232curl -fsSL https://github.com/Heyana/mygo-upstream/releases/download/hb-android-arm64/hb-android-arm64.tar.gz | tar xz -C third_party/hb-build/src/lib\n'
+  exit 2
+fi
+# chb.go 的 #cgo 用 ${SRCDIR}/../hb-build 找库，那在 module cache 里不成立；
+# 这几个标志把真实路径塞进去（文件注释里也是这么写的用法）。
+export CGO_CFLAGS="${CGO_CFLAGS:-} -I$MYGO_HB_ANDROID/include/harfbuzz -I$MYGO_HB_ANDROID/include/freetype2"
+export CGO_LDFLAGS="${CGO_LDFLAGS:-} -L$MYGO_HB_ANDROID/lib -lharfbuzz -lfreetype -lm -llog"
+
 # ---- 输出路径 ---------------------------------------------------------------
 if [ -n "${MYGO_ANDROID_SO:-}" ]; then
   SO="$MYGO_ANDROID_SO"

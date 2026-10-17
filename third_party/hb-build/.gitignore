@@ -1,2 +1,4 @@
 src/
 lib/
+# 由 build.sh 从 android-arm64.ini.in 生成（里面的编译器路径随机器变）
+android-arm64.ini

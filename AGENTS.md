@@ -229,3 +229,28 @@ with the NDK r28 `aarch64-linux-android29-clang`; it lands in
 `android-run.sh` and `android-egl-stress.sh` read the package/activity from
 `android/app/src/main/AndroidManifest.xml` and say exactly what is missing instead of
 guessing; the stress test reports "无设备，未跑" when no device is attached.
+
+### HarfBuzz static libraries (Android text shaping)
+
+Android shapes text through C HarfBuzz (`shaping/chb.go` in
+`github.com/Heyana/typesetting-go`), which links two static libraries. They are
+**not in git** — `third_party/hb-build/.gitignore` keeps `src/` and `lib/` out —
+because they are 12 MB of build product. `android-build.sh` looks for them at
+`third_party/hb-build/src/lib/android/` and exports the `CGO_CFLAGS`/`CGO_LDFLAGS`
+itself; `chb.go`'s own `#cgo` paths point at `${SRCDIR}/../hb-build`, which does not
+resolve from the module cache, so those flags are the only thing that makes the link
+work. Missing libraries is an error with the download URL, not a link failure later.
+
+```sh
+# download (same for local builds and CI)
+curl -fsSL https://github.com/Heyana/mygo-upstream/releases/download/hb-android-arm64/hb-android-arm64.tar.gz \
+  | tar xz -C third_party/hb-build/src/lib
+
+# or build them yourself — auto-downloads the freetype/harfbuzz sources on first run
+bash third_party/hb-build/build.sh android
+```
+
+`build.sh` reads the NDK from `$NDK`, then `ANDROID_HOME`/`ANDROID_SDK_ROOT`, and
+derives the host tag from `uname`. It fills `android-arm64.ini` from
+`android-arm64.ini.in` (that generated file names one machine's toolchain, so it is
+ignored rather than tracked).
