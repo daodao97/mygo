@@ -115,3 +115,76 @@ func TestCustomTextContextIncrementalCandidate(t *testing.T) {
 		t.Fatal("incremental candidates duplicated", text, mods, consumed)
 	}
 }
+
+func TestCustomTextContextWithClientOnSnapshotHost(t *testing.T) {
+	text, caret := "", 0
+	client := &primitiveClient{}
+	var preedit string
+	tt := snapshotTester(func(c *Context) {
+		Box(c).Fill().AutoFocus().HandleTextInput(client).
+			TextCaret(Rect{W: 1, H: 20}).TextContext(func() (string, int) { return text, caret }).
+			InputOptions(InputOptions{Dismiss: KeyboardDismissOnDrag}).HandleInput(func(ev InputEvent) bool {
+			switch ev.Kind {
+			case InputTextReplace:
+				r := []rune(text)
+				text = string(r[:ev.From]) + ev.Text + string(r[ev.To:])
+				caret, preedit = ev.Caret, ""
+			case InputSelection:
+				caret = ev.Caret
+			case InputCompose:
+				preedit = ev.Text
+			}
+			return true
+		})
+	}, 320, 200)
+	defer tt.rt.close()
+	snapshot := func(s string, pos int) {
+		t.Helper()
+		tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Snapshot: true, Replace: true,
+			Text: s, To: len([]rune(tt.h.ime.Text)), Caret: pos})
+		if text != s || caret != pos || tt.h.ime.Text != s || tt.h.ime.Start != pos {
+			t.Fatalf("snapshot/caret diverged: local %q @%d, native %q @%d; want %q @%d",
+				text, caret, tt.h.ime.Text, tt.h.ime.Start, s, pos)
+		}
+	}
+	if tt.h.ime.Options.Dismiss != "on-drag" {
+		t.Fatal("snapshot context lost keyboard options")
+	}
+	snapshot("a", 1)
+	snapshot("ab", 2)
+	snapshot("abcdef", 6)
+	snapshot("", 0)
+	snapshot("你好", 2)
+	// Nine-key keyboards can commit a candidate and keep composing in the
+	// same snapshot. Existing committed text must not be inserted at zero.
+	tt.send(platform.SurfaceEvent{Kind: platform.TextComposition, Snapshot: true,
+		Text: "你好shi", MarkedStart: 2, MarkedEnd: 5, Caret: 5})
+	if text != "你好" || caret != 2 || preedit != "shi" {
+		t.Fatalf("continued composition changed prior text: %q @%d, preedit %q", text, caret, preedit)
+	}
+	snapshot("你好世界", 4)
+	snapshot("你好世界😀é", 7)
+	snapshot("你好世界😀é!", 8)
+	snapshot("你好世界😀é!", 8)
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: 1, To: 1})
+	snapshot("你新好世界😀é!", 2)
+	if client.changes != 0 || client.unmarks != 0 {
+		t.Fatal("snapshot editing also mutated the indexed client")
+	}
+}
+
+func TestCustomTextContextKeepsClientOnIndexedHost(t *testing.T) {
+	client := &primitiveClient{}
+	tt := NewTester(func(c *Context) {
+		Box(c).Fill().AutoFocus().HandleTextInput(client).
+			TextContext(func() (string, int) { return "", 0 })
+	}, 320, 200)
+	defer tt.rt.close()
+	if tt.h.ime.Client == nil {
+		t.Fatal("indexed host lost its native input client")
+	}
+	tt.Type("你好世界")
+	if client.text != "你好世界" {
+		t.Fatal("indexed host did not commit through its client", client.text)
+	}
+}

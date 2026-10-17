@@ -1586,10 +1586,10 @@ func (rt *engine) modsChanged(mods Modifiers) {
 // held reads it, and draws again as it changes.
 func (c *context) Modifiers() Modifiers { return c.rt.mods }
 
-// snapshotTextInput keeps built-in mobile editors on the surrounding-text
-// bridge; desktop editors use the indexed native-input client.
+// snapshotTextInput keeps mobile editors and context-aware custom controls
+// on the surrounding-text bridge. Indexed hosts keep their native client.
 func (rt *engine) snapshotTextInput(s *state) bool {
-	if s.editor == nil {
+	if s.editor == nil && s.textContext == nil {
 		return false
 	}
 	if h, ok := rt.host.(interface{ snapshotTextInput() bool }); ok {
