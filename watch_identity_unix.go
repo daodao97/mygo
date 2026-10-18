@@ -36,5 +36,5 @@ func fileWatchIdentity(info os.FileInfo) (fileWatchID, bool) {
 	if !ok {
 		return fileWatchID{}, false
 	}
-	return fileWatchID{uint64(st.Dev), uint64(st.Ino)}, true
+	return fileWatchID{volume: uint64(st.Dev), index: uint64(st.Ino)}, true
 }

@@ -19,6 +19,7 @@ type drawer struct {
 	// blurred holds, by op, the images of the scene drawn that blur theirs
 	// (blurImages).
 	blurred []*blurredImage
+	fold    scene.TranslationFolder
 }
 
 // pixels returns what draws e on the CPU, made the first time, or nil for

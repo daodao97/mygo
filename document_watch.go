@@ -114,7 +114,7 @@ func findRenamed(dir string, id fileWatchID) string {
 		if err != nil {
 			continue
 		}
-		if other, ok := fileWatchIdentity(StatIdentity(info)); ok && other == id {
+		if fileWatchEntryOf(info).id == id {
 			return filepath.Join(dir, entry.Name())
 		}
 	}

@@ -411,6 +411,7 @@ var (
 	webkitSettingsSetEnableDeveloperExtras            func(s ptr, v bool)
 	webkitSettingsSetUserAgent                        func(s ptr, ua *byte)
 	webkitSettingsGetUserAgent                        func(s ptr) ptr
+	webkitSettingsSetUserAgentWithApplicationDetails  func(s ptr, applicationName, applicationVersion *byte)
 	webkitSettingsSetAllowFileAccessFromFileURLs      func(s ptr, v bool)
 	webkitSettingsSetJavascriptCanAccessClipboard     func(s ptr, v bool)
 	webkitWebViewLoadURI                              func(wv ptr, uri *byte)
@@ -903,6 +904,7 @@ func loadWebKit() error {
 	mustBind(w, &webkitSettingsSetEnableDeveloperExtras, "webkit_settings_set_enable_developer_extras")
 	mustBind(w, &webkitSettingsSetUserAgent, "webkit_settings_set_user_agent")
 	mustBind(w, &webkitSettingsGetUserAgent, "webkit_settings_get_user_agent")
+	mustBind(w, &webkitSettingsSetUserAgentWithApplicationDetails, "webkit_settings_set_user_agent_with_application_details")
 	mustBind(w, &webkitSettingsSetAllowFileAccessFromFileURLs, "webkit_settings_set_allow_file_access_from_file_urls")
 	mustBind(w, &webkitSettingsSetJavascriptCanAccessClipboard, "webkit_settings_set_javascript_can_access_clipboard")
 	mustBind(w, &webkitWebViewLoadURI, "webkit_web_view_load_uri")

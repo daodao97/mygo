@@ -1279,6 +1279,11 @@ func (g *gallery) styling(c *ui.Context) {
 				ui.Text(c, "3").FontSize(10).Bold().Padding(1, 5).Radius(8).Background(t.Danger).TextColor(ui.RGB(255, 255, 255)).Top(-6)
 				ui.Text(c, "Top(-6) moves a badge up").FontSize(12).TextColor(t.TextMuted)
 			})
+			ui.Row(c).Gap(6).AlignItems(ui.Baseline).Children(func() {
+				ui.Text(c, "$42").FontSize(28).Bold()
+				ui.Text(c, "/month").TextColor(t.TextMuted)
+				ui.Text(c, "AlignItems(Baseline) lines up text").FontSize(12).TextColor(t.TextMuted).Margin(0, 0, 0, ui.Auto)
+			})
 		})
 		card(c, "Scrolling both ways", func() {
 			ui.ScrollBoth(c).Height(150).Radius(6).Border(1, t.Border).Children(func() {

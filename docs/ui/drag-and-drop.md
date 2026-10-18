@@ -155,7 +155,12 @@ starts a transfer directly from a current native pointer gesture; UI
 elements normally use `DragData` so the movement threshold is applied.
 
 `Result.Operation` is the destination's final effect. `Canceled` means no
-drop occurred; `Err` reports a native/provider failure. MyGo never deletes
+drop occurred; `Escaped` tells a drag the user gave up (Escape,
+`CancelDataDrag` or the window closing) from one let go over no target, and
+`Point` is where the drag ended, in the screen coordinates of
+`Screen.CursorScreenPoint`. A tab let go outside every window, for example,
+is `Canceled && !Escaped` at `Point`. `Err` reports a native/provider
+failure. MyGo never deletes
 files. Remove application records only after a successful move, and account
 for file managers that move a file themselves. Existing `DroppedFiles` and
 `OnFileDrop` listeners keep accepting files with copy semantics.

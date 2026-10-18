@@ -721,3 +721,95 @@ func WithoutNewPaints(s *scene.Scene) *scene.Scene {
 	}
 	return &out
 }
+
+// Continuously returns a copy of s whose ops all have continuous corners
+// (scene.Op.Continuous): fills, shadows, images, holes, effects and clips.
+func Continuously(s *scene.Scene) *scene.Scene {
+	c := *s
+	c.Ops = append([]scene.Op(nil), s.Ops...)
+	for i := range c.Ops {
+		c.Ops[i].Continuous = true
+	}
+	return &c
+}
+
+// CardsScene returns a w×h scene of cards with continuous corners (as
+// macOS draws them) at the sizes of panels, which the builder draws as
+// nine-patches: each casting a soft shadow and a tight one, at places
+// between pixels, with radii from 4 to 60 and uneven ones; a card with a
+// border, a dashed border, a gradient, a translucent color, a border
+// only, a large image, an inner shadow, a hard shadow, a shadow offset
+// beyond its blur, one under a rounded clip and one under a continuous
+// clip.
+func CardsScene(w, h int) *scene.Scene {
+	s := &scene.Scene{Width: w, Height: h, Clear: scene.Color{R: 240, G: 241, B: 244, A: 255}}
+	pix := make([]byte, 32*32*4)
+	for y := range 32 {
+		for x := range 32 {
+			i := (y*32 + x) * 4
+			pix[i], pix[i+1], pix[i+2], pix[i+3] = byte(x*8), byte(y*8), 160, 255
+		}
+	}
+	img := scene.NewImageRGBA(32, 32, pix)
+	r4 := func(r float32) [4]float32 { return [4]float32{r, r, r, r} }
+	radii := [][4]float32{r4(4), r4(12), r4(24), r4(60), {30, 8, 0, 16}, r4(18), r4(999), r4(10), r4(36), {0, 40, 40, 0}, r4(16), r4(20)}
+	cols := 4
+	cw, ch := (float32(w)-40)/float32(cols)-30, (float32(h)-40)/3-30
+	white := scene.Color{R: 255, G: 255, B: 255, A: 255}
+	blue := scene.Color{R: 37, G: 99, B: 235, A: 255}
+	for i, r := range radii {
+		card := scene.Rect{X: 35 + float32(i%cols)*(cw+30) + float32(i%3)*0.25, Y: 35 + float32(i/cols)*(ch+30) + float32(i%5)*0.2, W: cw, H: ch}
+		if i == 6 {
+			card.H = ch / 2 // a pill
+		}
+		sh := card
+		sh.Y += 4
+		blur := float32(24)
+		switch i {
+		case 7:
+			blur = 0 // hard
+		case 8:
+			sh.Y += 40 // offset beyond the blur
+			blur = 8
+		}
+		fill := scene.Op{Kind: scene.OpFill, Rect: card, Radii: r, Color: white, Continuous: true}
+		switch i {
+		case 1:
+			fill.Border, fill.BorderColor = scene.Uniform(1.5), blue
+		case 2:
+			fill.Border, fill.BorderColor, fill.Dashed = scene.Uniform(2), blue, true
+		case 3:
+			fill.Paint, fill.Color2, fill.Gradient = scene.PaintLinear, blue, [4]float32{card.X, card.Y, card.X + card.W, card.Y + card.H}
+		case 4:
+			fill.Color = scene.Color{R: 255, G: 255, B: 255, A: 160}
+		case 5:
+			fill.Color, fill.Border, fill.BorderColor = scene.Color{}, [4]float32{1, 3, 2, 4}, blue
+		}
+		if i == 10 {
+			s.Ops = append(s.Ops, scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: card.X - 20, Y: card.Y - 10, W: card.W + 40, H: card.H}, Radii: r4(30)})
+		}
+		if i == 11 {
+			s.Ops = append(s.Ops, scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: card.X + 10, Y: card.Y - 30, W: card.W, H: card.H}, Radii: r4(30), Continuous: true})
+		}
+		// The soft shadow is opaque, so that the least difference shows.
+		s.Ops = append(s.Ops,
+			scene.Op{Kind: scene.OpShadow, Rect: sh, Radii: r, Color: scene.Color{A: 255}, Blur: blur, Cast: card, CastRadii: r, Continuous: true},
+			scene.Op{Kind: scene.OpShadow, Rect: card, Radii: r, Color: scene.Color{A: 40}, Blur: 3, Cast: card, CastRadii: r, Continuous: true},
+			fill)
+		switch i {
+		case 0:
+			// On whole pixels: the CPU renderer samples images between them
+			// differently.
+			in := scene.Rect{X: float32(math.Round(float64(card.X + 20))), Y: float32(math.Round(float64(card.Y + 20))),
+				W: float32(math.Round(float64(card.W - 40))), H: float32(math.Round(float64(card.H - 40)))}
+			s.Ops = append(s.Ops, scene.Op{Kind: scene.OpImage, Rect: in, Radii: r4(20), Image: img, Src: scene.Rect{W: 32, H: 32}, Continuous: true})
+		case 9:
+			in := scene.Rect{X: card.X + 10, Y: card.Y + 10, W: card.W - 20, H: card.H - 20}
+			s.Ops = append(s.Ops, scene.Op{Kind: scene.OpShadow, Inset: true, Rect: in, Radii: r4(12), Color: scene.Color{R: 220, G: 40, B: 40, A: 160},
+				Blur: 16, Cast: card, CastRadii: r, Continuous: true})
+		case 10, 11:
+			s.Ops = append(s.Ops, scene.Op{Kind: scene.OpPopClip})
+		}
+	}
+	return s
+}

@@ -105,7 +105,7 @@ func CullCases() []CullCase {
 	text(b, 240, 60, 4)
 	add(b, scene.Op{Kind: scene.OpFill, Rect: rect(230, 20, 150, 100), Color: red, Color2: blue, Paint: scene.PaintLinear, Gradient: [4]float32{230, 0, 380, 0}})
 	text(b, 240, 160, 4)
-	add(b, scene.Op{Kind: scene.OpFill, Rect: rect(230, 130, 150, 100), Color: white, Transform: scene.Translation(2, 3)})
+	add(b, scene.Op{Kind: scene.OpFill, Rect: rect(230, 130, 150, 100), Color: white, Transform: scene.Translation(2, 3).Mul(scene.Scaling(1, 1.01))})
 	cs("panels that hide nothing", b, 0)
 
 	// Transformed content under a panel is hidden all the same, by its

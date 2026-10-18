@@ -17,6 +17,7 @@ import (
 	"image"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -328,6 +329,8 @@ type drawState struct {
 	instBufs [ringSize]id
 	instCaps [ringSize]int
 	stops    [ringSize]texture
+	// pipes holds the pipeline of each batch built, 0 for none.
+	pipes []id
 }
 
 func (d *drawState) release() {
@@ -361,6 +364,9 @@ type formatState struct {
 	// effects, into the textures of backdrop, the second only along rows.
 	downPipe, blurPipe id
 	backdrop           [2]texture
+	// clear is a texel of the frame's color, cleared to it, which a frame
+	// drawn in part copies over what it redraws (see clearArea).
+	clear id
 	// effects are the pipelines of the effects drawn, made as first drawn.
 	effects map[*scene.Effect]*effectPipe
 }
@@ -434,6 +440,19 @@ type Renderer struct {
 	trimHandle         uintptr
 	trimArmed, trimmed bool
 
+	// diff finds what changed since the last frame drawn, and ages what
+	// changed since each drawable was (see gpu.Ages); redrew is how much
+	// of the last frame was drawn, for FrameInfo: none of it when its
+	// scene was the last one's, part (redrewPart) or all of it.
+	diff       scene.Differ
+	ages       gpu.Ages
+	redrew     redrawn
+	redrewPart gpu.Scissor
+	// keys has, for each op of the frame built, a hash of the pipelines
+	// its instances draw with, and lastKeys those of the last frame drawn
+	// (see pipelineDamage).
+	keys, lastKeys []uint64
+
 	// drawState is the frames'.
 	drawState
 }
@@ -504,6 +523,10 @@ func newRenderer() (r *Renderer, err error) {
 		return nil, err
 	}
 	r = &Renderer{images: map[uint64]*texture{}}
+	// The GPU's quads reach a pixel out of their shapes, glyphs half a
+	// pixel more, as they draw at whole pixels.
+	r.diff.Reach = 2
+	r.ages.Forget = func(tex uintptr) { release(&tex) }
 	r.b.Classes = true
 	r.b.Opaque = true // Metal's GPUs discard what opaque cores cover
 	r.formats = [2]formatState{{format: pixelFormatBGRA8Unorm}, {format: pixelFormatRGBA16Float}}
@@ -666,15 +689,17 @@ const (
 // function vs and the fragment function fs of lib, blending premultiplied
 // colors over what is drawn, or as mode says.
 func (r *Renderer) newPipeline(lib id, fs string, format uint, mode blendMode) (id, error) {
-	return r.newClassPipeline(lib, fs, format, mode, gpu.ClassGeneral, true)
+	return r.newClassPipeline(lib, fs, format, mode, 1<<gpu.ClassGeneral, true)
 }
 
 // classConstants are the function constants (the second, continuous corners,
 // being the batch's) (shader.metal) of each class
 // of batches: whether the fragment function has the code of instances under a
 // transform, continuous corners, plain fills, other fills, shadows, glyphs,
-// subpixel glyphs and images.
+// subpixel glyphs and images. A function of several classes has the constants
+// of each.
 var classConstants = [gpu.NumClasses][8]bool{
+	gpu.ClassGeneral:  {true, true, true, true, true, true, true, true},
 	gpu.ClassPlain:    {2: true},
 	gpu.ClassFill:     {3: true},
 	gpu.ClassShadow:   {4: true},
@@ -683,12 +708,12 @@ var classConstants = [gpu.NumClasses][8]bool{
 	gpu.ClassImage:    {7: true},
 }
 
-// specialized returns the function fs of lib with the constants of class cl
-// (owned). A function that has none (a library of an effect compiled before
+// specialized returns the function fs of lib with the constants of the
+// classes cl (gpu.Batch.Classes) (owned). A function that has none (a library of an effect compiled before
 // they existed) is returned as it is; for the general class, the constants are
 // all true.
-func (r *Renderer) specialized(lib id, fs string, cl gpu.Class, continuous bool) (fn id, errObj id) {
-	if cl == gpu.ClassGeneral {
+func (r *Renderer) specialized(lib id, fs string, cl uint32, continuous bool) (fn id, errObj id) {
+	if cl&(1<<gpu.ClassGeneral) != 0 {
 		fn = send(lib, "newFunctionWithName:", nsString(fs))
 		if fn == 0 || send(send(fn, "functionConstantsDictionary"), "count") == 0 {
 			return fn, 0
@@ -698,10 +723,12 @@ func (r *Renderer) specialized(lib id, fs string, cl gpu.Class, continuous bool)
 	values := send(send(class("MTLFunctionConstantValues"), "alloc"), "init")
 	defer release(&values)
 	const dataTypeBool = 53
-	for i, on := range classConstants[cl] {
+	for i := range 8 {
 		v := byte(0)
-		if on || cl == gpu.ClassGeneral || i == 1 && continuous {
-			v = 1
+		for c, on := range classConstants {
+			if on[i] && cl&(1<<c) != 0 || i == 1 && continuous {
+				v = 1
+			}
 		}
 		send(values, "setConstantValue:type:atIndex:", uintptr(unsafe.Pointer(&v)), dataTypeBool, uintptr(i))
 	}
@@ -710,8 +737,8 @@ func (r *Renderer) specialized(lib id, fs string, cl gpu.Class, continuous bool)
 }
 
 // newClassPipeline is newPipeline with the fragment function specialized for
-// the class cl.
-func (r *Renderer) newClassPipeline(lib id, fs string, format uint, mode blendMode, cl gpu.Class, continuous bool) (id, error) {
+// the classes cl.
+func (r *Renderer) newClassPipeline(lib id, fs string, format uint, mode blendMode, cl uint32, continuous bool) (id, error) {
 	vsFn := send(lib, "newFunctionWithName:", nsString("vs"))
 	defer release(&vsFn)
 	fsFn, fnErr := r.specialized(lib, fs, cl, continuous)
@@ -983,52 +1010,61 @@ func (r *Renderer) track(cb id) {
 	r.slot = (r.inUse + 1) % ringSize
 }
 
-// encode encodes drawing s into target, returning the autoreleased
-// command buffer, not yet committed.
+// encode encodes drawing s into target, whole, returning the
+// autoreleased command buffer, not yet committed.
 func (r *Renderer) encode(s *scene.Scene, target id) (id, error) {
-	if err := r.initGPU(); err != nil {
+	cb, built, err := r.prepare(s)
+	if err != nil {
 		return 0, err
+	}
+	return cb, r.drawBuilt(cb, built, target, &r.drawState, nil)
+}
+
+// prepare starts the command buffer of a frame of s, with its canvases,
+// and builds the frame (build), returning the scene built.
+func (r *Renderer) prepare(s *scene.Scene) (cb id, built *scene.Scene, err error) {
+	if err := r.initGPU(); err != nil {
+		return 0, nil, err
 	}
 	if r.cur.pipeline == 0 {
 		if err := r.makePipelines(r.cur); err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 	}
 	r.inUse = r.slot
 	r.waitSlot(r.inUse)
 	if r.err != nil {
-		return 0, r.err
+		return 0, nil, r.err
 	}
 	r.frame++
 	if err := r.syncAtlas(&r.mask, s.MaskAtlas, pixelFormatR8Unorm); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	if err := r.syncAtlas(&r.color, s.ColorAtlas, pixelFormatRGBA8Unorm); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	r.pipes.fallbacks = 0
 	r.used = 0
-	cb := send(r.queue, "commandBuffer")
+	cb = send(r.queue, "commandBuffer")
 	if !r.checked {
 		if err := need(cb, "command buffer", "renderCommandEncoderWithDescriptor:", "commit", "presentDrawable:", "waitUntilScheduled", "waitUntilCompleted", "status", "blitCommandEncoder"); err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 	}
 	// Canvases first, into textures of their own, which the frame samples.
-	var err error
 	s.EachCanvas(func(c *scene.Image) {
 		if err == nil {
 			err = r.drawCanvas(cb, c)
 		}
 	})
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	r.b.Wide = r.cur.format == pixelFormatRGBA16Float
-	if err := r.drawInto(cb, s, target, &r.drawState); err != nil {
-		return 0, err
+	if built, err = r.build(cb, s, &r.drawState); err != nil {
+		return 0, nil, err
 	}
-	return cb, nil
+	return cb, built, nil
 }
 
 // drawCanvas draws a canvas into its texture, unless it holds its version
@@ -1066,7 +1102,7 @@ func (r *Renderer) drawCanvas(cb id, c *scene.Image) error {
 	cs.Width, cs.Height = c.W, c.H
 	t.b.Wide = false
 	t.b.Opaque, t.b.Classes = r.b.Opaque, r.b.Classes
-	t.b.NoCull, t.b.NoShadowSplit, t.b.NoRingSplit = r.b.NoCull, r.b.NoShadowSplit, r.b.NoRingSplit
+	t.b.NoCull, t.b.NoShadowSplit, t.b.NoRingSplit, t.b.NoCornerSplit = r.b.NoCull, r.b.NoShadowSplit, r.b.NoRingSplit, r.b.NoCornerSplit
 	t.b.NoClasses, t.b.GeneralClasses = r.b.NoClasses, r.b.GeneralClasses
 	t.b.GeneralFill, t.b.NoClipSkip = r.b.GeneralFill, r.b.NoClipSkip
 	if err := r.drawInto(cb, cs, t.tex, &t.drawState); err != nil {
@@ -1078,12 +1114,25 @@ func (r *Renderer) drawCanvas(cb id, c *scene.Image) error {
 
 // drawInto encodes drawing s into target with d, in the format r.cur is.
 func (r *Renderer) drawInto(cb id, s *scene.Scene, target id, d *drawState) error {
+	built, err := r.build(cb, s, d)
+	if err != nil {
+		return err
+	}
+	return r.drawBuilt(cb, built, target, d, nil)
+}
+
+// build builds the instances of s with d's builder, in the format r.cur
+// is, into the instance buffer of the frame's slot, with the textures they
+// read, and finds the pipeline of each batch (d.pipes), returning the scene
+// built.
+func (r *Renderer) build(cb id, s *scene.Scene, d *drawState) (*scene.Scene, error) {
 	d.b.ClipSkip = true
+	d.b.SplitCorners() // only Metal's shader draws continuous corners
 	d.b.BlurredImage = func(img *scene.Image, bk scene.Backdrop) uintptr { return r.blurImage(cb, img, bk) }
 	s = d.b.Build(s, r.imageTexture)
 	d.b.BlurredImage = nil
 	if err := r.syncStops(d); err != nil {
-		return err
+		return nil, err
 	}
 	instBuf := &d.instBufs[r.inUse]
 	instCap := &d.instCaps[r.inUse]
@@ -1093,7 +1142,7 @@ func (r *Renderer) drawInto(cb id, s *scene.Scene, target id, d *drawState) erro
 		*instBuf = send(r.device, "newBufferWithLength:options:", uintptr(capacity*gpu.InstanceSize), 0) // shared storage
 		if *instBuf == 0 {
 			*instCap = 0
-			return errors.New("metal: cannot create the instance buffer")
+			return nil, errors.New("metal: cannot create the instance buffer")
 		}
 		*instCap = capacity
 	}
@@ -1101,35 +1150,71 @@ func (r *Renderer) drawInto(cb id, s *scene.Scene, target id, d *drawState) erro
 		dst := unsafe.Slice((*gpu.Instance)(ptr(send(*instBuf, "contents"))), n)
 		copy(dst, d.b.Instances)
 	}
-
 	if err := r.fitBackdrop(&d.b); err != nil {
-		return err
+		return nil, err
 	}
-	enc, err := r.begin(cb, target, loadActionClear, s, &d.b)
+	d.pipes = d.pipes[:0]
+	for _, b := range d.b.Batches {
+		var pipe id
+		if b.Count > 0 && !frameScissor(b.Scissor, s).Empty() {
+			pipe = r.batchPipe(b)
+		}
+		d.pipes = append(d.pipes, pipe)
+	}
+	return s, nil
+}
+
+// frameScissor returns sc within the frame of s: Metal requires scissor
+// rectangles within the target.
+func frameScissor(sc gpu.Scissor, s *scene.Scene) gpu.Scissor {
+	sc.Left, sc.Top = max(sc.Left, 0), max(sc.Top, 0)
+	sc.Right, sc.Bottom = min(sc.Right, int32(s.Width)), min(sc.Bottom, int32(s.Height))
+	return sc
+}
+
+// batchPipe returns the pipeline batch b draws with, or 0 for none.
+func (r *Renderer) batchPipe(b gpu.Batch) id {
+	if b.Effect != nil {
+		return r.effectPipeline(b.Effect)
+	}
+	mode := blendOver
+	switch {
+	case b.Hole:
+		mode = blendHole
+	case b.Opaque:
+		mode = blendNone
+	}
+	return r.pipeFor(r.cur, b.Classes(), b.Continuous, mode)
+}
+
+// drawBuilt encodes drawing s, built with d (build), into target, whole or,
+// unless part is nil, in part: what target holds elsewhere is kept.
+func (r *Renderer) drawBuilt(cb id, s *scene.Scene, target id, d *drawState, part *gpu.Scissor) error {
+	instBuf := d.instBufs[r.inUse]
+	load := uintptr(loadActionClear)
+	if part != nil {
+		load = loadActionLoad
+		if !part.Empty() {
+			r.clearTexel(cb, s)
+		}
+	}
+	enc, err := r.begin(cb, target, load, s, &d.b)
 	if err != nil {
 		return err
 	}
 	bound, pipe := r.empty, r.cur.pipeline
-	for _, b := range d.b.Batches {
-		// Metal requires scissor rectangles within the target.
-		sc := b.Scissor
-		sc.Left, sc.Top = max(sc.Left, 0), max(sc.Top, 0)
-		sc.Right, sc.Bottom = min(sc.Right, int32(s.Width)), min(sc.Bottom, int32(s.Height))
-		if b.Count == 0 || sc.Empty() {
-			continue
+	if part != nil && !part.Empty() {
+		r.clearArea(enc, *part)
+		pipe = r.cur.downPipe
+	}
+	for i, b := range d.b.Batches {
+		sc := frameScissor(b.Scissor, s)
+		if part != nil {
+			sc = sc.Intersect(*part)
 		}
-		var want id
-		switch {
-		case b.Effect != nil:
-			if want = r.effectPipeline(b.Effect); want == 0 {
-				continue
-			}
-		case b.Hole:
-			want = r.pipeFor(r.cur, b.Class, b.Continuous, blendHole)
-		case b.Opaque:
-			want = r.pipeFor(r.cur, b.Class, b.Continuous, blendNone)
-		default:
-			want = r.pipeFor(r.cur, b.Class, b.Continuous, blendOver)
+		want := d.pipes[i]
+		if b.Count == 0 || sc.Empty() || want == 0 {
+			continue
 		}
 		if b.Backdrop != 0 {
 			// The effect shows what is drawn so far.
@@ -1154,8 +1239,8 @@ func (r *Renderer) drawInto(cb id, s *scene.Scene, target id, d *drawState) erro
 			r.bindShader(enc, b)
 		}
 		offset := uintptr(b.Start * gpu.InstanceSize)
-		send(enc, "setVertexBuffer:offset:atIndex:", *instBuf, offset, 0)
-		send(enc, "setFragmentBuffer:offset:atIndex:", *instBuf, offset, 0)
+		send(enc, "setVertexBuffer:offset:atIndex:", instBuf, offset, 0)
+		send(enc, "setFragmentBuffer:offset:atIndex:", instBuf, offset, 0)
 		msgSetScissor(enc, sel("setScissorRect:"), mtlScissorRect{uint(sc.Left), uint(sc.Top), uint(sc.Right - sc.Left), uint(sc.Bottom - sc.Top)})
 		send(enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", primitiveTriStrip, 0, 4, uintptr(b.Count))
 	}
@@ -1225,6 +1310,42 @@ func (r *Renderer) begin(cb, target id, load uintptr, s *scene.Scene, b *gpu.Bui
 	send(enc, "setFragmentTexture:atIndex:", r.empty, 3)
 	send(enc, "setFragmentTexture:atIndex:", or(r.stopsTex, r.empty), 9)
 	return enc, nil
+}
+
+// clearTexel encodes clearing the texel of r.cur.clear to the color s
+// starts with, as a frame drawn whole clears its target: the GPU converts
+// the color to the target's format as it does then.
+func (r *Renderer) clearTexel(cb id, s *scene.Scene) {
+	f := r.cur
+	if f.clear == 0 {
+		if f.clear = r.newTexture(1, 1, f.format, usageRenderTarget|usageShaderRead, nil, 0); f.clear == 0 {
+			return
+		}
+	}
+	rpd := send(class("MTLRenderPassDescriptor"), "renderPassDescriptor")
+	ca := send(send(rpd, "colorAttachments"), "objectAtIndexedSubscript:", 0)
+	send(ca, "setTexture:", f.clear)
+	send(ca, "setLoadAction:", loadActionClear)
+	send(ca, "setStoreAction:", storeActionStore)
+	c := s.Clear.Premul(1)
+	msgSetClearColor(ca, sel("setClearColor:"), mtlClearColor{float64(c[0]), float64(c[1]), float64(c[2]), float64(c[3])})
+	send(send(cb, "renderCommandEncoderWithDescriptor:", rpd), "endEncoding")
+}
+
+// clearArea encodes, into the frame's pass begun with its target loaded,
+// copying the texel of r.cur.clear over area, unblended, with the pass
+// that averages squares of one texel (down), which reads it as it is:
+// what a frame drawn whole starts with there. It leaves the pass drawing
+// with the down pass's pipeline, and the mask atlas bound again.
+func (r *Renderer) clearArea(enc id, area gpu.Scissor) {
+	f := r.cur
+	p := gpu.Pass{Down: 1}
+	send(enc, "setRenderPipelineState:", f.downPipe)
+	send(enc, "setFragmentTexture:atIndex:", or(f.clear, r.empty), 0)
+	send(enc, "setFragmentBytes:length:atIndex:", uintptr(unsafe.Pointer(&p)), unsafe.Sizeof(p), 0)
+	msgSetScissor(enc, sel("setScissorRect:"), mtlScissorRect{uint(area.Left), uint(area.Top), uint(area.Right - area.Left), uint(area.Bottom - area.Top)})
+	send(enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", primitiveTriStrip, 0, 4, 1)
+	send(enc, "setFragmentTexture:atIndex:", or(r.mask.tex, r.empty), 0)
 }
 
 // syncStops uploads the stops of the gradients d's builder built into the
@@ -1435,23 +1556,42 @@ func (r *Renderer) render(s *scene.Scene) error {
 		r.skippedAt = now
 		return nil
 	}
-	if sync != r.synced {
-		on := uintptr(0)
-		if sync {
-			on = 1
+	// What changed since the last frame drawn: a frame that changed
+	// nothing draws nothing, and needs no drawable.
+	if changed {
+		r.forgetFrames()
+	}
+	r.diff.Wide = r.wide
+	damage, known := r.diff.Diff(s)
+	if known && len(damage) == 0 && !sync {
+		r.redrew = redrewNothing
+		return nil
+	}
+	var drawable id
+	cb, err := r.drawFrame(s, damage, known, func() id {
+		if sync != r.synced {
+			on := uintptr(0)
+			if sync {
+				on = 1
+			}
+			send(r.layer, "setPresentsWithTransaction:", on)
+			r.synced = sync
 		}
-		send(r.layer, "setPresentsWithTransaction:", on)
-		r.synced = sync
-	}
-	drawable := send(r.layer, "nextDrawable")
-	if drawable == 0 {
-		return nil // none came within a second: skip the frame
-	}
-	r.waited = !sync && time.Since(now) > behindAfter
-	texture := send(drawable, "texture")
-	cb, err := r.encode(s, texture)
+		if drawable = send(r.layer, "nextDrawable"); drawable == 0 {
+			return 0
+		}
+		r.waited = !sync && time.Since(now) > behindAfter
+		return send(drawable, "texture")
+	})
 	if err != nil {
 		return err
+	}
+	if drawable == 0 {
+		// None came within a second: the frame is skipped, its canvases
+		// drawn.
+		send(cb, "commit")
+		r.track(cb)
+		return nil
 	}
 	if r.presentationHook != nil {
 		r.presentationHook(drawable)
@@ -1471,6 +1611,113 @@ func (r *Renderer) render(s *scene.Scene) error {
 		r.sweep()
 	}
 	return nil
+}
+
+// drawFrame encodes the frame s, which changed damage since the last frame
+// drawn (unless not known), into the texture acquire returns, only where
+// it changed since that texture was drawn, and returns the command buffer,
+// not committed; acquire returning 0 encodes no frame.
+func (r *Renderer) drawFrame(s *scene.Scene, damage []image.Rectangle, known bool, acquire func() id) (id, error) {
+	cb, built, err := r.prepare(s)
+	if err != nil {
+		r.forgetFrames()
+		return 0, err
+	}
+	damage = r.pipelineDamage(damage, known)
+	var frame image.Rectangle
+	for _, d := range damage {
+		frame = frame.Union(d)
+	}
+	r.ages.Add(frame, !known)
+	target := acquire()
+	if target == 0 {
+		return cb, nil
+	}
+	if err := r.drawBuilt(cb, built, target, &r.drawState, r.partOf(s, target)); err != nil {
+		r.forgetFrames()
+		return 0, err
+	}
+	r.diff.Remember(s)
+	r.keys, r.lastKeys = r.lastKeys, r.keys
+	return cb, nil
+}
+
+// pipelineDamage adds to damage, what changed in the frame built since the
+// last one drawn (unless not known), the bounds of the ops that draw with
+// other pipelines than they did, and returns it. The pipelines of a batch
+// are specialized for what it holds (gpu.Class), which other ops change,
+// and one is made while the frames draw with the general one: they draw
+// the same pixels but for a unit in the last place here and there, which
+// a frame drawn whole would change.
+func (r *Renderer) pipelineDamage(damage []image.Rectangle, known bool) []image.Rectangle {
+	b := &r.b
+	n := len(b.OpStart) - 1
+	r.keys = slices.Grow(r.keys[:0], n)[:n]
+	clear(r.keys)
+	op := 0
+	for i, bt := range b.Batches {
+		lo, hi := int32(bt.Start), int32(bt.Start+bt.Count)
+		for op < n && b.OpStart[op+1] <= lo {
+			op++
+		}
+		for k := op; k < n && b.OpStart[k] < hi; k++ {
+			if b.OpStart[k+1] > b.OpStart[k] {
+				r.keys[k] = (r.keys[k] ^ uint64(r.drawState.pipes[i])) * 1099511628211
+			}
+		}
+	}
+	if !known {
+		return damage
+	}
+	bounds := r.diff.Bounds()
+	for j, key := range r.keys {
+		if i, ok := r.diff.Match(j); ok && i < len(r.lastKeys) && r.lastKeys[i] != key {
+			damage = append(damage, bounds[j])
+		}
+	}
+	return damage
+}
+
+// partOf returns the part of the frame s to draw into the drawable's
+// texture tex, or nil to draw it whole: what changed since tex was drawn
+// (r.ages), the drawables showing in turn, and the backdrops of the
+// effects that meets.
+func (r *Renderer) partOf(s *scene.Scene, tex id) *gpu.Scissor {
+	if !r.ages.Has(tex) {
+		// Held until forgotten, so that no other texture takes its
+		// place: Core Animation makes drawables anew as it likes.
+		send(tex, "retain")
+	}
+	since, ok := r.ages.Take(tex)
+	r.redrew = redrewWhole
+	if !ok || noPartial {
+		return nil
+	}
+	area, ok := gpu.Partial(since, s.Width, s.Height, func(d []image.Rectangle) []image.Rectangle { return r.diff.AddBackdrops(s, d) })
+	if !ok {
+		return nil
+	}
+	r.redrew, r.redrewPart = redrewPart, area
+	return &area
+}
+
+// redrawn is how much of a frame was drawn.
+type redrawn int8
+
+const (
+	redrewWhole redrawn = iota
+	redrewPart
+	redrewNothing
+)
+
+// noPartial draws every frame whole, for measurements that compare.
+var noPartial = os.Getenv("MYGO_PARTIAL") == "0"
+
+// forgetFrames forgets the frames drawn, as the drawables holding them go,
+// or might: the next draws whole.
+func (r *Renderer) forgetFrames() {
+	r.ages.Reset()
+	r.diff.Invalidate()
 }
 
 // fit sizes the layer and its drawables for frames of w×h pixels at
@@ -1575,6 +1822,8 @@ func (r *Renderer) trim() {
 	pool(func() {
 		r.waitLast()
 		r.releaseTextures()
+		r.ages.Reset()
+		r.diff.Release()
 		tx := class("CATransaction")
 		send(tx, "begin")
 		send(tx, "setDisableActions:", 1)
@@ -1637,6 +1886,7 @@ func (r *Renderer) Release() {
 			release(&r.layer)
 		}
 		r.releaseTextures()
+		r.ages.Reset()
 		release(&r.empty)
 		release(&r.sampler)
 		for i := range r.formats {
@@ -1646,6 +1896,7 @@ func (r *Renderer) Release() {
 			release(&f.opaquePipe)
 			release(&f.downPipe)
 			release(&f.blurPipe)
+			release(&f.clear)
 			for _, p := range f.effects {
 				release(&p.pipe)
 			}
@@ -1659,6 +1910,13 @@ func (r *Renderer) Release() {
 // FrameInfo describes the last frame for MYGO_FRAME_STATS.
 func (r *Renderer) FrameInfo() string {
 	info := r.b.Summary()
+	switch r.redrew {
+	case redrewPart:
+		a := r.redrewPart
+		info = fmt.Sprintf("redrew %d×%d at %d,%d, %s", a.Right-a.Left, a.Bottom-a.Top, a.Left, a.Top, info)
+	case redrewNothing:
+		info = "unchanged"
+	}
 	if n := r.pipes.fallbacks; n > 0 {
 		info += fmt.Sprintf(", %d batches awaiting specialized pipelines", n)
 	}

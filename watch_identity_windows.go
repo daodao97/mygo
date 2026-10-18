@@ -56,5 +56,5 @@ func fileWatchIdentity(info os.FileInfo) (fileWatchID, bool) {
 	if !f.ok || v.Field(f.path).Len() != 0 {
 		return fileWatchID{}, false
 	}
-	return fileWatchID{v.Field(f.vol).Uint(), v.Field(f.idxhi).Uint()<<32 | v.Field(f.idxlo).Uint()}, true
+	return fileWatchID{volume: v.Field(f.vol).Uint(), index: v.Field(f.idxhi).Uint()<<32 | v.Field(f.idxlo).Uint()}, true
 }

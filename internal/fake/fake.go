@@ -1260,7 +1260,10 @@ type Surface struct {
 }
 
 func (s *Surface) StartDataDrag(r platform.DragRequest) { s.dataDrag = &r }
-func (s *Surface) CancelDataDrag()                      { s.FinishDataDrag(transfer.Result{Canceled: true}) }
+func (s *Surface) CancelDataDrag() {
+	p := screen{}.CursorPoint()
+	s.FinishDataDrag(transfer.Result{Canceled: true, Escaped: true, Point: image.Point{X: p.X, Y: p.Y}})
+}
 func (s *Surface) SetDropFormats(f []transfer.Format) {
 	s.dropFormats = append([]transfer.Format(nil), f...)
 }

@@ -507,6 +507,9 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise bool) {
 	if sideways {
 		dx, dy = dy, 0
 	}
+	// A wheel's notches glide, as browsers scroll them; a touchpad's
+	// small moves already follow the fingers.
+	glide := !precise && !rt.preferences().ReduceMotion
 	for _, id := range chain {
 		s := rt.states[id]
 		if s == nil {
@@ -516,6 +519,14 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise bool) {
 		if sideways && s.rtl {
 			sx = -sx
 		}
+		if glide {
+			if wheelMoves(s, sx, sy) {
+				rt.wheelScroll(s, sx, sy)
+				return
+			}
+			continue
+		}
+		s.wheel = nil
 		if scrollBy(s, sx, sy) {
 			rt.requestFrame()
 			return
@@ -1524,6 +1535,7 @@ func (rt *engine) scrollbarPress(chain []uint64, x, y float32) bool {
 		g := scrollBars(Rect{s.x, s.y, s.w, s.h}, s.barInset, float32(s.contentW), float32(s.contentH), float32(s.scrollX), float32(s.scrollY), s.flags, rt.c.theme.scrollbarWidth(), s.rtl)
 		d := &rt.scrollDrag
 		w, h := float64(s.w), float64(s.h)
+		s.wheel = nil
 		switch {
 		case g.vertical && g.vTrack.Contains(lx, ly):
 			switch {

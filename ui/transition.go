@@ -4,6 +4,8 @@ import (
 	"math"
 	"slices"
 	"time"
+
+	"github.com/egoist/mygo/internal/scene"
 )
 
 // ElementTransition animates an element (Element.Transition) from what the
@@ -86,6 +88,7 @@ const defaultDuration = 200 * time.Millisecond
 // collapsing fades in place.
 func (e *node) Transition(t ElementTransition) *node {
 	e.c.transitions = append(e.c.transitions, transitionUse{e: e, t: t})
+	scene.FoldTranslations() // renderers draw the poses that only move as untransformed content
 	return e
 }
 
@@ -174,6 +177,9 @@ type transition struct {
 	gone    tbox
 	opacity float32
 	turn    Transform
+	// index is where the element was among its siblings in the frame it
+	// went from, which orders the copies going under one parent.
+	index int
 	// match moves an element appearing where the one it Matches showed:
 	// its box in the window, from the box that one had.
 	match    [4]channel
@@ -638,6 +644,7 @@ func (s tbox) turn() (Transform, bool) {
 // which the engine kept for them.
 func (rt *engine) animateExits(root *node, now time.Time, still, instant bool) {
 	var byID map[uint64]*node
+	going := rt.going[:0]
 	for id, r := range rt.trans {
 		if r.built == rt.frame {
 			continue
@@ -675,7 +682,24 @@ func (rt *engine) animateExits(root *node, now time.Time, still, instant bool) {
 			}
 			// From where it showed, as fast as it went.
 			r.head(r.gone.moved(r.t.Exit, r.collapse, still), moveAll, now)
+			// The frame it went from is still whole.
+			r.index = 0
+			for c := e.parent.first; c != nil && c != e; c = c.next {
+				r.index++
+			}
 		}
+		going = append(going, exit{id, r, p})
+	}
+	// The copies go under their parents in the order the elements had,
+	// not the map's, which changes from run to run: an insertion sort, as
+	// few go at once.
+	for i := 1; i < len(going); i++ {
+		for j := i; j > 0 && going[j].before(going[j-1]); j-- {
+			going[j], going[j-1] = going[j-1], going[j]
+		}
+	}
+	for _, x := range going {
+		id, r, p := x.id, x.r, x.p
 		s := r.sample(r.gone.moved(r.t.Exit, r.collapse, still), now)
 		if r.moving == 0 {
 			delete(rt.trans, id)
@@ -699,6 +723,23 @@ func (rt *engine) animateExits(root *node, now time.Time, still, instant bool) {
 		r.shown = s
 		rt.animating = true
 	}
+	clear(going)
+	rt.going = going[:0]
+}
+
+// exit is a transition whose element's copy goes under p.
+type exit struct {
+	id uint64
+	r  *transition
+	p  *node
+}
+
+// before tells whether x's copy goes before y's under a parent.
+func (x exit) before(y exit) bool {
+	if x.r.index != y.r.index {
+		return x.r.index < y.r.index
+	}
+	return x.id < y.id
 }
 
 // elementsByID returns the elements of the frame by ID, in a map the
@@ -735,7 +776,7 @@ func ghostOf(e *node) *node {
 	g.followX, g.colFit, g.gridFit = nil, nil, nil
 	g.inputFn, g.ghosts = nil, false
 	g.poseSet = false // it keeps the pose it had
-	g.tl, g.nmeasure, g.leafOK, g.intrOK = nil, 0, false, 0
+	g.tl, g.nmeasure, g.leafOK, g.intrOK, g.lay = nil, 0, false, 0, 0
 	g.flags = g.flags&^(flagModal|flagPage|flagFocusTarget) | flagInert
 	for c := e.first; c != nil; c = c.next {
 		if c.leaving == 0 {

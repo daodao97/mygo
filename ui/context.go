@@ -555,6 +555,10 @@ type state struct {
 	// lookup (lookState), 0 for a state it created.
 	lookedSeen uint64
 	lookedPass int
+	// lay is what the element's last layout was (layoutcache.go), and
+	// text what it measured and laid out of its text (heldText).
+	lay  layoutRecord
+	text *heldText
 	// The element's box and its visible part in the last frame.
 	x, y, w, h     float32
 	vx, vy, vw, vh float32
@@ -607,6 +611,9 @@ type state struct {
 	// track is the ScrollState of the last frame's element, which events
 	// that scroll it update (scrollTo).
 	track *ScrollState
+	// wheel is the notches of a mouse wheel on their way through the
+	// content (wheelScroll).
+	wheel *wheelGlide
 	// startX and startY are the offset before frame moveFrame moved it.
 	moveFrame      uint64
 	startX, startY float64
@@ -715,7 +722,7 @@ func (rt *engine) lookState(id uint64) (s *state, built bool) {
 			s = rt.free[n-1]
 			rt.free[n-1] = nil
 			rt.free = rt.free[:n-1]
-			*s = state{id: id, born: rt.frame}
+			*s = state{id: id, born: rt.frame, text: s.text}
 		} else {
 			s = &state{id: id, born: rt.frame}
 		}
@@ -745,7 +752,7 @@ func (rt *engine) unlook(s *state) {
 		return
 	}
 	delete(rt.states, s.id)
-	*s = state{}
+	*s = state{text: s.text.emptied()}
 	if len(rt.free) < maxFree {
 		rt.free = append(rt.free, s)
 	}

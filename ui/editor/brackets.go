@@ -5,7 +5,10 @@ import "strings"
 // Bracket matching, outside strings and comments by the tokens of the
 // lines, within a bounded scan as Zed bounds its queries.
 
-const bracketScanLines = 1000
+const (
+	bracketScanLines = 1000
+	bracketScanBytes = 64 << 10
+)
 
 // bracketCache keeps the brackets around the newest caret, found once
 // for a version and a caret.
@@ -99,9 +102,9 @@ func (ed *editor) scanBracket(off, dir int, same, want byte) (int, bool) {
 		return true
 	}
 	if dir > 0 {
-		r.EachLine(line, line+bracketScanLines, visit)
+		r.EachLine(line, min(line+bracketScanLines, r.LineOf(off+bracketScanBytes)+1), visit)
 	} else {
-		r.EachLineBack(line, line-bracketScanLines, visit)
+		r.EachLineBack(line, max(line-bracketScanLines, r.LineOf(off-bracketScanBytes)), visit)
 	}
 	return found, found >= 0
 }
@@ -207,7 +210,7 @@ func (ed *editor) unmatchedOpener(off int, opens, closes string) (int, int, bool
 	var stack []byte
 	at, which := -1, -1
 	line := r.LineOf(min(off, r.Len()))
-	r.EachLineBack(line, line-bracketScanLines, func(i, a int, s string) bool {
+	r.EachLineBack(line, max(line-bracketScanLines, r.LineOf(off-bracketScanBytes)), func(i, a int, s string) bool {
 		// Brackets are rare: look at the tokens only for lines with some.
 		if !hasAnyByte(s, opens, closes) {
 			return true

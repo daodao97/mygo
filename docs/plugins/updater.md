@@ -136,6 +136,12 @@ mygo.Use(updater.New(updater.Options{
 }))
 ```
 
+A window speaks the language the app shows when its check begins, and keeps
+it while it is open. After `App.SetLocale`, or a change of the user's
+languages while the app follows them, the next window takes the new one, as
+does an item that `MenuItem` returns then: an app that rebuilds its menu in
+`App.OnLocaleChanged` gets "Check for Updates…" in the new language.
+
 Some texts are formats, such as `AvailableMessage`, whose arguments are the
 app's name, the new version and the running one: indexed verbs (`%[2]s`)
 let a language order them. `mygo.Use` fails when a format does not fit its

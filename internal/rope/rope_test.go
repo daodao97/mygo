@@ -84,7 +84,16 @@ func checkLines(t *testing.T, text Text, s string) {
 }
 
 func TestEachLine(t *testing.T) {
-	s := sample()
+	testEachLine(t, sample())
+	// Lines of up to 90 KB among them, for batches cut short by bytes.
+	lines := strings.Split(sample(), "\n")
+	for i := 0; i < len(lines); i += 37 {
+		lines[i] += strings.Repeat("x", i*30)
+	}
+	testEachLine(t, strings.Join(lines, "\n"))
+}
+
+func testEachLine(t *testing.T, s string) {
 	text := New(s)
 	lines := strings.Split(s, "\n")
 	starts := make([]int, len(lines))

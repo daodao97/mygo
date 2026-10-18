@@ -35,7 +35,9 @@ and row, counting from 1. `RowTracks` and `Rows` set the first rows, which
 
 Children stretch to fill their cells unless `JustifyItems` (horizontally)
 and `AlignItems` (vertically) say otherwise, or `JustifySelf` and
-`AlignSelf` for one; automatic margins center them. Tracks that fit their
+`AlignSelf` for one; automatic margins center them. `AlignItems(ui.Baseline)`
+lines up the first lines of text of the items of each row, as in a
+[row](layout.md#alignment). Tracks that fit their
 content share the room left over unless `Justify` or `AlignContent` place
 them instead.
 

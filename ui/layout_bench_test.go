@@ -155,10 +155,11 @@ func buildBench(boxes []*benchBox, w, h float32) (*Tester, *node) {
 	return tt, root
 }
 
-// forgetLayout forgets what laying the tree out measured, as a new frame's
-// elements start.
+// forgetLayout forgets what laying the tree out measured, and that it may
+// reuse what it laid out before (layoutcache.go), as the elements of a
+// frame that changed them all start.
 func forgetLayout(e *node) {
-	e.nmeasure, e.leafOK, e.intrOK = 0, false, 0
+	e.nmeasure, e.leafOK, e.intrOK, e.lay = 0, false, 0, 0
 	for c := e.first; c != nil; c = c.next {
 		forgetLayout(c)
 	}

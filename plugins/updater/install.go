@@ -38,6 +38,8 @@ func (u *updater) installUpdate(ctx context.Context, version string) error {
 	if !enabled() {
 		return errors.New("updater: updates are disabled for this installation")
 	}
+	// Resolve the session language before locking: App.Locale may need the main thread.
+	t := u.text()
 	u.load()
 	u.mu.Lock()
 	if r := u.installed; r != nil {
@@ -50,8 +52,9 @@ func (u *updater) installUpdate(ctx context.Context, version string) error {
 	s := u.session
 	automatic := u.state.AutomaticDownloads
 	if s == nil {
-		s = newSession(u, false)
+		s = newSession(u, t, false)
 		u.session = s
+		u.launchChecked = true
 		if u.timer != nil {
 			u.timer.Stop()
 			u.timer = nil
@@ -61,14 +64,14 @@ func (u *updater) installUpdate(ctx context.Context, version string) error {
 			defer u.end(s)
 			stop := context.AfterFunc(ctx, s.cancel)
 			defer stop()
-			s.set(u.text().checkingView())
+			s.set(s.t.checkingView())
 			r, err := check(s.ctx)
 			u.checked(err)
 			if err == nil && (r == nil || r.version != version) {
 				err = errors.New("updater: release changed; check updates again")
 			}
 			if err != nil {
-				s.set(u.text().errorView(u.text().CheckError, err))
+				s.set(s.t.errorView(s.t.CheckError, err))
 				return
 			}
 			s.mu.Lock()

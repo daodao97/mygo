@@ -216,8 +216,8 @@ func (w *window) setUp(controller uintptr) {
 	comCall(s, setPutAreDevToolsEnabled, boolArg(o.DevTools))
 	comCall(s, setPutAreDefaultContextMenusEnabled, 1)
 	comCall(s, setPutIsZoomControlEnabled, 1)
-	if o.UserAgent != "" {
-		w.setUserAgent(o.UserAgent)
+	if o.UserAgent != "" || o.UserAgentSuffix != "" {
+		w.setUpUserAgent()
 	}
 	w.applyWebViewBackground()
 
@@ -770,13 +770,55 @@ func (w *window) SetZoom(f float64) {
 
 func (w *window) Zoom() float64 { return w.zoom }
 
+// setUpUserAgent applies UserAgent and UserAgentSuffix, which appends to
+// WebView2's own user agent when it is all that is set.
+func (w *window) setUpUserAgent() {
+	s2 := queryInterface(w.settings, &iidICoreWebView2Settings2)
+	if s2 == 0 {
+		return
+	}
+	defer release(s2)
+	ua := w.opts.UserAgent
+	if suffix := w.opts.UserAgentSuffix; suffix != "" {
+		if ua == "" {
+			ua = userAgentOf(s2)
+		}
+		if ua != "" {
+			ua += " " + suffix
+		}
+	}
+	if ua != "" {
+		comCall(s2, set2PutUserAgent, uintptr(unsafe.Pointer(u16(ua))))
+	}
+}
+
+// userAgentOf returns the user agent Settings2 sets.
+func userAgentOf(s2 uintptr) string {
+	var p uintptr
+	comCall(s2, set2GetUserAgent, uintptr(unsafe.Pointer(&p)))
+	return takeWstr(p)
+}
+
+// setUserAgent sets the user agent the page sends, which WebView2 decides for
+// an empty one. The suffix the options set stays on the end of it.
 func (w *window) setUserAgent(ua string) {
 	s2 := queryInterface(w.settings, &iidICoreWebView2Settings2)
 	if s2 == 0 {
 		return
 	}
 	defer release(s2)
+	suffix := w.opts.UserAgentSuffix
+	if ua != "" && suffix != "" {
+		ua += " " + suffix
+	}
 	comCall(s2, set2PutUserAgent, uintptr(unsafe.Pointer(u16(ua))))
+	if ua == "" && suffix != "" {
+		// Whether WebView2 kept the user agent or went back to its own,
+		// the suffix stays on the end of it.
+		if cur := userAgentOf(s2); cur != "" && !strings.HasSuffix(cur, " "+suffix) {
+			comCall(s2, set2PutUserAgent, uintptr(unsafe.Pointer(u16(cur+" "+suffix))))
+		}
+	}
 }
 
 func (w *window) SetUserAgent(ua string) { w.withWebView(func() { w.setUserAgent(ua) }) }
@@ -790,9 +832,7 @@ func (w *window) UserAgent() string {
 		return ""
 	}
 	defer release(s2)
-	var p uintptr
-	comCall(s2, set2GetUserAgent, uintptr(unsafe.Pointer(&p)))
-	return takeWstr(p)
+	return userAgentOf(s2)
 }
 
 func (w *window) OpenDevTools() {

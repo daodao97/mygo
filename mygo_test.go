@@ -155,6 +155,10 @@ func TestWindowDefaults(t *testing.T) {
 	if !o.DevTools {
 		t.Error("devtools should be enabled in development")
 	}
+	// Tab reaches every control, as desktop apps do, unless asked otherwise.
+	if !o.TabFocusesLinks {
+		t.Error("Tab should reach links and form controls by default")
+	}
 	// The bridge configuration, then the settings of the desktop, which it
 	// tells.
 	if len(o.UserScripts) != 2 || !strings.Contains(o.UserScripts[0].Source, `"windowId":`+fmt.Sprint(w.ID())) {
@@ -195,6 +199,13 @@ func TestWindowOptions(t *testing.T) {
 	}
 	if fw.URL() != "https://example.com/" {
 		t.Errorf("URL not loaded: %q", fw.URL())
+	}
+}
+
+func TestSafariTabFocusOption(t *testing.T) {
+	_, fw := testWindow(t, WindowOptions{Page: PageOptions{SafariTabFocus: true}})
+	if fw.Opts.TabFocusesLinks {
+		t.Error("SafariTabFocus should leave links and form controls out of Tab")
 	}
 }
 

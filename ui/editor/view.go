@@ -728,13 +728,21 @@ func (v *view) measureWraps(near int, budget time.Duration) bool {
 		return true
 	}
 	// Those around near first, so what shows is right at once.
-	v.text.EachLine(near-200, near+200, measure)
-	count := 0
+	a := v.text.LineStart(near)
+	lo := max(near-200, v.text.LineOf(a-64<<10))
+	hi := min(near+200, v.text.LineOf(a+64<<10)+1)
+	v.text.EachLine(lo, hi, measure)
+	count, bytes := 0, 0
 	v.text.EachLine(v.wrapAt, n, func(i, at int, s string) bool {
 		measure(i, at, s)
 		v.wrapAt = i + 1
 		count++
-		return count&255 != 0 || time.Since(start) <= budget
+		bytes += len(s)
+		if count&255 != 0 && bytes < 64<<10 {
+			return true
+		}
+		bytes = 0
+		return time.Since(start) <= budget
 	})
 	return w.known >= n
 }

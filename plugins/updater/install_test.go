@@ -131,7 +131,7 @@ func TestInstallUpdateCancelledWaiterKeepsLocalDownload(t *testing.T) {
 
 func TestTwoControllersCannotAnswerUnchangedPromptTwice(t *testing.T) {
 	h := newHarness(t, Options{})
-	s := newSession(h.u, false)
+	s := newSession(h.u, h.u.text(), false)
 	s.set(h.u.text().availableView(newRelease("2.0.0", nil), false))
 	v, _ := s.Current()
 	s.Respond(v.Prompt, actionInstall, false)

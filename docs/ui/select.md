@@ -14,7 +14,8 @@ ui.Select(c, &app.plan, []string{"Free", "Pro", "Team"}).Label("Plan")
 ```
 
 The popup shows above the select where there is no room below it, and gives
-the focus back to the select as it closes.
+the focus back to the select as it closes. With more options than the window
+has room for, it is as tall as the room and its options scroll.
 
 For a long list that typing filters, use a [combobox](combobox.md); for a
 few options shown at once, [radio buttons](radio.md).

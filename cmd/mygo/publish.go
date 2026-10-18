@@ -12,14 +12,23 @@ import (
 )
 
 // checkUpload checks, before a build, that -upload has somewhere to upload
-// to.
+// to and the key that signs the updates: without it the build writes no
+// manifests, and installed apps could not update to the release.
 func checkUpload(c *Config) error {
 	switch u := c.Updates; {
 	case u != nil && u.S3 != nil:
-		_, err := newS3Client(u.S3)
-		return err
+		if _, err := newS3Client(u.S3); err != nil {
+			return err
+		}
 	case u == nil || u.GitHub == "":
 		return fmt.Errorf("-upload needs updates.github or updates.s3 in %s", c.configName())
+	}
+	key, err := c.signingKey()
+	if err != nil {
+		return fmt.Errorf("updates: %w", err)
+	}
+	if key == nil {
+		return errors.New("-upload needs the update signing key, or installed apps could not update to this release: set MYGO_UPDATER_PRIVATE_KEY or updates.privateKey")
 	}
 	return nil
 }

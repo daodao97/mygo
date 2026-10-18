@@ -64,3 +64,29 @@ func TestPainterTransformCulls(t *testing.T) {
 		t.Errorf("%d images drawn, want the one in view", images)
 	}
 }
+
+// Under a transform, Visible is in the coordinates drawn in: an element
+// zoomed to twice its size, 400 square in a window 200 square, sees its
+// top left quarter; one zoomed to half its size sees all of itself, and
+// past it what the window shows; a painter's own transform likewise.
+func TestPainterVisibleTransformed(t *testing.T) {
+	var big, small, drawn Rect
+	coreNewTester(func(c *context) {
+		coreBox(c).Absolute().Left(0).Top(0).Size(200, 200).TransformOrigin(0, 0).Scale(2, 2).Draw(func(p *Painter, r Rect) {
+			big = p.Visible()
+		})
+		coreBox(c).Absolute().Left(0).Top(0).Size(200, 200).TransformOrigin(0, 0).Scale(0.5, 0.5).Draw(func(p *Painter, r Rect) {
+			small = p.Visible()
+			p.Transform(Scaling(4, 4), 0, 0, func() { drawn = p.Visible() })
+		})
+	}, 200, 200)
+	if want := (Rect{0, 0, 100, 100}); big != want {
+		t.Errorf("zoomed in, visible %+v, want %+v", big, want)
+	}
+	if want := (Rect{0, 0, 400, 400}); small != want {
+		t.Errorf("zoomed out, visible %+v, want %+v", small, want)
+	}
+	if want := (Rect{0, 0, 100, 100}); drawn != want {
+		t.Errorf("zoomed out then in by the painter, visible %+v, want %+v", drawn, want)
+	}
+}

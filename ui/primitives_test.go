@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"math"
 	"testing"
@@ -372,6 +373,39 @@ func TestSelectHighlight(t *testing.T) {
 	tt.Key(0, KeyEnter)
 	if size != "L" {
 		t.Errorf("chose %q", size)
+	}
+}
+
+// A select with more options than the window has room for, opening below
+// or above, keeps its popup in the window, where they scroll: the first
+// and the last reached, a click chooses the one under it.
+func TestSelectLongListScrolls(t *testing.T) {
+	options := make([]string, 60)
+	for i := range options {
+		options[i] = fmt.Sprintf("Option %02d", i)
+	}
+	for _, top := range []float32{20, 200} {
+		value := options[30]
+		tt := NewTester(func(c *Context) {
+			Column(c).Padding(top, 20).Children(func() {
+				Select(c, &value, options).Label("Choice")
+			})
+		}, 400, 300)
+		tt.Click("Choice")
+		for _, end := range []struct {
+			key    Key
+			option string
+		}{{KeyEnd, "Option 59"}, {KeyHome, "Option 00"}} {
+			tt.Key(0, end.key)
+			tt.Frame()
+			if r, ok := tt.Find(end.option); !ok || r.H == 0 || r.Y < 0 || r.Y+r.H > 300 {
+				t.Fatalf("at %v: %s at %+v, out of the window", top, end.option, r)
+			}
+		}
+		tt.Click("Option 00")
+		if value != "Option 00" {
+			t.Errorf("at %v: a click on Option 00 chose %q", top, value)
+		}
 	}
 }
 

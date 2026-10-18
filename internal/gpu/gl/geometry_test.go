@@ -34,6 +34,8 @@ func TestGeometryOptimizationsPreservePixels(t *testing.T) {
 	cases = append(cases,
 		fixture{"transformed", gputest.TransformedScene()},
 		fixture{"perspective", gputest.PerspectiveScene()},
+		fixture{"translated", gputest.TranslatedScenes()[0]},
+		fixture{"translated-between-pixels", gputest.TranslatedScenes()[1]},
 		fixture{"wide-colors", gputest.WideScene()},
 		fixture{"canvases", gputest.CanvasScene()},
 	)

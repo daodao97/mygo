@@ -189,8 +189,20 @@ func (p *Painter) TextLine(l *text.Layout, x, y float32, color func(cluster int)
 // Visible returns what the painter's clip leaves of the window, in DIPs:
 // the part of an element's box that shows inside the scroll containers
 // and clips around it, as an element taller than the window, showing a
-// long document, paints only what falls in it.
-func (p *Painter) Visible() Rect { return p.clip }
+// long document, paints only what falls in it. It is in the coordinates
+// the painter draws in: under a transform, an element's or the
+// painter's, the clip taken back through it, so an element scaled up
+// sees as much less of itself as shows.
+func (p *Painter) Visible() Rect {
+	if !p.transform.Set {
+		return p.clip
+	}
+	inv, ok := p.transform.Inverse()
+	if !ok {
+		return p.clip
+	}
+	return transformRect(inv, p.clip)
+}
 
 // Scale returns how many device pixels a DIP is, for drawing that lines
 // up with the pixels of the display.

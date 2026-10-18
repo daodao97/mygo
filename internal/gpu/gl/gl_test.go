@@ -73,6 +73,12 @@ func TestDrawsAsTheCPURenderer(t *testing.T) {
 				}
 				gputest.Compare(t, "gl-perspective", read(), s.Width*4, s)
 			}
+			for i, s := range gputest.TranslatedScenes() {
+				if err := r.Render(s); err != nil {
+					t.Fatal(err)
+				}
+				gputest.Compare(t, "gl-translated"+[]string{"", "-between-pixels"}[i], read(), s.Width*4, s)
+			}
 		})
 	}
 }

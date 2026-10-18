@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -331,5 +332,46 @@ func TestTransitionEnterCollapsedFollowsTheLayout(t *testing.T) {
 	tt.Frame()
 	if e := keyed(tt, "row"); e.h != 10 {
 		t.Errorf("in, the row is %v high", e.h)
+	}
+}
+
+// Siblings leaving in one frame go in the order they had: their copies,
+// which overlap on the way, paint the same from run to run.
+func TestTransitionExitsKeepSiblingOrder(t *testing.T) {
+	colors := []Color{RGB(255, 0, 0), RGB(0, 255, 0), RGB(0, 0, 255), RGB(255, 255, 0), RGB(0, 255, 255), RGB(255, 0, 255)}
+	run := func() ([]Color, []byte) {
+		shown := true
+		tt, now := clockTester(func(c *context) {
+			coreRow(c).Size(200, 40).Children(func() {
+				if shown {
+					for i, bg := range colors {
+						coreBox(c).Key(i).Size(20, 20).Background(bg).Transition(ElementTransition{
+							Duration: 100 * time.Millisecond, Ease: Linear, Exit: &Motion{X: 15},
+						})
+					}
+				}
+			})
+		}, 200, 40)
+		shown = false
+		tt.Frame()
+		*now = now.Add(50 * time.Millisecond)
+		tt.Frame()
+		var order []Color
+		for g := tt.rt.c.root.first.first; g != nil; g = g.next {
+			if g.leaving != 0 {
+				order = append(order, g.bg)
+			}
+		}
+		return order, slices.Clone(tt.Image().Pix)
+	}
+	order, pix := run()
+	if !slices.Equal(order, colors) {
+		t.Fatalf("the copies leaving go in the order %v, not %v", order, colors)
+	}
+	for range 20 {
+		o, p := run()
+		if !slices.Equal(o, order) || !slices.Equal(p, pix) {
+			t.Fatalf("another run paints the copies leaving in the order %v, not %v", o, order)
+		}
 	}
 }

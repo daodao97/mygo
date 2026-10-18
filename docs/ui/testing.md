@@ -28,7 +28,9 @@ panics where the second key was given, as apps only log it.
 ## What a tester does
 
 - **Pointer.** `tt.Click`, `tt.ClickAt`, `tt.ClickWith(ui.Shift, "Row 3")`,
-  `tt.Press`, `tt.Move` and `tt.Release`, and `tt.Scroll`.
+  `tt.Press`, `tt.Move` and `tt.Release`, `tt.Scroll`, which scrolls at
+  once as a touchpad does, and `tt.Wheel`, a notch of a mouse wheel, which
+  glides there as the clock advances (`tt.Advance`).
 - **Keyboard.** `tt.Key(ui.Cmd, ui.KeyS)` presses a key, `tt.TypeKey` a key
   with the text it types, and `tt.Type` types text into the focused
   element. `tt.Compose` shows the composition of an input method,

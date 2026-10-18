@@ -83,8 +83,9 @@ var fileWatchUnknown atomic.Uint64
 func fileWatchEntryOf(info os.FileInfo) fileWatchEntry {
 	id, ok := fileWatchIdentity(StatIdentity(info))
 	if !ok {
-		id = fileWatchID{^uint64(0), fileWatchUnknown.Add(1)}
+		id = fileWatchID{volume: ^uint64(0), index: fileWatchUnknown.Add(1)}
 	}
+	id.typ = info.Mode().Type()
 	return fileWatchEntry{id: id, size: info.Size(), mtime: info.ModTime().UnixNano(), mode: info.Mode()}
 }
 
@@ -1078,8 +1079,14 @@ func fileWatchDiff(changed map[string]fileWatchBefore, entries map[string]fileWa
 }
 
 // fileWatchID is a file's identity as os.SameFile compares it (device and
-// inode; volume and file index on Windows), usable as a map key.
-type fileWatchID struct{ volume, index uint64 }
+// inode; volume and file index on Windows), usable as a map key, with its
+// type: a file never changes type, but a file system such as ext4 gives
+// a freed inode to the next file created, so that a directory removed and
+// a symlink created in its place can have the same inode.
+type fileWatchID struct {
+	volume, index uint64
+	typ           fs.FileMode
+}
 
 // fileWatchIDs counts the entries of an update's before and after by
 // identity, keeping the path of one, for pairing renames.

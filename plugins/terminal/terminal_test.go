@@ -215,7 +215,7 @@ func TestScrollback(t *testing.T) {
 		return term.term.Scrollbar().Offset
 	}
 	bottom := offset()
-	tt.Scroll(100, 100, 0, -40) // a notch of a mouse wheel up
+	tt.Wheel(100, 100, 0, -40) // a notch of a mouse wheel up
 	if got := offset(); got != bottom-3 {
 		t.Errorf("after scrolling a notch up, offset = %d, want %d", got, bottom-3)
 	}
@@ -442,7 +442,7 @@ func TestMouse(t *testing.T) {
 	if got, want := conn.take(term), "\x1b[<0;6;4m"; got != want {
 		t.Errorf("release sent %q, want %q", got, want)
 	}
-	tt.Scroll(x, y, 0, -40)
+	tt.Wheel(x, y, 0, -40)
 	if got := conn.take(term); !strings.HasPrefix(got, "\x1b[<64;3;4M") {
 		t.Errorf("wheel sent %q", got)
 	}
@@ -1220,8 +1220,8 @@ func TestOnScrollTakesTheWheel(t *testing.T) {
 		return term.term.Scrollbar().Offset
 	}
 	bottom := offset()
-	tt.Scroll(100, 100, 0, -40) // a notch up
-	tt.Scroll(100, 100, 0, 40)  // and down
+	tt.Wheel(100, 100, 0, -40) // a notch up
+	tt.Wheel(100, 100, 0, 40)  // and down
 	if !slices.Equal(seen, []int{-3, 3}) {
 		t.Errorf("OnScroll saw %v, want [-3 3]", seen)
 	}
@@ -1231,7 +1231,7 @@ func TestOnScrollTakesTheWheel(t *testing.T) {
 	// The program takes the mouse: the wheel goes to it.
 	term.Feed([]byte("\x1b[?1002h\x1b[?1006h"))
 	tt.Frame()
-	tt.Scroll(100, 100, 0, -40)
+	tt.Wheel(100, 100, 0, -40)
 	if len(seen) != 2 {
 		t.Errorf("OnScroll saw %v while the program took the mouse", seen)
 	}
@@ -1241,7 +1241,7 @@ func TestOnScrollTakesTheWheel(t *testing.T) {
 	// A full-screen program gets it as arrows, unless it turns that off.
 	term.Feed([]byte("\x1b[?1002l\x1b[?1006l\x1b[?1049h"))
 	tt.Frame()
-	tt.Scroll(100, 100, 0, -40)
+	tt.Wheel(100, 100, 0, -40)
 	if len(seen) != 2 {
 		t.Errorf("OnScroll saw %v on a full-screen program's screen", seen)
 	}
@@ -1250,7 +1250,7 @@ func TestOnScrollTakesTheWheel(t *testing.T) {
 	}
 	term.Feed([]byte("\x1b[?1007l"))
 	tt.Frame()
-	tt.Scroll(100, 100, 0, -40)
+	tt.Wheel(100, 100, 0, -40)
 	if !slices.Equal(seen, []int{-3, 3, -3}) {
 		t.Errorf("OnScroll saw %v without alternate scroll", seen)
 	}

@@ -157,7 +157,7 @@ func TestNativeGTKDragCancellationCleanup(t *testing.T) {
 			}
 			mygo.RunOnMain(func() { linux.TestPressButton(false) })
 			r := gtkDragResult(t, result)
-			if !r.Canceled || r.Operation != transfer.None {
+			if !r.Canceled || !r.Escaped || r.Operation != transfer.None {
 				t.Fatalf("result %+v", r)
 			}
 			eventually(t, "released GTK drag resources", func() bool {

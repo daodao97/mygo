@@ -60,7 +60,7 @@ on the screen. Sizes and positions are in device-independent pixels.
 | `AutoHideMenuBar` | shows the menu bar only while the keyboard is in it, from Alt or F10 (Linux, Windows), see [the menu bar](menus.md#the-menu-bar) |
 | `Parent`, `Modal` | a child window, modal to its parent; for one placed next to a part of it, see [flyouts](#flyouts) |
 | `Panel` | the window of a launcher or a quick entry, floating above all apps, see [panels](#panels) |
-| `Page` | the options of the window's [page](#pages): its preload script, trusted origins, web inspector, zoom and user agent |
+| `Page` | the options of the window's [page](#pages): its preload script, trusted origins, web inspector, zoom, user agent and its suffix |
 
 ## Show windows without flashing
 
@@ -481,6 +481,12 @@ mygo.NewWindow(mygo.WindowOptions{
 | `TrustedOrigins` | other origins whose pages may call Go, see [who may call](bindings.md#who-may-call) |
 | `DevTools` | `DevToolsAuto` (the inspector in development builds), `DevToolsEnabled` or `DevToolsDisabled`; for a window of native UI, its [inspector](ui/inspector.md) |
 | `ZoomFactor`, `UserAgent` | the page's zoom (1 is 100%) and user agent |
+| `SafariTabFocus` | leaves Tab to text fields and elements with a tabindex, as Safari does unless the system's keyboard navigation is on; by default Tab reaches links, buttons, checkboxes and selects too (macOS) |
+| `UserAgentSuffix` | appended to the user agent instead of replacing it, which `UserAgent` does, such as `"MyApp/1.2"`; it appends to `UserAgent` too, and `SetUserAgent` keeps it, and leading and trailing spaces are trimmed |
+
+`UserAgentSuffix` is for the sites that want to see the app, and for the ones
+that serve a bare web view older pages because its user agent names no browser:
+`"Version/17.0 Safari/605.1.15"` makes the page look like Safari.
 
 Page events, on `win.Page()`:
 

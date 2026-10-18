@@ -160,6 +160,7 @@ type surface struct {
 	dragRequest  *platform.DragRequest
 	dragError    error
 	dragCanceled bool
+	dragEscaped  bool
 	dataDrop     *gtkDataDrop
 	// layers is the overlay of the area over web, the layout of the web
 	// views under it, and placed where the content shows them

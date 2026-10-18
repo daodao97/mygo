@@ -82,7 +82,9 @@ Next to the installers of each platform it writes:
 
 Without a key, `mygo build` builds the apps and skips the update files,
 but for the Linux archives, which [`install.sh`](distribution.md#the-install-script)
-installs.
+installs. `mygo build -upload` needs the key: it stops before building,
+as a release without manifests is one that installed apps cannot update
+to.
 
 The release notes are the section of the version in `CHANGELOG.md`
 (`updates.changelog` names another file), under a `## 1.2.0` heading, or

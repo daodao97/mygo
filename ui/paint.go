@@ -30,6 +30,9 @@ type Painter struct {
 	opaque bool
 	under  []opaqueBox
 	holes  []Rect
+	// cull skips the elements whose ink is clipped out (paintable): in
+	// the frame's painting, where the elements are where commit put them.
+	cull bool
 }
 
 // opaqueBox is the box of an element painting an opaque background, and
@@ -64,7 +67,9 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	}
 	rt.painter = Painter{rt: rt, s: s, scale: scale, opacity: 1, clip: Rect{0, 0, w, h}, opaque: opaque, under: under, holes: rt.holes[:0]}
 	p := &rt.painter
+	p.cull = !rt.inkStale && !rt.noCull
 	p.element(root)
+	p.cull = false
 	if rt.insp.open {
 		rt.insp.paintHighlight(rt, p, h)
 	}
@@ -130,6 +135,56 @@ func (p *Painter) visible(r Rect, margin float32) bool {
 		r.X+r.W+margin > p.clip.X && r.Y+r.H+margin > p.clip.Y
 }
 
+// shadowMargin returns how far beyond its box the element's shadows reach.
+func (e *node) shadowMargin() float32 {
+	margin := float32(0)
+	for _, sh := range e.shadows {
+		if !sh.inset {
+			margin = max(margin, abs32(sh.x)+abs32(sh.y)+sh.blur+sh.spread)
+		}
+	}
+	return margin
+}
+
+// setInk sets e's ink from vis, its box in the window, once commit set
+// those of the elements inside it: the union of the areas within which
+// element paints its own content (visible, from its box grown by its
+// shadows' margin) — so that painting, where none of the union shows,
+// would paint nothing of e, and skips it. As in Blink and Flutter, which
+// skip painting what lies outside the cull rect by its visual overflow.
+//
+// Elements that paint beyond those areas, or do more than paint as they
+// are painted, are noCull, and so are those around them: inline text,
+// whose words paint over its paragraph (paintInline); effects and blurs,
+// which draw their content on a layer reaching beyond it; dividers, laid
+// across a container; the debug overlay, over margins; exit transitions'
+// copies; and color transitions, which note the frames they paint in.
+func (e *node) setInk(vis Rect) {
+	m := e.shadowMargin() + 4
+	ink := [4]float32{vis.X - m, vis.Y - m, vis.X + vis.W + m, vis.Y + vis.H + m}
+	no := e.isInline() || e.kind == kindText && e.first != nil || e.effect != nil || e.blur > 0 ||
+		e.flags&(flagDividers|flagDebug) != 0 || e.ghosts || e.leaving != 0 || e.st.trec != nil
+	for ch := e.first; ch != nil; ch = ch.next {
+		ink = [4]float32{min(ink[0], ch.ink[0]), min(ink[1], ch.ink[1]), max(ink[2], ch.ink[2]), max(ink[3], ch.ink[3])}
+		no = no || ch.noCull
+	}
+	e.ink, e.noCull = ink, no
+}
+
+// paintable reports whether painting e may paint something: whether some
+// of its ink shows in the clip, as visible tests a box.
+func (p *Painter) paintable(e *node) bool {
+	if !p.cull || e.noCull {
+		return true
+	}
+	c, r := p.clip, e.ink
+	if r[0] < c.X+c.W && r[1] < c.Y+c.H && r[2] > c.X && r[3] > c.Y {
+		return true
+	}
+	p.rt.culled++
+	return false
+}
+
 func (p *Painter) element(e *node) {
 	savedTransform, savedInline := p.transform, p.inline
 	p.transform, p.inline = e.world, nil
@@ -177,12 +232,7 @@ func (p *Painter) element(e *node) {
 		// Transformed glyphs are drawn with grayscale coverage.
 		p.opaque = false
 	}
-	margin := float32(0)
-	for _, sh := range e.shadows {
-		if !sh.inset {
-			margin = max(margin, abs32(sh.x)+abs32(sh.y)+sh.blur+sh.spread)
-		}
-	}
+	margin := e.shadowMargin()
 	clips := e.flags&(flagClipX|flagClipY|flagScrollX|flagScrollY) != 0
 	// What an element clips meets its border where both are smoothed, on
 	// rounded corners: painted over it there, it would thin the border. The
@@ -252,7 +302,7 @@ func (p *Painter) element(e *node) {
 			}
 		}
 		for c := e.first; c != nil; c = c.next {
-			if c.flags&flagAbsolute == 0 {
+			if c.flags&flagAbsolute == 0 && p.paintable(c) {
 				p.element(c)
 			}
 		}
@@ -260,7 +310,7 @@ func (p *Painter) element(e *node) {
 			p.dividers(e)
 		}
 		for c := e.first; c != nil; c = c.next {
-			if c.flags&flagAbsolute != 0 && c.leaving == 0 {
+			if c.flags&flagAbsolute != 0 && c.leaving == 0 && p.paintable(c) {
 				p.element(c)
 			}
 		}

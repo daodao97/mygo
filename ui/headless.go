@@ -653,8 +653,16 @@ func (t *Tester) Move(x, y float32) {
 	t.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: float64(x), Y: float64(y)})
 }
 
-// Scroll scrolls by dx, dy DIPs with the pointer at (x, y).
+// Scroll scrolls by dx, dy DIPs with the pointer at (x, y), as a touchpad
+// does: at once.
 func (t *Tester) Scroll(x, y, dx, dy float32) {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy), Precise: true})
+}
+
+// Wheel scrolls by dx, dy DIPs with the pointer at (x, y), as a notch of
+// a mouse wheel does: a scroll container glides there over a moment,
+// which advancing the clock (Advance) shows.
+func (t *Tester) Wheel(x, y, dx, dy float32) {
 	t.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy)})
 }
 

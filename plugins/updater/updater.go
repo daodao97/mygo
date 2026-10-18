@@ -244,8 +244,10 @@ type updater struct {
 	// open creates the window of a session and shows it.
 	open func(*session)
 
-	textOnce sync.Once
-	txt      *text
+	// txt are the texts of the language txtLang, the last one asked for.
+	textMu  sync.Mutex
+	txt     *text
+	txtLang string
 
 	loadOnce sync.Once
 	mu       sync.Mutex
@@ -276,15 +278,19 @@ func newUpdater(opts Options, open func(*session)) *updater {
 	return &updater{opts: opts, open: open}
 }
 
-// text returns the texts of the window, in the language chosen once.
+// text returns the texts of the window in the language the app shows now
+// (Options.Language, else App.Locale): after App.SetLocale, or a change of
+// the user's languages, the next window and menu item take the new one.
 func (u *updater) text() *text {
-	u.textOnce.Do(func() {
-		lang := u.opts.Language
-		if lang == "" {
-			lang = locale()
-		}
-		u.txt = newText(lang, u.opts.Strings)
-	})
+	lang := u.opts.Language
+	if lang == "" {
+		lang = locale()
+	}
+	u.textMu.Lock()
+	defer u.textMu.Unlock()
+	if u.txt == nil || lang != u.txtLang {
+		u.txt, u.txtLang = newText(lang, u.opts.Strings), lang
+	}
 	return u.txt
 }
 
@@ -424,6 +430,9 @@ func (u *updater) checked(err error) {
 // the user asked for it.
 func (u *updater) begin(user bool) {
 	u.load()
+	// Its window speaks the app's language when the check begins. Out of
+	// u.mu: the first App.Locale asks the main thread.
+	t := u.text()
 	u.mu.Lock()
 	if s := u.session; s != nil {
 		u.mu.Unlock()
@@ -436,7 +445,7 @@ func (u *updater) begin(user bool) {
 		u.mu.Unlock()
 		return
 	}
-	s := newSession(u, user)
+	s := newSession(u, t, user)
 	u.session = s
 	u.launchChecked = true
 	if u.timer != nil {
@@ -461,7 +470,7 @@ func (u *updater) end(s *session) {
 // run checks for updates and drives the update window.
 func (u *updater) run(s *session) {
 	defer u.end(s)
-	t := u.text()
+	t := s.t
 	if !enabled() {
 		s.set(t.unavailableView())
 		s.show()
@@ -536,7 +545,7 @@ func (u *updater) run(s *session) {
 // install downloads and installs r, showing its progress when the window
 // shows, then offers to relaunch.
 func (u *updater) install(s *session, r *release) error {
-	t := u.text()
+	t := s.t
 	s.set(t.downloadingView(0, 0))
 	err := r.install(s.ctx, func(downloaded, total int64) {
 		if downloaded < total {
@@ -566,7 +575,7 @@ func (u *updater) install(s *session, r *release) error {
 }
 
 func (u *updater) offerRelaunch(s *session, r *release) {
-	s.set(u.text().readyView(r))
+	s.set(s.t.readyView(r))
 	s.show()
 	if s.wait().action == actionRelaunch {
 		relaunch()

@@ -75,6 +75,7 @@ func Nearest(points ...Point) func(Point) Point {
 //		Snap:   ui.Nearest(ui.Point{}, ui.Point{Y: 200}, ui.Point{Y: 400}),
 //	})
 func (e *node) Draggable(offset *Point, o DraggableOptions) *node {
+	scene.FoldTranslations() // renderers draw its moves as untransformed content
 	axes := o.Axis
 	if axes&^(Horizontal|Vertical) != 0 {
 		panic("ui: Draggable's Axis must be Horizontal, Vertical or both")

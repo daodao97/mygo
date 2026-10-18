@@ -46,8 +46,14 @@ func (b *Builder) prepare(in *Instance, m scene.Affine, c *clip) bool {
 	}
 	// A hard clip sharing the drawing's coordinates is cheap to evaluate in
 	// the fragment shader. Keep the rounded ancestor's mask stationary even
-	// when a text input or custom clipped drawing moves within it.
-	if c.shape.Radii == [4]float32{} && c.shape.Transform == m && m.Set && len(b.stack) > 1 {
+	// when a text input or custom clipped drawing moves within it. Drawing
+	// that a translation of the clip's moved shares them too, folded into
+	// the frame's (scene.TranslationFolder): the clip's rectangle moves.
+	shared, dx, dy := c.shape.Transform == m && m.Set, float32(0), float32(0)
+	if !m.Set {
+		dx, dy, shared = c.shape.Transform.Translation()
+	}
+	if c.shape.Radii == [4]float32{} && shared && len(b.stack) > 1 {
 		parent := &b.stack[len(b.stack)-2]
 		if parent.masked {
 			b.preparedMask = b.clipTexture(parent, b.clipShapes[:len(b.clipShapes)-1])
@@ -55,6 +61,7 @@ func (b *Builder) prepare(in *Instance, m scene.Affine, c *clip) bool {
 				return false
 			}
 			in.Clip = rect(c.rect)
+			in.Clip[0], in.Clip[1] = in.Clip[0]+dx, in.Clip[1]+dy
 			in.ClipRadii = [4]float32{float32(parent.scissor.Left), float32(parent.scissor.Top), float32(parent.scissor.Right - parent.scissor.Left), float32(parent.scissor.Bottom - parent.scissor.Top)}
 			in.Transform1[3] = 2
 			return true

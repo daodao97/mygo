@@ -2,6 +2,7 @@ package gpu
 
 import (
 	"bytes"
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/internal/gpu/gputest"
@@ -36,7 +37,7 @@ func TestAffineInstancesPreserveGeometryAndWideColors(t *testing.T) {
 func TestAffineClipMaskCacheFollowsClipInsteadOfContent(t *testing.T) {
 	s := &scene.Scene{Width: 100, Height: 80, Ops: []scene.Op{
 		{Kind: scene.OpPushClip, Rect: scene.Rect{X: 10, Y: 10, W: 70, H: 50}, Radii: [4]float32{8, 8, 8, 8}},
-		{Kind: scene.OpFill, Rect: scene.Rect{W: 25, H: 15}, Color: scene.Color{R: 255, A: 255}, Transform: scene.Translation(20, 15)},
+		{Kind: scene.OpFill, Rect: scene.Rect{W: 25, H: 15}, Color: scene.Color{R: 255, A: 255}, Transform: scene.Translation(20, 15).Mul(scene.Rotation(10))},
 		{Kind: scene.OpPopClip},
 	}}
 	var b Builder
@@ -49,7 +50,7 @@ func TestAffineClipMaskCacheFollowsClipInsteadOfContent(t *testing.T) {
 	}
 	id, version := mask.ID(), mask.Version()
 	pixels := append([]byte(nil), mask.Pix...)
-	s.Ops[1].Transform = scene.Translation(35, 25)
+	s.Ops[1].Transform = scene.Translation(35, 25).Mul(scene.Rotation(10))
 	build()
 	if mask.ID() != id || mask.Version() != version || !bytes.Equal(mask.Pix, pixels) {
 		t.Fatal("moving content rerasterized its stationary clip")
@@ -414,10 +415,9 @@ func TestBatchClasses(t *testing.T) {
 		{Kind: scene.OpShadow, Rect: r(0), Color: red, Blur: 8},
 		{Kind: scene.OpGlyphs, Start: 0, End: 1},
 		{Kind: scene.OpImage, Rect: r(0), Image: img, Src: scene.Rect{W: 2, H: 2}},
-		{Kind: scene.OpFill, Rect: r(120), Color: red, Transform: scene.Translation(1, 1)},
+		{Kind: scene.OpFill, Rect: r(120), Color: red, Transform: scene.Translation(1, 1).Mul(scene.Scaling(1.01, 1))},
 	}
-	var b Builder
-	b.Classes = true
+	b := Builder{Classes: true, NoJoin: true}
 	b.Build(s, func(*scene.Image) uintptr { return 1 })
 	want := []Class{ClassPlain, ClassFill, ClassShadow, ClassGlyph, ClassImage, ClassGeneral}
 	if len(b.Batches) != len(want) {
@@ -436,6 +436,58 @@ func TestBatchClasses(t *testing.T) {
 	for i, bt := range b.Batches {
 		if bt.Class != ClassGeneral {
 			t.Errorf("NoClasses: batch %d has class %d", i, bt.Class)
+		}
+	}
+}
+
+// TestJoinBatches checks that runs of small batches of other classes join
+// into one batch holding their classes, that batches covering many pixels
+// keep theirs, and that batches drawing with other state stay apart.
+func TestJoinBatches(t *testing.T) {
+	red := scene.Color{R: 255, A: 255}
+	box := func(x, y float32) scene.Rect { return scene.Rect{X: x, Y: y, W: 20, H: 20} }
+	s := &scene.Scene{Width: 400, Height: 300}
+	for i := range 4 {
+		x := float32(i * 30)
+		s.Ops = append(s.Ops, scene.Op{Kind: scene.OpShadow, Rect: box(x, 10), Color: scene.Color{A: 60}, Blur: 4},
+			scene.Op{Kind: scene.OpFill, Rect: box(x, 10), Radii: scene.Uniform(4), Color: red})
+	}
+	// A large fill keeps its class, the fill of the last box sharing its
+	// batch, and the small batches after it join.
+	s.Ops = append(s.Ops, scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 0, Y: 50, W: 300, H: 200}, Color: scene.Color{G: 200, A: 200}},
+		scene.Op{Kind: scene.OpFill, Rect: box(10, 60), Color: red, Border: scene.Uniform(1), BorderColor: red},
+		scene.Op{Kind: scene.OpShadow, Rect: box(40, 60), Color: scene.Color{A: 60}, Blur: 4},
+		// A clip: another scissor rectangle.
+		scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 100, Y: 100, W: 50, H: 50}},
+		scene.Op{Kind: scene.OpFill, Rect: box(110, 110), Color: red},
+		scene.Op{Kind: scene.OpPopClip},
+		// A transformed fill joins as the general class: every path.
+		scene.Op{Kind: scene.OpFill, Rect: box(200, 60), Color: red},
+		scene.Op{Kind: scene.OpFill, Rect: box(230, 60), Color: red, Transform: scene.Rotation(0.1)})
+	b := Builder{Classes: true}
+	b.Build(s, func(*scene.Image) uintptr { return 1 })
+	type got struct {
+		count  int
+		class  Class
+		joined uint32
+	}
+	want := []got{{7, ClassGeneral, 1<<ClassShadow | 1<<ClassPlain}, {2, ClassPlain, 0}, {2, ClassGeneral, 1<<ClassFill | 1<<ClassShadow},
+		{1, ClassPlain, 0}, {2, ClassGeneral, 0}}
+	var have []got
+	for _, bt := range b.Batches {
+		have = append(have, got{bt.Count, bt.Class, bt.Joined})
+	}
+	if !slices.Equal(have, want) {
+		t.Errorf("batches %+v, want %+v", have, want)
+	}
+	for _, off := range []func(*Builder){func(b *Builder) { b.NoJoin = true }, func(b *Builder) { b.NoClasses = true }, func(b *Builder) { b.Classes = false }} {
+		b := Builder{Classes: true}
+		off(&b)
+		b.Build(s, func(*scene.Image) uintptr { return 1 })
+		for _, bt := range b.Batches {
+			if bt.Joined != 0 {
+				t.Errorf("a batch joined classes: %+v", bt)
+			}
 		}
 	}
 }
@@ -484,8 +536,8 @@ func TestFillsInsideTheirClipSkipItsCoverage(t *testing.T) {
 	s.Ops = append(s.Ops, scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 20, Y: 20, W: 100, H: 100}, Radii: [4]float32{8, 8, 8, 8}})
 	fill(scene.Rect{X: 50, Y: 50, W: 10, H: 10}) // 5: under a rounded clip
 	s.Ops = append(s.Ops, scene.Op{Kind: scene.OpPopClip})
-	s.Ops = append(s.Ops, scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 10, Y: 10, W: 50, H: 50}, Color: scene.Color{A: 255}, Transform: scene.Translation(3, 3)}) // 6
-	want := map[int]bool{0: true, 1: true, 2: true}                                                                                                                   // 1, the frame, lies in the root clip, which is unbounded
+	s.Ops = append(s.Ops, scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 10, Y: 10, W: 50, H: 50}, Color: scene.Color{A: 255}, Transform: scene.Translation(3, 3).Mul(scene.Scaling(1.01, 1))}) // 6
+	want := map[int]bool{0: true, 1: true, 2: true}                                                                                                                                               // 1, the frame, lies in the root clip, which is unbounded
 	tex := func(*scene.Image) uintptr { return 1 }
 	var b Builder
 	b.NoCull = true
@@ -572,5 +624,129 @@ func TestShaderWideUniforms(t *testing.T) {
 			t.Errorf("wide %v: the batch draws with %v, want %v", w, b.Batches[0].Uniforms, want)
 		}
 		b.Release()
+	}
+}
+
+// Boxes that translations move build the instances and batches of the same
+// boxes placed without transforms: the shaders' own classes, not the
+// general one.
+func TestTranslationsFold(t *testing.T) {
+	build := func(s *scene.Scene, noFold bool) Builder {
+		b := Builder{Classes: true, ClipSkip: true, NoFold: noFold}
+		b.Build(s, func(*scene.Image) uintptr { return 1 })
+		return b
+	}
+	translated := gputest.BoxesScene(400, 300, 60, true)
+	want, got := build(gputest.BoxesScene(400, 300, 60, false), false), build(translated, false)
+	if !slices.Equal(got.Instances, want.Instances) || !slices.EqualFunc(got.Batches, want.Batches, func(a, b Batch) bool {
+		return a.Start == b.Start && a.Count == b.Count && a.Class == b.Class && a.Scissor == b.Scissor
+	}) {
+		t.Fatal("translated boxes build other instances than boxes in their places")
+	}
+	for _, bt := range got.Batches {
+		if bt.Class == ClassGeneral && bt.Joined == 0 {
+			t.Fatalf("a batch of translated boxes takes the general shader: %+v", bt)
+		}
+	}
+	if translated.Ops[0].Transform.Set == false {
+		t.Fatal("building changed the scene")
+	}
+	unfolded := build(translated, true)
+	if unfolded.Batches[0].Class != ClassGeneral {
+		t.Fatal("NoFold folded the translations")
+	}
+}
+
+// TestCornerSplitShrinksTheCurved checks that a card with continuous
+// corners and the shadows it casts are drawn as nine-patches: the pieces of
+// each tile what it drew whole, those drawn with the curves lie in the
+// corners' boxes, which hold a fraction of the pixels, and the others have
+// square corners, in batches without continuous corners; and that small
+// shapes, whose pixels are all near a corner, stay whole.
+func TestCornerSplitShrinksTheCurved(t *testing.T) {
+	card := scene.Rect{X: 100.5, Y: 80.25, W: 600, H: 400}
+	r := scene.Uniform(24)
+	s := &scene.Scene{Width: 800, Height: 600, Ops: []scene.Op{
+		{Kind: scene.OpShadow, Rect: scene.Rect{X: card.X, Y: card.Y + 4, W: card.W, H: card.H}, Radii: r, Color: scene.Color{A: 60}, Blur: 24,
+			Cast: card, CastRadii: r, Continuous: true},
+		{Kind: scene.OpShadow, Rect: card, Radii: r, Color: scene.Color{A: 60}, Blur: 4, Continuous: true},
+		{Kind: scene.OpFill, Rect: card, Radii: r, Color: scene.Color{R: 255, A: 200}, Border: scene.Uniform(2), BorderColor: scene.Color{B: 255, A: 255},
+			Continuous: true},
+	}}
+	var split, whole Builder
+	split.Classes, whole.Classes = true, true
+	split.SplitCorners()
+	whole.NoCornerSplit = true
+	split.Build(s, nil)
+	whole.Build(s, nil)
+	if len(whole.Instances) != 6 { // the first shadow in four pieces around its caster
+		t.Fatalf("%d instances whole, want 6", len(whole.Instances))
+	}
+	frame := Scissor{0, 0, 800, 600}
+	for _, kind := range []float32{1, 0} {
+		var curved, all int64
+		type cut struct {
+			rect [4]float32
+			free Scissor
+		}
+		var cuts []cut
+		for _, in := range whole.Instances {
+			if in.Params[0] == kind {
+				free, _, _ := cornersOf(&in, scene.Affine{})
+				cuts = append(cuts, cut{in.Rect, free})
+			}
+		}
+		for _, bt := range split.Batches {
+			for _, in := range split.Instances[bt.Start : bt.Start+bt.Count] {
+				if in.Params[0] != kind {
+					continue
+				}
+				all += bt.Scissor.area()
+				if in.Radii == [4]float32{} {
+					if bt.Continuous {
+						t.Errorf("kind %v: a piece with square corners in a batch with continuous ones", kind)
+					}
+					continue
+				}
+				if !bt.Continuous {
+					t.Errorf("kind %v: a piece with continuous corners in a batch without", kind)
+				}
+				curved += bt.Scissor.area()
+				// In the corners' boxes: out of the columns and the rows between them.
+				for _, c := range cuts {
+					cols := Scissor{c.free.Left, frame.Top, c.free.Right, frame.Bottom}
+					rows := Scissor{frame.Left, c.free.Top, frame.Right, c.free.Bottom}
+					if bt.Scissor.intersect(cols).area() != 0 && bt.Scissor.intersect(rows).area() != 0 &&
+						c.rect == in.Rect {
+						t.Errorf("kind %v: curved piece %v between the corners %v", kind, bt.Scissor, c.free)
+					}
+				}
+			}
+		}
+		var want int64
+		for _, bt := range whole.Batches {
+			for _, in := range whole.Instances[bt.Start : bt.Start+bt.Count] {
+				if in.Params[0] == kind {
+					want += bt.Scissor.area()
+				}
+			}
+		}
+		if all != want {
+			t.Errorf("kind %v: pieces cover %d px, whole %d", kind, all, want)
+		}
+		if 3*curved > want {
+			t.Errorf("kind %v: %d of %d px drawn with the curves", kind, curved, want)
+		}
+		t.Logf("kind %v: %d of %d px drawn with the curves", kind, curved, want)
+	}
+	// Small boxes are near their corners everywhere.
+	boxes := gputest.BoxesScene(640, 400, 120, false)
+	for i := range boxes.Ops {
+		boxes.Ops[i].Continuous = true
+	}
+	split.Build(boxes, nil)
+	whole.Build(boxes, nil)
+	if len(split.Instances) != len(whole.Instances) {
+		t.Errorf("small boxes: %d instances, %d whole", len(split.Instances), len(whole.Instances))
 	}
 }

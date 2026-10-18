@@ -301,7 +301,9 @@ func (w *window) createWebView() {
 	webkitSettingsSetAllowFileAccessFromFileURLs(settings, true)
 	webkitSettingsSetJavascriptCanAccessClipboard(settings, true)
 	if o.UserAgent != "" {
-		webkitSettingsSetUserAgent(settings, cs(o.UserAgent))
+		webkitSettingsSetUserAgent(settings, cs(userAgentWithSuffix(o.UserAgent, o.UserAgentSuffix)))
+	} else if o.UserAgentSuffix != "" {
+		webkitSettingsSetUserAgentSuffix(settings, o.UserAgentSuffix)
 	}
 	if o.Zoom > 0 && o.Zoom != 1 {
 		webkitWebViewSetZoomLevel(w.web, o.Zoom)
@@ -1068,7 +1070,39 @@ func (w *window) SetZoom(f float64) { webkitWebViewSetZoomLevel(w.web, f) }
 func (w *window) Zoom() float64     { return webkitWebViewGetZoomLevel(w.web) }
 
 func (w *window) SetUserAgent(ua string) {
-	webkitSettingsSetUserAgent(webkitWebViewGetSettings(w.web), optCS(ua))
+	settings := webkitWebViewGetSettings(w.web)
+	suffix := w.opts.UserAgentSuffix
+	if ua == "" {
+		// An empty one restores the default user agent, and the suffix
+		// appends to that.
+		if suffix != "" {
+			webkitSettingsSetUserAgentSuffix(settings, suffix)
+			return
+		}
+		webkitSettingsSetUserAgent(settings, nil)
+		return
+	}
+	webkitSettingsSetUserAgent(settings, cs(userAgentWithSuffix(ua, suffix)))
+}
+
+// userAgentWithSuffix appends the suffix the options set, after a space.
+func userAgentWithSuffix(ua, suffix string) string {
+	if suffix == "" {
+		return ua
+	}
+	return ua + " " + suffix
+}
+
+// webkitSettingsSetUserAgentSuffix appends application details to the default
+// user agent of settings. WebKitGTK takes them as two strings and joins them
+// with "/", which is where the suffix splits: at the first one.
+func webkitSettingsSetUserAgentSuffix(settings ptr, suffix string) {
+	name, version, hasVersion := strings.Cut(suffix, "/")
+	var v *byte
+	if hasVersion {
+		v = cs(version)
+	}
+	webkitSettingsSetUserAgentWithApplicationDetails(settings, cs(name), v)
 }
 
 func (w *window) UserAgent() string {

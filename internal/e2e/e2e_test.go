@@ -537,6 +537,34 @@ func TestIPCAndProtocol(t *testing.T) {
 	}
 }
 
+// TestUserAgentSuffix: PageOptions.UserAgentSuffix appends to the user agent
+// of the page's web view, its own or the one UserAgent sets, instead of
+// replacing it as UserAgent does.
+func TestUserAgentSuffix(t *testing.T) {
+	const suffix = "MyApp/1.2"
+	check := func(name, want string, opts mygo.PageOptions) {
+		t.Helper()
+		opts.UserAgentSuffix = " " + suffix + " "
+		w := newWindow(t, mygo.WindowOptions{Hidden: true, URL: "app://localhost/", Page: opts})
+		waitFor(t, w, "document.readyState === 'complete'")
+		ua, err := mygo.EvalAs[string](w.Page(), "navigator.userAgent")
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !strings.HasSuffix(ua, " "+suffix) {
+			t.Errorf("%s: navigator.userAgent = %q, want the suffix %q", name, ua, suffix)
+		}
+		if want != "" && ua != want {
+			t.Errorf("%s: navigator.userAgent = %q, want %q", name, ua, want)
+		}
+		if got := w.Page().UserAgent(); !strings.HasSuffix(got, " "+suffix) {
+			t.Errorf("%s: Page.UserAgent() = %q, want the suffix %q", name, got, suffix)
+		}
+	}
+	check("default user agent", "", mygo.PageOptions{})
+	check("UserAgent", "MyAgent/2 "+suffix, mygo.PageOptions{UserAgent: "MyAgent/2"})
+}
+
 func TestChannels(t *testing.T) {
 	w := newWindow(t, mygo.WindowOptions{Hidden: true})
 	if err := w.Page().LoadURL("app://localhost/"); err != nil {

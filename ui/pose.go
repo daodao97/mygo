@@ -40,6 +40,7 @@ func (e *node) AnimatePose(p Pose, a Animation) *node {
 		a.Spring.physics()
 	}
 	e.pose, e.poseAnim, e.poseSet = p, a, true
+	scene.FoldTranslations() // renderers draw poses that only move as untransformed content
 	return e
 }
 
@@ -137,6 +138,7 @@ func (rt *engine) repose() {
 		if r := e.st.pose; r != nil && (r.moving() || d.current(rt) && d.moving()) {
 			rt.showPose(e, r)
 			e.reposed = true
+			rt.inkStale = true
 		}
 	}
 	for _, e := range rt.posed {

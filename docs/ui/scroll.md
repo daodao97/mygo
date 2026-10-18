@@ -7,7 +7,9 @@ the touchpad, their scroll bar and the keyboard: the arrow keys, Page Up and
 Page Down, Space, Home and End scroll the container around the focus, or
 under the pointer, unless the focused element takes those keys, as a text
 input does. `ui.ScrollBoth` scrolls both ways, as a canvas or a wide table
-does.
+does. A notch of a mouse wheel glides over a short ease out, as browsers
+scroll it, and notches in a row add up; a touchpad follows the fingers,
+and while the desktop asks for less motion, a notch scrolls at once.
 
 ```go
 ui.Scroll(c).Grow(1).Padding(16).Gap(12).Children(func() {

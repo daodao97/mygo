@@ -146,6 +146,7 @@ go generate ./plugins/glass                # recompile the glass plugin's shader
 bun run --cwd website dev                  # the website, with docs/ at /docs (see website/README.md)
 bun scripts/bench.ts run [--e2e]           # benchmarks and app sizes, medians of 6 runs (CI: bench.yml, /benchmarks)
 go run ./internal/idlemem app...           # apps' memory once idle, with their webviews' processes
+go run ./internal/inputlatency             # native UI's input-to-screen latency on macOS (opens windows)
 ```
 
 Linux GUI tests cross-compile and run in a container with WebKitGTK and Xvfb;

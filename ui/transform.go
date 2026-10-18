@@ -61,6 +61,7 @@ func in3D(m mat4) Transform { return Transform{d3: &m} }
 // Translation moves content by x and y DIPs.
 func Translation(x, y float32) Transform {
 	finiteTransform(x, y)
+	scene.FoldTranslations() // renderers draw them as untransformed content
 	return Transform{m: scene.Translation(x, y)}
 }
 

@@ -223,6 +223,44 @@ func TestInstallAndRelaunch(t *testing.T) {
 	}
 }
 
+// A window keeps the language it opened in; after the app's language
+// changes, the next window and the menu item take the new one.
+func TestLanguageChange(t *testing.T) {
+	h := newHarness(t, Options{})
+	proceed := make(chan struct{})
+	h.result = func(context.Context) (*release, error) {
+		return newRelease("2.0.0", func(ctx context.Context, progress func(int64, int64)) error {
+			<-proceed
+			return nil
+		}), nil
+	}
+	done := h.begin(true)
+	s := h.shown()
+	v := waitView(t, s, "A new version of")
+	s.Respond(v.Prompt, actionInstall, false)
+	waitView(t, s, "Downloading update…")
+	locale = func() string { return "zh-Hans" }
+	close(proceed)
+	v = waitView(t, s, "Ready to Relaunch")
+	if got := s.Texts(); got.Title != "Software Update" {
+		t.Errorf("texts of the open window: %+v", got)
+	}
+	s.Respond(v.Prompt, actionLater, false)
+	waitDone(t, done)
+
+	done = h.begin(true)
+	s = h.shown()
+	v = waitView(t, s, "可以重新启动了")
+	if got := s.Texts(); got.Title != "软件更新" {
+		t.Errorf("texts of the next window: %+v", got)
+	}
+	s.Respond(v.Prompt, actionLater, false)
+	waitDone(t, done)
+	if got := h.u.text().MenuItem; got != "检查更新…" {
+		t.Errorf("menu item %q", got)
+	}
+}
+
 func TestSkipVersion(t *testing.T) {
 	h := newHarness(t, Options{})
 	h.result = func(context.Context) (*release, error) { return newRelease("2.0.0", nil), nil }

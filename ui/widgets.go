@@ -639,6 +639,8 @@ func coreSelect(c *context, selected *string, options []string) *node {
 	})
 	sel.Popup(func(panel *node) {
 		stylePanel(c, panel)
+		// Options past the room the window has scroll.
+		panel.flags |= flagScrollY | flagHover
 		for _, opt := range options {
 			item := sel.Item(opt).Padding(t.Space(1.5), t.Space(2.5)).Radius(t.Radius)
 			switch {

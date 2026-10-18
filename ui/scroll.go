@@ -105,6 +105,7 @@ func (e *node) adoptScroll() bool {
 		return false
 	}
 	st.beginMove(e.c.rt.frame)
+	st.wheel = nil // the app takes over from the wheel
 	if t.X != float32(st.scrollX) {
 		st.scrollX = float64(t.X)
 	}

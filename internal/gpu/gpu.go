@@ -148,6 +148,11 @@ type Batch struct {
 	// not specialize their shader ignore them.
 	Class      Class
 	Continuous bool
+	// Joined, for a batch of ClassGeneral that joined small batches of
+	// other classes (see joinLast), has a bit (1 << Class) for each
+	// class among them: a renderer may draw it with a shader holding
+	// only their paths, which draws the same pixels. 0 is every path.
+	Joined uint32
 }
 
 // Class says which paths of the fragment shader a batch's instances take.
@@ -241,6 +246,10 @@ type Builder struct {
 	// NoRingSplit draws every border-only fill as one instance (see
 	// addFill), for tests that compare the two.
 	NoRingSplit bool
+	// NoCornerSplit draws every shape with continuous corners as one
+	// instance (see addCorners), for tests that compare the two.
+	NoCornerSplit bool
+	cutCorners    func(b *Builder, in Instance, image uintptr, m scene.Affine)
 	// NoClasses puts every batch in ClassGeneral, for tests and
 	// measurements that compare the specialized shaders with the general one.
 	NoClasses bool
@@ -264,9 +273,21 @@ type Builder struct {
 	GeneralFill, NoClipSkip bool
 	// ClipSkip enables the clip-coverage flag understood by the Metal shader.
 	ClipSkip bool
+	// NoJoin keeps the batches of each class apart, however small (see
+	// joinLast), for tests and measurements that compare the two.
+	NoJoin bool
+	// NoFold draws the ops that only translate under their transforms (see
+	// scene.TranslationFolder), for tests that compare the two.
+	NoFold bool
+	// OpStart holds, for each op of the scene built, the index of its
+	// first instance in Instances, and then their number: the instances of
+	// op i are those from OpStart[i] to OpStart[i+1].
+	OpStart []int32
 	// Culled is how many ops the last Build left out as covered.
 	Culled, OpaqueCores int
+	fold                scene.TranslationFolder
 	opaque              bool
+	joinSmall           bool // whether the last batch joinLast saw covers few pixels
 	culled              []bool
 	plan                []cullInfo
 	planStack           []clip
@@ -397,6 +418,9 @@ func (b *Builder) pushed(top *clip, op *scene.Op, encloses bool) clip {
 // clip, or rounded (or masked) with transformed content inside: the others
 // cut in the shader as in a scene without transforms.
 func (b *Builder) Build(s *scene.Scene, image func(*scene.Image) uintptr) *scene.Scene {
+	if !b.NoFold {
+		s = b.fold.Fold(s)
+	}
 	b.markEnclosing(s)
 	b.imageTexture = image
 	b.maskUsed = 0
@@ -407,12 +431,15 @@ func (b *Builder) Build(s *scene.Scene, image func(*scene.Image) uintptr) *scene
 	b.Backdrops = b.Backdrops[:0]
 	b.Stops = b.Stops[:0]
 	b.OpaqueCores = 0
+	b.joinSmall = false
 	everything := scene.Rect{X: -1e6, Y: -1e6, W: 2e6, H: 2e6}
 	b.stack = append(b.stack[:0], clip{rect: everything, bounds: scene.Rect{W: float32(s.Width), H: float32(s.Height)},
 		scissor: Scissor{0, 0, int32(s.Width), int32(s.Height)}})
 	b.planCull(s)
+	b.OpStart = b.OpStart[:0]
 	for i := range s.Ops {
 		op := &s.Ops[i]
+		b.OpStart = append(b.OpStart, int32(len(b.Instances)))
 		if b.culled[i] {
 			continue
 		}
@@ -583,19 +610,82 @@ func (b *Builder) Build(s *scene.Scene, image func(*scene.Image) uintptr) *scene
 			if op.Color != (scene.Color{}) {
 				tint = straight(op.Color)
 			}
-			b.add(Instance{
+			in := Instance{
 				Rect:   rect(op.Rect),
 				Radii:  scene.Corners(op.Rect, op.Radii, op.Continuous),
 				Color:  tint,
 				UV:     [4]float32{src.X / iw, src.Y / ih, (src.X + src.W) / iw, (src.Y + src.H) / ih},
 				Params: [4]float32{4, gray, nearest, opacity(op.Opacity)},
-			}, tex, op.Transform)
+			}
+			b.addCut(in, tex, op.Transform)
 		}
 	}
 
+	b.OpStart = append(b.OpStart, int32(len(b.Instances)))
+	b.joinLast()
 	b.dropIdleMasks(idleMaskBytes)
 	b.imageTexture = nil
 	return s
+}
+
+// joinArea is the most pixels a batch may cover for joinLast to join it
+// with its neighbors of other classes. On an M5 a draw call costs about 1.1 µs
+// of the CPU and 0.1 µs of the GPU, and a plain fill drawn with the shader of
+// joined classes costs the GPU 0.02 ns a pixel more with glyphs or shadows,
+// 0.04 with other fills and 0.075 with the general shader: at this many
+// pixels, the worst of them costs what the call it saves does.
+const joinArea = 128 * 128
+
+// joinLast joins the last batch, which no instance joins any more, into the
+// one before it when they differ only in their class and each batch they
+// were made of covers few pixels (joinArea): one batch of the general
+// class, Joined holding their classes. Scenes that interleave classes op by
+// op (each box a shadow then its fill, each row a fill then its label) would
+// otherwise draw a call per instance, which costs the CPU more than drawing
+// their few pixels with a shader of several classes costs the GPU. Batches
+// covering more keep their class, and their shader specialized for it.
+func (b *Builder) joinLast() {
+	n := len(b.Batches)
+	if n == 0 || !b.Classes || b.NoClasses || b.NoJoin {
+		return
+	}
+	bt := &b.Batches[n-1]
+	// The pixels of its quads (as the vertex shader grows them), at most.
+	area := float32(0)
+	for _, in := range b.Instances[bt.Start : bt.Start+bt.Count] {
+		e := float32(1)
+		if in.Params[0] == 1 {
+			e += 3 * in.Params[2]
+		}
+		if area += (in.Rect[2] + 2*e) * (in.Rect[3] + 2*e); area > joinArea {
+			break
+		}
+	}
+	fits := area <= joinArea
+	if last := &b.Batches[max(n-2, 0)]; n > 1 && b.joinSmall && fits && last.Scissor == bt.Scissor &&
+		last.ClipMask == bt.ClipMask && last.Opaque == bt.Opaque && last.Effect == nil && bt.Effect == nil && !last.Hole && !bt.Hole &&
+		(last.Image == 0 || bt.Image == 0 || last.Image == bt.Image) {
+		if j := last.Classes() | bt.Classes(); j != 1<<last.Class {
+			last.Class, last.Joined = ClassGeneral, j
+			if j&1 != 0 {
+				last.Joined = 0 // a general batch among them: every path
+			}
+		}
+		last.Count += bt.Count
+		last.Continuous = last.Continuous || bt.Continuous
+		last.Image |= bt.Image
+		b.Batches = b.Batches[:n-1]
+	}
+	b.joinSmall = fits
+}
+
+// Classes returns the classes of the instances of b, a bit (1 << Class) for
+// each (see Joined).
+func (b *Batch) Classes() uint32 {
+	if b.Joined != 0 {
+		return b.Joined
+	}
+	return 1 << b.Class
 }
 
 // addStops adds the stops of op's gradient to b.Stops, at most
@@ -681,8 +771,9 @@ func (b *Builder) add(in Instance, image uintptr, m scene.Affine) {
 		// code of those that need more.
 		b.Batches[n-1].Continuous = b.Batches[n-1].Continuous || continuous
 	} else {
+		b.joinLast()
 		b.Batches = append(b.Batches, Batch{Start: len(b.Instances), Scissor: sc, Image: image, ClipMask: b.preparedMask, Opaque: b.opaque, Class: class, Continuous: continuous})
-		n++
+		n = len(b.Batches)
 	}
 	if image != 0 {
 		b.Batches[n-1].Image = image
@@ -768,7 +859,7 @@ func (s Scissor) area() int64 {
 func (b *Builder) addShadow(in Instance, op *scene.Op, sigma float32) {
 	cur := &b.stack[len(b.stack)-1]
 	if b.NoShadowSplit || op.Cast.Empty() || op.Transform.Set || cur.scissor.Empty() {
-		b.add(in, 0, op.Transform)
+		b.addCut(in, 0, op.Transform)
 		return
 	}
 	core := shadowCore(op.Cast, scene.Corners(op.Cast, op.CastRadii, op.Continuous), op.Continuous)
@@ -778,7 +869,7 @@ func (b *Builder) addShadow(in Instance, op *scene.Op, sigma float32) {
 		Right: int32(math.Ceil(float64(op.Rect.X + op.Rect.W + reach))), Bottom: int32(math.Ceil(float64(op.Rect.Y + op.Rect.H + reach))),
 	}.intersect(cur.scissor)
 	if !worthSplitting(core, quad) {
-		b.add(in, 0, op.Transform)
+		b.addCut(in, 0, op.Transform)
 		return
 	}
 	b.addAround(in, op.Transform, core)
@@ -788,7 +879,8 @@ func (b *Builder) addShadow(in Instance, op *scene.Op, sigma float32) {
 // scissor rectangle of its own: they tile the current clip's scissor
 // rectangle less core, whatever the renderer's quad is (core must lie inside
 // the quad). The pixels are the same as drawing it whole, for an instance
-// that leaves the destination as it is within core.
+// that leaves the destination as it is within core. Each is cut into corners
+// and their twin (addCut).
 func (b *Builder) addAround(in Instance, m scene.Affine, core Scissor) {
 	cur := &b.stack[len(b.stack)-1]
 	whole := cur.scissor
@@ -805,7 +897,7 @@ func (b *Builder) addAround(in Instance, m scene.Affine, core Scissor) {
 			continue
 		}
 		b.scissorBatches(st, true)
-		b.add(in, 0, m)
+		b.addCut(in, 0, m)
 	}
 }
 
@@ -838,7 +930,7 @@ const opaqueMin = 16384
 func (b *Builder) addOpaque(in Instance, m scene.Affine, core Scissor) {
 	b.scissorBatches(core, true)
 	b.opaque = true
-	b.add(in, 0, m)
+	b.addCut(in, 0, m)
 	b.scissorBatches(Scissor{}, false)
 	b.opaque = false
 	b.OpaqueCores++
@@ -895,7 +987,7 @@ func (b *Builder) addFill(s *scene.Scene, in Instance, op *scene.Op) {
 	}
 	if b.NoRingSplit || op.Transform.Set || op.Paint != scene.PaintSolid || in.Color[3] != 0 || !scene.HasBorder(in.UV) ||
 		op.Rect.Empty() || cur.scissor.Empty() {
-		b.add(in, 0, op.Transform)
+		b.addCut(in, 0, op.Transform)
 		return
 	}
 	// A fill's quad reaches a pixel out of its rectangle (see the vertex shader).
@@ -905,7 +997,7 @@ func (b *Builder) addFill(s *scene.Scene, in Instance, op *scene.Op) {
 	}.intersect(cur.scissor)
 	core := ringCore(op.Rect, in.Radii, in.UV, op.Continuous)
 	if !worthSplitting(core, quad) {
-		b.add(in, 0, op.Transform)
+		b.addCut(in, 0, op.Transform)
 		return
 	}
 	b.addAround(in, op.Transform, core)

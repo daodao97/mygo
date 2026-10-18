@@ -14,7 +14,11 @@ framework safely. Read it before changing anything under `internal/`.
   takes 44 MB on macOS, and the counter example 65 to 67 MB on Linux, tiled
   to half of a 4K display at scale 2, 15 MB of it the window's buffer,
   without loading Mesa (122 to 155 MB with it). Nothing
-  polls: all work is driven by native events or explicit wake-ups.
+  polls: all work is driven by native events or explicit wake-ups. A
+  window of native UI whose content settled asks for no frame and arms no
+  timer (`TestSettledWindowSleeps`): the display link pauses, Go's
+  scheduler sleeps, and the counter example idles at about 0.005% of a
+  core on macOS (an AppKit window, 0.002%) and wakes no thread under X11.
 - **No cgo on desktop.** Desktop builds use `CGO_ENABLED=0`, so they can be
   cross-compiled from any machine. Native APIs are called at run time through
   [purego](https://github.com/ebitengine/purego) (`dlopen` + assembly
@@ -111,6 +115,7 @@ APIs do not add mobile screen components or default timers to framework startup.
 │   ├── accelerator/    parses "CmdOrCtrl+Shift+K"
 │   ├── update/         update manifests, signatures, archives and delta updates
 │   ├── idlemem/        measures apps' memory once idle, for the benchmarks
+│   ├── inputlatency/   measures how long input takes to reach the screen in native UI (macOS)
 │   └── e2e/            GUI tests and benchmarks against the real backend (MYGO_E2E=1)
 ├── packages/           Bun workspace (with the examples' frontends):
 │   ├── bridge/         the runtime injected into pages (→ internal/bridge/bridge.js)
@@ -2213,7 +2218,8 @@ either.
   focus colors appear together; holding the pointer asks for no further
   build passes. The engine lays it out with flexbox (`layout.go`) or
   as a grid (`grid.go`, CSS grid's placement and track sizing for fixed,
-  fractional and content-sized tracks); commits the boxes to the elements'
+  fractional and content-sized tracks), laying out again only what changed
+  since the last frame (see below); commits the boxes to the elements'
   states with the hit list in paint order, the focus order and the labels;
   paints a `scene.Scene`; and presents it. Input between frames goes to the
   states of the last frame's elements. An element's identity hashes its
@@ -2229,6 +2235,37 @@ either.
   frame that moved one builds another for what read the old one. Frames
   happen only when asked: input, `Invalidate`, `After`, or `AnimationFrame`
   while something moves.
+  The view builds the whole tree each frame, but layout reuses what did not
+  change (`ui/layoutcache.go`), as Blink reuses the layout result of a box
+  not marked as needing layout in the same constraint space and Flutter
+  skips a render object whose constraints are those of its last layout.
+  Nothing marks a rebuilt tree, so before laying out `sameLayout` compares
+  each element with what its state kept of it from the last frame: its
+  `layoutStyle` (the fields of `node` that lay it out, embedded in it), the
+  flags and inherited text styles the layout reads, its grid's tracks, its
+  spans, its image's size, and its children, the same elements in the same
+  order, each the same in turn. `layoutBox` then reuses the last layout of
+  an element that is the same when it gets a box of the same size: its
+  text's layout and its children's boxes, laying out again any child laid
+  out at another size since; what was measured of it (its content widths
+  and heights) is reused too, so that a container laid out again measures
+  its unchanged children at once. The state of a text element also keeps
+  the widths of its text and its last two layouts (`heldText`), found
+  again by their parameters, as Taffy keeps a node's measurements: an
+  element laid out anew whose text is the same, as the rows of a List
+  each frame, asks nothing of the text system's cache, whose key costs
+  more to hash than to compare. A grid measures the widths of only the
+  items its columns read (`contributes`): none for Fr columns with room
+  known, as CSS's minmax(0, 1fr). Transforms and scroll offsets of other
+  containers apply after layout and change nothing there. Elements that lay
+  out by more than they are built with are never reused, nor anything
+  around them: a List (rows built as it lays out), a Form, a Table's
+  fitted columns and a toolbar (which change elements inside them as they
+  lay out, so neither is anything inside those), an input, an element
+  attached to another. A field added to `node` must say whether layout
+  reads it (`TestLayoutInputs`); `TestLayoutCacheMatches` lays random trees
+  out with and without the cache (`engine.noLayoutCache`) as they change
+  at random, frame after frame.
   A frame asked for only by drawings that move (`Painter.AnimationFrame`,
   `Painter.After`, as spinners and progress bars of unknown length do)
   paints the elements of the last frame again at its own time
@@ -2961,7 +2998,9 @@ either.
   target the paragraph's layout (`laidOutBox`), so that a popover follows
   its anchor in the frame that moves it; then it goes to the other side, or
   the other way along the target, where that leaves the window less, and
-  moves along the target into the window (`alongTarget`). Popovers have no
+  moves along the target into the window (`alongTarget`); one that scrolls
+  vertically is first cut to the room the window has (`roomAlong`), as a
+  select's long list of options. Popovers have no
   backdrop: the engine notes what each press went down on (`downs`, for a
   pass), and `PressedOutside` walks from the last through parents, and from
   a popover to its anchor, which keeps presses in popovers of elements
@@ -3361,6 +3400,13 @@ either.
   border-only fills draw as up to four scissored strips around interiors
   where their output is zero. These scissors never change a clip mask's
   sampling coordinates. Both transformations are shared by all GPU backends.
+  Large fills, shadows and images with continuous corners (negative radii,
+  which only Metal gets) draw as nine-patches (`gpu/corners.go`): their
+  corners' boxes as they are, and the cross between them as a twin with
+  square corners, in batches whose pipeline lacks the curves' code. Away
+  from the boxes the shader computes the same value either way: a fill's
+  pixel area, and a blurred shadow whose samples miss the curved rows or
+  whose blurred sides round to 0 and 1 (9 sigma from the curve).
   Metal opts into three further builder capabilities: marking fills whose
   clip coverage is one, splitting opaque cores from blended edges, and
   batching by fragment class. Other renderers keep the original instance
@@ -3474,7 +3520,11 @@ either.
     Opaque fill cores use an unblended pipeline in BGRA8; float16 keeps
     blending to preserve its interpolation rounding. Fragment functions are
     specialized by batch class and continuous corners, with general shaders
-    as an identical fallback. A worker compiles and warms these pipelines,
+    as an identical fallback. Runs of small batches of different classes
+    (each covering at most 128×128 pixels, as a box's shadow then its
+    fill) join into one batch whose function holds just their classes'
+    paths (`Batch.Joined`): a draw call costs the CPU more than those
+    pixels cost the joined function. A worker compiles and warms these pipelines,
     cached per device, outside the frame path. Renderer release stops and
     joins that worker before releasing its shader library. Float16 shadows
     stay general, and fills with fractional opacity avoid the plain class,
@@ -3486,7 +3536,37 @@ either.
     again, and releases GPU instance buffers, atlas/image textures and
     backdrop textures: an idle window keeps one frame of memory. Its
     drawables are not `framebufferOnly`, as effects sample the drawable
-    for their backdrops. Colors
+    for their backdrops.
+    A frame draws only what changed since its drawable was drawn. Core
+    Animation hands the layer's drawables out in turn, and each holds the
+    frame drawn into it last: the renderer keeps, by the drawable's
+    texture (retained, so that no other takes its address), what changed
+    in the frames since (`gpu.Ages`, as EGL's buffer age says), found by
+    comparing each scene with the last (`scene.Differ`, as the CPU
+    renderer does), grows it by the backdrops of the effects it meets,
+    and, while that is less than half the frame, loads the drawable
+    rather than clearing it, copies a texel cleared to the frame's color
+    over the area (with the `down` pass, so that the GPU converts the
+    color as it does clearing), and draws the batches scissored to it,
+    leaving out those outside. Apple's tile-based GPUs then load and store
+    only the tiles the pass draws in: a caret blinking in a window of
+    3200×2000 pixels takes 0.4 ms of the GPU a frame rather than 2.4,
+    and a spinner 0.4 rather than 2.9, on an M5. Copying the last frame
+    forward instead (a blit) costs about what drawing it whole does, 0.34
+    ms against 0.43 at 3456×2000. A frame whose scene is the last one's
+    draws nothing and takes no drawable. Apple does not document that
+    drawables keep what was drawn: a drawable not seen yet, the drawables
+    of a new size or format, and those after the timer shrank them draw
+    whole, and `MYGO_PARTIAL=0` draws every frame whole. The pixels are
+    those of the frame drawn whole, byte for byte: an op that the builder
+    puts under another pipeline than in the last frame (a batch
+    specialized for other classes, a pipeline made meanwhile) draws a
+    unit in the last place apart here and there, so its bounds count as
+    changed (`pipelineDamage`), as do those of a clip that starts or stops
+    holding an op drawn under a transform, which it then cuts with a mask
+    (`scene.Differ`); `TestPartialFramesMatchWhole` draws random scenes
+    changing frame after frame into three targets in turn and compares
+    each frame with it drawn whole. Colors
     outside the sRGB gamut (`ui.Oklch`, as CSS's `oklch()`) are in a
     table of the scene (`scene.Scene.Wide`), which ops and glyphs point
     into with a 16-bit index (`Op.Wide`, in room the op's other fields
@@ -3546,9 +3626,10 @@ either.
   solid spans inside shapes and only the edges of shadows computed, and
   blends ordinary opaque mask glyphs in integers, retaining the general
   path for gradients, corrected/subpixel text and rounded clip edges. It
-  redraws only what differs from the last scene (`raster.Renderer`), with
-  the effects reading their backdrops that meets and those backdrops, in
-  rectangles apart from each other (`addBackdrops`): it is
+  redraws only what differs from the last scene (`raster.Renderer`, with
+  `scene.Differ`, which compares the operations of two scenes from both
+  ends), with the effects reading their backdrops that meets and those
+  backdrops, in rectangles apart from each other (`AddBackdrops`): it is
   the renderer of tests, of `MYGO_GPU=0` and of Linux where OpenGL would not
   run on a GPU, and the one a window falls back to when its GPU renderer
   fails.
@@ -3585,7 +3666,8 @@ either.
   With a GPU renderer, every frame draws on the GPU, small changes too, so
   a gesture never switches renderers mid-way: on the CPU, a frame
   redrawing glass or a blur that content scrolls under takes 30 to 70 ms
-  on a large window, where Metal takes 2 to 3.
+  on a large window, where Metal takes 2 to 3. Metal draws only what
+  changed (above); Direct3D 11 and OpenGL draw every frame whole.
 
   Two seconds after the last frame (`frameIdle`), the host frees the frame
   drawn in memory, as large as the window, which the next frame draws whole,
@@ -4047,15 +4129,86 @@ The Metal `BenchmarkRenderFillRate` benchmark covers nested opaque layers,
 large border rings and stacked shadows at 3456×2000. It reports command
 buffer GPU timestamps with the existing benchmark harness; it waits for
 individual offscreen frames and does not measure display scheduling or
-input latency. `MYGO_FRAME_STATS` includes instance and batch counts,
+input latency, which `internal/inputlatency` measures (below). `MYGO_FRAME_STATS` includes instance and batch counts,
 culled operations, opaque cores and Metal specialization fallbacks.
 `MYGO_GPU_REQUIRED=1` makes the Metal optimization identity tests fail if
 no renderer can be created. They compare raw BGRA8 and float16 output with
 both disabled optimizations and the shader from upstream f2eca9f7, including
 canvases and pixelated sprites.
 
+`BenchmarkStressFrame` in `ui` times the frames of views that change all
+they show every frame, in a window of 900×640 at scale 2: 600 rounded
+boxes casting shadows moving and changing color, 300 labels whose numbers
+change, a column of 1000 rows in a clipped box moved by a translation,
+a `List` of 100,000 rows scrolling 3 rows a frame, and a dashboard of 12
+cards with shadows, texts and progress bars. Its host (`stressHost`)
+hands the scene on rather than draw it on the CPU, so `ns/op` is the
+frame built, laid out and painted. `BenchmarkStressFrameGPU` draws the
+same frames with Metal (`metal.Offscreen`), its `GPU-ms` the GPU's time,
+which the page shows as the GPU metric.
+
 Benchmarks are described on the page by their doc comments, which the
 site reads when it is built: start them with the benchmark's name.
+
+### Input latency
+
+`go run ./internal/inputlatency` measures, on macOS, how long input takes
+to show on screen in native UI: from when an event arrives to when the
+frame showing it reaches the display, as its drawable's presented handler
+tells (`presentedTime`). Each run is a process with a window shown without
+activating the app, which types into a text area, scrolls a list with the
+trackpad or drags a box, with events at any time within a refresh, and
+prints what the latency is made of: waiting for the main thread, handling
+the event, waiting for the frame to start, building it, waiting for a
+drawable, and from the drawable to the screen. The window server settles
+in a state that lasts a run and changes from run to run, so compare the
+medians of several runs (`-runs`, six by default), alternating builds.
+
+On an M5 with a 120 Hz external display (eight runs each, Oct 2026), a
+key typed in a text area shows in 26.6 ms on average (99th percentile
+31.9), a trackpad scroll of a list in 27.2 ms (31.4) and a drag in 27.6 ms
+(31.7); on the built-in display at 60 Hz, 33, 46 and 43 ms. Of a scroll's
+27 ms, 4.2 wait for the display link's next tick (half a refresh), 0.4
+build and paint the frame, no time waits for a drawable, and 22.7 go from
+the drawable to the screen: the window server composites the frames it
+has at a refresh, and the display shows that composite two refreshes after
+the refresh the frame was presented in, the third when it was presented
+too late in the refresh before. A bare CAMetalLayer window takes as long. A
+typed key's frame starts at once (a frame after a pause draws in the pass
+of the run loop that asked for it), but handling the key takes 3.4 ms:
+the text input tells the input method where the text it changed is
+(`textInputAdapter.changed`), which lays its paragraph out, here 1,800
+characters, which the frame then reuses.
+
+What was measured and left as it is:
+
+- *Drawing late in the refresh*, a deadline before the next vsync rather
+  than at the tick, for frames to show later input: the window server's
+  composite comes from half a millisecond before the vsync to a
+  millisecond and a half after it, from run to run, and the GPU must have
+  finished the frame by then. Drawing 3 ms before the vsync saved 2 ms of
+  29 when frames presented at the tick missed the composite, was 11 ms
+  slower in a run where they made it, and drew a fifth fewer frames.
+- *Skipping a refresh when frames show a refresh late*, as the presented
+  handlers tell, as `Behind` does when a drawable was waited for: in a bare
+  CAMetalLayer window a skip brought most runs from 25.9 to 17.5 ms, but
+  MyGo's frames, which take longer from the tick to their present, stayed
+  late after skips.
+- *CAMetalDisplayLink* with `preferredFrameLatency` 1 or 2 took a refresh
+  more than drawing at a CADisplayLink's tick (33 against 17 to 25 ms at
+  120 Hz), besides keeping the layer from giving drawables outside its
+  callbacks (synchronous resize frames).
+- *Two drawables* or *presenting with the transaction* settled in the same
+  states from run to run, with no gain that held, and with two drawables
+  frames waited for them.
+
+On Windows, `SetMaximumFrameLatency(1)` keeps one frame ahead of the
+screen: a frame drawn while one waits blocks in `Present` until the
+refresh shows it, and the next frame, drawn when input asks for one after
+`Present` returns, reads input from that refresh, as a frame waiting for
+a swap chain's frame latency object before it draws would. Linux's frames
+follow GTK's frame clock. Neither is measured: GitHub's runners and the
+containers have no display that refreshes.
 
 ### Binary size
 
@@ -4224,6 +4377,7 @@ which npm allows only for packages that exist: the first release uses an
 | Cookies | the default `WKWebsiteDataStore`'s `WKHTTPCookieStore`, URLs matched in Go (`platform.CookieMatchesURL`), `Set` through `NSHTTPCookie`'s parser with a stand-in name and value; `Clear` with `removeDataOfTypes:` | the default web context's `WebKitCookieManager` (2.42+; `get_cookies` for a URL), kept in `cookies.sqlite` of the user data directory (`set_persistent_storage`, as WebKitGTK keeps them in memory otherwise); libsoup 3 or 2.4 to match WebKitGTK 4.1 or 4.0; `Clear` with `webkit_website_data_manager_clear` | `ICoreWebView2CookieManager` (`ICoreWebView2_2`) of a window's web view, or before one shows a page of a hidden web view of the app window, closed once one does; a window's first navigation waits for the calls under way; `ClearBrowsingData` goes the same way; changes are polled with `GetCookies` until they show, failing after 2 s; `GetCookies(uri)`, `DeleteAllCookies`; `put_Expires` called with `comCallFloat` |
 | ClearBrowsingData | default `WKWebsiteDataStore`, all types | the web context's website data manager | the WebView2 profile's `ClearBrowsingDataAll` (needs a window) |
 | permissions | `WKUIDelegate` media capture (camera, microphone) | `permission-request` (camera, microphone, geolocation, notifications) | `PermissionRequested` (the same four; WebView2 asks about others) |
+| user agent | `customUserAgent`; `UserAgentSuffix` is the configuration's `applicationNameForUserAgent`, which a `window.open()` window does not inherit | `WebKitSettings:user-agent`; `UserAgentSuffix` appends application details, split at the first "/" | `ICoreWebView2Settings2`'s user agent, and a suffix appended to the settings' own user agent; a runtime without `Settings2` ignores both |
 | file associations | `CFBundleDocumentTypes`; files arrive with `application:openURLs:` | desktop entry `MimeType` (`%U`), a shared-mime-info package in the .deb for types the app defines | ProgIDs and `OpenWithProgids` written by the installer |
 | document windows | `representedURL` (proxy icon, Command-click folder menu) and `setDocumentEdited:` (the dot), then the traffic lights are laid out again | the core puts `*` before the title | the core puts `*` before the title |
 | replacing a document's file | `-[NSFileManager replaceItemAtURL:withItemAtURL:…]` (permissions, dates, extended attributes, ACLs, identity) | rename after `chmod` and `lchown` to the target's | `ReplaceFileW`, retried on sharing violations |

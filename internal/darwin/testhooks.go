@@ -277,6 +277,13 @@ func TestWebViewAttached(handle uintptr) bool {
 	return w != nil && send(w.web, "window") == w.win
 }
 
+// TestTabFocusesLinks reports whether Tab reaches links and form controls
+// that are not text fields in a window's page.
+func TestTabFocusesLinks(handle uintptr) bool {
+	w := theBackend.byNSWindow[id(handle)]
+	return w != nil && w.web != 0 && sendBool(send(send(w.web, "configuration"), "preferences"), "tabFocusesLinks")
+}
+
 // TestIsFrontmost reports whether the application is the frontmost one,
 // which NSApp's isActive does not tell while a nonactivating panel is the
 // key window: it reports the app active then.
@@ -513,6 +520,24 @@ func TestKeyShift(handle uintptr, code uint16, chars string, shift bool) bool {
 	if w == nil || w.surface == nil {
 		return false
 	}
+	sendKeyToWindow(w, code, chars, shift)
+	return true
+}
+
+// TestPageKeyShift presses a key in a window showing a web page, which the
+// window sends to its first responder as it does the keyboard's, with Shift
+// held when shift is set. It reports false for a window without a page.
+func TestPageKeyShift(handle uintptr, code uint16, chars string, shift bool) bool {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil || w.web == 0 {
+		return false
+	}
+	sendKeyToWindow(w, code, chars, shift)
+	return true
+}
+
+// sendKeyToWindow sends a key down and up to a window, as the keyboard does.
+func sendKeyToWindow(w *window, code uint16, chars string, shift bool) {
 	var flags uint
 	if shift {
 		flags = 1 << 17 // NSEventModifierFlagShift
@@ -526,7 +551,6 @@ func TestKeyShift(handle uintptr, code uint16, chars string, shift bool) bool {
 			send(w.win, "sendEvent:", uintptr(ev))
 		}
 	})
-	return true
 }
 
 // TestCompose does what an input method does to a window showing native
