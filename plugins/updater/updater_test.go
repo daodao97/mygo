@@ -498,6 +498,30 @@ func TestSchedule(t *testing.T) {
 	}
 }
 
+func TestCheckAtLaunch(t *testing.T) {
+	h := newHarness(t, Options{})
+	defer func(w time.Duration) { firstCheckWait = w }(firstCheckWait)
+	firstCheckWait = time.Millisecond
+	// The last launch checked an hour ago; a version came out since.
+	h.u.update(func(s *state) { s.LastCheck = now().Add(-time.Hour) })
+	h.result = func(context.Context) (*release, error) { return newRelease("2.0.0", nil), nil }
+	h.u.running = true
+	h.u.schedule()
+	s := h.shown()
+	v := waitView(t, s, "A new version of")
+	s.Respond(v.Prompt, actionLater, false)
+	wait.Until(t, "the next check scheduled", func() bool {
+		h.u.mu.Lock()
+		defer h.u.mu.Unlock()
+		return h.u.session == nil && h.u.timer != nil
+	})
+	// Then an interval after it, not at once again.
+	time.Sleep(20 * time.Millisecond)
+	if n := h.checks.Load(); n != 1 {
+		t.Errorf("%d checks, want 1", n)
+	}
+}
+
 func TestNextCheck(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	day := 24 * time.Hour

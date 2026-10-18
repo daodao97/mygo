@@ -204,7 +204,6 @@ var (
 
 	// shell32
 	procShellExecuteW               = shell32.NewProc("ShellExecuteW")
-	procSHFileOperationW            = shell32.NewProc("SHFileOperationW")
 	procShellNotifyIconW            = shell32.NewProc("Shell_NotifyIconW")
 	procShellNotifyIconGetRect      = shell32.NewProc("Shell_NotifyIconGetRect")
 	procSHCreateItemFromParsingName = shell32.NewProc("SHCreateItemFromParsingName")

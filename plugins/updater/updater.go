@@ -1,9 +1,10 @@
 // Package updater is the update window of MyGo apps, in the manner of
 // Sparkle on macOS. It checks for updates in the background, once a day by
 // default, and when a new version is out it shows its release notes and
-// offers to install it, skip it or remind the user later. Installing
-// downloads the update with a progress bar, then offers to relaunch the
-// app into it.
+// offers to install it, skip it or remind the user later. The first check
+// is soon after launch, so a version that came out since the app last ran
+// shows when it opens again. Installing downloads the update with a
+// progress bar, then offers to relaunch the app into it.
 //
 //	mygo.Use(updater.Plugin)
 //
@@ -259,6 +260,9 @@ type updater struct {
 	// failed is when the last automatic check failed, which retries sooner
 	// than the interval.
 	failed time.Time
+	// launchChecked is set once a check began since launch: until then the
+	// next one is soon, however recent the last check of an earlier launch.
+	launchChecked bool
 	// session is the check in progress; installed the update installed
 	// while the app runs, which runs at the next launch.
 	session   *session
@@ -381,7 +385,10 @@ func (u *updater) schedule() {
 	if !u.running || u.session != nil || u.installed != nil || !u.automaticChecks() {
 		return
 	}
-	wait := max(nextCheck(u.state.LastCheck, u.failed, u.opts.Interval, now()).Sub(now()), firstCheckWait)
+	wait := firstCheckWait
+	if u.launchChecked {
+		wait = max(nextCheck(u.state.LastCheck, u.failed, u.opts.Interval, now()).Sub(now()), firstCheckWait)
+	}
 	u.timer = time.AfterFunc(wait, func() { u.begin(false) })
 }
 
@@ -431,6 +438,7 @@ func (u *updater) begin(user bool) {
 	}
 	s := newSession(u, user)
 	u.session = s
+	u.launchChecked = true
 	if u.timer != nil {
 		u.timer.Stop()
 		u.timer = nil

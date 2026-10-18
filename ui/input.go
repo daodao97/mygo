@@ -21,6 +21,12 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		// Whatever the event changes, the next frame builds anew.
 		rt.redraw = false
 	}
+	switch ev.Kind {
+	case platform.SurfaceFrame, platform.SurfaceResize, platform.SurfaceShown:
+	default:
+		// Input, which the next frame builds even out of sight.
+		rt.input = true
+	}
 	x, y := float32(ev.X), float32(ev.Y)
 	if ev.Kind == platform.PointerDown || ev.Kind == platform.WebViewPress {
 		// A press is of no element until countPress finds it one.

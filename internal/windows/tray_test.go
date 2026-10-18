@@ -2,7 +2,13 @@
 
 package windows
 
-import "testing"
+import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
+	"testing"
+)
 
 // TestTrayNumber numbers icons by their IDs, whatever order they come in,
 // apart from the numbers NewTray counts.
@@ -40,5 +46,30 @@ func TestTrayNumber(t *testing.T) {
 	}
 	if twice := number("app.cpu", "app.cpu"); twice["app.cpu"] != 2 {
 		t.Errorf("an icon with the ID of another is %#x", twice["app.cpu"])
+	}
+}
+
+// TestWhiten draws a template image white on a dark taskbar, as macOS
+// tints it, keeping its shape.
+func TestWhiten(t *testing.T) {
+	src := image.NewNRGBA(image.Rect(0, 0, 2, 1))
+	src.SetNRGBA(0, 0, color.NRGBA{0, 0, 0, 255})
+	src.SetNRGBA(1, 0, color.NRGBA{0, 0, 0, 56})
+	var b bytes.Buffer
+	if err := png.Encode(&b, src); err != nil {
+		t.Fatal(err)
+	}
+	out, err := whiten(b.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(bytes.NewReader(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for x, a := range []uint8{255, 56} {
+		if c := color.NRGBAModel.Convert(img.At(x, 0)).(color.NRGBA); c != (color.NRGBA{255, 255, 255, a}) {
+			t.Errorf("pixel %d is %v", x, c)
+		}
 	}
 }

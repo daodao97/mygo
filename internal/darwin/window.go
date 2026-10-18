@@ -243,8 +243,31 @@ func (w *window) createFlyout() {
 		send(w.win, "setLevel:", nsPopUpMenuWindowLevel)
 	}
 	w.fillWindow(content)
+	w.roundFlyout()
 	w.register()
 	w.PlaceFlyout(w.flyout, w.flyoutSize)
+}
+
+// roundFlyout cuts a flyout's content view, and the material in it, to
+// the corners of Flyout.Radius: the window is clear, so its shadow, made
+// from what it draws, follows them.
+func (w *window) roundFlyout() {
+	if w.flyout.Radius <= 0 {
+		return
+	}
+	send(w.view, "setWantsLayer:", 1)
+	layer := send(w.view, "layer")
+	msgSetFloat(layer, sel("setCornerRadius:"), float64(w.flyout.Radius))
+	send(layer, "setCornerCurve:", uintptr(nsString("continuous")))
+	send(layer, "setMasksToBounds:", 1)
+	if w.effect != 0 {
+		send(w.effect, "setWantsLayer:", 1)
+		el := send(w.effect, "layer")
+		msgSetFloat(el, sel("setCornerRadius:"), float64(w.flyout.Radius))
+		send(el, "setCornerCurve:", uintptr(nsString("continuous")))
+		send(el, "setMasksToBounds:", 1)
+	}
+	send(w.win, "invalidateShadow")
 }
 
 // fillWindow gives a new window its look and its web view or surface.
@@ -607,6 +630,12 @@ func (b *Backend) watchOutsideClicks() {
 		var open []*window
 		for _, w := range b.byNSWindow {
 			if w.opts.Flyout != nil && w.popover == 0 && w.flyout.Focusable && !w.closed && sendBool(w.win, "isVisible") {
+				// A press on its tray icon is left to the icon's click,
+				// which toggles it, rather than closing it for the click
+				// to open it again.
+				if t, ok := w.flyout.Tray.(*tray); ok && t.pressed() {
+					continue
+				}
 				open = append(open, w)
 			}
 		}

@@ -262,7 +262,13 @@ const frameIdle = 2 * time.Second
 
 func (h *windowHost) refreshRate() float32 { return float32(h.conn.Surface.RefreshRate()) }
 
+// occluded reports whether nothing of the window shows: never before its
+// first frame reached the surface, which a window made hidden waits for
+// to become ready to show (OnReadyToShow), though it shows nothing yet.
 func (h *windowHost) occluded() bool {
+	if !h.shown {
+		return false
+	}
 	s, ok := h.conn.Surface.(platform.OccludableSurface)
 	return ok && s.Occluded()
 }
@@ -529,9 +535,11 @@ func (h *windowHost) retryLater() {
 	h.retryAt = time.Now().Add(h.backoff)
 }
 
-// capture renders the last frame in memory.
+// capture renders the last frame in memory: built now where none was yet,
+// or where one waits for the window to show (holdFrame), so that a window
+// out of sight shows what it shows now.
 func (h *windowHost) capture() (int, int, []byte) {
-	if h.last == nil {
+	if h.last == nil || h.rt.held {
 		h.rt.runFrame()
 	}
 	s := h.last

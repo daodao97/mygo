@@ -5,6 +5,7 @@ package mygo
 import (
 	"bytes"
 	"image/png"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -27,6 +28,18 @@ func TestFileIcon(t *testing.T) {
 	}
 	if _, err := Shell.FileIcon(filepath.Join(dir, "missing"), 16); err == nil {
 		t.Error("FileIcon of a missing file did not fail")
+	}
+}
+
+func TestTrashItemRelativePath(t *testing.T) {
+	t.Chdir(t.TempDir())
+	defer func() { fake.Trashed = nil }()
+	if err := Shell.TrashItem(filepath.Join("notes", "old.txt")); err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := os.Getwd()
+	if want := []string{filepath.Join(wd, "notes", "old.txt")}; !slices.Equal(fake.Trashed, want) {
+		t.Errorf("TrashItem passed %q, want %q", fake.Trashed, want)
 	}
 }
 

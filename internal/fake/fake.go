@@ -1045,8 +1045,15 @@ type shell struct{}
 func (shell) OpenExternal(string) error { return nil }
 func (shell) OpenPath(string) error     { return nil }
 func (shell) ShowItemInFolder(string)   {}
-func (shell) TrashItem(string) error    { return nil }
 func (shell) Beep()                     {}
+
+// Trashed are the paths TrashItem was given.
+var Trashed []string
+
+func (shell) TrashItem(path string) error {
+	Trashed = append(Trashed, path)
+	return nil
+}
 
 // Opened are the paths OpenApplication was given.
 var Opened []string

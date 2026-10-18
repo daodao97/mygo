@@ -315,32 +315,6 @@ func (shell) ShowItemInFolder(path string) {
 	_ = shellExecute("open", "explorer.exe", `/select,"`+path+`"`)
 }
 
-func (shell) TrashItem(path string) error {
-	type shFileOp struct {
-		Hwnd                 uintptr
-		Func                 uint32
-		From                 *uint16
-		To                   *uint16
-		Flags                uint16
-		AnyOperationsAborted int32
-		NameMappings         uintptr
-		ProgressTitle        *uint16
-	}
-	const (
-		foDelete          = 3
-		fofSilent         = 0x0004
-		fofNoConfirmation = 0x0010
-		fofAllowUndo      = 0x0040
-		fofNoErrorUI      = 0x0400
-	)
-	from := append(utf16Units(path), 0, 0) // double NUL terminated
-	op := shFileOp{Func: foDelete, From: &from[0], Flags: fofAllowUndo | fofNoConfirmation | fofSilent | fofNoErrorUI}
-	if r, _, _ := procSHFileOperationW.Call(uintptr(unsafe.Pointer(&op))); r != 0 || op.AnyOperationsAborted != 0 {
-		return fmt.Errorf("mygo: cannot move %s to the recycle bin (error %#x)", path, r)
-	}
-	return nil
-}
-
 func (shell) Beep() { procMessageBeep.Call(0) }
 
 // Screen.

@@ -100,6 +100,7 @@ func (e *node) layoutToolbar(cw float32) {
 			// Laid out again: the room may have grown.
 			ch.flags &^= flagAbsolute | flagInvisible
 			ch.collapsed = false
+			e.forgetIntrinsic()
 		}
 		if ch.flags&flagAbsolute == 0 {
 			kids = append(kids, ch)
@@ -135,6 +136,7 @@ func (e *node) layoutToolbar(cw float32) {
 	collapse := func(ch *node) {
 		ch.flags |= flagAbsolute | flagInvisible
 		ch.collapsed = true
+		e.forgetIntrinsic()
 	}
 	// The items of a group of controls, as a toggle group's, are set apart
 	// by separators.

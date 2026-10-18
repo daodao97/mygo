@@ -2249,12 +2249,20 @@ either.
   While nothing of the window shows (`platform.OccludableSurface`: a macOS
   window hidden, minimized or covered by other windows, whose display link
   still ticks, at the display's rate for half a minute, then at about 40
-  Hz), what moves asks for no frame (`held`), as browsers pause the
-  animation frames of windows out of sight; changes of the state still
-  build frames, so that assistive technology and captures follow them.
+  Hz), what moves asks for no frame, and a frame asked for by a change of
+  the state waits (`holdFrame`; both `held`), as browsers draw nothing for
+  windows out of sight and as Apple asks of Mac apps: the view function,
+  `Draw` and the work `After` drives wait until some of the window shows.
   `SurfaceShown`, sent as some of the window shows again
-  (`windowDidChangeOcclusionState:`), has a held animation go on from
-  where the time puts it.
+  (`windowDidChangeOcclusionState:`), draws what changed, and has a held
+  animation go on from where the time puts it. The window shows its last
+  frame until then, about a refresh: captures of it meanwhile, as sharing
+  its window in a video call, see that frame. A frame still builds after
+  input (`input`, as keys typed into a key window another app's covers),
+  as assistive technology turns on, and for `CapturePage`, which builds
+  the frame waiting; and none waits before the window's first frame
+  reached its surface (`windowHost.occluded`), which a window made hidden
+  waits for to become ready to show.
   The window gaining or losing the keyboard focus draws a frame only when
   the last frame read it (`windowFocus`, as a focus ring, a caret, a
   selection's color or a focused text input's IME state do): a window

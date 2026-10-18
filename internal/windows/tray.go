@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"image"
+	"image/color"
 	"image/png"
 	"unsafe"
 
@@ -71,6 +73,11 @@ type tray struct {
 	temporary    bool // added only to show a notification
 	// dark is the taskbar's appearance, as last told.
 	dark bool
+	// image is the PNG the icon shows, and template whether it is black
+	// and transparent, which the icon shows white on a dark taskbar as
+	// macOS tints a template image.
+	image    []byte
+	template bool
 }
 
 func (b *Backend) NewTray(h platform.TrayHandler) (platform.Tray, error) {
@@ -124,16 +131,44 @@ func (t *tray) update() {
 }
 
 func (t *tray) SetImage(data []byte, template bool) error {
-	icon, err := iconFromPNG(data, 0)
+	img := data
+	if template && t.dark {
+		var err error
+		if img, err = whiten(data); err != nil {
+			return err
+		}
+	}
+	icon, err := iconFromPNG(img, 0)
 	if err != nil {
 		return err
 	}
 	if t.icon != 0 {
 		procDestroyIcon.Call(t.icon)
 	}
-	t.icon = icon
+	t.icon, t.image, t.template = icon, data, template
 	t.update()
 	return nil
+}
+
+// whiten draws a template image white, keeping its alpha.
+func whiten(data []byte) ([]byte, error) {
+	src, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	r := src.Bounds()
+	dst := image.NewNRGBA(r)
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			_, _, _, a := src.At(x, y).RGBA()
+			dst.SetNRGBA(x, y, color.NRGBA{255, 255, 255, uint8(a >> 8)})
+		}
+	}
+	var b bytes.Buffer
+	if err := png.Encode(&b, dst); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
 }
 
 func (t *tray) SetTitle(string) {}
@@ -410,6 +445,9 @@ func (b *Backend) traysAppearance() {
 	for _, t := range b.trays {
 		if dark := t.Dark(); dark != t.dark {
 			t.dark = dark
+			if t.template {
+				t.SetImage(t.image, true)
+			}
 			t.h.AppearanceChanged()
 		}
 	}

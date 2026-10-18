@@ -28,8 +28,9 @@ func main() {
 }
 ```
 
-- It checks in the background once a day, the first time 10 seconds after
-  launch when a check is due. When a new version is out, a window shows its
+- It checks in the background 10 seconds after launch, then once a day
+  while the app runs, so a version that came out since the app last ran
+  shows when it opens again. When a new version is out, a window shows its
   release notes and offers **Install Update**, **Remind Me Later** and
   **Skip This Version**. Background checks do not offer a skipped version
   again, but offer the next one.

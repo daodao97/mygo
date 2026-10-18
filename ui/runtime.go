@@ -291,16 +291,16 @@ type engine struct {
 	// nothing else asked for one since; painted is the size and scale of
 	// the window, and gen the text system's Generation, as the last frame
 	// was built. The host's repaintTimer asks for a frame at repaintDue,
-	// unless one came or was asked for since. held tells that what moves
-	// waits for the window to show.
-	// was built. repaintTimer asks for a frame at repaintDue, unless one
-	// came or was asked for since. held tells that what moves waits for
-	// the window to show.
+	// unless one came or was asked for since. held tells that a frame, for
+	// what moves or what changed, waits for the window to show; input
+	// tells that an event other than a frame's came since the last frame
+	// built.
 	animating  bool
 	repainting bool
 	repaintAt  time.Time
 	redraw     bool
 	held       bool
+	input      bool
 	painted    [3]float32
 	gen        uint64
 	repaintDue time.Time
@@ -489,6 +489,7 @@ func (rt *engine) runFrame() {
 	defer rt.endFrame()
 
 	rt.frame++
+	rt.input = false
 	rt.focusRead = false
 	rt.stats.begin(rt)
 	now := rt.now()
@@ -681,6 +682,9 @@ func (rt *engine) repaintNow() {
 // elements painted again when only drawings moved since, else a frame
 // built anew.
 func (rt *engine) surfaceFrame() {
+	if rt.holdFrame() {
+		return
+	}
 	if rt.touch.active && !rt.touch.holdUntil.IsZero() && !rt.now().Before(rt.touch.holdUntil) {
 		rt.redraw = false // A long press changes widget state, not just paint.
 	}
@@ -690,6 +694,24 @@ func (rt *engine) surfaceFrame() {
 		return
 	}
 	rt.runFrame()
+}
+
+// holdFrame keeps a frame from drawing while nothing of the window shows,
+// reporting whether it did: what changed draws once some of it shows
+// (SurfaceShown), as browsers draw nothing for windows out of sight and
+// as Apple asks of Mac apps, rather than frames nobody sees. A window
+// still draws one after input, as keys typed into a key window another
+// app's covers, and one as assistive technology turns on
+// (accessibilityOn); and none waits before the window's first frame
+// reached its surface (windowHost.occluded).
+func (rt *engine) holdFrame() bool {
+	if rt.input || rt.inFrame || !rt.host.occluded() {
+		return false
+	}
+	rt.held = true
+	rt.redraw, rt.repaintDue = false, time.Time{}
+	rt.host.repaintTimer(time.Time{})
+	return true
 }
 
 // repaintFrame paints the elements of the last frame again, at the time of

@@ -202,8 +202,10 @@ and call `p.AnimationFrame()` while it moves, or `p.After(d)` when it
 changes in steps. Unless something else changed, those frames paint the
 elements of the last frame again without running the view, so they cost
 only the painting; and an element out of view is not painted, so it asks
-for none. While other windows cover the window, nothing that moves draws
-frames, from `Draw` or the view, until it shows again:
+for none. While the window is out of sight (hidden, minimized, or covered
+by other windows), MyGo draws no frames at all, from `Draw` or the view,
+until some of it shows again: compute what moves from the time, as here,
+and it shows where the time puts it (see [Motion](motion.md#out-of-sight)):
 
 ```go
 ui.Box(c).Height(4).Draw(func(p *ui.Painter, r ui.Rect) {

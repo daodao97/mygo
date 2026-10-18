@@ -453,6 +453,69 @@ last value. What changes without moving still changes smoothly: colors
 system's spinners do.
 
 Animations draw frames only while something moves, at the display's rate,
-and none while other windows cover the window. Frames moving values the
-view reads run the view; poses, content transitions, and drawings that
+and none while the window is out of sight (below). Frames moving values
+the view reads run the view; poses, content transitions, and drawings that
 animate from their `Draw` only paint.
+
+## Out of sight
+
+While nothing of a window shows (on macOS: hidden, minimized, on another
+Space, or entirely covered by other windows; in a browser: a tab in the
+background), MyGo draws no frames for it, as browsers draw nothing for
+pages out of sight and as Apple asks of Mac apps. The view does not run,
+`Draw` is not called, and the frames `After` and `Painter.After` ask for
+wait. As soon as some of the window shows, it draws once, with everything
+that changed meanwhile; until then the screen shows its last frame, for
+about a refresh. A frame still builds after input (keys typed into a key
+window another app's window covers), when assistive technology turns on,
+and for `Window.CapturePage`, so that a capture shows the window as it is
+now. Windows and Linux do not tell MyGo when a window is out of sight, so
+there it draws as it always did.
+
+What this means for motion:
+
+- **What MyGo animates goes on from where the time puts it.** A spring,
+  an `Animate` on its way, a `Loop`, keyframes and timelines running when
+  the window went out of sight are further along, or done, when it shows.
+- **A target that changed out of sight animates when the window shows.**
+  The view first sees the new target then, so the value moves to it from
+  where it was, as a CSS transition does for a change made in a hidden
+  tab.
+- **Compute your own motion from the time, not from frames.** A start
+  time taken in the first frame that draws something, or a count of
+  frames, starts over when the window shows, and plays what happened
+  meanwhile as if it just began. Take the time from when the state
+  changed, in the code that changes it, and the view shows a change made
+  out of sight as done:
+
+```go
+// counter eases from one value to the next over 400 ms, by the clock.
+type counter struct {
+	from, to float32
+	changed  time.Time
+}
+
+const ease = 400 * time.Millisecond
+
+// at returns the value shown at t.
+func (n counter) at(t time.Time) float32 {
+	p := min(float32(t.Sub(n.changed))/float32(ease), 1)
+	return n.from + (n.to-n.from)*ui.EaseOut(p)
+}
+
+// Where the count changes, outside the view:
+now := time.Now()
+app.count = counter{from: app.count.at(now), to: float32(n), changed: now}
+win.Update(func() {})
+
+// In the view:
+value := app.count.at(c.Now())
+if c.Now().Sub(app.count.changed) < ease {
+	c.AnimationFrame()
+}
+```
+
+- **Keep work out of the view.** Polling, saving, or starting jobs from
+  the view, from `After` or from a `Draw` waits while the window is out of
+  sight. Run such work from the app (a goroutine or a `time.Ticker`) and
+  show what it does with `Window.Update`.

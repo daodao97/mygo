@@ -186,8 +186,9 @@ func TestIndicatorsRepaint(t *testing.T) {
 }
 
 // TestHeldWhileOccluded checks that what moves draws no frames while
-// nothing of the window shows, and goes on once some of it shows again,
-// while changes of the state still build frames.
+// nothing of the window shows, nor do changes of the state, and that both
+// go on once some of it shows again: as browsers draw nothing for windows
+// out of sight, and as Apple asks of Mac apps.
 func TestHeldWhileOccluded(t *testing.T) {
 	count := 0
 	tt := newRepaintTester(func(c *context) {
@@ -202,20 +203,22 @@ func TestHeldWhileOccluded(t *testing.T) {
 	if _, more := tt.frame(8 * time.Millisecond); more || !tt.rt.held || !tt.rt.repaintDue.IsZero() {
 		t.Fatalf("out of sight: asked for another %v, held %v, repaint due %v", more, tt.rt.held, tt.rt.repaintDue)
 	}
-	// The app's state changes: the frame builds it, and asks for no more.
+	// The app's state changes: the frame waits for the window to show,
+	// and asks for no more.
 	count++
 	tt.rt.changed()
-	if built, more := tt.frame(8 * time.Millisecond); !built || more || !tt.HasText("1") {
-		t.Fatalf("a change out of sight: built %v, asked for another %v, shows %q", built, more, tt.Texts())
+	if built, more := tt.frame(8 * time.Millisecond); built || more || !tt.rt.held {
+		t.Fatalf("a change out of sight: built %v, asked for another %v, held %v", built, more, tt.rt.held)
 	}
-	// Some of the window shows again: what moves goes on.
+	// Some of the window shows again: the frame builds what changed, and
+	// what moves goes on.
 	tt.h.hidden = false
 	tt.rt.event(platform.SurfaceEvent{Kind: platform.SurfaceShown})
 	if tt.rt.held || !tt.h.requested.Load() {
 		t.Fatalf("shown again: held %v, asked for a frame %v", tt.rt.held, tt.h.requested.Load())
 	}
-	if built, more := tt.frame(8 * time.Millisecond); !built || !more {
-		t.Errorf("the frame after showing: built %v, asked for another %v", built, more)
+	if built, more := tt.frame(8 * time.Millisecond); !built || !more || !tt.HasText("1") {
+		t.Errorf("the frame after showing: built %v, asked for another %v, shows %q", built, more, tt.Texts())
 	}
 	// Shown while nothing waited, it asks for nothing.
 	tt.h.requested.Store(false)
@@ -254,5 +257,25 @@ func TestFocusChangeFrames(t *testing.T) {
 			t.Errorf("focused %v, with a focused text input: asked for no frame", focused)
 		}
 		tt.frame(time.Millisecond)
+	}
+}
+
+// TestOccludedFramesAfterInput checks that a window out of sight draws the
+// frame after input, as keys typed into a key window another app's
+// covers, and holds the next one again.
+func TestOccludedFramesAfterInput(t *testing.T) {
+	count := 0
+	rt := newRepaintTester(func(c *context) { coreTextf(c, "%d", count) })
+	rt.h.hidden = true
+	count = 1
+	rt.rt.event(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: platform.Key(KeyA)})
+	if built, _ := rt.frame(8 * time.Millisecond); !built || !rt.HasText("1") {
+		t.Errorf("a key out of sight: built %v, shows %q", built, rt.Texts())
+	}
+	// The input was the last frame's: a change since waits.
+	count = 2
+	rt.rt.changed()
+	if built, _ := rt.frame(8 * time.Millisecond); built || !rt.rt.held {
+		t.Errorf("a change out of sight, after the input's frame: built %v, held %v", built, rt.rt.held)
 	}
 }

@@ -170,8 +170,13 @@ func TestSpringSchedulingWhileOccluded(t *testing.T) {
 	if !tt.h.requested.Load() {
 		t.Fatal("shown spring did not resume")
 	}
+	// The frame out of sight did not draw: the spring sets off as the
+	// window shows, and moves on in the frames after.
 	built, more := tt.frame(200 * time.Millisecond)
-	if !built || !more || value <= 0 {
+	if !built || !more {
+		t.Fatal("spring did not set off after becoming visible")
+	}
+	if built, more = tt.frame(100 * time.Millisecond); !built || !more || value <= 0 {
 		t.Fatal("spring did not advance after becoming visible")
 	}
 	_, more = tt.frame(5 * time.Second)
