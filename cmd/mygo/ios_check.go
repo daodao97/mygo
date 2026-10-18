@@ -76,6 +76,7 @@ func iosCheckApp(app, symbols string, unsigned, distribution bool) (iosCheckRepo
 		metadataErr = fmt.Errorf("missing reverse-DNS bundle identifier")
 	}
 	check("metadata", r.BundleID+" "+r.Version+" ("+r.BuildNumber+")", metadataErr)
+	check("extensions", "embedded extension identifiers, versions, architecture and metadata", iosCheckExtensions(app, r.BundleID, r.Version, r.BuildNumber))
 	file, err := macho.Open(binary)
 	if err == nil {
 		defer file.Close()

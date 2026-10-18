@@ -144,6 +144,13 @@ func buildIOS(c *Config, arch string, opts buildOptions) ([]string, error) {
 			return nil, err
 		}
 	}
+	nativeTargets, err := iosPrepareNative(c, host, privacy)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(project, "project.pbxproj"), []byte(iosNativeProject(iosProject(c, minimum, opts.iosTeam), c, opts.iosTeam, nativeTargets)), 0o644); err != nil {
+		return nil, err
+	}
 	if err := os.WriteFile(filepath.Join(host, "PrivacyInfo.xcprivacy"), privacy, 0o644); err != nil {
 		return nil, err
 	}
@@ -194,6 +201,16 @@ func buildIOS(c *Config, arch string, opts buildOptions) ([]string, error) {
 			return nil, fmt.Errorf("preserving iOS symbols: %w", err)
 		}
 		symbolBundle = copyTo
+		for _, extension := range c.IOS.Extensions {
+			name := extension.Name + ".appex.dSYM"
+			dir := filepath.Join(stage, "ExtensionSymbols")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return nil, err
+			}
+			if err := copyResource(filepath.Join(derived, "Build", "Products", configuration+"-"+sdk, name), filepath.Join(dir, name)); err != nil {
+				return nil, fmt.Errorf("preserving extension symbols: %w", err)
+			}
+		}
 	}
 	if err := iosWriteCheckReport(app, symbolBundle, stage, "BuildReport.json", opts.iosTeam == "" || opts.iosSimulator, false); err != nil {
 		return nil, err
@@ -236,6 +253,9 @@ func buildIOS(c *Config, arch string, opts buildOptions) ([]string, error) {
 	artifacts = append(artifacts, filepath.Join(final, "BuildReport.json"))
 	if !opts.iosArchive {
 		artifacts = append(artifacts, filepath.Join(final, c.executableName()+".app.dSYM"))
+		if len(c.IOS.Extensions) > 0 {
+			artifacts = append(artifacts, filepath.Join(final, "ExtensionSymbols"))
+		}
 	}
 	if opts.iosArchive {
 		artifacts = append(artifacts, filepath.Join(final, filepath.Base(archive)))
@@ -289,6 +309,7 @@ func iosInfoPlist(c *Config, minimum string) []byte {
 	for k, v := range c.IOS.InfoPlist {
 		d[k] = v
 	}
+	iosBackgroundPlist(c, d)
 	var b bytes.Buffer
 	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n")
 	writePlistValue(&b, d, "")

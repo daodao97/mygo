@@ -41,6 +41,17 @@ framework safely. Read it before changing anything under `internal/`.
   event structs, blocking calls that are safe from any goroutine, and native
   UI written in Go alone.
 
+## Optional service building blocks
+
+See [runtime services](runtime-services.md). `async`, `timeseries`,
+`generationcache` and `backgroundtask` are independent opt-in Go packages.
+Root `NewTask/NewPoller` bind cancellation and UI dispatch to lifecycle;
+`Network.PathStatus/OnPathChanged` optionally request iOS path details without
+changing the existing basic network contract. iOS background jobs are native
+build-time declarations: early registration and system expiration live in an
+opt-in helper; Go workers own cancellation, app code owns update policy. These
+APIs do not add mobile screen components or default timers to framework startup.
+
 ## Repository layout
 
 ```
@@ -236,6 +247,22 @@ diagnostics use Go, Xcode and macOS utilities. Uploads, App Store Connect
 credentials and TestFlight management belong to the application release
 pipeline; the framework has no external release-CLI dependency.
 
+The optional `ios.native` and `ios.extensions` declarations add copied native
+sources, static libraries, SDK frameworks, resources, explicit App Groups and
+separately signed app-extension targets to that generated project. Native Swift
+helpers for actions, shared-store readers and WidgetKit refresh are embedded in
+the CLI, copied only when selected, and never reached by the Go application
+startup path. App Intents execute application-provided native handlers in their
+own process; they do not depend on waking a stopped Go application. See
+[iOS extensions](ios-extensions.md).
+
+`AppGroupDirectory` is an opt-in, thread-safe Foundation host lookup independent
+of UIApplication/readiness, with no fallback for missing entitlements. The
+separate pure-Go `sharedstore` package confines bounded files through `os.Root`,
+replaces complete generations atomically, and provides nonblocking OS locks for
+cross-process update/migration. It does not change `PersistState`, whose live
+values remain owned by the application's UI thread.
+
 `UIWindowSceneDelegate` translates activation, background, foreground and
 reconnection into the shared application handler. `package mygo` owns
 lifecycle deduplication, typed JSON state restoration/checkpoints and the
@@ -270,7 +297,11 @@ selects status-bar text contrast through the view controller. The content
 retains its safe-area bounds, and Scene reconnection restores the backdrop.
 
 The single content window is a `UIView` inside the safe area. Its bounds
-shrink above the software keyboard. Only actual bounds-size or display-scale
+shrink above the software keyboard. The viewport changes without animating
+the surface bounds, and an old CPU image or Metal drawable stays at its
+original point scale, clipped from the top left until its replacement is
+presented. Keyboard avoidance must not stretch the page's already-drawn pixels.
+Only actual bounds-size or display-scale
 changes produce resize notifications; relayout of UIKit selection subviews
 must not interrupt the Go router's interactive Back preview. `CADisplayLink` coalesces frame requests
 and pauses when idle or backgrounded. CoreText shaping and the Metal

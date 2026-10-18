@@ -144,10 +144,13 @@ func (w *Window) eval(ctx context.Context, code string) (jsontext.Value, error) 
 	// Both the cancellation and the page may answer; the first one counts
 	// and the other must not block.
 	ch := make(chan result, 2)
+	// Snapshot the test hook with this invocation. A canceled context's
+	// callback can finish after the next test replaces the global hook.
+	canceled := evalCanceled
 	stop := context.AfterFunc(ctx, func() {
 		deliver(ch, result{err: ctx.Err()})
-		if evalCanceled != nil {
-			evalCanceled()
+		if canceled != nil {
+			canceled()
 		}
 	})
 	defer stop()

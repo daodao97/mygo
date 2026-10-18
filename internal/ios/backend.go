@@ -28,13 +28,17 @@ import (
 
 type Backend struct {
 	*unsupported.Backend
-	h      platform.AppHandler // UI thread only
-	window *window
-	nextID uint64
-	done   chan struct{}
-	quit   sync.Once
-	active bool
-	awake  displayWakeState
+	h                platform.AppHandler // UI thread only
+	window           *window
+	nextID           uint64
+	done             chan struct{}
+	quit             sync.Once
+	active           bool
+	awake            displayWakeState
+	networkWatching  bool
+	networkLast      uint32
+	networkToken     uint64
+	networkObservers map[uint64]func(platform.NetworkPathStatus)
 }
 
 var current atomic.Pointer[Backend]

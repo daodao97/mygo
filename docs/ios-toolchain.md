@@ -195,3 +195,10 @@ the separately exported distribution IPA and the same team as the app record.
 App Store validation, uploads, TestFlight metadata/groups/review and delivery
 status are owned by the application release process. Tools such as asc may be
 used independently after `mygo build`; MyGo does not call or depend on them.
+
+## Native extensions and system integration
+
+See [iOS extensions](ios-extensions.md) for opt-in multi-target packaging,
+App Group shared containers, versioned snapshots, native App Intents/Controls
+handlers, and WidgetKit refresh helpers. Applications without those declarations
+keep their single-host build and do not link the native helpers.

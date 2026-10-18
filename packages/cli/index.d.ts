@@ -116,6 +116,11 @@ export interface Config {
 
 /** The UIKit host of a native UI application. */
 export interface IOSConfig {
+  backgroundTasks?: IOSBackgroundTaskConfig[];
+  /** Shared-container entitlements; each extension opts in separately. */
+  appGroups?: string[];
+  native?: IOSNativeConfig;
+  extensions?: IOSExtensionConfig[];
   /** Opt into protected native APIs; disabled by default. Notifications and ordinary Keychain storage remain available. */
   capabilities?: ("camera" | "microphone" | "geolocation" | "photos" | "biometrics" | "speech")[];
   /** Enable APNs; generates aps-environment=development unless explicitly overridden. */
@@ -139,6 +144,31 @@ export interface IOSConfig {
   privacy?: IOSPrivacyConfig;
   /** Automatic by default; manual signing requires identity and profile. */
   signing?: IOSSigningConfig;
+}
+
+/** Opt-in native files copied into the exported, self-contained Xcode host. */
+export interface IOSNativeConfig {
+  sources?: string[];
+  resources?: string[];
+  /** Prebuilt static .a archives for the chosen SDK; linked with -force_load. */
+  libraries?: string[];
+  frameworks?: string[];
+  linkerFlags?: string[];
+  swiftConditions?: string[];
+  support?: ("actions" | "shared-store" | "widgets")[];
+  /** Replaces host main.m; unavailable on extension targets. */
+  entryPoint?: string;
+}
+
+export interface IOSExtensionConfig {
+  name: string;
+  bundleIdentifier?: string;
+  extensionPoint: string;
+  minimumSystemVersion?: string;
+  native?: IOSNativeConfig;
+  appGroups?: string[];
+  entitlements?: Record<string, unknown>;
+  infoPlist?: Record<string, unknown>;
 }
 
 export interface IOSPrivacyConfig {
@@ -320,4 +350,13 @@ export interface LinuxConfig {
    * the app opens from the applications menu).
    */
   command?: string;
+}
+
+/** C-exported Go callbacks. A negative nextDelay disables scheduling. */
+export interface IOSBackgroundTaskConfig {
+  identifier: string;
+  prepare: string;
+  run: string;
+  cancel: string;
+  nextDelay: string;
 }

@@ -187,6 +187,14 @@ type MacOS struct {
 
 // IOS configures the UIKit host of a native UI application.
 type IOS struct {
+	// BackgroundTasks registers cancellable native refresh workers before launch.
+	BackgroundTasks []IOSBackgroundTask `json:"backgroundTasks"`
+	// AppGroups are shared container entitlements; extensions opt in separately.
+	AppGroups []string `json:"appGroups"`
+	// Native adds opt-in native sources/libraries to the host.
+	Native IOSNative `json:"native"`
+	// Extensions are native app-extension targets embedded and signed with the app.
+	Extensions []IOSExtension `json:"extensions"`
 	// Capabilities opts into protected native APIs. Empty disables them;
 	// notifications and ordinary Keychain storage remain available.
 	Capabilities []string `json:"capabilities"`
@@ -212,6 +220,35 @@ type IOS struct {
 	Privacy IOSPrivacy `json:"privacy"`
 	// Signing defaults to automatic signing through DevelopmentTeam.
 	Signing IOSSigning `json:"signing"`
+}
+
+// IOSNative sources are copied into the exported Xcode project. Directories
+// compile .swift/.m/.mm/.c/.cc/.cpp files and make their headers available.
+// Libraries are prebuilt static archives for the selected SDK/architecture.
+type IOSNative struct {
+	Sources         []string `json:"sources"`
+	Resources       []string `json:"resources"`
+	Libraries       []string `json:"libraries"`
+	Frameworks      []string `json:"frameworks"`
+	LinkerFlags     []string `json:"linkerFlags"`
+	SwiftConditions []string `json:"swiftConditions"`
+	// Support selects MyGo's native helpers: actions, shared-store, widgets.
+	Support []string `json:"support"`
+	// EntryPoint replaces the generated host main.m; not valid on extensions.
+	EntryPoint string `json:"entryPoint"`
+}
+
+type IOSExtension struct {
+	Name string `json:"name"`
+	// BundleIdentifier defaults to the app identifier plus "." plus Name.
+	BundleIdentifier string `json:"bundleIdentifier"`
+	// ExtensionPoint is NSExtensionPointIdentifier, e.g. com.apple.widgetkit-extension.
+	ExtensionPoint       string         `json:"extensionPoint"`
+	MinimumSystemVersion string         `json:"minimumSystemVersion"`
+	Native               IOSNative      `json:"native"`
+	AppGroups            []string       `json:"appGroups"`
+	Entitlements         map[string]any `json:"entitlements"`
+	InfoPlist            map[string]any `json:"infoPlist"`
 }
 
 type IOSPrivacy struct {
@@ -512,4 +549,14 @@ func fsName(s string) string {
 func isDir(path string) bool {
 	st, err := os.Stat(path)
 	return err == nil && st.IsDir()
+}
+
+// IOSBackgroundTask names C-exported Go callbacks. Prepare/Cancel run on main;
+// Run/NextDelay on utility queues, independently of the UI application loop.
+type IOSBackgroundTask struct {
+	Identifier string `json:"identifier"`
+	Prepare    string `json:"prepare"`
+	Run        string `json:"run"`
+	Cancel     string `json:"cancel"`
+	NextDelay  string `json:"nextDelay"`
 }

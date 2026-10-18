@@ -25,6 +25,9 @@ func overrideIOSBuildNumber(c *Config, number string) error {
 	return nil
 }
 func validateIOSPackaging(c *Config, o buildOptions) error {
+	if err := validateIOSExtensions(c); err != nil {
+		return err
+	}
 	for _, capability := range c.IOS.Capabilities {
 		switch capability {
 		case "camera", "microphone", "geolocation", "photos", "biometrics", "speech":
@@ -106,10 +109,7 @@ func iosPropertyList(d map[string]any) []byte {
 	return b.Bytes()
 }
 func iosEntitlements(c *Config) []byte {
-	d := map[string]any{}
-	for k, v := range c.IOS.Entitlements {
-		d[k] = v
-	}
+	d, _ := iosGroupEntitlements(c.IOS.AppGroups, c.IOS.Entitlements)
 	if c.IOS.PushNotifications && d["aps-environment"] == nil {
 		d["aps-environment"] = "development"
 	}

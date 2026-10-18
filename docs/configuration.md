@@ -196,3 +196,20 @@ It has the same fields. A project has either `mygo.config.ts` or
 `ios.entitlements["aps-environment"]` overrides it. Import sender credentials once
 with `mygo push setup`; provider keys never enter project configuration or the
 mobile bundle. See [the push guide](push.md) for setup, senders and environments.
+
+## Native iOS integration
+
+`ios.appGroups` declares shared-container entitlements. `ios.native` adds host
+native sources, resources, static libraries and opt-in helpers; `ios.extensions`
+declares embedded native app-extension targets with individual metadata,
+entitlements and signing profiles. See [iOS extensions](ios-extensions.md) for
+configuration, shared snapshots and native system actions.
+
+### iOS background tasks
+
+`ios.backgroundTasks` declares native refresh identifiers and C-exported Go
+`prepare`, `run`, `cancel`, and `nextDelay` callbacks. It generates early launch
+registration, the BackgroundTasks link and required plist declarations. It is
+incompatible with a custom `ios.native.entryPoint`. See the
+[runtime services guide](runtime-services.md#ios-scheduled-refresh) for contracts
+and the cancellation worker.

@@ -1075,16 +1075,30 @@ static UIStatusBarStyle statusStyle(UIColor *color, UITraitCollection *traits) {
 }
 - (void)viewDidLayoutSubviews {
   [super viewDidLayoutSubviews];
-  CGRect full = UIEdgeInsetsInsetRect(self.view.bounds, self.view.safeAreaInsets);
- CGRect r=full;
-  r.size.height = MAX(0, MIN(CGRectGetMaxY(r), self.keyboardTop) - r.origin.y);
- // UIKit interactive dismissal requires its scroll viewport to extend
- // behind the keyboard. Only Go's content viewport is reduced.
- self.keyboardScroll.viewportSize=r.size;
- self.keyboardScroll.frame=full;
- self.keyboardScroll.contentSize=CGSizeMake(full.size.width,full.size.height+1);
- self.keyboardScroll.contentInset=UIEdgeInsetsMake(0,0,full.size.height-r.size.height,0);
- self.surface.frame=(CGRect){self.keyboardScroll.contentOffset,r.size};
+  // Keep an already-presented frame at its original point scale while the
+  // keyboard changes available height. Stretching old pixels or animating
+  // the surface's bounds makes the entire page appear to zoom.
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  [UIView performWithoutAnimation:^{
+    CGFloat scale = self.view.window.screen.scale ?: self.view.traitCollection.displayScale;
+    self.surface.layer.contentsScale = scale;
+    self.surface.layer.contentsGravity = kCAGravityTopLeft;
+    for (CALayer *layer in self.surface.layer.sublayers)
+      if ([layer isKindOfClass:CAMetalLayer.class]) layer.contentsGravity = kCAGravityTopLeft;
+    CGRect full = UIEdgeInsetsInsetRect(self.view.bounds, self.view.safeAreaInsets);
+    CGRect r = full;
+    r.size.height = MAX(0, MIN(CGRectGetMaxY(r), self.keyboardTop) - r.origin.y);
+    // UIKit interactive dismissal needs its scroll viewport behind the
+    // keyboard; only Go's content viewport loses the covered height.
+    self.keyboardScroll.viewportSize = r.size;
+    self.keyboardScroll.frame = full;
+    self.keyboardScroll.contentSize = CGSizeMake(full.size.width, full.size.height + 1);
+    self.keyboardScroll.contentInset = UIEdgeInsetsMake(0, 0, full.size.height - r.size.height, 0);
+    self.surface.frame = (CGRect){self.keyboardScroll.contentOffset, r.size};
+    [self.surface layoutIfNeeded];
+  }];
+  [CATransaction commit];
 }
 - (void)keyboardHidden:(NSNotification *)n {
  MyGoSurface *s=self.surface;

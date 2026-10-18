@@ -742,3 +742,13 @@ checks independent tab histories, editing across tab switches, nested Back,
 saved editor state, scroll retention and cold navigation restoration. Device
 tests also cover interactive edge Back completion/cancellation, keyboard
 retention on cancellation, the root guard and restored history after a gesture.
+
+## App extensions and shared containers
+
+[Native iOS extensions](ios-extensions.md) documents `ios.native`,
+`ios.extensions`, App Group storage, system-action handlers and widget refresh.
+These are optional integrations; the main native UI still uses the lifecycle,
+threading and persistence APIs described above.
+
+See [opt-in runtime services](runtime-services.md) for network paths, cancellable
+work/polling, counter sparklines, generation caches and scheduled background refresh.
