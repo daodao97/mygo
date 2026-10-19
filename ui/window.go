@@ -153,6 +153,25 @@ type windowHost struct {
 	// the web views.
 	placed []platform.WebViewPlacement
 	views  []NativeWebView
+	// waiting tells that a frame paced by the display waits for the GPU
+	// renderer waitingOn to have where to draw it (displayWaiter); wake
+	// and displayReady draw it then, at the time the display asked for it
+	// (waitedAt).
+	waiting      bool
+	waitingOn    gpuRenderer
+	waitedAt     time.Time
+	wake         func()
+	displayReady func()
+}
+
+// displayWaiter is a GPU renderer that waits for the display off the main
+// thread: a frame following the last one draws once the display can take
+// it (Direct3D's), or once the last, built while the display could not,
+// was drawn (Metal's).
+type displayWaiter interface {
+	// Ready reports whether a frame can draw at once; otherwise wake runs,
+	// on any goroutine, once it can.
+	Ready(wake func()) bool
 }
 
 func (h *windowHost) firstFramePresented() bool {
@@ -223,11 +242,53 @@ func (h *windowHost) event(ev platform.SurfaceEvent) bool {
 		}
 		return false
 	}
+	if ev.Kind == platform.SurfaceResize {
+		if r, ok := h.gpu.(invalidator); ok {
+			r.Invalidate()
+		}
+	}
 	if ev.Kind == platform.SurfaceFrame {
+		if ev.Paced && h.waitDisplay(time.Now()) {
+			return true
+		}
+		h.waiting, h.waitingOn = false, nil
 		h.framing = true
 		defer func() { h.framing = false }()
 	}
 	return h.rt.event(ev)
+}
+
+// waitDisplay reports whether a frame paced by the display, asked for at,
+// waits for the GPU renderer to be able to draw it: rather than wait on
+// the main thread, as for a drawable the display holds most of a refresh,
+// the frame draws once it can, built with the input that came meanwhile,
+// at the time it was asked for, so that what moves keeps its pace.
+func (h *windowHost) waitDisplay(at time.Time) bool {
+	w, ok := h.gpu.(displayWaiter)
+	p, paced := h.conn.Surface.(platform.PacedSurface)
+	if !ok || !paced || h.conn.Post == nil {
+		return false
+	}
+	if h.waiting && h.waitingOn == h.gpu {
+		// Refreshes passing meanwhile ask for the same frame.
+		return true
+	}
+	if h.wake == nil {
+		h.displayReady = func() {
+			if !h.waiting || h.detached {
+				return
+			}
+			h.waiting, h.waitingOn = false, nil
+			h.rt.frameAt = h.waitedAt
+			p.FrameNow()
+		}
+		h.wake = func() { h.conn.Post(h.displayReady) }
+	}
+	if w.Ready(h.wake) {
+		return false
+	}
+	h.waiting, h.waitingOn, h.waitedAt = true, h.gpu, at
+	return true
 }
 
 // gpuRenderer draws scenes into a surface on the GPU.
@@ -235,6 +296,12 @@ type gpuRenderer interface {
 	Render(s *scene.Scene) error
 	Release()
 }
+
+// invalidator is a GPU renderer drawing only what changed into a target
+// that keeps what was drawn but as the surface resizes, even to the same
+// size, as a GtkGLArea makes its buffers anew as GTK allocates it:
+// Invalidate has the next frame draw whole.
+type invalidator interface{ Invalidate() }
 
 // wideRenderer is a GPU renderer that can draw the colors of scenes outside
 // the sRGB gamut (Metal's).
@@ -333,10 +400,6 @@ func (h *windowHost) present(s *scene.Scene) {
 			h.path = "drawn by the GPU renderer in software"
 		default:
 			h.path = "drawn in memory"
-		}
-		if behind(h.gpu) {
-			h.path = "skipped to catch up with the display"
-			h.conn.Surface.RequestFrame()
 		}
 	}()
 	if h.render(s) {
@@ -489,6 +552,10 @@ func (h *windowHost) makeGPU() {
 		}
 	}
 	h.wide = false // the renderer draws sRGB until told otherwise
+	if p, ok := r.(interface{ SetPost(func(func())) }); ok && h.conn.Post != nil {
+		// Frames waiting for the display draw through the main thread.
+		p.SetPost(h.conn.Post)
+	}
 }
 
 // accelerated reports whether the frame draws on a GPU (Painter.Accelerated).
@@ -516,14 +583,6 @@ func (h *windowHost) recheck() {
 func software(r gpuRenderer) bool {
 	s, ok := r.(interface{ Software() bool })
 	return ok && s.Software()
-}
-
-// behind reports whether r drew nothing of the last frame, to catch up
-// with the display (Metal's): the window draws another at the next
-// refresh.
-func behind(r gpuRenderer) bool {
-	b, ok := r.(interface{ Behind() bool })
-	return ok && b.Behind()
 }
 
 // retryLater has a frame make a GPU renderer again after a wait, which

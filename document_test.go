@@ -490,6 +490,48 @@ func TestDocumentRenameMove(t *testing.T) {
 	}
 }
 
+// TestDocumentFollowsReplacedRename renames a file that another app
+// replaced, after the document read the new file but before its watch
+// looked again: the watch knows only the file replaced, so the document
+// finds the new one by what it read.
+func TestDocumentFollowsReplacedRename(t *testing.T) {
+	ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+	path := writeTemp(t, "doc.txt", "one")
+	path, _ = filepath.EvalSymlinks(path)
+	d, _ := ds.Open(path)
+	// The watch saw the first file once it enrolled the file itself.
+	var watch *fake.FileWatch
+	waitFor(t, "the watch to see the file", func() bool {
+		watch = fb.LastFileWatch()
+		return slices.ContainsFunc(watch.Targets(), func(t platform.FileWatchTarget) bool { return t.Path == path && !t.Directory })
+	})
+	if err := os.WriteFile(path+".tmp", []byte("two, longer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(path+".tmp", path); err != nil {
+		t.Fatal(err)
+	}
+	// Read by the look when the watch started or the window was focused.
+	d.checkDisk()
+	waitFor(t, "the document to read the new file", func() bool { return d.Content() == "two, longer" })
+	renamed := filepath.Join(filepath.Dir(path), "renamed.txt")
+	if err := os.Rename(path, renamed); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range watch.Targets() {
+		if target.Path == filepath.Dir(path) {
+			watch.Notify(platform.FileWatchNotice{Target: target.ID, Name: "doc.txt", Kind: platform.FileWatchRemove})
+		}
+	}
+	// Following it records it as recent, in the user data the test removes.
+	waitFor(t, "the document to follow the rename", func() bool {
+		return d.Path() == renamed && slices.Contains(App.RecentDocuments(), renamed)
+	})
+	if d.State().Deleted {
+		t.Error("deleted")
+	}
+}
+
 func TestDocumentMenus(t *testing.T) {
 	ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
 	file := NewMenu([]*MenuItem{{Role: RoleFileMenu}}).Items()[0]

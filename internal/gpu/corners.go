@@ -24,14 +24,17 @@ import (
 // radius 1 leaves the edges (the shaders' contExtent).
 const contExtent = 1.528665
 
-// cornerSplitMin is the area, in pixels, of a shape's twin below which the
-// shape is not drawn in pieces: the draw calls of the pieces cost more than
-// what shading those fragments with the curves' code costs. A shadow's
-// fragments cost far more than a fill's (its curves are found for each of
-// four rows of samples), so its twin pays at a quarter of the area.
+// pieceCost is what a piece of a nine-patch costs, a draw call of its own
+// (no piece shares a batch: each has a scissor rectangle of its own), in
+// pixels of the twin: on an M5 a draw call costs about 1.2 µs of the CPU
+// and the GPU, and a pixel drawn by the twin rather than the shape about
+// 0.08 ns less, by the overhead of the curves' code in a pipeline. A pixel
+// of a shadow in the rows its curve shapes, between its corners, saves
+// curvedWeight times more: the curve is found there for each sample, by
+// regula falsi (0.5 ns a pixel).
 const (
-	cornerSplitMin       = 16384
-	shadowCornerSplitMin = 4096
+	pieceCost    = 16384
+	curvedWeight = 6
 )
 
 // SplitCorners makes the builder draw large shapes with continuous corners
@@ -82,9 +85,10 @@ func continuous(r [4]float32) bool { return r[0] < 0 || r[1] < 0 || r[2] < 0 || 
 // cornersOf returns, for a fill, an image or a shadow with continuous
 // corners, not transformed, where it and its twin with square corners (no
 // radii, on its border's inner edge or its caster neither) draw the same,
-// as the lines that bound those pixels (see cornerLines), and the least
-// area of the twin worth its draw calls; ok is false for any other
-// instance.
+// as the lines that bound those pixels (see cornerLines), the pixels its
+// quad covers, as the vertex shader grows it, and how much more a pixel
+// of the twin between the corners saves than one between the bands of
+// rows across them; ok is false for any other instance.
 //
 // A fill's twin computes its border's inner edge the same way too, whose
 // curves lie within the outer ones' boxes: each of its corners is a
@@ -100,14 +104,18 @@ func continuous(r [4]float32) bool { return r[0] < 0 || r[1] < 0 || r[2] < 0 || 
 // sides, the blurred edges are exactly 0 and 1 (erf2 rounds to ±1 from about
 // 7.7 sigma), wherever the curve puts them. The box casting it, cut out of
 // the shadow, is a fill's coverage.
-func cornersOf(in *Instance, m scene.Affine) (free Scissor, least int64, ok bool) {
+func cornersOf(in *Instance, m scene.Affine) (free, quad Scissor, weight int64, ok bool) {
 	shadow := in.Params[0] == 1
 	if m.Set || !continuous(in.Radii) && !(shadow && continuous(in.Inner)) {
-		return Scissor{}, 0, false
+		return Scissor{}, Scissor{}, 0, false
 	}
 	r := scene.Rect{X: in.Rect[0], Y: in.Rect[1], W: in.Rect[2], H: in.Rect[3]}
+	grow := func(e float32) Scissor {
+		return Scissor{int32(math.Floor(float64(r.X - e))), int32(math.Floor(float64(r.Y - e))),
+			int32(math.Ceil(float64(r.X + r.W + e))), int32(math.Ceil(float64(r.Y + r.H + e)))}
+	}
 	if !shadow {
-		return cornerLines(r, in.Radii, 0, 0), cornerSplitMin, true
+		return cornerLines(r, in.Radii, 0, 0), grow(1), 1, true
 	}
 	sigma := in.Params[2]
 	corner := max(abs32(in.Radii[0]), abs32(in.Radii[1]), abs32(in.Radii[2]), abs32(in.Radii[3]))
@@ -115,21 +123,25 @@ func cornersOf(in *Instance, m scene.Affine) (free Scissor, least int64, ok bool
 	if in.UV[2] > 0 && in.UV[3] > 0 {
 		free = free.intersect(cornerLines(scene.Rect{X: in.UV[0], Y: in.UV[1], W: in.UV[2], H: in.UV[3]}, in.Inner, 0, 0))
 	}
-	return free, shadowCornerSplitMin, true
+	return free, grow(3*sigma + 1), curvedWeight, true
 }
 
 // addCorners appends in as a nine-patch within the batches' scissor
-// rectangle: its corners as it is and the rest as its twin. In each band of
-// rows across a corner the twin draws between the corners unless that is
-// small; the band of rows between the corners is all the twin's.
+// rectangle, when the pixels its twin draws save more than the draw calls
+// of the pieces cost (pieceCost): its corners as it is and the rest as its
+// twin. The band of rows between the corners is all the twin's; each band
+// of rows across them is the shape's, or, where enough lies between the
+// corners, the shape's at its ends and the twin's between. Small shapes,
+// whose pixels are near their corners, stay whole, and join their
+// neighbors' batches (see joinLast).
 func (b *Builder) addCorners(in Instance, image uintptr, m scene.Affine) {
-	f, least, ok := cornersOf(&in, m)
+	f, quad, weight, ok := cornersOf(&in, m)
 	if !ok {
 		b.add(in, image, m)
 		return
 	}
 	cur := &b.stack[len(b.stack)-1]
-	region := b.batchScissor(cur)
+	region := b.batchScissor(cur).intersect(quad)
 	if f.Top > f.Bottom {
 		// Every row is near a corner: either band can hold those between.
 		f.Top = f.Bottom
@@ -146,26 +158,29 @@ func (b *Builder) addCorners(in Instance, image uintptr, m scene.Affine) {
 			n++
 		}
 	}
-	area := mid.area()
+	saved := mid.area()
 	var between [2]Scissor
 	for i, band := range [2]Scissor{top, bottom} {
 		c := Scissor{f.Left, band.Top, f.Right, band.Bottom}.intersect(band)
-		if c.area() < least/4 {
+		left := Scissor{band.Left, band.Top, c.Left, band.Bottom}
+		right := Scissor{c.Right, band.Top, band.Right, band.Bottom}
+		// Splitting the band adds its ends' draw calls.
+		if c.Empty() || c.area()*weight <= pieceCost*int64(min(1, left.area())+min(1, right.area())) {
 			piece(band, false)
 			continue
 		}
-		piece(Scissor{band.Left, band.Top, c.Left, band.Bottom}, false)
-		piece(Scissor{c.Right, band.Top, band.Right, band.Bottom}, false)
+		piece(left, false)
+		piece(right, false)
 		between[i] = c
-		area += c.area()
-	}
-	if area < least {
-		b.add(in, image, m)
-		return
+		saved += c.area() * weight
 	}
 	piece(mid, true)
 	piece(between[0], true)
 	piece(between[1], true)
+	if n == 0 || saved <= pieceCost*int64(n-1) {
+		b.add(in, image, m)
+		return
+	}
 	sq := in
 	sq.Radii, sq.Inner = [4]float32{}, [4]float32{}
 	split, splitScissor := b.split, b.splitScissor

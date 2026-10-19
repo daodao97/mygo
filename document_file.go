@@ -15,11 +15,20 @@ import (
 type fileStamp struct {
 	ModTime int64 `json:"modTime"` // Unix nanoseconds
 	Size    int64 `json:"size"`
+	// file is the file's identity, by which a document finds the file
+	// where another app renamed it (findRenamed). It says nothing of the
+	// content, so same ignores it, and recovery doesn't keep it.
+	file fileWatchGone
 }
 
 func stampOf(info os.FileInfo) fileStamp {
-	return fileStamp{ModTime: info.ModTime().UnixNano(), Size: info.Size()}
+	id, ok := fileWatchIdentity(StatIdentity(info))
+	id.typ = info.Mode().Type()
+	return fileStamp{ModTime: info.ModTime().UnixNano(), Size: info.Size(), file: fileWatchGone{id, ok}}
 }
+
+// same reports whether s and t stamp the same content.
+func (s fileStamp) same(t fileStamp) bool { return s.ModTime == t.ModTime && s.Size == t.Size }
 
 // statStamp returns the stamp of the file at path; ok is false when it
 // doesn't exist.
@@ -63,7 +72,7 @@ func (b *docBase) write(target string, op writeOp) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if exists && (now != known || deleted) {
+		if exists && (!now.same(known) || deleted) {
 			b.mu.Lock()
 			was := b.conflict
 			b.conflict, b.deleted = true, false

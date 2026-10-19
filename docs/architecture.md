@@ -3406,11 +3406,21 @@ either.
   square corners, in batches whose pipeline lacks the curves' code. Away
   from the boxes the shader computes the same value either way: a fill's
   pixel area, and a blurred shadow whose samples miss the curved rows or
-  whose blurred sides round to 0 and 1 (9 sigma from the curve).
+  whose blurred sides round to 0 and 1 (9 sigma from the curve). Each
+  piece is a draw call of its own (its scissor rectangle), so a shape is
+  cut only where the twin's pixels, within the shape's quad, save more than
+  the pieces' calls cost (`pieceCost`): small shapes, near their corners
+  everywhere, stay whole and join their neighbors' batches.
   Metal opts into three further builder capabilities: marking fills whose
   clip coverage is one, splitting opaque cores from blended edges, and
   batching by fragment class. Other renderers keep the original instance
-  flags and class-independent batching. An effect draws in a batch of its own, with a pipeline of
+  flags and class-independent batching. Metal binds the instance buffer
+  once a pass and draws each batch with its first instance as the base
+  instance, which `[[instance_id]]` includes; a batch binds its pipeline,
+  image, clip mask and scissor rectangle only when they changed, with
+  selectors looked up once, and the scissor goes by pointer
+  (`setScissorRects:count:`) rather than through a reflective purego
+  function: messages from Go cost about half a microsecond each. An effect draws in a batch of its own, with a pipeline of
   its own, which the renderer makes the first time the effect draws; one
   reading its backdrop draws after a backdrop step (`Builder.Backdrops`):
   the renderer ends its pass, reads the backdrop's area of what it drew
@@ -3485,7 +3495,17 @@ either.
     the window changes size the swap chain has three buffers a quarter
     larger than the window, and shows the window's size of them
     (`SetSourceSize`), until a frame a second after the last change,
-    which a timer asks for, gives it two of the window's size again;
+    which a timer asks for, gives it two of the window's size again.
+    The swap chain flips in sequence (`FLIP_SEQUENTIAL`), so that a frame
+    draws only what changed since the last, as Metal's (below): DXGI keeps
+    what each buffer holds, and as a frame is presented with the area it
+    drew as its dirty rectangle (`Present1`), copies into it what the last
+    frame changed outside that area, so there is no buffer age to track.
+    The frame clears the area (`ID3D11DeviceContext1::ClearView`, which
+    Direct3D 11.1 has, WARP too) and draws the batches scissored to it; a
+    frame that changed nothing is not presented. With WARP, on a runner
+    without a GPU, a caret blinking in a window of 1280×760 pixels took a
+    tenth of the CPU's time it took drawn whole;
   - `internal/gpu/metal` with a shader in Metal Shading Language
     compiled into a Metal library ahead of time (on macOS, with
     Xcode's `metal` tools), which
@@ -3500,21 +3520,37 @@ either.
     shows no stretched frames; the others present as soon as the GPU has
     them (`presentDrawable:`), sparing a pass of AppKit's display cycle
     and a commit of the transaction each: an animation at 120 Hz takes
-    about half the main thread's time it would. A frame presented so
-    that waited for its drawable, as the display held the others until
-    its next refresh, has the next skip a refresh (`Behind`, at most
-    once a second), or the frames after would wait as long, most of each
-    refresh, blocking the main thread. Instances use two frame slots, for
+    about half the main thread's time it would. The main thread never
+    waits for the display: after each frame presented as soon as drawn, a
+    goroutine on a thread of its own (`present.go`) takes the next frame's
+    drawable, which `nextDrawable` holds back while the display holds the
+    others, most of a refresh at times. A frame that comes while it does
+    is built at once, its canvases and instances ready, and waits
+    (`pendingFrame`); once the goroutine has the drawable, it has the
+    main thread (`SetPost`, through `surface.Conn.Post`) draw the frame
+    into it and present it. Frames of the display link's ticks
+    (`platform.SurfaceEvent.Paced`) are not built while one waits
+    (`Renderer.Ready`, `windowHost.waitDisplay`): the next draws once it
+    was presented (`platform.PacedSurface.FrameNow`), at the time its tick
+    asked for it, so that what moves keeps its pace; the link keeps
+    ticking meanwhile. Other frames, as a resize's, draw the waiting one
+    first. Frames presented with the transaction, which change the layer,
+    take their drawable on the main thread, as the first after a pause
+    does, after any being taken. Building a frame before its drawable
+    comes, as blocking for it did, keeps the GPU as busy: building only
+    once the drawable came drew a sixth fewer frames where the GPU took
+    most of each refresh. Instances use two frame slots, for
     the main target and each canvas, and a slot waits only for the command
     buffer that last used it. Updating an atlas or image texture in place
     still waits for every frame in flight. Rendering a canvas into its
     texture stays ordered on the command queue. The layer keeps three
     drawables, as Core Animation makes while a window animates: with two,
-    on a ProMotion display, frames waited for one most of each refresh, a
-    skip catching up for a few frames only, and a fifth of the frames went
-    undrawn. The third costs a frame of memory while a window animates.
-    iOS presents asynchronously from the command buffer, paced by
-    CADisplayLink; presentation hooks continue reporting the first frame.
+    on a ProMotion display, frames waited for one most of each refresh,
+    and a fifth of the frames went undrawn. The third costs a frame of
+    memory while a window animates. iOS presents asynchronously from the
+    command buffer, paced by CADisplayLink; presentation hooks continue
+    reporting the first frame.
+
     Waiting for a drawable remains separate from waiting for an instance
     buffer, so offscreen encode timings do not establish presentation latency.
     Opaque fill cores use an unblended pipeline in BGRA8; float16 keeps
@@ -3600,7 +3636,20 @@ either.
     the probe below (`glContext`). In browsers the same renderer draws
     with WebGL 2, which is OpenGL ES 3.0 (see
     [Browsers](#browsers-internalweb)): only where its functions come from
-    differs, `load_linux.go` or `load_js.go`.
+    differs, `load_linux.go` or `load_js.go`. A frame draws only what
+    changed since the last (`Renderer.Partial`, with `scene.Differ` and
+    `gpu.Pipelines`, as Metal's), into a framebuffer that keeps what was
+    drawn, so there is no buffer age to track: it clears the area with the
+    scissor test on, which `glClear` keeps to, and draws the batches
+    scissored to it. GTK keeps the GtkGLArea's framebuffer from render to
+    render, but makes its buffers anew, holding nothing defined, whenever
+    it allocates the area, at the same size too: a `SurfaceResize` has the
+    next frame draw whole (`Invalidate`). A canvas's WebGL 2 context keeps
+    its drawing buffer (`preserveDrawingBuffer`), which browsers then copy
+    as they composite each frame drawn; in Chrome on an M5 a caret blinking
+    still took a quarter of the GPU's time it took drawn whole, and a frame
+    that changed nothing leaves the canvas alone. On Mesa's llvmpipe a
+    caret blink in a window of 1280×760 pixels took a sixth of the time.
 
   Linux draws with OpenGL only where it runs on a GPU. A GL context loads
   Mesa for good: some 50 MB of libraries (LLVM, which distributions' Mesa
@@ -3666,8 +3715,8 @@ either.
   With a GPU renderer, every frame draws on the GPU, small changes too, so
   a gesture never switches renderers mid-way: on the CPU, a frame
   redrawing glass or a blur that content scrolls under takes 30 to 70 ms
-  on a large window, where Metal takes 2 to 3. Metal draws only what
-  changed (above); Direct3D 11 and OpenGL draw every frame whole.
+  on a large window, where Metal takes 2 to 3. Every GPU renderer draws
+  only what changed (above).
 
   Two seconds after the last frame (`frameIdle`), the host frees the frame
   drawn in memory, as large as the window, which the next frame draws whole,
@@ -4145,7 +4194,11 @@ cards with shadows, texts and progress bars. Its host (`stressHost`)
 hands the scene on rather than draw it on the CPU, so `ns/op` is the
 frame built, laid out and painted. `BenchmarkStressFrameGPU` draws the
 same frames with Metal (`metal.Offscreen`), its `GPU-ms` the GPU's time,
-which the page shows as the GPU metric.
+which the page shows as the GPU metric, and its `encode-ms` the CPU's
+time encoding each frame (building its instances, uploading what changed
+in its atlases, encoding its passes), the Encode metric, as the Metal
+renderer's benchmarks report too (`BenchmarkRenderPanels`: a page of
+cards taking hundreds of batches).
 
 Benchmarks are described on the page by their doc comments, which the
 site reads when it is built: start them with the benchmark's name.
@@ -4157,10 +4210,13 @@ to show on screen in native UI: from when an event arrives to when the
 frame showing it reaches the display, as its drawable's presented handler
 tells (`presentedTime`). Each run is a process with a window shown without
 activating the app, which types into a text area, scrolls a list with the
-trackpad or drags a box, with events at any time within a refresh, and
-prints what the latency is made of: waiting for the main thread, handling
-the event, waiting for the frame to start, building it, waiting for a
-drawable, and from the drawable to the screen. The window server settles
+trackpad or drags a box, with events at any time within a refresh, or
+animates with no input (`anim`, and `heavy`, which keeps the GPU busy
+most of each refresh), and prints what the latency is made of: waiting
+for the main thread, handling the event, then to the frame's present
+(the next tick, building, a drawable), and to the screen; and of the
+frames, how long the main thread waited for drawables, and what share of
+the refreshes showed a new frame. The window server settles
 in a state that lasts a run and changes from run to run, so compare the
 medians of several runs (`-runs`, six by default), alternating builds.
 
@@ -4190,7 +4246,7 @@ What was measured and left as it is:
   29 when frames presented at the tick missed the composite, was 11 ms
   slower in a run where they made it, and drew a fifth fewer frames.
 - *Skipping a refresh when frames show a refresh late*, as the presented
-  handlers tell, as `Behind` does when a drawable was waited for: in a bare
+  handlers tell: in a bare
   CAMetalLayer window a skip brought most runs from 25.9 to 17.5 ms, but
   MyGo's frames, which take longer from the tick to their present, stayed
   late after skips.
@@ -4400,7 +4456,7 @@ which npm allows only for packages that exist: the first release uses an
 | native UI surface | layer-backed NSView, frames from `CADisplayLink` (a timer at the display's rate before macOS 14), input methods through NSTextInputClient | GtkGLArea (GtkDrawingArea without a GPU), GtkIMMulticontext | `MyGoSurface` child window, IMM32 |
 | native UI data drags | NSDraggingSession, NSPasteboardItemDataProvider, NSDraggingDestination | GTK drag contexts, MIME selections, text/uri-list | OLE IDataObject, IDropSource, IDropTarget, Shell drag images |
 | native UI accessibility | `NSAccessibilityElement` subclasses | ATK objects (GObject types registered through purego), bridged to AT-SPI by GTK | UI Automation fragments (COM objects; assembly thunks for the methods taking doubles) |
-| native UI rendering | Metal, into a CAMetalLayer presenting as soon as drawn, or with the Core Animation transaction for frames that resize it or show web views | OpenGL 3.3 or ES 3.0 in the GtkGLArea's render signal; on the CPU, painted with cairo, where OpenGL runs on the CPU | Direct3D 11 (WARP without a GPU), flip-model swap chain |
+| native UI rendering | Metal, into a CAMetalLayer presenting as soon as drawn, or with the Core Animation transaction for frames that resize it or show web views | OpenGL 3.3 or ES 3.0 in the GtkGLArea's render signal; on the CPU, painted with cairo, where OpenGL runs on the CPU | Direct3D 11 (WARP without a GPU), flip-model swap chain presenting dirty rectangles |
 | web views in native UI | WKWebView in a clip view under the surface; `hitTest:` lets the pointer through | WebKitWebView in a `GtkLayout` under the area in a `GtkOverlay`; an input shape lets the pointer through | WebView2 composition controller in a DirectComposition target under the frames'; the surface sends it the mouse |
 | audio output | Audio Queue on the default output | PulseAudio simple API (PipeWire too), else ALSA `default` | WASAPI shared mode, reopened when the default output changes |
 | gamepads | GameController.framework, extended gamepad profile | evdev, the kernel's gamepad layout, Xbox's X and Y swapped back | XInput, four slots, Guide by `XInputGetStateEx` |

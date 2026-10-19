@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -31,6 +32,9 @@ var (
 	setField     func(event uintptr, field uint32, v int64)
 	setLocation  func(event uintptr, p nsPoint)
 	cfRelease    func(uintptr)
+	createDevice func() uintptr
+	getClass     func(obj uintptr) uintptr
+	isMain       func() int32
 )
 
 func load() error {
@@ -40,6 +44,8 @@ func load() error {
 		"/System/Library/Frameworks/QuartzCore.framework/QuartzCore",
 		"/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
 		"/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
+		"/System/Library/Frameworks/Metal.framework/Metal",
+		"/usr/lib/libSystem.B.dylib",
 	} {
 		h, err := purego.Dlopen(path, purego.RTLD_GLOBAL|purego.RTLD_NOW)
 		if err != nil {
@@ -55,6 +61,9 @@ func load() error {
 	purego.RegisterLibFunc(&setField, cg, "CGEventSetIntegerValueField")
 	purego.RegisterLibFunc(&setLocation, cg, "CGEventSetLocation")
 	purego.RegisterLibFunc(&cfRelease, libs["CoreFoundation"], "CFRelease")
+	purego.RegisterLibFunc(&createDevice, libs["Metal"], "MTLCreateSystemDefaultDevice")
+	purego.RegisterLibFunc(&getClass, objcLib, "object_getClass")
+	purego.RegisterLibFunc(&isMain, libs["libSystem.B.dylib"], "pthread_main_np")
 	send, err := purego.Dlsym(objcLib, "objc_msgSend")
 	if err != nil {
 		return err
@@ -71,11 +80,11 @@ func sel(name string) objc.SEL { return objc.RegisterName(name) }
 // handling it.
 type event struct{ arrived, handling, handled float64 }
 
-// A frame: when it started (the tick or display that drew it), when it
-// asked for a drawable and got one, and the events it shows.
+// A frame: when it started (the tick or display that drew it), when the
+// main thread presented it, and the events it shows.
 type frame struct {
-	start, asked, got float64
-	events            []event
+	start, presented float64
+	events           []event
 }
 
 // A measured event, its frame, and when that reached the screen.
@@ -88,66 +97,103 @@ type sample struct {
 var (
 	mu        sync.Mutex
 	measuring bool
-	pending   []event               // handled since the last drawable
-	frames    = map[uint64]*frame{} // by drawableID, until presented
+	pending   []event               // handled since the last frame presented
+	frames    = map[uint64]*frame{} // by drawableID, until shown
 	samples   []sample
-	drawn     int // frames while measuring
-	notShown  int // of them
+	shown     []float64 // when the frames presented while measuring were shown
+	presents  int       // frames presented while measuring
+	notShown  int       // of them
+	// The main thread's waits for drawables while measuring, in seconds.
+	mainWaits []float64
 	// On the main thread: when the frame being drawn started.
 	frameStart float64
 	presented  objc.Block
 
-	origNext, origTick, origUpdate uintptr
+	origNext, origPresentIn, origPresent, origTick, origUpdate uintptr
 )
 
-// swizzle wraps -[CAMetalLayer nextDrawable] and the surface view's frame
-// methods.
+// swizzle wraps -[CAMetalLayer nextDrawable], the presents of drawables,
+// and the surface view's frame methods.
 func swizzle() error {
-	wrap := func(class, name string, fn any) (uintptr, error) {
-		m := getMethod(uintptr(objc.GetClass(class)), uintptr(sel(name)))
+	wrap := func(class uintptr, name string, fn any) (uintptr, error) {
+		m := getMethod(class, uintptr(sel(name)))
 		if m == 0 {
-			return 0, fmt.Errorf("no -[%s %s]", class, name)
+			return 0, fmt.Errorf("no method %s", name)
 		}
 		return setImp(m, purego.NewCallback(fn)), nil
 	}
 	var err error
-	origNext, err = wrap("CAMetalLayer", "nextDrawable", func(self, cmd uintptr) uintptr {
+	origNext, err = wrap(uintptr(objc.GetClass("CAMetalLayer")), "nextDrawable", func(self, cmd uintptr) uintptr {
 		asked := mediaTime()
 		d, _, _ := purego.SyscallN(origNext, self, cmd)
-		if d == 0 {
-			return 0
+		if isMain() != 0 {
+			mu.Lock()
+			if measuring {
+				mainWaits = append(mainWaits, mediaTime()-asked)
+			}
+			mu.Unlock()
 		}
-		f := &frame{start: frameStart, asked: asked, got: mediaTime()}
-		mu.Lock()
-		f.events, pending = pending, nil
-		frames[objc.Send[uint64](objc.ID(d), sel("drawableID"))] = f
-		if measuring {
-			drawn++
-		}
-		mu.Unlock()
-		objc.ID(d).Send(sel("addPresentedHandler:"), presented)
 		return d
 	})
 	if err != nil {
 		return err
 	}
-	origTick, err = wrap("MyGoSurfaceView", "mygoTick:", func(self, cmd, link uintptr) {
+	// The frame showing the events handled until it presents: frames
+	// present on the main thread, as soon as drawn (the command buffer's
+	// presentDrawable:) or with the transaction (the drawable's present).
+	queue := objc.ID(createDevice()).Send(sel("newCommandQueue"))
+	buffer := queue.Send(sel("commandBuffer"))
+	origPresentIn, err = wrap(uintptr(getClass(uintptr(buffer))), "presentDrawable:", func(self, cmd, d uintptr) {
+		present(d)
+		purego.SyscallN(origPresentIn, self, cmd, d)
+	})
+	if err != nil {
+		return err
+	}
+	origPresent, err = wrap(uintptr(objc.GetClass("CAMetalDrawable")), "present", func(self, cmd uintptr) {
+		present(self)
+		purego.SyscallN(origPresent, self, cmd)
+	})
+	if err != nil {
+		return err
+	}
+	view := uintptr(objc.GetClass("MyGoSurfaceView"))
+	origTick, err = wrap(view, "mygoTick:", func(self, cmd, link uintptr) {
 		frameStart = mediaTime()
 		purego.SyscallN(origTick, self, cmd, link)
 	})
 	if err != nil {
 		return err
 	}
-	origUpdate, err = wrap("MyGoSurfaceView", "updateLayer", func(self, cmd uintptr) {
+	origUpdate, err = wrap(view, "updateLayer", func(self, cmd uintptr) {
 		frameStart = mediaTime()
 		purego.SyscallN(origUpdate, self, cmd)
 	})
 	return err
 }
 
+// present notes the frame presenting drawable d, once: a command
+// buffer's presentDrawable: may present it with present.
+func present(d uintptr) {
+	f := &frame{start: frameStart, presented: mediaTime()}
+	id := objc.Send[uint64](objc.ID(d), sel("drawableID"))
+	mu.Lock()
+	if frames[id] != nil {
+		mu.Unlock()
+		return
+	}
+	f.events, pending = pending, nil
+	frames[id] = f
+	if measuring {
+		presents++
+	}
+	mu.Unlock()
+	objc.ID(d).Send(sel("addPresentedHandler:"), presented)
+}
+
 func init() {
 	presented = objc.NewBlock(func(_ objc.Block, d objc.ID) {
-		shown := objc.Send[float64](d, sel("presentedTime"))
+		at := objc.Send[float64](d, sel("presentedTime"))
 		id := objc.Send[uint64](d, sel("drawableID"))
 		mu.Lock()
 		defer mu.Unlock()
@@ -156,14 +202,15 @@ func init() {
 		if f == nil || !measuring {
 			return
 		}
-		if shown == 0 {
+		if at == 0 {
 			// Another frame replaced it before the screen showed it,
 			// showing its events too: they are not counted.
 			notShown++
 			return
 		}
+		shown = append(shown, at)
 		for _, e := range f.events {
-			samples = append(samples, sample{e, f, shown})
+			samples = append(samples, sample{e, f, at})
 		}
 	})
 }
@@ -193,6 +240,26 @@ func view(c *ui.Context) {
 				ui.Text(c, "detail").TextColor(c.Theme().TextMuted)
 			})
 		}).Grow(1)
+	case "anim":
+		ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
+			// A box crossing the window every second, a frame each refresh.
+			x := float32(p.Now().UnixNano()%1e9) / 1e9 * (r.W - 80)
+			p.Fill(ui.Rect{X: r.X + x, Y: r.Y + 100, W: 80, H: 80}, c.Theme().Accent, 8)
+			p.AnimationFrame()
+		})
+	case "heavy":
+		ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
+			// The same with large boxes casting wide shadows, which keep
+			// the GPU busy several milliseconds a frame.
+			t := float32(p.Now().UnixNano()%1e9) / 1e9
+			for i := range boxes {
+				x := float32(i%20)*36 + t*80
+				y := float32(i/20)*50 + 20
+				p.Shadow(ui.Rect{X: r.X + x, Y: r.Y + y, W: 160, H: 120}, 16, 0, 8, 48, 0, ui.RGBA(0, 0, 0, 0.3))
+				p.Fill(ui.Rect{X: r.X + x, Y: r.Y + y, W: 160, H: 120}, c.Theme().Accent, 16)
+			}
+			p.AnimationFrame()
+		})
 	case "drag":
 		ui.Box(c).Fill().Children(func() {
 			ui.Column(c).Fill().Children(func() {
@@ -205,9 +272,13 @@ func view(c *ui.Context) {
 	}
 }
 
-func measure(m string, events, warmup, x, y int) error {
+// boxes is how many boxes heavy draws.
+var boxes int
+
+func measure(m string, events, warmup, x, y, n int) error {
+	boxes = n
 	switch m {
-	case "type", "scroll", "drag":
+	case "type", "scroll", "drag", "anim", "heavy":
 	default:
 		return fmt.Errorf("unknown mode %q", m)
 	}
@@ -350,6 +421,13 @@ func run(events, warmup int) error {
 			mygo.RunOnMain(func() { sendScroll(4, 0) })
 			time.Sleep(300 * time.Millisecond)
 		}
+	case "anim", "heavy":
+		// warmup and events count refreshes.
+		time.Sleep(time.Duration(float64(warmup) / refresh * float64(time.Second)))
+		mu.Lock()
+		measuring = true
+		mu.Unlock()
+		time.Sleep(time.Duration(float64(events) / refresh * float64(time.Second)))
 	case "drag":
 		for n < warmup+events {
 			var x, y float64
@@ -379,34 +457,53 @@ func run(events, warmup int) error {
 	time.Sleep(300 * time.Millisecond)
 	mu.Lock()
 	measuring = false
-	ss, d, ns := samples, drawn, notShown
+	ss, at, waits, np, ns := samples, shown, mainWaits, presents, notShown
 	mu.Unlock()
+	if np == 0 {
+		return errors.New("no frame presented")
+	}
+	var f figures
+	f.refresh, f.events = refresh, float64(len(ss))
+	// The frames: how long the main thread waited for drawables, and how
+	// many refreshes, from the first frame shown to the last, showed a new
+	// one (all, for an animation, but for frames not drawn in time).
+	for _, w := range waits {
+		f.mainWait += w * 1000 / float64(np)
+		if w > 0.004 {
+			f.blocked += 100 / float64(np)
+		}
+	}
+	f.notShown = 100 * float64(ns) / float64(np)
+	if len(at) > 1 && refresh > 0 {
+		slices.Sort(at)
+		refreshes := map[int64]bool{}
+		for _, t := range at {
+			refreshes[int64(math.Round(t*refresh))] = true
+		}
+		span := math.Round((at[len(at)-1]-at[0])*refresh) + 1
+		f.newFrames = 100 * float64(len(refreshes)) / span
+	}
 	if len(ss) == 0 {
-		return errors.New("no event reached the screen")
+		if mode != "anim" && mode != "heavy" {
+			return errors.New("no event reached the screen")
+		}
+		fmt.Println(f.line())
+		return nil
 	}
 	var total []float64
-	var f figures
+	k := float64(len(ss))
 	for _, s := range ss {
-		start := max(s.frame.start, s.handled) // drawn in the pass that handled it
 		total = append(total, (s.shown-s.arrived)*1000)
-		f.queue += (s.handling - s.arrived) * 1000
-		f.handle += (s.handled - s.handling) * 1000
-		f.start += (start - s.handled) * 1000
-		f.build += (s.frame.asked - start) * 1000
-		f.drawable += (s.frame.got - s.frame.asked) * 1000
-		f.toScreen += (s.shown - s.frame.got) * 1000
+		f.queue += (s.handling - s.arrived) * 1000 / k
+		f.handle += (s.handled - s.handling) * 1000 / k
+		f.toPresent += (s.frame.presented - s.handled) * 1000 / k
+		f.toScreen += (s.shown - s.frame.presented) * 1000 / k
 	}
 	slices.Sort(total)
-	k := float64(len(ss))
-	f.refresh, f.events = refresh, k
-	f.queue, f.handle, f.start, f.build, f.drawable, f.toScreen = f.queue/k, f.handle/k, f.start/k, f.build/k, f.drawable/k, f.toScreen/k
 	for _, t := range total {
 		f.mean += t / k
 	}
 	f.p50, f.p90, f.p99 = percentile(total, .5), percentile(total, .9), percentile(total, .99)
-	if d > 0 {
-		f.notShown = 100 * float64(ns) / float64(d)
-	}
 	fmt.Println(f.line())
 	return nil
 }

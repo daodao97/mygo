@@ -14,6 +14,7 @@ package d3d11
 import (
 	"errors"
 	"fmt"
+	"image"
 	"math"
 	"os"
 	"syscall"
@@ -49,6 +50,9 @@ var (
 	iidIDXGIFactory2   = guid{0x50c83a1c, 0xe072, 0x4c48, [8]byte{0x87, 0xb0, 0x36, 0x30, 0xfa, 0x36, 0xa6, 0xd0}}
 	iidIDXGISwapChain2 = guid{0xa8be2ac4, 0x199f, 0x4946, [8]byte{0xb3, 0x31, 0x79, 0x59, 0x9f, 0xb9, 0x8d, 0xe7}}
 	iidID3D11Texture2D = guid{0x6f15aaf2, 0xd208, 0x4e89, [8]byte{0x9a, 0xb4, 0x48, 0x95, 0x35, 0xd3, 0x4f, 0x9c}}
+	// ID3D11DeviceContext1 (Direct3D 11.1), whose ClearView clears a
+	// rectangle.
+	iidID3D11DeviceContext1 = guid{0xbb2c6faa, 0xb5fb, 0x4082, [8]byte{0x8e, 0x6b, 0x38, 0x8b, 0x8c, 0xfa, 0x90, 0xe1}}
 )
 
 var iidIDCompositionDevice = guid{0xc37ea93a, 0xe7aa, 0x450d, [8]byte{0xb1, 0x6f, 0x97, 0x46, 0xcb, 0x04, 0x07, 0xf3}}
@@ -93,6 +97,7 @@ const (
 	ctxClearRenderTargetView   = 50
 	ctxClearState              = 110
 	ctxFlush                   = 111
+	ctx1ClearView              = 132 // ID3D11DeviceContext1
 	dxgiDevGetAdapter          = 7
 	dxgiDevSetMaxLatency       = 12 // IDXGIDevice1::SetMaximumFrameLatency
 	dxgiGetParent              = 6
@@ -100,6 +105,7 @@ const (
 	factoryCreateSwapChainHwnd = 15
 	factoryCreateSwapChainComp = 24 // CreateSwapChainForComposition
 	scPresent                  = 8
+	scPresent1                 = 22 // IDXGISwapChain1
 	scGetBuffer                = 9
 	scResizeBuffers            = 13
 	scSetSourceSize            = 29 // IDXGISwapChain2
@@ -225,6 +231,14 @@ type mapped struct {
 	RowPitch, DepthPitch uint32
 }
 
+// presentParameters is DXGI_PRESENT_PARAMETERS.
+type presentParameters struct {
+	DirtyRectsCount uint32
+	DirtyRects      *gpu.Scissor // RECTs
+	ScrollRect      uintptr
+	ScrollOffset    uintptr
+}
+
 type swapChainDesc1 struct {
 	Width, Height, Format          uint32
 	Stereo                         int32
@@ -317,7 +331,34 @@ type Renderer struct {
 	blurTmp  [2]texture
 
 	b gpu.Builder
+
+	// Frames draw only what changed since the last one, as the swap chain
+	// flips in sequence: DXGI then keeps what its buffers hold, and copies
+	// into the one presented what the last frame changed outside the dirty
+	// rectangle given (Present1). ctx1 is the context's
+	// ID3D11DeviceContext1, whose ClearView clears the rectangle; diff
+	// finds what changed, and pipelines what the ops draw with; held tells
+	// that the swap chain shows the last frame drawn. part is the part of
+	// the frame drawn, and redrew how much of it was, for FrameInfo.
+	ctx1      uintptr
+	diff      scene.Differ
+	pipelines gpu.Pipelines
+	held      bool
+	part      gpu.Scissor
+	redrew    redrawn
 }
+
+// redrawn is how much of a frame was drawn.
+type redrawn int8
+
+const (
+	redrewWhole redrawn = iota
+	redrewPart
+	redrewNothing
+)
+
+// noPartial draws every frame whole, for measurements that compare.
+var noPartial = os.Getenv("MYGO_PARTIAL") == "0"
 
 // New creates a renderer drawing into the window hwnd, on the GPU or, when
 // there is none, with Windows' software rasterizer (WARP). Its frames are
@@ -361,6 +402,12 @@ func (r *Renderer) init() error {
 		call(dxgiDev1, dxgiDevSetMaxLatency, 1)
 		free(&dxgiDev1)
 	}
+	if noPartial || failed(call(r.ctx, 0, uintptr(unsafe.Pointer(&iidID3D11DeviceContext1)), uintptr(unsafe.Pointer(&r.ctx1)))) {
+		r.ctx1 = 0
+	}
+	// Quads reach a pixel out of their shapes, glyphs half a pixel more, as
+	// they draw at whole pixels.
+	r.diff.Reach = 2
 	if failed(call(dxgiDev, dxgiDevGetAdapter, uintptr(unsafe.Pointer(&adapter)))) {
 		return errors.New("d3d11: no adapter")
 	}
@@ -479,9 +526,10 @@ func (r *Renderer) resize(w, h int) error {
 // of them.
 func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 	free(&r.rtv)
+	r.held = false
 	if r.swapChain == 0 {
 		desc := swapChainDesc1{Width: uint32(bw), Height: uint32(bh), Format: formatB8G8R8A8Unorm, SampleCount: 1,
-			BufferUsage: 0x20, BufferCount: uint32(n), Scaling: 0, SwapEffect: 4 /* flip discard */}
+			BufferUsage: 0x20, BufferCount: uint32(n), Scaling: 0, SwapEffect: 3 /* flip sequential */}
 		if r.composed {
 			if err := r.composeSwapChain(desc); err != nil {
 				return err
@@ -642,7 +690,7 @@ func (r *Renderer) Release() {
 	// The target goes first: a window has one at most, which another
 	// renderer of it then makes.
 	for _, p := range []*uintptr{&r.visual, &r.target, &r.dcomp, &r.rtv, &r.swapChain2, &r.swapChain, &r.instBuf, &r.cbuf, &r.passCB, &r.samp, &r.raster, &r.holeBlend, &r.blend, &r.layout,
-		&r.blurPS, &r.downPS, &r.passVS, &r.ps, &r.vs, &r.factory, &r.ctx, &r.device} {
+		&r.blurPS, &r.downPS, &r.passVS, &r.ps, &r.vs, &r.factory, &r.ctx1, &r.ctx, &r.device} {
 		free(p)
 	}
 }
@@ -728,7 +776,8 @@ func (r *Renderer) Render(s *scene.Scene) error {
 		return nil
 	}
 	resized := r.swapChain != 0 && (s.Width != r.w || s.Height != r.h)
-	if err := r.draw(s); err != nil {
+	drawn, err := r.drawFrame(s)
+	if err != nil || !drawn {
 		return err
 	}
 	// A frame of a new size is presented at once (sync interval 0), not
@@ -749,23 +798,86 @@ func (r *Renderer) Render(s *scene.Scene) error {
 	return nil
 }
 
-// draw draws s into the swap chain's back buffer.
+// draw draws s whole into the swap chain's back buffer, without
+// presenting it, for tests and RenderOffscreen.
 func (r *Renderer) draw(s *scene.Scene) error {
+	r.held = false
+	_, err := r.drawFrame(s)
+	return err
+}
+
+// drawFrame draws s into the swap chain's back buffer, only where it
+// changed since the last frame when the swap chain shows that one, and
+// reports whether it drew: a frame that changed nothing draws nothing.
+func (r *Renderer) drawFrame(s *scene.Scene) (bool, error) {
 	r.frame++
 	r.used = 0
 	if err := r.resize(s.Width, s.Height); err != nil {
-		return err
+		return false, err
+	}
+	var damage []image.Rectangle
+	known := false
+	if r.ctx1 != 0 {
+		damage, known = r.diff.Diff(s)
+		known = known && r.held
+		if known && len(damage) == 0 {
+			// The swap chain shows the frame already.
+			r.redrew = redrewNothing
+			return false, nil
+		}
 	}
 	if err := r.syncAtlas(&r.mask, s.MaskAtlas, formatR8Unorm); err != nil {
-		return err
+		return false, err
 	}
 	if err := r.syncAtlas(&r.color, s.ColorAtlas, formatR8G8B8A8Unorm); err != nil {
-		return err
+		return false, err
 	}
 	if err := r.drawCanvases(s); err != nil {
-		return err
+		return false, err
 	}
-	return r.drawScene(s, &r.b, r.rtv)
+	r.drawing = r.rtv
+	built, err := r.buildScene(s, &r.b)
+	if err != nil {
+		return false, err
+	}
+	var part *gpu.Scissor
+	r.redrew = redrewWhole
+	if r.ctx1 != 0 {
+		damage = r.pipelines.Damage(&r.b, r.batchKey, &r.diff, damage, known)
+		if known {
+			var changed image.Rectangle
+			for _, d := range damage {
+				changed = changed.Union(d)
+			}
+			if area, ok := gpu.Partial(changed, s.Width, s.Height, func(d []image.Rectangle) []image.Rectangle { return r.diff.AddBackdrops(s, d) }); ok {
+				part, r.part, r.redrew = &area, area, redrewPart
+			}
+		}
+	}
+	r.held = false
+	if err := r.drawBuilt(built, &r.b, r.rtv, part); err != nil {
+		return false, err
+	}
+	if r.ctx1 != 0 {
+		r.diff.Remember(s)
+		r.pipelines.Remember()
+	}
+	return true, nil
+}
+
+// batchKey returns what batch i of the frame built draws with: its pixel
+// shader and blending (gpu.Pipelines).
+func (r *Renderer) batchKey(i int) uint64 {
+	bt := &r.b.Batches[i]
+	ps := r.ps
+	if bt.Effect != nil {
+		ps = r.effectShader(bt.Effect)
+	}
+	key := uint64(ps) << 1
+	if bt.Hole {
+		key |= 1
+	}
+	return key
 }
 
 // drawCanvases draws the canvases s draws anew or shows into their
@@ -817,14 +929,35 @@ func freeCanvas(t *canvasTexture) {
 // drawScene draws s into the render target rtv with b.
 func (r *Renderer) drawScene(s *scene.Scene, b *gpu.Builder, rtv uintptr) error {
 	r.drawing = rtv
+	built, err := r.buildScene(s, b)
+	if err != nil {
+		return err
+	}
+	return r.drawBuilt(built, b, rtv, nil)
+}
+
+// buildScene builds the instances of s with b, with the textures they
+// read, for the render target r.drawing, and returns the scene built.
+func (r *Renderer) buildScene(s *scene.Scene, b *gpu.Builder) (*scene.Scene, error) {
 	b.BlurredImage = r.blurImage
 	s = b.Build(s, r.imageView)
 	b.BlurredImage = nil
 	if err := r.syncStops(b); err != nil {
-		return err
+		return nil, err
 	}
 	if err := r.fitBackdrop(b); err != nil {
-		return err
+		return nil, err
+	}
+	return s, nil
+}
+
+// drawBuilt draws s, built with b (buildScene), into the render target
+// rtv, whole or, unless part is nil, only within part, keeping what rtv
+// holds elsewhere.
+func (r *Renderer) drawBuilt(s *scene.Scene, b *gpu.Builder, rtv uintptr, part *gpu.Scissor) error {
+	r.drawing = rtv
+	if part != nil && part.Empty() {
+		return nil
 	}
 
 	// Upload the instances, growing the buffer as needed.
@@ -853,7 +986,11 @@ func (r *Renderer) drawScene(s *scene.Scene, b *gpu.Builder, rtv uintptr) error 
 	ctx := r.ctx
 	call(ctx, ctxOMSetRenderTargets, 1, uintptr(unsafe.Pointer(&rtv)), 0)
 	clear := s.Clear.Premul(1)
-	call(ctx, ctxClearRenderTargetView, rtv, uintptr(unsafe.Pointer(&clear[0])))
+	if part != nil {
+		call(r.ctx1, ctx1ClearView, rtv, uintptr(unsafe.Pointer(&clear[0])), uintptr(unsafe.Pointer(part)), 1)
+	} else {
+		call(ctx, ctxClearRenderTargetView, rtv, uintptr(unsafe.Pointer(&clear[0])))
+	}
 	call(ctx, ctxRSSetState, r.raster)
 	call(ctx, ctxIASetPrimitiveTopology, topologyTriangleStrip)
 	r.bindState(s, 0)
@@ -899,6 +1036,11 @@ func (r *Renderer) drawScene(s *scene.Scene, b *gpu.Builder, rtv uintptr) error 
 			shaders = true
 		}
 		sc := bt.Scissor // a D3D11_RECT
+		if part != nil {
+			if sc = sc.Intersect(*part); sc.Empty() {
+				continue
+			}
+		}
 		call(ctx, ctxRSSetScissorRects, 1, uintptr(unsafe.Pointer(&sc)))
 		call(ctx, ctxDrawInstanced, 4, uintptr(bt.Count), 0, uintptr(bt.Start))
 	}
@@ -1167,12 +1309,20 @@ func (r *Renderer) newTarget(t *texture, w, h int, drawn bool) error {
 	return nil
 }
 
-// present shows the back buffer, after sync vertical blanks.
+// present shows the back buffer, after sync vertical blanks: what the
+// frame drew, when it drew in part, and DXGI the rest of the last frame.
 func (r *Renderer) present(sync uintptr) error {
-	hr := call(r.swapChain, scPresent, sync, 0)
+	var hr uintptr
+	if r.redrew == redrewPart {
+		params := presentParameters{DirtyRectsCount: 1, DirtyRects: &r.part}
+		hr = call(r.swapChain, scPresent1, sync, 0, uintptr(unsafe.Pointer(&params)))
+	} else {
+		hr = call(r.swapChain, scPresent, sync, 0)
+	}
 	if failed(hr) {
 		return fmt.Errorf("d3d11: present failed: %#x", uint32(hr))
 	}
+	r.held = r.ctx1 != 0
 	if r.frame%120 == 0 {
 		r.sweep()
 	}
@@ -1180,7 +1330,16 @@ func (r *Renderer) present(sync uintptr) error {
 }
 
 // FrameInfo describes the last frame for MYGO_FRAME_STATS.
-func (r *Renderer) FrameInfo() string { return r.b.Summary() }
+func (r *Renderer) FrameInfo() string {
+	switch r.redrew {
+	case redrewPart:
+		a := r.part
+		return fmt.Sprintf("redrew %d×%d at %d,%d, %s", a.Right-a.Left, a.Bottom-a.Top, a.Left, a.Top, r.b.Summary())
+	case redrewNothing:
+		return "unchanged"
+	}
+	return r.b.Summary()
+}
 
 // sweep frees the textures of images no frame drew for a while, and
 // those of canvases gone, or transient and not drawn this frame: render

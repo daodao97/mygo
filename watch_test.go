@@ -966,7 +966,7 @@ func TestFileWatchFileGone(t *testing.T) {
 	if !slices.Equal(r.events, []FileEvent{{Op: FileRemove, Path: "."}}) || !r.gone.ok {
 		t.Fatalf("renamed: %+v", r)
 	}
-	if found := findRenamed(filepath.Dir(w.Root()), r.gone.id); found != filepath.Join(filepath.Dir(w.Root()), "renamed.txt") {
+	if found := findRenamed(filepath.Dir(w.Root()), []fileWatchGone{r.gone}); found != filepath.Join(filepath.Dir(w.Root()), "renamed.txt") {
 		t.Fatalf("found %q", found)
 	}
 }

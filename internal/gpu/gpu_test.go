@@ -2,6 +2,7 @@ package gpu
 
 import (
 	"bytes"
+	"math"
 	"slices"
 	"testing"
 
@@ -661,8 +662,7 @@ func TestTranslationsFold(t *testing.T) {
 // corners and the shadows it casts are drawn as nine-patches: the pieces of
 // each tile what it drew whole, those drawn with the curves lie in the
 // corners' boxes, which hold a fraction of the pixels, and the others have
-// square corners, in batches without continuous corners; and that small
-// shapes, whose pixels are all near a corner, stay whole.
+// square corners, in batches without continuous corners.
 func TestCornerSplitShrinksTheCurved(t *testing.T) {
 	card := scene.Rect{X: 100.5, Y: 80.25, W: 600, H: 400}
 	r := scene.Uniform(24)
@@ -683,6 +683,15 @@ func TestCornerSplitShrinksTheCurved(t *testing.T) {
 		t.Fatalf("%d instances whole, want 6", len(whole.Instances))
 	}
 	frame := Scissor{0, 0, 800, 600}
+	// The pixels of an instance's quad, as the vertex shader grows it.
+	quadOf := func(in Instance) Scissor {
+		e := float32(1)
+		if in.Params[0] == 1 {
+			e += 3 * in.Params[2]
+		}
+		return Scissor{int32(math.Floor(float64(in.Rect[0] - e))), int32(math.Floor(float64(in.Rect[1] - e))),
+			int32(math.Ceil(float64(in.Rect[0] + in.Rect[2] + e))), int32(math.Ceil(float64(in.Rect[1] + in.Rect[3] + e)))}
+	}
 	for _, kind := range []float32{1, 0} {
 		var curved, all int64
 		type cut struct {
@@ -692,7 +701,7 @@ func TestCornerSplitShrinksTheCurved(t *testing.T) {
 		var cuts []cut
 		for _, in := range whole.Instances {
 			if in.Params[0] == kind {
-				free, _, _ := cornersOf(&in, scene.Affine{})
+				free, _, _, _ := cornersOf(&in, scene.Affine{})
 				cuts = append(cuts, cut{in.Rect, free})
 			}
 		}
@@ -701,7 +710,7 @@ func TestCornerSplitShrinksTheCurved(t *testing.T) {
 				if in.Params[0] != kind {
 					continue
 				}
-				all += bt.Scissor.area()
+				all += bt.Scissor.intersect(quadOf(in)).area()
 				if in.Radii == [4]float32{} {
 					if bt.Continuous {
 						t.Errorf("kind %v: a piece with square corners in a batch with continuous ones", kind)
@@ -711,7 +720,7 @@ func TestCornerSplitShrinksTheCurved(t *testing.T) {
 				if !bt.Continuous {
 					t.Errorf("kind %v: a piece with continuous corners in a batch without", kind)
 				}
-				curved += bt.Scissor.area()
+				curved += bt.Scissor.intersect(quadOf(in)).area()
 				// In the corners' boxes: out of the columns and the rows between them.
 				for _, c := range cuts {
 					cols := Scissor{c.free.Left, frame.Top, c.free.Right, frame.Bottom}
@@ -727,7 +736,7 @@ func TestCornerSplitShrinksTheCurved(t *testing.T) {
 		for _, bt := range whole.Batches {
 			for _, in := range whole.Instances[bt.Start : bt.Start+bt.Count] {
 				if in.Params[0] == kind {
-					want += bt.Scissor.area()
+					want += bt.Scissor.intersect(quadOf(in)).area()
 				}
 			}
 		}
@@ -739,14 +748,56 @@ func TestCornerSplitShrinksTheCurved(t *testing.T) {
 		}
 		t.Logf("kind %v: %d of %d px drawn with the curves", kind, curved, want)
 	}
-	// Small boxes are near their corners everywhere.
-	boxes := gputest.BoxesScene(640, 400, 120, false)
-	for i := range boxes.Ops {
-		boxes.Ops[i].Continuous = true
+}
+
+// TestCornerSplitPaysForItsDrawCalls counts the instances and batches of
+// scenes with continuous corners drawn as nine-patches and whole: a grid
+// of small shadowed boxes, whose pixels are all near their corners, stays
+// as it is whole (a shape and its shadow joined into few batches), and a
+// dashboard of large cards adds a few draw calls for each, no more.
+func TestCornerSplitPaysForItsDrawCalls(t *testing.T) {
+	r4 := func(r float32) [4]float32 { return [4]float32{r, r, r, r} }
+	// 600 boxes of 24 DIPs at twice the density, moved by translations.
+	boxes := &scene.Scene{Width: 1800, Height: 1280}
+	for i := range 600 {
+		box := scene.Rect{W: 48, H: 48}
+		m := scene.Translation(16+float32(i%30)*58+float32(i%7)*0.5, 16+float32(i/30)*62+float32(i%5)*0.4)
+		boxes.Ops = append(boxes.Ops,
+			scene.Op{Kind: scene.OpShadow, Rect: scene.Rect{Y: 4, W: 48, H: 48}, Radii: r4(12), Color: scene.Color{A: 70}, Blur: 16,
+				Cast: box, CastRadii: r4(12), Continuous: true, Transform: m},
+			scene.Op{Kind: scene.OpFill, Rect: box, Radii: r4(12), Color: scene.Color{R: uint8(i), G: 120, B: 200, A: 255}, Continuous: true, Transform: m})
 	}
-	split.Build(boxes, nil)
-	whole.Build(boxes, nil)
-	if len(split.Instances) != len(whole.Instances) {
-		t.Errorf("small boxes: %d instances, %d whole", len(split.Instances), len(whole.Instances))
+	// 12 cards of 290×235 DIPs at twice the density, casting two shadows.
+	cards := &scene.Scene{Width: 2560, Height: 1600}
+	for i := range 12 {
+		card := scene.Rect{X: 48 + float32(i%4)*620, Y: 48 + float32(i/4)*510, W: 580, H: 470}
+		sh := card
+		sh.Y += 4
+		cards.Ops = append(cards.Ops,
+			scene.Op{Kind: scene.OpShadow, Rect: sh, Radii: r4(24), Color: scene.Color{A: 40}, Blur: 24, Cast: card, CastRadii: r4(24), Continuous: true},
+			scene.Op{Kind: scene.OpShadow, Rect: card, Radii: r4(24), Color: scene.Color{A: 30}, Blur: 4, Cast: card, CastRadii: r4(24), Continuous: true},
+			scene.Op{Kind: scene.OpFill, Rect: card, Radii: r4(24), Color: scene.Color{R: 255, G: 255, B: 255, A: 255}, Continuous: true})
+	}
+	for _, c := range []struct {
+		name               string
+		s                  *scene.Scene
+		instances, batches int // nine-patches
+	}{
+		{"boxes", boxes, 1200, 1},
+		{"cards", cards, 252, 252},
+	} {
+		var split, whole Builder
+		for _, b := range []*Builder{&split, &whole} {
+			b.Classes, b.Opaque, b.ClipSkip = true, true, true
+			b.SplitCorners()
+		}
+		whole.NoCornerSplit = true
+		split.Build(c.s, nil)
+		whole.Build(c.s, nil)
+		t.Logf("%s: %d instances in %d batches, whole %d in %d", c.name, len(split.Instances), len(split.Batches),
+			len(whole.Instances), len(whole.Batches))
+		if len(split.Instances) != c.instances || len(split.Batches) != c.batches {
+			t.Errorf("%s: %d instances in %d batches, want %d in %d", c.name, len(split.Instances), len(split.Batches), c.instances, c.batches)
+		}
 	}
 }

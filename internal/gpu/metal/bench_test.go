@@ -13,7 +13,8 @@ import (
 // BenchmarkRenderSprites draws frames of a 2D game at 1920×1080
 // (gputest's SpriteScene: 1,872 sprites of one sheet) into one texture,
 // waiting for each: ns/op is the time of a frame, GPU-ms what the GPU
-// spent on it, by its command buffer's timestamps.
+// spent on it, by its command buffer's timestamps, and encode-ms what the
+// CPU spent encoding it.
 func BenchmarkRenderSprites(b *testing.B) {
 	benchRender(b, gputest.SpriteScene(1920, 1080, 3, 3, 300))
 }
@@ -43,15 +44,17 @@ func benchRenderWith(b *testing.B, s *scene.Scene, setup func(*Renderer)) {
 	if setup != nil {
 		setup(o.r)
 	}
-	var gpu time.Duration
+	var gpu, encoded time.Duration
 	for b.Loop() {
 		d, err := o.Render(s)
 		if err != nil {
 			b.Fatal(err)
 		}
 		gpu += d
+		encoded += o.Encoded()
 	}
 	b.ReportMetric(gpu.Seconds()*1000/float64(b.N), "GPU-ms")
+	b.ReportMetric(encoded.Seconds()*1000/float64(b.N), "encode-ms")
 	if setup != nil {
 		b.ReportMetric(float64(len(o.r.b.Batches)), "batches")
 	}
@@ -70,3 +73,10 @@ func BenchmarkRenderTranslatedBoxes(b *testing.B) {
 // corners at 2560×1600 (gputest.CardsScene), each casting two shadows,
 // which the builder draws as nine-patches (gpu.Builder.SplitCorners).
 func BenchmarkRenderCards(b *testing.B) { benchRender(b, gputest.CardsScene(2560, 1600)) }
+
+// BenchmarkRenderPanels draws a page of 96 cards at 2560×1600
+// (gputest.PanelsScene): clips and images change from card to card, so a
+// frame takes hundreds of batches, and encode-ms is mostly their cost.
+func BenchmarkRenderPanels(b *testing.B) {
+	benchRenderWith(b, gputest.PanelsScene(2560, 1600, 96), func(*Renderer) {})
+}

@@ -31,6 +31,8 @@ type Offscreen struct {
 	r    *Renderer
 	tex  id
 	w, h int
+	// encoded is how long encoding the last frame took on the CPU.
+	encoded time.Duration
 }
 
 var msgDouble func(obj id, sel uintptr) float64
@@ -79,9 +81,11 @@ func (o *Offscreen) Render(s *scene.Scene) (gpu time.Duration, err error) {
 			return
 		}
 		var cb id
+		start := time.Now()
 		if cb, err = r.encode(s, o.tex); err != nil {
 			return
 		}
+		o.encoded = time.Since(start)
 		send(cb, "commit")
 		send(cb, "waitUntilCompleted")
 		if int(send(cb, "status")) == statusError {
@@ -93,6 +97,11 @@ func (o *Offscreen) Render(s *scene.Scene) (gpu time.Duration, err error) {
 	})
 	return gpu, err
 }
+
+// Encoded returns how long the CPU took to encode the last frame Render
+// drew: building its instances (gpu.Builder), uploading what changed in
+// its atlases, and encoding its passes, before committing them.
+func (o *Offscreen) Encoded() time.Duration { return o.encoded }
 
 // Release frees the texture and the renderer.
 func (o *Offscreen) Release() {

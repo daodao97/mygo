@@ -1,6 +1,11 @@
 package gpu
 
-import "image"
+import (
+	"image"
+	"slices"
+
+	"github.com/egoist/mygo/internal/scene"
+)
 
 // Partial redraws. A frame that changes little of a window (a caret
 // blinking, a spinner turning, a button under the pointer) redraws only
@@ -131,3 +136,51 @@ func (a *Ages) Has(id uintptr) bool {
 	}
 	return false
 }
+
+// Pipelines keeps, for each op of the frames a renderer builds, a hash of
+// the pipelines (shaders, blending) its instances draw with. An op drawn
+// with others than in the last frame (a batch specialized for other
+// classes as batching changed around it, a pipeline made meanwhile, a
+// clip cut by a mask) draws a unit in the last place apart here and
+// there, which a frame drawn whole would change too: its bounds count as
+// changed.
+type Pipelines struct {
+	keys, last []uint64
+}
+
+// Damage hashes the pipelines of the ops b built, pipe(i) being batch i's,
+// and adds to damage, what changed since the last frame drawn as d found
+// (unless not known), the bounds of the ops d matches with an op of the
+// last frame drawn with other pipelines, and returns it.
+func (p *Pipelines) Damage(b *Builder, pipe func(i int) uint64, d *scene.Differ, damage []image.Rectangle, known bool) []image.Rectangle {
+	n := len(b.OpStart) - 1
+	p.keys = slices.Grow(p.keys[:0], n)[:n]
+	clear(p.keys)
+	op := 0
+	for i, bt := range b.Batches {
+		lo, hi := int32(bt.Start), int32(bt.Start+bt.Count)
+		for op < n && b.OpStart[op+1] <= lo {
+			op++
+		}
+		key := pipe(i)
+		for k := op; k < n && b.OpStart[k] < hi; k++ {
+			if b.OpStart[k+1] > b.OpStart[k] {
+				p.keys[k] = (p.keys[k] ^ key) * 1099511628211
+			}
+		}
+	}
+	if !known {
+		return damage
+	}
+	bounds := d.Bounds()
+	for j, key := range p.keys {
+		if i, ok := d.Match(j); ok && i < len(p.last) && p.last[i] != key {
+			damage = append(damage, bounds[j])
+		}
+	}
+	return damage
+}
+
+// Remember keeps the hashes of the frame Damage was given last, drawn, to
+// compare the next with.
+func (p *Pipelines) Remember() { p.keys, p.last = p.last, p.keys }

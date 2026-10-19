@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 )
@@ -83,13 +84,24 @@ func watchDocumentFile(ctx context.Context, path string) {
 		if r.err != nil {
 			return
 		}
-		// The file the watch saw go away, by what it was when the watch
-		// last saw it: a look now may come after the next rename.
+		// The file that went away, by what it was when the watch last saw
+		// it, as a look now may come after the next rename, or else as the
+		// document last read or wrote it: the watch looks once changes
+		// settle, so a file that replaced the one it saw, which the
+		// document read (when the watch started, or its window was
+		// focused), can be renamed before the watch ever saw it.
+		docs := documentsAt(path)
 		moved := ""
-		if r.events[len(r.events)-1].Op == FileRemove && r.gone.ok {
-			moved = findRenamed(filepath.Dir(w.Root()), r.gone.id)
+		if r.events[len(r.events)-1].Op == FileRemove {
+			ids := []fileWatchGone{r.gone}
+			for _, b := range docs {
+				b.mu.Lock()
+				ids = append(ids, b.stamp.file)
+				b.mu.Unlock()
+			}
+			moved = findRenamed(filepath.Dir(w.Root()), ids)
 		}
-		for _, b := range documentsAt(path) {
+		for _, b := range docs {
 			if moved != "" {
 				b.moved(moved)
 			} else {
@@ -102,23 +114,31 @@ func watchDocumentFile(ctx context.Context, path string) {
 	}
 }
 
-// findRenamed returns the path of the file in dir that is the file id
-// identifies, or "".
-func findRenamed(dir string, id fileWatchID) string {
+// findRenamed returns the path of the file in dir that one of ids
+// identifies, the first of ids that one does, or "".
+func findRenamed(dir string, ids []fileWatchGone) string {
+	if !slices.ContainsFunc(ids, func(id fileWatchGone) bool { return id.ok }) {
+		return ""
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return ""
 	}
+	found, at := "", len(ids)
 	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
-		if fileWatchEntryOf(info).id == id {
-			return filepath.Join(dir, entry.Name())
+		id := fileWatchEntryOf(info).id
+		for i, want := range ids[:at] {
+			if want.ok && want.id == id {
+				found, at = filepath.Join(dir, entry.Name()), i
+				break
+			}
 		}
 	}
-	return ""
+	return found
 }
 
 // documentsAt returns the open documents of the file at path.
@@ -163,7 +183,7 @@ func (b *docBase) checkDisk() {
 		if changed {
 			b.notify()
 		}
-	case now == known && !wasDeleted:
+	case now.same(known) && !wasDeleted:
 		readOnly := !fileWritable(path)
 		b.mu.Lock()
 		changed := b.readOnly != readOnly

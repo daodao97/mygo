@@ -117,13 +117,16 @@ type surface struct {
 	// the view changed size or scale since.
 	linkRunning bool
 	due         bool
-	timing      bool
-	resized     bool
-	lastFrame   time.Time
-	framePass   uint64
-	cursor      platform.Cursor
-	inside      bool
-	ctrlClick   bool // the primary button is down for a Control-click
+	// deferred tells that the content left the last paced frame to draw
+	// later (FrameNow): the link keeps running meanwhile.
+	deferred  bool
+	timing    bool
+	resized   bool
+	lastFrame time.Time
+	framePass uint64
+	cursor    platform.Cursor
+	inside    bool
+	ctrlClick bool // the primary button is down for a Control-click
 
 	// input is the state of the text input with the keyboard; marked is
 	// the input method's composition and markedSel its selection in it.
@@ -251,6 +254,30 @@ func (s *surface) RequestFrame() {
 		t := msgTimer(class("NSTimer"), sel("timerWithTimeInterval:target:selector:userInfo:repeats:"), delay.Seconds(), s.view, sel("mygoTimer:"), 0, false)
 		send(send(class("NSRunLoop"), "mainRunLoop"), "addTimer:forMode:", uintptr(t), kCFRunLoopCommonModes)
 	})
+}
+
+// FrameNow draws a frame at once, for one the display link's tick left to
+// draw until the renderer had a drawable.
+func (s *surface) FrameNow() {
+	if !s.w.closed {
+		s.deferred = false
+		s.frameNow(false)
+	}
+}
+
+// frameNow draws a frame now, rather than when AppKit displays the view,
+// which would cost a pass of its display cycle and a commit of Core
+// Animation's transaction for each frame: the renderer presents frames
+// that change nothing else as soon as drawn. The display link's frames are
+// paced by it.
+func (s *surface) frameNow(paced bool) {
+	s.resized = false
+	s.framePass = caPass
+	s.lastFrame = time.Now()
+	if s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame, Paced: paced}) && paced {
+		// The content draws it once the display can take it (FrameNow).
+		s.deferred = true
+	}
 }
 
 // presentsWithTransaction reports whether the GPU renderer's CAMetalLayer
@@ -755,8 +782,9 @@ func registerSurfaceClass() {
 		}),
 		method("mygoTick:", func(self id, _ objc.SEL, link id) {
 			s := b().surfaceOf(self)
-			if s == nil || !s.due {
-				// No frame was asked for since the last refresh.
+			if s == nil || !s.due && !s.deferred {
+				// No frame was asked for since the last refresh, nor
+				// does the content wait to draw the last one.
 				send(link, "setPaused:", 1)
 				if s != nil {
 					s.linkRunning = false
@@ -770,15 +798,7 @@ func registerSurfaceClass() {
 				// frame shows with the window's changes then.
 				return
 			}
-			// The frame draws now, rather than when AppKit displays the
-			// view, which would cost a pass of its display cycle and a
-			// commit of Core Animation's transaction for each frame: the
-			// renderer presents frames that change nothing else as soon
-			// as drawn.
-			s.resized = false
-			s.framePass = caPass
-			s.lastFrame = time.Now()
-			s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+			s.frameNow(true)
 		}),
 		method("mygoTimer:", func(self id, _ objc.SEL, timer id) {
 			// A closed window's view lives until its timer fires.

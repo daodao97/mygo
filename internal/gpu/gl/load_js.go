@@ -44,12 +44,14 @@ const objectKey = "__mygo"
 
 // NewContext makes the WebGL 2 context of canvas, which draws premultiplied
 // colors without depth, stencil or antialiasing, as frames need: the
-// renderer cuts shapes' edges itself. It fails where the browser has no
-// WebGL 2, or will not make a context for the canvas.
+// renderer cuts shapes' edges itself. Its drawing buffer keeps what was
+// drawn, so that frames draw only what changed (Renderer.Partial). It
+// fails where the browser has no WebGL 2, or will not make a context for
+// the canvas.
 func NewContext(canvas js.Value) (*Context, error) {
 	attrs := map[string]any{
 		"alpha": true, "premultipliedAlpha": true, "antialias": false, "depth": false, "stencil": false,
-		"preserveDrawingBuffer": false, "powerPreference": "default",
+		"preserveDrawingBuffer": true, "powerPreference": "default",
 	}
 	v := canvas.Call("getContext", "webgl2", attrs)
 	if v.IsNull() || v.IsUndefined() {

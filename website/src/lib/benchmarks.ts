@@ -52,6 +52,7 @@ export const metrics = [
   { id: "memory", unit: "B/op", label: "Memory", text: "memory allocated per operation" },
   { id: "allocs", unit: "allocs/op", label: "Allocations", text: "allocations per operation" },
   { id: "gpu", unit: "GPU-ms", label: "GPU", text: "milliseconds the GPU spent per frame, by its timestamps" },
+  { id: "encode", unit: "encode-ms", label: "Encode", text: "milliseconds the CPU spent per frame encoding it for the GPU" },
 ] as const
 
 export type Metric = (typeof metrics)[number]["id"]
@@ -136,7 +137,7 @@ export const reading: NonNullable<Group["info"]> = {
 
 /** Whether a unit is a timing, which compares only among the commits measured on the same machine. */
 export function isTiming(unit: string) {
-  return unit === "ns/op" || unit === "GPU-ms"
+  return unit === "ns/op" || unit === "GPU-ms" || unit === "encode-ms"
 }
 
 /** What a unit measures, as the summary names it. */
@@ -331,6 +332,7 @@ export function formatValue(v: number, unit: string) {
       if (v >= 1e3) return `${sig(v / 1e3)} µs`
       return `${sig(v)} ns`
     case "GPU-ms":
+    case "encode-ms":
       return `${sig(v)} ms`
     case "B/op":
     case "bytes":

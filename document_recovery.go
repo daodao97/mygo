@@ -261,7 +261,7 @@ func (k *docKind) restore() int {
 			switch now, exists, _ := statStamp(e.Path); {
 			case !exists:
 				b.deleted = true
-			case now != e.Stamp:
+			case !now.same(e.Stamp):
 				b.conflict = true
 			}
 			b.readOnly = !b.deleted && !fileWritable(e.Path)

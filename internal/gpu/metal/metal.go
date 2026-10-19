@@ -17,7 +17,6 @@ import (
 	"image"
 	"os"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -115,7 +114,6 @@ var (
 	extendedSRGB      uintptr
 	msgReplaceRegion  func(obj id, sel objc.SEL, r mtlRegion, level uint, bytes unsafe.Pointer, bytesPerRow uint)
 	msgGetBytes       func(obj id, sel objc.SEL, bytes unsafe.Pointer, bytesPerRow uint, r mtlRegion, level uint)
-	msgSetScissor     func(obj id, sel objc.SEL, r mtlScissorRect)
 	msgSetClearColor  func(obj id, sel objc.SEL, c mtlClearColor)
 	msgSetSize        func(obj id, sel objc.SEL, s cgSize)
 	msgSetRect        func(obj id, sel objc.SEL, r cgRect)
@@ -123,6 +121,10 @@ var (
 	msgSetFloat       func(obj id, sel objc.SEL, v float64)
 	selMu             sync.Mutex
 	selectors         = map[string]objc.SEL{}
+	renderPass        id // MTLRenderPassDescriptor
+
+	// The selectors sent for each batch, looked up once.
+	selSetPipeline, selSetFragmentTexture, selSetScissorRects, selDraw objc.SEL
 
 	dispatchDataCreate, dispatchRelease uintptr
 
@@ -214,12 +216,16 @@ func load() error {
 		})
 		purego.RegisterFunc(&msgReplaceRegion, msgSend)
 		purego.RegisterFunc(&msgGetBytes, msgSend)
-		purego.RegisterFunc(&msgSetScissor, msgSend)
 		purego.RegisterFunc(&msgSetClearColor, msgSend)
 		purego.RegisterFunc(&msgSetSize, msgSend)
 		purego.RegisterFunc(&msgSetRect, msgSend)
 		purego.RegisterFunc(&msgSetFloat, msgSend)
 		purego.RegisterFunc(&msgRect, stret)
+		renderPass = class("MTLRenderPassDescriptor")
+		selSetPipeline = sel("setRenderPipelineState:")
+		selSetFragmentTexture = sel("setFragmentTexture:atIndex:")
+		selSetScissorRects = sel("setScissorRects:count:")
+		selDraw = sel("drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:")
 		srgb, _, _ = purego.SyscallN(colorSpace, *(*uintptr)(ptr(name)))
 		extendedSRGB, _, _ = purego.SyscallN(colorSpace, *(*uintptr)(ptr(extendedName)))
 	})
@@ -253,6 +259,27 @@ func send(obj id, selector string, args ...uintptr) id {
 	n := copy(a[2:], args)
 	r, _, _ := purego.SyscallN(msgSend, a[:n+2]...)
 	return r
+}
+
+// msg2 and msg5 send messages with a selector looked up already and two
+// or five integer arguments, for the calls of each batch: unlike send,
+// they make no copy of their arguments, which purego.SyscallN allocates
+// once.
+func msg2(obj id, selector objc.SEL, a, b uintptr) {
+	purego.SyscallN(msgSend, obj, uintptr(selector), a, b)
+}
+
+func msg5(obj id, selector objc.SEL, a, b, c, d, e uintptr) {
+	purego.SyscallN(msgSend, obj, uintptr(selector), a, b, c, d, e)
+}
+
+// setScissor sets the scissor rectangle of enc to sc. setScissorRects:count:
+// takes it by pointer, as an integer argument, where setScissorRect: would
+// take the struct in registers, through a function purego calls with
+// reflection. The rectangle is the renderer's, already on the heap.
+func (r *Renderer) setScissor(enc id, sc gpu.Scissor) {
+	r.scissor = mtlScissorRect{uint(sc.Left), uint(sc.Top), uint(sc.Right - sc.Left), uint(sc.Bottom - sc.Top)}
+	msg2(enc, selSetScissorRects, uintptr(unsafe.Pointer(&r.scissor)), 1)
 }
 
 func release(obj *id) {
@@ -377,6 +404,9 @@ type Renderer struct {
 	device, queue, sampler id
 	// shaderBytes holds the uniforms of the shader being drawn, laid out.
 	shaderBytes []byte
+	// scissor is the scissor rectangle setScissor sets last, which it
+	// passes by pointer.
+	scissor mtlScissorRect
 	// lib is the library of the shader, which the pipelines of the classes
 	// of batches are made from as they are first used.
 	lib id
@@ -404,12 +434,17 @@ type Renderer struct {
 
 	// synced tells that the layer presents with the Core Animation
 	// transaction, and holes that the last frame had holes (web views
-	// under it). waited tells that the last frame, presented as soon as
-	// drawn, waited for its drawable; behind that the last Render drew
-	// nothing to catch up with the display, and skippedAt when one last
-	// did.
-	synced, holes, waited, behind bool
-	skippedAt                     time.Time
+	// under it). pre fetches the drawables of frames following each
+	// other, and pending is a frame waiting for its drawable (present.go).
+	synced, holes bool
+	pre           presenter
+	pending       pendingFrame
+	// post runs a function on the main thread (SetPost), fetched has the
+	// presenter's thread draw pending through it, and wake is what Ready
+	// was given while a frame was pending.
+	post    func(func())
+	fetched func()
+	wake    func()
 
 	mask   texture
 	color  texture
@@ -448,10 +483,9 @@ type Renderer struct {
 	ages       gpu.Ages
 	redrew     redrawn
 	redrewPart gpu.Scissor
-	// keys has, for each op of the frame built, a hash of the pipelines
-	// its instances draw with, and lastKeys those of the last frame drawn
-	// (see pipelineDamage).
-	keys, lastKeys []uint64
+	// pipelines has a hash of the pipelines each op draws with (see
+	// pipelineDamage).
+	pipelines gpu.Pipelines
 
 	// drawState is the frames'.
 	drawState
@@ -487,8 +521,7 @@ func New(layer uintptr) (r *Renderer, err error) {
 		// passes sample then.
 		send(ml, "setFramebufferOnly:", 0)
 		// Two drawables are too few: on a ProMotion display, frames
-		// waited for one most of each refresh, and skipping a refresh to
-		// catch up (render) helped for a few frames only. Three, as Core
+		// waited for one most of each refresh. Three, as Core
 		// Animation makes while a window animates, also let both instance
 		// slots have a frame in flight while the display shows a third.
 		// They cost a frame of memory until the window idles (trim).
@@ -1202,10 +1235,16 @@ func (r *Renderer) drawBuilt(cb id, s *scene.Scene, target id, d *drawState, par
 	if err != nil {
 		return err
 	}
-	bound, pipe := r.empty, r.cur.pipeline
+	// The instances are bound once for the pass: each batch draws its own
+	// with the index of its first as the base instance, which
+	// [[instance_id]] includes. What a batch binds, it binds only when it
+	// changed since the last.
+	bindInstances(enc, instBuf)
+	st := passState{pipe: r.cur.pipeline, image: r.empty, scissor: noScissor}
 	if part != nil && !part.Empty() {
 		r.clearArea(enc, *part)
-		pipe = r.cur.downPipe
+		st.pipe, st.scissor = r.cur.downPipe, *part
+		send(enc, "setFragmentBuffer:offset:atIndex:", instBuf, 0, 0) // clearArea's bytes took its place
 	}
 	for i, b := range d.b.Batches {
 		sc := frameScissor(b.Scissor, s)
@@ -1223,29 +1262,52 @@ func (r *Renderer) drawBuilt(cb id, s *scene.Scene, target id, d *drawState, par
 			if enc, err = r.begin(cb, target, loadActionLoad, s, &d.b); err != nil {
 				return err
 			}
-			send(enc, "setFragmentTexture:atIndex:", r.cur.backdrop[0].tex, 3)
-			bound, pipe = r.empty, r.cur.pipeline
+			msg2(enc, selSetFragmentTexture, r.cur.backdrop[0].tex, 3)
+			bindInstances(enc, instBuf)
+			st = passState{pipe: r.cur.pipeline, image: r.empty, scissor: noScissor}
 		}
-		if want != pipe {
-			pipe = want
-			send(enc, "setRenderPipelineState:", pipe)
+		if want != st.pipe {
+			st.pipe = want
+			purego.SyscallN(msgSend, enc, uintptr(selSetPipeline), want)
 		}
-		if b.Image != 0 && b.Image != bound {
-			bound = b.Image
-			send(enc, "setFragmentTexture:atIndex:", bound, 2)
+		if b.Image != 0 && b.Image != st.image {
+			st.image = b.Image
+			msg2(enc, selSetFragmentTexture, st.image, 2)
 		}
-		send(enc, "setFragmentTexture:atIndex:", or(id(b.ClipMask), r.empty), 4)
+		if clip := or(id(b.ClipMask), r.empty); clip != st.clip {
+			st.clip = clip
+			msg2(enc, selSetFragmentTexture, clip, 4)
+		}
 		if b.Shader != nil {
 			r.bindShader(enc, b)
 		}
-		offset := uintptr(b.Start * gpu.InstanceSize)
-		send(enc, "setVertexBuffer:offset:atIndex:", instBuf, offset, 0)
-		send(enc, "setFragmentBuffer:offset:atIndex:", instBuf, offset, 0)
-		msgSetScissor(enc, sel("setScissorRect:"), mtlScissorRect{uint(sc.Left), uint(sc.Top), uint(sc.Right - sc.Left), uint(sc.Bottom - sc.Top)})
-		send(enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", primitiveTriStrip, 0, 4, uintptr(b.Count))
+		if sc != st.scissor {
+			st.scissor = sc
+			r.setScissor(enc, sc)
+		}
+		msg5(enc, selDraw, primitiveTriStrip, 0, 4, uintptr(b.Count), uintptr(b.Start))
 	}
 	send(enc, "endEncoding")
 	return nil
+}
+
+// passState is what a pass bound last: its pipeline, the image (texture
+// 2), the clip mask (texture 4, none bound yet while 0) and the scissor
+// rectangle.
+type passState struct {
+	pipe, image, clip id
+	scissor           gpu.Scissor
+}
+
+// noScissor stands for no scissor rectangle set yet: a frame's are never
+// at negative places.
+var noScissor = gpu.Scissor{Left: -1, Top: -1, Right: -1, Bottom: -1}
+
+// bindInstances binds the instance buffer of a pass, from its start, for
+// the vertex and the fragment functions.
+func bindInstances(enc, buf id) {
+	send(enc, "setVertexBuffer:offset:atIndex:", buf, 0, 0)
+	send(enc, "setFragmentBuffer:offset:atIndex:", buf, 0, 0)
 }
 
 // maxBytes is the most setFragmentBytes takes; larger uniforms go in a
@@ -1275,7 +1337,7 @@ func (r *Renderer) bindShader(enc id, b gpu.Batch) {
 // begin starts encoding the drawing of s into target, which it clears or
 // keeps (load), with the state the instances draw with.
 func (r *Renderer) begin(cb, target id, load uintptr, s *scene.Scene, b *gpu.Builder) (id, error) {
-	rpd := send(class("MTLRenderPassDescriptor"), "renderPassDescriptor")
+	rpd := send(renderPass, "renderPassDescriptor")
 	ca := send(send(rpd, "colorAttachments"), "objectAtIndexedSubscript:", 0)
 	send(ca, "setTexture:", target)
 	send(ca, "setLoadAction:", load)
@@ -1286,7 +1348,8 @@ func (r *Renderer) begin(cb, target id, load uintptr, s *scene.Scene, b *gpu.Bui
 	if !r.checked {
 		if err := need(enc, "render encoder", "setRenderPipelineState:", "setVertexBytes:length:atIndex:", "setVertexBuffer:offset:atIndex:",
 			"setFragmentBuffer:offset:atIndex:", "setFragmentBytes:length:atIndex:", "setFragmentTexture:atIndex:", "setFragmentSamplerState:atIndex:",
-			"setScissorRect:", "drawPrimitives:vertexStart:vertexCount:instanceCount:", "endEncoding"); err != nil {
+			"setScissorRects:count:", "drawPrimitives:vertexStart:vertexCount:instanceCount:", "drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:",
+			"endEncoding"); err != nil {
 			if enc != 0 {
 				send(enc, "endEncoding")
 			}
@@ -1322,7 +1385,7 @@ func (r *Renderer) clearTexel(cb id, s *scene.Scene) {
 			return
 		}
 	}
-	rpd := send(class("MTLRenderPassDescriptor"), "renderPassDescriptor")
+	rpd := send(renderPass, "renderPassDescriptor")
 	ca := send(send(rpd, "colorAttachments"), "objectAtIndexedSubscript:", 0)
 	send(ca, "setTexture:", f.clear)
 	send(ca, "setLoadAction:", loadActionClear)
@@ -1343,7 +1406,7 @@ func (r *Renderer) clearArea(enc id, area gpu.Scissor) {
 	send(enc, "setRenderPipelineState:", f.downPipe)
 	send(enc, "setFragmentTexture:atIndex:", or(f.clear, r.empty), 0)
 	send(enc, "setFragmentBytes:length:atIndex:", uintptr(unsafe.Pointer(&p)), unsafe.Sizeof(p), 0)
-	msgSetScissor(enc, sel("setScissorRect:"), mtlScissorRect{uint(area.Left), uint(area.Top), uint(area.Right - area.Left), uint(area.Bottom - area.Top)})
+	r.setScissor(enc, area)
 	send(enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", primitiveTriStrip, 0, 4, 1)
 	send(enc, "setFragmentTexture:atIndex:", or(r.mask.tex, r.empty), 0)
 }
@@ -1449,7 +1512,7 @@ func (r *Renderer) readBackdrop(cb, target id, bk scene.Backdrop) {
 // pass encodes drawing the w×h texels at the start of dst with pipe,
 // which reads src.
 func (r *Renderer) pass(cb, pipe, src, dst id, w, h int, p *gpu.Pass) {
-	rpd := send(class("MTLRenderPassDescriptor"), "renderPassDescriptor")
+	rpd := send(renderPass, "renderPassDescriptor")
 	ca := send(send(rpd, "colorAttachments"), "objectAtIndexedSubscript:", 0)
 	send(ca, "setTexture:", dst)
 	send(ca, "setLoadAction:", loadActionDontCare)
@@ -1458,7 +1521,7 @@ func (r *Renderer) pass(cb, pipe, src, dst id, w, h int, p *gpu.Pass) {
 	send(enc, "setRenderPipelineState:", pipe)
 	send(enc, "setFragmentTexture:atIndex:", src, 0)
 	send(enc, "setFragmentBytes:length:atIndex:", uintptr(unsafe.Pointer(p)), unsafe.Sizeof(*p), 0)
-	msgSetScissor(enc, sel("setScissorRect:"), mtlScissorRect{0, 0, uint(w), uint(h)})
+	r.setScissor(enc, gpu.Scissor{Right: int32(w), Bottom: int32(h)})
 	send(enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", primitiveTriStrip, 0, 4, 1)
 	send(enc, "endEncoding")
 }
@@ -1497,9 +1560,16 @@ func hasHoles(s *scene.Scene) bool {
 	return false
 }
 
-// Behind reports whether the last Render drew nothing, to catch up with
-// the display: the window draws the frame again at the next refresh.
-func (r *Renderer) Behind() bool { return r.behind }
+// Ready reports whether a frame following the last one can draw at once,
+// as none waits for its drawable (present.go); otherwise wake runs, on the
+// main thread, once it has.
+func (r *Renderer) Ready(wake func()) bool {
+	if r.pending.cb == 0 {
+		return true
+	}
+	r.wake = wake
+	return false
+}
 
 func or(a, b id) id {
 	if a != 0 {
@@ -1517,12 +1587,6 @@ func (r *Renderer) Render(s *scene.Scene) (err error) {
 	return err
 }
 
-// behindAfter is how long a frame presented as soon as drawn waits for its
-// drawable before the next skips a refresh (Behind), at most once a
-// second: a drawable frees within a millisecond or so while frames show at
-// the refresh after they present.
-const behindAfter = 4 * time.Millisecond
-
 func (r *Renderer) render(s *scene.Scene) error {
 	if r.err != nil {
 		return r.err
@@ -1530,6 +1594,19 @@ func (r *Renderer) render(s *scene.Scene) error {
 	scale := float64(s.Scale)
 	if scale <= 0 {
 		scale = 1
+	}
+	changes := r.layerChanges(s, scale)
+	if r.pending.cb != 0 {
+		// A frame not paced by the display, as a resize's, draws after
+		// the one waiting for its drawable, which fetches none for it
+		// when it takes its own.
+		if err := r.finishPending(!changes && !hasHoles(s) && !r.holes); err != nil {
+			return err
+		}
+	}
+	if changes {
+		// No drawable is being fetched while the layer changes.
+		r.pre.wait()
 	}
 	r.cur = &r.formats[0]
 	if r.wide {
@@ -1545,16 +1622,10 @@ func (r *Renderer) render(s *scene.Scene) error {
 	holes := hasHoles(s)
 	sync := runtime.GOOS != "ios" && (changed || holes || r.holes)
 	r.holes = holes
-	now := time.Now()
-	r.behind = !sync && r.waited && now.Sub(r.lastRender) < 50*time.Millisecond && now.Sub(r.skippedAt) > time.Second
-	r.waited = false
-	if r.behind {
-		// The last frame waited for a drawable, as the display held the
-		// others until its next refresh: the frames following it would wait as
-		// long, most of each refresh, blocking the main thread. Drawing
-		// none for a refresh catches up.
-		r.skippedAt = now
-		return nil
+	if sync {
+		// A drawable fetched before the layer changed, or to present
+		// on its own, is not this frame's.
+		r.pre.drain()
 	}
 	// What changed since the last frame drawn: a frame that changed
 	// nothing draws nothing, and needs no drawable.
@@ -1567,6 +1638,11 @@ func (r *Renderer) render(s *scene.Scene) error {
 		r.redrew = redrewNothing
 		return nil
 	}
+	if !sync && r.fetched != nil && !r.pre.ready(r.fetched) {
+		// The next drawable is being fetched: the frame is built now and
+		// drawn into it once the presenter has it.
+		return r.stash(s, damage, known)
+	}
 	var drawable id
 	cb, err := r.drawFrame(s, damage, known, func() id {
 		if sync != r.synced {
@@ -1577,10 +1653,15 @@ func (r *Renderer) render(s *scene.Scene) error {
 			send(r.layer, "setPresentsWithTransaction:", on)
 			r.synced = sync
 		}
-		if drawable = send(r.layer, "nextDrawable"); drawable == 0 {
+		if !sync {
+			drawable = r.prefetched()
+		}
+		if drawable == 0 {
+			drawable = send(r.layer, "nextDrawable")
+		}
+		if drawable == 0 {
 			return 0
 		}
-		r.waited = !sync && time.Since(now) > behindAfter
 		return send(drawable, "texture")
 	})
 	if err != nil {
@@ -1603,6 +1684,8 @@ func (r *Renderer) render(s *scene.Scene) error {
 	} else {
 		send(cb, "presentDrawable:", drawable)
 		send(cb, "commit")
+		// The next frame's drawable, while this one is shown.
+		r.pre.start(r.layer)
 	}
 	r.track(cb)
 	r.lastRender = time.Now()
@@ -1611,6 +1694,21 @@ func (r *Renderer) render(s *scene.Scene) error {
 		r.sweep()
 	}
 	return nil
+}
+
+// prefetched returns the drawable the presenter fetched, autoreleased, or
+// 0 when it has none of the layer's size.
+func (r *Renderer) prefetched() id {
+	d := r.pre.take()
+	if d == 0 {
+		return 0
+	}
+	t := send(d, "texture")
+	if int(send(t, "width")) != r.w || int(send(t, "height")) != r.h {
+		send(d, "release")
+		return 0
+	}
+	return send(d, "autorelease")
 }
 
 // drawFrame encodes the frame s, which changed damage since the last frame
@@ -1638,44 +1736,15 @@ func (r *Renderer) drawFrame(s *scene.Scene, damage []image.Rectangle, known boo
 		return 0, err
 	}
 	r.diff.Remember(s)
-	r.keys, r.lastKeys = r.lastKeys, r.keys
+	r.pipelines.Remember()
 	return cb, nil
 }
 
 // pipelineDamage adds to damage, what changed in the frame built since the
 // last one drawn (unless not known), the bounds of the ops that draw with
-// other pipelines than they did, and returns it. The pipelines of a batch
-// are specialized for what it holds (gpu.Class), which other ops change,
-// and one is made while the frames draw with the general one: they draw
-// the same pixels but for a unit in the last place here and there, which
-// a frame drawn whole would change.
+// other pipelines than they did (gpu.Pipelines), and returns it.
 func (r *Renderer) pipelineDamage(damage []image.Rectangle, known bool) []image.Rectangle {
-	b := &r.b
-	n := len(b.OpStart) - 1
-	r.keys = slices.Grow(r.keys[:0], n)[:n]
-	clear(r.keys)
-	op := 0
-	for i, bt := range b.Batches {
-		lo, hi := int32(bt.Start), int32(bt.Start+bt.Count)
-		for op < n && b.OpStart[op+1] <= lo {
-			op++
-		}
-		for k := op; k < n && b.OpStart[k] < hi; k++ {
-			if b.OpStart[k+1] > b.OpStart[k] {
-				r.keys[k] = (r.keys[k] ^ uint64(r.drawState.pipes[i])) * 1099511628211
-			}
-		}
-	}
-	if !known {
-		return damage
-	}
-	bounds := r.diff.Bounds()
-	for j, key := range r.keys {
-		if i, ok := r.diff.Match(j); ok && i < len(r.lastKeys) && r.lastKeys[i] != key {
-			damage = append(damage, bounds[j])
-		}
-	}
-	return damage
+	return r.pipelines.Damage(&r.b, func(i int) uint64 { return uint64(r.drawState.pipes[i]) }, &r.diff, damage, known)
 }
 
 // partOf returns the part of the frame s to draw into the drawable's
@@ -1683,6 +1752,12 @@ func (r *Renderer) pipelineDamage(damage []image.Rectangle, known bool) []image.
 // (r.ages), the drawables showing in turn, and the backdrops of the
 // effects that meets.
 func (r *Renderer) partOf(s *scene.Scene, tex id) *gpu.Scissor {
+	return r.partIn(s.Width, s.Height, tex, func(d []image.Rectangle) []image.Rectangle { return r.diff.AddBackdrops(s, d) })
+}
+
+// partIn is partOf for a frame of w×h pixels, the backdrops of whose
+// effects backdrops adds; nil draws it whole.
+func (r *Renderer) partIn(w, h int, tex id, backdrops func([]image.Rectangle) []image.Rectangle) *gpu.Scissor {
 	if !r.ages.Has(tex) {
 		// Held until forgotten, so that no other texture takes its
 		// place: Core Animation makes drawables anew as it likes.
@@ -1690,10 +1765,10 @@ func (r *Renderer) partOf(s *scene.Scene, tex id) *gpu.Scissor {
 	}
 	since, ok := r.ages.Take(tex)
 	r.redrew = redrewWhole
-	if !ok || noPartial {
+	if !ok || noPartial || backdrops == nil {
 		return nil
 	}
-	area, ok := gpu.Partial(since, s.Width, s.Height, func(d []image.Rectangle) []image.Rectangle { return r.diff.AddBackdrops(s, d) })
+	area, ok := gpu.Partial(since, w, h, backdrops)
 	if !ok {
 		return nil
 	}
@@ -1819,6 +1894,8 @@ func (r *Renderer) trim() {
 	if r.layer == 0 || r.trimmed {
 		return
 	}
+	pool(r.dropPending)
+	r.pre.drain()
 	pool(func() {
 		r.waitLast()
 		r.releaseTextures()
@@ -1867,6 +1944,8 @@ func (r *Renderer) renderOffscreen(s *scene.Scene) (pix []byte, err error) {
 
 // Release frees the renderer's GPU objects and takes its layer out.
 func (r *Renderer) Release() {
+	pool(r.dropPending)
+	r.pre.stop()
 	r.b.Release()
 	if r.trimTimer != 0 {
 		purego.SyscallN(cfRunLoopTimerInvalidate, r.trimTimer)
