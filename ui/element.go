@@ -373,8 +373,10 @@ type node struct {
 	image     *Bitmap
 	svg       *SVG // of an Icon, or an Image in its own colors
 	webView   NativeWebView
-	fit       Fit
-	gray      bool
+	// maximizeButton marks the window's maximize button (MaximizeButton).
+	maximizeButton bool
+	fit            Fit
+	gray           bool
 	// dismissed: Escape or a click outside closed the dialog or popover
 	// whose panel this is, in this frame (Dismissed).
 	dismissed bool
@@ -1357,6 +1359,15 @@ func (e *node) Focusable() *node { e.flags |= flagFocusable; return e }
 // title bar of a frameless window. A double click on it maximizes the
 // window, as on a title bar.
 func (e *node) DragWindow() *node { e.flags |= flagDragWindow; return e }
+
+// MaximizeButton marks the element as the window's maximize button, which
+// the view draws in a window with a hidden title bar without the system's
+// (mygo.WindowOptions.HideWindowButtons): on Windows 11, holding the
+// pointer over it shows the snap layouts, as over the system's. It takes
+// the pointer as any element does, and the view maximizes the window when
+// it is clicked (mygo.Window.Maximize). The first such element of a frame
+// counts; elsewhere it does nothing.
+func (e *node) MaximizeButton() *node { e.maximizeButton = true; return e }
 
 // PassThrough lets the pointer reach what is under the element.
 func (e *node) PassThrough() *node { e.flags |= flagPassThrough; return e }

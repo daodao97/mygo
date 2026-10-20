@@ -499,11 +499,15 @@ func devHelp() string {
 
 // devConfig configures the development app: "<Name> Dev" with the
 // identifier "<identifier>.dev", so that its data, preferences and single
-// instance lock stay apart from the production app's.
+// instance lock stay apart from the production app's, and the icon's -dev
+// sibling for its icon, when there is one, to tell it from the app's.
 func devConfig(c *Config) *Config {
 	d := *c
 	d.Name += " Dev"
 	d.Identifier += ".dev"
+	if icon := c.devIcon(); icon != "" {
+		d.Icon = icon
+	}
 	return &d
 }
 
@@ -573,7 +577,7 @@ func (s *devSession) buildAndLaunch(ctx context.Context, t *task, running [32]by
 	}
 	var icns []byte
 	if runtime.GOOS == "darwin" {
-		if icns, err = s.icon(c); err != nil {
+		if icns, err = s.icon(dc); err != nil {
 			return nil, sum, err
 		}
 		iconFile := ""

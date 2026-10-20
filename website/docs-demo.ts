@@ -15,7 +15,7 @@ import type { Plugin } from "vite"
 const run = promisify(execFile)
 
 /** The example apps pages run, by name: examples/<name>. */
-export const apps = ["mayoi"]
+export const apps = ["mayoi", "loading"]
 
 /** The package of an app, "" for docs-demo itself. */
 const pkg = (app: string) => (app ? `./examples/${app}` : "./website/docs-demo")

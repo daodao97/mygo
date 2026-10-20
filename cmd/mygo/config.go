@@ -29,7 +29,8 @@ type Config struct {
 	Version    string `json:"version"`
 	Copyright  string `json:"copyright"`
 	// Icon is a square PNG, ideally 1024x1024 (default:
-	// resources/icon.png when it exists).
+	// resources/icon.png when it exists). Beside it, the same name with
+	// -dev, as icon-dev.png, is the development app's, when it exists.
 	Icon string `json:"icon"`
 	// Main is the Go package of the app (default ".").
 	Main string `json:"main"`
@@ -559,4 +560,18 @@ type IOSBackgroundTask struct {
 	Run        string `json:"run"`
 	Cancel     string `json:"cancel"`
 	NextDelay  string `json:"nextDelay"`
+}
+
+// devIcon returns the development app's icon, the icon's name with -dev
+// before its extension (icon.png, icon-dev.png), when it exists, else "".
+func (c *Config) devIcon() string {
+	if c.Icon == "" {
+		return ""
+	}
+	ext := filepath.Ext(c.Icon)
+	dev := strings.TrimSuffix(c.Icon, ext) + "-dev" + ext
+	if !fileExists(c.path(dev)) {
+		return ""
+	}
+	return dev
 }

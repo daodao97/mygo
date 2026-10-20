@@ -76,6 +76,9 @@ export default defineConfig({
 The icon is `resources/icon.png`, or the `icon` of the configuration: a square PNG,
 ideally 1024×1024. `mygo build` makes it the `.icns` of macOS, the icon
 resource of the Windows executable and the icon of the Linux desktop entry.
+Beside it, the same name with `-dev` (`resources/icon-dev.png`) is the icon
+of the development app that `mygo dev` builds, when it exists, to tell it
+from the app in the Dock or the taskbar; it does not ship with the app.
 
 On macOS, `macos.icon` adds an asset catalog, which macOS prefers to the
 `.icns`: an `Assets.car` compiled with `actool`, whose app icon is named

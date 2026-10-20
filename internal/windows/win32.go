@@ -131,6 +131,7 @@ var (
 	procEnumDisplaySettingsW          = user32.NewProc("EnumDisplaySettingsW")
 	procEnumDisplayMonitors           = user32.NewProc("EnumDisplayMonitors")
 	procGetCursorPos                  = user32.NewProc("GetCursorPos")
+	procWindowFromPoint               = user32.NewProc("WindowFromPoint")
 	procLoadCursorW                   = user32.NewProc("LoadCursorW")
 	procLoadIconW                     = user32.NewProc("LoadIconW")
 	procCreateIconFromResourceEx      = user32.NewProc("CreateIconFromResourceEx")

@@ -214,6 +214,15 @@ func (t *Terminal) clipboardRead(req vt.ClipboardRead) (vt.ClipboardReply, vt.Cl
 		// from answering twice.
 		return vt.ClipboardReply{}, vt.ClipboardRefused
 	}
+	if t.opts.ClipboardRead == ClipboardForward {
+		// Silent, as a read another terminal answers: an OSC 52 read goes
+		// on with a Mirror's next frame.
+		if len(req.Mimes) == 1 && req.Mimes[0] == "text/plain" && !req.List {
+			t.clipForward = append(t.clipForward, req.Primary)
+			t.redraw()
+		}
+		return vt.ClipboardReply{}, vt.ClipboardRefused
+	}
 	if t.opts.ClipboardRead == ClipboardDeny {
 		// A policy denial is the answer — the library writes an empty
 		// OSC 52 reply, or EPERM for OSC 5522 — so it goes through the

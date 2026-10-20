@@ -51,6 +51,7 @@ on the screen. Sizes and positions are in device-independent pixels.
 | `TitleBarStyle` | hides the title bar but keeps the window buttons over the page, see [custom title bars](frontend.md#custom-title-bars), or over [native UI](ui/windows.md) |
 | `TrafficLightPosition` | moves the window buttons of a hidden title bar (macOS) |
 | `TitleBarHeight` | the height of the title bar the page draws under the window buttons (Linux, Windows) |
+| `HideWindowButtons` | hides the window buttons of a hidden title bar, which keeps its resizing top edge, shadow and corners: the page draws its own and calls `Minimize`, `Maximize`, `Unmaximize` and `Close` |
 | `Transparent`, `Vibrancy` | a transparent window, and the material behind a transparent page or [native UI](ui/windows.md) (macOS, Windows 11 22H2). On Windows, a window with a material has no menu bar: Alt and F10 open its menus in a popup |
 | `BackgroundColor` | fills the window until the page paints, in CSS syntax such as `"#1e1e1e"`, or `"light-dark(#f5f5f7, #1e1e1e)"` to follow the appearance |
 | `Opacity` | between 0 and 1 |

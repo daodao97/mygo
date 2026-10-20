@@ -26,6 +26,8 @@ JavaScript package whose functions call them. The app uses the Go half with
 - [Game](plugins/game.md): what games need beyond what apps do, opt-in:
   a game loop in fixed steps with its input, a camera, and gamepads in
   one standard layout. It is all Go.
+- [Loading](plugins/loading.md): loading.dev's 29 loading indicators for
+  native UI, as they look and move in browsers. It is all Go.
 
 ## Using plugins
 

@@ -18,7 +18,9 @@ import (
 // headless renders frames in memory with the software renderer.
 type headless struct {
 	w, h, scale float32
-	img         raster.Renderer
+	// maxButton is where the view shows the maximize button.
+	maxButton Rect
+	img       raster.Renderer
 	// requested is set when the view asks for a frame, from any goroutine
 	// for invalidate.
 	requested atomic.Bool
@@ -164,6 +166,7 @@ func (h *headless) finishDataDrag(r transfer.Result) {
 	}
 }
 func (h *headless) titleBarDoubleClicked()            {}
+func (h *headless) setMaximizeButton(r Rect)          { h.maxButton = r }
 func (h *headless) escape()                           { h.escapes++ }
 func (h *headless) isDark() bool                      { return h.dark }
 func (h *headless) rightToLeft() bool                 { return h.rtl }

@@ -4,6 +4,19 @@
 
 **Desktop apps in Go, with native UI or a web frontend.**
 
+Sponsored by:
+
+<p align="center">
+  <a href="https://openuptime.app/?utm_source=github&utm_medium=sponsor&utm_campaign=mygo">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://openuptime.app/sponsor/banner-dark.png">
+      <img width="600" alt="OpenUptime: open-source uptime monitoring and status pages" src="https://openuptime.app/sponsor/banner-light.png">
+    </picture>
+  </a>
+</p>
+
+---
+
 Each MyGo window shows one of two kinds of interface, and one app, or one
 window, can mix them:
 

@@ -35,6 +35,12 @@ ui.Row(c).Height(max(bar.Height, 32)).Padding(0, bar.Right+12, 0, bar.Left+12).D
 In a `Frameless` window, `DragWindow` makes an element move the window, and
 a double click on it maximizes the window.
 
+To draw the window controls too, where the view wants them, add
+`HideWindowButtons: true` to the hidden title bar: the system's controls go,
+`c.TitleBar()` is zero, and the window keeps its title bar's edges, which
+resize it, the top one included. The view's buttons call `Minimize`,
+`Maximize`, `Unmaximize` and `Close`.
+
 ## The safe area
 
 `c.SafeArea()` returns the room the **device's** own chrome takes from the

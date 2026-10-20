@@ -209,7 +209,7 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	// its natural size.
 	gtkWidgetSetSizeRequest(w.box, 1, 1)
 	gtkContainerAdd(w.win, w.box)
-	if w.hiddenTitleBar() {
+	if w.hiddenTitleBar() && !o.HideWindowButtons {
 		w.newControls()
 	}
 	if o.Surface {
@@ -783,6 +783,9 @@ func (w *window) HasShadow() bool           { return true }
 func (w *window) SetIgnoreMouseEvents(bool) {}
 func (w *window) SetContentProtection(bool) {}
 func (w *window) SetVibrancy(string)        {}
+
+// SetMaximizeButton does nothing: GTK has no snap layouts.
+func (w *window) SetMaximizeButton(platform.RectF) {}
 
 // StartDrag begins moving the window with the last button press. On an
 // undecorated window the compositor takes the pointer once the move

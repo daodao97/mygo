@@ -70,6 +70,13 @@ type Backend struct {
 	// title bar (titlebar.go), captionFonts their glyphs by DPI.
 	captions     map[uintptr]*captionBar
 	captionFonts map[int]captionFont
+	// menuFonts are the fonts of the menu items MyGo draws by DPI, and
+	// menuBrushes the brushes of menus' backgrounds by color
+	// (menudraw.go).
+	menuFonts   map[int]menuFonts
+	menuBrushes map[uint32]uintptr
+	// menuHook hooks the main thread while menus show.
+	menuHook uintptr
 	// comp shows the controls of windows with a material behind them
 	// (compositor.go). compRetry is when to try making it again after
 	// compFails failures in a row, and composeAt when timerCompose draws
@@ -328,6 +335,9 @@ func wndProc(hwnd, m, wp, lp uintptr) uintptr {
 
 // appMessage handles the messages of the application window.
 func (b *Backend) appMessage(m uint32, wp, lp uintptr) (uintptr, bool) {
+	if r, ok := b.menuItemMessage(b.appHwnd, m, wp, lp); ok {
+		return r, true
+	}
 	switch m {
 	case wmAppReady:
 		b.h.Ready()
@@ -354,6 +364,9 @@ func (b *Backend) appMessage(m uint32, wp, lp uintptr) (uintptr, bool) {
 		b.powerMessage(m, wp)
 		return 1, false // TRUE for power broadcasts, and default handling
 	case wmSettingChange:
+		if preferencesChanged(wp, lp) {
+			b.dropMenuFonts() // the size of text, or the menu font
+		}
 		switch {
 		case lp != 0 && wstr(lp) == settingImmersiveColorSet:
 			b.applyTheme()

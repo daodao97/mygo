@@ -401,3 +401,45 @@ func TestDevConfig(t *testing.T) {
 		t.Errorf("devConfig = %q %q (original %q)", d.Name, d.Identifier, c.Name)
 	}
 }
+
+// The development app wears the icon's -dev sibling, when it exists, which
+// does not ship among the resources.
+func TestDevIcon(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"mygo.json":          `{"name": "Todo"}`,
+		"resources/icon.png": string(defaultIcon()),
+	})
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := devConfig(c); d.Icon != c.Icon {
+		t.Errorf("without icon-dev.png, the dev app's icon is %q, want the app's %q", d.Icon, c.Icon)
+	}
+	writeFiles(t, dir, map[string]string{"resources/icon-dev.png": string(defaultIcon())})
+	if d, want := devConfig(c), filepath.Join("resources", "icon-dev.png"); d.Icon != want || c.Icon == want {
+		t.Errorf("dev icon %q (the app's %q), want %q", d.Icon, c.Icon, want)
+	}
+	list, err := c.resources("darwin", "arm64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range list {
+		if r.name == "icon-dev.png" {
+			t.Error("the dev icon ships among the resources")
+		}
+	}
+	// Beside an icon the configuration names, too.
+	writeFiles(t, dir, map[string]string{
+		"mygo.json":        `{"name": "Todo", "icon": "art/logo.png"}`,
+		"art/logo.png":     string(defaultIcon()),
+		"art/logo-dev.png": string(defaultIcon()),
+	})
+	if c, err = loadConfig(dir); err != nil {
+		t.Fatal(err)
+	}
+	if d := devConfig(c); d.Icon != "art/logo-dev.png" {
+		t.Errorf("dev icon %q, want art/logo-dev.png", d.Icon)
+	}
+}

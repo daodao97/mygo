@@ -110,7 +110,9 @@ window its own, and windows have none by default, except in apps with
 removes the menu.
 
 On Windows, menu bars and menus follow the appearance, light or dark, as
-the title bar does (see [dark mode](frontend.md#dark-mode)).
+the title bar does (see [dark mode](frontend.md#dark-mode)). On Windows 11
+they look like the system's own menus, as File Explorer's: roomier items,
+highlights with rounded corners, and shortcuts in a fainter color.
 
 A window with `AutoHideMenuBar` keeps its menu bar out of sight, and the
 room for the page. Alt pressed alone, or F10, shows the bar with the

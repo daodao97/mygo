@@ -109,6 +109,8 @@ const (
 	scGetBuffer                = 9
 	scResizeBuffers            = 13
 	scSetSourceSize            = 29 // IDXGISwapChain2
+	scSetMaxLatency            = 31 // IDXGISwapChain2
+	scLatencyWaitable          = 33 // IDXGISwapChain2::GetFrameLatencyWaitableObject
 
 	// IDCompositionDevice, IDCompositionTarget and IDCompositionVisual
 	dcompCommit           = 3
@@ -289,6 +291,16 @@ type Renderer struct {
 	bw, bh     int
 	resizing   bool
 	resizedAt  time.Time
+	// lat is the swap chain's frame latency object (latency.go), pending
+	// tells that the frame drawn presents once it is signaled, through
+	// post, presentLater, and failed is why that failed; wake is what Ready
+	// was given meanwhile.
+	lat          latency
+	pending      bool
+	post         func(func())
+	presentLater func()
+	failed       error
+	wake         func()
 
 	vs, ps, layout      uintptr
 	blend, raster, samp uintptr
@@ -529,7 +541,7 @@ func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 	r.held = false
 	if r.swapChain == 0 {
 		desc := swapChainDesc1{Width: uint32(bw), Height: uint32(bh), Format: formatB8G8R8A8Unorm, SampleCount: 1,
-			BufferUsage: 0x20, BufferCount: uint32(n), Scaling: 0, SwapEffect: 3 /* flip sequential */}
+			BufferUsage: 0x20, BufferCount: uint32(n), Scaling: 0, SwapEffect: 3 /* flip sequential */, Flags: swapChainWaitable}
 		if r.composed {
 			if err := r.composeSwapChain(desc); err != nil {
 				return err
@@ -542,7 +554,13 @@ func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 			call(r.factory, factoryMakeWindowAssoc, r.hwnd, noAltEnter)
 		}
 		call(r.swapChain, 0, uintptr(unsafe.Pointer(&iidIDXGISwapChain2)), uintptr(unsafe.Pointer(&r.swapChain2)))
-	} else if hr := call(r.swapChain, scResizeBuffers, uintptr(n), uintptr(bw), uintptr(bh), 0, 0); failed(hr) {
+		if r.swapChain2 != 0 {
+			// One frame waits ahead of the screen, which the frame
+			// latency object tells room for.
+			call(r.swapChain2, scSetMaxLatency, 1)
+			r.lat.handle = call(r.swapChain2, scLatencyWaitable)
+		}
+	} else if hr := call(r.swapChain, scResizeBuffers, uintptr(n), uintptr(bw), uintptr(bh), 0, swapChainWaitable); failed(hr) {
 		return fmt.Errorf("d3d11: cannot resize the swap chain: %#x", uint32(hr))
 	}
 	if err := r.setSourceSize(w, h); err != nil {
@@ -649,6 +667,8 @@ func (r *Renderer) armSettle() {
 
 // Release frees the renderer's GPU objects.
 func (r *Renderer) Release() {
+	r.pending, r.wake = false, nil
+	r.lat.release()
 	r.b.Release()
 	if settling[r.hwnd] {
 		delete(settling, r.hwnd)
@@ -775,6 +795,15 @@ func (r *Renderer) Render(s *scene.Scene) error {
 	if s.Width <= 0 || s.Height <= 0 {
 		return nil
 	}
+	if r.pending {
+		// A frame not paced by the display, as a resize's, draws after
+		// the one waiting to present.
+		r.presentPending()
+	}
+	if err := r.failed; err != nil {
+		r.failed = nil
+		return err
+	}
 	resized := r.swapChain != 0 && (s.Width != r.w || s.Height != r.h)
 	drawn, err := r.drawFrame(s)
 	if err != nil || !drawn {
@@ -788,6 +817,12 @@ func (r *Renderer) Render(s *scene.Scene) error {
 	sync := uintptr(1)
 	if resized {
 		sync = 0
+	} else if r.presentLater != nil && !r.lat.ready() {
+		// The screen has no room for the frame yet: it presents once it
+		// has, while the main thread does something else.
+		r.pending = true
+		r.lat.waitThen(r.presentLater)
+		return nil
 	}
 	if err := r.present(sync); err != nil {
 		return err
@@ -1309,9 +1344,48 @@ func (r *Renderer) newTarget(t *texture, w, h int, drawn bool) error {
 	return nil
 }
 
-// present shows the back buffer, after sync vertical blanks: what the
-// frame drew, when it drew in part, and DXGI the rest of the last frame.
+// Ready reports whether a frame following the last one can draw at once,
+// as none waits to present (latency.go); otherwise wake runs, on the main
+// thread, once it has.
+func (r *Renderer) Ready(wake func()) bool {
+	if !r.pending {
+		return true
+	}
+	r.wake = wake
+	return false
+}
+
+// SetPost gives the renderer post, which runs a function on the main
+// thread from any goroutine: a frame drawn while the screen has no room
+// for it presents once it has, through post, rather than block in Present.
+// Without it, frames block.
+func (r *Renderer) SetPost(post func(func())) {
+	r.post = post
+	r.presentLater = func() { post(r.presentPending) }
+}
+
+// presentPending presents the frame drawn while the screen had no room
+// for it, waiting for room when called before the goroutine waiting for
+// it is done.
+func (r *Renderer) presentPending() {
+	if !r.pending {
+		return
+	}
+	r.pending = false
+	if err := r.present(1); err != nil && r.failed == nil {
+		r.failed = err // the next frame finds it
+	}
+	if w := r.wake; w != nil {
+		r.wake = nil
+		w()
+	}
+}
+
+// present shows the back buffer, after sync vertical blanks, once the
+// screen has room for it: what the frame drew, when it drew in part, and
+// DXGI the rest of the last frame.
 func (r *Renderer) present(sync uintptr) error {
+	r.lat.take()
 	var hr uintptr
 	if r.redrew == redrewPart {
 		params := presentParameters{DirtyRectsCount: 1, DirtyRects: &r.part}

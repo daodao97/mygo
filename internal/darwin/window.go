@@ -154,7 +154,7 @@ func (w *window) create() {
 		send(w.win, "setTitlebarAppearsTransparent:", 1)
 		send(w.win, "setTitleVisibility:", 1) // NSWindowTitleHidden
 	}
-	if o.Frameless {
+	if o.Frameless || hiddenTitleBar && o.HideWindowButtons {
 		for i := uintptr(0); i < 3; i++ {
 			send(send(w.win, "standardWindowButton:", i), "setHidden:", 1)
 		}
@@ -955,6 +955,9 @@ func (w *window) SetMenu(*platform.Menu) {}
 // SetAutoHideMenu does nothing: the menu bar belongs to the application.
 func (w *window) SetAutoHideMenu(bool) {}
 
+// SetMaximizeButton does nothing: the zoom button's menu is AppKit's own.
+func (w *window) SetMaximizeButton(platform.RectF) {}
+
 func (w *window) StartDrag() {
 	if w.lastMouseDown != 0 {
 		send(w.win, "performWindowDragWithEvent:", uintptr(w.lastMouseDown))
@@ -971,9 +974,9 @@ func (w *window) hiddenTitleBar() bool {
 // TitleBar returns the room the traffic lights take, from the left edge to
 // the right edge of the zoom button, in the title bar, which is as tall as
 // the window's own or, with TrafficLightPosition, leaves as much room below
-// them as above. They hide in full screen.
+// them as above. They hide in full screen, and with HideWindowButtons.
 func (w *window) TitleBar() platform.TitleBar {
-	if !w.hiddenTitleBar() || w.closed || w.IsFullScreen() {
+	if !w.hiddenTitleBar() || w.closed || w.IsFullScreen() || w.opts.HideWindowButtons {
 		return platform.TitleBar{}
 	}
 	closeBtn := send(w.win, "standardWindowButton:", 0)

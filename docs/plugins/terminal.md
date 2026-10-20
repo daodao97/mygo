@@ -76,6 +76,10 @@ The terminal does what terminal apps do:
   cells, a double click words and a triple click lines, and dragging past
   the top or the bottom scrolls. Option (Alt elsewhere) drags a rectangle.
   While a program takes the mouse, as editors do, Shift selects.
+- **The pointer** is Ghostty's: the I-beam over a shell, the arrow while a
+  program takes the mouse (the I-beam again while Shift is held, as Shift
+  selects then), and the shape a program asks for with OSC 22 (`pointer`,
+  `crosshair`, `col-resize`…) until it takes or leaves the mouse again.
 - **Copy and paste** are Command+C and Command+V on macOS, which the Edit
   menu's roles also send, and Control+Shift+C and Control+Shift+V
   elsewhere, with Control+Insert and Shift+Insert, and on Windows
@@ -158,6 +162,25 @@ term, err := terminal.New(terminal.Options{
   `background-opacity`, so that what is under the view shows through: the
   window's material, or an element's translucent background. Cells with a
   background color of their own still draw it.
+- `Padding` is the room around the grid, in DIPs across (`X`) and down
+  (`Y`), as Ghostty's `window-padding-x` and `window-padding-y`: 6 across
+  and 4 down by default, none when negative. `PaddingColor` is what it
+  shows, as Ghostty's `window-padding-color`: the background by default,
+  or with `terminal.PaddingExtend` the backgrounds of the cells nearest to
+  it, so that a full-screen program's colors reach the edges of the view
+  rather than stopping at the grid's. It extends every row's while a
+  full-screen program shows, and on the main screen only those of rows
+  whose every cell has a background of its own, so that a prompt's
+  highlights stay in their cells; `terminal.PaddingExtendAlways` extends
+  every row's. Either way, a lone character in inverse video, as a program
+  draws its own cursor, keeps its background in its cell.
+
+  ```go
+  term, err := terminal.New(terminal.Options{
+    Padding:      terminal.Padding{X: 14, Y: 8},
+    PaddingColor: terminal.PaddingExtend,
+  })
+  ```
 - `OptionAsAlt` makes Option on macOS the Alt key of programs (Meta),
   instead of the key typing accented letters.
 - `CopyOnSelect: terminal.CopyOnSelectClipboard` copies the selection to
@@ -213,6 +236,26 @@ term, err := terminal.New(terminal.Options{
   	})
   },
   ```
+- `OnCopy` runs on the main thread after the terminal writes text to the
+  clipboard, with what made the copy: `CopyUser` (the copy keys, the
+  context menu, a secondary click that copies), `CopySelect`
+  (`CopyOnSelect`) or `CopyProgram` (OSC 52). An app may say so, as
+  Ghostty's `app-notifications = clipboard-copy` does with a toast:
+
+  ```go
+  OnCopy: func(text string, by terminal.CopySource) {
+    if by != terminal.CopyProgram {
+        showToast("Copied to clipboard")
+    }
+  },
+  ```
+- `OnClear` sees the user's clear on the main thread, before the terminal
+  clears: `ClearScreen` for `ActionClearScreen`'s keys, `ClearScrollback`
+  for the context menu's Clear Scrollback. It reports whether it took the
+  clear, which then clears nothing here. A window showing a server's
+  terminal takes it, for the server's terminal to clear (see
+  [A server's terminal, shown elsewhere](#a-servers-terminal-shown-elsewhere)).
+  It is not asked on a full-screen program's screen.
 - `OnTitle`, `OnExit`, `OnBell` and `OnNotify` run on a goroutine of the
   terminal when the program sets the title, ends, rings the bell or asks
   for a desktop notification. `Done` is closed once the program exited,
@@ -321,8 +364,9 @@ on to the program, as if unbound: Control+C interrupts when nothing is
 selected. A performable copy also lets go of the selection, so that the
 key's next press interrupts. `ActionClearScreen` clears the scrollback and
 the screen above the cursor's line, which moves to the top with the
-shell's prompt, as Kitty's `clear_terminal to_cursor`; `ActionIgnore`
-takes the key and does nothing.
+shell's prompt, as Kitty's `clear_terminal to_cursor`; `Terminal.ClearScreen` does the same from code, and
+`Terminal.ClearScrollback` what the context menu's Clear Scrollback does.
+`ActionIgnore` takes the key and does nothing.
 
 A key goes first to the app's shortcuts, then to `OnKey`, then to the
 keybinds, then to the program. The context menu shows the keys bound to
@@ -546,6 +590,80 @@ owns framing, authentication and reconnection.
 `SetInputEnabled(false)` drops queued input and rejects new keys while retaining
 output and reading. Reenabling it does not replay discarded input. This leaves
 offline/read-only session policy to the app.
+
+## A server's terminal, shown elsewhere
+
+A server that keeps sessions running, as a multiplexer does, keeps each
+session's terminal, which the program's output goes to, and windows show it
+from another process. A `Mirror` of the server's terminal frames what it
+shows: `Frame` returns VT sequences that bring a terminal showing the frames
+before to what the server's shows now. The window's terminal reads them from
+its `Conn` as if a program wrote them, and shows the server's screen and
+scrollback cell for cell, with its cursor and the modes that change what it
+sends (the cursor keys', the keyboard protocols', the mouse's, bracketed
+paste), while it still selects, copies, opens links and composes as any
+terminal does. It never lays out a program's output itself, so it cannot
+come to show something else: a window fed the program's output from a
+snapshot of the server's screen can, as programs that redraw by moving the
+cursor relative to where it is show, as agents' interfaces do.
+
+```go
+// The server, one Mirror for each window, its first frame starting it over:
+m, err := term.NewMirror()
+frame, due := m.Frame() // after output; due: a synchronized update holds it
+```
+
+Frames draw rows where they are, and rows that scroll off pass through the
+window's screen in order, so that its scrollback is the server's; soft wraps
+stay soft. Each cell is drawn in its own style, so an empty cell stays empty
+after a colored one. A frame reads the terminal as a view does, taking its
+record of what changed: mirror a terminal no view shows, as a server's, with
+as many Mirrors as it has windows. A frame does not come while a program holds a synchronized update
+(mode 2026), up to a second: `Frame` then reports that one is due.
+
+The window's terminal sets `ResizeByConn`: its view only asks `Conn` for the
+size it fits, and the screen keeps its size until the window calls `Resize`,
+where the server's stream says the server resized, before the frames of the
+new size.
+
+```go
+term, err := terminal.New(terminal.Options{Conn: stream, ResizeByConn: true})
+// Where the server's stream says it resized to cols×rows:
+term.Resize(cols, rows)
+```
+
+The user's clears are the server's to make: cleared in the window alone,
+the server's next frames, drawn from a screen still full, would bring rows
+back in the wrong places. The window's `OnClear` takes them and asks the
+server, whose terminal clears; the next frame shows it.
+
+```go
+// The window:
+OnClear: func(c terminal.Clear) bool {
+    stream.Clear(c) // however the app asks its server
+    return true
+},
+// The server, asked:
+switch c {
+case terminal.ClearScreen:
+    term.ClearScreen()
+case terminal.ClearScrollback:
+    term.ClearScrollback()
+}
+```
+
+Programs' writes to the clipboard (OSC 52) go on with the frames, for the
+window's terminal to write with its own policy. With `ClipboardRead:
+terminal.ClipboardForward` on the server's terminal, programs' reads go on
+too, and the window's terminal answers them, asking the user as it would:
+the server's answers nothing. The server answers programs' other queries
+itself, as the terminal they write to.
+
+`History` returns the server's scrollback and screen down to the cursor as
+rows, without the cursor and the modes, for a terminal that takes a session
+over after its program ended, as after the server restarted: fed to it, the
+cursor is left under what it shows, for the next program to start below it
+rather than over it. A full-screen program's screen has none.
 
 ## The library
 

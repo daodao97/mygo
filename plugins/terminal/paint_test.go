@@ -78,7 +78,7 @@ func TestRemoteGridFitsWithoutReflow(t *testing.T) {
 	}
 	defer source.Close()
 	source.Feed([]byte("\x1b[?1049h\x1b[2J\x1b[2;70H中文🙂⣿⣷\x1b[8;90HRIGHT\x1b[31;1H> prompt\x1b[31;9H"))
-	phone, err := New(Options{Conn: newPipe(), FixedCols: 100, FixedRows: 32, FitToView: true})
+	phone, err := New(Options{Conn: newPipe(), FixedCols: 100, FixedRows: 32, FitToView: true, Padding: Padding{X: 20, Y: 12}})
 	if err != nil {
 		t.Fatal(err)
 	}

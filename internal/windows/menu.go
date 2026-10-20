@@ -20,12 +20,17 @@ type menuEntry struct {
 	menu  uintptr // the HMENU holding the item
 	radio bool
 	accel string
+	// look is how MyGo draws the item, nil where Windows does.
+	look *menuLook
 }
 
 type menuTable struct {
 	entries   map[uint16]*menuEntry
 	next      uint16
 	nextOwner int
+	// looks are the items MyGo draws (menudraw.go), by their data.
+	looks    map[uintptr]*menuLook
+	nextLook uintptr
 }
 
 func newMenuTable() menuTable { return menuTable{entries: map[uint16]*menuEntry{}} }
@@ -58,6 +63,11 @@ func (t *menuTable) drop(owner int) {
 			delete(t.entries, id)
 		}
 	}
+	for key, l := range t.looks {
+		if l.owner == owner {
+			delete(t.looks, key)
+		}
+	}
 }
 
 // buildMenu creates a native menu bar or popup menu.
@@ -68,12 +78,39 @@ func (b *Backend) buildMenu(m *platform.Menu, bar bool, owner int, accels map[ac
 	} else {
 		h, _, _ = procCreatePopupMenu.Call()
 	}
+	// MyGo draws the items of popup menus (menudraw.go), which leave room
+	// for checks when any item has one.
+	drawn := !bar && fluentMenus()
+	column := false
+	for _, it := range m.Items {
+		column = column || it.Visible && (it.Type == platform.MenuItemCheckbox || it.Type == platform.MenuItemRadio || it.Checked)
+	}
+	pos := 0
+	var looks []*menuLook
+	look := func(l *menuLook) *menuLook {
+		defer func() { pos++ }()
+		if !drawn {
+			return nil
+		}
+		l.owner, l.column = owner, column
+		looks = append(looks, l)
+		var ftype uint32
+		switch {
+		case l.separator:
+			ftype = mftSeparator
+		case l.radio:
+			ftype = mftRadioCheck
+		}
+		ownerDraw(h, pos, ftype, b.menus.addLook(l))
+		return l
+	}
 	for _, it := range m.Items {
 		if !it.Visible {
 			continue
 		}
 		if it.Type == platform.MenuItemSeparator {
 			procAppendMenuW.Call(h, mfSeparator, 0, 0)
+			look(&menuLook{separator: true})
 			continue
 		}
 		flags := uintptr(mfString)
@@ -83,6 +120,7 @@ func (b *Backend) buildMenu(m *platform.Menu, bar bool, owner int, accels map[ac
 		if it.Submenu != nil {
 			sub := b.buildMenu(it.Submenu, false, owner, accels)
 			procAppendMenuW.Call(h, flags|mfPopup, sub, uintptr(unsafe.Pointer(u16(it.Label))))
+			look(&menuLook{label: it.Label, submenu: true})
 			continue
 		}
 		if it.Checked {
@@ -99,32 +137,25 @@ func (b *Backend) buildMenu(m *platform.Menu, bar bool, owner int, accels map[ac
 			}
 		}
 		procAppendMenuW.Call(h, flags, uintptr(cmd), uintptr(unsafe.Pointer(u16(label))))
-		if e.radio {
-			setItemInfo(h, cmd, label, it.Enabled, it.Checked, true)
+		e.look = look(&menuLook{label: it.Label, accel: e.accel, radio: e.radio})
+		if e.radio && e.look == nil {
+			setItemInfo(h, cmd, label, it.Enabled, it.Checked, true, false)
 		}
+	}
+	if len(looks) > 0 {
+		looks[0].first, looks[len(looks)-1].last = true, true
 	}
 	return h
 }
 
-func setItemInfo(menu uintptr, cmd uint16, label string, enabled, checked, radio bool) {
-	type menuItemInfo struct {
-		Size         uint32
-		Mask         uint32
-		Type         uint32
-		State        uint32
-		ID           uint32
-		SubMenu      uintptr
-		BmpChecked   uintptr
-		BmpUnchecked uintptr
-		ItemData     uintptr
-		TypeData     *uint16
-		Cch          uint32
-		BmpItem      uintptr
-	}
+func setItemInfo(menu uintptr, cmd uint16, label string, enabled, checked, radio, drawn bool) {
 	mi := menuItemInfo{Mask: miimState | miimFType | miimString, TypeData: u16(label)}
 	mi.Size = uint32(unsafe.Sizeof(mi))
 	if radio {
 		mi.Type = mftRadioCheck
+	}
+	if drawn {
+		mi.Type |= mftOwnerDraw
 	}
 	if checked {
 		mi.State |= mfsChecked
@@ -199,6 +230,8 @@ func (w *window) popupMenuBar(key uintptr) {
 		return
 	}
 	popup, _, _ := procCreatePopupMenu.Call()
+	owner := w.b.menus.newOwner()
+	defer w.b.menus.drop(owner)
 	for i := range count {
 		buf := make([]uint16, 256)
 		procGetMenuStringW.Call(w.hmenu, uintptr(i), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), mfByPosition)
@@ -211,6 +244,10 @@ func (w *window) popupMenuBar(key uintptr) {
 			item, _, _ = procGetMenuItemID.Call(w.hmenu, uintptr(i))
 		}
 		procAppendMenuW.Call(popup, flags, item, uintptr(unsafe.Pointer(&buf[0])))
+		if fluentMenus() {
+			l := &menuLook{owner: owner, label: string(utf16Decode(buf)), submenu: flags&mfPopup != 0, first: i == 0, last: i == count-1}
+			ownerDraw(popup, i, 0, w.b.menus.addLook(l))
+		}
 	}
 	pt := point{Y: toPx(w.TitleBar().Height, dpiOf(w.hwnd))}
 	procClientToScreen.Call(w.hwnd, uintptr(unsafe.Pointer(&pt)))
@@ -263,7 +300,10 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 		if e.accel != "" {
 			label += "\t" + e.accel
 		}
-		setItemInfo(e.menu, cmd, label, it.Enabled, it.Checked, e.radio)
+		if e.look != nil {
+			e.look.label = it.Label
+		}
+		setItemInfo(e.menu, cmd, label, it.Enabled, it.Checked, e.radio, e.look != nil)
 	}
 	for _, w := range b.windows {
 		if w.menuShown() {
@@ -385,6 +425,9 @@ func (b *Backend) trackPopup(menu, owner uintptr, pt point, flags uintptr) uint1
 	// The owner must be in the foreground, or the menu does not close
 	// when the user clicks elsewhere.
 	procSetForegroundWindow.Call(owner)
+	// Windows creates the menu's window before WM_ENTERMENULOOP.
+	b.hookMenus(true)
+	defer b.hookMenus(false)
 	cmd, _, _ := procTrackPopupMenuEx.Call(menu, tpmReturnCmd|tpmRightButton|flags, uintptr(pt.X), uintptr(pt.Y), owner, 0)
 	postMessage(owner, 0, 0, 0) // WM_NULL, as the documentation asks
 	return uint16(cmd)

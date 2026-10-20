@@ -155,6 +155,8 @@ components, from buttons to tables.
 - [Game](plugins/game.md): what games need beyond what apps do, opt-in:
   a game loop in fixed steps with its input, a camera, and gamepads in
   one standard layout.
+- [Loading](plugins/loading.md): loading.dev's 29 loading indicators for
+  native UI.
 
 ## Reference
 

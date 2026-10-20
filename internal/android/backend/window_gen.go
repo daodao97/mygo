@@ -107,6 +107,8 @@ func (w *window) StartDrag() {}
 
 func (w *window) TitleBarDoubleClicked() {}
 
+func (*window) SetMaximizeButton(platform.RectF) {}
+
 func (w *window) PlaceFlyout(f platform.Flyout, size platform.Size) {}
 
 func (w *window) WebViewHandle() uintptr { return 0 }

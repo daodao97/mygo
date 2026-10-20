@@ -2372,6 +2372,29 @@ func TestHiddenTitleBar(t *testing.T) {
 	eventually(t, "the room of the controls back", func() bool { return room(w) == shown })
 }
 
+// HideWindowButtons keeps a hidden title bar without its window controls,
+// which the page draws itself: it hears no room for them, and the window
+// keeps the rest of the title bar, its resizing top edge on Windows.
+func TestHiddenWindowButtons(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{X: 80, Y: 80, Width: 480, Height: 320,
+		TitleBarStyle: mygo.TitleBarHidden, TitleBarHeight: 40, HideWindowButtons: true})
+	w.Page().LoadHTML("<p>no window buttons</p>", "")
+	waitFor(t, w, "document.querySelector('p')")
+	v, _ := mygo.EvalAs[[]string](w.Page(), `(() => {
+		const s = getComputedStyle(document.documentElement);
+		return ["height", "inset-left", "inset-right"].map((k) => s.getPropertyValue("--mygo-titlebar-" + k).trim());
+	})()`)
+	if slices.ContainsFunc(v, func(s string) bool { return s != "" && s != "0px" }) {
+		t.Errorf("room = %q, want none", v)
+	}
+	if names, ok := titleButtons(w); ok && len(names) > 0 {
+		t.Errorf("buttons = %q, want none", names)
+	}
+	if px, want, ok := topNonClient(w); ok && px != want {
+		t.Errorf("non-client area at the top = %d px, want %d", px, want)
+	}
+}
+
 func expectClick(t *testing.T, clicks chan string, want string) {
 	t.Helper()
 	select {

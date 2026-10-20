@@ -331,7 +331,10 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 	if m == wmMouseActivate && w.ownsFocusableFlyout() {
 		return maActivateAndEat, true
 	}
-	if r, ok := w.darkMenuMessage(m, wp, lp); ok {
+	if r, ok := w.b.menuItemMessage(w.hwnd, m, wp, lp); ok {
+		return r, true
+	}
+	if r, ok := w.menuBarMessage(m, wp, lp); ok {
 		return r, true
 	}
 	switch m {

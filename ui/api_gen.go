@@ -4039,7 +4039,9 @@ func (_handle Element) GapY(v float32) Element {
 
 // Gestures opts an element into pinch/rotation input and returns updates since
 // its last frame. A gesture stays with its starting element until it ends or
-// that element disappears. Currently iOS supplies these events.
+// that element disappears. A backend whose surface reports SurfaceGesture
+// events supplies these; on a touchscreen the system recognizes the two-finger
+// pinch and rotate and hands them over as deltas.
 func (_handle Element) Gestures() []GestureEvent {
 	_node := _handle.node()
 	if _node == nil {
@@ -4675,6 +4677,23 @@ func (_handle Element) MaxWidthPercent(p float32) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.MaxWidthPercent(p))
+}
+
+// MaximizeButton marks the element as the window's maximize button, which
+// the view draws in a window with a hidden title bar without the system's
+// (mygo.WindowOptions.HideWindowButtons): on Windows 11, holding the
+// pointer over it shows the snap layouts, as over the system's. It takes
+// the pointer as any element does, and the view maximizes the window when
+// it is clicked (mygo.Window.Maximize). The first such element of a frame
+// counts; elsewhere it does nothing.
+func (_handle Element) MaximizeButton() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.MaximizeButton())
 }
 
 // Menu makes the element a menu button: it opens a menu below it, which

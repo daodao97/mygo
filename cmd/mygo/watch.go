@@ -55,6 +55,9 @@ func listBuildInputs(c *Config) (*buildInputs, error) {
 		files:     []string{filepath.Join(c.root, jsonConfig), filepath.Join(c.root, tsConfig)},
 		resources: c.path(resourcesDir),
 	}
+	if icon := c.devIcon(); icon != "" {
+		in.files = append(in.files, c.path(icon))
+	}
 	if c.Icon != "" {
 		in.files = append(in.files, c.path(c.Icon))
 	}

@@ -374,7 +374,7 @@ func sourceResults(fs *token.FileSet, r *ast.FieldList) string {
 	return " (" + strings.Join(v, ",") + ")"
 }
 
-var special = map[string]bool{"Element.Children": true, "Element.Key": true, "Element.Material": true, "Context.Invalidate": true, "List": true}
+var special = map[string]bool{"Element.Children": true, "Element.Key": true, "Element.Material": true, "Context.Invalidate": true, "Context.SafeArea": true, "List": true}
 
 // Public action queries must see bound edits on controls already built.
 // Keep this at the facade: private widget queries can run in constructors,

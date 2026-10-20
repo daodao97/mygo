@@ -45,7 +45,7 @@ var (
 	fnGestureNew, fnGestureFree, fnGestureReset, fnGestureGet, fnGestureEventNew, fnGestureEventFree,
 	fnGestureEventSet, fnGestureEvent, fnSelectAll uintptr
 
-	fnGridRefHyperlinkURI, fnGridRefGraphemes, fnGridRefCell, fnTypeJSON, fnFormatterFormatAlloc, fnFormatterFree uintptr
+	fnGridRefHyperlinkURI, fnGridRefGraphemes, fnGridRefCell, fnRowData, fnTypeJSON, fnFormatterFormatAlloc, fnFormatterFree uintptr
 
 	// Bound with registerFunc below: they take structs or floats.
 	fnTerminalScrollViewport, fnTerminalGridRef, fnMouseEventSetPosition, fnSelectionFormatAlloc, fnFormatterTerminalNew uintptr
@@ -135,6 +135,7 @@ var symbols = []struct {
 	{"ghostty_grid_ref_hyperlink_uri", &fnGridRefHyperlinkURI},
 	{"ghostty_grid_ref_graphemes", &fnGridRefGraphemes},
 	{"ghostty_grid_ref_cell", &fnGridRefCell},
+	{"ghostty_row_get", &fnRowData},
 	{"ghostty_type_json", &fnTypeJSON},
 	{"ghostty_formatter_terminal_new", &fnFormatterTerminalNew},
 	{"ghostty_formatter_format_alloc", &fnFormatterFormatAlloc},
