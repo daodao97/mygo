@@ -70,8 +70,9 @@ type DiffState struct {
 	// button in place of its own (DefaultSeparator, DefaultHunkActions
 	// and DefaultGutterButton, which they can call to wrap them): each is
 	// given the element the viewer places, to style and fill, and what
-	// the part shows and does. A separator is as wide as the viewer, and
-	// 32 DIPs high.
+	// the part shows and does. A separator is as wide as the viewer, less
+	// the room of the scroll bar's track while the viewer scrolls, and 32
+	// DIPs high.
 	RenderSeparator    func(c *ui.Context, sep ui.Element, s *DiffSeparator)
 	RenderHunkActions  func(c *ui.Context, bar ui.Element, a *DiffHunkActions)
 	RenderGutterButton func(c *ui.Context, btn ui.Element, line DiffLineRange)

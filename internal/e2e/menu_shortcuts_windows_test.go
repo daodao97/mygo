@@ -3,10 +3,12 @@
 package e2e
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo"
 	win "github.com/egoist/mygo/internal/windows"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -48,5 +50,36 @@ func TestNativeMenuShortcuts(t *testing.T) {
 	eventually(t, "the content's Ctrl+C", func() bool { _, _, c, _ := counts(); return c == 1 })
 	if s, p, _, ty := counts(); s != 1 || p != 1 || ty != 0 {
 		t.Errorf("Ctrl+, ran Settings %d times and reached the content %d, Alt+Shift+= ran Split %d times; want once, never, once", s, ty, p)
+	}
+}
+
+// In a page, the edit roles' keys are the page's, as in a browser and as in
+// native UI: WebView2 pastes with the page's own paste event and every
+// format of the clipboard, where Edit › Paste would type its text alone.
+func TestPageEditKeys(t *testing.T) {
+	prev := mygo.App.Menu()
+	defer mygo.App.SetMenu(prev)
+	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{{Role: mygo.RoleEditMenu}}))
+	w := newWindow(t, mygo.WindowOptions{Width: 400, Height: 300})
+	w.Page().LoadHTML(`<textarea id=t></textarea><script>
+addEventListener("paste", (e) => { window.pasted = e.clipboardData.types.join(" ") })
+</script>`, "")
+	waitFor(t, w, "document.getElementById('t') !== null")
+	if err := mygo.Clipboard.Write(transfer.New(transfer.NewItem(
+		transfer.Bytes(transfer.Text, []byte("MyGo")), transfer.Bytes(transfer.HTML, []byte("<b>MyGo</b>"))))); err != nil {
+		t.Fatal(err)
+	}
+	var front bool
+	mygo.RunOnMain(func() { front = win.TestForeground(w.NativeHandle()) })
+	if !front {
+		t.Fatal("the window did not come to the front")
+	}
+	if _, err := w.Page().Eval("document.getElementById('t').focus()"); err != nil {
+		t.Fatal(err)
+	}
+	mygo.RunOnMain(func() { win.TestPressKeys(0x11, 'V') }) // VK_CONTROL
+	waitFor(t, w, "window.pasted !== undefined")
+	if types, _ := mygo.EvalAs[string](w.Page(), "window.pasted"); !strings.Contains(types, "text/html") {
+		t.Errorf("the page's paste had %q, want text/html among them", types)
 	}
 }

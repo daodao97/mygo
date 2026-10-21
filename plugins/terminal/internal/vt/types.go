@@ -274,6 +274,8 @@ func layouts() map[string]layout {
 		pr   progressReport
 		da   deviceAttributes
 		fo   formatterOptions
+		ri   renderInfo
+		si   sysImage
 	)
 	return map[string]layout{
 		"GhosttyPointCoordinate": {unsafe.Sizeof(pc), map[string]uintptr{"x": 0, "y": unsafe.Offsetof(pc.y)}},
@@ -304,6 +306,7 @@ func layouts() map[string]layout {
 		"GhosttyGridRef":                 {unsafe.Sizeof(gr), map[string]uintptr{"node": unsafe.Offsetof(gr.node), "x": unsafe.Offsetof(gr.x), "y": unsafe.Offsetof(gr.y)}},
 		"GhosttyPoint":                   {unsafe.Sizeof(pt), map[string]uintptr{"tag": 0, "value": unsafe.Offsetof(pt.x)}},
 		"GhosttySelection":               {unsafe.Sizeof(sel), map[string]uintptr{"start": unsafe.Offsetof(sel.start), "end": unsafe.Offsetof(sel.end), "rectangle": unsafe.Offsetof(sel.rectangle)}},
+
 		"GhosttyTerminalSelectionFormatOptions": {unsafe.Sizeof(sfo), map[string]uintptr{
 			"emit": unsafe.Offsetof(sfo.emit), "unwrap": unsafe.Offsetof(sfo.unwrap), "trim": unsafe.Offsetof(sfo.trim), "selection": unsafe.Offsetof(sfo.selection),
 		}},
@@ -312,7 +315,13 @@ func layouts() map[string]layout {
 			"cell_width": unsafe.Offsetof(mes.cellWidth), "cell_height": unsafe.Offsetof(mes.cellHeight),
 			"padding_top": unsafe.Offsetof(mes.paddingTop), "padding_left": unsafe.Offsetof(mes.paddingLeft),
 		}},
-		"GhosttyMousePosition":            {unsafe.Sizeof(mousePosition{}), map[string]uintptr{"x": 0, "y": 4}},
+		"GhosttyMousePosition": {unsafe.Sizeof(mousePosition{}), map[string]uintptr{"x": 0, "y": 4}},
+		"GhosttyKittyGraphicsPlacementRenderInfo": {unsafe.Sizeof(ri), map[string]uintptr{
+			"pixel_width": unsafe.Offsetof(ri.pixelWidth), "grid_rows": unsafe.Offsetof(ri.gridRows),
+			"viewport_col": unsafe.Offsetof(ri.viewportCol), "viewport_visible": unsafe.Offsetof(ri.viewportVisible),
+			"source_x": unsafe.Offsetof(ri.sourceX), "source_height": unsafe.Offsetof(ri.sourceH),
+		}},
+		"GhosttySysImage":                 {unsafe.Sizeof(si), map[string]uintptr{"width": 0, "height": 4, "data": unsafe.Offsetof(si.data), "data_len": unsafe.Offsetof(si.dataLen)}},
 		"GhosttySelectionGestureGeometry": {unsafe.Sizeof(gestureGeometry{}), map[string]uintptr{"columns": 0, "cell_width": 4, "padding_left": 8, "screen_height": 12}},
 		"GhosttySurfacePosition":          {unsafe.Sizeof(surfacePosition{}), map[string]uintptr{"x": 0, "y": 8}},
 		"GhosttySizeReportSize":           {unsafe.Sizeof(sizeReport{}), map[string]uintptr{"rows": 0, "columns": 2, "cell_width": 4, "cell_height": 8}},

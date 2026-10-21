@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/egoist/mygo/internal/wait"
 )
 
 func searchTerminal(t *testing.T, cols, rows int) *Terminal {
@@ -21,18 +22,45 @@ func searchTerminal(t *testing.T, cols, rows int) *Terminal {
 
 func settledSearch(t *testing.T, term *Terminal) SearchState {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		s := term.SearchState()
+	var s SearchState
+	wait.Until(t, "search to complete", func() bool {
+		s = term.SearchState()
 		if s.Err != nil {
 			t.Fatal(s.Err)
 		}
-		if !s.Busy {
-			return s
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("search did not complete")
-		}
+		return !s.Busy
+	})
+	return s
+}
+
+func TestSearchAPICompatibility(t *testing.T) {
+	term := searchTerminal(t, 32, 4)
+	term.Feed([]byte("needle needle needle other"))
+	if err := term.SetSearch("needle"); err != nil {
+		t.Fatal(err)
+	}
+	if s := settledSearch(t, term); s.Total != 3 || s.Current != 1 {
+		t.Fatal(s)
+	}
+	if s := term.SearchStatus(); s.Text != "needle" || s.Total != 3 || s.Selected != 1 {
+		t.Fatalf("new API did not see the existing search: %+v", s)
+	}
+	term.SearchNext()
+	if s := settledSearch(t, term); s.Current != 2 {
+		t.Fatal(s)
+	}
+	term.SearchPrevious()
+	term.SearchNext(-1)
+	if s := settledSearch(t, term); s.Current != 3 {
+		t.Fatal(s)
+	}
+	term.Search("other")
+	if s := settledSearch(t, term); s.Total != 1 || s.Current != 1 {
+		t.Fatalf("existing API did not see the replacement search: %+v", s)
+	}
+	term.EndSearch()
+	if s := term.SearchState(); s != (SearchState{}) || term.search != nil {
+		t.Fatalf("ending the search retained state: %+v", s)
 	}
 }
 
@@ -95,6 +123,12 @@ func TestSearchWrappedUnicodeAndResize(t *testing.T) {
 	}
 	if rects[0].Start != 8 || rects[0].End != 10 || rects[1].End != 8 || !rects[0].Selected {
 		t.Fatalf("wide glyph highlight %+v", rects)
+	}
+	term.mu.Lock()
+	spans, _ := term.viewportMatches(nil, nil, 10, 5)
+	term.mu.Unlock()
+	if len(spans) != 2 || spans[0].x0 != 8 || spans[1].x1 != 7 {
+		t.Fatalf("view highlight clipped a wide glyph: %+v", spans)
 	}
 	term.Resize(24, 5)
 	if s := settledSearch(t, term); s.Total != 1 || s.Current != 1 {

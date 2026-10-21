@@ -109,6 +109,9 @@ type Backend struct {
 	FileWatchNoFiles bool
 	// FileWatchAddHook is the AddHook of the file watches made.
 	FileWatchAddHook func(platform.FileWatchTarget) error
+	// ReplaceFileHook, when set, replaces files in place of ReplaceFile,
+	// as a system that fails halfway would.
+	ReplaceFileHook func(target, replacement string) error
 	// URLSchemes are the registered URL schemes, by scheme: "id name".
 	URLSchemes map[string]string
 	// LoginItem is the command that starts the app at login: "id name arg".
@@ -722,7 +725,6 @@ func (w *Window) SetContentProtection(bool)          {}
 func (w *Window) SetVibrancy(string)                 {}
 func (w *Window) SetMenu(m *platform.Menu)           { w.mu.Lock(); w.menu = m; w.mu.Unlock() }
 func (w *Window) StartDrag()                         {}
-func (w *Window) SetMaximizeButton(r platform.RectF) { w.MaximizeButton = r }
 func (w *Window) TitleBarDoubleClicked()             {}
 func (w *Window) LoadURL(url string)                 { w.mu.Lock(); w.url = url; w.mu.Unlock() }
 func (w *Window) LoadHTML(html, _ string)            { w.addHTML(html) }
@@ -1284,6 +1286,10 @@ func (s *Surface) FinishDataDrag(r transfer.Result) {
 }
 
 func (s *Surface) Native() platform.SurfaceNative { return platform.SurfaceNative{} }
+
+// SetMaximizeButton records the button in the window's MaximizeButton
+// (platform.MaximizeButtonSurface).
+func (s *Surface) SetMaximizeButton(r platform.RectF) { s.w.MaximizeButton = r }
 
 func (s *Surface) Size() (float64, float64, float64) {
 	s.w.mu.Lock()

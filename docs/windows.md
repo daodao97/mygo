@@ -480,7 +480,7 @@ mygo.NewWindow(mygo.WindowOptions{
 |---|---|
 | `PreloadScript` | JavaScript run before every page's own scripts |
 | `TrustedOrigins` | other origins whose pages may call Go, see [who may call](bindings.md#who-may-call) |
-| `DevTools` | `DevToolsAuto` (the inspector in development builds), `DevToolsEnabled` or `DevToolsDisabled`; for a window of native UI, its [inspector](ui/inspector.md) |
+| `DevTools` | `DevToolsAuto` (the inspector in development builds), `DevToolsEnabled` or `DevToolsDisabled`, which also turns WebView2's own keys, as F5 reloading, on or off (Windows); for a window of native UI, its [inspector](ui/inspector.md) |
 | `ZoomFactor`, `UserAgent` | the page's zoom (1 is 100%) and user agent |
 | `SafariTabFocus` | leaves Tab to text fields and elements with a tabindex, as Safari does unless the system's keyboard navigation is on; by default Tab reaches links, buttons, checkboxes and selects too (macOS) |
 | `UserAgentSuffix` | appended to the user agent instead of replacing it, which `UserAgent` does, such as `"MyApp/1.2"`; it appends to `UserAgent` too, and `SetUserAgent` keeps it, and leading and trailing spaces are trimmed |
@@ -548,6 +548,14 @@ png, err := win.CapturePage() // what the window shows, as a PNG
 `PrintToPDF` lays the page out for printing, so its print style sheets
 apply. The zero `PDFOptions` prints Letter pages in portrait with margins of
 0.4 inch and no backgrounds, like a browser's print dialog.
+
+The PDF's text copies and searches as the page's. On macOS, the PDFs that
+WebKit prints name radicals for many Chinese characters, such as ⼈
+(U+2F08) for 人, which the system's fonts draw with the same glyph.
+`PrintToPDF` asks the installed fonts which characters their glyphs are
+and appends corrected text maps to the PDF, which leaves its pages as they
+were. Text in a font that is not installed, such as a web font, keeps the
+radicals.
 
 ### Downloads
 

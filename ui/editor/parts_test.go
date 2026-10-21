@@ -269,3 +269,58 @@ func TestCodeEditorHoverInteractive(t *testing.T) {
 		t.Fatalf("after Escape: hover shown %v, editor focused %v", ed.hover.shown, st.Focused())
 	}
 }
+
+// TestDiffSeparatorsKeepRoomOnlyForScrollbars: a diff that fits its
+// content shows no scroll bar, so its separators run to the viewer's right
+// edge; one that scrolls keeps the room of the scroll bar's track.
+func TestDiffSeparatorsKeepRoomOnlyForScrollbars(t *testing.T) {
+	lines := make([]string, 60)
+	for i := range lines {
+		lines[i] = "line " + strconv.Itoa(i)
+	}
+	old := strings.Join(lines, "\n")
+	lines[30] = "changed"
+	nw := strings.Join(lines, "\n")
+
+	for _, tc := range []struct {
+		name string
+		fit  bool
+		want float32 // where the separators end, from the viewer's left edge
+	}{
+		{"fit content", true, 800},
+		{"scrolling", false, 800 - scrollbarWidth},
+	} {
+		d := &DiffState{Old: NewBuffer(old), New: NewBuffer(nw), FitContent: tc.fit}
+		var right float32
+		d.RenderSeparator = func(c *ui.Context, sep ui.Element, s *DiffSeparator) {
+			// A frame's bounds are the last frame's, which the second Frame reads.
+			b := sep.Bounds()
+			right = b.X + b.W
+			sep.Children(func() { ui.Text(c, "separator") })
+		}
+		tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).FillWidth() }, 800, 600)
+		tt.Frame()
+		tt.Frame()
+		if right != tc.want {
+			t.Errorf("%s: separators end at %v, want %v", tc.name, right, tc.want)
+		}
+	}
+}
+
+// The sides of a split diff wrap their lines at the same width, whether
+// or not it fits its content, though only the new side draws the scroll
+// bar of a viewer that scrolls.
+func TestDiffSplitSidesWrapAlike(t *testing.T) {
+	long := strings.Repeat("word ", 80)
+	old := "a\n" + long + "\nb\nc"
+	nw := "a\n" + long + "\nB\nc"
+	for _, fit := range []bool{false, true} {
+		d := &DiffState{Old: NewBuffer(old), New: NewBuffer(nw), Layout: DiffSplit, Wrap: true, FitContent: fit}
+		tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).FillWidth() }, 800, 600)
+		tt.Frame()
+		tt.Frame()
+		if o, n := d.eds[0].view.wrapWidth, d.eds[1].view.wrapWidth; o != n || o <= 0 {
+			t.Errorf("FitContent %v: the old side wraps at %v, the new one at %v", fit, o, n)
+		}
+	}
+}

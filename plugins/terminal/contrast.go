@@ -19,16 +19,16 @@ func (v *view) readableForeground(fg, bg ui.Color) ui.Color {
 		return fg
 	}
 	key := contrastPair{fg, bg}
-	if c, ok := v.contrast[key]; ok {
+	if c, ok := v.contrastCache[key]; ok {
 		return c
 	}
 	c := contrastingText(fg, bg, minimum)
-	if v.contrast == nil {
-		v.contrast = make(map[contrastPair]ui.Color)
-	} else if len(v.contrast) >= 512 {
-		clear(v.contrast)
+	if v.contrastCache == nil {
+		v.contrastCache = make(map[contrastPair]ui.Color)
+	} else if len(v.contrastCache) >= 512 {
+		clear(v.contrastCache)
 	}
-	v.contrast[key] = c
+	v.contrastCache[key] = c
 	return c
 }
 
@@ -41,7 +41,7 @@ func (v *view) adaptiveBackground(bg ui.Color) ui.Color {
 		return bg
 	}
 	current := color(v.colors.Background)
-	lb, lc := luminance(bg), luminance(current)
+	lb, lc := colorLuminance(bg), colorLuminance(current)
 	if !(lb >= .5 && lc < .18 || lb < .18 && lc >= .5) {
 		return bg
 	}
@@ -65,12 +65,12 @@ var linearChannels = func() (values [256]float64) {
 	return
 }()
 
-func luminance(c ui.Color) float64 {
+func colorLuminance(c ui.Color) float64 {
 	return .2126*linearChannels[c.R] + .7152*linearChannels[c.G] + .0722*linearChannels[c.B]
 }
 
 func contrastRatio(a, b ui.Color) float64 {
-	l1, l2 := luminance(a), luminance(b)
+	l1, l2 := colorLuminance(a), colorLuminance(b)
 	return (max(l1, l2) + .05) / (min(l1, l2) + .05)
 }
 

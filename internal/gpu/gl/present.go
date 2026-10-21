@@ -3,6 +3,7 @@
 package gl
 
 import (
+	"errors"
 	"fmt"
 	"unsafe"
 )
@@ -26,6 +27,9 @@ func (p *Presenter) Present(pix []byte, stride, width, height int) error {
 	}
 	if width <= 0 || height <= 0 || len(pix) < stride*(height-1)+4*width {
 		return nil
+	}
+	if !hasContext() {
+		return errors.New("gl: no current context")
 	}
 	if c := currentContext(); c != p.context {
 		// A new context: the old one took the texture with it.

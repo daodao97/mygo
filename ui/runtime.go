@@ -761,6 +761,10 @@ func (rt *engine) holdFrame() bool {
 	}
 	rt.held = true
 	rt.redraw, rt.repaintDue = false, time.Time{}
+	// The time the display asked for this frame at, as one waiting for
+	// the GPU renderer (windowHost.waitDisplay), is not that of the frame
+	// drawn once the window shows.
+	rt.frameAt = time.Time{}
 	rt.host.repaintTimer(time.Time{})
 	return true
 }

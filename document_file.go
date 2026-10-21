@@ -2,6 +2,7 @@ package mygo
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -173,10 +174,18 @@ func writeFileSafely(path string, write func(io.Writer) error) (fileStamp, error
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
-	if err == nil {
+	replacing := err == nil
+	if replacing {
 		err = backend().ReplaceFile(path, name)
 	}
 	if err != nil {
+		if _, serr := os.Lstat(path); replacing && exists && errors.Is(serr, fs.ErrNotExist) {
+			// The system removed the file and could not put the new one in
+			// its place (ReplaceFileW's ERROR_UNABLE_TO_MOVE_REPLACEMENT):
+			// the sibling is the only copy left, so it stays. One that
+			// could not be written holds no contents to keep.
+			return fileStamp{}, fmt.Errorf("%w; the new contents are in %s", err, name)
+		}
 		os.Remove(name)
 		return fileStamp{}, err
 	}

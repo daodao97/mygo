@@ -95,47 +95,52 @@ function bunLock(withPlatform: boolean) {
 `;
 }
 
-test("mygo explains a missing platform package", () => {
-  const base = mkdtempSync(join(tmpdir(), "mygo-cli-"));
-  const missing = `${platformName(host)}, the package with the mygo binary of this platform, is not installed`;
-  const omitted = "Reinstall mygo-cli without omitting optional dependencies";
-  try {
-    const project = join(base, "project");
-    install(project, false);
-    const bunx = join(base, "bunx-501-mygo-cli@latest");
-    install(bunx, false);
-    const npx = join(base, "_npx", "0123456789abcdef");
-    install(npx, false);
-    for (const runtime of runtimes) {
-      rmSync(join(project, "bun.lock"), { force: true });
-      let r = run(runtime, project, ["version"]);
-      expect(r.code).toBe(1);
-      expect(r.err).toContain(missing);
-      expect(r.err).toContain(omitted);
-      // bun keeps out what its lockfile lacks. The messages name the real
-      // paths, which can differ from ours, as in 8.3 names on Windows.
-      writeFileSync(join(project, "bun.lock"), bunLock(false));
-      r = run(runtime, project, ["version"]);
-      expect(r.err).toContain(missing);
-      expect(r.err).toContain(`${sep}project${sep}bun.lock lacks it, even with --force: remove that file`);
-      writeFileSync(join(project, "bun.lock"), bunLock(true));
-      expect(run(runtime, project, ["version"]).err).toContain(omitted);
-      // bunx and npx run the install they made again.
-      r = run(runtime, bunx, ["version"]);
-      expect(r.err).toContain(missing);
-      expect(r.err).toContain("bunx installed mygo-cli without it in ");
-      expect(r.err).toContain(`${sep}bunx-501-mygo-cli@latest: remove that directory, then run bunx again`);
-      r = run(runtime, npx, ["version"]);
-      expect(r.err).toContain("npx installed mygo-cli without it in ");
-      expect(r.err).toContain(`${sep}_npx${sep}0123456789abcdef: remove that directory, then run npx again`);
-      // MYGO_CLI_BINARY points at a binary of one's own instead.
-      const own = run(runtime, project, ["--version"], { MYGO_CLI_BINARY: process.execPath });
-      expect(own.code).toBe(0);
-    }
-  } finally {
-    rmSync(base, { recursive: true, force: true });
+// Each install scenario starts one process: a slow runtime does not charge
+// every other scenario's startup against the same test's timeout.
+for (const runtime of runtimes) {
+  for (const scenario of ["project", "bun-lock-missing", "bun-lock-present", "bunx", "npx", "override"] as const) {
+    test(`mygo explains a missing platform package (${runtime}, ${scenario})`, () => {
+      const base = mkdtempSync(join(tmpdir(), "mygo-cli-"));
+      const missing = `${platformName(host)}, the package with the mygo binary of this platform, is not installed`;
+      const omitted = "Reinstall mygo-cli without omitting optional dependencies";
+      try {
+        const root = scenario === "bunx" ? join(base, "bunx-501-mygo-cli@latest")
+          : scenario === "npx" ? join(base, "_npx", "0123456789abcdef") : join(base, "project");
+        install(root, false);
+        if (scenario === "bun-lock-missing" || scenario === "bun-lock-present") {
+          writeFileSync(join(root, "bun.lock"), bunLock(scenario === "bun-lock-present"));
+        }
+        if (scenario === "override") {
+          const own = run(runtime, root, ["--version"], { MYGO_CLI_BINARY: process.execPath });
+          expect(own.code).toBe(0);
+          return;
+        }
+        const r = run(runtime, root, ["version"]);
+        expect(r.code).toBe(1);
+        expect(r.err).toContain(missing);
+        switch (scenario) {
+          case "project":
+          case "bun-lock-present":
+            expect(r.err).toContain(omitted);
+            break;
+          case "bun-lock-missing":
+            expect(r.err).toContain(`${sep}project${sep}bun.lock lacks it, even with --force: remove that file`);
+            break;
+          case "bunx":
+            expect(r.err).toContain("bunx installed mygo-cli without it in ");
+            expect(r.err).toContain(`${sep}bunx-501-mygo-cli@latest: remove that directory, then run bunx again`);
+            break;
+          case "npx":
+            expect(r.err).toContain("npx installed mygo-cli without it in ");
+            expect(r.err).toContain(`${sep}_npx${sep}0123456789abcdef: remove that directory, then run npx again`);
+            break;
+        }
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
   }
-});
+}
 
 test("defineConfig returns the configuration", async () => {
   const config = defineConfig({

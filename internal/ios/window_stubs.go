@@ -47,7 +47,6 @@ func (w *window) SetAutoHideMenu(v bool)                     {}
 func (w *window) TitleBar() platform.TitleBar                { return platform.TitleBar{} }
 func (w *window) StartDrag()                                 {}
 func (w *window) TitleBarDoubleClicked()                     {}
-func (*window) SetMaximizeButton(platform.RectF)             {}
 func (w *window) LoadURL(url string)                         {}
 func (w *window) LoadHTML(html, baseURL string)              {}
 func (w *window) LoadFile(path, readAccessDir string)        {}

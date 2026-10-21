@@ -29,7 +29,8 @@ import (
 // The wheel scrolls the scrollback unless the program takes the mouse,
 // and zooms with Control held (Command on macOS; Options.OnZoom). Hold
 // Shift to select while a program takes the mouse, and Command (Control
-// elsewhere) to open a hyperlink (OSC 8) on click.
+// elsewhere) to underline a link and open it on click: a hyperlink (OSC 8),
+// a URL printed as text, or a file path with Options.OpenLink.
 func View(c *ui.Context, t *Terminal) ui.Element {
 	v := t.viewOf(c)
 	v.linkMods = c.Modifiers()
@@ -39,7 +40,7 @@ func View(c *ui.Context, t *Terminal) ui.Element {
 	e.Cursor(v.pointerAt)
 	x, y, over := e.PointerPosition()
 	v.hover = linkMatch{}
-	if over && (c.Modifiers()&ui.Cmd != 0 || t.opts.OpenLinksOnTap) && v.cellW != 0 {
+	if over && !v.selecting && !v.reporting && (c.Modifiers()&ui.Cmd != 0 || t.opts.OpenLinksOnTap) && v.cellW != 0 {
 		t.mu.Lock()
 		v.hover = v.linkAt(x, y)
 		t.mu.Unlock()
@@ -188,7 +189,10 @@ type view struct {
 	searchRects   []vt.MatchRect
 	lines         []rowCache
 	shaped        lru
-	contrast      map[contrastPair]ui.Color
+	contrastCache map[contrastPair]ui.Color
+	contrast      float32
+	images        []shownImage
+	bitmaps       map[uint32]*cachedImage
 
 	keys    *vt.KeyEncoder
 	mouse   *vt.MouseEncoder
@@ -231,6 +235,13 @@ type view struct {
 	reads      []*clipboardRequest
 	clipPrompt *clipboardRequest
 	clipOpen   bool
+
+	// searched is the search's status OnSearch was last told; matches are
+	// the cells of the matches the viewport shows, as of the last paint,
+	// found in matchBuf.
+	searched SearchStatus
+	matches  []matchSpan
+	matchBuf []vt.Selection
 }
 
 type linkTap struct {
@@ -254,6 +265,9 @@ type pendingKey struct {
 // build updates the view as a frame builds.
 func (v *view) build(c *ui.Context, e ui.Element) {
 	t := v.t
+	if files := e.DroppedFiles(); len(files) > 0 {
+		t.dropFiles(files)
+	}
 	v.lang = c.Locale()
 	dark := c.Theme().Dark
 	focused := e.Focused()
@@ -267,7 +281,7 @@ func (v *view) build(c *ui.Context, e ui.Element) {
 	v.theme = theme
 	if adaptive := t.opts.AdaptiveColors; adaptive != v.adaptiveColors {
 		v.adaptiveColors = adaptive
-		clear(v.contrast)
+		clear(v.contrastCache)
 		v.lines = nil
 	}
 	opposite := t.opts.DarkTheme
@@ -286,9 +300,11 @@ func (v *view) build(c *ui.Context, e ui.Element) {
 
 			theme.apply(t.term)
 			v.applied = theme
-			clear(v.contrast)
+			clear(v.contrastCache)
 			v.lines = nil
+			t.themeConn(theme)
 		}
+		t.schemeChanged(t.curTheme, theme)
 		t.curTheme = theme
 		if focused != v.focused && t.term.Mode(vt.ModeFocusEvent) {
 			t.in.push(vt.EncodeFocus(focused))
@@ -311,11 +327,23 @@ func (v *view) build(c *ui.Context, e ui.Element) {
 	reads := t.clipReads
 	t.clipReads = nil
 	term := t.term
+	searching := term != nil && t.driveSearch()
+	searched := t.find.status
 	t.mu.Unlock()
 	if !holdDue.IsZero() {
 		// The watchdog must also wake a window with a hidden cursor and no
 		// further output; otherwise an incomplete update could stay frozen.
 		c.After(max(holdDue.Sub(c.Now()), time.Millisecond))
+	}
+	if searched != v.searched {
+		v.searched = searched
+		if t.opts.OnSearch != nil {
+			t.opts.OnSearch(searched)
+		}
+	}
+	if searching {
+		// The rest of the scrollback, in the frames to come.
+		c.After(time.Millisecond)
 	}
 	for _, s := range copied {
 		c.WriteClipboard(s)
@@ -533,9 +561,10 @@ func (v *view) caret() ui.Rect {
 func (v *view) menu(m *ui.Menu) {
 	t := v.t
 	t.mu.Lock()
-	text, selected := "", false
+	text, selected, alt := "", false, false
 	if t.term != nil {
 		text, selected = v.selectionText()
+		alt = t.term.AltScreen()
 	}
 	t.mu.Unlock()
 	tx := l10n.In(v.lang)
@@ -550,10 +579,10 @@ func (v *view) menu(m *ui.Menu) {
 		v.selectAll()
 	}
 	m.Separator()
-	if m.Item(tx.ClearScrollback()).Chosen() {
-		if on := t.opts.OnClear; on == nil || !on(ClearScrollback) {
-			t.ClearScrollback()
-		}
+	// Clear clears as ⌘K does, as Ghostty's: clearing the scrollback
+	// alone would change nothing on the screen.
+	if v.menuItem(m, tx.ClearTerminal(), ActionClearScreen).Disabled(alt).Chosen() {
+		v.clearScreen()
 	}
 }
 
@@ -1428,3 +1457,28 @@ func shiftedText(k ui.Key, unshifted rune) string {
 }
 
 func (v *view) screen() *vt.Terminal { return v.t.term }
+
+// HoveredLink returns the Command-hovered URL or file reference and its cells in
+// view-relative DIPs. Wrapped references report the segment under the pointer.
+func (t *Terminal) HoveredLink() (link string, path bool, at ui.Rect) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	v := t.v
+	if v == nil || !v.hover.valid() || v.linkMods&ui.Cmd == 0 || v.scale == 0 {
+		return
+	}
+	m := v.hover
+	link = m.URL
+	if link == "" {
+		link = m.raw
+		if link == "" {
+			link = m.Path
+		}
+		path = true
+	}
+	_, row := v.cellAt(v.pointer[0], v.pointer[1])
+	a, b := max(m.cellA, (row-m.row)*v.cols), min(m.cellB, (row-m.row+1)*v.cols)
+	cw, ch := float32(v.cellW)/v.scale, float32(v.cellH)/v.scale
+	at = ui.Rect{X: float32(v.ox)/v.scale + float32(a-(row-m.row)*v.cols)*cw, Y: float32(v.oy)/v.scale + float32(row)*ch, W: float32(max(b-a, 0)) * cw, H: ch}
+	return
+}

@@ -99,6 +99,19 @@ type PacedSurface interface {
 	FrameNow()
 }
 
+// MaximizeButtonSurface is a Surface whose window makes the maximize
+// button its content draws (in a window without its own, as
+// WindowOptions.HideWindowButtons) the system's for the pointer: Windows
+// shows the snap layouts over it. Package ui reaches it only once a view
+// marks such a button (ui.Element.MaximizeButton), for apps that mark none
+// not to link it.
+type MaximizeButtonSurface interface {
+	// SetMaximizeButton tells where the content shows the window's
+	// maximize button, in DIPs from the top-left corner of the content.
+	// The zero RectF is nowhere.
+	SetMaximizeButton(r RectF)
+}
+
 // IdleSurface is a Surface that can give back memory once frames stop.
 type IdleSurface interface {
 	// Idle tells that no frame came for a while: the surface may give
