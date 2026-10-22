@@ -465,6 +465,8 @@ func (a appController) AllowForeground() {
 	procAllowSetForegroundWindow.Call(asfwAny)
 }
 
+func (a appController) WithActivationToken(_ string, fn func()) { fn() }
+
 // Activate brings the app forward as macOS does, with its windows in their
 // order: a window of the app already in front stays there, else the one
 // the user had last, the highest of them in the z-order, comes forward.

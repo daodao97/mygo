@@ -874,6 +874,16 @@ func registerSurfaceClass() {
 			}
 			s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerMouse, X: x, Y: y, DX: -dx, DY: -dy, Precise: precise, Mods: eventMods(ev)})
 		}),
+		method("magnifyWithEvent:", func(self id, _ objc.SEL, ev id) {
+			s := b().surfaceOf(self)
+			if s == nil {
+				return
+			}
+			// magnification is how much the pinch grew the content since
+			// its last event, as a fraction of its size then.
+			x, y := s.location(ev)
+			s.send(platform.SurfaceEvent{Kind: platform.PointerZoom, X: x, Y: y, Scale: 1 + msgFloat(ev, sel("magnification")), Mods: eventMods(ev)})
+		}),
 		method("keyDown:", func(self id, _ objc.SEL, ev id) {
 			s := b().surfaceOf(self)
 			if s == nil {

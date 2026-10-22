@@ -120,6 +120,9 @@ type Backend struct {
 	DockMenu *platform.Menu
 	// ForegroundAllowed counts AllowForeground calls.
 	ForegroundAllowed int
+	// ActivationToken is the token of WithActivationToken while its
+	// function runs.
+	ActivationToken string
 	// Cleared counts ClearBrowsingData calls.
 	Cleared int
 	// cookies holds the cookies of the pages, by name, domain and path.
@@ -821,9 +824,15 @@ func (w *Window) UserClose() bool {
 
 type app struct{ b *Backend }
 
-func (app) SetActivationPolicy(string)                {}
-func (app) Activate()                                 {}
-func (a app) AllowForeground()                        { a.b.ForegroundAllowed++ }
+func (app) SetActivationPolicy(string) {}
+func (app) Activate()                  {}
+func (a app) AllowForeground()         { a.b.ForegroundAllowed++ }
+func (a app) WithActivationToken(token string, fn func()) {
+	prev := a.b.ActivationToken
+	a.b.ActivationToken = token
+	defer func() { a.b.ActivationToken = prev }()
+	fn()
+}
 func (app) Hide()                                     {}
 func (app) Unhide()                                   {}
 func (app) IsHidden() bool                            { return false }

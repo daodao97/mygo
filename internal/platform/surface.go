@@ -280,6 +280,9 @@ const (
 	// PointerScroll scrolls by DX, DY DIPs at X, Y: positive DY moves the
 	// view down the content, as dragging a scroll bar's thumb down does.
 	PointerScroll
+	// PointerZoom zooms by Scale at X, Y, as pinching a touchpad does: 2
+	// shows the content twice as large as it was.
+	PointerZoom
 	// KeyPressed and KeyReleased report Key with Mods; Repeat marks
 	// auto-repeat.
 	KeyPressed
@@ -368,11 +371,11 @@ const (
 
 // SurfaceEvent is input on a Surface, or a change of it.
 type SurfaceEvent struct {
-	Gesture, Phase  string
-	Scale, Rotation float64
-	Kind            SurfaceEventKind
-	PointerID       uint64
-	PointerType     PointerType
+	Gesture, Phase string
+	Rotation       float64
+	Kind           SurfaceEventKind
+	PointerID      uint64
+	PointerType    PointerType
 	// X and Y locate the pointer in DIPs relative to the surface.
 	X, Y float64
 	// Button is 0 for the primary button, 1 the secondary, 2 the middle.
@@ -382,7 +385,9 @@ type SurfaceEvent struct {
 	// other devices that scroll by pixels rather than by lines.
 	DX, DY  float64
 	Precise bool
-	Key     Key
+	// Scale is PointerZoom's factor or SurfaceGesture's cumulative scale.
+	Scale float64
+	Key   Key
 	// PhysicalKey is the key by its position on an ANSI US keyboard,
 	// whatever the active layout types; KeyUnknown where the backend does
 	// not report it. Key and PhysicalKey agree on a US layout.

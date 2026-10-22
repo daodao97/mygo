@@ -984,7 +984,10 @@ func (p *Painter) scrollbars(e *node) {
 		}
 	}
 	dragging := rt.scrollDrag.st == st
-	if !hovered && !dragging {
+	// A press takes the bars only where the window shows them
+	// (scrollbarPress).
+	st.barsShown = hovered || dragging
+	if !st.barsShown {
 		return
 	}
 	color := theme.Scrollbar

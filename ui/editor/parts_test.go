@@ -324,3 +324,34 @@ func TestDiffSplitSidesWrapAlike(t *testing.T) {
 		}
 	}
 }
+
+// A diff that fits its content is as high as its lines with the unchanged
+// ones folded before it is first drawn: below the view of a scroll
+// container, it would else stand as high as all its lines until scrolled
+// to, then shrink, and the container's end with it, under the user.
+func TestDiffFitContentFoldsBeforeDrawn(t *testing.T) {
+	var lines []string
+	for i := range 400 {
+		lines = append(lines, "line "+strconv.Itoa(i))
+	}
+	old := strings.Join(lines, "\n")
+	lines[200] = "changed"
+	nw := strings.Join(lines, "\n")
+	for _, layout := range []DiffLayout{DiffUnified, DiffSplit} {
+		d := &DiffState{Old: NewBuffer(old), New: NewBuffer(nw), Layout: layout, FitContent: true}
+		var h float32
+		tt := ui.NewTester(func(c *ui.Context) {
+			ui.Scroll(c).Fill().Children(func() {
+				ui.Box(c).Height(5000)
+				// A frame's bounds are the last frame's.
+				h = DiffView(c, d).FillWidth().Bounds().H
+			})
+		}, 800, 600)
+		tt.Frame()
+		tt.Frame()
+		tt.Frame()
+		if max := float32(40 * d.eds[1].view.lineHeight); h <= 0 || h > max {
+			t.Errorf("layout %v: the diff not yet drawn is %v high, want at most %v", layout, h, max)
+		}
+	}
+}

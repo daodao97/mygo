@@ -212,6 +212,10 @@ type AppController interface {
 	// AllowForeground lets the next process to ask bring its windows to
 	// the front, which Windows only lets the process in front do.
 	AllowForeground()
+	// WithActivationToken runs fn with the startup notification or XDG
+	// activation token of the launch that caused it, which the window fn
+	// shows or focuses first may need to take the focus (Wayland).
+	WithActivationToken(token string, fn func())
 	Hide()
 	Unhide()
 	IsHidden() bool

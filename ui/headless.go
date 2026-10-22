@@ -698,6 +698,12 @@ func (t *Tester) Wheel(x, y, dx, dy float32) {
 	t.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy)})
 }
 
+// Pinch zooms by scale with the pointer at (x, y), as pinching a touchpad
+// does (InputZoom).
+func (t *Tester) Pinch(x, y, scale float32) {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerZoom, X: float64(x), Y: float64(y), Scale: float64(scale)})
+}
+
 // HoldModifiers presses or lets go of modifier keys on their own, as holding
 // Cmd does, leaving mods held.
 func (t *Tester) HoldModifiers(mods Modifiers) {

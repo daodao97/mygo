@@ -1286,7 +1286,13 @@ func (t *Terminal) ClearScreen() bool {
 	// Under the lock, so that no output comes between the cursor read and
 	// the rows deleted.
 	t.term.Write([]byte(seq))
+	proc := t.proc
 	t.mu.Unlock()
+	if proc != nil {
+		// ConPTY's console clears its own screen too, else it draws its
+		// next frames with the prompt where it was.
+		proc.ClearScreen()
+	}
 	t.redraw()
 	return true
 }

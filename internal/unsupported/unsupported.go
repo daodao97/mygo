@@ -62,6 +62,7 @@ type app struct{}
 func (app) SetActivationPolicy(string)                        {}
 func (app) Activate()                                         {}
 func (app) AllowForeground()                                  {}
+func (app) WithActivationToken(_ string, fn func())           { fn() }
 func (app) Hide()                                             {}
 func (app) Unhide()                                           {}
 func (app) IsHidden() bool                                    { return false }

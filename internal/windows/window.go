@@ -81,6 +81,7 @@ type window struct {
 	bgBrush     uintptr
 	bg          *platform.Color
 	vibrancy    string
+	glass       margins // the frame's extension under the material
 	shadow      bool
 	ignoreMouse bool
 
@@ -506,6 +507,9 @@ func (w *window) sized(kind uintptr) {
 	}
 	if w.caption != nil && kind != sizeMinimized {
 		w.caption.layout()
+	}
+	if w.vibrancy != "" && kind != sizeMinimized {
+		w.extendGlass(false)
 	}
 	switch kind {
 	case sizeMinimized:
@@ -1047,18 +1051,44 @@ func backdropFor(material string) int32 {
 func (w *window) SetVibrancy(material string) {
 	w.vibrancy = material
 	backdrop := backdropFor(material)
-	m := margins{}
-	if material != "" {
-		// The material shows where the frame extends, behind the page.
-		m = margins{-1, -1, -1, -1}
-	}
-	procDwmExtendFrameIntoClientArea.Call(w.hwnd, uintptr(unsafe.Pointer(&m)))
+	w.extendGlass(true)
 	procDwmSetWindowAttribute.Call(w.hwnd, dwmwaSystemBackdropType, uintptr(unsafe.Pointer(&backdrop)), 4)
 	if material == "" && w.captionless() && w.shadow {
 		w.SetHasShadow(true)
 	}
 	w.withWebView(w.applyWebViewBackground)
 	procInvalidateRect(w.hwnd)
+}
+
+// extendGlass extends the frame where the material shows, behind the
+// page: over the whole client area, or nowhere without a material. With
+// always it extends the frame even when its extension has not changed.
+func (w *window) extendGlass(always bool) {
+	m := margins{}
+	if w.vibrancy != "" {
+		var r rect
+		procGetClientRect.Call(w.hwnd, uintptr(unsafe.Pointer(&r)))
+		m = glassMargins(w.hiddenTitleBar && !w.fullScreen && w.IsMaximized(), r.Bottom-r.Top)
+	}
+	if m == w.glass && !always {
+		return
+	}
+	w.glass = m
+	procDwmExtendFrameIntoClientArea.Call(w.hwnd, uintptr(unsafe.Pointer(&m)))
+}
+
+// glassMargins returns the frame's extension that shows the material over
+// a client area height pixels high. DWM draws its caption buttons in the
+// frame at the top, under the hidden title bar's own while the window is
+// restored. Maximized, the client area starts below the top of the window
+// (frameCalcSize) and DWM's buttons show above the title bar's: the frame
+// extends from the bottom over the whole client area instead, and its top
+// is only the strip off screen, too short for buttons.
+func glassMargins(maximizedHiddenTitleBar bool, height int32) margins {
+	if maximizedHiddenTitleBar {
+		return margins{Bottom: max(height, 1)}
+	}
+	return margins{-1, -1, -1, -1} // a sheet over the whole window
 }
 
 // hasAppMenu tells whether the window shows the application menu in its

@@ -444,6 +444,7 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 			d.buildSeparators(c, ct)
 		})
 		if d.FitContent {
+			d.fit()
 			root.Height(float32(d.eds[1].view.heights.total()))
 		}
 		return root
@@ -500,9 +501,34 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 		d.buildSeparators(c, ct)
 	})
 	if d.FitContent {
+		d.fit()
 		row.Height(float32(max(d.eds[0].view.heights.total(), d.eds[1].view.heights.total())))
 	}
 	return row
+}
+
+// fit lays out a diff that fits its content as its Draw does, its
+// unchanged lines folded, at the size its editors were built at. A diff
+// not drawn yet, as one below the view of a scroll container, is then as
+// high as it shows, not as all its lines: else it would shrink as it came
+// into view, and the container's end with it, under the user scrolling.
+func (d *DiffState) fit() {
+	eds := d.eds[:]
+	if d.Layout == DiffUnified {
+		eds = d.eds[1:]
+		ed := &d.eds[1]
+		d.oldView.setStyle(ed.view.font, ed.o.lineHeight, max(1, ed.view.scale), ed.tabSize())
+		d.oldView.setWrap(ed.view.wrap, ed.view.wrapWidth)
+	}
+	d.prepare()
+	for i := range eds {
+		ed := &eds[i]
+		w := ed.r.W
+		if w <= 0 {
+			w = 600
+		}
+		ed.layout(w, ed.viewH, max(1, ed.view.scale))
+	}
 }
 
 // expand reveals lines of the gap starting at old line a: at its top,

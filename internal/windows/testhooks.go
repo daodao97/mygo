@@ -5,6 +5,7 @@ package windows
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"syscall"
 	"time"
@@ -644,4 +645,27 @@ func TestBrowserAcceleratorKeys(hwnd uintptr) (on, ok bool) {
 	var v int32
 	comCall(s3, set3GetAreBrowserAcceleratorKeysEnabled, uintptr(unsafe.Pointer(&v)))
 	return v != 0, true
+}
+
+// TestPinchSurface pinches a touchpad at (x, y), in DIPs, in a window
+// showing native UI, by scale, with the message Windows sends for it: the
+// wheel with Ctrl held, by less than a notch at a time. It reports the
+// scale the message makes, which rounds scale to a 360th of a doubling.
+func TestPinchSurface(hwnd uintptr, x, y, scale float64) (float64, bool) {
+	w := theBackend.windows[hwnd]
+	if w == nil || w.surface == nil {
+		return 0, false
+	}
+	delta := int(math.Round(360 * math.Log2(scale)))
+	if delta%120 == 0 {
+		delta++ // a notch is a mouse wheel's
+	}
+	dpi := float64(w.surface.dpi()) / 96
+	pt := point{int32(x * dpi), int32(y * dpi)}
+	procClientToScreen.Call(w.surface.hwnd, uintptr(unsafe.Pointer(&pt)))
+	const mkControl = 0x0008
+	wp := uintptr(uint16(int16(delta)))<<16 | mkControl
+	lp := uintptr(uint16(int16(pt.Y)))<<16 | uintptr(uint16(int16(pt.X)))
+	procSendMessageW.Call(w.surface.hwnd, wmMouseWheel, wp, lp)
+	return math.Exp(float64(delta) / 120 * math.Ln2 / 3), true
 }
