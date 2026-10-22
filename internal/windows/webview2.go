@@ -108,6 +108,7 @@ const (
 	reqGetMethod                  = 5
 	reqGetContent                 = 7
 	reqGetHeaders                 = 9
+	headersRemoveHeader           = 7
 	headersGetIterator            = 8
 	iterGetCurrentHeader          = 3
 	iterGetHasCurrentHeader       = 4

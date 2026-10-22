@@ -279,6 +279,7 @@ func (w *window) setUp(controller uintptr) {
 	for _, scheme := range o.Schemes {
 		w.addFilter("http://" + scheme + ".localhost/*")
 	}
+	w.filterAllRequests()
 	withHandler(w.acceleratorKeyPressed, func(h uintptr) uintptr {
 		return comCall(controller, ctlAddAcceleratorKeyPressed, h, tok)
 	})
@@ -372,6 +373,7 @@ func (w *window) navigationStarting(_, args uintptr) {
 		clear(w.htmlFor)
 	}
 	w.loading = true
+	w.navigating = uri
 	w.h.NavigationStarted(uri)
 }
 
@@ -684,6 +686,9 @@ func (w *window) addUserScripts() {
 		// After the bridge, which it tells.
 		scripts = append(scripts[:len(scripts):len(scripts)], platform.UserScript{Source: w.titleBarScript()})
 	}
+	if w.hidingScript != "" {
+		scripts = append(scripts[:len(scripts):len(scripts)], platform.UserScript{Source: w.hidingScript, AllFrames: true})
+	}
 	gen := w.scriptGen
 	for _, us := range scripts {
 		src := us.Source
@@ -992,6 +997,9 @@ func (w *window) resourceRequested(_, args uintptr) {
 	var resource int32
 	comCall(args, resReqGetResourceContext, uintptr(unsafe.Pointer(&resource)))
 	const document = 1 // COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT
+	if w.contentFilter != nil && w.contentFilter(args, req, uri, resource) {
+		return
+	}
 
 	if html, ok := w.htmlFor[uri]; ok && resource == document {
 		w.respond(args, 0, http.StatusOK, http.Header{"Content-Type": {"text/html; charset=utf-8"}}, []byte(html))

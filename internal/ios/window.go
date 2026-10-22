@@ -133,3 +133,4 @@ func (*window) SetDropFormats([]transfer.Format)     {}
 func (*window) SetDocumentEdited(bool)               {}
 func (*window) SetRepresentedFile(string)            {}
 func (*window) SetUserScripts([]platform.UserScript) {}
+func (*window) SetContentRules([]any)                {}

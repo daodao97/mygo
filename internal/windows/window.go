@@ -40,6 +40,17 @@ type window struct {
 	closed     bool
 	destroying bool
 
+	// contentFilter applies the content rules of SetContentRules to a
+	// request (content_rules.go), and reports whether it answered it; nil
+	// without any. filtersAll tells that WebView2 asks about every
+	// request, and hidingScript hides what the rules hide in every
+	// document. navigating is the page loading, the top-level URL of its
+	// own request.
+	contentFilter func(args, req uintptr, uri string, resource int32) bool
+	filtersAll    bool
+	hidingScript  string
+	navigating    string
+
 	minW, minH, maxW, maxH int // DIPs
 	movable, closable      bool
 	frameless              bool

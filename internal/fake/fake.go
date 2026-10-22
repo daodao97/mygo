@@ -127,6 +127,10 @@ type Backend struct {
 	Cleared int
 	// cookies holds the cookies of the pages, by name, domain and path.
 	cookies map[platform.CookieKey]platform.Cookie
+	// contentLists are the content rule lists compiled, by identifier;
+	// ContentRuleCompiles counts the compiles.
+	contentLists        map[string]*ContentRuleList
+	ContentRuleCompiles int
 	// CookiesCleared counts ClearCookies calls.
 	CookiesCleared int
 	// RecentDocuments are the paths AddRecentDocument recorded, in order,
@@ -535,6 +539,10 @@ type Window struct {
 	HTML []string
 	// UserScriptUpdates counts the calls of SetUserScripts.
 	UserScriptUpdates int
+	// contentRules are the lists SetContentRules set, whose calls
+	// ContentRuleUpdates counts.
+	contentRules       []*ContentRuleList
+	ContentRuleUpdates int
 	// What the window extras were last set to.
 	Background      platform.Color
 	Progress        string
