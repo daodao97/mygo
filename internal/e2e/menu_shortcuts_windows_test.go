@@ -5,6 +5,7 @@ package e2e
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 	win "github.com/egoist/mygo/internal/windows"
@@ -81,5 +82,27 @@ addEventListener("paste", (e) => { window.pasted = e.clipboardData.types.join(" 
 	waitFor(t, w, "window.pasted !== undefined")
 	if types, _ := mygo.EvalAs[string](w.Page(), "window.pasted"); !strings.Contains(types, "text/html") {
 		t.Errorf("the page's paste had %q, want text/html among them", types)
+	}
+}
+
+// Ctrl+V in a text field pastes once: the field takes the key, and Edit ›
+// Paste, whose key it is too, leaves it.
+func TestNativeFieldPastesOnce(t *testing.T) {
+	prev := mygo.App.Menu()
+	defer mygo.App.SetMenu(prev)
+	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{{Role: mygo.RoleEditMenu}}))
+	mygo.RunOnMain(func() { mygo.Clipboard.WriteText("host.ts.net") })
+	var value string
+	w := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200, Content: ui.View(func(c *ui.Context) {
+		ui.TextInput(c, &value).AutoFocus()
+	})})
+	read := func() (v string) { mygo.RunOnMain(func() { v = value }); return }
+	time.Sleep(500 * time.Millisecond) // the field shows and takes the focus
+	const vkControl = 0x11
+	mygo.RunOnMain(func() { win.TestSurfaceKey(w.NativeHandle(), 'V', vkControl) })
+	eventually(t, "the paste", func() bool { return read() != "" })
+	time.Sleep(300 * time.Millisecond)
+	if got := read(); got != "host.ts.net" {
+		t.Errorf("after Ctrl+V the field has %q, want %q", got, "host.ts.net")
 	}
 }

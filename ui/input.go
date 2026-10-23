@@ -768,7 +768,9 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, repeat bool
 		s.editor.queue = append(s.editor.queue, editEvent{kind: editKey, mods: mods, key: key})
 		rt.blinkStart = rt.now()
 		rt.requestFrame()
-		return false
+		// Taken: the menu item of the key, as Edit › Paste's Ctrl+V on
+		// Windows, leaves it rather than pasting a second time.
+		return true
 	}
 	if s := rt.states[rt.focused]; s != nil && s.flags&flagTypeSelect != 0 && !rt.claimed(k) {
 		// The first letters of a row of a list: they add up while typed
