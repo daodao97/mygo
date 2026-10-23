@@ -233,10 +233,12 @@ func (w *window) setUp(controller uintptr) {
 
 	w.addUserScripts()
 
-	var token int64
-	tok := uintptr(unsafe.Pointer(&token))
+	// The add methods write a registration token. Its address is taken in
+	// each call (go:uintptrescapes), as a uintptr saved earlier goes stale
+	// when the goroutine stack moves.
+	var tok int64
 	add := func(index int, fn func(sender, args uintptr)) {
-		withHandler(fn, func(h uintptr) uintptr { return comCall(w.webview, index, h, tok) })
+		withHandler(fn, func(h uintptr) uintptr { return comCall(w.webview, index, h, uintptr(unsafe.Pointer(&tok))) })
 	}
 	add(wvAddNavigationStarting, w.navigationStarting)
 	add(wvAddContentLoading, func(_, _ uintptr) { w.h.NavigationCommitted(w.URL()) })
@@ -259,7 +261,7 @@ func (w *window) setUp(controller uintptr) {
 	add(wvAddNewWindowRequested, w.newWindowRequested)
 	add(wvAddPermissionRequested, w.permissionRequested)
 	if wv4 := queryInterface(w.webview, &iidICoreWebView2_4); wv4 != 0 {
-		withHandler(w.downloadStarting, func(h uintptr) uintptr { return comCall(wv4, wv4AddDownloadStarting, h, tok) })
+		withHandler(w.downloadStarting, func(h uintptr) uintptr { return comCall(wv4, wv4AddDownloadStarting, h, uintptr(unsafe.Pointer(&tok))) })
 		release(wv4)
 	}
 	add(wvAddWindowCloseRequested, func(_, _ uintptr) { w.h.ClosedByPage() })
@@ -281,7 +283,7 @@ func (w *window) setUp(controller uintptr) {
 	}
 	w.filterAllRequests()
 	withHandler(w.acceleratorKeyPressed, func(h uintptr) uintptr {
-		return comCall(controller, ctlAddAcceleratorKeyPressed, h, tok)
+		return comCall(controller, ctlAddAcceleratorKeyPressed, h, uintptr(unsafe.Pointer(&tok)))
 	})
 
 	if w.host != nil {

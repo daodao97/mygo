@@ -89,7 +89,7 @@ func (b *docBase) write(target string, op writeOp) (bool, error) {
 		return false, err
 	}
 	b.mu.Lock()
-	b.ops.markSaved(snap)
+	settle := b.ops.markSaved(snap)
 	b.savedAt = snap.at
 	b.stamp = stamp
 	b.conflict, b.deleted = false, false
@@ -105,6 +105,11 @@ func (b *docBase) write(target string, op writeOp) (bool, error) {
 	b.scheduleLocked()
 	drop := !b.edited && b.backedUp != 0
 	b.mu.Unlock()
+	// Equal is the app's and may read the document, so it runs with the
+	// lock down — the same rule ImageCache.ask follows (0487c37b).
+	if settle != nil && settle() {
+		drop = true
+	}
 	if drop {
 		b.kind.recovery.remove(b)
 	}
