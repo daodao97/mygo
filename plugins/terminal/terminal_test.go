@@ -235,6 +235,106 @@ func TestScrollback(t *testing.T) {
 	}
 }
 
+// TestScrollbarDrag: the scroll bar shows as the viewport moves, and over
+// its strip, where the pointer is the arrow rather than the I-beam, and
+// fades out a while after. It drags the scrollback along: by the thumb, or
+// from where the track is pressed.
+func TestScrollbarDrag(t *testing.T) {
+	loadLib(t)
+	term, err := New(Options{Conn: newPipe()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	var b strings.Builder
+	for i := range 100 {
+		b.WriteString("line " + itoa(i) + "\r\n")
+	}
+	term.Feed([]byte(b.String()))
+	tt.Frame()
+	offset := func() uint64 {
+		term.mu.Lock()
+		defer term.mu.Unlock()
+		return term.term.Scrollbar().Offset
+	}
+	// shows reports whether the bar paints at (395, y), by the pixel off
+	// its strip.
+	shows := func(y int) bool {
+		img := tt.Image()
+		s := img.Bounds().Dx() / 400
+		return img.RGBAAt(395*s, y*s) != img.RGBAAt(380*s, y*s)
+	}
+	bottom := offset()
+	tt.Move(100, 100)
+	tt.Frame()
+	if shows(188) {
+		t.Error("the bar shows at the bottom, the pointer elsewhere")
+	}
+	// Over the strip, at the bottom: the bar, and the arrow.
+	tt.Move(395, 100)
+	tt.Frame()
+	if c := tt.Cursor(); c != ui.CursorDefault {
+		t.Errorf("over the bar, the pointer is %v, want the arrow", c)
+	}
+	if !shows(188) {
+		t.Error("the bar doesn't show with the pointer over it")
+	}
+	// The thumb, at the bottom, dragged halfway up and past the top.
+	tt.Press(395, 188)
+	tt.Move(395, 100)
+	if got := offset(); got == 0 || got >= bottom {
+		t.Errorf("halfway up, offset = %d, want between 0 and %d", got, bottom)
+	}
+	// The pointer off the strip: the drag still has it.
+	tt.Move(100, -50)
+	if got := offset(); got != 0 {
+		t.Errorf("dragged past the top, offset = %d, want 0", got)
+	}
+	tt.Release(100, -50)
+	term.mu.Lock()
+	_, sel := term.term.SelectionText()
+	term.mu.Unlock()
+	if sel {
+		t.Error("dragging the bar selected text")
+	}
+	tt.Move(100, 100)
+	tt.Frame()
+	if c := tt.Cursor(); c != ui.CursorText {
+		t.Errorf("over the text, the pointer is %v, want the I-beam", c)
+	}
+	// It stays a while, and fades out though the viewport is up.
+	tt.Advance(500 * time.Millisecond)
+	tt.Frame()
+	if !shows(12) {
+		t.Error("the bar went at once")
+	}
+	tt.Advance(2 * time.Second)
+	tt.Frame()
+	if shows(12) {
+		t.Error("the bar didn't fade out")
+	}
+	// A wheel shows it again.
+	tt.Wheel(100, 100, 0, 40)
+	tt.Frame()
+	if !shows(15) {
+		t.Error("scrolling didn't show the bar")
+	}
+	// A press low on the track brings the thumb there.
+	tt.Press(395, 190)
+	tt.Release(395, 190)
+	if got := offset(); got < bottom/2 {
+		t.Errorf("after a press low on the track, offset = %d, want past %d", got, bottom/2)
+	}
+	// A full-screen program's screen has no scrollback, and no bar.
+	term.Feed([]byte("\x1b[?1049h"))
+	tt.Move(395, 120)
+	tt.Frame()
+	if c := tt.Cursor(); c != ui.CursorText {
+		t.Errorf("over a full-screen program's edge, the pointer is %v, want the I-beam", c)
+	}
+}
+
 // A match that wraps from a row above the viewport shows on the rows of it
 // that the viewport shows.
 func TestSearchWrappedMatch(t *testing.T) {

@@ -534,3 +534,24 @@ func TestRichTextLinkOpensSafely(t *testing.T) {
 		t.Errorf("opened %q", got)
 	}
 }
+
+// TestRichTextCJKWords deletes and moves by words in Chinese and
+// Japanese: a character at a time, as they have no spaces (#668).
+func TestRichTextCJKWords(t *testing.T) {
+	word := ui.Ctrl
+	if runtime.GOOS == "darwin" {
+		word = ui.Alt
+	}
+	doc := NewDocument(TextOf(Paragraph{Runs: []Run{{Text: "Go语言，今日は"}}}))
+	tt, _ := richTester(t, doc)
+	tt.Key(word, ui.KeyBackspace)
+	if got := doc.Text().String(); got != "Go语言，今日" {
+		t.Fatalf("word backspace left %q", got)
+	}
+	for _, want := range []int{6, 5, 3, 2, 0} {
+		tt.Key(word, ui.KeyLeft)
+		if a, c := doc.Selection(); a != want || c != want {
+			t.Fatalf("word left went to %d–%d, want %d", a, c, want)
+		}
+	}
+}

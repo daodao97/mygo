@@ -105,6 +105,7 @@ func (v *view) layout(r ui.Rect, scale float32) {
 		v.shaped.clear()
 		v.lines = v.lines[:0]
 	}
+	v.size = [2]float32{r.W, r.H}
 	v.cols, v.rows = max(w/v.cellW, 1), max(h/v.cellH, 1)
 	if v.viewportW != w || v.viewportH != h {
 		v.followCursor = true
@@ -925,16 +926,60 @@ func (v *view) drawPreedit(p *ui.Painter, ox, oy, cw, ch, base float32) {
 	p.Fill(ui.Rect{X: x, Y: y + ch - 1/v.scale, W: w, H: 1 / v.scale}, fg, 0)
 }
 
-// drawScrollbar shows where the viewport is while it shows the scrollback.
+// How long the scroll bar stays after the viewport last moved, or the
+// pointer left it, and how long it then takes to fade out.
+const (
+	barLinger = time.Second
+	barFade   = 300 * time.Millisecond
+)
+
+// drawScrollbar shows where the viewport is in the scrollback, as macOS's
+// overlay scroll bars do: as the viewport moves, and while the pointer is
+// over the bar's strip or drags it, when it widens; a while after, it
+// fades out.
 func (v *view) drawScrollbar(p *ui.Painter, r ui.Rect) {
 	sb := v.scrollbar
-	if sb.Total <= sb.Len || sb.Offset+sb.Len >= sb.Total {
+	now := p.Now()
+	if back := int64(sb.Total) - int64(sb.Len) - int64(sb.Offset); back != v.barBack {
+		v.barBack, v.barSeen = back, now
+	}
+	lit := v.barHeld || v.barHover
+	if v.barLit && !lit {
+		v.barSeen = now
+	}
+	v.barLit = lit
+	if sb.Total <= sb.Len {
 		return
 	}
-	h := max(r.H*float32(sb.Len)/float32(sb.Total), 24)
-	y := r.Y + (r.H-h)*float32(sb.Offset)/float32(sb.Total-sb.Len)
-	c := color(v.colors.Foreground).Alpha(0.35)
-	p.Fill(ui.Rect{X: r.X + r.W - 7, Y: y + 2, W: 4, H: h - 4}, c, 2)
+	a := float32(1)
+	if !lit {
+		switch d := now.Sub(v.barSeen); {
+		case d < barLinger:
+			p.After(barLinger - d)
+		case d < barLinger+barFade:
+			a = 1 - float32(d-barLinger)/float32(barFade)
+			p.AnimationFrame()
+		default:
+			return
+		}
+	}
+	fg := color(v.colors.Foreground)
+	y, h := thumb(sb, r.H)
+	w, inset, c := float32(4), float32(3), fg.Alpha(0.35*a)
+	if lit {
+		w, inset = 8, 2
+		if v.barHeld {
+			c = fg.Alpha(0.5)
+		}
+	}
+	p.Fill(ui.Rect{X: r.X + r.W - inset - w, Y: r.Y + y + 2, W: w, H: h - 4}, c, w/2)
+}
+
+// thumb returns the top of the scroll bar's thumb in a track h DIPs high,
+// and its height; the scrollback is longer than the viewport.
+func thumb(sb vt.Scrollbar, h float32) (y, th float32) {
+	th = max(h*float32(sb.Len)/float32(sb.Total), 24)
+	return (h - th) * float32(sb.Offset) / float32(sb.Total-sb.Len), th
 }
 
 // lru caches shaped text.

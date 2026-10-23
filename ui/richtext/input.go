@@ -2,9 +2,9 @@ package richtext
 
 import (
 	"runtime"
-	"unicode"
 
 	"github.com/egoist/mygo/internal/rope"
+	"github.com/egoist/mygo/internal/text"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -71,57 +71,56 @@ func (v *view) runeAt(i int) rune {
 	return r
 }
 
-func isWord(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' }
-
 // nextWord returns the end of the word after i; prevWord the start of the
-// word before it.
+// word before it. Each ideograph and kana is a word, as
+// text.WordBoundary has it.
 func (v *view) nextWord(i int) int {
-	n, word := v.shown.Len(), false
+	n, word, prev := v.shown.Len(), false, rune(0)
 	for ; i < n; i++ {
-		if isWord(v.runeAt(i)) {
-			word = true
-		} else if word {
+		r := v.runeAt(i)
+		if word && text.WordBoundary(prev, r) {
 			break
 		}
+		word, prev = word || text.IsWordRune(r), r
 	}
 	return i
 }
 
 func (v *view) prevWord(i int) int {
-	word := false
+	word, next := false, rune(0)
 	for ; i > 0; i-- {
-		if isWord(v.runeAt(i - 1)) {
-			word = true
-		} else if word {
+		r := v.runeAt(i - 1)
+		if word && text.WordBoundary(r, next) {
 			break
 		}
+		word, next = word || text.IsWordRune(r), r
 	}
 	return i
 }
 
 // wordAt returns the word, or the run of other runes, around i, within its
-// paragraph.
+// paragraph: an ideograph or a kana is a word alone.
 func (v *view) wordAt(i int) (int, int) {
 	n := v.shown.Len()
 	if n == 0 {
 		return 0, 0
 	}
 	i = max(0, min(i, n-1))
-	word := isWord(v.runeAt(i))
+	at := v.runeAt(i)
 	a, z := i, i
-	for a > 0 {
+	for next := at; a > 0; a-- {
 		r := v.runeAt(a - 1)
-		if r == '\n' || isWord(r) != word {
+		if r == '\n' || text.WordBoundary(r, next) {
 			break
 		}
-		a--
+		next = r
 	}
-	for z < n {
+	for prev := at; z < n; z++ {
 		r := v.runeAt(z)
-		if r == '\n' || isWord(r) != word {
+		if r == '\n' || z > i && text.WordBoundary(prev, r) {
 			break
 		}
-		z++
+		prev = r
 	}
 	return a, z
 }

@@ -232,6 +232,11 @@ func New() (*Renderer, error) {
 
 // init creates the program, buffers and textures in the current context.
 func (r *Renderer) init() error {
+	if !hasContext() {
+		// OpenGL tells no version without a context, and libepoxy may
+		// abort asking for one.
+		return errNoContext
+	}
 	version, es := contextVersion()
 	r.es = es
 	if r.es && version < 30 || !r.es && version < 33 {

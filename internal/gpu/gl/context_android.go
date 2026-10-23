@@ -37,3 +37,6 @@ func versionString() string { return goString(glGetString(glVersion)) }
 
 // rendererString names the current context's renderer.
 func rendererString() string { return goString(glGetString(glRenderer)) }
+
+// hasContext reports whether EGL has a context on the calling thread.
+func hasContext() bool { return currentContext() != 0 }

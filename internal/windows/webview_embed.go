@@ -203,7 +203,9 @@ func (w *window) setUpEmbedded(comp uintptr) uintptr {
 		comCall(args, moveFocusGetReason, uintptr(unsafe.Pointer(&reason)))
 		comCall(args, moveFocusPutHandled, 1)
 		w.tabOut(reason == moveFocusPrevious)
-	}, func(h uintptr) uintptr { return comCall(controller, ctlAddMoveFocusRequested, h, uintptr(unsafe.Pointer(&tok))) })
+	}, func(h uintptr) uintptr {
+		return comCall(controller, ctlAddMoveFocusRequested, h, uintptr(unsafe.Pointer(&tok)))
+	})
 	w.comp3 = queryInterface(comp, &iidICoreWebView2CompositionController3)
 	return controller
 }

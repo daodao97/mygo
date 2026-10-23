@@ -3,18 +3,10 @@
 package gl
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"unsafe"
 )
-
-// errNoContext is what load reports when it ran with no GL context current:
-// the entry points cannot be resolved then, so it is a "try again later",
-// never a verdict. Android's load is the one that can tell the difference
-// (see load_android.go); the desktop loaders resolve through libepoxy, which
-// needs no context of ours.
-var errNoContext = fmt.Errorf("gl: no context is current")
 
 // The functions of libepoxy and GL this package calls.
 var (

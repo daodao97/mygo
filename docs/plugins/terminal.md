@@ -262,9 +262,13 @@ term, err := terminal.New(terminal.Options{
   It is not asked on a full-screen program's screen.
 - `OnTitle`, `OnExit`, `OnBell` and `OnNotify` run on a goroutine of the
   terminal when the program sets the title, ends, rings the bell or asks
-  for a desktop notification. `Done` is closed once the program exited,
-  and `ExitCode` returns its code (-1 for a program that could not
-  start); the terminal then shows "[Process exited]".
+  for a desktop notification. They may run before the window that shows
+  the terminal exists, which `NewWindow` makes after `New`: callbacks
+  that use the window wait for it, as the terminal example's do (`<-ready`
+  before `win`, and `close(ready)` once `NewWindow` set `win`). `Done` is
+  closed once the program exited, and `ExitCode` returns its code (-1 for
+  a program that could not start); the terminal then shows "[Process
+  exited]".
 - `OpenLink` takes the links Command+click opens, on the main thread,
   and with it file paths printed as text too (`/abs/path`, `~/notes.md`,
   `./a.go`, `src/app.go:12:3`, `main.go:250`), as printed: a relative

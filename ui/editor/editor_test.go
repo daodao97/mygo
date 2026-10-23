@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/internal/rope"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -397,6 +398,36 @@ func TestCodeEditorFold(t *testing.T) {
 	ct.run(UnfoldAll)
 	if h.total() != before {
 		t.Fatalf("unfolded height %v of %v", h.total(), before)
+	}
+}
+
+// TestCodeEditorCJKWords moves and deletes by words in Chinese and
+// Japanese: a character at a time, as they have no spaces (#668).
+func TestCodeEditorCJKWords(t *testing.T) {
+	ct := newEditorTest(t, "", "|Go语言 今日は")
+	for _, want := range []string{"Go|语言 今日は", "Go语|言 今日は", "Go语言| 今日は", "Go语言 今|日は", "Go语言 今日|は", "Go语言 今日は|"} {
+		ct.run(MoveWordRight)
+		ct.want(want)
+	}
+	ct.run(MoveWordLeft)
+	ct.want("Go语言 今日|は")
+	ct.run(DeleteWordLeft)
+	ct.want("Go语言 今|は")
+	ct = newEditorTest(t, "", "我们去公园散步|")
+	ct.run(DeleteWordLeft)
+	ct.want("我们去公园散|")
+	ct.run(MoveSubwordLeft)
+	ct.want("我们去公园|散")
+}
+
+func TestCJKWordAt(t *testing.T) {
+	r := rope.TextOf(rope.Build("say 我们，ok"))
+	for _, c := range []struct{ off, a, z int }{
+		{0, 0, 3}, {4, 4, 7}, {5, 4, 7}, {7, 7, 10}, {10, 7, 10}, {13, 13, 15},
+	} {
+		if a, z := wordAt(r, c.off, ""); a != c.a || z != c.z {
+			t.Errorf("wordAt(%d) = %d, %d, want %d, %d", c.off, a, z, c.a, c.z)
+		}
 	}
 }
 

@@ -125,7 +125,7 @@ func (m linkMatch) valid() bool { return m.URL != "" || m.Path != "" }
 // linkAt reads just the pointed logical line, never the full scrollback.
 // The emulator lock is held by its caller.
 func (v *view) linkAt(x, y float32) linkMatch {
-	if v.t.term == nil || v.cellW == 0 || x*v.scale < float32(v.ox) || y*v.scale < float32(v.oy) ||
+	if v.t.term == nil || v.cellW == 0 || v.overScrollbar(x, y) || x*v.scale < float32(v.ox) || y*v.scale < float32(v.oy) ||
 		x*v.scale >= float32(v.ox+v.cols*v.cellW) || y*v.scale >= float32(v.oy+v.rows*v.cellH) {
 		return linkMatch{}
 	}

@@ -168,7 +168,7 @@ type view struct {
 
 	// The grid, in device pixels: the cells, the baseline in a cell, and
 	// the origin of the grid relative to the element; scale is device
-	// pixels per DIP.
+	// pixels per DIP, and size the element's in DIPs.
 	font                             fontKey
 	fonts                            [4]ui.Font
 	fitKey                           fitFontKey
@@ -181,6 +181,7 @@ type view struct {
 	fixedGrid, followCursor          bool
 	panX, panY, viewportW, viewportH int
 	alt                              bool // the alternate screen shows, as of the last paint
+	size                             [2]float32
 
 	colors        vt.Colors
 	cursor        vt.Cursor
@@ -226,6 +227,16 @@ type view struct {
 	pointerAt          ui.Cursor
 	tracking           bool
 	modeShape, modeOSC int
+	// barHeld tells that the primary button drags the scroll bar, held
+	// barGrab DIPs below the thumb's top; overBar that the pointer is over
+	// the bar, as of its last move, and barHover as of the last build.
+	// barLit is whether the last paint showed the bar hovered or held,
+	// barBack how many rows the viewport was above the bottom, and barSeen
+	// when either last changed, from which the bar fades out.
+	barHeld, overBar, barHover, barLit bool
+	barGrab                            float32
+	barBack                            int64
+	barSeen                            time.Time
 	// rightClick is what a secondary click does, done once t.mu is released.
 	rightClick RightClickAction
 
@@ -310,6 +321,10 @@ func (v *view) build(c *ui.Context, e ui.Element) {
 			t.in.push(vt.EncodeFocus(focused))
 		}
 		v.pointerAt = v.pointerShape(t.term, c.Modifiers())
+		v.barHover = e.Hovered() && v.overScrollbar(v.pointer[0], v.pointer[1])
+		if v.barHover || v.barHeld {
+			v.pointerAt = ui.CursorDefault // the bar's, not the text's
+		}
 		// Input methods compose where the cursor is now, which the last
 		// frame may not show yet.
 		v.caretCell = [2]int{v.cursor.X, v.cursor.Y}
@@ -1092,7 +1107,7 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 			ev.Kind = ui.InputPointerUp
 			v.report(ev)
 		}
-		v.selecting, v.ticking, v.linkPressed = false, false, false
+		v.selecting, v.ticking, v.linkPressed, v.barHeld = false, false, false, false
 		v.touchSelecting = false
 		v.linkTap = nil
 		v.mousePress = nil
@@ -1105,6 +1120,9 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 		if ev.Kind == ui.InputPointerUp && ev.Button == 0 {
 			v.linkPressed = false
 		}
+		return true
+	}
+	if !v.selecting && !v.reporting && v.linkTap == nil && v.mousePress == nil && v.scrollbarEvent(ev) {
 		return true
 	}
 	if tap := v.linkTap; tap != nil {
@@ -1242,6 +1260,75 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 		return true
 	}
 	return false
+}
+
+// scrollbarStrip is how wide the strip at the right edge is over which the
+// scroll bar takes the pointer, in DIPs.
+const scrollbarStrip = 12
+
+// overScrollbar reports whether the scroll bar takes the pointer at (x, y):
+// over its strip while there is a scrollback, which shows the bar, or
+// while it is dragged; t.mu is held.
+func (v *view) overScrollbar(x, y float32) bool {
+	if v.barHeld {
+		return true
+	}
+	w, h := v.size[0], v.size[1]
+	if x < w-scrollbarStrip || x >= w || y < 0 || y >= h {
+		return false
+	}
+	sb := v.t.term.Scrollbar()
+	return sb.Total > sb.Len
+}
+
+// scrollbarEvent drags the scroll bar, and reports whether it took the
+// event: a press on the thumb holds it where it is pressed, and one on the
+// rest of the strip by its middle, which comes to the pointer; the moves
+// until the release scroll the scrollback along. t.mu is held.
+func (v *view) scrollbarEvent(ev ui.InputEvent) bool {
+	if over := v.overScrollbar(ev.X, ev.Y); over != v.overBar {
+		v.overBar = over
+		v.services.Invalidate() // the pointer's shape
+	}
+	switch {
+	case v.barHeld && ev.Kind == ui.InputPointerUp && ev.Button == 0:
+		v.barHeld = false
+		v.services.Invalidate()
+	case v.barHeld:
+		v.dragScrollbar(ev.Y)
+	case v.overBar && ev.Kind == ui.InputPointerDown && ev.Button == 0:
+		y, h := thumb(v.t.term.Scrollbar(), v.size[1])
+		v.barGrab = h / 2
+		if ev.Y >= y && ev.Y < y+h {
+			v.barGrab = ev.Y - y
+		}
+		v.barHeld = true
+		v.dragScrollbar(ev.Y)
+	default:
+		return false
+	}
+	return true
+}
+
+// dragScrollbar scrolls the scrollback so that the thumb's top is barGrab
+// above y; t.mu is held.
+func (v *view) dragScrollbar(y float32) {
+	term := v.t.term
+	sb := term.Scrollbar()
+	if sb.Total <= sb.Len {
+		return
+	}
+	_, h := thumb(sb, v.size[1])
+	travel := v.size[1] - h
+	if travel <= 0 {
+		return
+	}
+	f := max(0, min((y-v.barGrab)/travel, 1))
+	to := int(math.Round(float64(f) * float64(sb.Total-sb.Len)))
+	if d := to - int(sb.Offset); d != 0 {
+		term.ScrollBy(d)
+		v.services.Invalidate()
+	}
 }
 
 // geometry is the grid in pixels, for selection gestures.

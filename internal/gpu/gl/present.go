@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || js
+//go:build (linux && (amd64 || arm64)) || android || js
 
 package gl
 
@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"unsafe"
 )
+
+// errNoContext is the error of drawing without a current context.
+var errNoContext = errors.New("gl: no current context")
 
 // Presenter shows frames drawn in memory in the bound framebuffer: what a
 // GtkGLArea shows when its content draws on the CPU after all, as when the
@@ -29,7 +32,7 @@ func (p *Presenter) Present(pix []byte, stride, width, height int) error {
 		return nil
 	}
 	if !hasContext() {
-		return errors.New("gl: no current context")
+		return errNoContext
 	}
 	if c := currentContext(); c != p.context {
 		// A new context: the old one took the texture with it.

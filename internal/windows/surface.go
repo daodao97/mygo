@@ -216,8 +216,12 @@ func (s *surface) Native() platform.SurfaceNative {
 func (s *surface) viaComposition() bool { return s.w.noRedirect || s.layer != nil }
 
 // ShowsMaterial reports whether the window shows its material behind the
-// content: it has one, and no redirection bitmap to cover it.
-func (s *surface) ShowsMaterial() bool { return s.w.noRedirect && s.w.vibrancy != "" }
+// content: it has one, no redirection bitmap to cover it, and DWM draws
+// materials. A flyout has no redirection bitmap before Windows 11 22H2 as
+// well, to show what is behind it, but no material there.
+func (s *surface) ShowsMaterial() bool {
+	return s.w.noRedirect && s.w.vibrancy != "" && systemBackdrops()
+}
 
 func (s *surface) freeComp() {
 	if s.comp != nil {

@@ -1186,6 +1186,39 @@ func (e *pangoEngine) systemFamilies() func() []FontFamily {
 	return func() []FontFamily { return out }
 }
 
+// writeCacheFile writes data to path in dir unless path is there, through
+// a temporary file of its own renamed into place, so that processes that
+// write the same file at once neither break each other's rename nor leave
+// a file cut short (#682). A rename that fails while another process put
+// path there leaves that file, as its bytes are the same.
+func writeCacheFile(dir, path string, data []byte) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	f, err := os.CreateTemp(dir, filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, 0o644)
+	}
+	if err == nil {
+		err = os.Rename(tmp, path)
+	}
+	if err != nil {
+		os.Remove(tmp)
+		if _, serr := os.Stat(path); serr == nil {
+			return nil
+		}
+	}
+	return err
+}
+
 // register adds a font file to fontconfig's fonts for the app, from the
 // user's cache directory, and an alias for family.
 func (e *pangoEngine) register(data []byte, family string) error {
@@ -1203,14 +1236,8 @@ func (e *pangoEngine) register(data []byte, family string) error {
 		return fmt.Errorf("mygo: cannot add font: %w", err)
 	}
 	path := filepath.Join(dir, hex.EncodeToString(sum[:16])+".font")
-	if _, err := os.Stat(path); err != nil {
-		tmp := path + ".tmp"
-		if err := os.WriteFile(tmp, data, 0o644); err != nil {
-			return fmt.Errorf("mygo: cannot add font: %w", err)
-		}
-		if err := os.Rename(tmp, path); err != nil {
-			return fmt.Errorf("mygo: cannot add font: %w", err)
-		}
+	if err := writeCacheFile(dir, path, data); err != nil {
+		return fmt.Errorf("mygo: cannot add font: %w", err)
 	}
 	config := l.fcConfigGetCurrent()
 	if !e.registered[path] {

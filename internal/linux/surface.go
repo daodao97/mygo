@@ -412,6 +412,7 @@ func (s *surface) PresentPixels(pix []byte, stride, width, height int) {
 			// The content draws in memory after all, as when its GL
 			// renderer fails: GTK shows only what OpenGL draws.
 			s.inMemory = true
+			gl.MakeAreaCurrent(s.area)
 			if err := s.present.Present(pix, stride, width, height); err != nil && !s.presentFailed {
 				s.presentFailed = true
 				log.Printf("mygo: native UI shows nothing: %v", err)
