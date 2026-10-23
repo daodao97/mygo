@@ -35,8 +35,13 @@ func (l *Layout) visualStops(li int) []caretStop {
 		b.Reset(l.Runes)
 		l.boundaries = b.GraphemeOffsets()
 	}
-	var stops []caretStop
+	// Most clusters contribute their two edges. Ligatures can add more;
+	// append still grows for them without repeatedly copying ordinary lines.
+	stops := make([]caretStop, 0, 2*len(line.Glyphs)+1)
 	line.upstream = slices.Clone(line.lineCarets())
+	// Track covered rune offsets once. Searching every stop for every
+	// grapheme makes the first caret query quadratic on long input lines.
+	covered := make([]bool, line.End-line.Start+1)
 	for i := 0; i < len(line.Glyphs); {
 		g := line.Glyphs[i]
 		x0, x1 := g.X, g.X+g.Advance
@@ -72,6 +77,9 @@ func (l *Layout) visualStops(li int) []caretStop {
 				line.upstream[at-line.Start] = x
 			}
 			stops = append(stops, caretStop{CaretPosition{at, affinity}, x, arrival})
+			if at >= line.Start && at <= line.End {
+				covered[at-line.Start] = true
+			}
 		}
 	}
 	// Keep trimmed spaces and empty lines navigable too.
@@ -79,7 +87,7 @@ func (l *Layout) visualStops(li int) []caretStop {
 	first, _ := slices.BinarySearch(l.boundaries, line.Start)
 	for k := first; k < len(l.boundaries) && l.boundaries[k] <= line.End; k++ {
 		at := l.boundaries[k]
-		if !slices.ContainsFunc(stops, func(s caretStop) bool { return s.position.Index == at }) {
+		if !covered[at-line.Start] {
 			stops = append(stops, caretStop{CaretPosition{at, Downstream}, carets[at-line.Start], 0})
 		}
 	}

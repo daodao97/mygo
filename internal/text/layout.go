@@ -772,6 +772,21 @@ func (s *System) clearLayouts() {
 	s.layoutBytes = 0
 }
 
+// ReleaseScratch frees temporary shaping storage after a window becomes idle.
+// made is the LayoutsMade count at its last frame: another window's newer
+// layout keeps its working buffers. Cached and caller-owned layouts stay valid.
+func (s *System) ReleaseScratch(made uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.made != made {
+		return
+	}
+	if s.eng != nil {
+		s.eng.releaseScratch()
+	}
+	s.starts, s.advances, s.ellipsized = nil, nil, nil
+}
+
 // LayoutsMade returns how many layouts the system has made, those Layout
 // found in its cache left out.
 func (s *System) LayoutsMade() uint64 {

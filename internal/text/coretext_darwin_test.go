@@ -5,8 +5,12 @@ package text
 import (
 	"bytes"
 	"math"
+	"reflect"
+	"runtime"
 	"slices"
+	"strings"
 	"testing"
+	"weak"
 )
 
 func TestCoreTextSyntheticItalic(t *testing.T) {
@@ -204,6 +208,68 @@ func TestCoreTextLanguageSpacing(t *testing.T) {
 		p.Width = l.Width
 		if n := len(s.Layout(p).Lines); n != 1 {
 			t.Errorf("%q: laid out as wide as it measured, the text takes %d lines", lang, n)
+		}
+	}
+}
+
+// Retaining a caller-owned layout must not retain the UTF-16 and native run
+// copies used to create it. Reading it again after idle must still work.
+func TestCoreTextIdleReleasesLargeScratch(t *testing.T) {
+	s := newSystem()
+	p := Params{Text: strings.Repeat("word 😀 ", 3000), Style: Style{Size: 14}, Width: 300, NoBreakWords: true}
+	l := s.Shape(p)
+	e := s.eng.(*coreText)
+	if len(e.u16) < maxScratch || len(e.runPoints) == 0 || len(e.breaks) < maxScratch {
+		t.Fatal("large paragraph did not exercise shaping buffers")
+	}
+	u16 := weak.Make(&e.u16[0])
+	points := weak.Make(&e.runPoints[0])
+	glyphs := slices.Clone(l.Lines[0].Glyphs)
+	x, y, h := l.Caret(10)
+	s.ReleaseScratch(s.LayoutsMade())
+	runtime.GC()
+	if u16.Value() != nil || points.Value() != nil {
+		t.Fatal("idle Core Text retains its temporary copies")
+	}
+	s.Shape(Params{Text: "another layout"})
+	if !slices.Equal(l.Lines[0].Glyphs, glyphs) {
+		t.Fatal("scratch release or reuse overwrote the retained layout")
+	}
+	if xx, yy, hh := l.Caret(10); xx != x || yy != y || hh != h {
+		t.Fatal("retained caret geometry changed after scratch release")
+	}
+	runtime.KeepAlive(s)
+}
+
+// Alternate cached base attributes with temporary tracking/kerning attributes:
+// neither may contaminate the other, including their language and direction.
+func TestCoreTextCachedAttributes(t *testing.T) {
+	s := newSystem()
+	for _, lang := range []string{"en", "zh-Hans", "ja"} {
+		for _, rtl := range []bool{false, true} {
+			base := Params{Text: "直骨 AV fi 123", Style: Style{Size: 14, Lang: lang}, RTL: rtl}
+			want := s.Shape(base)
+			for _, style := range []Style{
+				{Size: 14, Lang: lang, LetterSpacing: 2},
+				{Size: 14, Lang: lang, Features: "kern=0"},
+				base.Style,
+			} {
+				p := base
+				p.Style = style
+				warm := s.Shape(p)
+				e := s.eng.(*coreText)
+				for _, attrs := range e.attrs {
+					ct.release(attrs)
+				}
+				clear(e.attrs)
+				fresh := s.Shape(p)
+				if !reflect.DeepEqual(warm, fresh) {
+					t.Fatalf("cached attributes changed layout: lang %s rtl %v style %+v", lang, rtl, style)
+				}
+			}
+			if got := s.Shape(base); !reflect.DeepEqual(got, want) {
+				t.Fatal("temporary attributes contaminated the base layout")
+			}
 		}
 	}
 }

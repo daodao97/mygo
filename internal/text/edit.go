@@ -23,7 +23,7 @@ func (line *Line) lineCarets() []float32 {
 		start, runes int
 		rtl          bool
 	}
-	var clusters []cluster
+	clusters := make([]cluster, 0, len(line.Glyphs))
 	for g := 0; g < len(line.Glyphs); {
 		first := line.Glyphs[g]
 		c := cluster{first.X, first.X + first.Advance, first.Cluster, first.Runes, first.RTL}

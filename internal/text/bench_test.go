@@ -66,3 +66,13 @@ func BenchmarkLayoutDocument(b *testing.B) {
 	}
 	b.ReportMetric(float64(s.LayoutsMade()-made)/float64(b.N), "layouts/op")
 }
+
+// BenchmarkLayoutLanguage includes the explicit language normal UI windows
+// supply, without the display-text cache, as changing labels and input do.
+func BenchmarkLayoutLanguage(b *testing.B) {
+	for _, lang := range []string{"en", "zh-Hans", "ja"} {
+		b.Run(lang, func(b *testing.B) {
+			benchLayout(b, Params{Text: "2026年1月5日星期一 Metrics 1234", Style: Style{Size: 14, Lang: lang}, Width: 300})
+		})
+	}
+}

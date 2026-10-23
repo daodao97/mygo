@@ -3472,9 +3472,15 @@ either.
   throws away: engines take the glyphs, runs and lines `shape` returns from
   a scratch each layout resets (`shapeScratch`), as the layout copies them
   into its lines, which share one allocation; Core Text keeps its buffers,
-  the attributes of each font, and calls the functions of each layout
-  through `SyscallN` rather than reflection. Colors, underlines and
-  strikethroughs of spans only paint, by the rune each glyph starts.
+  the attributes of each font (including its language, without rebuilding
+  their temporary values on cache hits), and calls the functions of each
+  layout through `SyscallN` rather than reflection. Once a window is idle, its
+  existing frame-release timer also drops the text system's shaping scratch,
+  including Core Text's UTF-16 and run-reading buffers and DirectWrite's
+  scratch. The layout count recorded at the last frame guards another
+  window's newer work; cached and caller-owned layouts keep their own data.
+  Colors, underlines and strikethroughs of spans only paint, by the rune
+  each glyph starts.
   A span with an `ObjectWidth` makes its object replacement characters
   inline objects: boxes standing on the baseline, which lines break
   around and which draw no glyph (`Glyph.Object`), as a rich text's
@@ -3532,6 +3538,13 @@ either.
   cut only where the twin's pixels, within the shape's quad, save more than
   the pieces' calls cost (`pieceCost`): small shapes, near their corners
   everywhere, stay whole and join their neighbors' batches.
+  The shadow's continuous-curve solver omits the circular blend where both
+  clamp factors are zero, keeping its samples and iterations. Coverage uses
+  the full formula. A reference test bounds final differences to one channel
+  unit in BGRA8 or one ULP in float16; the upstream comparison keeps the full
+  formula to check the other paths byte for byte. The paired
+  `BenchmarkContinuousShadowCompare` alternates both formulas after warming
+  their pipelines, reporting GPU time per frame for each.
   Metal opts into three further builder capabilities: marking fills whose
   clip coverage is one, splitting opaque cores from blended edges, and
   batching by fragment class. Other renderers keep the original instance

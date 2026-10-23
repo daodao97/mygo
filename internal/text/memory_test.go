@@ -313,3 +313,43 @@ func TestOversizedParagraphEvictsUnusedLayouts(t *testing.T) {
 		t.Fatal("the unused layouts survived")
 	}
 }
+
+func TestReleaseScratchKeepsLayouts(t *testing.T) {
+	s := newSystem()
+	e := &stubEngine{}
+	s.eng = e
+	p := Params{Text: "a retained label"}
+	l := s.Layout(p)
+	// Shaping scratch belongs to the system, not to the returned layout.
+	e.glyphRoom(maxScratch * 2)
+	old := weak.Make(&e.glyphs[0])
+	s.starts = make([]int, maxScratch*2)
+	s.ReleaseScratch(s.LayoutsMade())
+	runtime.GC()
+	if old.Value() != nil || s.starts != nil {
+		t.Fatal("idle text system retained temporary shaping storage")
+	}
+	if got := s.Layout(p); got != l || got.Width <= 0 || len(got.Lines[0].Glyphs) != len(p.Text) {
+		t.Fatal("releasing scratch invalidated a cached layout")
+	}
+	runtime.KeepAlive(s)
+}
+
+func TestReleaseScratchPreservesNewerWindowWork(t *testing.T) {
+	s := newSystem()
+	e := &stubEngine{}
+	s.eng = e
+	s.Shape(Params{Text: "first window"})
+	first := s.LayoutsMade()
+	s.Shape(Params{Text: "second window"})
+	e.glyphRoom(100)
+	room := &e.glyphs[0]
+	s.ReleaseScratch(first)
+	if len(e.glyphs) == 0 || &e.glyphs[0] != room {
+		t.Fatal("an idle window discarded a newer window's working buffers")
+	}
+	s.ReleaseScratch(s.LayoutsMade())
+	if e.glyphs != nil {
+		t.Fatal("the latest idle window did not release scratch")
+	}
+}

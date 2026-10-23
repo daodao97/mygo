@@ -773,19 +773,19 @@ func TestFramesNeverWaitForACompile(t *testing.T) {
 //go:embed testdata/shader_upstream.metal
 var upstreamShader string
 
-// TestMatchesTheUpstreamShader draws every identity case with the renderer as it
-// is, every optimization on, and with the shader of upstream f2eca9f7 (a copy in
-// testdata, compiled when the test runs) and a builder that does none of
-// them (no cull, no splits, no opaque cores, no classes, no clip skip), in BGRA8
-// and float16 targets, and requires the same bytes. It guards what the
-// knob-against-knob tests cannot: the restructured plain path, the early return
-// of frameOf and the guarded paths of the shader, against the old shader.
+// TestMatchesTheUpstreamShader draws every identity case with the current
+// builder and the full corner formula, and with upstream f2eca9f7 and a builder
+// doing none of its optimizations. BGRA8 and float16 bytes must match. The
+// unclamped-shadow arithmetic shortcut is checked against that full formula
+// separately by TestContinuousShadowUnclampedMatchesReference, within one
+// rounding unit; the other shader and builder paths stay byte-identical.
 func TestMatchesTheUpstreamShader(t *testing.T) {
 	r, err := newRenderer()
 	if err != nil {
 		unavailable(t, err)
 	}
 	defer r.Release()
+	r.source = referenceCornerSource()
 	ref, err := newRenderer()
 	if err != nil {
 		t.Fatal(err)

@@ -68,6 +68,8 @@ type engine interface {
 	// resetScratch frees the room shape took from the engine's scratch,
 	// as a layout starts.
 	resetScratch()
+	// releaseScratch drops temporary storage when no window is shaping.
+	releaseScratch()
 }
 
 // shapeScratch is room engines take the glyphs, runs and lines shape returns
@@ -89,6 +91,8 @@ func (s *shapeScratch) resetScratch() {
 	}
 	s.glyphs, s.runs, s.lines = s.glyphs[:0], s.runs[:0], s.lines[:0]
 }
+
+func (s *shapeScratch) releaseScratch() { *s = shapeScratch{} }
 
 // glyphRoom returns room for n glyphs until the next layout.
 func (s *shapeScratch) glyphRoom(n int) []Glyph {

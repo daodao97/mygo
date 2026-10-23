@@ -148,13 +148,18 @@ ContCorner contCorner(float r, float rh, float rv, float w, float h) {
 // contDist returns the corner's value at the point u inside its vertical
 // edge and v inside its horizontal one: about the signed distance to its
 // edge near it.
-float contDist(ContCorner c, float u, float v) {
+float contDist(ContCorner c, float u, float v, bool blend = true) {
 	float2 a = max(0.0f, 1.0f - float2(u, v) / c.e);
 	float l = length(a);
 	float hi = max(a.x, a.y);
 	float rho = hi > 0.0f ? min(min(a.x, a.y) / hi, 1.0f) : 0.0f;
 	float p = (((-0.926054f * rho + 3.15601f) * rho - 3.64122f) * rho + 1.26803f) * rho + 0.268531f;
 	float f1 = l + 1.0f - 1.0f / (1.0f - rho * rho * min(l, 1.0f) * p);
+	// Shadow integration can skip the circular blend when both curves fit.
+	// Coverage keeps the original path, including its derivative rounding.
+	if (!blend) {
+		return min(max(c.eff - u, c.eff - v), 0.0f) + c.e * (f1 - 1.0f);
+	}
 	float f2 = length(max(0.0f, a * contExtent - (contExtent - 1.0f))) * 0.654166f + 0.345834f;
 	float s = a.y > a.x ? 1.0f : -1.0f;
 	float w = saturate(0.5f - s + s * rho);
@@ -171,7 +176,8 @@ float contInset(ContCorner c, float v) {
 	}
 	float lo = v < c.r ? c.r - sqrt(v * (2.0f * c.r - v)) : 0.0f;
 	float hi = c.e - sqrt(v * (2.0f * c.e - v));
-	float dlo = contDist(c, lo, v), dhi = contDist(c, hi, v);
+	bool blend = c.cx != 0.0f || c.cy != 0.0f;
+	float dlo = contDist(c, lo, v, blend), dhi = contDist(c, hi, v, blend);
 	if (dlo <= 0.0f) {
 		return lo;
 	}
@@ -181,7 +187,7 @@ float contInset(ContCorner c, float v) {
 	int side = 0;
 	for (int n = 0; n < 5; n++) {
 		float m = (lo * dhi - hi * dlo) / (dhi - dlo);
-		float dm = contDist(c, m, v);
+		float dm = contDist(c, m, v, blend);
 		if (dm > 0.0f) {
 			lo = m;
 			dlo = dm;

@@ -385,6 +385,11 @@ type dwrite struct {
 	scratch []byte
 }
 
+func (e *dwrite) releaseScratch() {
+	e.shapeScratch.releaseScratch()
+	e.scratch = nil
+}
+
 type formatKey struct {
 	list   string // the family list, whose others the fallback tries
 	family string

@@ -436,6 +436,15 @@ type coreText struct {
 	names []string
 }
 
+// releaseScratch drops Core Text's UTF-16 and per-run copies as well as the
+// shaped glyphs. Keep them while editing, so long paragraphs reuse their room.
+func (e *coreText) releaseScratch() {
+	e.shapeScratch.releaseScratch()
+	e.u16, e.index, e.at = nil, nil, nil
+	e.runIDs, e.runPoints, e.runAdvances, e.runIndices = nil, nil, nil, nil
+	e.breaks, e.seg = nil, segmenter.Segmenter{}
+}
+
 type attrsKey struct {
 	font uintptr
 	rtl  bool
@@ -941,47 +950,47 @@ func (e *coreText) shape(text []rune, style Style, spans []Span, width float32, 
 	n := len(u16)
 	str := ct.stringWithCharacters(0, &u16[0], n)
 	defer ct.release(str)
-	paragraph := e.styles[0]
-	if rtl {
-		paragraph = e.styles[1]
-	}
 	lang := style.Lang
 	if ct.languageName == 0 {
 		lang = ""
 	}
 	key := attrsKey{font, rtl, lang}
 	attrs, cached := e.attrs[key]
-	keys, values := append(e.keys[:0], ct.fontAttributeName, ct.paragraphStyleName), append(e.values[:0], font, paragraph)
-	base := 2
-	if lang != "" {
-		// The language picks the glyphs of a font that has several, as
-		// Han characters in Chinese and Japanese, and the fonts Core Text
-		// falls back to.
-		tag := cfString(lang)
-		defer ct.release(tag)
-		keys, values = append(keys, ct.languageName), append(values, tag)
-		base++
-	}
-	if style.LetterSpacing != 0 && ct.trackingName != 0 {
-		// Tracking, in points as DIPs, keeps the font's kerning.
-		tracking := cfFloat(float64(style.LetterSpacing))
-		defer ct.release(tracking)
-		keys, values = append(keys, ct.trackingName), append(values, tracking)
-	}
-	if noKerning(style.Features) && ct.kernName != 0 {
-		zero := cfFloat(0)
-		defer ct.release(zero)
-		keys, values = append(keys, ct.kernName), append(values, zero)
-	}
-	e.keys, e.values = keys, values
-	switch {
-	case len(keys) > base:
+	tracking := style.LetterSpacing != 0 && ct.trackingName != 0
+	kern := noKerning(style.Features) && ct.kernName != 0
+	// The dictionary retains its language and paragraph style. A cache hit
+	// needs neither new attribute values nor temporary native objects.
+	if !cached || tracking || kern {
+		paragraph := e.styles[0]
+		if rtl {
+			paragraph = e.styles[1]
+		}
+		keys := append(e.keys[:0], ct.fontAttributeName, ct.paragraphStyleName)
+		values := append(e.values[:0], font, paragraph)
+		if lang != "" {
+			tag := cfString(lang)
+			defer ct.release(tag)
+			keys, values = append(keys, ct.languageName), append(values, tag)
+		}
+		if tracking {
+			// Tracking, in points as DIPs, keeps the font's kerning.
+			value := cfFloat(float64(style.LetterSpacing))
+			defer ct.release(value)
+			keys, values = append(keys, ct.trackingName), append(values, value)
+		}
+		if kern {
+			zero := cfFloat(0)
+			defer ct.release(zero)
+			keys, values = append(keys, ct.kernName), append(values, zero)
+		}
+		e.keys, e.values = keys, values
 		attrs = cfDictionary(keys, values)
-		defer ct.release(attrs)
-	case !cached:
-		// The font of a style lives in primary, with its attributes.
-		attrs = cfDictionary(keys, values)
-		e.attrs[key] = attrs
+		if tracking || kern {
+			defer ct.release(attrs)
+		} else {
+			// The font of a style lives in primary, with its attributes.
+			e.attrs[key] = attrs
+		}
 	}
 	attributed := ct.attributedString(0, str, attrs)
 	defer ct.release(attributed)
