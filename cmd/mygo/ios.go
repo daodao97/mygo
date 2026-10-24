@@ -104,6 +104,7 @@ func buildIOS(c *Config, arch string, opts buildOptions) ([]string, error) {
 	if !opts.debug {
 		ldflags += " -X github.com/egoist/mygo.production=1"
 	}
+	ldflags += extraLDFlags()
 	flags := []string{"-buildmode=c-archive", "-trimpath", "-overlay", overlay, "-ldflags", ldflags}
 	flags = append(flags, productionTags(opts.debug)...)
 	if opts.debug {

@@ -837,6 +837,15 @@ func (rt *engine) animateColors(e *node, r *transition) {
 	e.bg, e.borderC = r.colorShown[0], r.colorShown[1]
 }
 
+// forgetColors shows the colors of the elements at once: a route change is
+// where an element that comes back shows its own colors, not the color of
+// the element that took its place while it was away.
+func (rt *engine) forgetColors() {
+	for _, r := range rt.trans {
+		r.colorSet = false
+	}
+}
+
 // mixPremultiplied returns the color k of the way from a to b, mixed with
 // premultiplied alpha, so that a color fading from transparent keeps its
 // hue.

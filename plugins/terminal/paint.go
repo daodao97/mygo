@@ -33,6 +33,8 @@ type rowCache struct {
 	selB  int
 	sel   bool
 	wide  []int16 // the columns of wide characters
+	// holders are the runs of placeholder cells, which show images.
+	holders []holderRun
 	// filled tells that every cell has a background of its own, other
 	// than the default, from which PaddingExtend extends.
 	filled bool
@@ -357,7 +359,7 @@ func contrast(a, b float32) float32 {
 
 // buildRow makes the cache of the render state's current row.
 func (v *view) buildRow(line *rowCache, rs *vt.RenderState, cols int) {
-	*line = rowCache{ok: true, bgs: line.bgs[:0], runs: line.runs[:0], decos: line.decos[:0], boxes: line.boxes[:0], wide: line.wide[:0], filled: true}
+	*line = rowCache{ok: true, bgs: line.bgs[:0], runs: line.runs[:0], decos: line.decos[:0], boxes: line.boxes[:0], wide: line.wide[:0], holders: line.holders[:0], filled: true}
 	cells := rs.RowCells()
 	line.selA, line.selB, line.sel = rs.RowSelection()
 	def := resolved{fg: color(v.colors.Foreground), bg: color(v.colors.Background)}
@@ -445,6 +447,18 @@ func (v *view) buildRow(line *rowCache, rs *vt.RenderState, cols int) {
 		}
 		cp := c.Codepoint
 		if cp == 0 || st.invisible {
+			cp = ' '
+		}
+		if cp == placeholder {
+			var marks []rune
+			if c.Grapheme {
+				buf = rs.CellGraphemes(x, buf[:0])
+				marks = buf
+				if len(marks) > 0 && marks[0] == placeholder {
+					marks = marks[1:]
+				}
+			}
+			line.holders = addHolder(line.holders, x, readHolder(rs.CellStyle(x), marks))
 			cp = ' '
 		}
 		if noMinContrast(cp) {

@@ -1376,6 +1376,44 @@ func TestWindowState(t *testing.T) {
 	})
 }
 
+// TestCloseInFrame closes a window from its own content as it builds a
+// frame, as a close button does, twice, and its state is still saved.
+func TestCloseInFrame(t *testing.T) {
+	run := strconv.Itoa(int(windowStateRuns.Add(1)))
+	mygo.App.SetPath(mygo.PathUserData, t.TempDir())
+	defer mygo.App.SetPath(mygo.PathUserData, "")
+	var self atomic.Pointer[mygo.Window]
+	var frames, closes atomic.Int32
+	w := newWindow(t, mygo.WindowOptions{StateKey: "e2e-close-" + run, Width: 320, Height: 240, Content: ui.View(func(c *ui.Context) {
+		if frames.Add(1) >= 2 {
+			if w := self.Load(); w != nil {
+				w.Close()
+				w.Close()
+			}
+		}
+		c.AnimationFrame()
+		ui.Box(c).Fill().Background(ui.RGB(255, 255, 255))
+	})})
+	w.OnClosed(func() { closes.Add(1) })
+	self.Store(w)
+	eventually(t, "the window closed", w.IsDestroyed)
+
+	var later atomic.Int32
+	other := newWindow(t, mygo.WindowOptions{Width: 200, Height: 150, Content: ui.View(func(c *ui.Context) {
+		later.Add(1)
+		ui.Box(c).Fill()
+	})})
+	eventually(t, "a frame of another window", func() bool { return later.Load() > 0 })
+	other.Destroy()
+	if n := closes.Load(); n != 1 {
+		t.Errorf("OnClosed ran %d times, want 1", n)
+	}
+	w = newWindow(t, mygo.WindowOptions{StateKey: "e2e-close-" + run, Width: 100, Height: 100})
+	if b := w.Bounds(); b.Width != 320 || b.Height != 240 {
+		t.Errorf("restored bounds = %+v, want 320×240", b)
+	}
+}
+
 // TestFileDrop drops files with synthetic DOM events, the platform side
 // being played by a test hook, and checks that the page's own drag and
 // drop is undisturbed.
@@ -1875,7 +1913,23 @@ func TestClearBrowsingData(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, w, `window.run`)
-	mustEval(t, w, `(localStorage.setItem("token", "secret"), window.oldPage = true)`)
+	observer := newWindow(t, mygo.WindowOptions{Hidden: true})
+	if err := observer.Page().LoadURL("app://localhost/"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, observer, `window.run`)
+	mustEval(t, observer, `(() => {
+		localStorage.getItem("token");
+		window.stored = false;
+		addEventListener("storage", e => {
+			if (e.key === "token" && e.newValue === "secret") window.stored = true;
+		});
+		return true;
+	})()`)
+	// Eval waits for JavaScript, not for the storage process to apply its
+	// writes. Observe the write from another page before asking to delete it.
+	mustEval(t, w, `(localStorage.removeItem("token"), localStorage.setItem("token", "secret"), window.oldPage = true)`)
+	waitFor(t, observer, `window.stored`)
 	if err := mygo.App.ClearBrowsingData(); err != nil {
 		t.Fatal(err)
 	}

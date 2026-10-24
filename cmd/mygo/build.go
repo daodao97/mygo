@@ -249,6 +249,7 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		// A GUI app, not a console one.
 		ldflags += " -H=windowsgui"
 	}
+	ldflags += extraLDFlags()
 	compile := func(arch, out string) error {
 		t := con.start("Compiling " + goos + "/" + arch)
 		err := func() error {
@@ -457,6 +458,16 @@ func productionTags(debug bool) []string {
 		}
 	}
 	return []string{"-tags", strings.Join(append(tags, inspectorTag), ",")}
+}
+
+// extraLDFlags returns the -ldflags of MYGO_LDFLAGS, which a build adds
+// after its own, so that its -X flags win: GOFLAGS cannot give any, as
+// the -ldflags of mygo build override those of GOFLAGS.
+func extraLDFlags() string {
+	if f := strings.TrimSpace(os.Getenv("MYGO_LDFLAGS")); f != "" {
+		return " " + f
+	}
+	return ""
 }
 
 // packageFlags are the -ldflags that link what mygo.json says about the app

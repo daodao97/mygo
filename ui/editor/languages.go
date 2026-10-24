@@ -167,7 +167,9 @@ func makeLanguages() {
 			words: words(TokenConstant, "true false null"), operators: ":"}},
 	}
 	pyStrings := []lexString{}
-	for _, p := range []string{"", "r", "R", "b", "B", "u", "U", "f", "F", "rb", "br", "Rb", "bR", "fr", "rf", "Fr", "rF"} {
+	// The f-strings first, as the lexer's stack holds the index of a
+	// string with interpolations in five bits.
+	for _, p := range []string{"f", "F", "fr", "rf", "Fr", "rF", "", "r", "R", "b", "B", "u", "U", "rb", "br", "Rb", "bR"} {
 		raw := strings.ContainsAny(p, "rR")
 		f := strings.ContainsAny(p, "fF")
 		for _, q := range []string{`"""`, `'''`, `"`, `'`} {

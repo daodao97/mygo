@@ -304,6 +304,52 @@ func TestPinch(handle uintptr, x, y, magnification float64) (ok bool) {
 	return ok
 }
 
+// TestSwipe swipes left (back) or right (forward) in a window showing
+// native UI, as a touchpad swiping between pages and the side buttons of
+// mice through their makers' software do. It reports false when the event
+// it makes is not a swipe.
+func TestSwipe(handle uintptr, back bool) (ok bool) {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil || w.surface == nil {
+		return false
+	}
+	testSideOnce.Do(func() {
+		purego.RegisterLibFunc(&cgEventSetIntegerValueField, libCG, "CGEventSetIntegerValueField")
+	})
+	testPinchOnce.Do(func() {
+		purego.RegisterLibFunc(&cgEventSetType, libCG, "CGEventSetType")
+		purego.RegisterLibFunc(&cgEventSetDoubleValueField, libCG, "CGEventSetDoubleValueField")
+		purego.RegisterLibFunc(&cgEventGetLocation, libCG, "CGEventGetLocation")
+		purego.RegisterLibFunc(&cgEventSetLocation, libCG, "CGEventSetLocation")
+	})
+	withPool(func() {
+		content := msgRect(send(w.win, "contentView"), sel("frame"))
+		ev := msgMouseEvent(class("NSEvent"), sel("mouseEventWithType:location:modifierFlags:timestamp:windowNumber:context:eventNumber:clickCount:pressure:"),
+			5, NSPoint{10, content.Size.Height - 10}, 0, 0, sendInt(w.win, "windowNumber"), 0, 0, 0, 0) // NSEventTypeMouseMoved
+		// A gesture event of the window server, of the HID system's swipe
+		// type, which AppKit makes a swipe event of: the direction a mask
+		// of kIOHIDSwipeLeft and kIOHIDSwipeRight.
+		cg := uintptr(send(ev, "CGEvent"))
+		direction := int64(1 << 3) // kIOHIDSwipeRight
+		if back {
+			direction = 1 << 2 // kIOHIDSwipeLeft
+		}
+		cgEventSetType(cg, 29)                          // kCGSEventGesture
+		cgEventSetIntegerValueField(cg, 110, 16)        // gesture type: kIOHIDEventTypeSwipe
+		cgEventSetIntegerValueField(cg, 115, direction) // swipe direction
+		ev = send(class("NSEvent"), "eventWithCGEvent:", cg)
+		if ev == 0 || sendInt(ev, "type") != 31 { // NSEventTypeSwipe
+			return
+		}
+		if got, _ := swipeBack(msgFloat(ev, sel("deltaX"))); got != back {
+			return
+		}
+		send(w.surface.view, "swipeWithEvent:", uintptr(ev))
+		ok = true
+	})
+	return ok
+}
+
 // TestTrafficLights returns where the top-left corner of a window's close
 // button is, in points from the top-left corner of the window.
 func TestTrafficLights(handle uintptr) (x, y float64) {

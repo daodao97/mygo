@@ -694,6 +694,9 @@ func (r *Router) show(c *context, box *node, v *routeView, parent *Route, cur *r
 		v.focusing, v.announcing = false, true
 	}
 	v.leaving, v.dir, v.start = nil, 0, c.now
+	// A returning element may have shared its state with a different page.
+	// Show its own colors immediately instead of easing from that page.
+	rt.forgetColors()
 	if r.Transition == TransitionNone || rt.instant() || r.suppressTransitionAt == rt.frame {
 		return
 	}

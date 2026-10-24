@@ -543,6 +543,19 @@ func (s *surface) sideButton(kind platform.SurfaceEventKind, back bool, mods pla
 	}
 }
 
+// swipeBack reports whether a swipe of deltaX goes back, as Safari and
+// WebKit read swipeWithEvent:'s deltaX: positive, a swipe to the left,
+// goes back, negative forward; ok is false for a vertical swipe.
+func swipeBack(deltaX float64) (back, ok bool) {
+	switch {
+	case deltaX > 0:
+		return true, true
+	case deltaX < 0:
+		return false, true
+	}
+	return false, false
+}
+
 func (s *surface) mouse(kind platform.SurfaceEventKind, ev id, button int) {
 	x, y := s.location(ev)
 	s.send(platform.SurfaceEvent{Kind: kind, PointerType: platform.PointerMouse, X: x, Y: y, Button: button, Clicks: sendInt(ev, "clickCount"), Mods: eventMods(ev)})
@@ -883,6 +896,21 @@ func registerSurfaceClass() {
 			// its last event, as a fraction of its size then.
 			x, y := s.location(ev)
 			s.send(platform.SurfaceEvent{Kind: platform.PointerZoom, X: x, Y: y, Scale: 1 + msgFloat(ev, sel("magnification")), Mods: eventMods(ev)})
+		}),
+		method("swipeWithEvent:", func(self id, _ objc.SEL, ev id) {
+			s := b().surfaceOf(self)
+			if s == nil {
+				return
+			}
+			// A swipe goes back and forward, as the side buttons do: the
+			// buttons of mice whose makers' software sends swipes for
+			// them, as Logi Options+ does, and touchpads set to swipe
+			// between pages.
+			if back, ok := swipeBack(msgFloat(ev, sel("deltaX"))); ok {
+				mods := eventMods(ev)
+				s.sideButton(platform.PointerDown, back, mods)
+				s.sideButton(platform.PointerUp, back, mods)
+			}
 		}),
 		method("keyDown:", func(self id, _ objc.SEL, ev id) {
 			s := b().surfaceOf(self)

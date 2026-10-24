@@ -57,6 +57,9 @@ func TestTokenizers(t *testing.T) {
 			"var(x)op(=)re(/a[/]b/g)punct(.)fn(test)punct(()var(y)punct())"},
 		{"python", []string{`@app.route("/")`, `def f(x): return f"{x!r}" + r'\d'  # c`},
 			`meta(@app.route)punct(()str("/")punct()) / kw(def)fn(f)punct(()var(x)punct())op(:)kw(return)str(f")esc({)var(x)op(!)var(r)esc(})str(")op(+)str(r'\d')comment(# c)`},
+		// Each of Python's f-strings, the single-quoted ones last of all.
+		{"python", []string{`x = f'{a}' + F'{a}{b}' + rf'{c}' + Fr"""{d}"""`},
+			`var(x)op(=)str(f')esc({)var(a)esc(})str(')op(+)str(F')esc({)var(a)esc(}{)var(b)esc(})str(')op(+)str(rf')esc({)var(c)esc(})str(')op(+)str(Fr""")esc({)var(d)esc(})str(""")`},
 		{"json", []string{`{"a": [1, true, "b"]}`},
 			`punct({)prop("a")op(:)punct([)num(1)punct(,)const(true)punct(,)str("b")punct(]})`},
 		{"rust", []string{"/* a /* b */ c */ fn x() {}"},
@@ -86,6 +89,22 @@ func TestTokenizers(t *testing.T) {
 		}
 		if got := lexLines(l.Tokenizer, c.lines...); got != c.want {
 			t.Errorf("%s %q:\n got %s\nwant %s", c.lang, c.lines, got, c.want)
+		}
+	}
+}
+
+// A string with interpolations is one the lexer's stack can hold: its
+// index in five bits.
+func TestInterpolatedStringsFit(t *testing.T) {
+	for _, l := range Languages() {
+		lx, ok := l.Tokenizer.(*lexer)
+		if !ok {
+			continue
+		}
+		for k, s := range lx.strings {
+			if s.interpOpen != "" && k+1 >= 1<<5 {
+				t.Errorf("%s's string %s%s… is number %d, past the stack's 31", l.Name, s.prefix, s.open, k)
+			}
 		}
 	}
 }

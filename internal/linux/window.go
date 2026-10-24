@@ -963,6 +963,12 @@ func (w *window) Close() {
 		return
 	}
 	if !w.closed {
+		if s := w.surface; s != nil && s.drawing() {
+			// GTK uses the window once the frame returns: destroy it after,
+			// before the next events (G_PRIORITY_HIGH).
+			gIdleAddFull(-100, cbCloseLater, ptr(w.id), 0)
+			return
+		}
 		if w.opts.Flyout != nil {
 			w.ungrab()
 		}
@@ -1285,6 +1291,7 @@ var (
 	cbCreate, cbClose, cbCrashed, cbButtonPress, cbAsyncReady, cbPNGWrite       ptr
 	cbDragData, cbDragDrop, cbPrintFinished, cbPrintFailed, cbPermission        ptr
 	cbMotion, cbControlsAllocated, cbDecorationLayout, cbActivationResize       ptr
+	cbCloseLater                                                                ptr
 )
 
 func field[T any](p ptr, offset uintptr) T {
@@ -1304,6 +1311,12 @@ func initWindowCallbacks() {
 			w.cleanup()
 			w.h.Closed()
 		}
+	})
+	cbCloseLater = purego.NewCallback(func(data ptr) int32 {
+		if w := b().window(data); w != nil {
+			w.Close()
+		}
+		return 0 // G_SOURCE_REMOVE
 	})
 	cbFocusIn = purego.NewCallback(func(widget, event, data ptr) bool {
 		if w := b().window(data); w != nil {

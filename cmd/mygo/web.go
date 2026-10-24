@@ -134,6 +134,7 @@ func compileWeb(ctx context.Context, c *Config, t *task, out string, debug bool,
 	if !debug {
 		ldflags += " -X github.com/egoist/mygo.production=1"
 	}
+	ldflags += extraLDFlags()
 	flags := []string{"-trimpath", "-ldflags", ldflags}
 	flags = append(flags, productionTags(debug)...)
 	if overlay != "" {

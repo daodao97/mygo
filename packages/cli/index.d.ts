@@ -66,8 +66,8 @@ export interface Config {
   out?: string;
   /**
    * Where `mygo generate` writes the TypeScript client (default:
-   * `src/mygo.ts` when package.json is at the project root; an app
-   * without a frontend gets no client).
+   * `src/mygo.ts` when package.json at the project root depends on
+   * mygo-runtime; an app without a frontend gets no client).
    */
   bindings?: string;
 
@@ -230,7 +230,7 @@ export interface FileAssociation {
   ext: string[];
   /** What the files are, e.g. `"Markdown Document"`. */
   name?: string;
-  /** The MIME type of the files, by which Linux identifies them (default: `application/x-<app>-<ext>`). */
+  /** The MIME type of the files, by which Linux identifies them; the app defines an unregistered one (`x-`) (default: `application/x-<app>-<ext>`). */
   mimeType?: string;
   /** The app's role for the files on macOS (default: `"Editor"`). */
   role?: "Editor" | "Viewer";

@@ -1,6 +1,6 @@
 module github.com/egoist/mygo
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/Heyana/typesetting-go v0.3.5-heyana.4

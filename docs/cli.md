@@ -227,6 +227,7 @@ Prints the version of the CLI.
 | Variable | |
 |---|---|
 | `CGO_ENABLED` | `0` by default when unset or empty; set to `1` for app dependencies that need cgo, including in `mygo dev`, `mygo build` and `mygo generate` |
+| `MYGO_LDFLAGS` | more `-ldflags` for the builds of `mygo build`, after its own, such as `-X example.com/app/internal/crash.DSN=…` or `-buildid=`; split at spaces outside quotes, as `go build -ldflags` splits them |
 | `MYGO_INSPECTOR` | `1` keeps the [inspector of native UI](ui/inspector.md) in production builds of `mygo build`, which leave it out |
 | `MYGO_UPDATER_PRIVATE_KEY` | the secret key that signs updates, for `mygo build` |
 | `MYGO_WINDOWS_CERTIFICATE_PASSWORD` | the password of `windows.certificate`, for `mygo build` |

@@ -517,7 +517,8 @@ const (
 	KeyY
 	KeyZ
 	// KeyBack and KeyForward go back and forward in a history: the side
-	// buttons of a mouse, and the keys of keyboards that have them.
+	// buttons of a mouse, the keys of keyboards that have them, and on
+	// macOS swipes between pages.
 	KeyBack
 	KeyForward
 )

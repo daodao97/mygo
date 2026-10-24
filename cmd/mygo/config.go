@@ -37,10 +37,10 @@ type Config struct {
 	// Out is where builds are written (default "dist").
 	Out string `json:"out"`
 	// Bindings is the path of the generated TypeScript client (default:
-	// frontend/src/mygo.ts when there is a frontend directory,
-	// src/mygo.ts when package.json is at the root, else mygo.ts when the
-	// configuration has a frontend, and no client for an app without one,
-	// such as an app of native UI).
+	// frontend/src/mygo.ts when frontend/package.json depends on
+	// mygo-runtime, src/mygo.ts when package.json at the root does, else
+	// mygo.ts when the configuration has a frontend, and no client for an
+	// app without one, such as an app of native UI).
 	Bindings string `json:"bindings"`
 
 	// DevURL is what the app loads during `mygo dev` in place of its built
@@ -90,12 +90,6 @@ type Config struct {
 
 	root string
 	file string // the configuration file, "" without one
-	// frontend is whether the app has a frontend of its own, for the
-	// TypeScript module of the catalogs. The defaults make one of a frontend
-	// directory, an explicit bindings path or the frontend options; a
-	// package.json at the root declares one unless it is a workspace root,
-	// which holds packages beside the app, such as its website.
-	frontend bool
 	// langs are the languages the app ships, which languages reads once.
 	langs     []appLanguage
 	langsErr  error
@@ -117,18 +111,21 @@ type FileAssociation struct {
 	Ext []string `json:"ext"`
 	// Name describes the files, e.g. "Markdown Document".
 	Name string `json:"name"`
-	// MimeType of the files. Linux identifies files by it; without one
-	// the app defines application/x-<name>-<first extension>.
+	// MimeType of the files. Linux identifies files by it; the app defines
+	// an unregistered one (x-), and without one
+	// application/x-<name>-<first extension>.
 	MimeType string `json:"mimeType"`
 	// Role is "Editor" (default) or "Viewer" (macOS).
 	Role string `json:"role"`
 }
 
 // mimeType returns the MIME type of an association, and whether the app
-// defines it.
+// defines it: an unregistered type (x-) is the app's, as no system knows
+// it.
 func (c *Config) mimeType(fa FileAssociation) (string, bool) {
 	if fa.MimeType != "" {
-		return fa.MimeType, false
+		_, sub, _ := strings.Cut(fa.MimeType, "/")
+		return fa.MimeType, strings.HasPrefix(sub, "x-")
 	}
 	return "application/x-" + slugify(c.executableName()) + "-" + strings.ToLower(fa.Ext[0]), true
 }
@@ -459,34 +456,37 @@ func (c *Config) applyDefaults() {
 		}
 	}
 	frontendOptions := c.DevURL != "" || c.DevCommand != "" || c.BuildCommand != "" || c.FrontendDist != ""
+	// The client imports mygo-runtime: a package.json without it is not
+	// the app's frontend, as that of an app of native UI that runs the
+	// CLI from npm, or a workspace root that holds the app's website.
 	switch {
 	case c.Bindings != "":
-		c.frontend = true
-	case isDir(filepath.Join(c.root, "frontend")):
+	case usesRuntime(filepath.Join(c.root, "frontend")):
 		c.Bindings = filepath.Join("frontend", "src", "mygo.ts")
-		c.frontend = true
-	case fileExists(filepath.Join(c.root, "package.json")):
+	case usesRuntime(c.root):
 		c.Bindings = filepath.Join("src", "mygo.ts")
-		c.frontend = !workspaceRoot(c.root) || frontendOptions
 	case frontendOptions:
 		c.Bindings = "mygo.ts"
-		c.frontend = true
 	}
 }
 
-// workspaceRoot reports whether the package.json of root declares
-// workspaces, as npm's and Bun's array and Yarn's object do: it holds
-// packages, such as the app's website, rather than being a frontend
-// itself.
-func workspaceRoot(root string) bool {
-	data, err := os.ReadFile(filepath.Join(root, "package.json"))
+// usesRuntime reports whether the package.json in dir depends on
+// mygo-runtime.
+func usesRuntime(dir string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
 	if err != nil {
 		return false
 	}
 	var pkg struct {
-		Workspaces json.RawMessage `json:"workspaces"`
+		Dependencies    map[string]json.RawMessage `json:"dependencies"`
+		DevDependencies map[string]json.RawMessage `json:"devDependencies"`
 	}
-	return json.Unmarshal(data, &pkg) == nil && len(pkg.Workspaces) > 0 && string(pkg.Workspaces) != "null"
+	if json.Unmarshal(data, &pkg) != nil {
+		return false
+	}
+	_, dep := pkg.Dependencies["mygo-runtime"]
+	_, dev := pkg.DevDependencies["mygo-runtime"]
+	return dep || dev
 }
 
 // packageAuthor returns the author in the package.json of root, which npm

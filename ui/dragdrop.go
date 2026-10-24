@@ -266,10 +266,12 @@ func (rt *engine) dragCancel() bool {
 }
 
 // dragScroll scrolls the scroll container under the pointer while a value
-// is dragged near one of its edges, faster nearer to it.
+// or native transfer is dragged near one of its edges, faster nearer to it.
 func (rt *engine) dragScroll() {
 	d := rt.drag
-	if d == nil || d.canceled || d.native {
+	// A native source may still be alive after leaving this window. Only
+	// its destination events (incoming) tell us it is over this window.
+	if rt.incoming == nil && (d == nil || d.canceled || d.native) {
 		return
 	}
 	const edge = 32
@@ -289,7 +291,9 @@ func (rt *engine) dragScroll() {
 		if dy != 0 && scrollBy(s, 0, dy) {
 			rt.animating = true
 			// The element under the pointer changes as the content moves.
-			d.over = rt.valueTarget(rt.pointerX, rt.pointerY, d.value)
+			if d != nil && !d.native && !d.canceled {
+				d.over = rt.valueTarget(rt.pointerX, rt.pointerY, d.value)
+			}
 		}
 		return
 	}

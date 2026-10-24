@@ -1969,7 +1969,10 @@ after the debounce, the core lists again the directories that notices
 named and stats the files, and the events are the differences between what
 it sees and what it saw (`fileWatchDiff`). An entry whose identity
 (`os.SameFile`) moved is a rename, unless a hard link makes it ambiguous,
-and what moved with a directory renamed above it says nothing more. The
+and what moved with a directory renamed above it says nothing more. A
+file replaced at its path by another file, as an atomic save replaces it,
+is a write, not a removal and a creation: apps that follow a document
+would take it for deleted. The
 entries are paired by looking their identity up (`fileWatchIDs`: device
 and inode, or on Windows the volume and file index `os.SameFile` reads),
 so a directory of n files renamed costs n lookups, not n² comparisons;
@@ -2230,7 +2233,9 @@ either.
   (`SurfaceCommand`), files dragged and dropped, and assistive technology.
   The back and forward buttons of a mouse come as the keys `KeyBack` and
   `KeyForward`, as do the keys of keyboards that have them: buttons 3 and 4
-  of `otherMouseDown:` on macOS, buttons 8 and 9 and `XF86Back` and
+  of `otherMouseDown:` on macOS, and `swipeWithEvent:`'s swipes, left
+  going back as in Safari, which touchpads swiping between pages send and
+  mice's makers' software sends for their buttons (Logi Options+), buttons 8 and 9 and `XF86Back` and
   `XF86Forward` on Linux, and `WM_XBUTTONUP` (taken, so that
   DefWindowProc sends no `WM_APPCOMMAND` as well), `VK_BROWSER_BACK` and
   `VK_BROWSER_FORWARD`, and `WM_APPCOMMAND`'s browser commands on Windows.
@@ -4578,7 +4583,7 @@ which npm allows only for packages that exist: the first release uses an
 | permissions | `WKUIDelegate` media capture (camera, microphone) | `permission-request` (camera, microphone, geolocation, notifications) | `PermissionRequested` (the same four; WebView2 asks about others) |
 | user agent | `customUserAgent`; `UserAgentSuffix` is the configuration's `applicationNameForUserAgent`, which a `window.open()` window does not inherit | `WebKitSettings:user-agent`; `UserAgentSuffix` appends application details, split at the first "/" | `ICoreWebView2Settings2`'s user agent, and a suffix appended to the settings' own user agent; a runtime without `Settings2` ignores both |
 | the browser's keys (reload, print, find, zoom) | none | none | WebView2's (F5, Ctrl+R, Ctrl+P, Ctrl+F, Ctrl+Plus, ...) only with the inspector (`ICoreWebView2Settings3`'s `AreBrowserAcceleratorKeysEnabled`); `AcceleratorKeyPressed` still gives the menus every key |
-| file associations | `CFBundleDocumentTypes`; files arrive with `application:openURLs:` | desktop entry `MimeType` (`%U`), a shared-mime-info package in the .deb for types the app defines | ProgIDs and `OpenWithProgids` written by the installer |
+| file associations | `CFBundleDocumentTypes`; files arrive with `application:openURLs:` | desktop entry `MimeType` (`%U`), a shared-mime-info package in the .deb for types the app defines (`x-`) | ProgIDs and `OpenWithProgids` written by the installer |
 | document windows | `representedURL` (proxy icon, Command-click folder menu) and `setDocumentEdited:` (the dot), then the traffic lights are laid out again | the core puts `*` before the title | the core puts `*` before the title |
 | replacing a document's file | `-[NSFileManager replaceItemAtURL:withItemAtURL:…]` (permissions, dates, extended attributes, ACLs, identity) | rename after `chmod` and `lchown` to the target's | `ReplaceFileW`, retried on sharing violations; when it stops halfway, having removed the target, the replacement is renamed into place |
 | recent documents | `noteNewRecentDocumentURL:` / `clearRecentDocuments:` of the shared `NSDocumentController` (the Dock menu) | `gtk_recent_manager_add_item`, removing the items of `g_get_application_name()` | `SHAddToRecentDocs` (`SHARD_PATHW`), `IApplicationDestinations::RemoveAllDestinations`; the process keeps the AppUserModelID the shell derives from its path, which the installer's shortcuts have too |

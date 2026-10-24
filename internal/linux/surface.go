@@ -335,6 +335,10 @@ func (s *surface) RequestFrame() {
 	}
 }
 
+// drawing tells that the area draws a frame: in its tick callback, its
+// draw signal or its render signal.
+func (s *surface) drawing() bool { return s.ticking || s.cr != 0 || s.rendering }
+
 // drawsGL tells that the area draws its frames with OpenGL, in its render
 // signal: a GtkGLArea with a context.
 func (s *surface) drawsGL() bool { return s.gl && gtkGLAreaGetError(s.area) == 0 }
@@ -678,6 +682,9 @@ func initSurfaceCallbacks() {
 	})
 	cbSurfaceSize = purego.NewCallback(func(widget, allocation, data ptr) {
 		if s := b().surfaceOf(data); s != nil {
+			if s.layers != 0 {
+				s.shape() // to the new size
+			}
 			s.send(platform.SurfaceEvent{Kind: platform.SurfaceResize})
 		}
 	})
@@ -697,6 +704,9 @@ func initSurfaceCallbacks() {
 	cbSurfaceRealize = purego.NewCallback(func(widget, data ptr) {
 		if s := b().surfaceOf(data); s != nil {
 			gtkIMContextSetClientWindow(s.im, s.eventWindow())
+			if s.layers != 0 {
+				s.shape() // the new window has none
+			}
 			if s.cursor != platform.CursorDefault {
 				s.SetCursor(s.cursor) // on the area that took another's place
 			}

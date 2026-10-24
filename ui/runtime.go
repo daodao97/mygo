@@ -267,6 +267,11 @@ type engine struct {
 	// pressClicks is the press's count of clicks, which its release
 	// carries.
 	pressClicks int
+	// downing counts the presses pointerDown is handling, and ups holds the
+	// releases (button, clicks) that came meanwhile, through a main loop
+	// a handler ran nested, for it to apply once the press is recorded.
+	downing int
+	ups     [][2]int
 	// listMenu and listDrag are the parts of lists a right-click and a
 	// drag reach, set as the first list builds, and cellClick and
 	// cellInBlock the parts of tables choosing cells a click and a press
@@ -549,8 +554,8 @@ func (rt *engine) runFrame() {
 	if rt.drag != nil {
 		// The source's element is this frame's, if it builds one.
 		rt.drag.elem = nil
-		rt.dragScroll()
 	}
+	rt.dragScroll()
 	rt.scrollTextSelection()
 	if rt.listDrag != nil {
 		rt.listDrag(rt)
@@ -610,6 +615,18 @@ func (rt *engine) runFrame() {
 	root := rt.c.root
 	layoutTree(root, appW, h)
 	rt.commit(root, w, h)
+	// Scrolling can put a new native drop target under a stationary
+	// pointer. Resolve it against this frame's geometry, then rebuild if
+	// needed so DragOver/DataDragOver show the new target too.
+	if in := rt.incoming; in != nil {
+		over := uint64(0)
+		if s := rt.dataTargetAt(rt.pointerX, rt.pointerY, in); s != nil {
+			over = s.id
+		}
+		if rt.dataOver != over {
+			rt.dataOver, rt.animating = over, true
+		}
+	}
 	rt.commitFocusBindings()
 	clear(rt.texts)
 	rt.texts = rt.texts[:0]

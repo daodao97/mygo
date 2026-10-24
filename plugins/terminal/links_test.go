@@ -39,6 +39,10 @@ func TestPathAt(t *testing.T) {
 		{"open ~/Downloads/clip.mp4", 10, "~/Downloads/clip.mp4"},
 		{"main.go:250:3: undefined: x", 2, "main.go:250:3"},
 		{"(src/a.go)", 3, "src/a.go"},
+		{"write(notes.md)", 8, "notes.md"},
+		{"notes.md (new file +2)", 2, "notes.md"},
+		{"See notes.md.", 7, "notes.md"},
+		{"notes.md:2:3", 2, "notes.md:2:3"},
 		{"just words here", 5, ""},
 		{"version 1.2.3 ok", 9, ""},
 	} {
@@ -265,5 +269,37 @@ func TestCommandClickTUIPaintedFileContinuations(t *testing.T) {
 		if got := click(4, 1); got != tc.want {
 			t.Fatalf("unrelated rows %q/%q became %+v", tc.first, tc.second, got)
 		}
+	}
+}
+
+func TestPathAtSpan(t *testing.T) {
+	text := []rune("write(notes.md)")
+	cols := make([]int, len(text))
+	for i := range cols {
+		cols[i] = i
+	}
+	m := matchLink(text, cols, 8)
+	if !m.valid() {
+		t.Fatal("file reference did not match")
+	}
+	m.setCells(cols, 0)
+	if m.Path != "notes.md" || m.cellA != 6 || m.cellB != 14 {
+		t.Fatalf("path = %q %d..%d, want notes.md 6..14", m.Path, m.cellA, m.cellB)
+	}
+}
+
+func TestURLAtSpan(t *testing.T) {
+	text := []rune("go to https://x.org/a. now")
+	cols := make([]int, len(text))
+	for i := range cols {
+		cols[i] = i
+	}
+	m := matchLink(text, cols, 10)
+	if !m.valid() {
+		t.Fatal("URL did not match")
+	}
+	m.setCells(cols, 0)
+	if m.URL != "https://x.org/a" || m.cellA != 6 || m.cellB != 21 {
+		t.Fatalf("URL = %q %d..%d, want https://x.org/a 6..21", m.URL, m.cellA, m.cellB)
 	}
 }

@@ -3,6 +3,7 @@
 package windows
 
 import (
+	"log"
 	"math"
 	"time"
 	"unicode/utf16"
@@ -150,6 +151,9 @@ type surface struct {
 	// redirection bitmap, where GDI cannot (compositor.go); nil while none
 	// shows.
 	comp *compositor
+	// gdiFailed tells that SetDIBitsToDevice refused a frame, which was
+	// logged once.
+	gdiFailed bool
 
 	// layer holds the web views under the frames, once there are some
 	// (webview_embed.go): placed are where the content shows them, and
@@ -294,8 +298,12 @@ func (s *surface) PresentPixels(pix []byte, stride, width, height int) {
 	}
 	bi := bitmapInfoHeader{Width: int32(stride / 4), Height: -int32(height), Planes: 1, BitCount: 32}
 	bi.Size = uint32(unsafe.Sizeof(bi))
-	procSetDIBitsToDevice.Call(dc, 0, 0, uintptr(width), uintptr(height), 0, 0, 0, uintptr(height),
+	lines, _, _ := procSetDIBitsToDevice.Call(dc, 0, 0, uintptr(width), uintptr(height), 0, 0, 0, uintptr(height),
 		uintptr(unsafe.Pointer(&pix[0])), uintptr(unsafe.Pointer(&bi)), 0)
+	if lines == 0 && !s.gdiFailed {
+		s.gdiFailed = true
+		log.Printf("mygo: native UI shows nothing: SetDIBitsToDevice drew no lines of a %dx%d frame", width, height)
+	}
 }
 
 func (s *surface) SetCursor(c platform.Cursor) {

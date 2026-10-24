@@ -194,6 +194,8 @@ type view struct {
 	contrast      float32
 	images        []shownImage
 	bitmaps       map[uint32]*cachedImage
+	// virtual are virtual image placements shown through placeholder cells.
+	virtual map[uint32][]virtualImage
 
 	keys    *vt.KeyEncoder
 	mouse   *vt.MouseEncoder

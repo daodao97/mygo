@@ -1453,6 +1453,41 @@ func TestCommandClickLinks(t *testing.T) {
 	}
 }
 
+// Command-hover underlines the same cells that Command-click opens,
+// including bare filenames and paths to ignored output directories.
+func TestCommandHoverFilePath(t *testing.T) {
+	loadLib(t)
+	for _, path := range []string{"notes.md", ".log-outputs/takumi-session-analysis.md"} {
+		t.Run(path, func(t *testing.T) {
+			term, err := New(Options{Conn: newPipe(), OpenLink: func(string) bool { return true }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer term.Close()
+			term.Feed([]byte("write(" + path + ")\r\n"))
+			tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill() }, 800, 200)
+			tt.Frame()
+			x, y := cellCenter(term, 8, 0)
+			tt.Move(x, y)
+			plain := slices.Clone(tt.Image().Pix)
+			tt.HoldModifiers(ui.Cmd)
+			if h := term.v.hover; h.Path != path || h.row != 0 || h.cellA != 6 || h.cellB != 6+len(path) {
+				t.Fatalf("hovered %+v, want the file path's cells", h)
+			}
+			if tt.Cursor() != ui.CursorPointer {
+				t.Error("hovering a file path with Command did not show a hand")
+			}
+			if bytes.Equal(plain, tt.Image().Pix) {
+				t.Error("hovering a file path with Command did not paint its underline")
+			}
+			tt.HoldModifiers(0)
+			if term.v.hover.valid() || !bytes.Equal(plain, tt.Image().Pix) {
+				t.Error("releasing Command did not remove the underline")
+			}
+		})
+	}
+}
+
 // TestCommandClickLinkWithoutOpenLink: without Options.OpenLink, the system
 // opens hyperlinks of any scheme, paths are no links, the pointer is a hand
 // over a link while Command is held, and a click on a link goes before a

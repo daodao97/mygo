@@ -504,9 +504,11 @@ negative) before they are reported, and never more than 500 ms
 (`MaxDelay`). A watch compares what it sees with what it saw, so events say
 what is different, not every step that made it so: treat them as hints to
 read the files again. A write is a file whose size or modification time
-changed, or that the system says was written: permissions and other
-metadata, which indexers and antivirus touch, are not reported, nor are
-directories written, whose changes are their entries'.
+changed, or that the system says was written, or a file replaced at its
+path by another, as editors and atomic saves replace it (a temporary file
+renamed over it): permissions and other metadata, which indexers and
+antivirus touch, are not reported, nor are directories written, whose
+changes are their entries'.
 
 A watch doesn't look again until `Next` has taken the last batch: when the
 app is busy, what changed meanwhile comes in the next batch, so nothing is
