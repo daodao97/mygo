@@ -194,34 +194,59 @@ func leafRole(r platform.AccessRole) bool {
 }
 
 // innerText returns the texts of an element and those inside it, joined
-// by spaces.
+// by spaces. Assistive technology names elements by it every frame, so a
+// single text is returned as it is, without a copy.
 func (e *node) innerText() string {
-	var b strings.Builder
-	var walk func(e *node)
-	walk = func(e *node) {
-		if e.flags&flagInvisible != 0 {
-			return
-		}
-		if e.kind == kindText {
-			if e.text != "" {
-				if b.Len() > 0 {
-					b.WriteByte(' ')
-				}
-				b.WriteString(e.text)
-			}
-			return // its text holds that of the elements inside it
-		}
-		for ch := e.first; ch != nil; ch = ch.next {
-			walk(ch)
-		}
+	var t innerTexts
+	t.walk(e)
+	if t.b.Len() == 0 {
+		return t.first
 	}
-	walk(e)
-	return b.String()
+	return t.b.String()
+}
+
+// innerTexts joins texts: first holds the first alone, b all of them once
+// there is a second.
+type innerTexts struct {
+	first string
+	b     strings.Builder
+}
+
+func (t *innerTexts) walk(e *node) {
+	if e.flags&flagInvisible != 0 {
+		return
+	}
+	if e.kind == kindText {
+		if e.text != "" {
+			t.add(e.text)
+		}
+		return // its text holds that of the elements inside it
+	}
+	for ch := e.first; ch != nil; ch = ch.next {
+		t.walk(ch)
+	}
+}
+
+func (t *innerTexts) add(s string) {
+	switch {
+	case t.first == "":
+		t.first = s
+	case t.b.Len() == 0:
+		t.b.Grow(len(t.first) + 1 + len(s))
+		t.b.WriteString(t.first)
+		fallthrough
+	default:
+		t.b.WriteByte(' ')
+		t.b.WriteString(s)
+	}
 }
 
 // accessTree describes the last frame for assistive technology.
 func (rt *engine) accessTree() *platform.AccessTree {
-	t := &platform.AccessTree{}
+	// As many nodes as the last frame's, which the next is usually close
+	// to: growing the slice from empty would copy it again and again.
+	t := &platform.AccessTree{Nodes: make([]platform.AccessNode, 0, rt.accessNodes)}
+	defer func() { rt.accessNodes = len(t.Nodes) }()
 	var focused *node
 	switch root := rt.c.root; {
 	case root == nil:
@@ -292,15 +317,17 @@ func (rt *engine) accessElement(t *platform.AccessTree, e *node, parent int, scr
 		*focused = e
 	}
 	if role, ok := e.accessRole(); ok {
-		n := platform.AccessNode{
+		// Filled in where it lies in the tree: a node of its own, whose
+		// address accessDetails takes, would be allocated for each.
+		t.Nodes = append(t.Nodes, platform.AccessNode{
 			ID: e.id, Parent: parent, Role: role, Label: e.label,
 			Bounds: accessBounds(e),
-		}
+		})
+		n := &t.Nodes[len(t.Nodes)-1]
 		if scrolled {
 			n.Actions |= platform.ActionScrollIntoView
 		}
-		rt.accessDetails(e, &n)
-		t.Nodes = append(t.Nodes, n)
+		rt.accessDetails(e, n)
 		parent = len(t.Nodes) - 1
 		if e.kind == kindText {
 			rt.accessInline(t, e, parent)

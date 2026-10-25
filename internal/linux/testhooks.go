@@ -491,3 +491,34 @@ func TestActivateTray() bool {
 	emit(last.ind, signal, 0, 0, 0)
 	return true
 }
+
+// Decorations are what TestDecorations reports.
+type Decorations struct {
+	// CSD tells that GTK decorates the window itself (useCSD).
+	CSD bool
+	// Room is the room its decorations take around the window's content,
+	// left, top, right and bottom: the shadow and the border, where GTK
+	// resizes the window. Content is the size of the page or the native
+	// UI, below a menu bar.
+	Room    [4]int
+	Content [2]int
+	// OnX11 tells the display.
+	OnX11 bool
+}
+
+// TestDecorations reports how GTK decorates a window.
+func TestDecorations(handle uintptr) Decorations {
+	d := Decorations{OnX11: theBackend.onX11}
+	w := windowByHandle(handle)
+	if w == nil {
+		return d
+	}
+	var win, box, content gdkRectangle
+	gtkWidgetGetAllocation(w.win, &win)
+	gtkWidgetGetAllocation(w.box, &box)
+	gtkWidgetGetAllocation(w.contentWidget(), &content)
+	d.CSD = w.csd
+	d.Room = [4]int{int(box.X), int(box.Y), int(win.Width - box.X - box.Width), int(win.Height - box.Y - box.Height)}
+	d.Content = [2]int{int(content.Width), int(content.Height)}
+	return d
+}

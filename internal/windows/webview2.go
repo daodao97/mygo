@@ -92,7 +92,9 @@ const (
 	objectsGetValueAtIndex        = 4
 	fileGetPath                   = 3
 	newWinGetURI                  = 3
+	newWinPutNewWindow            = 4
 	newWinPutHandled              = 6
+	newWinGetDeferral             = 9
 	newWinGetWindowFeatures       = 10
 	featGetHasPosition            = 3
 	featGetHasSize                = 4

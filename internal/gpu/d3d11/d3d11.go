@@ -773,20 +773,31 @@ func (r *Renderer) imageView(img *scene.Image) uintptr {
 	}
 	t := r.images[img.ID()]
 	if t == nil {
+		pix := img.Pixels()
+		if pix == nil {
+			return 0
+		}
 		t = &texture{}
-		if err := r.newTexture(t, img.W, img.H, formatR8G8B8A8Unorm, img.Pix, 4); err != nil {
+		if err := r.newTexture(t, img.W, img.H, formatR8G8B8A8Unorm, pix, 4); err != nil {
 			return 0
 		}
 		t.ver = img.Version()
 		r.images[img.ID()] = t
+		img.Uploaded()
 	} else if t.w != img.W || t.h != img.H {
-		if err := r.newTexture(t, img.W, img.H, formatR8G8B8A8Unorm, img.Pix, 4); err != nil {
-			return 0
+		if pix := img.Pixels(); pix != nil {
+			if err := r.newTexture(t, img.W, img.H, formatR8G8B8A8Unorm, pix, 4); err != nil {
+				return 0
+			}
+			t.ver = img.Version()
+			img.Uploaded()
 		}
-		t.ver = img.Version()
 	} else if t.ver != img.Version() {
-		call(r.ctx, ctxUpdateSubresource, t.tex, 0, 0, uintptr(unsafe.Pointer(&img.Pix[0])), uintptr(img.W*4), 0)
-		t.ver = img.Version()
+		if pix := img.Pixels(); pix != nil {
+			call(r.ctx, ctxUpdateSubresource, t.tex, 0, 0, uintptr(unsafe.Pointer(&pix[0])), uintptr(img.W*4), 0)
+			t.ver = img.Version()
+			img.Uploaded()
+		}
 	}
 	t.lastFrame = r.frame
 	return t.srv

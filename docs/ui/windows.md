@@ -120,6 +120,42 @@ Text over an opaque background keeps the system's subpixel antialiasing
 antialiased in grayscale. `examples/vibrancy` picks the window's material
 in such a sidebar.
 
+### Liquid Glass over other apps
+
+`VibrancyGlass` and `VibrancyGlassClear` fill the window with macOS 26's
+Liquid Glass, which the system draws with what is behind the window:
+other apps' windows, the desktop. A frameless window with a
+`CornerRadius` is then a pane of glass floating over them, as a launcher's,
+a heads-up display or a floating toolbar:
+
+```go
+hud := mygo.NewWindow(mygo.WindowOptions{
+	Frameless:    true,
+	Transparent:  true,
+	AlwaysOnTop:  true,
+	Vibrancy:     mygo.VibrancyGlassClear, // Acrylic on Windows 11
+	CornerRadius: 18,
+	Width:        360,
+	Height:       64,
+	Content:      ui.View(view), // its root transparent where c.Vibrancy()
+})
+hud.SetActiveAppearance(true) // stays clear over the app in front (macOS)
+```
+
+The [glass plugin](../plugins/glass.md) draws Liquid Glass too, on every
+platform, but with what the window itself draws: a toolbar over content
+scrolling under it. The window's glass shows what no window of the app
+draws, and only where the system has it: before macOS 26 it is the popover
+or HUD material, on Windows 11 Acrylic, and on Linux none, which
+`c.Vibrancy()` tells.
+
+The clear glass looks clear only in a window drawn as active, the key
+window of the app in front; otherwise the system frosts it, as it does a
+panel floating over the app the user is in. `SetActiveAppearance` keeps
+the window drawn as active, with a private AppKit call that a later macOS may
+drop, the window then drawn as any other: apps for the Mac App Store
+should leave it off.
+
 ## Closing
 
 A view can close its own window, from a button's click or its callback.

@@ -350,6 +350,55 @@ Overlapping requests remain effective until all are released. Inactive or
 background scenes restore automatic idle; a retained request resumes when
 the scene becomes active again. This does not grant background execution;
 `display=false` is a no-op on iOS.
+
+## Now Playing and media keys
+
+`mygo.NowPlaying` shows what the app plays where the system shows media:
+Now Playing in Control Center and the menu bar on macOS, the media
+controls of the volume flyout and the lock screen on Windows, and on Linux
+the MPRIS clients, as GNOME's and KDE's media controls and `playerctl`.
+While it shows something, the media keys of keyboards and headsets, and
+those controls, send the app commands:
+
+```go
+mygo.NowPlaying.Set(mygo.NowPlayingInfo{
+	Title: "Spring", Artist: "Vivaldi", Album: "The Four Seasons",
+	Artwork:  cover, // PNG or JPEG
+	Duration: 3*time.Minute + 20*time.Second,
+	Commands: mygo.MediaPlay | mygo.MediaPause | mygo.MediaNext | mygo.MediaPrevious | mygo.MediaSeek,
+})
+mygo.NowPlaying.OnCommand(func(cmd mygo.MediaCommand, pos time.Duration) {
+	switch cmd {
+	case mygo.MediaPause:
+		player.Pause()
+		mygo.NowPlaying.SetPlayback(mygo.PlaybackPaused, pos) // where playback is
+	case mygo.MediaSeek:
+		player.Seek(pos)
+		mygo.NowPlaying.SetPlayback(mygo.PlaybackPlaying, pos)
+	case mygo.MediaNext:
+		playNext() // and Set the next track's info
+	}
+})
+mygo.NowPlaying.Clear() // the app no longer shows in the controls
+```
+
+The system advances the position while the state is `PlaybackPlaying`, so
+the app sets it again only when playback jumps. The play/pause key sends
+`MediaPause` while the state is playing and `MediaPlay` otherwise, and
+only the commands the info offers reach `OnCommand` (`Commands` 0 offers
+play, pause and stop). `pos` is where `MediaSeek` moves to, and for the
+other commands where playback is as they come. An app playing a player of package `audio` can let
+`Control` play, pause, stop and seek it, and show its state:
+
+```go
+release := mygo.NowPlaying.Control(music) // an *audio.Player
+defer release()
+```
+
+`Control` hears the player's end; after the app plays, pauses or seeks it
+itself, `NowPlaying.Sync` shows it. In browsers, `NowPlaying` is the
+page's Media Session.
+
 ## Network
 
 `mygo.Network` tells whether the computer is online and whether the

@@ -73,9 +73,11 @@ func drag(w *mygo.Window, points [][2]float64) (ok bool) {
 func webViewAttached(*mygo.Window) (bool, bool) { return false, false }
 
 // Collection behaviors and deactivating the app are macOS's.
-func collectionBehavior(*mygo.Window) (uint, bool) { return 0, false }
-func deactivateApp() bool                          { return false }
-func appActive() (bool, bool)                      { return false, false }
+func collectionBehavior(*mygo.Window) (uint, bool)               { return 0, false }
+func deactivateApp() bool                                        { return false }
+func material(*mygo.Window) (string, int, float64, bool, bool)   { return "", 0, 0, false, false }
+func roundedBacking(*mygo.Window) (bool, float64, float64, bool) { return false, 0, 0, false }
+func appActive() (bool, bool)                                    { return false, false }
 
 // WebView2 opens DevTools in a window of its own.
 func dockDevTools(*mygo.Window) bool { return false }

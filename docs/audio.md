@@ -45,7 +45,9 @@ sound's players need no closing.
 A `Player` plays, pauses (`Pause`), and goes back to the start (`Stop`);
 `Play` after its end plays it again from the start. `Seek` moves it,
 `Position` and `Duration` say where it is and how long it is, and
-`Playing` turns false at its end, so a game can wait for a sound.
+`Playing` turns false at its end, so a game can wait for a sound;
+`OnEnd` calls a function then, on a goroutine of its own, as a playlist
+plays the next track (a looping player never ends).
 
 | setting | effect |
 |---|---|
@@ -58,6 +60,20 @@ A `Player` plays, pauses (`Pause`), and goes back to the start (`Stop`);
 The setters return the player, to chain them. Volume changes, pauses and
 resumes ramp over 5 ms, so none clicks. `audio.SetVolume` sets the volume
 of everything.
+
+## Media keys and Now Playing
+
+`mygo.NowPlaying.Control` lets the media keys and the system's media
+controls (Control Center on macOS, the volume flyout on Windows, MPRIS
+clients on Linux) play, pause, stop and seek a player, and shows its state
+there; see [Now Playing](native.md#now-playing-and-media-keys):
+
+```go
+release := mygo.NowPlaying.Control(music)
+mygo.NowPlaying.Set(mygo.NowPlayingInfo{Title: "Spring", Artist: "Vivaldi", Commands: mygo.MediaNext})
+music.Play()
+mygo.NowPlaying.Sync() // after playing it from the app
+```
 
 ## Formats
 

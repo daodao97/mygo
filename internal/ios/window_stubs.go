@@ -37,6 +37,7 @@ func (w *window) HasShadow() bool                            { return false }
 func (w *window) SetIgnoreMouseEvents(v bool)                {}
 func (w *window) SetContentProtection(v bool)                {}
 func (w *window) SetVibrancy(material string)                {}
+func (w *window) SetActiveAppearance(bool)                   {}
 func (w *window) SetProgressBar(state string, value float64) {}
 func (w *window) FlashFrame(flash bool)                      {}
 func (w *window) SetSkipTaskbar(v bool)                      {}

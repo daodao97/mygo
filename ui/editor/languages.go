@@ -131,6 +131,7 @@ func makeLanguages() {
 	notInText := []TokenKind{TokenString, TokenComment}
 	goLang := &Language{
 		Name: "Go", Extensions: []string{".go"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^import\b`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'", "`"), TabSize: 4, HardTabs: true,
 		Tokenizer: &lexer{
 			lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}},
@@ -148,6 +149,7 @@ func makeLanguages() {
 	jsStrings := []lexString{cString("\""), cString("'"), {open: "`", close: "`", escape: '\\', multiline: true, interpOpen: "${", interpClose: "}", kind: TokenString}}
 	javascript := &Language{
 		Name: "JavaScript", Extensions: []string{".js", ".mjs", ".cjs", ".jsx"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^import[\s{*'"]`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'", "`"), WordChars: "$", TabSize: 2,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, strings: jsStrings,
 			words: words(jsWords...), identChars: "$", calls: true, capitalTypes: true, regexps: true, decorator: '@', operators: cOperators},
@@ -156,6 +158,7 @@ func makeLanguages() {
 		TokenType, "any boolean never number object string symbol unknown void bigint")
 	typescript := &Language{
 		Name: "TypeScript", Extensions: []string{".ts", ".mts", ".cts", ".tsx"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^import[\s{*'"]`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'", "`"), WordChars: "$", TabSize: 2,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, strings: jsStrings,
 			words: words(tsWords...), identChars: "$", calls: true, capitalTypes: true, regexps: true, decorator: '@', operators: cOperators},
@@ -185,6 +188,7 @@ func makeLanguages() {
 	}
 	python := &Language{
 		Name: "Python", Extensions: []string{".py", ".pyi", ".pyw"}, Filenames: []string{"SConstruct", "SConscript"}, LineComment: "#",
+		Imports:  regexp.MustCompile(`^(import|from)\s`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 4,
 		IncreaseIndent: regexp.MustCompile(`^\s*(class|def|elif|else|except|finally|for|if|try|while|with|async|match|case)\b.*:\s*(#.*)?$|[\[({]\s*$`),
 		Tokenizer: &lexer{lineComments: []string{"#"}, strings: pyStrings,
@@ -196,6 +200,7 @@ func makeLanguages() {
 	}
 	rust := &Language{
 		Name: "Rust", Extensions: []string{".rs"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^(pub(\([^)]*\))?\s+)?(use|extern\s+crate)\s`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\""), TabSize: 4,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, nestComments: true,
 			strings: []lexString{{open: "\"", close: "\"", escape: '\\', multiline: true, kind: TokenString},
@@ -213,12 +218,14 @@ func makeLanguages() {
 		TokenConstant, "NULL true false"}
 	c := &Language{
 		Name: "C", Extensions: []string{".c", ".h"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^#\s*(include|import)\b`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 4,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, strings: []lexString{cString("\""), cString("'")},
 			words: words(cWords...), calls: true, directives: true, operators: cOperators},
 	}
 	cpp := &Language{
 		Name: "C++", Extensions: []string{".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".ino", ".mm", ".m"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^#\s*(include|import)\b`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 4,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, strings: []lexString{cString("\""), cString("'"), {open: "R\"(", close: ")\"", multiline: true, kind: TokenString}},
 			words: words(append(append([]any{}, cWords...), TokenKeyword, "alignas alignof and asm catch class concept consteval constexpr constinit co_await co_return co_yield decltype delete dynamic_cast explicit export friend mutable namespace new noexcept not operator or private protected public reinterpret_cast requires static_assert static_cast template this thread_local throw try typeid typename using virtual xor override final @interface @implementation @end @property self",
@@ -230,12 +237,14 @@ func makeLanguages() {
 		TokenConstant, "true false null"}
 	java := &Language{
 		Name: "Java", Extensions: []string{".java"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^import\s`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 4,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, strings: []lexString{{open: `"""`, close: `"""`, escape: '\\', multiline: true, kind: TokenString}, cString("\""), cString("'")},
 			words: words(javaWords...), calls: true, capitalTypes: true, decorator: '@', operators: cOperators},
 	}
 	kotlin := &Language{
 		Name: "Kotlin", Extensions: []string{".kt", ".kts"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^import\s`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 4,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, nestComments: true,
 			strings: []lexString{{open: `"""`, close: `"""`, multiline: true, interpOpen: "${", interpClose: "}", dollar: true, kind: TokenString},
@@ -246,6 +255,7 @@ func makeLanguages() {
 	}
 	swift := &Language{
 		Name: "Swift", Extensions: []string{".swift"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^(@\w+(\([^)]*\))?\s+)?import\s`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\""), TabSize: 4,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, nestComments: true,
 			strings: []lexString{{open: `"""`, close: `"""`, escape: '\\', multiline: true, kind: TokenString}, cString("\"")},
@@ -255,6 +265,7 @@ func makeLanguages() {
 	}
 	csharp := &Language{
 		Name: "C#", Extensions: []string{".cs", ".csx"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^(global\s+)?using\s+(static\s+)?[\w.]+(\s*=\s*[^;]+)?;`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 4,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}},
 			strings: []lexString{{open: "@\"", close: "\"", multiline: true, kind: TokenString}, {open: "$\"", close: "\"", escape: '\\', interpOpen: "{", interpClose: "}", kind: TokenString}, cString("\""), cString("'")},
@@ -300,6 +311,7 @@ func makeLanguages() {
 	}
 	ruby := &Language{
 		Name: "Ruby", Extensions: []string{".rb", ".rake", ".gemspec"}, Filenames: []string{"Gemfile", "Rakefile", "Podfile", "Fastfile"}, LineComment: "#",
+		Imports:  regexp.MustCompile(`^require(_relative)?\b`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 2,
 		IncreaseIndent: regexp.MustCompile(`^\s*(class|module|def|if|unless|else|elsif|while|until|for|begin|rescue|ensure|case|when)\b|\bdo(\s*\|.*\|)?\s*$|[\[({]\s*$`),
 		DecreaseIndent: regexp.MustCompile(`^\s*(end|else|elsif|rescue|ensure|when)\b`),
@@ -311,6 +323,7 @@ func makeLanguages() {
 	}
 	lua := &Language{
 		Name: "Lua", Extensions: []string{".lua"}, LineComment: "--", BlockComment: [2]string{"--[[", "]]"},
+		Imports:  regexp.MustCompile(`^local\s+\w+\s*=\s*require\b`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 2,
 		IncreaseIndent: regexp.MustCompile(`\b(then|do|else|function\b.*\))\s*$|^\s*(local\s+)?function\b|[\[({]\s*$`),
 		DecreaseIndent: regexp.MustCompile(`^\s*(end|else|elseif|until|\}|\))`),
@@ -321,6 +334,7 @@ func makeLanguages() {
 	}
 	php := &Language{
 		Name: "PHP", Extensions: []string{".php"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^(use|require|require_once|include|include_once)\s`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 4,
 		Tokenizer: &lexer{lineComments: []string{"//", "#"}, blockComments: [][2]string{{"/*", "*/"}},
 			strings: []lexString{{open: "\"", close: "\"", escape: '\\', multiline: true, dollar: true, kind: TokenString}, {open: "'", close: "'", escape: '\\', multiline: true, kind: TokenString}},
@@ -330,6 +344,7 @@ func makeLanguages() {
 	}
 	css := &Language{
 		Name: "CSS", Extensions: []string{".css", ".scss", ".less", ".sass", ".pcss"}, BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^@(import|use|forward)\s`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), WordChars: "-", TabSize: 2,
 		Tokenizer: &cssLexer{},
 	}
@@ -376,6 +391,7 @@ func makeLanguages() {
 	}
 	protobuf := &Language{
 		Name: "Protobuf", Extensions: []string{".proto"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^import\s`),
 		Brackets: cBrackets, AutoClose: cAutoClose("\""), TabSize: 2,
 		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, strings: []lexString{cString("\""), cString("'")},
 			words: words(TokenKeyword, "syntax package import option message enum service rpc returns repeated optional required oneof map reserved extend extensions to max stream public weak",
@@ -385,6 +401,7 @@ func makeLanguages() {
 	}
 	zig := &Language{
 		Name: "Zig", Extensions: []string{".zig", ".zon"}, LineComment: "//", Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 4,
+		Imports: regexp.MustCompile(`^(pub\s+)?const\s+\w+\s*=\s*@import\(`),
 		Tokenizer: &lexer{lineComments: []string{"//"}, strings: []lexString{cString("\""), cString("'"), {open: "\\\\", close: "\x00", kind: TokenString}},
 			words: words(TokenKeyword, "addrspace align allowzero and anyframe anytype asm async await break callconv catch comptime const continue defer else enum errdefer error export extern fn for if inline linksection noalias noinline nosuspend opaque or orelse packed pub resume return struct suspend switch test threadlocal try union unreachable usingnamespace var volatile while",
 				TokenType, "i8 u8 i16 u16 i32 u32 i64 u64 i128 u128 isize usize f16 f32 f64 f80 f128 bool void noreturn type anyerror comptime_int comptime_float",

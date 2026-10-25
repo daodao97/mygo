@@ -295,9 +295,7 @@ func (w *window) setUp(controller uintptr) {
 		comCall(controller, ctlPutIsVisible, 1)
 		w.resizeWebView()
 	}
-	if w.caption != nil {
-		w.caption.layout() // above the webview's window
-	}
+	w.layoutControls() // above the webview's window
 	if o.Zoom > 0 && o.Zoom != 1 {
 		w.SetZoom(o.Zoom)
 	}
@@ -404,6 +402,11 @@ func (w *window) navigationCompleted(_, args uintptr) {
 	var ok int32
 	comCall(args, navCompletedGetIsSuccess, uintptr(unsafe.Pointer(&ok)))
 	if ok != 0 {
+		if w.reloadAdopted {
+			w.reloadAdopted = false
+			comCall(w.webview, wvReload)
+			return
+		}
 		if zoomByScript && w.zoom != 1 {
 			putZoom(w, w.zoom) // a new document starts unzoomed
 		}
@@ -412,7 +415,7 @@ func (w *window) navigationCompleted(_, args uintptr) {
 	}
 	var status int32
 	comCall(args, navCompletedGetWebErrorStatus, uintptr(unsafe.Pointer(&status)))
-	if status == 13 { // COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED: another navigation
+	if status == 14 { // COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED: another navigation
 		return
 	}
 	w.h.LoadFailed(w.URL(), int(status), "navigation failed (COREWEBVIEW2_WEB_ERROR_STATUS "+strconv.Itoa(int(status))+")")
@@ -528,7 +531,8 @@ func (w *window) newWindowRequested(_, args uintptr) {
 	comCall(args, newWinPutHandled, 1)
 	var p uintptr
 	comCall(args, newWinGetURI, uintptr(unsafe.Pointer(&p)))
-	req := platform.NewWindowRequest{URL: w.appURL(takeWstr(p))}
+	raw := takeWstr(p)
+	req := platform.NewWindowRequest{URL: w.appURL(raw)}
 	var features uintptr
 	if comCall(args, newWinGetWindowFeatures, uintptr(unsafe.Pointer(&features))) == sOK && features != 0 {
 		var hasSize, hasPos int32
@@ -549,11 +553,44 @@ func (w *window) newWindowRequested(_, args uintptr) {
 		}
 		release(features)
 	}
-	// The new window loads the page itself, without a relation to its
-	// opener (as on Linux).
-	if child, ok := w.h.NewWindow(req).(*window); ok && child != nil {
-		child.LoadURL(req.URL)
+	child, ok := w.h.NewWindow(req).(*window)
+	if !ok || child == nil {
+		return // denied: window.open returns null
 	}
+	// The child's web view becomes the popup, keeping its relation to the
+	// opener (window.opener, postMessage), as on macOS: WebView2 waits
+	// for it (a deferral) and navigates it itself. It is handed over once
+	// set up, its scripts and handlers in place, and before it navigates;
+	// it shares the opener's environment, as every window does.
+	//
+	// WebView2 can't load a URL of the app's schemes, which window.open
+	// gives it as http://<scheme>.localhost/ (openScript), but a link
+	// still may: the child loads it as an independent page.
+	var deferral uintptr
+	if w.webURL(raw) != raw || failed(comCall(args, newWinGetDeferral, uintptr(unsafe.Pointer(&deferral)))) || deferral == 0 {
+		child.LoadURL(req.URL) // an independent page, as on Linux
+		return
+	}
+	addRef(args)
+	done := func() {
+		comCall(deferral, deferralComplete)
+		release(deferral)
+		release(args)
+	}
+	child.withWebViewOr(func() {
+		if hr := comCall(args, newWinPutNewWindow, child.webview); failed(hr) {
+			log.Print(hresultError("adopting the new window's web view", hr))
+			done()
+			child.LoadURL(req.URL)
+			return
+		}
+		done()
+		// WebView2 drops the chrome.webview messages the first document of
+		// an adopted popup posts once it loaded, so the bridge's calls get
+		// no reply; the popup's next document posts them all. A page of
+		// the app, which uses the bridge, loads again (navigationCompleted).
+		child.reloadAdopted = w.appURL(raw) != raw
+	}, func(error) { done() }) // the child closed, or has no web view
 }
 
 // Accelerator keys reach the webview, not the window: run the menu items
@@ -690,6 +727,9 @@ func (w *window) addUserScripts() {
 	}
 	if w.hidingScript != "" {
 		scripts = append(scripts[:len(scripts):len(scripts)], platform.UserScript{Source: w.hidingScript, AllFrames: true})
+	}
+	if len(w.opts.Schemes) > 0 {
+		scripts = append(scripts[:len(scripts):len(scripts)], platform.UserScript{Source: w.openScript(), AllFrames: true})
 	}
 	gen := w.scriptGen
 	for _, us := range scripts {
@@ -1148,4 +1188,24 @@ func (r *schemeResponse) release() {
 	r.cancel()
 	release(r.deferral)
 	release(r.args)
+}
+
+// openScript makes window.open give WebView2 the URLs of the app's schemes
+// as the http://<scheme>.localhost/ URLs that serve them (webURL), which
+// the popup can load as it opens, keeping its opener (newWindowRequested).
+func (w *window) openScript() string {
+	schemes, _ := json.Marshal(w.opts.Schemes)
+	return `(() => {
+	const schemes = ` + string(schemes) + `, open = window.open;
+	if (typeof open !== "function") return;
+	window.open = function (url, ...rest) {
+		try {
+			const u = new URL(String(url), location.href), scheme = u.protocol.slice(0, -1);
+			if (u.hostname === "localhost" && !u.port && schemes.includes(scheme)) {
+				url = "http://" + scheme + ".localhost" + u.pathname + u.search + u.hash;
+			}
+		} catch {}
+		return open.call(this, url, ...rest);
+	};
+})();`
 }

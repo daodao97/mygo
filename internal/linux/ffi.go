@@ -251,6 +251,7 @@ var (
 	gtkWindowSetResizable               func(w ptr, v bool)
 	gtkWindowGetResizable               func(w ptr) bool
 	gtkWindowSetDecorated               func(w ptr, v bool)
+	gtkWindowSetTitlebar                func(w, titlebar ptr)
 	gtkWindowSetDeletable               func(w ptr, v bool)
 	gtkWindowGetDeletable               func(w ptr) bool
 	gtkWindowSetKeepAbove               func(w ptr, v bool)
@@ -678,6 +679,7 @@ func load() error {
 	mustBind(t, &gtkWindowSetResizable, "gtk_window_set_resizable")
 	mustBind(t, &gtkWindowGetResizable, "gtk_window_get_resizable")
 	mustBind(t, &gtkWindowSetDecorated, "gtk_window_set_decorated")
+	mustBind(t, &gtkWindowSetTitlebar, "gtk_window_set_titlebar")
 	mustBind(t, &gtkWindowSetDeletable, "gtk_window_set_deletable")
 	mustBind(t, &gtkWindowGetDeletable, "gtk_window_get_deletable")
 	mustBind(t, &gtkWindowSetKeepAbove, "gtk_window_set_keep_above")

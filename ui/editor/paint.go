@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -20,6 +21,8 @@ type frame struct {
 	first, last int
 	matches     []diffRange
 	current     diffRange
+	// texts are the app's text backgrounds in the lines in view.
+	texts       []TextBackground
 	occurrence  string
 	brackets    [2]Range
 	bracketsOK  bool
@@ -152,6 +155,11 @@ func (ed *editor) prepare(f *frame) {
 		f.matches = m[i:j]
 		if ed.find.current < len(m) {
 			f.current = m[ed.find.current]
+		}
+	}
+	for _, b := range ed.o.textBgs {
+		if b.Start < b.End && b.End > a && b.Start < z && b.Color.A > 0 {
+			f.texts = append(f.texts, b)
 		}
 	}
 	p := ed.primary()
@@ -338,6 +346,14 @@ func (ed *editor) paintLine(p *ui.Painter, r ui.Rect, f *frame, line int, g line
 		if active && !lineSelected {
 			p.Fill(ui.Rect{X: textRect.X, Y: y, W: textRect.W, H: lh}, ct.ActiveLine, 0)
 		}
+		// The app's ranges of text, at characters' edges.
+		for _, b := range f.texts {
+			if b.End <= l.start || b.Start >= l.start+len(l.text) {
+				continue
+			}
+			a, z := runeAt(l.text, max(b.Start-l.start, 0)), runeAt(l.text, min(b.End-l.start, len(l.text)))
+			ed.fillRange(p, f, l, row, ox, y, l.toDisp(a, false), l.toDisp(z, false), b.Color, 0)
+		}
 		// Words a diff changed.
 		if ed.o.decor != nil {
 			for _, w := range ed.o.decor.words(line) {
@@ -485,6 +501,14 @@ func (s lineLook) word(ct *Theme, ed *editor) ui.Color {
 		return ct.Occurrence
 	}
 	return s.bar.Alpha(0.22)
+}
+
+// runeAt returns i, or the start of the character holding byte i of s.
+func runeAt(s string, i int) int {
+	for i > 0 && i < len(s) && !utf8.RuneStart(s[i]) {
+		i--
+	}
+	return i
 }
 
 // fillRange fills displayed bytes a to b of a row.

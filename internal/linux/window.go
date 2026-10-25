@@ -61,6 +61,10 @@ type window struct {
 	// controls are the title buttons over the page of a window with a
 	// hidden title bar (titlebar.go), in an overlay with the web view.
 	controls *windowControls
+	// csd tells that GTK decorates a frameless window or one with a hidden
+	// title bar itself, with an empty title bar: it draws the shadow and
+	// the border, and resizes the window at its edges (see useCSD).
+	csd bool
 
 	// flyout is how a flyout (WindowOptions.Flyout) was placed last, at
 	// flyoutSize, once placed is set. grabbed tells that a focusable one
@@ -176,7 +180,11 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	gtkWindowSetResizable(w.win, o.Resizable)
 	gtkWindowSetDeletable(w.win, o.Closable)
 	if w.undecorated() {
-		gtkWindowSetDecorated(w.win, false)
+		if w.useCSD() {
+			w.decorate()
+		} else {
+			gtkWindowSetDecorated(w.win, false)
+		}
 	}
 	if o.AlwaysOnTop {
 		w.SetAlwaysOnTop(true)
@@ -255,7 +263,7 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	if w.web != 0 {
 		b.byWebView[w.web] = w
 	}
-	if o.Frameless && o.Flyout == nil && !w.layer && b.announceCSD != nil {
+	if o.Frameless && !w.csd && o.Flyout == nil && !w.layer && b.announceCSD != nil {
 		// GTK asks a Wayland compositor that speaks
 		// org_kde_kwin_server_decoration (KWin, COSMIC, Sway…) to decorate
 		// every window it does not decorate itself, an undecorated one
@@ -778,11 +786,10 @@ func (w *window) SetBackgroundColor(c platform.Color) {
 
 func (w *window) SetOpacity(v float64)      { gtkWidgetSetOpacity(w.win, v) }
 func (w *window) Opacity() float64          { return gtkWidgetGetOpacity(w.win) }
-func (w *window) SetHasShadow(bool)         {}
-func (w *window) HasShadow() bool           { return true }
 func (w *window) SetIgnoreMouseEvents(bool) {}
 func (w *window) SetContentProtection(bool) {}
 func (w *window) SetVibrancy(string)        {}
+func (w *window) SetActiveAppearance(bool)  {}
 
 // StartDrag begins moving the window with the last button press. On an
 // undecorated window the compositor takes the pointer once the move
@@ -822,7 +829,8 @@ func (w *window) checkDragStart(event ptr) {
 }
 
 // GTK gives windows without decorations no resize edges, so the outer
-// pixels of the page resize frameless windows, as in Electron.
+// pixels of the page resize frameless windows, as in Electron. Those GTK
+// decorates itself (useCSD) resize at its edges, around the page.
 const (
 	resizeInset  = 5  // pixels of the page along the edges
 	resizeCorner = 16 // pixels along the edges from a corner that resize it
@@ -848,7 +856,7 @@ var resizeEdges = [8]struct {
 // GdkEventMotion or GdkEventButton) would resize, or -1.
 func (w *window) resizeEdge(event ptr) int32 {
 	// GdkEventMotion and GdkEventButton: window 8, x 24, y 32.
-	if !w.undecorated() || w.state&(stateMaximized|stateFullscreen) != 0 ||
+	if !w.undecorated() || w.csd || w.state&(stateMaximized|stateFullscreen) != 0 ||
 		field[ptr](event, 8) != w.contentWindow() || !gtkWindowGetResizable(w.win) {
 		return -1
 	}
@@ -946,8 +954,53 @@ func (w *window) hiddenTitleBar() bool {
 }
 
 // undecorated reports a window without the window manager's decorations,
-// whose page's outer pixels resize it.
+// whose page's outer pixels resize it unless GTK decorates it (useCSD).
 func (w *window) undecorated() bool { return w.opts.Frameless || w.hiddenTitleBar() }
+
+// useCSD reports whether GTK decorates an undecorated window itself, as it
+// does the windows of GNOME's apps: its client-side decorations, with an
+// empty title bar, draw the shadow and the border around the page, and
+// resize the window at its edges, where they are. That is on Wayland,
+// whose compositors leave windows that decorate themselves without either.
+// GTK sizes the window without them, so that the page keeps the size asked
+// for, and drops them while the window is maximized or in full screen.
+//
+// Not decorated:
+//   - Windows without a shadow (DisableShadow), as before.
+//   - Transparent windows: the decorations would outline the window's
+//     rectangle around a page that shows its own shape.
+//   - Flyouts and panels: popups take no decorations, a panel on Wayland
+//     is a layer surface, which the compositor sizes and puts without
+//     them, and both have a look of their own (Flyout.Shadow).
+//   - A hidden title bar where the compositor decorates windows itself
+//     (KWin): it keeps the compositor's title bar, with the buttons.
+//   - X11, where Mutter puts its shadow around opaque undecorated windows
+//     as it composites, and where a window that decorates itself has its
+//     shadow inside its X window, which Bounds, SetBounds and the frame
+//     extents of the window manager (frameExtents) do not count.
+func (w *window) useCSD() bool {
+	o := w.opts
+	return !w.b.onX11 && o.HasShadow && !o.Transparent && o.Flyout == nil && !o.Panel &&
+		!(w.hiddenTitleBar() && w.b.compositorDecorates)
+}
+
+// decorate has GTK decorate the window itself, before it is realized, with
+// a title bar that never shows: GtkWindow lays out and draws no title bar
+// that is not visible, and keeps its decorations.
+func (w *window) decorate() {
+	gtkWindowSetTitlebar(w.win, gtkBoxNew(0, 0))
+	w.csd = true
+}
+
+// The shadow comes with the window (useCSD): GTK styles the decorations
+// of a window that shows once, so that a style taking them away later
+// changes nothing until the window is hidden and shown again, and then
+// leaves the page smaller.
+func (w *window) SetHasShadow(bool) {}
+
+// HasShadow reports whether the window manager decorates the window, or GTK
+// draws a shadow around it.
+func (w *window) HasShadow() bool { return !w.undecorated() || w.csd }
 
 func (w *window) TitleBarDoubleClicked() {
 	if w.IsMaximized() {

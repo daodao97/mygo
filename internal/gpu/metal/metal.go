@@ -982,23 +982,34 @@ func (r *Renderer) imageTexture(img *scene.Image) uintptr {
 	}
 	t := r.images[img.ID()]
 	if t == nil {
-		tex := r.newTexture(img.W, img.H, pixelFormatRGBA8Unorm, usageShaderRead, img.Pix, img.W*4)
+		pix := img.Pixels()
+		if pix == nil {
+			return 0
+		}
+		tex := r.newTexture(img.W, img.H, pixelFormatRGBA8Unorm, usageShaderRead, pix, img.W*4)
 		if tex == 0 {
 			return 0
 		}
 		t = &texture{tex: tex, w: img.W, h: img.H, ver: img.Version()}
 		r.images[img.ID()] = t
+		img.Uploaded()
 	} else if t.w != img.W || t.h != img.H {
-		tex := r.newTexture(img.W, img.H, pixelFormatRGBA8Unorm, usageShaderRead, img.Pix, img.W*4)
-		if tex == 0 {
-			return 0
+		if pix := img.Pixels(); pix != nil {
+			tex := r.newTexture(img.W, img.H, pixelFormatRGBA8Unorm, usageShaderRead, pix, img.W*4)
+			if tex == 0 {
+				return 0
+			}
+			release(&t.tex)
+			t.tex, t.w, t.h, t.ver = tex, img.W, img.H, img.Version()
+			img.Uploaded()
 		}
-		release(&t.tex)
-		t.tex, t.w, t.h, t.ver = tex, img.W, img.H, img.Version()
 	} else if t.ver != img.Version() {
-		r.waitLast() // frames in flight read this texture
-		msgReplaceRegion(t.tex, sel("replaceRegion:mipmapLevel:withBytes:bytesPerRow:"), mtlRegion{W: uint(img.W), H: uint(img.H), D: 1}, 0, unsafe.Pointer(&img.Pix[0]), uint(img.W*4))
-		t.ver = img.Version()
+		if pix := img.Pixels(); pix != nil {
+			r.waitLast() // frames in flight read this texture
+			msgReplaceRegion(t.tex, sel("replaceRegion:mipmapLevel:withBytes:bytesPerRow:"), mtlRegion{W: uint(img.W), H: uint(img.H), D: 1}, 0, unsafe.Pointer(&pix[0]), uint(img.W*4))
+			t.ver = img.Version()
+			img.Uploaded()
+		}
 	}
 	t.lastFrame = r.frame
 	return t.tex

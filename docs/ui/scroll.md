@@ -73,7 +73,11 @@ if app.added {
 }
 ```
 
-The keyboard focus scrolls into view as it moves.
+The keyboard focus scrolls into view as it moves. An element with a
+`TextInputClient` of the app's ([text input clients](text-input-client.md))
+scrolls its caret into view, where `BoundsForRange` places it, rather than
+its whole box: a code editor as high as its lines shows the line being
+edited as it takes the focus, not its first.
 
 ## Scroll bars
 

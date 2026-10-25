@@ -405,6 +405,52 @@ func TestCollectionBehavior(handle uintptr) uint {
 	return uint(sendInt(id(handle), "collectionBehavior"))
 }
 
+// TestMaterial returns the class of a window's material (Vibrancy), its
+// style when glass, the corners its content view is cut to, and whether
+// the window draws as active.
+func TestMaterial(handle uintptr) (class string, style int, radius float64, active bool) {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil {
+		return "", 0, 0, false
+	}
+	if w.effect != 0 {
+		class = goString(send(w.effect, "className"))
+		if w.glass {
+			style = sendInt(w.effect, "style")
+		}
+	}
+	if layer := send(w.view, "layer"); layer != 0 {
+		radius = msgFloat(layer, sel("cornerRadius"))
+	}
+	if respondsTo(w.win, "_hasActiveAppearance") {
+		active = sendBool(w.win, "_hasActiveAppearance")
+	}
+	return class, style, radius, active
+}
+
+// TestRoundedBacking reports whether a window is opaque, and the alpha and
+// red, in sRGB, of its content view's background, which fills its rounded
+// corners' inside.
+func TestRoundedBacking(handle uintptr) (opaque bool, alpha, red float64) {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil {
+		return false, 0, 0
+	}
+	opaque = sendBool(w.win, "isOpaque")
+	withPool(func() {
+		if layer := send(w.view, "layer"); layer != 0 {
+			if c := send(layer, "backgroundColor"); c != 0 {
+				color := send(send(class("NSColor"), "colorWithCGColor:", uintptr(c)), "colorUsingColorSpace:", uintptr(send(class("NSColorSpace"), "sRGBColorSpace")))
+				if color != 0 {
+					alpha = msgFloat(color, sel("alphaComponent"))
+					red = msgFloat(color, sel("redComponent"))
+				}
+			}
+		}
+	})
+	return opaque, alpha, red
+}
+
 // TestDockInspector opens the web inspector of a window docked to it, and
 // reports whether the window has one.
 func TestDockInspector(handle uintptr) bool {

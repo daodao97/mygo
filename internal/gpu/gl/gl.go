@@ -540,18 +540,29 @@ func (r *Renderer) imageTexture(img *scene.Image) uintptr {
 	}
 	t := r.images[img.ID()]
 	if t == nil {
-		t = &texture{tex: newTexture(glRGBA8, glRGBA, img.W, img.H, img.Pix, img.W*4), w: img.W, h: img.H, ver: img.Version()}
+		pix := img.Pixels()
+		if pix == nil {
+			return 0
+		}
+		t = &texture{tex: newTexture(glRGBA8, glRGBA, img.W, img.H, pix, img.W*4), w: img.W, h: img.H, ver: img.Version()}
 		r.images[img.ID()] = t
+		img.Uploaded()
 	} else if t.w != img.W || t.h != img.H {
-		glDeleteTextures(1, &t.tex)
-		t.tex = newTexture(glRGBA8, glRGBA, img.W, img.H, img.Pix, img.W*4)
-		t.w, t.h, t.ver = img.W, img.H, img.Version()
+		if pix := img.Pixels(); pix != nil {
+			glDeleteTextures(1, &t.tex)
+			t.tex = newTexture(glRGBA8, glRGBA, img.W, img.H, pix, img.W*4)
+			t.w, t.h, t.ver = img.W, img.H, img.Version()
+			img.Uploaded()
+		}
 	} else if t.ver != img.Version() {
-		glBindTexture(glTexture2D, t.tex)
-		unpack(img.W*4, glRGBA8)
-		glTexSubImage2D(glTexture2D, 0, 0, 0, int32(img.W), int32(img.H), glRGBA, glUnsignedByte, unsafe.Pointer(&img.Pix[0]))
-		unpackReset()
-		t.ver = img.Version()
+		if pix := img.Pixels(); pix != nil {
+			glBindTexture(glTexture2D, t.tex)
+			unpack(img.W*4, glRGBA8)
+			glTexSubImage2D(glTexture2D, 0, 0, 0, int32(img.W), int32(img.H), glRGBA, glUnsignedByte, unsafe.Pointer(&pix[0]))
+			unpackReset()
+			t.ver = img.Version()
+			img.Uploaded()
+		}
 	}
 	t.lastFrame = r.frame
 	return uintptr(t.tex)

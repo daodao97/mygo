@@ -37,6 +37,10 @@ type voice struct {
 	fadeIn  bool // resumes in the middle: fades in from silence
 	closed  bool
 	orphan  bool // its Player is gone: close at the end
+	atEnd   bool // played to its end, for mix to tell the OnEnd listeners
+
+	onEnd   []endListener
+	nextEnd uint64
 
 	volume, pan, speed float64
 	loop               bool
@@ -203,6 +207,7 @@ func (v *voice) mix(out []float32, master float64) bool {
 			v.phase--
 		}
 		if v.ended() {
+			v.atEnd = v.atEnd || v.playing
 			v.playing = false
 			return false
 		}
@@ -246,6 +251,12 @@ func mix(out []float32) bool {
 	n := 0
 	for _, v := range voices {
 		if v.closed || !v.mix(out, volume) {
+			if v.atEnd {
+				v.atEnd = false
+				for _, l := range v.onEnd {
+					go l.fn()
+				}
+			}
 			v.active = false
 			if v.orphan {
 				v.close()

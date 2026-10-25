@@ -100,7 +100,7 @@ cursor; its size, appearance and other input behavior are yours.
 | `ReplaceText(range, text)` | Commit text in an explicit range; a nil range means preedit if present, otherwise the selection. Clear preedit according to your editing policy. |
 | `SetMarkedText(range, text, selected)` | Replace preedit, retaining its marked range. `selected` is relative to the newly marked text. |
 | `UnmarkText()` | Clear marked status while retaining document text. Also called when focus is lost, the client changes, or the element is disposed. |
-| `BoundsForRange(range)` | Return element-relative text/caret geometry, the actual range represented, and whether it is available. Return false for unavailable/offscreen text. |
+| `BoundsForRange(range)` | Return element-relative text/caret geometry, the actual range represented, and whether it is available. Return false for unavailable/offscreen text. Scrolling the element into view, as the focus does, shows the caret's bounds rather than its box when they are available. |
 | `IndexForPoint(point)` | Hit-test an element-relative point and return a document offset, or false. |
 
 Ranges count **UTF-16 code units**, matching native text services and GPUI's

@@ -96,6 +96,10 @@ type Backend struct {
 	// KeepAwake calls not released yet.
 	Watching bool
 	Awake    int
+	// Playing is what NowPlaying.Set showed last, nil once removed, and
+	// NowPlayingSets counts the calls.
+	Playing        *platform.NowPlayingInfo
+	NowPlayingSets int
 	// Online and Metered are what Network.Status answers with, and
 	// WatchingNetwork whether Network.Watch was called.
 	Online, Metered bool
@@ -372,12 +376,13 @@ func (b *Backend) Dialogs() platform.Dialogs   { return dialogs{b} }
 func (b *Backend) Clipboard() platform.Clipboard {
 	return clipboard{b}
 }
-func (b *Backend) Shell() platform.Shell     { return shell{} }
-func (b *Backend) Screen() platform.Screen   { return screen{} }
-func (b *Backend) Theme() platform.Theme     { return theme{b} }
-func (b *Backend) Power() platform.Power     { return power{b} }
-func (b *Backend) Network() platform.Network { return network{b} }
-func (b *Backend) Secrets() platform.Secrets { return secrets{b} }
+func (b *Backend) Shell() platform.Shell           { return shell{} }
+func (b *Backend) Screen() platform.Screen         { return screen{} }
+func (b *Backend) Theme() platform.Theme           { return theme{b} }
+func (b *Backend) Power() platform.Power           { return power{b} }
+func (b *Backend) Network() platform.Network       { return network{b} }
+func (b *Backend) NowPlaying() platform.NowPlaying { return nowPlaying{b} }
+func (b *Backend) Secrets() platform.Secrets       { return secrets{b} }
 
 // Apps are the applications Applications lists, which tests set.
 var Apps []platform.Application
@@ -518,6 +523,7 @@ type Window struct {
 	Flyout platform.Flyout
 
 	mu        sync.Mutex
+	active    bool // SetActiveAppearance
 	scripts   []string
 	menu      *platform.Menu
 	title     string
@@ -712,28 +718,32 @@ func (w *Window) Show() {
 	w.focused = w.focused || w.Opts.Flyout == nil || w.Opts.Flyout.Focusable
 	w.mu.Unlock()
 }
-func (w *Window) ShowInactive()                      { w.mu.Lock(); w.visible = true; w.mu.Unlock() }
-func (w *Window) Hide()                              { w.mu.Lock(); w.visible = false; w.mu.Unlock() }
-func (w *Window) IsVisible() bool                    { w.mu.Lock(); defer w.mu.Unlock(); return w.visible }
-func (w *Window) Focus()                             { w.H.Focused() }
-func (w *Window) Blur()                              { w.H.Blurred() }
-func (w *Window) IsFocused() bool                    { w.mu.Lock(); defer w.mu.Unlock(); return w.focused }
-func (w *Window) Minimize()                          { w.mu.Lock(); w.minimized = true; w.mu.Unlock(); w.H.Minimized() }
-func (w *Window) IsMinimized() bool                  { w.mu.Lock(); defer w.mu.Unlock(); return w.minimized }
-func (w *Window) Maximize()                          { w.mu.Lock(); w.maximized = true; w.mu.Unlock(); w.H.Maximized() }
-func (w *Window) Unmaximize()                        { w.mu.Lock(); w.maximized = false; w.mu.Unlock(); w.H.Unmaximized() }
-func (w *Window) IsMaximized() bool                  { w.mu.Lock(); defer w.mu.Unlock(); return w.maximized }
-func (w *Window) Restore()                           { w.mu.Lock(); w.minimized = false; w.mu.Unlock(); w.H.Restored() }
-func (w *Window) SetFullScreen(v bool)               { w.mu.Lock(); w.full = v; w.mu.Unlock() }
-func (w *Window) IsFullScreen() bool                 { w.mu.Lock(); defer w.mu.Unlock(); return w.full }
-func (w *Window) Center()                            {}
-func (w *Window) SetOpacity(float64)                 {}
-func (w *Window) Opacity() float64                   { return 1 }
-func (w *Window) SetHasShadow(bool)                  {}
-func (w *Window) HasShadow() bool                    { return true }
-func (w *Window) SetIgnoreMouseEvents(bool)          {}
-func (w *Window) SetContentProtection(bool)          {}
-func (w *Window) SetVibrancy(string)                 {}
+func (w *Window) ShowInactive()              { w.mu.Lock(); w.visible = true; w.mu.Unlock() }
+func (w *Window) Hide()                      { w.mu.Lock(); w.visible = false; w.mu.Unlock() }
+func (w *Window) IsVisible() bool            { w.mu.Lock(); defer w.mu.Unlock(); return w.visible }
+func (w *Window) Focus()                     { w.H.Focused() }
+func (w *Window) Blur()                      { w.H.Blurred() }
+func (w *Window) IsFocused() bool            { w.mu.Lock(); defer w.mu.Unlock(); return w.focused }
+func (w *Window) Minimize()                  { w.mu.Lock(); w.minimized = true; w.mu.Unlock(); w.H.Minimized() }
+func (w *Window) IsMinimized() bool          { w.mu.Lock(); defer w.mu.Unlock(); return w.minimized }
+func (w *Window) Maximize()                  { w.mu.Lock(); w.maximized = true; w.mu.Unlock(); w.H.Maximized() }
+func (w *Window) Unmaximize()                { w.mu.Lock(); w.maximized = false; w.mu.Unlock(); w.H.Unmaximized() }
+func (w *Window) IsMaximized() bool          { w.mu.Lock(); defer w.mu.Unlock(); return w.maximized }
+func (w *Window) Restore()                   { w.mu.Lock(); w.minimized = false; w.mu.Unlock(); w.H.Restored() }
+func (w *Window) SetFullScreen(v bool)       { w.mu.Lock(); w.full = v; w.mu.Unlock() }
+func (w *Window) IsFullScreen() bool         { w.mu.Lock(); defer w.mu.Unlock(); return w.full }
+func (w *Window) Center()                    {}
+func (w *Window) SetOpacity(float64)         {}
+func (w *Window) Opacity() float64           { return 1 }
+func (w *Window) SetHasShadow(bool)          {}
+func (w *Window) HasShadow() bool            { return true }
+func (w *Window) SetIgnoreMouseEvents(bool)  {}
+func (w *Window) SetContentProtection(bool)  {}
+func (w *Window) SetVibrancy(string)         {}
+func (w *Window) SetActiveAppearance(v bool) { w.mu.Lock(); w.active = v; w.mu.Unlock() }
+
+// ActiveAppearance reports what SetActiveAppearance set last.
+func (w *Window) ActiveAppearance() bool             { w.mu.Lock(); defer w.mu.Unlock(); return w.active }
 func (w *Window) SetMenu(m *platform.Menu)           { w.mu.Lock(); w.menu = m; w.mu.Unlock() }
 func (w *Window) StartDrag()                         {}
 func (w *Window) TitleBarDoubleClicked()             {}
@@ -1111,6 +1121,25 @@ func (power) IdleTime() time.Duration { return 42 * time.Second }
 
 // EmitPower simulates a power or session event.
 func (b *Backend) EmitPower(event string) { b.h.PowerEvent(event) }
+
+type nowPlaying struct{ b *Backend }
+
+func (n nowPlaying) Set(info *platform.NowPlayingInfo) {
+	n.b.mu.Lock()
+	defer n.b.mu.Unlock()
+	if info != nil {
+		c := *info
+		info = &c
+	}
+	n.b.Playing = info
+	n.b.NowPlayingSets++
+}
+
+// EmitMediaCommand simulates a media key or a command of the system's
+// media controls.
+func (b *Backend) EmitMediaCommand(cmd platform.MediaCommand, position time.Duration) {
+	b.h.MediaCommand(cmd, position)
+}
 
 type network struct{ b *Backend }
 

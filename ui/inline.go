@@ -231,11 +231,10 @@ func (rt *engine) accessInline(t *platform.AccessTree, e *node, parent int) {
 			rt.accessInline(t, ch, parent)
 			continue
 		}
-		n := platform.AccessNode{
+		t.Nodes = append(t.Nodes, platform.AccessNode{
 			ID: ch.id, Parent: parent, Role: role, Label: ch.label,
 			Bounds: accessBounds(ch),
-		}
-		rt.accessDetails(ch, &n)
-		t.Nodes = append(t.Nodes, n)
+		})
+		rt.accessDetails(ch, &t.Nodes[len(t.Nodes)-1])
 	}
 }

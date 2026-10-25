@@ -384,11 +384,13 @@ type engine struct {
 	// stats measures frames for MYGO_FRAME_STATS, nil when it is unset.
 	stats *frameStats
 	// dropOver is the element files are dragged over; access is true once
-	// assistive technology asked for the content.
-	dropOver   uint64
-	access     bool
-	blinkStart time.Time
-	inFrame    bool
+	// assistive technology asked for the content, and accessNodes records
+	// how many nodes its last frame had.
+	dropOver    uint64
+	access      bool
+	accessNodes int
+	blinkStart  time.Time
+	inFrame     bool
 	// repainted marks a frame that painted again without rebuilding, so
 	// endFrame can count it apart (a display shows those separately: they
 	// are cheap, and a run of them is why a rate can read low).

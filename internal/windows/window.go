@@ -50,12 +50,16 @@ type window struct {
 	filtersAll    bool
 	hidingScript  string
 	navigating    string
+	// reloadAdopted reloads the first document of an adopted popup
+	// (newWindowRequested).
+	reloadAdopted bool
 
 	minW, minH, maxW, maxH int // DIPs
 	movable, closable      bool
 	frameless              bool
 	hiddenTitleBar         bool        // a TitleBarStyle that hides the caption
 	caption                *captionBar // the controls in its place, nil if they failed
+	topEdge                uintptr     // the window over the top resize border of one without a caption (topedge.go), or 0
 	noRedirect             bool        // no redirection bitmap, for a material behind the page
 	fullScreen             bool
 	reframing              bool     // SetFullScreen is changing the frame
@@ -167,8 +171,10 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 		return nil, errors.New("mygo: cannot create a window")
 	}
 	b.windows[w.hwnd] = w
-	if o.Panel {
-		// Windows 11 gives tool windows the small corners of menus.
+	if o.Panel || o.Frameless && o.CornerRadius > 0 {
+		// Windows 11 gives tool windows the small corners of menus, and
+		// frameless windows none: rounded, they take its own corners,
+		// whatever the radius.
 		w.roundFlyout()
 	}
 	if o.Flyout != nil {
@@ -198,6 +204,7 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	if w.hiddenTitleBar {
 		w.caption = newCaptionBar(w)
 	}
+	w.newTopEdge()
 	if o.Surface {
 		if w.surface = newSurface(w); w.surface == nil {
 			procDestroyWindow.Call(w.hwnd)
@@ -223,9 +230,7 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 		w.showMaximized = true
 	}
 	w.skipTaskbar = o.SkipTaskbar // applied once the taskbar button exists
-	if w.caption != nil {
-		w.caption.layout()
-	}
+	w.layoutControls()
 	if !o.Surface {
 		b.whenEnvironment(w.createWebView)
 	}
@@ -516,8 +521,8 @@ func (w *window) sized(kind uintptr) {
 	if w.surface != nil {
 		w.surface.fit()
 	}
-	if w.caption != nil && kind != sizeMinimized {
-		w.caption.layout()
+	if kind != sizeMinimized {
+		w.layoutControls()
 	}
 	if w.vibrancy != "" && kind != sizeMinimized {
 		w.extendGlass(false)
@@ -546,6 +551,17 @@ func (w *window) sized(kind uintptr) {
 		w.state = sizeRestored
 	}
 	w.h.Resized()
+}
+
+// layoutControls lays out what sits above the webview or the surface: the
+// top edge, and above it the window controls of a hidden title bar, among
+// them a maximize button the content draws (SetMaximizeButton), which
+// keeps the snap layouts over its whole height.
+func (w *window) layoutControls() {
+	w.layoutTopEdge()
+	if w.caption != nil {
+		w.caption.layout()
+	}
 }
 
 // captionless reports a window without a caption: frameless, or with a
@@ -617,6 +633,9 @@ func (w *window) cleanup() {
 	w.failPending(errDestroyed)
 	if w.caption != nil {
 		w.caption.forget()
+	}
+	if w.topEdge != 0 {
+		delete(w.b.topEdges, w.topEdge)
 	}
 	if w.controller != 0 {
 		comCall(w.controller, ctlClose)
@@ -1053,11 +1072,15 @@ func backdropFor(material string) int32 {
 		return backdropMica
 	case "tabbed":
 		return backdropMicaAlt
-	case "acrylic", "menu", "popover", "hud", "sheet", "tooltip", "selection", "fullscreen-ui":
+	case "acrylic", "menu", "popover", "hud", "sheet", "tooltip", "selection", "fullscreen-ui", "glass", "glass-clear":
 		return backdropAcrylic
 	}
 	return backdropMica
 }
+
+// SetActiveAppearance does nothing: Windows has no way to draw a window
+// that is not active as one that is.
+func (w *window) SetActiveAppearance(bool) {}
 
 func (w *window) SetVibrancy(material string) {
 	w.vibrancy = material
@@ -1079,7 +1102,7 @@ func (w *window) extendGlass(always bool) {
 	if w.vibrancy != "" {
 		var r rect
 		procGetClientRect.Call(w.hwnd, uintptr(unsafe.Pointer(&r)))
-		m = glassMargins(w.hiddenTitleBar && !w.fullScreen && w.IsMaximized(), r.Bottom-r.Top)
+		m = glassMargins(w.glassFromBottom(), r.Bottom-r.Top)
 	}
 	if m == w.glass && !always {
 		return
@@ -1088,15 +1111,35 @@ func (w *window) extendGlass(always bool) {
 	procDwmExtendFrameIntoClientArea.Call(w.hwnd, uintptr(unsafe.Pointer(&m)))
 }
 
+// glassFromBottom reports a window whose frame extends from the bottom
+// over its client area (glassMargins) rather than all over: a frameless
+// window, and a maximized one with a hidden title bar. Flyouts are popups
+// without a caption, whose frame DWM draws no buttons in.
+//
+// A frameless window keeps WS_CAPTION, WS_SYSMENU and the boxes of its
+// styles, for snapping, Win+arrow keys, the taskbar's minimize and the
+// window menu of Alt+Space; frameCalcSize leaves it no title bar. Extended
+// all over, the frame covers the window's top, and DWM draws its caption
+// buttons there, over the page.
+func (w *window) glassFromBottom() bool {
+	if w.frameless {
+		return w.opts.Flyout == nil
+	}
+	return w.hiddenTitleBar && !w.fullScreen && w.IsMaximized()
+}
+
 // glassMargins returns the frame's extension that shows the material over
-// a client area height pixels high. DWM draws its caption buttons in the
-// frame at the top, under the hidden title bar's own while the window is
-// restored. Maximized, the client area starts below the top of the window
-// (frameCalcSize) and DWM's buttons show above the title bar's: the frame
-// extends from the bottom over the whole client area instead, and its top
-// is only the strip off screen, too short for buttons.
-func glassMargins(maximizedHiddenTitleBar bool, height int32) margins {
-	if maximizedHiddenTitleBar {
+// a client area height pixels high. DWM draws the caption buttons of a
+// window's styles in the frame at the top. A restored window with a hidden
+// title bar draws its own over them. Maximized, its client area starts
+// below the top of the window (frameCalcSize) and DWM's buttons would show
+// above the title bar's; a frameless window has no buttons of its own at
+// all. fromBottom extends the frame from the bottom over the whole client
+// area instead: the material still shows everywhere, and the frame's top
+// is only what lies above the client area, a strip off screen or nothing,
+// too short for buttons.
+func glassMargins(fromBottom bool, height int32) margins {
+	if fromBottom {
 		return margins{Bottom: max(height, 1)}
 	}
 	return margins{-1, -1, -1, -1} // a sheet over the whole window

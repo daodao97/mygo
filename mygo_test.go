@@ -178,6 +178,27 @@ func TestWindowDefaults(t *testing.T) {
 	}
 }
 
+// TestGlassWindowOptions passes a floating panel's look to the backend: the
+// glass and the corners of a frameless window, a negative radius none; and
+// its active look, which SetActiveAppearance sets.
+func TestGlassWindowOptions(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{Frameless: true, Transparent: true, Vibrancy: VibrancyGlassClear, CornerRadius: 16})
+	if o := fw.Opts; o.Vibrancy != "glass-clear" || o.CornerRadius != 16 {
+		t.Errorf("vibrancy %q, radius %d", o.Vibrancy, o.CornerRadius)
+	}
+	if fw.ActiveAppearance() {
+		t.Error("drawn as active before SetActiveAppearance")
+	}
+	w.SetActiveAppearance(true)
+	if !fw.ActiveAppearance() {
+		t.Error("SetActiveAppearance(true) did not reach the backend")
+	}
+	_, fw = testWindow(t, WindowOptions{Frameless: true, CornerRadius: -4})
+	if o := fw.Opts; o.CornerRadius != 0 {
+		t.Errorf("radius %d; want none", o.CornerRadius)
+	}
+}
+
 func TestWindowOptions(t *testing.T) {
 	parent, _ := testWindow(t, WindowOptions{})
 	_, fw := testWindow(t, WindowOptions{

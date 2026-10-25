@@ -122,6 +122,7 @@ type Backend interface {
 	Theme() Theme
 	Power() Power
 	Network() Network
+	NowPlaying() NowPlaying
 	// Secrets may be called before Init, from any goroutine.
 	Secrets() Secrets
 	// Applications lists the applications installed on the computer.
@@ -203,6 +204,9 @@ type AppHandler interface {
 	NetworkChanged(status NetworkStatus)
 	HotkeyPressed(id int)
 	NotificationClicked(id string)
+	// MediaCommand reports a media key or a remote command for what
+	// NowPlaying shows; position is where MediaSeek asks to go.
+	MediaCommand(cmd MediaCommand, position time.Duration)
 }
 
 // AppController exposes application level native features.
@@ -383,9 +387,13 @@ type WindowOptions struct {
 	HideWindowButtons    bool
 	TrafficLightPosition *Point
 	Vibrancy             string
-	Opacity              float64
-	Parent               Window
-	Modal                bool
+	// CornerRadius rounds a frameless window's corners, in DIPs: its
+	// content and material are cut to them (macOS), or the system rounds
+	// it with its own corners (Windows 11).
+	CornerRadius int
+	Opacity      float64
+	Parent       Window
+	Modal        bool
 	// Flyout makes the window a flyout of its Parent, placed next to an
 	// anchor (Window.PlaceFlyout), at Width and Height: borderless,
 	// transparent, out of the taskbar, with Focusable telling whether it
@@ -494,6 +502,9 @@ type Window interface {
 	SetIgnoreMouseEvents(v bool)
 	SetContentProtection(v bool)
 	SetVibrancy(material string)
+	// SetActiveAppearance keeps the window drawn as active, as the key
+	// window of the app in front, while it is not (macOS).
+	SetActiveAppearance(v bool)
 	// SetProgressBar shows progress on the taskbar button, Dock icon or
 	// launcher entry: state is "" (none), "normal", "indeterminate",
 	// "paused" or "error", value between 0 and 1.
@@ -990,6 +1001,40 @@ type Power interface {
 	KeepAwake(display bool, reason string) (release func())
 	OnBattery() bool
 	IdleTime() time.Duration
+}
+
+// MediaCommand is a command of the system's media controls, or a set of
+// them (NowPlayingInfo.Commands).
+type MediaCommand uint32
+
+const (
+	MediaPlay MediaCommand = 1 << iota
+	MediaPause
+	MediaTogglePlayPause
+	MediaStop
+	MediaNext
+	MediaPrevious
+	MediaSeek
+)
+
+// NowPlayingInfo is what the app plays, fully defaulted by the core.
+type NowPlayingInfo struct {
+	Title, Artist, Album string
+	Artwork              []byte // PNG or JPEG, or nil
+	Duration             time.Duration
+	// Position is where playback was when the core set the info; the
+	// system advances it at Rate while State is "playing".
+	Position time.Duration
+	Rate     float64 // the speed while playing, 1 by default
+	State    string  // "playing", "paused" or "stopped"
+	Commands MediaCommand
+}
+
+// NowPlaying shows what the app plays where the system shows media, and
+// reports AppHandler.MediaCommand for the commands the info enables.
+type NowPlaying interface {
+	// Set shows info; nil removes it and stops reporting commands.
+	Set(info *NowPlayingInfo)
 }
 
 // NetworkStatus is the state of the computer's network connection.

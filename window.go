@@ -146,6 +146,14 @@ type WindowOptions struct {
 	// material can show one, and it has no menu bar: Alt and F10 open its
 	// menus in a popup.
 	Vibrancy Vibrancy
+	// CornerRadius rounds a frameless window's corners on macOS, in DIPs:
+	// its content and material are cut to them, and its shadow follows
+	// them, as a launcher's or a floating panel's. The window need not be
+	// Transparent: its BackgroundColor fills its content, inside the
+	// corners. Windows 11 rounds a
+	// frameless window given one with the corners of its own windows,
+	// whatever the radius; Linux does not round it.
+	CornerRadius int
 	// Opacity of the window between 0 and 1 (default 1).
 	Opacity float64
 	// Parent makes this window a child window that stays on top of it.
@@ -525,6 +533,7 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 		TitleBarHeight:    max(o.TitleBarHeight, 0),
 		HideWindowButtons: o.HideWindowButtons,
 		Vibrancy:          string(o.Vibrancy),
+		CornerRadius:      max(o.CornerRadius, 0),
 		Opacity:           o.Opacity,
 		Modal:             o.Modal,
 		UserAgent:         po.UserAgent,
@@ -1003,7 +1012,8 @@ func (w *Window) SetOpacity(v float64) {
 // Opacity returns the window opacity.
 func (w *Window) Opacity() float64 { return get(w, platform.Window.Opacity) }
 
-// SetHasShadow sets whether the window has a shadow.
+// SetHasShadow sets whether the window has a shadow. On Linux a window
+// keeps the shadow it was created with (DisableShadow).
 func (w *Window) SetHasShadow(v bool) { w.do(func(n platform.Window) { n.SetHasShadow(v) }) }
 
 // HasShadow reports whether the window has a shadow.
@@ -1012,6 +1022,17 @@ func (w *Window) HasShadow() bool { return get(w, platform.Window.HasShadow) }
 // SetIgnoreMouseEvents makes the window transparent to mouse events.
 func (w *Window) SetIgnoreMouseEvents(v bool) {
 	w.do(func(n platform.Window) { n.SetIgnoreMouseEvents(v) })
+}
+
+// SetActiveAppearance keeps the window drawn as active, the key window of
+// the app in front, while it is not (macOS): its controls and material keep
+// their active look, as the clear Liquid Glass (VibrancyGlassClear) stays
+// clear in a panel floating over another app, which never is active and
+// whose glass the system would frost. It uses AppKit's private
+// _setForceMainAppearance:, which a later macOS may drop: the window then
+// looks as any other. Apps for the Mac App Store should not call it.
+func (w *Window) SetActiveAppearance(v bool) {
+	w.do(func(n platform.Window) { n.SetActiveAppearance(v) })
 }
 
 // SetContentProtection keeps the window content out of screenshots and
@@ -1409,9 +1430,10 @@ func (e *EvalError) Error() string { return "mygo: javascript error: " + e.Messa
 // open, or nil to deny the request. Without a handler, http(s) URLs open in
 // the default browser and everything else is denied.
 //
-// On macOS the new page keeps its relation to the opener (window.opener).
-// On Linux it opens as an independent page, because WebKitGTK would share
-// the opener's script message routing with a related page.
+// On macOS and Windows the new page keeps its relation to the opener
+// (window.opener). On Linux it opens as an independent page, because
+// WebKitGTK would share the opener's script message routing with a
+// related page.
 func (p *Page) SetWindowOpenHandler(fn func(req WindowOpenRequest) *WindowOptions) {
 	p.w.mu.Lock()
 	p.w.openHandler = fn

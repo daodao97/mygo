@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/egoist/mygo/internal/wait"
 )
 
 // setup mixes by hand, with nothing playing.
@@ -89,6 +91,38 @@ func TestPlayAgainAfterEnd(t *testing.T) {
 	out := render(100)
 	if !near(out[2*50], 0.25) {
 		t.Errorf("frame 50 = %v, want 0.25", out[2*50])
+	}
+}
+
+func TestOnEnd(t *testing.T) {
+	setup(t)
+	p := NewSound(sampleRate, 1, ramp(100)).NewPlayer()
+	ended := make(chan struct{}, 4)
+	off := p.OnEnd(func() { ended <- struct{}{} })
+	p.Play()
+	render(200)
+	wait.For(t, "the end", ended)
+	render(200) // ended once
+	p.Play()
+	render(50)
+	p.Pause()
+	render(200) // paused, not at the end
+	p.Seek(0)
+	off()
+	p.Play()
+	render(200)
+	if n := len(ended); n != 0 {
+		t.Errorf("%d more ends, want 0", n)
+	}
+
+	loop := NewSound(sampleRate, 1, ramp(100)).NewPlayer().SetLoop(true)
+	loop.OnEnd(func() { ended <- struct{}{} })
+	loop.Play()
+	render(350)
+	loop.Stop()
+	render(200)
+	if n := len(ended); n != 0 {
+		t.Errorf("a loop or a stopped player ended %d times", n)
 	}
 }
 

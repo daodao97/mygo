@@ -397,12 +397,13 @@ type clip struct {
 // pushed returns the clip that op (an OpPushClip) makes within top, without
 // a mask slot or texture.
 func (b *Builder) pushed(top *clip, op *scene.Op, encloses bool) clip {
-	bounds := top.bounds.Intersect(op.Transform.Bounds(op.Rect))
+	rect, transform := scene.MovedClip(op.Rect, op.Transform)
+	bounds := top.bounds.Intersect(transform.Bounds(rect))
 	// The innermost clip shapes its edges in the shader, the others cut
 	// with the scissor rectangle.
-	c := clip{rect: op.Rect, radii: scene.Corners(op.Rect, op.Radii, op.Continuous), bounds: bounds,
-		shape: scene.ClipShape{Rect: op.Rect, Radii: op.Radii, Transform: op.Transform, Continuous: op.Continuous}, maskSlot: -1}
-	c.moved = top.moved || op.Transform.Set
+	c := clip{rect: rect, radii: scene.Corners(rect, op.Radii, op.Continuous), bounds: bounds,
+		shape: scene.ClipShape{Rect: rect, Radii: op.Radii, Transform: transform, Continuous: op.Continuous}, maskSlot: -1}
+	c.moved = top.moved || transform.Set
 	c.masked = c.moved || encloses && (top.masked || c.radii != [4]float32{})
 	if bounds.W > 0 && bounds.H > 0 {
 		c.scissor = Scissor{int32(math.Floor(float64(bounds.X))), int32(math.Floor(float64(bounds.Y))),
@@ -731,6 +732,11 @@ func (b *Builder) markEnclosing(s *scene.Scene) {
 			continue
 		}
 		transformed := op.Transform.Set
+		if op.Kind == scene.OpPushClip {
+			// A clip only moved is cut as any other: no mask around it.
+			_, m := scene.MovedClip(op.Rect, op.Transform)
+			transformed = m.Set
+		}
 		if op.Kind == scene.OpGlyphs {
 			for _, g := range s.Glyphs[op.Start:op.End] {
 				transformed = transformed || g.Transform.Set

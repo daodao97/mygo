@@ -452,6 +452,12 @@ type Image struct {
 	// frames stop drawing it, rather than once it is collected, which
 	// the little memory it takes of Go's heap may put off for minutes.
 	Transient bool
+	// Restore re-creates Pix when a renderer needs the pixels after an
+	// owner dropped them, to upload or to draw them again, and Dropped
+	// runs after a renderer uploaded them, to drop them again. Both are
+	// nil for images that keep their pixels.
+	Restore func() []byte
+	Dropped func()
 }
 
 // NewCanvas returns a w×h image that renderers draw from a scene of its
@@ -484,6 +490,24 @@ func (m *Image) Version() uint64 { return m.version }
 
 // Changed records that Pix was modified.
 func (m *Image) Changed() { m.version++ }
+
+// Pixels returns the pixels a renderer uploads or draws, re-creating them
+// from Restore when an owner dropped them. The pixels stay then, until
+// the owner drops them again or a renderer's upload does (Uploaded).
+func (m *Image) Pixels() []byte {
+	if m.Pix == nil && m.Restore != nil {
+		m.Pix = m.Restore()
+	}
+	return m.Pix
+}
+
+// Uploaded tells that a renderer uploaded the pixels, which an owner may
+// drop again.
+func (m *Image) Uploaded() {
+	if m.Dropped != nil {
+		m.Dropped()
+	}
+}
 
 // Resize keeps the image's texture-cache identity while changing its size.
 // Renderers replace the backing texture on a size change, so an animated

@@ -205,10 +205,15 @@ buttons, links, inputs and other interactive elements inside a region stay
 clickable. Double-clicking a region does what double-clicking a title bar
 does.
 
-Frameless windows still resize from their edges. On Linux, where GTK gives
-windows without decorations no borders, the outermost 5 px of the page act
-as the borders: they show resize cursors, and the page gets no clicks or
-pointer moves there.
+Frameless windows still resize from their edges. On Linux under Wayland,
+GTK decorates frameless windows and windows with a hidden title bar itself,
+as GNOME's apps, without a title bar: it draws a shadow and a thin border
+around the page, which resize the window from just outside it, and drops
+them while the window is maximized or in full screen. Elsewhere on Linux,
+where GTK gives windows without decorations no borders (X11, or a window
+with `DisableShadow`, `Transparent` or `Panel`), the outermost 5 px of the
+page act as the borders: they show resize cursors, and the page gets no
+clicks or pointer moves there.
 
 On Linux a frameless window also keeps the menu bar that `App.SetMenu` or
 `Window.SetMenu` gives it, above the page and so above a custom title bar.

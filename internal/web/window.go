@@ -122,6 +122,7 @@ func (w *window) HasShadow() bool                            { return false }
 func (w *window) SetIgnoreMouseEvents(bool)                  {}
 func (w *window) SetContentProtection(bool)                  {}
 func (w *window) SetVibrancy(string)                         {}
+func (w *window) SetActiveAppearance(bool)                   {}
 func (w *window) SetProgressBar(string, float64)             {}
 func (w *window) FlashFrame(bool)                            {}
 func (w *window) SetSkipTaskbar(bool)                        {}

@@ -43,6 +43,7 @@ func (*Backend) Screen() platform.Screen                                    { re
 func (*Backend) Theme() platform.Theme                                      { return theme{} }
 func (*Backend) Power() platform.Power                                      { return power{} }
 func (*Backend) Network() platform.Network                                  { return network{} }
+func (*Backend) NowPlaying() platform.NowPlaying                            { return nowPlaying{} }
 func (*Backend) Secrets() platform.Secrets                                  { return secrets{} }
 func (*Backend) NewTray(platform.TrayHandler) (platform.Tray, error)        { return nil, errUnsupported }
 func (*Backend) RegisterHotkey(int, string) error                           { return errUnsupported }
@@ -171,6 +172,10 @@ func (dialogs) ShowExportDialog(_ platform.Window, _ *platform.ExportDialogOptio
 func (dialogs) ShowPhotoDialog(_ platform.Window, _ *platform.PhotoDialogOptions, cb func([]string, error)) {
 	cb(nil, platform.ErrUnsupported)
 }
+
+type nowPlaying struct{}
+
+func (nowPlaying) Set(*platform.NowPlayingInfo) {}
 
 type network struct{}
 

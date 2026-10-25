@@ -46,6 +46,7 @@ type options struct {
 	bindings      []Binding
 	gutterMarks   []GutterMark
 	backgrounds   []LineBackground
+	textBgs       []TextBackground
 	diffBase      *Buffer
 	onCompletion  func(CompletionRequest)
 	onHover       func(HoverRequest)

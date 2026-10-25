@@ -801,3 +801,26 @@ func TestCornerSplitPaysForItsDrawCalls(t *testing.T) {
 		}
 	}
 }
+
+func TestMovedClipStaysInTheShader(t *testing.T) {
+	// A panel sliding in, its content in a rounded card scrolled by a
+	// clip, both only moved: no mask, and the clips cut where they moved.
+	move := scene.Translation(0, 37.5)
+	s := &scene.Scene{Width: 400, Height: 300, Ops: []scene.Op{
+		{Kind: scene.OpPushClip, Rect: scene.Rect{W: 400, H: 300}, Radii: [4]float32{12, 12, 12, 12}, Transform: move},
+		{Kind: scene.OpPushClip, Rect: scene.Rect{X: 20, Y: 20, W: 200, H: 100}, Transform: move},
+		{Kind: scene.OpFill, Rect: scene.Rect{X: 20, Y: 20, W: 300, H: 32}, Color: scene.Color{A: 255}},
+		{Kind: scene.OpPopClip},
+		{Kind: scene.OpPopClip},
+	}}
+	var b Builder
+	defer b.Release()
+	masks := 0
+	b.Build(s, func(*scene.Image) uintptr { masks++; return 1 })
+	if masks != 0 || len(b.maskSlots) != 0 {
+		t.Fatalf("rasterized %d clip masks for clips only moved", masks)
+	}
+	if in := b.Instances[0]; in.Transform1[3] != 0 || in.Clip != [4]float32{20, 57.5, 200, 100} {
+		t.Fatalf("clip %v, mask mode %v", in.Clip, in.Transform1[3])
+	}
+}

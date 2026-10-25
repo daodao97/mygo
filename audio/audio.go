@@ -25,6 +25,7 @@ import (
 	"io"
 	"math"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 )
@@ -316,6 +317,29 @@ func (p *Player) Playing() bool {
 	mu.Lock()
 	defer mu.Unlock()
 	return p.v.playing
+}
+
+// endListener is a function OnEnd registered.
+type endListener struct {
+	id uint64
+	fn func()
+}
+
+// OnEnd calls fn on a goroutine of its own each time the player plays to
+// its end, which a looping player never does, as a playlist plays the
+// next track then. off removes it.
+func (p *Player) OnEnd(fn func()) (off func()) {
+	mu.Lock()
+	defer mu.Unlock()
+	v := p.v
+	v.nextEnd++
+	id := v.nextEnd
+	v.onEnd = append(v.onEnd, endListener{id, fn})
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		v.onEnd = slices.DeleteFunc(slices.Clone(v.onEnd), func(l endListener) bool { return l.id == id })
+	}
 }
 
 // Seek moves the player to t from the start.

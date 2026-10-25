@@ -4,6 +4,7 @@ package d3d11
 
 import (
 	"runtime"
+	"slices"
 	"syscall"
 	"testing"
 	"time"
@@ -169,6 +170,95 @@ func resizeSettles(t *testing.T, r *Renderer) {
 	frame(230, 155)
 	if r.bw != 230 || r.bh != 155 || r.resizing {
 		t.Fatalf("%s: settled: buffers %dx%d, resizing %v; want 230x155 and not resizing", kind, r.bw, r.bh, r.resizing)
+	}
+}
+
+// releaseImages arms every image of a scene to keep only the renderer's
+// copy of its pixels: the restore re-makes them from a copy it took, and
+// dropped counts the uploads and drops them again.
+func releaseImages(s *scene.Scene, restores, drops *int) int {
+	armed := 0
+	for i := range s.Ops {
+		if img := s.Ops[i].Image; img != nil && img.Scene == nil && img.Restore == nil {
+			pix := slices.Clone(img.Pix)
+			img.Restore = func() []byte { *restores++; return pix }
+			img.Dropped = func() { *drops++; img.Pix = nil }
+			armed++
+		}
+	}
+	return armed
+}
+
+// TestReleasedImageUploadsFromItsRestore checks issue #664's contract with
+// the renderer: an image whose pixels an owner dropped uploads them again
+// from the restore, drawing as before, as a renderer that lost or evicted
+// its texture does. The first draw takes the new-texture path, which an
+// eviction after 240 frames takes too.
+func TestReleasedImageUploadsFromItsRestore(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	s := gputest.Scene()
+	restores, drops := 0, 0
+	armed := releaseImages(s, &restores, &drops)
+	r, err := New(hiddenWindow(t, s.Width, s.Height))
+	if err != nil {
+		t.Skip("no Direct3D 11:", err)
+	}
+	defer r.Release()
+	if err := r.draw(s); err != nil {
+		t.Fatal(err)
+	}
+	if restores != 0 {
+		t.Fatalf("%d restores for pixels the first draw had", restores)
+	}
+	if drops != armed {
+		t.Fatalf("%d drops of %d images", drops, armed)
+	}
+	// The CPU renderer the comparison draws with re-makes the pixels of
+	// the images it draws.
+	pix, stride := r.readBack(t)
+	gputest.Compare(t, "d3d11 released", pix, stride, s)
+	if restores != armed {
+		t.Fatalf("%d restores of %d images in the CPU render", restores, armed)
+	}
+	// The textures stay for the frames that follow: the restore runs no
+	// more, and the dropped pixels go.
+	if err := r.draw(s); err != nil {
+		t.Fatal(err)
+	}
+	if restores != armed || drops != armed {
+		t.Fatalf("%d restores, %d drops after a frame with the textures live", restores, drops)
+	}
+}
+
+// TestReleasedImageWithNewRenderer uploads from the restore again in a
+// renderer of its own, as a device that was made again does.
+func TestReleasedImageWithNewRenderer(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	s := gputest.Scene()
+	restores, drops := 0, 0
+	armed := releaseImages(s, &restores, &drops)
+	for i := range 2 {
+		r, err := New(hiddenWindow(t, s.Width, s.Height))
+		if err != nil {
+			t.Skip("no Direct3D 11:", err)
+		}
+		if err := r.draw(s); err != nil {
+			r.Release()
+			t.Fatal(err)
+		}
+		// The first renderer uploaded the pixels it had; the second
+		// found them dropped by the first and re-made them.
+		if want := i * armed; restores != want {
+			t.Fatalf("renderer %d: %d restores, want %d", i, restores, want)
+		}
+		if drops != (i+1)*armed {
+			t.Fatalf("renderer %d: %d drops, want %d", i, drops, (i+1)*armed)
+		}
+		pix, stride := r.readBack(t)
+		gputest.Compare(t, "d3d11 released, new renderer", pix, stride, s)
+		r.Release()
 	}
 }
 

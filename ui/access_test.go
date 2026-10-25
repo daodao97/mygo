@@ -330,3 +330,26 @@ func TestInputMethodContext(t *testing.T) {
 		t.Errorf("replacing in a long text: ...%q", d.name[len(d.name)-5:])
 	}
 }
+
+// BenchmarkAccessTree describes a frame of many clickable cards of two
+// texts each, as the content does every frame once assistive technology
+// asked for the window.
+func BenchmarkAccessTree(b *testing.B) {
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Fill().Children(func() {
+			for i := range 400 {
+				card := coreColumn(c).Padding(8)
+				card.Clicked()
+				card.Children(func() {
+					coreTextf(c, "Game %d", i)
+					coreText(c, "Studio")
+				})
+			}
+		})
+	}, 640, 20000)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	b.ReportAllocs()
+	for b.Loop() {
+		tt.rt.accessTree()
+	}
+}
