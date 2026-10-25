@@ -135,7 +135,7 @@ func (s *diffSide) paintBlock(p *ui.Painter, ed *editor, b *block, r ui.Rect) {
 func (s *diffSide) paintDeleted(p *ui.Painter, ed *editor, b *block, r ui.Rect) {
 	d := s.d
 	ov := &d.oldView
-	ov.theme = ed.theme
+	ov.setTheme(ed.theme)
 	ov.advanceSyntax(b.to, 0)
 	dc := s.colors(ed)
 	lh := ed.view.lineHeight

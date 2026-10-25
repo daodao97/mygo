@@ -97,7 +97,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 			rt.dismissKeyboardOnDrag()
 		}
 		rt.pointerMove(x, y)
-		rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise)
+		rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise, ev.Momentum)
 	case platform.PointerZoom:
 		rt.pointerMove(x, y)
 		rt.zoom(float32(ev.Scale), Modifiers(ev.Mods))
@@ -551,10 +551,10 @@ func (rt *engine) pointerUp(button, clicks int) {
 	rt.requestFrame()
 }
 
-func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise bool) {
+func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool) {
 	chain := rt.appendHitChain(rt.chain[:0], rt.pointerX, rt.pointerY)
 	rt.chain = chain[:0]
-	if h := rt.handler(chain); h != nil && rt.deliver(h, InputEvent{Kind: InputScroll, DX: dx, DY: dy, Mods: mods, Precise: precise}) {
+	if h := rt.handler(chain); h != nil && rt.deliver(h, InputEvent{Kind: InputScroll, DX: dx, DY: dy, Mods: mods, Precise: precise, Momentum: momentum}) {
 		return
 	}
 	// Shift turns the wheel sideways: down is toward the end, which is

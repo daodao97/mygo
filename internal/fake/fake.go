@@ -1245,6 +1245,7 @@ func (*tray) SetTitle(string)             {}
 func (*tray) SetToolTip(string)           {}
 func (*tray) SetMenu(*platform.Menu)      {}
 func (*tray) PopUpMenu(*platform.Menu)    {}
+func (*tray) SetActivatable(bool)         {}
 
 // Bounds puts the icon in the menu bar above the fake display's work area.
 func (*tray) Bounds() platform.Rect { return platform.Rect{X: 1300, Width: 30, Height: 25} }

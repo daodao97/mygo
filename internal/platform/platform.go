@@ -1047,6 +1047,10 @@ type Tray interface {
 	SetToolTip(tip string)
 	SetMenu(m *Menu)
 	PopUpMenu(m *Menu)
+	// SetActivatable tells the panel whether the icon answers activation,
+	// so that it can tell a single click from a double one. Platforms that
+	// report clicks themselves ignore it.
+	SetActivatable(on bool)
 	Bounds() Rect
 	Destroy()
 }

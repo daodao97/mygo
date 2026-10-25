@@ -2,11 +2,14 @@ package editor
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/internal/rope"
+	"github.com/egoist/mygo/internal/text"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -551,4 +554,77 @@ func TestCodeEditorWrapLongLines(t *testing.T) {
 			t.Fatalf("lines not all measured after %d calls", calls)
 		}
 	}
+}
+
+// Tokens whose style is bold or italic are shaped in those faces, and
+// carets and hits find the same places across the runs of faces, on one
+// row and on a line wrapped into rows measured before they are shaped.
+func TestCodeEditorTokenFaces(t *testing.T) {
+	const line = "plain **strong** and *emph* téxt"
+	ct := newEditorTest(t, "markdown", line)
+	v := &ct.st.ed.view
+	l := v.line(0)
+	if len(l.faces) == 0 {
+		t.Fatalf("no faces for %q: %+v", line, l.toks)
+	}
+	lay := v.piece(l, &l.rows[0].pieces[0])
+	spans := text.DecodeSpans(lay.Params.Spans)
+	face := func(rune int) (weight int, italic bool) {
+		for _, sp := range spans {
+			if rune < sp.End {
+				return sp.Weight, sp.Italic
+			}
+		}
+		return 0, false
+	}
+	runeOf := func(sub string) int { return utf8.RuneCountInString(line[:strings.Index(line, sub)]) }
+	for _, c := range []struct {
+		sub    string
+		weight int
+		italic bool
+	}{{"plain", 0, false}, {"strong", 700, false}, {"and", 0, false}, {"emph", 0, true}, {"téxt", 0, false}} {
+		if w, it := face(runeOf(c.sub)); w != c.weight || it != c.italic {
+			t.Errorf("%q: weight %d, italic %v; want %d, %v", c.sub, w, it, c.weight, c.italic)
+		}
+	}
+	plain := newEditorTest(t, "", line)
+	pv := &plain.st.ed.view
+	pl := pv.line(0)
+	if s := pv.piece(pl, &pl.rows[0].pieces[0]).Params.Spans; len(pl.faces) != 0 || s != "" {
+		t.Errorf("plain text has faces %+v, spans %q", pl.faces, s)
+	}
+
+	check := func(v *view, l *lineLayout) {
+		t.Helper()
+		for ri := range l.rows {
+			r := &l.rows[ri]
+			prev := float32(-1)
+			for d := r.from; d < r.to; d++ {
+				if !utf8.RuneStart(l.disp[d]) {
+					continue
+				}
+				x := v.xOf(l, r, d)
+				if x <= prev {
+					t.Fatalf("row %d: x of %d is %v, after %v", ri, d, x, prev)
+				}
+				prev = x
+				if got := v.dispAt(l, r, x+0.5); got != d {
+					t.Fatalf("row %d: hit at x %v of %d is %d", ri, x, d, got)
+				}
+			}
+			if w := v.xOf(l, r, r.to) - r.indent; math.Abs(float64(w-r.width)) > 1 {
+				t.Errorf("row %d: shaped %v wide, measured %v", ri, w, r.width)
+			}
+		}
+	}
+	check(v, l)
+
+	ct.st.SoftWrap = true
+	ct.tt.Frame()
+	v.setWrap(true, v.runsWidth(line, nil, 0, len(line))/2)
+	l = v.line(0)
+	if len(l.rows) < 2 {
+		t.Fatalf("%d rows, want the line wrapped", len(l.rows))
+	}
+	check(v, l)
 }

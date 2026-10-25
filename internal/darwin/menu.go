@@ -395,6 +395,9 @@ func (t *tray) SetMenu(m *platform.Menu) {
 	})
 }
 
+// SetActivatable does nothing: AppKit reports its clicks itself.
+func (t *tray) SetActivatable(bool) {}
+
 func (t *tray) PopUpMenu(m *platform.Menu) {
 	if m == nil || t.item == 0 {
 		return

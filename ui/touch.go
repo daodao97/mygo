@@ -88,7 +88,7 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 		}
 		if t.scrolling {
 			rt.pointerX, rt.pointerY = t.x, t.y
-			rt.scroll(t.lastX-x, t.lastY-y, 0, true)
+			rt.scroll(t.lastX-x, t.lastY-y, 0, true, false)
 			t.lastX, t.lastY = x, y
 			return true
 		}

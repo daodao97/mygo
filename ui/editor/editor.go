@@ -226,7 +226,7 @@ type gesture struct {
 func (ed *editor) init(buf *Buffer, o options, t *ui.Theme) {
 	ed.o = o
 	ed.theme = o.theme.resolve(t)
-	ed.view.theme = ed.theme
+	ed.view.setTheme(ed.theme)
 	ed.view.readOnly = o.readOnly
 	if ed.view.buf != nil && ed.view.buf != buf {
 		ed.resetForBuffer()

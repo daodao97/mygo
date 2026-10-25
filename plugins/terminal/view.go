@@ -220,6 +220,7 @@ type view struct {
 	pointer     [2]float32
 	scrolled    float32 // scrolling not yet a whole row
 	zoomed      float32 // wheel with the zoom modifier not yet a notch
+	scrollZoom  bool    // a touchpad scroll gesture zooms, from how it began
 	ticking     bool    // an autoscroll tick is due
 	linkMods    ui.Modifiers
 	linkPressed bool
@@ -1412,7 +1413,16 @@ func (v *view) scroll(ev ui.InputEvent) bool {
 	if v.cellH == 0 {
 		return false
 	}
-	if ev.Mods&ui.Cmd != 0 {
+	zooming := ev.Mods&ui.Cmd != 0
+	if ev.Precise {
+		// A touchpad gesture keeps what it began as, even if Command comes
+		// down while its momentum still runs.
+		if !ev.Momentum {
+			v.scrollZoom = zooming
+		}
+		zooming = v.scrollZoom
+	}
+	if zooming {
 		// Rolling up is a step up. DY is the scroll offset's change, so up
 		// comes negative; a wheel's event is a notch, a trackpad's many
 		// small moves, which add up to a step by 40.

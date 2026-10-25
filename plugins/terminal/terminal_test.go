@@ -1889,6 +1889,59 @@ func TestOnZoom(t *testing.T) {
 	}
 }
 
+// A touchpad scroll that began without Command keeps scrolling, even after
+// the fingers leave it and Command comes down while its momentum runs.
+func TestOnZoomIgnoresMomentum(t *testing.T) {
+	loadLib(t)
+	var zooms []Zoom
+	var scrolls []int
+	term, err := New(Options{
+		Conn:     newPipe(),
+		OnZoom:   func(z Zoom) bool { zooms = append(zooms, z); return true },
+		OnScroll: func(rows int) bool { scrolls = append(scrolls, rows); return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	var b strings.Builder
+	for i := range 100 {
+		b.WriteString("line " + itoa(i) + "\r\n")
+	}
+	term.Feed([]byte(b.String()))
+	tt.Frame()
+	term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DY: -40, Precise: true})
+	term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DY: -40, Mods: ui.Cmd, Precise: true, Momentum: true})
+	if zooms != nil {
+		t.Errorf("momentum scrolling zoomed %v", zooms)
+	}
+	if len(scrolls) != 2 || scrolls[0] >= 0 || scrolls[1] >= 0 {
+		t.Errorf("momentum scrolling scrolled %v, want two scrolls up", scrolls)
+	}
+}
+
+// Command at the start of a touchpad scroll zooms through its momentum.
+func TestOnZoomKeepsMomentumOfZoomGesture(t *testing.T) {
+	loadLib(t)
+	var zooms []Zoom
+	term, err := New(Options{
+		Conn:   newPipe(),
+		OnZoom: func(z Zoom) bool { zooms = append(zooms, z); return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.Frame()
+	term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DY: -40, Mods: ui.Cmd, Precise: true})
+	term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DY: -40, Mods: ui.Cmd, Precise: true, Momentum: true})
+	if !slices.Equal(zooms, []Zoom{{Steps: 1}, {Steps: 1}}) {
+		t.Errorf("momentum scrolling zoomed %v, want two steps up", zooms)
+	}
+}
+
 // TestZoom: without OnZoom the terminal zooms its font a DIP a step, and
 // back to its font's size, which SetFont changes.
 func TestZoom(t *testing.T) {

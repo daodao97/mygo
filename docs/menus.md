@@ -263,8 +263,11 @@ tray.OnClick(win.Show)
 ```
 
 On Linux tray icons use AppIndicator, which needs
-`libayatana-appindicator3`: they show a menu and report no clicks, and
-`NewTray` returns an error without the library.
+`libayatana-appindicator3`: they show a menu, and an icon with an `OnClick`
+listener answers activation (with a release of the library that has the
+`activate` signal; older ones report no clicks), which GNOME's AppIndicator extension sends on
+a double click and which opens the menu on a single one after the double
+click time. `NewTray` returns an error without the library.
 
 Apps that live in the menu bar usually drop their Dock icon on macOS:
 

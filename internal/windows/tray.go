@@ -226,6 +226,10 @@ func (t *tray) SetToolTip(tip string) {
 
 func (t *tray) SetMenu(m *platform.Menu) { t.menu = m }
 
+// SetActivatable does nothing: the notification area reports its clicks
+// itself.
+func (t *tray) SetActivatable(bool) {}
+
 func (t *tray) PopUpMenu(m *platform.Menu) {
 	if m == nil {
 		m = t.menu
