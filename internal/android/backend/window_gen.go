@@ -148,6 +148,8 @@ func (w *window) SetUserAgent(ua string) {}
 
 func (w *window) UserAgent() string { return "" }
 
+func (w *window) ProcessID() int { return 0 }
+
 func (w *window) OpenDevTools() {}
 
 func (w *window) CloseDevTools() {}
