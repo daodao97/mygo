@@ -110,32 +110,12 @@ func TestNSISCloseApp(t *testing.T) {
 // shortcut but not the desktop one the finish page offers, and the
 // uninstall removes both.
 func TestWindowsInstaller(t *testing.T) {
-	if testing.Short() {
-		t.Skip("compiles programs")
-	}
-	if tool, err := nsisCompiler(); err != nil {
-		t.Fatal(err)
-	} else if tool == "" {
-		t.Skip("NSIS is not installed")
-	}
-	dir := testModule(t, map[string]string{
+	dir, artifacts := buildTestInstaller(t, map[string]string{
 		"main.go":              "package main\n\nfunc main() {}\n",
 		"mygo.json":            `{"name": "Setup Test", "identifier": "com.example.setuptest", "version": "2.0.0", "urlSchemes": ["setuptest"], "fileAssociations": [{"ext": ["setuptest"], "name": "Setup Test File"}], "windows": {"signCommand": "echo %1>>signed.txt"}}`,
 		"resources/data/a.txt": "a",
 		"resources/icon.png":   string(defaultIcon()),
 	})
-	c, err := loadConfig(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	opts := buildOptions{sign: "-", work: t.TempDir()}
-	if opts.pkg, err = packageDir(c); err != nil {
-		t.Fatal(err)
-	}
-	artifacts, err := buildPlatform(c, "windows", "amd64", opts)
-	if err != nil {
-		t.Fatal(err)
-	}
 	setup := artifacts[len(artifacts)-1]
 	if filepath.Base(setup) != "setup-test-setup-2.0.0-amd64.exe" {
 		t.Fatalf("artifacts = %q", artifacts)
@@ -171,14 +151,7 @@ func TestWindowsInstaller(t *testing.T) {
 			t.Errorf("the installer did not register %s", key)
 		}
 	}
-	shortcut := func(folder string) string {
-		out, err := exec.Command("powershell", "-NoProfile", "-Command", "[Environment]::GetFolderPath('"+folder+"')").Output()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return filepath.Join(strings.TrimSpace(string(out)), "Setup Test.lnk")
-	}
-	startMenu, desktop := shortcut("Programs"), shortcut("Desktop")
+	startMenu, desktop := filepath.Join(shellFolder(t, "Programs"), "Setup Test.lnk"), filepath.Join(shellFolder(t, "Desktop"), "Setup Test.lnk")
 	if !fileExists(startMenu) {
 		t.Errorf("the installer made no %s", startMenu)
 	}
@@ -203,6 +176,216 @@ func TestWindowsInstaller(t *testing.T) {
 		}
 	}()
 	uninstall(t, install)
+}
+
+// buildTestInstaller builds the Windows installer of a module of files
+// for amd64, and returns the module's directory and the artifacts, the
+// installer last. It skips the test without NSIS.
+func buildTestInstaller(t *testing.T, files map[string]string) (string, []string) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	if tool, err := nsisCompiler(); err != nil {
+		t.Fatal(err)
+	} else if tool == "" {
+		t.Skip("NSIS is not installed")
+	}
+	dir := testModule(t, files)
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := buildOptions{sign: "-", work: t.TempDir()}
+	if opts.pkg, err = packageDir(c); err != nil {
+		t.Fatal(err)
+	}
+	artifacts, err := buildPlatform(c, "windows", "amd64", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir, artifacts
+}
+
+// shellFolder returns the path of a special folder of the user on
+// Windows, as "Programs", the Start menu's, and "Desktop".
+func shellFolder(t *testing.T, folder string) string {
+	t.Helper()
+	out, err := exec.Command("powershell", "-NoProfile", "-Command", "[Environment]::GetFolderPath('"+folder+"')").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestWindowsInstallerDisplayName builds the installer of an app that
+// Windows shows by another name than its executable's, in Chinese and with
+// a character file names cannot hold. On Windows, it installs the app over
+// the shortcuts an earlier version made under the name, as stand-ins: the
+// Start menu's goes and the desktop's is made again under the display
+// name; Settings > Apps lists the app by it, and the uninstall removes the
+// shortcuts.
+func TestWindowsInstallerDisplayName(t *testing.T) {
+	_, artifacts := buildTestInstaller(t, map[string]string{
+		"main.go":   "package main\n\nfunc main() {}\n",
+		"mygo.json": `{"name": "Display Test", "identifier": "com.example.displaytest", "version": "1.0.0", "windows": {"displayName": "显示测试: Beta"}}`,
+	})
+	setup := artifacts[len(artifacts)-1]
+	if filepath.Base(setup) != "display-test-setup-1.0.0-amd64.exe" {
+		t.Fatalf("artifacts = %q", artifacts)
+	}
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		return
+	}
+	programs, desktop := shellFolder(t, "Programs"), shellFolder(t, "Desktop")
+	oldStart, oldDesktop := filepath.Join(programs, "Display Test.lnk"), filepath.Join(desktop, "Display Test.lnk")
+	startMenu, newDesktop := filepath.Join(programs, "显示测试- Beta.lnk"), filepath.Join(desktop, "显示测试- Beta.lnk")
+	for _, f := range []string{oldStart, oldDesktop} {
+		if err := os.WriteFile(f, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, f := range []string{oldStart, oldDesktop, startMenu, newDesktop} {
+			os.Remove(f)
+		}
+	})
+	install := filepath.Join(t.TempDir(), "DisplayTest")
+	if out, err := exec.Command(setup, "/S", "/D="+install).CombinedOutput(); err != nil {
+		t.Fatalf("installing: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(install, "Display Test.exe")); err != nil {
+		t.Errorf("the executable is not named after the name: %v", err)
+	}
+	for _, f := range []string{startMenu, newDesktop} {
+		if !fileExists(f) {
+			t.Errorf("the installer made no %s", f)
+		}
+	}
+	for _, f := range []string{oldStart, oldDesktop} {
+		if fileExists(f) {
+			t.Errorf("the installer left %s", f)
+		}
+	}
+	// The display name goes through the environment, as the console's code
+	// page could not carry it.
+	check := exec.Command("powershell", "-NoProfile", "-Command",
+		`$v = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\com.example.displaytest').DisplayName; if ($v -ne $env:MYGO_WANT) { exit 1 }`)
+	check.Env = append(os.Environ(), "MYGO_WANT=显示测试: Beta")
+	if out, err := check.CombinedOutput(); err != nil {
+		t.Errorf("Settings > Apps does not list the app as 显示测试: Beta: %v\n%s", err, out)
+	}
+	defer func() {
+		for _, f := range []string{startMenu, newDesktop} {
+			if fileExists(f) {
+				t.Errorf("the uninstaller left %s", f)
+			}
+		}
+	}()
+	uninstall(t, install)
+}
+
+// TestNSISDisplayName checks the names in the installer's script: the
+// shortcuts, the entry in Settings > Apps, the installer's title and its
+// messages show windows.displayName, or else the name, while the
+// executable and the install folder keep the name's.
+func TestNSISDisplayName(t *testing.T) {
+	for _, tc := range []struct {
+		name, displayName string
+		has, hasNot       []string
+	}{{
+		name: "My App",
+		has: []string{
+			"\nName \"My App\"\n",
+			`InstallDir "$LOCALAPPDATA\Programs\My App"`,
+			`CreateShortCut "$SMPROGRAMS\My App.lnk" "$INSTDIR\My App.exe"`,
+			`CreateShortCut "$DESKTOP\My App.lnk" "$INSTDIR\My App.exe"`,
+			`Push "$SMPROGRAMS\My App.lnk"`,
+			`Push "$DESKTOP\My App.lnk"`,
+			`"DisplayName" "My App"`,
+			`"My App is running. Close it to continue?"`,
+		},
+		hasNot: []string{`Delete "$SMPROGRAMS`, `Delete "$DESKTOP`},
+	}, {
+		name: "weather", displayName: "天气助手",
+		has: []string{
+			"\nName \"天气助手\"\n",
+			`InstallDir "$LOCALAPPDATA\Programs\weather"`,
+			`CreateShortCut "$SMPROGRAMS\天气助手.lnk" "$INSTDIR\weather.exe"`,
+			`CreateShortCut "$DESKTOP\天气助手.lnk" "$INSTDIR\weather.exe"`,
+			`Push "$SMPROGRAMS\天气助手.lnk"`,
+			`Push "$DESKTOP\天气助手.lnk"`,
+			`"DisplayName" "天气助手"`,
+			`"DisplayIcon" "$INSTDIR\weather.exe"`,
+			`"天气助手 is running. Close it to continue?"`,
+			`"URL:天气助手"`,
+			// The shortcuts of an earlier version, named after the name.
+			strings.Join([]string{
+				`  Delete "$SMPROGRAMS\weather.lnk"`,
+				`  IfFileExists "$DESKTOP\weather.lnk" 0 +3`,
+				`  Delete "$DESKTOP\weather.lnk"`,
+				`  Call CreateDesktopShortcut`,
+				`  CreateShortCut "$SMPROGRAMS\天气助手.lnk"`,
+			}, "\n"),
+		},
+		hasNot: []string{"\nName \"weather\"", `"DisplayName" "weather"`, `weather.lnk" "$INSTDIR`},
+	}, {
+		// Characters file names cannot hold become "-" in the shortcuts'
+		// names only; NSIS's own characters are escaped everywhere, and
+		// the title doubles the ampersand for the buttons' texts.
+		name: "data-tool", displayName: `Data: "Tools" $1 & <More>?`,
+		has: []string{
+			"\nName " + `"Data: $\"Tools$\" $$1 & <More>?" "Data: $\"Tools$\" $$1 && <More>?"` + "\n",
+			`InstallDir "$LOCALAPPDATA\Programs\data-tool"`,
+			`CreateShortCut "$SMPROGRAMS\Data- -Tools- $$1 & -More--.lnk" "$INSTDIR\data-tool.exe"`,
+			`CreateShortCut "$DESKTOP\Data- -Tools- $$1 & -More--.lnk" "$INSTDIR\data-tool.exe"`,
+			`"DisplayName" "Data: $\"Tools$\" $$1 & <More>?"`,
+			`Delete "$SMPROGRAMS\data-tool.lnk"`,
+		},
+	}, {
+		// A name that differs from the name in case only names the same
+		// files, which the installer keeps.
+		name: "weather", displayName: " Weather ",
+		has:    []string{"\nName \"Weather\"\n", `CreateShortCut "$SMPROGRAMS\Weather.lnk" "$INSTDIR\weather.exe"`, `"DisplayName" "Weather"`},
+		hasNot: []string{`Delete "$SMPROGRAMS`},
+	}} {
+		c := &Config{Name: tc.name, Identifier: "com.example.app", Version: "1.0.0", URLSchemes: []string{"example"}, Windows: Windows{DisplayName: tc.displayName}}
+		exe := c.executableName() + ".exe"
+		script, err := installerScript(c, `C:\out\setup.exe`, exe, "  File \"C:\\stage\\"+exe+"\"\n", "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range tc.has {
+			if !strings.Contains(script, s) {
+				t.Errorf("%q: no %q in:\n%s", tc.displayName, s, script)
+			}
+		}
+		for _, s := range tc.hasNot {
+			if strings.Contains(script, s) {
+				t.Errorf("%q: %q in:\n%s", tc.displayName, s, script)
+			}
+		}
+		if !strings.HasPrefix(script, "Unicode true\n") {
+			t.Errorf("the script does not start with Unicode true:\n%s", script)
+		}
+		if tool := makensis(); tool != "" && !testing.Short() {
+			// makensis takes the script, with a stand-in for the app.
+			dir := t.TempDir()
+			os.WriteFile(filepath.Join(dir, exe), []byte("MZ"), 0o644)
+			out := filepath.Join(dir, "setup.exe")
+			script, err := installerScript(c, out, exe, "  File "+nsisString(filepath.Join(dir, exe))+"\n", "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			nsi := filepath.Join(dir, "installer.nsi")
+			if err := writeNSIS(nsi, script); err != nil {
+				t.Fatal(err)
+			}
+			if b, err := exec.Command(tool, "-V2", nsi).CombinedOutput(); err != nil {
+				t.Errorf("%q: makensis: %v\n%s", tc.displayName, err, b)
+			}
+		}
+	}
 }
 
 // TestWindowsInstallerEncoding checks that installer.nsi is written as UTF-8

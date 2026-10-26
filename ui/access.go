@@ -502,7 +502,7 @@ func (rt *engine) accessibilityOn() {
 			rt.requestFrame()
 		}
 	}
-	rt.host.updateAccessibility(rt.accessTree())
+	rt.host.updateAccessibility(rt.windowAccess(rt.accessTree()))
 }
 
 // accessAction performs an action of assistive technology on an element

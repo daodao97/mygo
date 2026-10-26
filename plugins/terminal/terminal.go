@@ -302,9 +302,11 @@ type Options struct {
 	// OnSubmit runs on the UI thread after an unmodified Return key is
 	// released. Its terminal key events have already been queued.
 	OnSubmit func(ui.Services)
-	// OnScroll sees the wheel scroll the view by whole rows, negative up,
-	// before the terminal scrolls its scrollback, on the main thread, and
-	// reports whether it took the scroll; a scroll taken moves nothing. It
+	// OnScroll sees the wheel scroll the view by whole rows, negative up
+	// (a mouse wheel's notch is three, or on Windows as many as its "lines
+	// to scroll" setting asks), before the terminal scrolls its
+	// scrollback, on the main thread, and reports whether it took the
+	// scroll; a scroll taken moves nothing. It
 	// is not asked while a program takes the wheel: as the mouse, unless
 	// Shift is held, or, on a full-screen program's screen, as arrow keys
 	// (alternate scroll, which "\x1b[?1007l" turns off). It suits a Conn

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/egoist/mygo/i18n"
 )
@@ -396,6 +397,9 @@ func (c *Config) validate() error {
 	if c.Windows.Certificate != "" && c.Windows.SignCommand != "" {
 		return errors.New("windows.certificate and windows.signCommand exclude each other")
 	}
+	if strings.ContainsFunc(c.Windows.DisplayName, unicode.IsControl) {
+		return fmt.Errorf("windows.displayName %q cannot hold control characters, such as line breaks", c.Windows.DisplayName)
+	}
 	if c.Slug != "" && !slugRe.MatchString(c.Slug) {
 		return fmt.Errorf("slug %q is not a slug (lower-case letters and digits, with single hyphens between them)", c.Slug)
 	}
@@ -566,6 +570,24 @@ func (c *Config) executableName() string {
 		return name
 	}
 	return "app"
+}
+
+// windowsName returns the name Windows shows the app by: windows.displayName,
+// or else Name.
+func (c *Config) windowsName() string {
+	if n := strings.TrimSpace(c.Windows.DisplayName); n != "" {
+		return n
+	}
+	return c.Name
+}
+
+// shortcutName is the file name of the app's shortcuts on Windows, without
+// .lnk: windowsName made a file name, or the executable's name without one.
+func (c *Config) shortcutName() string {
+	if name := fsName(c.windowsName()); name != "" {
+		return name
+	}
+	return c.executableName()
 }
 
 // slug returns Slug, or else Name as slugify makes it.

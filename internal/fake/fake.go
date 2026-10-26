@@ -539,7 +539,9 @@ type Window struct {
 	zoom      float64
 	closed    bool
 	devtools  bool
-	pid       int // SetProcessID
+	pid       int  // SetProcessID
+	audible   bool // SetAudible
+	muted     bool // SetAudioMuted
 	// Dropped is what DroppedFiles returns, once.
 	Dropped []string
 	// PDF holds the options of the last PrintToPDF.
@@ -768,6 +770,9 @@ func (w *Window) Zoom() float64                      { w.mu.Lock(); defer w.mu.U
 func (w *Window) SetUserAgent(string)                {}
 func (w *Window) UserAgent() string                  { return "fake" }
 func (w *Window) ProcessID() int                     { w.mu.Lock(); defer w.mu.Unlock(); return w.pid }
+func (w *Window) IsAudible() bool                    { w.mu.Lock(); defer w.mu.Unlock(); return w.audible }
+func (w *Window) SetAudioMuted(v bool)               { w.mu.Lock(); w.muted = v; w.mu.Unlock() }
+func (w *Window) IsAudioMuted() bool                 { w.mu.Lock(); defer w.mu.Unlock(); return w.muted }
 func (w *Window) OpenDevTools()                      { w.mu.Lock(); w.devtools = true; w.mu.Unlock() }
 func (w *Window) CloseDevTools()                     { w.mu.Lock(); w.devtools = false; w.mu.Unlock() }
 func (w *Window) IsDevToolsOpened() bool             { w.mu.Lock(); defer w.mu.Unlock(); return w.devtools }
@@ -777,6 +782,17 @@ func (w *Window) Print()                             {}
 // SetProcessID sets the process ID the page reports, as a backend whose
 // web view runs in a process of that ID; 0, the default, is none known.
 func (w *Window) SetProcessID(pid int) { w.mu.Lock(); w.pid = pid; w.mu.Unlock() }
+
+// SetAudible sets whether the page plays sound (IsAudible) and reports it
+// to the handler (AudibleChanged), as a backend does whenever the page
+// starts or stops playing; it reports it even when it did not change.
+// Call it on the main thread, where backends report it.
+func (w *Window) SetAudible(v bool) {
+	w.mu.Lock()
+	w.audible = v
+	w.mu.Unlock()
+	w.H.AudibleChanged(v)
+}
 
 // addHTML records a document LoadHTML loads.
 func (w *Window) addHTML(html string) {

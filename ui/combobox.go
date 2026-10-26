@@ -317,7 +317,10 @@ func styleOptions(c *context, p *comboboxParts, options []string) *node {
 
 // field creates the box around a field's input, with the look of a text
 // input, which builds the input with fn; a click in it focuses the input.
-// Its Label names the input.
+// Its Label names the input, and it acts as the input does for the focus:
+// its Focus and AutoFocus focus the input, and its Focused reports the
+// input's focus. Its shortcuts take the keys pressed in the input, which
+// it holds, as a text input's do; the input's own come first.
 func field(c *context, fn func() *node) (*node, *node) {
 	t := c.theme
 	f := coreRow(c).AlignItems(Center).Gap(t.Space(1.5)).Padding(t.Space(1.5), t.Space(2.5)).
@@ -326,6 +329,7 @@ func field(c *context, fn func() *node) (*node, *node) {
 	var in *node
 	f.Children(func() { in = fn() })
 	in.nameFrom = f
+	f.focusTo = in
 	f.styleFn = func(f *node) { inputBorder(t, f, in) }
 	if f.Clicked() {
 		in.Focus()

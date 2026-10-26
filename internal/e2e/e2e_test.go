@@ -2358,6 +2358,80 @@ func TestWindowOpenHandler(t *testing.T) {
 	}
 }
 
+// userInitiatedPage opens a window and navigates from a timer its script
+// starts as it loads, without a user's gesture, and has three things to
+// click that do the same: a button calling window.open(), a
+// target="_blank" link, and a button setting location.href.
+const userInitiatedPage = `<!doctype html><body style="margin:0">
+<button style="position:absolute;left:0;top:0;width:200px;height:100px" onclick="window.open('https://example.com/clicked')">open</button>
+<a href="https://example.com/link" target="_blank" style="position:absolute;left:0;top:100px;width:200px;height:100px;display:block">link</a>
+<button style="position:absolute;left:200px;top:0;width:200px;height:100px" onclick="location.href = 'https://example.com/went'">go</button>
+<script>setTimeout(() => { window.open('https://example.com/timer'); location.href = 'https://example.com/moved' }, 0)</script>
+</body>`
+
+// TestUserInitiated checks that WindowOpenRequest.UserInitiated and
+// NavigateEvent.UserInitiated are false for what a page's script does on
+// its own, and, where the tests can click a page, true for what a click
+// does, its handler's window.open() and location.href included.
+func TestUserInitiated(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{Width: 400, Height: 300})
+	opens := make(chan mygo.WindowOpenRequest, 4)
+	w.Page().SetWindowOpenHandler(func(req mygo.WindowOpenRequest) *mygo.WindowOptions {
+		opens <- req
+		return nil
+	})
+	type navigation struct {
+		url  string
+		user bool
+	}
+	navs := make(chan navigation, 4)
+	w.Page().OnWillNavigate(func(e *mygo.NavigateEvent) {
+		navs <- navigation{e.URL, e.UserInitiated}
+		e.PreventDefault() // the page stays
+	})
+	opened := func(url string, user bool) {
+		t.Helper()
+		select {
+		case req := <-opens:
+			if req.URL != url || req.UserInitiated != user {
+				t.Errorf("window open request %q, UserInitiated %v; want %q, %v", req.URL, req.UserInitiated, url, user)
+			}
+		case <-time.After(wait.Guard):
+			t.Fatalf("the window open handler was not asked about %s", url)
+		}
+	}
+	navigated := func(url string, user bool) {
+		t.Helper()
+		select {
+		case n := <-navs:
+			if n.url != url || n.user != user {
+				t.Errorf("navigation to %q, UserInitiated %v; want %q, %v", n.url, n.user, url, user)
+			}
+		case <-time.After(wait.Guard):
+			t.Fatalf("OnWillNavigate was not told about %s", url)
+		}
+	}
+	w.Page().LoadHTML(userInitiatedPage, "https://example.com/")
+	if runtime.GOOS != "linux" {
+		// WebKitGTK blocks a window.open() without a user's gesture
+		// itself, before asking the app.
+		opened("https://example.com/timer", false)
+	}
+	navigated("https://example.com/moved", false)
+
+	// A user clicks the window of the app in front (see TestClick).
+	w.Focus()
+	eventually(t, "the window focused", w.IsFocused)
+	if !clickPage(w, 100, 50) {
+		t.Skip("clicking a page is not automated on this platform")
+	}
+	opened("https://example.com/clicked", true)
+	clickPage(w, 100, 150)
+	opened("https://example.com/link", true)
+	clickPage(w, 300, 50)
+	navigated("https://example.com/went", true)
+}
+
 func TestMenuActivation(t *testing.T) {
 	w := newWindow(t, mygo.WindowOptions{Width: 400, Height: 300})
 	w.Page().LoadHTML("<p>menus</p>", "")

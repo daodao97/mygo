@@ -4,6 +4,7 @@ package windows
 
 import (
 	"errors"
+	"time"
 	"unsafe"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -115,6 +116,8 @@ type window struct {
 	programmatic bool
 	loading      bool
 	zoom         float64
+	muted        bool      // SetAudioMuted, which setUp applies to a web view made later
+	mutePut      time.Time // when the IsMuted put in flight was made, zero for none
 	devTools     bool
 	htmlFor      map[string]string // LoadHTML documents by the URL they load at
 	htmlNext     bool              // LoadHTML started the next navigation
@@ -201,6 +204,9 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	}
 	if w.captionless() && w.shadow && o.Flyout == nil {
 		w.SetHasShadow(true)
+	}
+	if w.captionless() {
+		w.plainCaption()
 	}
 	if w.hiddenTitleBar {
 		w.caption = newCaptionBar(w)
@@ -650,6 +656,19 @@ func (w *window) layoutControls() {
 // captionless reports a window without a caption: frameless, or with a
 // hidden title bar.
 func (w *window) captionless() bool { return w.frameless || w.hiddenTitleBar }
+
+// plainCaption keeps the accent color off the top of a window without a
+// caption. With "Show accent color on title bars and window borders" on,
+// Windows 11 paints the caption in the accent, and what is left of it, the
+// pixel frameCalcSize keeps and the frame SetHasShadow extends, shows as a
+// strip of the accent over the page. Windows 10 knows no caption color.
+func (w *window) plainCaption() {
+	if !windows11() {
+		return
+	}
+	none := uint32(dwmColorNone)
+	procDwmSetWindowAttribute.Call(w.hwnd, dwmwaCaptionColor, uintptr(unsafe.Pointer(&none)), 4)
+}
 
 // frameCalcSize removes the title bar of windows without a caption.
 // Resizable ones keep their left, right and bottom borders, which Windows

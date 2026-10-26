@@ -265,9 +265,16 @@ func scrolledPast(term *vt.Terminal, id vt.RowID, scrollback int) int {
 // restart starts the other terminal over: its scrollback and screen, then
 // this one's, row by row.
 func (m *Mirror) restart(out *bytes.Buffer, screen []line, alt bool, top int) {
-	// Both screens' images go too, which frames send again.
+	// Both screens' images go too, which frames send again: those sent by
+	// their ids, as deleting the placements that show (d=A) leaves those
+	// of the scrollback, which the other terminal keeps over its screen
+	// once the scrollback is cleared under them.
 	const noImages = "\x1b_Ga=d,d=A,q=2\x1b\\"
-	out.WriteString("\x1b[?1049h" + noImages + "\x1b[?1049l" + noImages + "\x1b[0m\x1b[H\x1b[2J\x1b[3J")
+	out.WriteString("\x1b[?1049h" + noImages)
+	m.deleteImages(out, &m.imgs[1])
+	out.WriteString("\x1b[?1049l" + noImages)
+	m.deleteImages(out, &m.imgs[0])
+	out.WriteString("\x1b[0m\x1b[H\x1b[2J\x1b[3J")
 	m.modes, m.cursor = "", ""
 	m.imgs = [2]mirroredImages{}
 	m.sent = make([][]byte, len(screen))

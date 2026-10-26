@@ -215,13 +215,13 @@ app.code.OnInput = func(ev ui.InputEvent) bool {
 
 `LanguageFor` finds a file's language by its name, and `LanguageNamed` by
 its own; `Languages` lists them. The editor knows Go, JavaScript,
-TypeScript, JSON, Python, Rust, C, C++, Java, Kotlin, Swift, C#, shell
-scripts, YAML, TOML, SQL, Ruby, Lua, PHP, CSS, HTML, XML, Markdown, diffs,
-Dockerfiles, Makefiles, Protocol Buffers and Zig. A `Language` says how to
-highlight, comment, match brackets and indent its text, and with
-`Imports`, a pattern of a line that imports (`^import\b` for Go), which
-lines fold as a run: build one for another language, or copy one and
-change it.
+TypeScript, JSON, Python, Rust, C, C++, Java, Kotlin, Scala, Swift, Dart,
+C#, shell scripts, YAML, TOML, SQL, R, Ruby, Lua, PHP, CSS, HTML, XML,
+Markdown, diffs, Dockerfiles, Makefiles, Protocol Buffers, GraphQL and Zig.
+A `Language` says how to highlight, comment, match brackets and indent its
+text, and with `Imports`, a pattern of a line that imports (`^import\b` for
+Go), which lines fold as a run: build one for another language, or copy
+one and change it.
 
 A language highlights its text with a `Tokenizer` by default: a function
 from a line, and the state the line before it ended in, to the line's

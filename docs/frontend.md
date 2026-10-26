@@ -420,6 +420,18 @@ that tells them at document start is replaced when they change.
 `mygo.Theme.Preferences()` reads them on the Go side, see
 [native](native.md#accent-color-and-accessibility).
 
+## Pages that size their window
+
+The page of a flyout or a window with `FitContent` sizes it, without a
+`ResizeObserver` or a bound method of its own: MyGo's runtime lays `html`
+out at the width of its content, within the window's limits, and the
+window takes the root's size as it changes (see
+[windows](windows.md#size-a-flyout-to-its-content)). Let `html` and
+`body` take their content's size: a `height: 100%` or `100vh` on them
+keeps the window at the size it has, and a `width` on `html` replaces the
+content's. Text wider than the maximum wraps, and content taller than it
+scrolls.
+
 ## Links and new windows
 
 Links with `target="_blank"` and `window.open()` call the window's open
@@ -435,6 +447,26 @@ win.Page().SetWindowOpenHandler(func(req mygo.WindowOpenRequest) *mygo.WindowOpt
 	return nil
 })
 ```
+
+`req.UserInitiated` tells the windows a user opened, with a click on the link
+or a click or key press whose handler calls `window.open()`, from the ones a
+script opened on its own, as a pop-up from a timer or as the page loads.
+Refuse those, as ads in an embedded page:
+
+```go
+win.Page().SetWindowOpenHandler(func(req mygo.WindowOpenRequest) *mygo.WindowOptions {
+	if !req.UserInitiated {
+		return nil // a pop-up
+	}
+	go mygo.Shell.OpenExternal(req.URL)
+	return nil
+})
+```
+
+On Linux, WebKitGTK blocks a `window.open()` without a user's gesture itself,
+so the handler is asked only about the ones a gesture made. A script the app
+runs itself with `Page.Eval` counts as a user's gesture on macOS and Linux,
+where WebKit runs it as one.
 
 `win.Page().OnWillNavigate` can cancel the page's own navigations, e.g. to keep the
 app's window on the app: see [Windows](windows.md#pages).

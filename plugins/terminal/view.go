@@ -230,6 +230,8 @@ type view struct {
 	pointerAt          ui.Cursor
 	tracking           bool
 	modeShape, modeOSC int
+	// extending keeps a Shift-click drag anchored to the existing selection.
+	extending bool
 	// barHeld tells that the primary button drags the scroll bar, held
 	// barGrab DIPs below the thumb's top; overBar that the pointer is over
 	// the bar, as of its last move, and barHover as of the last build.
@@ -1195,6 +1197,11 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 		}
 		v.selecting = true
 		v.mousePress = nil
+		v.extending = ev.Mods&ui.Shift != 0 && v.screen().ExtendSelection(ref)
+		if v.extending {
+			v.gesture.Reset(v.screen())
+			return true
+		}
 		if tracking && preferDrag {
 			press := ev
 			v.mousePress = &press
@@ -1218,6 +1225,11 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 		if !ok {
 			return true
 		}
+		if v.extending {
+			v.screen().ExtendSelection(ref)
+			v.ticking = v.selectionScrollDirection() != 0
+			return true
+		}
 		px, py = v.selectionPosition(ev.X, ev.Y)
 		if s, ok := v.gesture.Drag(v.screen(), ref, px, py, v.geometry(), ev.Mods&ui.Alt != 0); ok {
 			v.screen().SetSelection(&s)
@@ -1234,7 +1246,9 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 		v.selecting, v.ticking = false, false
 		v.touchSelecting = false
 		ref, ok := v.screen().CellAt(col, row)
-		if ok {
+		if v.extending {
+			v.extending = false
+		} else if ok {
 			// A quick drag can reach its final cell in the release event
 			// before a motion event was delivered. Don't turn it into a
 			// program click or lose the final selected column.
@@ -1359,17 +1373,40 @@ func (v *view) selectionPosition(x, y float32) (float64, float64) {
 // autoscroll scrolls a selection dragged past the top or the bottom; t.mu
 // is held.
 func (v *view) autoscroll() {
-	dir := v.gesture.Autoscroll(v.screen())
+	dir := 0
+	if v.extending {
+		dir = v.selectionScrollDirection()
+	} else {
+		dir = v.gesture.Autoscroll(v.screen())
+	}
 	if dir == 0 || !v.selecting {
 		v.ticking = false
 		return
 	}
 	v.screen().ScrollBy(dir)
 	col, row := v.cellAt(v.pointer[0], v.pointer[1])
+	if v.extending {
+		if ref, ok := v.screen().CellAt(col, row); ok {
+			v.screen().ExtendSelection(ref)
+		}
+		return
+	}
 	px, py := v.selectionPosition(v.pointer[0], v.pointer[1])
 	if s, ok := v.gesture.Tick(v.screen(), col, row, px, py, v.geometry(), false); ok {
 		v.screen().SetSelection(&s)
 	}
+}
+
+// selectionScrollDirection follows a Shift-click drag past either edge.
+func (v *view) selectionScrollDirection() int {
+	y := v.pointer[1] * v.scale
+	if y < float32(v.oy) {
+		return -1
+	}
+	if y >= float32(v.oy+v.rows*v.cellH) {
+		return 1
+	}
+	return 0
 }
 
 // report reports the pointer to the program; t.mu is held.
@@ -1405,6 +1442,23 @@ func (v *view) report(ev ui.InputEvent) bool {
 		t.in.push(append([]byte(nil), out...))
 	}
 	return ev.Kind != ui.InputPointerMove || len(out) > 0
+}
+
+// wheelRows turns dy DIPs of a mouse wheel's notches (scrolling that is
+// not Precise) on goos into the rows the terminal scrolls. A notch scrolls
+// three rows on macOS and Linux, and on Windows as many as its "lines to
+// scroll" setting asks, 3 unless changed, as Windows Terminal does. The
+// DIPs are what the backends send: 40 a line on macOS (internal/darwin),
+// 50 a step on Linux (internal/linux), and 33 a line of the setting on
+// Windows (internal/windows), where a notch sends that many lines.
+func wheelRows(dy float32, goos string) float32 {
+	switch goos {
+	case "windows":
+		return dy / 33
+	case "linux":
+		return dy / 50 * 3
+	}
+	return dy / 40 * 3
 }
 
 // scroll scrolls the scrollback, or reports the wheel to the program.
@@ -1455,7 +1509,7 @@ func (v *view) scroll(ev ui.InputEvent) bool {
 	ch := float32(v.cellH) / v.scale
 	dy := ev.DY
 	if !ev.Precise {
-		dy = dy / 40 * 3 * ch // a notch scrolls three rows
+		dy = wheelRows(dy, runtime.GOOS) * ch
 	}
 	v.scrolled += dy
 	rows := int(v.scrolled / ch)

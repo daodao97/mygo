@@ -42,6 +42,9 @@ func click(w *mygo.Window, x, y float64) bool {
 	return true
 }
 
+// clickPage clicks a window's page: click reaches web views too.
+func clickPage(w *mygo.Window, x, y float64) bool { return click(w, x, y) }
+
 // appClick clicks through the application, whose event monitors see it.
 func appClick(w *mygo.Window, x, y float64) bool {
 	waitOnScreen(w)

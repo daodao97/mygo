@@ -166,7 +166,7 @@ func (rt *engine) dragMove(x, y float32) {
 					done(result)
 				}
 			}
-			if err := rt.host.startDataDrag(src.data(), value, options, x, y); err != nil {
+			if err := rt.host.startDataDrag(src.data(), value, options, x*rt.zoomFactor(), y*rt.zoomFactor()); err != nil {
 				options.Done(transfer.Result{Err: err})
 			}
 			return

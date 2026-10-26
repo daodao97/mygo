@@ -57,8 +57,10 @@ func folding() bool { return fold.Load() != nil }
 // with those folded: fills and shadows, and images and glyphs moved by
 // whole pixels, glyphs without transforms of their own (renderers round
 // their places, a glyph's bitmap staying on whole pixels without a
-// transform). Clips, effects and holes keep their transforms. The copy
-// holds until the next Fold. Before FoldTranslations, it returns s.
+// transform), and clips: their edges are computed where they fall, as a
+// fill's, rather than rasterized into a mask each frame the clip moves.
+// Effects and holes keep their transforms. The copy holds until the next
+// Fold. Before FoldTranslations, it returns s.
 func (f *TranslationFolder) Fold(s *Scene) *Scene {
 	fn := fold.Load()
 	if fn == nil {
@@ -127,7 +129,7 @@ func folds(s *Scene, op *Op) bool {
 	}
 	whole := x == float32(math.Trunc(float64(x))) && y == float32(math.Trunc(float64(y)))
 	switch op.Kind {
-	case OpFill, OpShadow:
+	case OpFill, OpShadow, OpPushClip:
 		return true
 	case OpImage:
 		// Images sample their texels where they fall, which the CPU's

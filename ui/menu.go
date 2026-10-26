@@ -450,7 +450,8 @@ func (rt *engine) showMenu() {
 		return
 	}
 	rt.menu.pending = nil
-	rt.host.popupMenu(p.menu, p.x, p.y, func(id int) { rt.menuChosen(p, id) })
+	z := rt.zoomFactor()
+	rt.host.popupMenu(p.menu, p.x*z, p.y*z, func(id int) { rt.menuChosen(p, id) })
 }
 
 // menuChosen takes the item id chosen from the menu p: the next frame

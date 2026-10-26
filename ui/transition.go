@@ -788,7 +788,7 @@ func ghostOf(e *node) *node {
 	g.parent, g.first, g.last, g.next, g.nchild = nil, nil, nil, nil, 0
 	g.shadows, g.cols, g.rows, g.frags = slices.Clone(e.shadows), slices.Clone(e.cols), slices.Clone(e.rows), slices.Clone(e.frags)
 	g.track, g.popover, g.list, g.rowsOf, g.overflow = nil, nil, nil, nil, nil
-	g.activeDescendant, g.nameFrom, g.field, g.form = nil, nil, nil, nil
+	g.activeDescendant, g.nameFrom, g.focusTo, g.field, g.form = nil, nil, nil, nil, nil
 	g.followX, g.colFit, g.gridFit = nil, nil, nil
 	g.inputFn, g.ghosts = nil, false
 	g.poseSet = false // it keeps the pose it had

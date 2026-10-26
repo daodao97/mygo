@@ -668,13 +668,20 @@ func physicalKey(ev id) platform.Key {
 	return keyAtCodeForLayout(code, kbGetLayoutType(keyboardType))
 }
 
-// stringOf returns the text of an NSString or NSAttributedString.
+// stringOf returns the text of an NSString or NSAttributedString. Other
+// objects with a stringValue (an NSNumber set as an AXValue) give that text,
+// and anything else gives "".
 func stringOf(obj id) string {
 	if obj == 0 {
 		return ""
 	}
 	if respondsTo(obj, "string") {
 		obj = send(obj, "string")
+	} else if !respondsTo(obj, "UTF8String") && respondsTo(obj, "stringValue") {
+		obj = send(obj, "stringValue")
+	}
+	if !respondsTo(obj, "UTF8String") {
+		return ""
 	}
 	return goString(obj)
 }
@@ -725,8 +732,10 @@ func registerSurfaceClass() {
 			}
 			if kind == platform.PointerDown {
 				if btn == 0 {
-					release(s.w.lastMouseDown)
-					s.w.lastMouseDown = retain(ev)
+					// Native UI's drag regions drag the window
+					// (StartDrag), and its data drags start with the
+					// press.
+					s.w.pressedLeft(ev)
 				}
 				send(s.w.win, "makeFirstResponder:", uintptr(self))
 			}

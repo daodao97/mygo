@@ -219,7 +219,7 @@ func TestScrollback(t *testing.T) {
 		return term.term.Scrollbar().Offset
 	}
 	bottom := offset()
-	tt.Wheel(100, 100, 0, -40) // a notch of a mouse wheel up
+	tt.Wheel(100, 100, 0, -hostNotch()) // a notch of a mouse wheel up
 	if got := offset(); got != bottom-3 {
 		t.Errorf("after scrolling a notch up, offset = %d, want %d", got, bottom-3)
 	}
@@ -1659,8 +1659,8 @@ func TestOnScrollTakesTheWheel(t *testing.T) {
 		return term.term.Scrollbar().Offset
 	}
 	bottom := offset()
-	tt.Wheel(100, 100, 0, -40) // a notch up
-	tt.Wheel(100, 100, 0, 40)  // and down
+	tt.Wheel(100, 100, 0, -hostNotch()) // a notch up
+	tt.Wheel(100, 100, 0, hostNotch())  // and down
 	if !slices.Equal(seen, []int{-3, 3}) {
 		t.Errorf("OnScroll saw %v, want [-3 3]", seen)
 	}
@@ -1670,7 +1670,7 @@ func TestOnScrollTakesTheWheel(t *testing.T) {
 	// The program takes the mouse: the wheel goes to it.
 	term.Feed([]byte("\x1b[?1002h\x1b[?1006h"))
 	tt.Frame()
-	tt.Wheel(100, 100, 0, -40)
+	tt.Wheel(100, 100, 0, -hostNotch())
 	if len(seen) != 2 {
 		t.Errorf("OnScroll saw %v while the program took the mouse", seen)
 	}
@@ -1680,7 +1680,7 @@ func TestOnScrollTakesTheWheel(t *testing.T) {
 	// A full-screen program gets it as arrows, unless it turns that off.
 	term.Feed([]byte("\x1b[?1002l\x1b[?1006l\x1b[?1049h"))
 	tt.Frame()
-	tt.Wheel(100, 100, 0, -40)
+	tt.Wheel(100, 100, 0, -hostNotch())
 	if len(seen) != 2 {
 		t.Errorf("OnScroll saw %v on a full-screen program's screen", seen)
 	}
@@ -1689,7 +1689,7 @@ func TestOnScrollTakesTheWheel(t *testing.T) {
 	}
 	term.Feed([]byte("\x1b[?1007l"))
 	tt.Frame()
-	tt.Wheel(100, 100, 0, -40)
+	tt.Wheel(100, 100, 0, -hostNotch())
 	if !slices.Equal(seen, []int{-3, 3, -3}) {
 		t.Errorf("OnScroll saw %v without alternate scroll", seen)
 	}
@@ -1810,6 +1810,68 @@ func TestPasteImage(t *testing.T) {
 	}
 }
 
+// hostNotch is the DIPs a notch of a mouse wheel scrolls on this
+// platform at its defaults, as its backend sends them.
+func hostNotch() float32 {
+	switch runtime.GOOS {
+	case "windows":
+		return 3 * 33 // 3 lines to scroll, 33 DIPs a line
+	case "linux":
+		return 50
+	}
+	return 40
+}
+
+// TestWheelRows: a notch of a mouse wheel scrolls three rows on every
+// platform at its defaults, though their backends send it as 40, 50 or 99
+// DIPs, and on Windows follows "lines to scroll": a notch at one line is a
+// row (#783).
+func TestWheelRows(t *testing.T) {
+	for _, c := range []struct {
+		goos string
+		dy   float32
+		want float32
+	}{
+		{"windows", 99, 3},   // a notch at 3 lines
+		{"windows", -99, -3}, // and up
+		{"windows", 33, 1},   // a notch at 1 line
+		{"windows", 66, 2},   // two notches at 1 line, or one at 2
+		{"windows", 165, 5},  // a notch at 5 lines
+		{"darwin", 40, 3},
+		{"darwin", -80, -6}, // a line accelerated to two
+		{"linux", 50, 3},
+		{"linux", -50, -3},
+	} {
+		if got := wheelRows(c.dy, c.goos); got != c.want {
+			t.Errorf("wheelRows(%v, %q) = %v, want %v", c.dy, c.goos, got, c.want)
+		}
+	}
+}
+
+// TestWheelNotchScrollsThreeRows: the view scrolls three whole rows a
+// notch of this platform's wheel, and as many again the next notch, with
+// nothing left over.
+func TestWheelNotchScrollsThreeRows(t *testing.T) {
+	loadLib(t)
+	var seen []int
+	term, err := New(Options{Conn: newPipe(), OnScroll: func(rows int) bool {
+		seen = append(seen, rows)
+		return true
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.Frame()
+	for _, dy := range []float32{hostNotch(), hostNotch(), -hostNotch()} {
+		term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DY: dy})
+	}
+	if !slices.Equal(seen, []int{3, 3, -3}) {
+		t.Errorf("notches scrolled %v rows, want [3 3 -3]", seen)
+	}
+}
+
 // TestOnZoom: Options.OnZoom takes the wheel with Control (Command on
 // macOS) in notches, rolling up positive, before OnScroll and a program
 // that takes the mouse, and the font size keys.
@@ -1859,7 +1921,7 @@ func TestOnZoom(t *testing.T) {
 	}
 	// Without the modifier the wheel scrolls.
 	zooms = nil
-	wheel(0, -40, false)
+	wheel(0, -hostNotch(), false)
 	if zooms != nil || !slices.Equal(scrolls, []int{-3}) {
 		t.Errorf("a plain notch zoomed %v and scrolled %v", zooms, scrolls)
 	}

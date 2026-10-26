@@ -424,6 +424,23 @@ func clickSurface(handle uintptr, x, y float64, button uint32) bool {
 	return pressButton(button, true) && pressButton(button, false)
 }
 
+// TestClickPage clicks (x, y), in DIPs, in the page of a window's web
+// view, through XTEST, as a user clicks it.
+func TestClickPage(handle uintptr, x, y float64) bool {
+	w := windowByHandle(handle)
+	if w == nil || w.surface != nil || w.web == 0 {
+		return false
+	}
+	loadFlyouts() // contentOrigin's
+	loadSurface() // gtk_widget_get_scale_factor
+	ox, oy := w.contentOrigin()
+	scale := float64(max(gtkWidgetGetScaleFactor(w.web), 1))
+	if !TestMovePointer(int((float64(ox)+x)*scale), int((float64(oy)+y)*scale)) {
+		return false
+	}
+	return pressButton(1, true) && pressButton(1, false)
+}
+
 // TestSideButton clicks a mouse's back or forward button (buttons 8 and
 // 9) in a window showing native UI, through XTEST.
 func TestSideButton(handle uintptr, back bool) bool {

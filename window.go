@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image/color"
 	"log"
 	"net/url"
 	"os"
@@ -76,6 +77,16 @@ type WindowOptions struct {
 	X, Y                int
 	MinWidth, MinHeight int
 	MaxWidth, MaxHeight int
+	// FitContent sizes the page area to its page's content, and follows
+	// it as it changes, as FlyoutOptions.FitContent sizes a flyout: a
+	// panel showing a launcher's results, say. Width and Height are its
+	// size until the page tells its own. MinWidth, MinHeight, MaxWidth
+	// and MaxHeight bound it, and the work area of its display. It changes
+	// only when the content's size does, and only in the dimension that
+	// changed, so a size the user gives a resizable window holds until
+	// then, and not while the window is maximized or in full screen.
+	// Native UI (Content) does not fit.
+	FitContent bool
 
 	// Hidden creates the window without showing it. Call Show, typically
 	// from OnReadyToShow, to avoid a blank window while the page loads.
@@ -156,7 +167,12 @@ type WindowOptions struct {
 	CornerRadius int
 	// Opacity of the window between 0 and 1 (default 1).
 	Opacity float64
-	// Parent makes this window a child window that stays on top of it.
+	// Parent makes this window a child window that stays on top of it
+	// and closes with it. It can go to any display, and stays where it is
+	// as its parent moves. On macOS it is ordered above its parent
+	// whenever the parent comes in front, stays above a parent that is
+	// AlwaysOnTop, goes with it into full screen, and hides while the
+	// parent is minimized or hidden.
 	Parent *Window
 	// Modal makes a child window modal to its Parent.
 	Modal bool
@@ -239,6 +255,9 @@ type Window struct {
 	flyoutSize platform.Size
 	// panel is WindowOptions.Panel.
 	panel bool
+	// fit sizes a window that takes its page's size (FitContent), nil
+	// for others. Main thread only.
+	fit *fitContent
 	// host is the window a web view is in, for the page of a web view
 	// (webView); webViews are the pages of a window's web views, guarded
 	// by the lock of windows.
@@ -344,6 +363,22 @@ type Window struct {
 	onDidFinishLoad    listeners[func()]
 	onDidFailLoad      listeners[func(*LoadError)]
 	onRenderGone       listeners[func(string)]
+
+	// themeColor is the page's theme color, as its bridge told it, and
+	// hasThemeColor whether it has one. themeColorPending is set from a
+	// navigation's commit until the new page tells its color, which it
+	// does by the time its DOM is ready; a page without the bridge (an
+	// image) never does, and has none once it loaded. Main thread only.
+	themeColor          platform.Color
+	hasThemeColor       bool
+	themeColorPending   bool
+	onThemeColorChanged listeners[func(color.NRGBA, bool)]
+
+	// audible is what the backend last told of the page's sound
+	// (AudibleChanged), so that listeners hear only changes. Main thread
+	// only.
+	audible          bool
+	onAudibleChanged listeners[func(bool)]
 }
 
 // LoadError describes a failed page load.
@@ -365,6 +400,11 @@ type WindowOpenRequest struct {
 	// Width and Height requested through window.open() features; 0 when
 	// not specified.
 	Width, Height int
+	// UserInitiated is true when a user's gesture opened the window: a
+	// click on the link, or a click or key press whose handler called
+	// window.open(). It is false for a window a script opened on its own,
+	// as a pop-up from a timer or at load, which a handler may refuse.
+	UserInitiated bool
 }
 
 var windows struct {
@@ -446,6 +486,16 @@ func newWindow(opts WindowOptions, bg *background, native uintptr, flyout *flyou
 
 	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, secret: randomText(), stateKey: opts.StateKey, background: bg, content: opts.Content, panel: opts.Panel && flyout == nil}
 	w.pg = &Page{w}
+	if opts.Content == nil {
+		if flyout != nil {
+			w.fit = flyout.fit
+		} else if opts.FitContent {
+			w.fit = &fitContent{
+				min: platform.Size{Width: opts.MinWidth, Height: opts.MinHeight},
+				max: platform.Size{Width: opts.MaxWidth, Height: opts.MaxHeight},
+			}
+		}
+	}
 	w.hiddenTitleBar = !opts.Frameless && (opts.TitleBarStyle == TitleBarHidden || opts.TitleBarStyle == TitleBarHiddenInset)
 	w.resetPage()
 	popts := w.platformOptions(&opts)
@@ -571,6 +621,9 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 		p.Parent = o.Parent.native
 	}
 	w.preload = po.PreloadScript
+	if w.fit != nil {
+		w.fit.zoom = p.Zoom
+	}
 	p.UserScripts = w.pageScripts()
 	// Kept to replace the preferences' and the locale's (sendPreferences,
 	// pagesLocaleChanged).
@@ -1322,7 +1375,7 @@ func (p *Page) SetZoomFactor(f float64) {
 	}
 	p.w.page(func(n platform.Window) {
 		n.SetZoom(f)
-		p.w.sendTitleBar() // the controls take other CSS pixels
+		p.w.zoomChanged()
 	})
 }
 
@@ -1460,6 +1513,8 @@ func (e *EvalError) Error() string { return "mygo: javascript error: " + e.Messa
 // target="_blank" links. The handler returns the options of the window to
 // open, or nil to deny the request. Without a handler, http(s) URLs open in
 // the default browser and everything else is denied.
+// WindowOpenRequest.UserInitiated tells the windows a user opened from
+// the pop-ups a script opened on its own.
 //
 // On macOS and Windows the new page keeps its relation to the opener
 // (window.opener). On Linux it opens as an independent page, because
@@ -1834,16 +1889,19 @@ func (h *windowHandler) NavigationCommitted(url string) {
 	h.w.domReady = false
 	h.w.outMu.Unlock()
 	h.w.resetPage()
+	h.w.themeColorPending = true
 	fire1(&h.w.onDidNavigate, url)
 }
 
 func (h *windowHandler) LoadFinished() {
+	h.w.themeColorSettled()
 	fire(&h.w.onDidFinishLoad)
 	// Pages without the bridge (e.g. images) never report DOM ready.
 	h.w.readyToShow()
 }
 
 func (h *windowHandler) LoadFailed(url string, code int, desc string) {
+	h.w.themeColorSettled()
 	fire1(&h.w.onDidFailLoad, &LoadError{URL: url, Code: code, Description: desc})
 }
 
@@ -1863,7 +1921,7 @@ func (h *windowHandler) NewWindow(req platform.NewWindowRequest) platform.Window
 	h.w.mu.Lock()
 	handler := h.w.openHandler
 	h.w.mu.Unlock()
-	r := WindowOpenRequest{URL: req.URL, FrameName: req.FrameName, Width: req.Width, Height: req.Height}
+	r := WindowOpenRequest{URL: req.URL, FrameName: req.FrameName, Width: req.Width, Height: req.Height, UserInitiated: req.UserInitiated}
 	if handler == nil {
 		if u, err := url.Parse(req.URL); err == nil && (u.Scheme == "http" || u.Scheme == "https") {
 			go Shell.OpenExternal(req.URL)
@@ -1895,6 +1953,14 @@ func (h *windowHandler) ClosedByPage() {
 }
 
 func (h *windowHandler) RenderProcessGone(reason string) { fire1(&h.w.onRenderGone, reason) }
+
+func (h *windowHandler) AudibleChanged(audible bool) {
+	if audible == h.w.audible {
+		return
+	}
+	h.w.audible = audible
+	fire1(&h.w.onAudibleChanged, audible)
+}
 
 // filesDropped tells OnFileDrop listeners, and the app's own pages, about
 // dropped files.

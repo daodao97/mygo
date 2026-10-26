@@ -129,6 +129,11 @@ type engine struct {
 	painter         Painter
 	glyphRun        glyphRun
 
+	// contentZoom is the content's zoom (Context.SetZoom), 0 for none;
+	// zoomChanged tells that it changed since the frame's size was read.
+	contentZoom float32
+	zoomChanged bool
+
 	// building counts the public constructors under way: input queued
 	// while more were under way than now belongs to controls built since,
 	// which applyInputs finalizes (see value_input.go).
@@ -192,7 +197,8 @@ type engine struct {
 	webOut    []placedWebView
 	webShown  bool
 	// maxButton is where the frame shows the window's maximize button
-	// (MaximizeButton), and maxSent what the host got of it.
+	// (MaximizeButton), and maxSent what the host got of it, in the
+	// window's DIPs.
 	maxButton, maxSent Rect
 	// The focus groups of the frame, the group of each element of the
 	// focus order in one, and the element of each that had the focus
@@ -577,16 +583,17 @@ func (rt *engine) runFrame() {
 	rt.focusRead = false
 	rt.stats.begin(rt)
 	now := rt.frameTime()
-	w, h, scale := rt.host.size()
+	rt.zoomChanged = false
+	w, h, scale := rt.size()
 	// The content takes the room the inspector leaves.
 	appW := rt.insp.contentWidth(w)
 	rt.insp.lap(-1)
-	rt.c.titleBar = rt.host.titleBar()
+	rt.c.titleBar = rt.titleBar()
 	// Read every frame like the title bar, and for a sharper reason: the
 	// safe area changes with the window (rotation, a soft keyboard, a
 	// fold), and a value cached at start-up would leave a page padded for
 	// the orientation it was built in.
-	rt.c.safeArea = rt.host.safeArea()
+	rt.c.safeArea = rt.safeArea()
 	rt.c.vibrancy = rt.host.vibrancy()
 	rt.text.BeginFrame()
 	rt.gen = rt.text.Generation()
@@ -619,6 +626,16 @@ func (rt *engine) runFrame() {
 	for pass := 0; pass < 3; pass++ {
 		rt.pass = pass
 		rt.consumed = false
+		if rt.zoomChanged {
+			// The view zoomed the content: this pass builds it at its new
+			// size.
+			rt.zoomChanged = false
+			w, h, scale = rt.size()
+			appW = rt.insp.contentWidth(w)
+			rt.c.titleBar = rt.titleBar()
+			rt.c.safeArea = rt.safeArea()
+			rt.painted = [3]float32{w, h, scale}
+		}
 		rt.nextRegs = rt.nextRegs[:0]
 		clear(rt.kept)
 		rt.c.reset(now, appW, h)
@@ -648,9 +665,20 @@ func (rt *engine) runFrame() {
 		if rt.closing {
 			return // an action closed it
 		}
-		if !rt.consumed {
+		if !rt.consumed && !rt.zoomChanged {
 			break
 		}
+	}
+	if rt.zoomChanged {
+		// Zoomed in the last pass: laid out at the new size, and built
+		// at it in the next frame.
+		rt.zoomChanged = false
+		w, h, scale = rt.size()
+		appW = rt.insp.contentWidth(w)
+		rt.c.titleBar = rt.titleBar()
+		rt.c.safeArea = rt.safeArea()
+		rt.painted = [3]float32{w, h, scale}
+		rt.host.requestFrame()
 	}
 	if rt.stats != nil {
 		rt.stats.passes = rt.pass + 1
@@ -700,9 +728,10 @@ func (rt *engine) runFrame() {
 	// kept in ui/diagnostics.go, which reads the scene itself.
 	rt.host.present(&rt.scene)
 	rt.placeWebViews()
-	if rt.maxButton != rt.maxSent {
-		rt.maxSent = rt.maxButton
-		rt.host.setMaximizeButton(rt.maxButton)
+	// The window hit-tests its maximize button in its own DIPs.
+	if r := rt.windowRect(rt.maxButton); r != rt.maxSent {
+		rt.maxSent = r
+		rt.host.setMaximizeButton(r)
 	}
 	rt.stats.lap(phasePresent)
 	rt.prune()
@@ -714,7 +743,7 @@ func (rt *engine) runFrame() {
 	rt.updateTextInput()
 	rt.updateCursor()
 	if rt.access {
-		rt.host.updateAccessibility(rt.accessTree())
+		rt.host.updateAccessibility(rt.windowAccess(rt.accessTree()))
 	}
 	if h, ok := rt.host.(*headless); ok {
 		// For tests, whether assistive technology reads the window or not.
@@ -876,7 +905,7 @@ func (rt *engine) surfaceFrame() {
 			rt.pacedAt = next
 		}
 	}
-	if w, h, scale := rt.host.size(); rt.redraw && !rt.inFrame && rt.c.root != nil &&
+	if w, h, scale := rt.size(); rt.redraw && !rt.inFrame && rt.c.root != nil &&
 		rt.painted == [3]float32{w, h, scale} && rt.text.Generation() == rt.gen {
 		rt.repaintFrame(w, h, scale)
 		return

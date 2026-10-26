@@ -69,6 +69,29 @@ func TestOnScreen(handle uintptr) bool {
 	return sendInt(id(handle), "occlusionState")&occlusionStateVisible != 0
 }
 
+// TestWindowOrder returns the app's windows on screen, panels too, front
+// to back.
+func TestWindowOrder() []uintptr {
+	var order []uintptr
+	withPool(func() {
+		for _, w := range theBackend.windowsFrontToBack() {
+			order = append(order, uintptr(w))
+		}
+	})
+	return order
+}
+
+// TestOnActiveSpace reports whether a window is on the Space that shows,
+// a full-screen window's own when it is in front.
+func TestOnActiveSpace(handle uintptr) bool {
+	return sendBool(id(handle), "isOnActiveSpace")
+}
+
+// TestWindowLevel returns a window's level.
+func TestWindowLevel(handle uintptr) int {
+	return sendInt(id(handle), "level")
+}
+
 // TestEndSheet ends the sheet attached to a window as if its first button
 // was clicked, and reports whether there was one.
 func TestEndSheet(handle uintptr) bool {
@@ -191,6 +214,51 @@ func TestDrag(handle uintptr, points [][2]float64) {
 	})
 }
 
+// TestMouseStep is a press (Down), drag or release of the left button at
+// a point of the screen, in MyGo's coordinates (top-left origin).
+type TestMouseStep struct {
+	Down, Up bool // neither is a drag
+	X, Y     float64
+}
+
+// TestAppMouseAt posts steps of the left button in a window through the
+// application's queue, where event monitors see them as they see the
+// user's, and handles them before it returns. Each step is placed in the
+// window where it is when the step is made, so a step keeps its place on
+// the screen when the window moves.
+func TestAppMouseAt(handle uintptr, steps ...TestMouseStep) {
+	withPool(func() {
+		win := id(handle)
+		number := sendInt(win, "windowNumber")
+		screen := primaryScreenHeight()
+		for _, st := range steps {
+			typ := uint(6) // NSEventTypeLeftMouseDragged
+			switch {
+			case st.Down:
+				typ = 1 // NSEventTypeLeftMouseDown
+			case st.Up:
+				typ = 2 // NSEventTypeLeftMouseUp
+			}
+			f := msgRect(win, sel("frame"))
+			loc := NSPoint{st.X - f.Origin.X, screen - st.Y - f.Origin.Y}
+			ev := msgMouseEvent(class("NSEvent"), sel("mouseEventWithType:location:modifierFlags:timestamp:windowNumber:context:eventNumber:clickCount:pressure:"),
+				typ, loc, 0, 0, number, 0, 0, 1, 1)
+			send(theBackend.app, "postEvent:atStart:", uintptr(ev), 0)
+		}
+	})
+	handlePosted()
+}
+
+// TestWindowDrag tells where the press stands in moving a window
+// (StartDrag): "idle", "pressed", "native" or "manual"; "idle" for a
+// window no press is down in.
+func TestWindowDrag(handle uintptr) string {
+	if theDrag.win != id(handle) {
+		return dragIdle.String()
+	}
+	return theDrag.phase.String()
+}
+
 // TestControlClick Control-clicks (x, y), in points from the top-left
 // corner of a window's content.
 func TestControlClick(handle uintptr, x, y float64) {
@@ -250,7 +318,6 @@ var (
 	testPinchOnce              sync.Once
 	cgEventSetType             func(event uintptr, typ uint32)
 	cgEventSetDoubleValueField func(event uintptr, field uint32, value float64)
-	cgEventGetLocation         func(event uintptr) NSPoint
 	cgEventSetLocation         func(event uintptr, p NSPoint)
 )
 
@@ -269,7 +336,6 @@ func TestPinch(handle uintptr, x, y, magnification float64) (ok bool) {
 	testPinchOnce.Do(func() {
 		purego.RegisterLibFunc(&cgEventSetType, libCG, "CGEventSetType")
 		purego.RegisterLibFunc(&cgEventSetDoubleValueField, libCG, "CGEventSetDoubleValueField")
-		purego.RegisterLibFunc(&cgEventGetLocation, libCG, "CGEventGetLocation")
 		purego.RegisterLibFunc(&cgEventSetLocation, libCG, "CGEventSetLocation")
 	})
 	withPool(func() {
@@ -319,7 +385,6 @@ func TestSwipe(handle uintptr, back bool) (ok bool) {
 	testPinchOnce.Do(func() {
 		purego.RegisterLibFunc(&cgEventSetType, libCG, "CGEventSetType")
 		purego.RegisterLibFunc(&cgEventSetDoubleValueField, libCG, "CGEventSetDoubleValueField")
-		purego.RegisterLibFunc(&cgEventGetLocation, libCG, "CGEventGetLocation")
 		purego.RegisterLibFunc(&cgEventSetLocation, libCG, "CGEventSetLocation")
 	})
 	withPool(func() {

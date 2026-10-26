@@ -599,10 +599,13 @@ func performRole(role MenuRole, win *Window) {
 		}
 	case RoleResetZoom:
 		n.SetZoom(1)
+		win.zoomChanged()
 	case RoleZoomIn:
 		n.SetZoom(nextZoom(n.Zoom(), 1))
+		win.zoomChanged()
 	case RoleZoomOut:
 		n.SetZoom(nextZoom(n.Zoom(), -1))
+		win.zoomChanged()
 	case RoleToggleFullScreen:
 		n.SetFullScreen(!n.IsFullScreen())
 	case RoleMinimize:

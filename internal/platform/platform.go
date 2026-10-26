@@ -595,6 +595,17 @@ type Page interface {
 	// the backend reports for the page (see Page.ProcessID in package
 	// mygo for which one), 0 when it reports none.
 	ProcessID() int
+	// IsAudible reports whether the page plays sound, from any of its
+	// frames, as WindowHandler.AudibleChanged reports its changes; false
+	// where the backend cannot tell.
+	IsAudible() bool
+	// SetAudioMuted mutes the page's sound, or lets it play again. A
+	// backend whose web view does not exist yet mutes it once it does;
+	// one that cannot mute does nothing.
+	SetAudioMuted(muted bool)
+	// IsAudioMuted reports what SetAudioMuted set, false where the
+	// backend cannot mute.
+	IsAudioMuted() bool
 	OpenDevTools()
 	CloseDevTools()
 	IsDevToolsOpened() bool
@@ -698,6 +709,8 @@ type WindowHandler interface {
 	// ClosedByPage is called when the page calls window.close().
 	ClosedByPage()
 	RenderProcessGone(reason string)
+	// AudibleChanged is called when Page.IsAudible changes.
+	AudibleChanged(audible bool)
 	SchemeRequest(req *SchemeRequest)
 	// DownloadStarted returns where to save a download, "" to cancel it;
 	// DownloadFinished reports how it ended.
@@ -740,6 +753,10 @@ type NewWindowRequest struct {
 	Disposition string
 	// Width/Height/X/Y come from window.open() features; zero when absent.
 	X, Y, Width, Height int
+	// UserInitiated is true when a user's gesture, as a click or a key
+	// press, opened the window: a click on the link, or its handler
+	// calling window.open().
+	UserInitiated bool
 	// Native must be copied into WindowOptions.Native of the window that is
 	// returned.
 	Native uintptr

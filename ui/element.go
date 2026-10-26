@@ -463,7 +463,11 @@ type node struct {
 	nameFrom         *node
 	// nameJoin makes the element's name nameFrom's followed by its Label,
 	// as a range slider's knobs.
-	nameJoin        bool
+	nameJoin bool
+	// focusTo is the element taking the focus that Focus and AutoFocus
+	// give this one, and whose focus Focused reports: the input of the box
+	// around it (field).
+	focusTo         *node
 	setPos, setSize int
 	choosesItems    bool
 	search          bool
@@ -1451,7 +1455,8 @@ func (e *node) DrawObjects(fn func(p *Painter, at int, r Rect)) *node {
 func (e *node) ID() uint64 { return e.id }
 
 // Bounds returns the previous frame's transformed bounding rectangle in
-// window DIPs; it is empty for an element the previous frame lacked.
+// window DIPs, the content's when zoomed (Context.SetZoom); it is empty
+// for an element the previous frame lacked.
 // LayoutBounds returns its box before visual transforms.
 func (e *node) Bounds() Rect {
 	if !e.hasState() {

@@ -22,6 +22,8 @@ func click(*mygo.Window, float64, float64) bool { return false }
 
 func appClick(*mygo.Window, float64, float64) bool { return false }
 
+func clickPage(*mygo.Window, float64, float64) bool { return false }
+
 func heldAppClick(*mygo.Window, float64, float64) bool { return false }
 
 func drag(*mygo.Window, [][2]float64) bool { return false }

@@ -45,6 +45,11 @@ type Backend struct {
 	stepping       int
 	quitAfterModal bool
 
+	// orderingChildren tells that child windows are being ordered above
+	// their parent, or out with it (child_window.go): what AppKit tells
+	// of their ordering then orders nothing more.
+	orderingChildren bool
+
 	dockProgress dockProgress
 	// openedAtLogin records whether the system started the app as a login
 	// item (WasOpenedAtLogin).

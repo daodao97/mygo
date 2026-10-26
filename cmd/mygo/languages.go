@@ -213,7 +213,8 @@ const langEnUS = 0x0409
 
 // windowsLanguages returns the languages of the Windows resources of the
 // app: those it ships that Windows has an ID of, its own first, or en-US
-// alone with the app's own name without any.
+// alone with the app's own name without any. The app's own name is the
+// one Windows shows it by (windows.displayName).
 func windowsLanguages(c *Config, langs []appLanguage) []windowsLanguage {
 	var out []windowsLanguage
 	for _, l := range langs {
@@ -227,12 +228,12 @@ func windowsLanguages(c *Config, langs []appLanguage) []windowsLanguage {
 		}
 		name := l.Name
 		if name == "" {
-			name = c.Name
+			name = c.windowsName()
 		}
 		out = append(out, windowsLanguage{id: id, name: name})
 	}
 	if len(out) == 0 {
-		out = append(out, windowsLanguage{id: langEnUS, name: c.Name})
+		out = append(out, windowsLanguage{id: langEnUS, name: c.windowsName()})
 	}
 	return out
 }

@@ -198,3 +198,50 @@ func TestLinuxMaintainer(t *testing.T) {
 		}
 	}
 }
+
+// TestWindowsDisplayName checks windows.displayName: the name Windows shows
+// the app by, which falls back to the name, while the executable and the
+// install folder keep the name's.
+func TestWindowsDisplayName(t *testing.T) {
+	load := func(config string) (*Config, error) {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, jsonConfig), []byte(config), 0o644)
+		return loadConfig(dir)
+	}
+	c, err := load(`{"name": "weather", "windows": {"displayName": "天气助手"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.windowsName() != "天气助手" || c.shortcutName() != "天气助手" || c.executableName() != "weather" || c.slug() != "weather" {
+		t.Errorf("windowsName %q, shortcutName %q, executableName %q, slug %q", c.windowsName(), c.shortcutName(), c.executableName(), c.slug())
+	}
+	if wl := windowsLanguages(c, nil); len(wl) != 1 || wl[0].name != "天气助手" {
+		t.Errorf("the file properties name the app %+v", wl)
+	}
+	if wl := windowsLanguages(c, []appLanguage{{Tag: "en"}, {Tag: "de", Name: "Wetter"}, {Tag: "fr"}}); len(wl) != 3 || wl[0].name != "天气助手" || wl[1].name != "Wetter" || wl[2].name != "天气助手" {
+		t.Errorf("the file properties name the app %+v", wl)
+	}
+	c.Updates = &Updates{URL: "https://dl.example.com/weather"}
+	ps1 := installPS1(c)
+	for _, want := range []string{"$appName = " + psQuote("天气助手") + "\n", "$exeName = 'weather.exe'\n", `('Programs\' + 'weather')`} {
+		if !strings.Contains(ps1, want) {
+			t.Errorf("install.ps1 has no %q", want)
+		}
+	}
+
+	// Characters file names cannot hold leave the shortcuts' names only.
+	c.Windows.DisplayName = ` Data: "Tools"? `
+	if c.windowsName() != `Data: "Tools"?` || c.shortcutName() != "Data- -Tools--" {
+		t.Errorf("windowsName %q, shortcutName %q", c.windowsName(), c.shortcutName())
+	}
+	// Without one, or a blank one, the name.
+	for _, name := range []string{"", "  "} {
+		c.Windows.DisplayName = name
+		if c.windowsName() != "weather" || c.shortcutName() != "weather" {
+			t.Errorf("%q: windowsName %q, shortcutName %q", name, c.windowsName(), c.shortcutName())
+		}
+	}
+	if _, err := load(`{"name": "weather", "windows": {"displayName": "天气\n助手"}}`); err == nil || !strings.Contains(err.Error(), "windows.displayName") {
+		t.Errorf("a display name that breaks the line loads: %v", err)
+	}
+}

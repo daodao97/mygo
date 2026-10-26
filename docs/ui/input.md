@@ -246,8 +246,12 @@ tells a touchpad, which scrolls by pixels, from a mouse wheel's notches.
 browsers report pinches; Windows sends them as scrolling with Ctrl held,
 so there a touchpad's scrolling with Ctrl comes as `ui.InputZoom` too,
 while a mouse wheel's notches stay `ui.InputScroll` with `ui.Ctrl` in
-`Mods`. What the element takes no scroll container around it scrolls
-with; what it leaves, by returning false, they do.
+`Mods`. On Linux a touchscreen scrolls and pinches as a touchpad does: a
+finger dragging scrolls the content under it along with it (`Precise`),
+two fingers pinch, between them, and scroll as they move together, a tap
+clicks and a finger held still for half a second right-clicks. What the
+element takes no scroll container around it scrolls with; what it
+leaves, by returning false, they do.
 
 ```go
 ui.Box(c).Fill().HandleInput(func(ev ui.InputEvent) bool {

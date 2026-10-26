@@ -247,6 +247,18 @@ func (w *window) setUp(controller uintptr) {
 		withHandler(w.downloadStarting, func(h uintptr) uintptr { return comCall(wv4, wv4AddDownloadStarting, h, uintptr(unsafe.Pointer(&tok))) })
 		release(wv4)
 	}
+	if wv8 := queryInterface(w.webview, &iidICoreWebView2_8); wv8 != 0 {
+		withHandler(func(_, _ uintptr) { w.h.AudibleChanged(w.IsAudible()) }, func(h uintptr) uintptr {
+			return comCall(wv8, wv8AddIsDocumentPlayingAudioChanged, h, uintptr(unsafe.Pointer(&tok)))
+		})
+		withHandler(func(_, _ uintptr) { w.mutedChanged() }, func(h uintptr) uintptr {
+			return comCall(wv8, wv8AddIsMutedChanged, h, uintptr(unsafe.Pointer(&tok)))
+		})
+		release(wv8)
+		if w.muted { // muted before the web view was made
+			w.SetAudioMuted(true)
+		}
+	}
 	add(wvAddWindowCloseRequested, func(_, _ uintptr) { w.h.ClosedByPage() })
 	add(wvAddProcessFailed, func(_, args uintptr) {
 		var kind int32
@@ -516,7 +528,9 @@ func (w *window) newWindowRequested(_, args uintptr) {
 	var p uintptr
 	comCall(args, newWinGetURI, uintptr(unsafe.Pointer(&p)))
 	raw := takeWstr(p)
-	req := platform.NewWindowRequest{URL: w.appURL(raw)}
+	var user int32
+	comCall(args, newWinGetIsUserInitiated, uintptr(unsafe.Pointer(&user)))
+	req := platform.NewWindowRequest{URL: w.appURL(raw), UserInitiated: user != 0}
 	var features uintptr
 	if comCall(args, newWinGetWindowFeatures, uintptr(unsafe.Pointer(&features))) == sOK && features != 0 {
 		var hasSize, hasPos int32
@@ -925,6 +939,92 @@ func (w *window) ProcessID() int {
 		return 0
 	}
 	return int(pid)
+}
+
+// webView8 returns the web view's ICoreWebView2_8, which the caller
+// releases, or 0 before the web view is made and on runtimes older than
+// it.
+func (w *window) webView8() uintptr {
+	return queryInterface(w.webview, &iidICoreWebView2_8)
+}
+
+// getBool8 returns a BOOL property of ICoreWebView2_8, false without it.
+func (w *window) getBool8(index int) bool {
+	wv8 := w.webView8()
+	if wv8 == 0 {
+		return false
+	}
+	defer release(wv8)
+	var v int32
+	if failed(comCall(wv8, index, uintptr(unsafe.Pointer(&v)))) {
+		return false
+	}
+	return v != 0
+}
+
+// IsAudible returns ICoreWebView2_8's IsDocumentPlayingAudio, which
+// IsDocumentPlayingAudioChanged (setUp) tells the changes of.
+func (w *window) IsAudible() bool { return w.getBool8(wv8GetIsDocumentPlayingAudio) }
+
+// SetAudioMuted puts ICoreWebView2_8's IsMuted, or keeps it for setUp
+// until the web view is made. A runtime older than ICoreWebView2_8 can't
+// mute.
+//
+// WebView2 may lose a put that follows another before IsMutedChanged told
+// the first, or apply them out of order, and the page then plays muted or
+// stays silent unmuted. So one put is in flight at a time: w.muted is the
+// state wanted, and mutedChanged puts it again once the runtime told its
+// change, if it differs. A put whose IsMutedChanged never comes (none
+// does for no change) holds the next one back for mutePutTimeout only.
+func (w *window) SetAudioMuted(v bool) {
+	w.muted = v
+	if w.mutePut.IsZero() || time.Since(w.mutePut) >= mutePutTimeout {
+		w.putMuted()
+	}
+}
+
+// mutePutTimeout is how long a put of IsMuted holds the next back while
+// its IsMutedChanged doesn't come.
+const mutePutTimeout = time.Second
+
+// putMuted puts w.muted, and holds the next put back until IsMutedChanged
+// tells this one landed when it changes what the web view reports. A put
+// of what it reports already changes nothing, and none comes for it.
+func (w *window) putMuted() {
+	w.mutePut = time.Time{}
+	wv8 := w.webView8()
+	if wv8 == 0 {
+		return
+	}
+	defer release(wv8)
+	var cur int32
+	if failed(comCall(wv8, wv8GetIsMuted, uintptr(unsafe.Pointer(&cur)))) || (cur != 0) != w.muted {
+		w.mutePut = time.Now()
+	}
+	comCall(wv8, wv8PutIsMuted, boolArg(w.muted))
+}
+
+// mutedChanged runs on IsMutedChanged: the put in flight landed, and the
+// state wanted since is put if the web view reports another.
+func (w *window) mutedChanged() {
+	w.mutePut = time.Time{}
+	if wv8 := w.webView8(); wv8 != 0 {
+		var cur int32
+		bad := failed(comCall(wv8, wv8GetIsMuted, uintptr(unsafe.Pointer(&cur))))
+		release(wv8)
+		if bad || (cur != 0) != w.muted {
+			w.putMuted()
+		}
+	}
+}
+
+// IsAudioMuted returns ICoreWebView2_8's IsMuted, or what SetAudioMuted
+// keeps until the web view is made, unless it never will be.
+func (w *window) IsAudioMuted() bool {
+	if w.webview == 0 {
+		return w.muted && w.webViewErr == nil
+	}
+	return w.getBool8(wv8GetIsMuted)
 }
 
 func (w *window) OpenDevTools() {

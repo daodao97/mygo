@@ -11,6 +11,8 @@ import (
 // event handles a surface event on the main thread. It reports whether
 // an element takes files dragged over or dropped at the event's position.
 func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
+	// Touch arbitration and the pointer path both hit-test content DIPs.
+	rt.fromWindow(&ev)
 	// A touch contact is arbitrated before the pointer path: it may become
 	// a scroll of a container, which the pointer path would have made a
 	// press of a row (touch.go).
@@ -1099,7 +1101,7 @@ func (rt *engine) updateTextInput() {
 			t.Caret = bounds
 		} else {
 			r := transformRect(s.world, Rect{X: s.x, Y: s.y, W: 1, H: s.h})
-			t.Caret = platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)}
+			t.Caret = rt.toWindow(platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)})
 		}
 	} else if s != nil && s.editor == nil && s.input != nil && s.takesText && rt.windowFocus() {
 		// An element taking text itself: no text around the caret.
@@ -1115,12 +1117,12 @@ func (rt *engine) updateTextInput() {
 			r = s.caretFn()
 		}
 		r = transformRect(s.world, Rect{s.x + r.X, s.y + r.Y, r.W, r.H})
-		t.Caret = platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)}
+		t.Caret = rt.toWindow(platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)})
 	} else if s != nil && s.editor != nil && s.flags&(flagEditable|flagSelectable) != 0 && (!s.editor.readOnly || rt.nativeSelection(s)) && rt.windowFocus() {
 		ed := s.editor
 		r := ed.caretRect(s)
 		t.Active = true
-		t.Caret = platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)}
+		t.Caret = rt.toWindow(platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)})
 		t.ReadOnly = ed.readOnly
 		t.Password = ed.password
 		t.Multiline = ed.multiline
@@ -1159,7 +1161,7 @@ func (rt *engine) updateTextInput() {
 				t.Text, t.Start, t.End = ed.buf.slice(base, end), a-base, z-base
 			}
 			t.ID = rt.focused
-			t.Bounds = platform.RectF{X: float64(s.vx), Y: float64(s.vy), W: float64(s.vw), H: float64(s.vh)}
+			t.Bounds = rt.toWindow(platform.RectF{X: float64(s.vx), Y: float64(s.vy), W: float64(s.vw), H: float64(s.vh)})
 		}
 	}
 	// Resigning a mobile keyboard can synchronously resize the surface. Keep
@@ -1335,8 +1337,12 @@ func (e *node) Pressed() bool {
 	return true
 }
 
-// Focused reports whether the element has the keyboard focus.
+// Focused reports whether the element has the keyboard focus: for a field
+// around an input, as SearchField's, whether its input has it.
 func (e *node) Focused() bool {
+	if e != nil && e.focusTo != nil {
+		return e.focusTo.Focused()
+	}
 	return e.hasState() && e.c.rt.focused == e.id && e.c.rt.windowFocus()
 }
 
@@ -1377,8 +1383,13 @@ func (e *node) FocusWithin() bool {
 }
 
 // Focus gives the element the keyboard focus. Called in every frame, it
-// keeps it there; AutoFocus gives it once.
+// keeps it there; AutoFocus gives it once. A field around an input, as
+// SearchField's, gives it to its input, where typing goes.
 func (e *node) Focus() *node {
+	if e != nil && e.focusTo != nil {
+		e.focusTo.Focus()
+		return e
+	}
 	if !e.hasState() {
 		return e
 	}

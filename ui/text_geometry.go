@@ -33,7 +33,8 @@ func (rt *engine) textGeometry(q platform.TextGeometryQuery) platform.TextGeomet
 	result := platform.TextGeometry{Valid: true}
 	switch q.Kind {
 	case "hit":
-		result.Index = max(0, min(ed.hit(float32(q.X)-s.x, float32(q.Y)-s.y)-rt.ime.base, n))
+		z := rt.zoomFactor()
+		result.Index = max(0, min(ed.hit(float32(q.X)/z-s.x, float32(q.Y)/z-s.y)-rt.ime.base, n))
 	case "caret":
 		var r Rect
 		if a := ed.area; a != nil && a.version != 0 {
@@ -45,7 +46,7 @@ func (rt *engine) textGeometry(q platform.TextGeometryQuery) platform.TextGeomet
 		} else {
 			return platform.TextGeometry{}
 		}
-		result.Caret = platformRect(r)
+		result.Caret = rt.toWindow(platformRect(r))
 	case "selection":
 		if start > end {
 			start, end = end, start
@@ -53,7 +54,7 @@ func (rt *engine) textGeometry(q platform.TextGeometryQuery) platform.TextGeomet
 		visible := Rect{s.vx, s.vy, s.vw, s.vh}
 		appendRect := func(r Rect, rtl bool) {
 			if r = intersect(r, visible); r.W > 0 && r.H > 0 {
-				result.Rects = append(result.Rects, platform.TextSelectionRect{RectF: platformRect(r), RTL: rtl})
+				result.Rects = append(result.Rects, platform.TextSelectionRect{RectF: rt.toWindow(platformRect(r)), RTL: rtl})
 			}
 		}
 		if a := ed.area; a != nil {

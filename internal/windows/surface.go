@@ -617,6 +617,9 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 			s.send(platform.SurfaceEvent{Kind: platform.PointerZoom, X: s.toDIP(pt.X), Y: s.toDIP(pt.Y), Scale: math.Exp(delta / 120 * math.Ln2 / 3), Mods: mods()})
 			return 0, true
 		}
+		// A line of the system's "lines to scroll" is 33 DIPs, as
+		// browsers scroll about 100 pixels a notch at the default 3;
+		// the terminal plugin scrolls a row a line (wheelRows).
 		dist := delta / 120 * float64(wheelLines()) * 33
 		ev := platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerMouse, X: s.toDIP(pt.X), Y: s.toDIP(pt.Y), Mods: mods(), Precise: precise}
 		if m == wmMouseWheel {

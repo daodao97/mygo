@@ -48,6 +48,11 @@ func click(w *mygo.Window, x, y float64) bool {
 	return fake(func() bool { return linux.TestClickSurface(w.NativeHandle(), x, y) })
 }
 
+// clickPage clicks a window's page, through XTEST.
+func clickPage(w *mygo.Window, x, y float64) bool {
+	return fake(func() bool { return linux.TestClickPage(w.NativeHandle(), x, y) })
+}
+
 // appClick is click, already through XTEST.
 func appClick(w *mygo.Window, x, y float64) bool { return click(w, x, y) }
 

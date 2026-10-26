@@ -152,8 +152,34 @@ func writeInstaller(c *Config, stage, work, exe, goarch string, installed []stri
 	if err != nil {
 		return "", err
 	}
+	script, err := installerScript(c, out, exe, files.String(), icon, signing)
+	if err != nil {
+		return "", err
+	}
+	nsi := filepath.Join(work, "installer.nsi")
+	if err := writeNSIS(nsi, script); err != nil {
+		return "", err
+	}
+	t := con.start("Creating " + filepath.Base(out))
+	if signing != "" {
+		t.set("signing Uninstall.exe")
+	}
+	cmd := exec.Command(tool, "-V2", nsi)
+	cmd.Env = append(os.Environ(), env...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.fail()
+		return "", fmt.Errorf("makensis: %v\n%s", err, out)
+	}
+	t.done("Created " + filepath.Base(out))
+	return out, nil
+}
+
+// installerScript returns the NSIS script of the installer out, which
+// installs the files that the File commands files list, the executable exe
+// among them, with the icon and signing commands of writeInstaller.
+func installerScript(c *Config, out, exe, files, icon, signing string) (string, error) {
 	uninstallKey := `Software\Microsoft\Windows\CurrentVersion\Uninstall\` + c.Identifier
-	shortcut := nsisEscape(fsName(c.Name)) + ".lnk"
+	shortcut := nsisEscape(c.shortcutName()) + ".lnk"
 	register, unregister := nsisAssociations(c, exe)
 	langs, err := c.languages()
 	if err != nil {
@@ -163,10 +189,10 @@ func writeInstaller(c *Config, stage, work, exe, goarch string, installed []stri
 	if err != nil {
 		return "", err
 	}
-	script := `Unicode true
+	return `Unicode true
 ManifestDPIAware true
 SetCompressor /SOLID lzma
-Name ` + nsisString(c.Name) + `
+` + nsisName(c.windowsName()) + `
 OutFile ` + nsisString(out) + `
 ` + signing + `InstallDir "$LOCALAPPDATA\Programs\` + nsisEscape(fsName(c.Name)) + `"
 RequestExecutionLevel user
@@ -187,8 +213,8 @@ Section
   Push "$INSTDIR"
   Call CloseApp
   SetOutPath "$INSTDIR"
-` + files.String() + `  WriteUninstaller "$INSTDIR\Uninstall.exe"
-  CreateShortCut "$SMPROGRAMS\` + shortcut + `" "$INSTDIR\` + nsisEscape(exe) + `"
+` + files + `  WriteUninstaller "$INSTDIR\Uninstall.exe"
+` + nsisRenamedShortcuts(c) + `  CreateShortCut "$SMPROGRAMS\` + shortcut + `" "$INSTDIR\` + nsisEscape(exe) + `"
 ` + nsisUninstallEntry(c, uninstallKey, exe) + register + `SectionEnd
 
 ; The finish page offers it, so silent installs (/S) make none.
@@ -230,23 +256,34 @@ Section "Uninstall"
   ; the uninstaller runs from a copy of itself that nothing waits for.
   RMDir /r "$INSTDIR"
 SectionEnd
+`, nil
+}
+
+// nsisName returns the Name command of the installer, which titles its
+// pages: name, and the same with doubled ampersands where it has any, which
+// the texts of buttons and labels need lest "&" underline the next letter.
+func nsisName(name string) string {
+	if !strings.Contains(name, "&") {
+		return "Name " + nsisString(name)
+	}
+	return "Name " + nsisString(name) + " " + nsisString(strings.ReplaceAll(name, "&", "&&"))
+}
+
+// nsisRenamedShortcuts returns the installer commands that remove the
+// shortcuts an earlier version made under the name when windows.displayName
+// names them otherwise: the Start menu's goes, and a desktop one is made
+// again under the new name, as the user chose to have one.
+func nsisRenamedShortcuts(c *Config) string {
+	old := c.executableName()
+	if strings.EqualFold(old, c.shortcutName()) {
+		return ""
+	}
+	old = nsisEscape(old) + ".lnk"
+	return `  Delete "$SMPROGRAMS\` + old + `"
+  IfFileExists "$DESKTOP\` + old + `" 0 +3
+  Delete "$DESKTOP\` + old + `"
+  Call CreateDesktopShortcut
 `
-	nsi := filepath.Join(work, "installer.nsi")
-	if err := writeNSIS(nsi, script); err != nil {
-		return "", err
-	}
-	t := con.start("Creating " + filepath.Base(out))
-	if signing != "" {
-		t.set("signing Uninstall.exe")
-	}
-	cmd := exec.Command(tool, "-V2", nsi)
-	cmd.Env = append(os.Environ(), env...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.fail()
-		return "", fmt.Errorf("makensis: %v\n%s", err, out)
-	}
-	t.done("Created " + filepath.Base(out))
-	return out, nil
 }
 
 // nsisUninstallEntry returns the installer commands that write the entry
@@ -256,7 +293,7 @@ func nsisUninstallEntry(c *Config, uninstallKey, exe string) string {
 	str := func(name, value string) {
 		fmt.Fprintf(&b, "  WriteRegStr HKCU %s %s %s\n", nsisString(uninstallKey), nsisString(name), value)
 	}
-	str("DisplayName", nsisString(c.Name))
+	str("DisplayName", nsisString(c.windowsName()))
 	str("DisplayVersion", nsisString(c.Version))
 	str("DisplayIcon", `"$INSTDIR\`+nsisEscape(exe)+`"`)
 	if p := c.publisher(); p != "" {
@@ -328,8 +365,8 @@ func nsisCloseApp(c *Config) string {
 		}
 	}
 	command := `'"$1" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create([IO.File]::ReadAllText($$env:MYGO_APP_SCRIPT)))"'`
-	running := nsisString(c.Name + " is running. Close it to continue?")
-	stuck := nsisString(c.Name + " is still running. Quit it, then try again.")
+	running := nsisString(c.windowsName() + " is running. Close it to continue?")
+	stuck := nsisString(c.windowsName() + " is still running. Quit it, then try again.")
 	var out strings.Builder
 	for _, prefix := range []string{"", "un."} {
 		out.WriteString(`; Quits the app running from the folder on the stack.
@@ -444,7 +481,7 @@ func nsisAssociations(c *Config, exe string) (register, unregister string) {
 	}
 	for _, scheme := range c.URLSchemes {
 		key := `Software\Classes\` + scheme
-		fmt.Fprintf(&r, "  WriteRegStr HKCU %s \"\" %s\n", nsisString(key), nsisString("URL:"+c.Name))
+		fmt.Fprintf(&r, "  WriteRegStr HKCU %s \"\" %s\n", nsisString(key), nsisString("URL:"+c.windowsName()))
 		fmt.Fprintf(&r, "  WriteRegStr HKCU %s \"URL Protocol\" \"\"\n", nsisString(key))
 		fmt.Fprintf(&r, "  WriteRegStr HKCU %s \"\" %s\n", nsisString(key+`\shell\open\command`), open)
 		fmt.Fprintf(&u, "  DeleteRegKey HKCU %s\n", nsisString(key))

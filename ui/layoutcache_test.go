@@ -454,7 +454,7 @@ func TestLayoutInputs(t *testing.T) {
 		"inputFn textClient caret caretFn textContext takesText touchScroll touchSelection inputOptions " +
 		"inputAccessory inputAction inputModifiers inputConsumed noIME copyData webView maximizeButton fit gray dismissed rotate label widget role " +
 		"checked expanded vertical tip highlighted accValue accRange hasRange accFill accStep barInset scrollBase " +
-		"listRow rowIndex rowsOf focusGroup groupSelects segment activeDescendant nameFrom nameJoin " +
+		"listRow rowIndex rowsOf focusGroup groupSelects segment activeDescendant nameFrom nameJoin focusTo " +
 		"setPos setSize choosesItems search description invalid followX sort level expandable " +
 		"chooseMany serial"
 	known := map[string]bool{}

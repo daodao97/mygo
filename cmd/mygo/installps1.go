@@ -39,13 +39,13 @@ func writeInstallPS1(c *Config, dir string) (string, error) {
 func installPS1(c *Config) string {
 	u := c.Updates
 	// The comment that names the app stays ASCII too (psQuote).
-	title := strings.Join(strings.Fields(c.Name), " ")
+	title := strings.Join(strings.Fields(c.windowsName()), " ")
 	if strings.ContainsFunc(title, func(r rune) bool { return r >= 0x7f }) {
 		title = "the app"
 	}
 	data := map[string]string{
 		"Title":      title,
-		"Name":       c.Name,
+		"Name":       c.windowsName(),
 		"Exe":        c.executableName() + ".exe",
 		"Folder":     fsName(c.Name),
 		"Setup":      installerPrefix(c),

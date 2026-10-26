@@ -43,7 +43,7 @@ the fields of [the frontend](#development-and-the-frontend).
 
 | Field | Default | |
 |---|---|---|
-| `name` | the directory's name | the name users see: the app, its executable, menus, installers |
+| `name` | the directory's name | the name users see: the app, its executable, menus, installers; Windows can show another, [`windows.displayName`](#windows) |
 | `slug` | the name in lower case, with hyphens between its words, e.g. `my-app` of `My App`; Chinese characters take their most common Mandarin reading without tones, each its own word, and kana and Hangul their romanization, e.g. `yun-yin-le` of `云音乐`, `ramen` of `ラーメン` | the name of the app's files where a name must be plain ASCII: the disk images of macOS and the installers of Windows, the Linux executable, its desktop entry, icon, Debian package and `/opt` directory, the [update archives](updates.md) of every platform, the variables of the [install scripts](distribution.md#install-scripts-for-macos-and-windows) and the MIME types the app defines; lower-case letters and digits with single hyphens between them. Set it to choose another, as `cloud-music` for `云音乐`, and keep it once the app is released (see [Linux](distribution.md#linux)) |
 | `identifier` | `com.mygo.` and the name's letters and digits, e.g. `com.mygo.myapp` | a reverse DNS name unique to the app, e.g. `com.example.myapp`; systems key preferences, permissions and registrations on it |
 | `version` | `0.1.0` | the version of the app, which `App.Version()` returns and updates compare |
@@ -129,6 +129,7 @@ See [macOS](distribution.md#macos).
 
 | Field | Default | |
 |---|---|---|
+| `displayName` | `name` | the name Windows shows the app by: its Start menu and desktop shortcuts, its entry in Settings > Apps, the installer's title and messages, and the product name in the executable's file properties. The executable, its install folder and the files named after `name` or `slug` keep their names, e.g. `天气助手` for an app named `weather`, whose executable stays `weather.exe` |
 | `certificate` | | a code signing certificate (`.pfx`) for the executable, the unsigned executables and libraries among the resources, and the installer; its password comes from `MYGO_WINDOWS_CERTIFICATE_PASSWORD` |
 | `signCommand` | | instead of `certificate`, a command that signs a file, with `%1` for its path |
 | `timestampUrl` | `http://timestamp.digicert.com` | the time stamping server of `certificate` |

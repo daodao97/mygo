@@ -75,6 +75,8 @@ The terminal does what terminal apps do:
 - **Selecting** with the pointer works as in Ghostty: a drag selects
   cells, a double click words and a triple click lines, and dragging past
   the top or the bottom scrolls. Option (Alt elsewhere) drags a rectangle.
+  Shift-click extends an existing selection from its original anchor;
+  subsequent Shift-clicks can extend or shrink it, including across lines.
   While a program takes the mouse, as editors do, Shift selects.
 - **The pointer** is Ghostty's: the I-beam over a shell, the arrow while a
   program takes the mouse (the I-beam again while Shift is held, as Shift
@@ -318,7 +320,10 @@ term, err := terminal.New(terminal.Options{
   (unless Shift is held), or as arrow keys on a full-screen program's
   screen (alternate scroll, which `\x1b[?1007l` turns off). A `Conn`
   whose history lives at the other end, as a remote multiplexer streaming
-  only its screen, sends the wheel there this way.
+  only its screen, sends the wheel there this way. A notch of a mouse
+  wheel is three rows, or on Windows as many as its "lines to scroll"
+  setting asks (3 unless changed), as in Windows Terminal; a touchpad
+  scrolls by the distance it moves.
 - `OnZoom` sees a zoom on the main thread: the wheel with Control held
   (Command on macOS), which zooms before `OnScroll` and a program that
   takes the mouse see it, or a key bound to a font size action. Its

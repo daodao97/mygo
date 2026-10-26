@@ -383,6 +383,24 @@ the app's URL schemes and file associations. Its last page offers to run
 the app and to create a desktop shortcut, which is checked; silent
 installs (`/S`) create none.
 
+The shortcuts, the entry in Settings > Apps and the installer's title
+show the app's `name`, or
+[`windows.displayName`](configuration.md#windows) when the executable and
+its folder should keep a plain name, as `weather.exe` in
+`%LOCALAPPDATA%\Programs\weather` for an app that shows as `天气助手`:
+
+```ts
+export default defineConfig({
+  name: "weather",
+  windows: { displayName: "天气助手" },
+});
+```
+
+Characters that file names cannot hold, such as `:` and `?`, become `-`
+in the names of the shortcuts only. The installer of a version that sets
+`displayName` replaces the shortcuts that an earlier version made under
+the name.
+
 The installer is made with [NSIS](https://nsis.sourceforge.io). On
 Windows, `mygo build` uses NSIS when it is installed, and otherwise
 downloads it the first time it needs it: the official NSIS 3.13 zip, from
@@ -584,7 +602,8 @@ its source language first, which the system falls back to:
 
 The app's name and description in a language are its catalog's
 `mygo.appName` and `mygo.appDescription`; the configuration's `name` and
-`linux.comment` are those of the source language. An app without catalogs
+`linux.comment` are those of the source language, and on Windows
+`windows.displayName` in place of `name` when it has one. An app without catalogs
 declares no languages.
 
 On macOS, the other strings of `Info.plist`, such as the reasons the

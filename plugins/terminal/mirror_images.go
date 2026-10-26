@@ -121,6 +121,14 @@ func (m *Mirror) images(out *bytes.Buffer, term *vt.Terminal, alt bool, top, row
 	}
 }
 
+// deleteImages deletes from the other terminal the images sent of a
+// screen, with their placements, wherever they are.
+func (m *Mirror) deleteImages(out *bytes.Buffer, st *mirroredImages) {
+	for id := range st.gens {
+		fmt.Fprintf(out, "\x1b_Ga=d,d=I,i=%d,q=2\x1b\\", id)
+	}
+}
+
 // sendImage writes the sequences that transmit an image's pixels, as
 // RGBA compressed (o=z), in chunks.
 func sendImage(out *bytes.Buffer, img vt.Image) {

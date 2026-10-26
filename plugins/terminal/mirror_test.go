@@ -795,6 +795,53 @@ func TestMirrorImages(t *testing.T) {
 	}
 }
 
+// Images whose placements scrolled off go from the other terminal too when
+// a Mirror starts it over: Pi, as it starts a new session, deletes its
+// images and clears the screen and the scrollback, and the images it had
+// placed stayed over the new session's text.
+func TestMirrorImagesStartOver(t *testing.T) {
+	loadLib(t)
+	src, err := New(Options{Conn: newPipe()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst, err := New(Options{Conn: newPipe()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := src.NewMirror()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { m.Close(); src.Close(); dst.Close() })
+	src.ResizePixels(40, 10, 8, 16)
+	dst.ResizePixels(40, 10, 8, 16)
+	frame := func() {
+		f, _ := m.Frame()
+		dst.Feed(f)
+	}
+	frame()
+	placed := func(term *Terminal) int {
+		term.mu.Lock()
+		defer term.mu.Unlock()
+		n := 0
+		term.term.Placements(func(vt.Placement) { n++ })
+		return n
+	}
+	src.Feed([]byte("\x1b[2;1H" + kittyImage(9, 16, 32, ui.RGB(255, 0, 0), ",C=1")))
+	frame()
+	src.Feed([]byte("\x1b[10;1H" + strings.Repeat("\n", 20)))
+	frame()
+	if placed(dst) != 1 {
+		t.Fatalf("the other terminal places %d images, want 1", placed(dst))
+	}
+	src.Feed([]byte("\x1b_Ga=d,d=I,i=9,q=2\x1b\\\x1b[2J\x1b[H\x1b[3Jnew session"))
+	frame()
+	if n := placed(dst); n != 0 {
+		t.Errorf("the other terminal still places %d images", n)
+	}
+}
+
 // The other terminal sends the mouse's events in the format the terminal
 // would, whatever order the program set and reset their modes in: the
 // last of a setting's modes picks it, and the others stay set.

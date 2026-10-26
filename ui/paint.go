@@ -59,8 +59,9 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	// The root paints the theme's background: frames start transparent, so
 	// that a transparent root shows what is behind the content, such as a
 	// window's vibrancy.
-	s.Reset(int(math.Ceil(float64(w*scale))), int(math.Ceil(float64(h*scale))), scene.Color{})
-	s.Scale = scale
+	pw, ph := rt.pixels(w, h, scale)
+	s.Reset(pw, ph, scene.Color{})
+	s.Scale, s.Zoom = scale, rt.zoomFactor()
 	s.MaskAtlas, s.ColorAtlas = rt.text.MaskAtlas, rt.text.ColorAtlas
 	s.Text = rt.text.TextParams()
 	opaque := root.bg.A == 255 && root.fill == fillColor && (!root.opacitySet || root.opacity >= 1)

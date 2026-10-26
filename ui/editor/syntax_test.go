@@ -82,6 +82,18 @@ func TestTokenizers(t *testing.T) {
 			`fn(echo)str(")var($HOME)str(/x")var($1)comment(# c)`},
 		{"sql", []string{"SELECT id FROM users WHERE x = 'a'"},
 			"kw(SELECT)var(id)kw(FROM)var(users)kw(WHERE)var(x)op(=)str('a')"},
+		{"dart", []string{`final s = r'\d' + "a${b}c$d"; // c`, "/* a /* b */ c */ var t = '''x", "y''';"},
+			`kw(final)var(s)op(=)str(r'\d')op(+)str("a)esc(${)var(b)esc(})str(c)var($d)str(")punct(;)comment(// c) / ` +
+				"comment(/* a /* b */ c */)kw(var)var(t)op(=)str('''x) / str(y''')punct(;)"},
+		{"scala", []string{`val s = s"Hi $name ${a + 1}" + raw"\d" // c`, `/* a /* b */ c */ def f[T](x: T): Unit = """multi`, `line"""`},
+			`kw(val)var(s)op(=)str(s"Hi)var($name)esc(${)var(a)op(+)num(1)esc(})str(")op(+)str(raw"\d")comment(// c) / ` +
+				`comment(/* a /* b */ c */)kw(def)var(f)punct([)type(T)punct(]()var(x)op(:)type(T)punct())op(:)type(Unit)op(=)str("""multi) / str(line""")`},
+		{"r", []string{`x <- c(1L, NA) %in% r"(a\b)" # c`, "if (TRUE) df$col.name |> is.na()"},
+			`var(x)op(<-)fn(c)punct(()num(1L)punct(,)const(NA)punct())op(%in%)str(r"(a\b)")comment(# c) / ` +
+				"kw(if)punct(()const(TRUE)punct())var(df)op($)var(col.name)op(|>)fn(is.na)punct(())"},
+		{"graphql", []string{`query Get($id: ID!) @cached { user(id: $id) { ...F ... on User { name } } } # c`, `"""Doc`, `"""`},
+			`kw(query)type(Get)punct(()var($id)op(:)type(ID)op(!)punct())meta(@cached)punct({)var(user)punct(()prop(id)op(:)var($id)punct())punct({)` +
+				`punct(...)type(F)punct(...)kw(on)type(User)punct({)var(name)punct(})punct(})punct(})comment(# c) / str("""Doc) / str(""")`},
 	} {
 		l := LanguageNamed(c.lang)
 		if l == nil {
@@ -110,7 +122,8 @@ func TestInterpolatedStringsFit(t *testing.T) {
 }
 
 func TestLanguageFor(t *testing.T) {
-	for name, want := range map[string]string{"main.go": "Go", "a/b/Makefile": "Makefile", "x.TSX": "TypeScript", "Dockerfile": "Dockerfile", "x.unknown": ""} {
+	for name, want := range map[string]string{"main.go": "Go", "a/b/Makefile": "Makefile", "x.TSX": "TypeScript", "Dockerfile": "Dockerfile", "x.unknown": "",
+		"main.dart": "Dart", "schema.graphql": "GraphQL", "q.gql": "GraphQL", "plot.r": "R", "plot.R": "R", "Main.scala": "Scala", "build.sc": "Scala"} {
 		l := LanguageFor(name)
 		got := ""
 		if l != nil {
@@ -118,6 +131,51 @@ func TestLanguageFor(t *testing.T) {
 		}
 		if got != want {
 			t.Errorf("LanguageFor(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// LanguageNamed finds a language by its name, an extension or an alias,
+// ignoring case, and each has a tokenizer.
+func TestLanguageNamed(t *testing.T) {
+	for want, names := range map[string][]string{
+		"Go":      {"go", "Go", "golang"},
+		"Dart":    {"dart", "Dart"},
+		"GraphQL": {"graphql", "GraphQL", "gql"},
+		"R":       {"r", "R", " r "},
+		"Scala":   {"scala", "Scala", "sc"},
+	} {
+		for _, name := range names {
+			l := LanguageNamed(name)
+			if l == nil || l.Name != want {
+				t.Errorf("LanguageNamed(%q) = %v, want %s", name, l, want)
+				continue
+			}
+			if l.Tokenizer == nil {
+				t.Errorf("%s has no tokenizer", l.Name)
+			}
+		}
+	}
+	if l := LanguageNamed("nope"); l != nil {
+		t.Errorf("LanguageNamed(\"nope\") = %s", l.Name)
+	}
+}
+
+// Each language's comments and brackets.
+func TestLanguageCommentsAndBrackets(t *testing.T) {
+	for name, want := range map[string][3]string{
+		"dart": {"//", "/*", "*/"}, "scala": {"//", "/*", "*/"}, "graphql": {"#", "", ""}, "r": {"#", "", ""},
+	} {
+		l := LanguageNamed(name)
+		if got := [3]string{l.LineComment, l.BlockComment[0], l.BlockComment[1]}; got != want {
+			t.Errorf("%s's comments are %q, want %q", l.Name, got, want)
+		}
+		var pairs []string
+		for _, b := range l.Brackets {
+			pairs = append(pairs, b.Open+b.Close)
+		}
+		if got := strings.Join(pairs, " "); got != "() [] {}" {
+			t.Errorf("%s's brackets are %s", l.Name, got)
 		}
 	}
 }

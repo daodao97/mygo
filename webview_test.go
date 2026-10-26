@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -193,6 +194,16 @@ func TestWebViewPage(t *testing.T) {
 	fv.SetProcessID(31)
 	if got := v.Page().ProcessID(); got != 31 {
 		t.Errorf("ProcessID %d, want 31", got)
+	}
+	v.Page().SetAudioMuted(true)
+	if !fv.IsAudioMuted() || !v.Page().IsAudioMuted() {
+		t.Errorf("SetAudioMuted: the web view's %v, the page's %v", fv.IsAudioMuted(), v.Page().IsAudioMuted())
+	}
+	var audible []bool
+	v.Page().OnAudibleChanged(func(a bool) { audible = append(audible, a) })
+	onMain(func() { fv.SetAudible(true) })
+	if !v.Page().IsAudible() || !slices.Equal(audible, []bool{true}) {
+		t.Errorf("a web view playing: IsAudible %v, changes %v", v.Page().IsAudible(), audible)
 	}
 }
 

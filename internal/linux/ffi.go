@@ -436,6 +436,9 @@ var (
 	webkitWebViewSetZoomLevel                         func(wv ptr, z float64)
 	webkitWebViewGetZoomLevel                         func(wv ptr) float64
 	webkitWebViewSetBackgroundColor                   func(wv ptr, rgba *gdkRGBA)
+	webkitWebViewIsPlayingAudio                       func(wv ptr) bool
+	webkitWebViewSetIsMuted                           func(wv ptr, muted bool) // 2.30+
+	webkitWebViewGetIsMuted                           func(wv ptr) bool        // 2.30+
 	webkitWebViewEvaluateJavascript                   func(wv ptr, script *byte, length int, world, sourceURI *byte, cancellable, cb, data ptr)
 	webkitWebViewRunJavascript                        func(wv ptr, script *byte, cancellable, cb, data ptr)
 	webkitWebViewCallAsyncJavascriptFunction          func(wv ptr, body *byte, length int, args ptr, world, sourceURI *byte, cancellable, cb, data ptr)
@@ -936,6 +939,10 @@ func loadWebKit() error {
 	mustBind(w, &webkitWebViewSetZoomLevel, "webkit_web_view_set_zoom_level")
 	mustBind(w, &webkitWebViewGetZoomLevel, "webkit_web_view_get_zoom_level")
 	mustBind(w, &webkitWebViewSetBackgroundColor, "webkit_web_view_set_background_color")
+	bind(w, &webkitWebViewIsPlayingAudio, "webkit_web_view_is_playing_audio")
+	if bind(w, &webkitWebViewSetIsMuted, "webkit_web_view_set_is_muted") {
+		mustBind(w, &webkitWebViewGetIsMuted, "webkit_web_view_get_is_muted")
+	}
 	bind(w, &webkitWebViewEvaluateJavascript, "webkit_web_view_evaluate_javascript")
 	bind(w, &webkitWebViewRunJavascript, "webkit_web_view_run_javascript")
 	bind(w, &webkitWebViewCallAsyncJavascriptFunction, "webkit_web_view_call_async_javascript_function")

@@ -143,7 +143,7 @@ func (rt *engine) placeWebViews() {
 		return
 	}
 	rt.webShown = len(rt.webPlaces) > 0
-	rt.host.placeWebViews(rt.webViewPlacements())
+	rt.host.placeWebViews(rt.windowWebViews(rt.webViewPlacements()))
 }
 
 // webViewPress handles a press that went to the web view at x, y: the

@@ -105,7 +105,7 @@ UI as they read other apps (see [Accessibility](accessibility.md)).
 - [Custom widgets](custom-widgets.md): the widgets without a look that every
   widget is built on, and widgets of your own.
 - [Windows with native UI](windows.md): window options, title bars drawn by
-  the view, and vibrancy.
+  the view, zooming the content, and vibrancy.
 - [Testing](testing.md): running a view without a window, as fast as a unit
   test.
 - [Inspector](inspector.md): the elements of a window, their boxes and

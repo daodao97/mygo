@@ -17,6 +17,13 @@ import (
 
 // Windows configures Windows packaging.
 type Windows struct {
+	// DisplayName is the name Windows shows the app by when it is not
+	// name: its Start menu and desktop shortcuts, its entry in Settings >
+	// Apps, the installer's title and messages, and the product name of
+	// the executable's file properties. The executable, the install folder
+	// and the files that name or slug names keep their names, so that an
+	// app named "weather" shows as "天气助手" (default: name).
+	DisplayName string `json:"displayName"`
 	// Certificate is a code signing certificate (.pfx) to sign the
 	// executable, the installer and its uninstaller with, which keeps
 	// SmartScreen from warning users; signing the uninstaller needs NSIS

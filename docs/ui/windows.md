@@ -91,6 +91,43 @@ covers elements in the normal flow, where padding reaches them;
 `ui.Overlay` elements are positioned against the window, so a panel or a
 drawer built there has to add the inset to its own `Top`/`Left`.
 
+## Zoom
+
+`c.SetZoom(z)` zooms the window's content, as a browser zooms a page: the
+view is laid out in a window `1/z` its size and shown `z` times larger. It
+is not a picture of the window scaled up: frames draw at the screen's
+resolution times `z`, so text, icons, vectors, images and their edges
+stay as sharp as at that size natively, and the window's frames keep
+their size in pixels. A zoom of 2 on a screen of scale 2 draws the frame
+a screen of scale 4 would, glyphs and all; unzoomed, nothing changes. The
+zoom stays until set again, between 0.25 and 5; `c.Zoom()` returns it, 1
+for none.
+
+```go
+c.SetZoom(app.zoom) // 1.25 for 125%, every frame or once
+width, height := c.Size() // the content's: the window's divided by the zoom
+```
+
+What the view sees is zoomed: `c.Size()`, `c.TitleBar()`, `Bounds`
+and every length are in the content's DIPs, `z` of them to the window's.
+A frame that sets another zoom builds again at the new size before it
+shows. What leaves the content goes to the window in its DIPs: the
+pointer hits what the zoom shows under it, input methods compose at the
+caret, assistive technology outlines elements where they show, context
+menus and drags start under the pointer, web views take the box the
+content gives them, and a `MaximizeButton` shows Windows' snap layouts
+where it shows. A touchpad scrolls the content as far as the fingers
+move; a wheel's lines scroll as far as unzoomed. The window controls keep
+their size: `c.TitleBar()` is the room they take, zoomed, so that a title
+bar laid out clear of them stays clear.
+
+The device's safe-area insets (`c.SafeArea()`) are in the same content DIPs.
+
+A transform's `Scale`, by contrast, scales what is drawn at the content's
+own size: its text is drawn as bitmaps of their untransformed size,
+sampled bilinearly ([Transforms](transforms.md#rendering)), right for
+motion, blurry for zooming a window.
+
 ## Vibrancy
 
 A window's `Vibrancy` shows wherever its native UI draws no background, on

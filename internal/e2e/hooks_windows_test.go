@@ -38,6 +38,10 @@ func click(w *mygo.Window, x, y float64) (ok bool) {
 	return ok
 }
 
+// Clicks reach windows showing native UI only: a web view's page is
+// not clicked.
+func clickPage(*mygo.Window, float64, float64) bool { return false }
+
 // appClick clicks with the system's input, which activates windows, and
 // returns once the app handled the click.
 func appClick(w *mygo.Window, x, y float64) (ok bool) {

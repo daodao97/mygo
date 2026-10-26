@@ -29,7 +29,40 @@ func (w *Window) bridgeScript() string {
 		Secret:   w.secret,
 		Locale:   App.Locale(),
 		Dir:      appDir(),
+		Fit:      w.fitLimits(),
 	})
+}
+
+// fitLimits returns the limits of the size of a window that takes its
+// page's (FitContent), in the CSS pixels of its page, or nil. Main thread
+// only.
+func (w *Window) fitLimits() *bridge.FitContent {
+	if w.fit == nil {
+		return nil
+	}
+	l := bridge.NewFitContent(w.fit.min, w.fit.max, w.fit.zoom)
+	return &l
+}
+
+// zoomChanged tells the page of a window that its zoom changed, and with
+// it the CSS pixels of the room the window controls take and of the
+// limits of FitContent: the page that shows through an event, and the
+// pages it loads next through its scripts. Main thread only.
+func (w *Window) zoomChanged() {
+	w.sendTitleBar()
+	if w.fit == nil || w.native == nil || w.content != nil {
+		return
+	}
+	w.fit.zoom = w.native.Zoom()
+	w.userScripts = w.pageScripts()
+	w.native.SetUserScripts(w.userScripts)
+	if msg, err := encodeEvent(bridge.FitContentEvent, w.fitLimits()); err == nil {
+		w.enqueue(msg, true)
+	}
+	// The content keeps its size in CSS pixels, which are other DIPs now.
+	if f := w.fit; f.told {
+		w.fitContentSize(f.content)
+	}
 }
 
 // preferencesScriptIndex is the place of preferencesScript in a window's
@@ -231,12 +264,17 @@ func (w *Window) handleMessage(msg string) {
 		return
 	}
 	var m struct {
-		T string  `json:"t"`
-		X float64 `json:"x"` // drop
-		Y float64 `json:"y"`
-		C int64   `json:"c"` // channels
-		K string  `json:"k"`
-		N int64   `json:"n"`
+		T  string  `json:"t"`
+		X  float64 `json:"x"` // drop
+		Y  float64 `json:"y"`
+		C  int64   `json:"c"` // channels
+		K  string  `json:"k"`
+		N  int64   `json:"n"`
+		V  string  `json:"v"` // theme-color
+		W  float64 `json:"w"` // content-size
+		H  float64 `json:"h"`
+		SW float64 `json:"sw"`
+		SH float64 `json:"sh"`
 	}
 	if err := json.Unmarshal(stringBytes(msg), &m); err != nil {
 		return
@@ -255,6 +293,11 @@ func (w *Window) handleMessage(msg string) {
 		w.flush()
 		fire(&w.onDOMReady)
 		w.readyToShow()
+	case "theme-color":
+		c, err := parseColor(m.V)
+		w.setThemeColor(c, m.V != "" && err == nil)
+	case "content-size":
+		w.fitContentSize(contentSize{m.W, m.H, m.SW, m.SH})
 	case "drag":
 		if w.native != nil {
 			w.native.StartDrag()

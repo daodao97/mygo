@@ -342,6 +342,13 @@ export interface NotarizeConfig {
 
 /** Windows packaging. */
 export interface WindowsConfig {
+  /**
+   * The name Windows shows the app by: its shortcuts, its entry in
+   * Settings > Apps, the installer's title and the executable's product
+   * name (default: the name). The executable and the install folder keep
+   * the name's, e.g. `天气助手` for an app named `weather`.
+   */
+  displayName?: string;
   /** A code signing certificate (.pfx); its password comes from `MYGO_WINDOWS_CERTIFICATE_PASSWORD`. */
   certificate?: string;
   /** Instead of `certificate`, a command that signs a file, with `%1` for its path. */

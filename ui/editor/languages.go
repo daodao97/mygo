@@ -253,6 +253,30 @@ func makeLanguages() {
 				TokenConstant, "true false null", TokenType, "Any Boolean Byte Char Double Float Int Long Nothing Short String Unit"),
 			calls: true, capitalTypes: true, decorator: '@', operators: cOperators},
 	}
+	// Scala's interpolated strings first, as the lexer's stack holds the
+	// index of a string with interpolations in five bits.
+	var scalaStrings []lexString
+	for _, p := range []string{"s", "f", "raw"} {
+		for _, q := range []string{`"""`, `"`} {
+			s := lexString{open: q, close: q, prefix: p, multiline: len(q) == 3, interpOpen: "${", interpClose: "}", dollar: true, kind: TokenString}
+			if p != "raw" {
+				s.escape = '\\'
+			}
+			scalaStrings = append(scalaStrings, s)
+		}
+	}
+	scalaStrings = append(scalaStrings, lexString{open: `"""`, close: `"""`, multiline: true, kind: TokenString}, cString("\""), cString("'"),
+		lexString{open: "`", close: "`", kind: TokenVariable})
+	scala := &Language{
+		Name: "Scala", Extensions: []string{".scala", ".sc", ".sbt"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^import\s`),
+		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 2,
+		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, nestComments: true, strings: scalaStrings,
+			words: words(TokenKeyword, "abstract case catch class def derives do else end enum export extends extension final finally for forSome given if implicit import inline lazy match new object opaque override package private protected return sealed super then this throw trait transparent try type using val var while with yield",
+				TokenType, "Any AnyRef AnyVal Boolean Byte Char Double Float Int Long Nothing Null Short String Unit",
+				TokenConstant, "true false null None Some Nil"),
+			calls: true, capitalTypes: true, decorator: '@', operators: cOperators},
+	}
 	swift := &Language{
 		Name: "Swift", Extensions: []string{".swift"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
 		Imports:  regexp.MustCompile(`^(@\w+(\([^)]*\))?\s+)?import\s`),
@@ -262,6 +286,29 @@ func makeLanguages() {
 			words: words(TokenKeyword, "associatedtype class deinit enum extension fileprivate func import init inout internal let open operator private precedencegroup protocol public rethrows static struct subscript typealias var break case catch continue default defer do else fallthrough for guard if in repeat return throw switch where while as is try await async throws some any self Self super actor nonisolated isolated mutating nonmutating override weak unowned lazy final required convenience",
 				TokenConstant, "true false nil", TokenType, "Int Double Float String Bool Character Array Dictionary Set Optional Void"),
 			calls: true, capitalTypes: true, decorator: '@', directives: true, operators: cOperators},
+	}
+	// Dart's interpolated strings first, then its raw ones, r'…'.
+	var dartStrings []lexString
+	for _, raw := range []bool{false, true} {
+		for _, q := range []string{`"""`, `'''`, `"`, `'`} {
+			s := lexString{open: q, close: q, multiline: len(q) == 3, kind: TokenString}
+			if raw {
+				s.prefix = "r"
+			} else {
+				s.escape, s.interpOpen, s.interpClose, s.dollar = '\\', "${", "}", true
+			}
+			dartStrings = append(dartStrings, s)
+		}
+	}
+	dart := &Language{
+		Name: "Dart", Extensions: []string{".dart"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
+		Imports:  regexp.MustCompile(`^(import|export|part)\s`),
+		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), WordChars: "$", TabSize: 2,
+		Tokenizer: &lexer{lineComments: []string{"//"}, blockComments: [][2]string{{"/*", "*/"}}, nestComments: true, strings: dartStrings,
+			words: words(TokenKeyword, "abstract as assert async await base break case catch class const continue covariant default deferred do else enum export extends extension external factory final finally for get hide if implements import in interface is late library mixin new on operator part required rethrow return sealed set show static super switch sync this throw try typedef var when while with yield",
+				TokenType, "bool double dynamic int num void Never Null Object String List Map Set Iterable Future FutureOr Stream Function Record Symbol Type",
+				TokenConstant, "true false null"),
+			identChars: "$", calls: true, capitalTypes: true, decorator: '@', operators: cOperators},
 	}
 	csharp := &Language{
 		Name: "C#", Extensions: []string{".cs", ".csx"}, LineComment: "//", BlockComment: [2]string{"/*", "*/"},
@@ -308,6 +355,28 @@ func makeLanguages() {
 				TokenType, "int integer bigint smallint tinyint real float double decimal numeric text varchar char boolean bool date time timestamp blob json jsonb uuid serial",
 				TokenConstant, "true false null"),
 			calls: true, operators: "+-*/%=<>!|"},
+	}
+	// R's strings go on over lines; its raw strings, r"(…)", R'[…]' and
+	// the like, have no escapes; and its %op% operators, as %in% and %>%,
+	// are lexed as strings are.
+	rStrings := []lexString{{open: "\"", close: "\"", escape: '\\', multiline: true, kind: TokenString}, {open: "'", close: "'", escape: '\\', multiline: true, kind: TokenString},
+		{open: "%", close: "%", kind: TokenOperator}, {open: "`", close: "`", kind: TokenVariable}}
+	for _, p := range []string{"r", "R"} {
+		for _, q := range []string{"\"", "'"} {
+			for _, b := range []string{"()", "[]", "{}"} {
+				rStrings = append(rStrings, lexString{open: q + b[:1], close: b[1:] + q, prefix: p, multiline: true, kind: TokenString})
+			}
+		}
+	}
+	rLang := &Language{
+		Name: "R", Extensions: []string{".r"}, Filenames: []string{".Rprofile"}, LineComment: "#",
+		Imports:  regexp.MustCompile(`^(library|require)\(`),
+		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'", "`"), WordChars: ".", TabSize: 2,
+		Tokenizer: &lexer{lineComments: []string{"#"}, strings: rStrings,
+			words: words(TokenKeyword, "if else repeat while function for in next break return",
+				TokenConstant, "TRUE FALSE NULL NA NA_integer_ NA_real_ NA_complex_ NA_character_ Inf NaN",
+				TokenFunction, "library require source print cat paste paste0 stop warning message invisible"),
+			identChars: ".", calls: true, operators: "+-*/^=&|!<>~?:$@\\"},
 	}
 	ruby := &Language{
 		Name: "Ruby", Extensions: []string{".rb", ".rake", ".gemspec"}, Filenames: []string{"Gemfile", "Rakefile", "Podfile", "Fastfile"}, LineComment: "#",
@@ -399,6 +468,18 @@ func makeLanguages() {
 				TokenConstant, "true false"),
 			capitalTypes: true, operators: "=<>"},
 	}
+	graphql := &Language{
+		Name: "GraphQL", Extensions: []string{".graphql", ".gql", ".graphqls"}, LineComment: "#",
+		Brackets: cBrackets, AutoClose: cAutoClose("\""), TabSize: 2,
+		Tokenizer: &lexer{lineComments: []string{"#"},
+			// A spread, ..., is a string that ends where it starts, so that
+			// the name after it is no property, as one after a dot is.
+			strings: []lexString{{open: `"""`, close: `"""`, multiline: true, kind: TokenString}, cString("\""), {open: "...", kind: TokenPunctuation}},
+			words: words(TokenKeyword, "query mutation subscription fragment on type interface union enum input scalar schema extend implements directive repeatable",
+				TokenType, "Int Float String Boolean ID",
+				TokenConstant, "true false null"),
+			capitalTypes: true, keys: true, variables: true, decorator: '@', operators: "!=:|&"},
+	}
 	zig := &Language{
 		Name: "Zig", Extensions: []string{".zig", ".zon"}, LineComment: "//", Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 4,
 		Imports: regexp.MustCompile(`^(pub\s+)?const\s+\w+\s*=\s*@import\(`),
@@ -410,6 +491,6 @@ func makeLanguages() {
 	}
 	// HTML's tokenizer highlights the scripts and styles inside it.
 	html.Tokenizer = &markupLexer{html: true, script: javascript.Tokenizer, style: css.Tokenizer}
-	languageList = []*Language{goLang, javascript, typescript, json, python, rust, c, cpp, java, kotlin, swift, csharp,
-		shell, yaml, toml, sql, ruby, lua, php, css, html, xml, markdown, diffLang, dockerfile, makefile, protobuf, zig}
+	languageList = []*Language{goLang, javascript, typescript, json, python, rust, c, cpp, java, kotlin, scala, swift, dart, csharp,
+		shell, yaml, toml, sql, rLang, ruby, lua, php, css, html, xml, markdown, diffLang, dockerfile, makefile, protobuf, graphql, zig}
 }

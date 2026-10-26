@@ -421,7 +421,10 @@ const (
 	dwmwaExtendedFrameBounds    = 9
 	dwmwaUseImmersiveDarkMode   = 20
 	dwmwaWindowCornerPreference = 33
+	dwmwaCaptionColor           = 35
 	dwmwaSystemBackdropType     = 38
+
+	dwmColorNone = 0xFFFFFFFE // DWMWA_COLOR_NONE: no color, not the accent
 
 	dwmwcpRound = 2 // DWM_WINDOW_CORNER_PREFERENCE
 

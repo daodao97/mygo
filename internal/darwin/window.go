@@ -70,6 +70,22 @@ type window struct {
 	// resolved again when the appearance changes (fillSystemBacking).
 	systemBacking bool
 	parent        *window
+	// hiddenWithParent tells that a child window was ordered out as its
+	// parent hid or miniaturized (hideChildren), at hiddenRank among its
+	// siblings, front to back, to show again with it; orderPending that
+	// orderChildrenLater posted the ordering of the window's children.
+	hiddenWithParent bool
+	hiddenRank       int
+	orderPending     bool
+	// onTop is what AlwaysOnTop asked for, which the window's level
+	// follows, or its parent's when higher (applyLevel). attached tells
+	// that a child window is an AppKit child window of its parent, which
+	// is in full screen, and childrenAttached that the window attaches its
+	// child windows, from entering full screen to leaving it
+	// (attachChildren).
+	onTop            bool
+	attached         bool
+	childrenAttached bool
 	// flyout is how a flyout (WindowOptions.Flyout) was placed last, at
 	// flyoutSize.
 	flyout     platform.Flyout
@@ -105,6 +121,9 @@ type window struct {
 	// accessParent is the element of the content showing a web view,
 	// which assistive technology finds its page in.
 	accessParent id
+	// observesAudio tells that the window observes its web view's
+	// _isPlayingAudio, which WebKit answers (IsAudible).
+	observesAudio bool
 }
 
 func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler) (platform.Window, error) {
@@ -197,9 +216,9 @@ func (w *window) create() {
 		send(w.win, "setHidesOnDeactivate:", 0)
 	}
 	send(w.win, "setCollectionBehavior:", uintptr(behavior))
-	if o.AlwaysOnTop {
-		send(w.win, "setLevel:", nsFloatingWindowLevel)
-	}
+	// A child window takes its parent's level when that is higher.
+	w.onTop = o.AlwaysOnTop
+	w.applyLevel()
 	w.fillWindow(content)
 	if o.Frameless {
 		w.roundContent(o.CornerRadius)
@@ -482,6 +501,21 @@ func (w *window) createWebView(content NSRect) {
 		msgSetFloat(w.web, sel("setPageZoom:"), o.Zoom)
 	}
 	send(w.web, "addObserver:forKeyPath:options:context:", uintptr(w.delegate), uintptr(nsString("title")), 1, 0)
+	if respondsTo(w.web, "_isPlayingAudio") {
+		// WebKit tells its changes with willChangeValueForKey: and
+		// didChangeValueForKey:, as Safari's tabs' speaker icons hear.
+		w.observesAudio = true
+		send(w.web, "addObserver:forKeyPath:options:context:", uintptr(w.delegate), uintptr(nsString("_isPlayingAudio")), 0, 0)
+	}
+}
+
+// stopObserving removes the key-value observers createWebView added.
+func (w *window) stopObserving() {
+	send(w.web, "removeObserver:forKeyPath:", uintptr(w.delegate), uintptr(nsString("title")))
+	if w.observesAudio {
+		w.observesAudio = false
+		send(w.web, "removeObserver:forKeyPath:", uintptr(w.delegate), uintptr(nsString("_isPlayingAudio")))
+	}
 }
 
 func nsColor(c platform.Color) id {
@@ -496,8 +530,9 @@ func (w *window) cleanup() {
 	}
 	w.closeWebViews()
 	w.closed = true
+	w.releaseChildren()
 	b := w.b
-	send(w.web, "removeObserver:forKeyPath:", uintptr(w.delegate), uintptr(nsString("title")))
+	w.stopObserving()
 	if w.trafficLights != nil {
 		send(w.win, "removeObserver:forKeyPath:", uintptr(w.delegate), uintptr(nsString("effectiveAppearance")))
 	}
@@ -517,8 +552,7 @@ func (w *window) cleanup() {
 	delete(b.byDelegate, w.delegate)
 	delete(b.byWebView, w.web)
 	delete(b.byNSWindow, w.win)
-	release(w.lastMouseDown)
-	w.lastMouseDown = 0
+	w.forgetDrag()
 	release(w.ucc)
 	for _, j := range printJobs {
 		if j.w == w && j.cb != nil {
@@ -636,14 +670,28 @@ func (w *window) IsMaximizable() bool {
 }
 
 func (w *window) SetAlwaysOnTop(v bool) {
-	level := uintptr(nsNormalWindowLevel)
-	if v {
-		level = nsFloatingWindowLevel
+	w.onTop = v
+	if w.host != nil || w.opts.Flyout != nil {
+		level := uintptr(nsNormalWindowLevel)
+		if v {
+			level = nsFloatingWindowLevel
+		}
+		send(w.win, "setLevel:", level)
+		return
 	}
-	send(w.win, "setLevel:", level)
+	// Its child windows follow it to its level (applyLevel).
+	w.applyLevel()
+	if w.onScreen() {
+		w.orderChildrenLater()
+	}
 }
 
-func (w *window) IsAlwaysOnTop() bool { return sendInt(w.win, "level") != nsNormalWindowLevel }
+func (w *window) IsAlwaysOnTop() bool {
+	if w.isChild() {
+		return w.onTop // its level is its parent's when that is higher
+	}
+	return sendInt(w.win, "level") != nsNormalWindowLevel
+}
 
 func (w *window) Show() {
 	if w.popover != 0 {
@@ -659,10 +707,7 @@ func (w *window) Show() {
 		send(w.parent.win, "beginSheet:completionHandler:", uintptr(w.win), 0)
 		return
 	}
-	send(w.win, "makeKeyAndOrderFront:", 0)
-	if w.parent != nil && !w.parent.closed {
-		send(w.parent.win, "addChildWindow:ordered:", uintptr(w.win), 1)
-	}
+	w.showAboveParent(true)
 	if !w.opts.Panel {
 		send(w.b.app, "activateIgnoringOtherApps:", 1)
 	}
@@ -823,10 +868,7 @@ func (w *window) ShowInactive() {
 		w.showFlyout(false)
 		return
 	}
-	send(w.win, "orderFrontRegardless")
-	if w.parent != nil && !w.parent.closed {
-		send(w.parent.win, "addChildWindow:ordered:", uintptr(w.win), 1)
-	}
+	w.showAboveParent(false)
 }
 
 func (w *window) Hide() {
@@ -843,7 +885,11 @@ func (w *window) Hide() {
 		send(w.parent.win, "endSheet:", uintptr(w.win))
 		return
 	}
+	w.hiddenWithParent = false
+	// Attached, AppKit would show it again with its parent.
+	w.detach()
 	send(w.win, "orderOut:", 0)
+	w.hideChildren()
 }
 
 func (w *window) IsVisible() bool {
@@ -864,6 +910,7 @@ func (w *window) Focus() {
 		w.Show() // the key window only when it takes the keyboard
 		return
 	}
+	w.hiddenWithParent = false
 	send(w.win, "makeKeyAndOrderFront:", 0)
 	if !w.opts.Panel {
 		send(w.b.app, "activateIgnoringOtherApps:", 1)
@@ -1071,12 +1118,6 @@ func (w *window) SetMenu(*platform.Menu) {}
 
 // SetAutoHideMenu does nothing: the menu bar belongs to the application.
 func (w *window) SetAutoHideMenu(bool) {}
-
-func (w *window) StartDrag() {
-	if w.lastMouseDown != 0 {
-		send(w.win, "performWindowDragWithEvent:", uintptr(w.lastMouseDown))
-	}
-}
 
 // hiddenTitleBar reports a TitleBarStyle that hides the title bar but keeps
 // the traffic lights.
@@ -1337,6 +1378,43 @@ func (w *window) ProcessID() int {
 	return int(int32(send(w.web, "_webProcessIdentifier")))
 }
 
+// IsAudible reports WebKit's private -[WKWebView _isPlayingAudio]
+// (macOS 10.13.4+), false when WebKit doesn't answer it.
+func (w *window) IsAudible() bool {
+	return respondsTo(w.web, "_isPlayingAudio") && sendBool(w.web, "_isPlayingAudio")
+}
+
+// wkMediaAudioMuted is _WKMediaAudioMuted, the bit of _WKMediaMutedState
+// (WKWebViewPrivate.h) that mutes the page's sound; the others mute its
+// capture devices, and are kept as they are.
+const wkMediaAudioMuted = 1 << 0
+
+// canMute reports whether WebKit answers the private selectors that mute
+// a page, as Safari mutes a tab (macOS 10.13+).
+func (w *window) canMute() bool {
+	return respondsTo(w.web, "_mediaMutedState") && respondsTo(w.web, "_setPageMuted:")
+}
+
+// SetAudioMuted sets the _WKMediaAudioMuted bit of the page's
+// _mediaMutedState with _setPageMuted:, or does nothing when WebKit
+// doesn't answer them.
+func (w *window) SetAudioMuted(v bool) {
+	if !w.canMute() {
+		return
+	}
+	state := uintptr(send(w.web, "_mediaMutedState"))
+	if v {
+		state |= wkMediaAudioMuted
+	} else {
+		state &^= wkMediaAudioMuted
+	}
+	send(w.web, "_setPageMuted:", state)
+}
+
+func (w *window) IsAudioMuted() bool {
+	return w.canMute() && uintptr(send(w.web, "_mediaMutedState"))&wkMediaAudioMuted != 0
+}
+
 func (w *window) inspector() id {
 	if !w.opts.DevTools || !respondsTo(w.web, "_inspector") {
 		return 0
@@ -1571,6 +1649,7 @@ func registerWindowClasses() {
 		}
 	}
 	classDef("MyGoWindow", "NSWindow", nil, []objc.MethodDef{
+		method("orderWindow:relativeTo:", orderWindowRelativeTo("MyGoWindow")),
 		method("canBecomeKeyWindow", func(self id, _ objc.SEL) bool { return true }),
 		method("canBecomeMainWindow", func(self id, _ objc.SEL) bool { return true }),
 		method("selectKeyViewFollowingView:", selectKeyView("MyGoWindow", false)),
@@ -1580,6 +1659,7 @@ func registerWindowClasses() {
 	// A panel (WindowOptions.Panel) takes the keyboard, without
 	// activating the app, and is never the main window.
 	classDef("MyGoPanel", "NSPanel", nil, []objc.MethodDef{
+		method("orderWindow:relativeTo:", orderWindowRelativeTo("MyGoPanel")),
 		method("canBecomeKeyWindow", func(self id, _ objc.SEL) bool { return true }),
 		method("canBecomeMainWindow", func(self id, _ objc.SEL) bool { return false }),
 		// NSPanel closes on an Escape its content leaves (cancelOperation:),
@@ -1610,9 +1690,7 @@ func registerWindowClasses() {
 					w.pressed(ev, 0)
 				}
 				// A web view's page drags the window it is in (StartDrag).
-				w = w.top()
-				release(w.lastMouseDown)
-				w.lastMouseDown = retain(ev)
+				w.top().pressedLeft(ev)
 			}
 			sendSuper(self, "MyGoWebView", cmd, uintptr(ev))
 		}),
@@ -1657,6 +1735,7 @@ func registerWindowClasses() {
 			}),
 			method("windowDidBecomeKey:", func(self id, _ objc.SEL, n id) {
 				if w := b().windowFor(self); w != nil {
+					w.orderChildrenLater()
 					w.h.Focused()
 					w.surfaceKeyChanged(true)
 				}
@@ -1702,11 +1781,13 @@ func registerWindowClasses() {
 			}),
 			method("windowDidMiniaturize:", func(self id, _ objc.SEL, n id) {
 				if w := b().windowFor(self); w != nil {
+					w.hideChildren()
 					w.h.Minimized()
 				}
 			}),
 			method("windowDidDeminiaturize:", func(self id, _ objc.SEL, n id) {
 				if w := b().windowFor(self); w != nil {
+					w.orderChildrenLater()
 					w.h.Restored()
 				}
 			}),
@@ -1720,6 +1801,19 @@ func registerWindowClasses() {
 				}
 				return proposed
 			}),
+			// The child windows follow their parent into its full-screen
+			// Space, and are left where they are as it comes out of it.
+			method("windowWillEnterFullScreen:", func(self id, _ objc.SEL, n id) {
+				if w := b().windowFor(self); w != nil {
+					w.childrenAttached = true
+					w.attachChildren()
+				}
+			}),
+			method("windowDidFailToEnterFullScreen:", func(self id, _ objc.SEL, win id) {
+				if w := b().windowFor(self); w != nil {
+					w.leftFullScreen()
+				}
+			}),
 			method("windowDidEnterFullScreen:", func(self id, _ objc.SEL, n id) {
 				if w := b().windowFor(self); w != nil {
 					w.h.EnteredFullScreen()
@@ -1730,6 +1824,7 @@ func registerWindowClasses() {
 			}),
 			method("windowDidExitFullScreen:", func(self id, _ objc.SEL, n id) {
 				if w := b().windowFor(self); w != nil {
+					w.leftFullScreen()
 					w.layoutTrafficLights()
 					w.h.LeftFullScreen()
 					if w.hiddenTitleBar() {
@@ -1766,6 +1861,8 @@ func registerWindowClasses() {
 				switch goString(keyPath) {
 				case "title":
 					w.h.TitleChanged(goString(send(w.web, "title")))
+				case "_isPlayingAudio":
+					w.h.AudibleChanged(w.IsAudible())
 				case "effectiveAppearance":
 					// AppKit lays the title bar out again after telling us.
 					b().post(w.layoutTrafficLights)
@@ -1787,7 +1884,7 @@ func registerWindowClasses() {
 					nav := platform.Navigation{
 						URL:           goString(send(send(send(action, "request"), "URL"), "absoluteString")),
 						IsMainFrame:   frame != 0 && sendBool(frame, "isMainFrame"),
-						UserInitiated: navType == 0 || navType == 1,
+						UserInitiated: userInitiated(action, navType),
 						Unasked:       navType == 2 || navType == 3,
 						Reload:        navType == 3,
 					}
@@ -1914,7 +2011,10 @@ func registerWindowClasses() {
 					Y:      num("y"),
 					Width:  num("width"),
 					Height: num("height"),
-					Native: uintptr(cfg),
+					// The action of the link, or of window.open(), whose
+					// WKNavigationType is "other".
+					UserInitiated: userInitiated(action, sendInt(action, "navigationType")),
+					Native:        uintptr(cfg),
 				}
 				child, ok := w.h.NewWindow(req).(*window)
 				if !ok || child == nil {
@@ -1944,6 +2044,18 @@ func registerWindowClasses() {
 				jsFileInput(w, params, handler)
 			}),
 		}...))
+}
+
+// userInitiated reports whether a user's gesture started a navigation
+// action. WebKit's private -[WKNavigationAction _isUserInitiated] knows,
+// a click whose handler navigates or calls window.open() included;
+// without it, the action's WKNavigationType says, a link or a form,
+// which misses those.
+func userInitiated(action id, navType int) bool {
+	if respondsTo(action, "_isUserInitiated") {
+		return sendBool(action, "_isUserInitiated")
+	}
+	return navType == 0 || navType == 1 // WKNavigationTypeLinkActivated, FormSubmitted
 }
 
 func (w *window) loadFailed(err id) {
