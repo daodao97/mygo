@@ -416,7 +416,7 @@ func (c *captionBar) paint() {
 	procSelectObject.Call(mask.dc, old)
 	procGdiFlush.Call()
 
-	dark := w.b.isDark()
+	dark := w.buttonsDark()
 	for i, b := range c.shown {
 		back, fore := c.colors(i, b, dark, face.fluent)
 		for y := int32(0); y < height; y++ {

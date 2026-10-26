@@ -87,6 +87,28 @@ func TestDrawsAsTheCPURenderer(t *testing.T) {
 	}
 }
 
+// TestBorderedCardDrawsAsTheCPURenderer draws the card of #531 (a large
+// opaque card with a border of 2 pixels at scale 2, and a small button like
+// it) with round corners, as Direct3D draws continuous ones, and requires the
+// CPU renderer's pixels along their straight edges, exactly.
+func TestBorderedCardDrawsAsTheCPURenderer(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	s := gputest.BorderedCardScene(false)
+	r, err := New(hiddenWindow(t, s.Width, s.Height))
+	if err != nil {
+		t.Skip("no Direct3D 11:", err)
+	}
+	defer r.Release()
+	for range 2 {
+		if err := r.draw(s); err != nil {
+			t.Fatal(err)
+		}
+		pix, stride := r.readBack(t)
+		gputest.CompareStraightEdges(t, "d3d11-bordered-card", pix, stride, s)
+	}
+}
+
 // TestResizeSettles checks that while the window changes size the swap
 // chain draws into part of larger buffers, resized only when the window
 // outgrows them, and that once the settle timer asked for a frame, the

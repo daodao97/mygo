@@ -102,7 +102,7 @@ func (e *node) layoutToolbar(cw float32) {
 			ch.collapsed = false
 			e.forgetIntrinsic()
 		}
-		if ch.flags&flagAbsolute == 0 {
+		if ch.flags&flagAbsolute == 0 && !ch.hidden {
 			kids = append(kids, ch)
 		}
 	}

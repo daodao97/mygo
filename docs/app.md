@@ -279,7 +279,10 @@ whatever the app is written in.
 - `App.SetActivationPolicy(mygo.ActivationPolicyAccessory)` removes the
   Dock icon of an app that lives in the menu bar, see
   [tray icons](menus.md#tray-icons); its windows can still show.
-- `App.Focus` brings the app to the front. On macOS, `App.Hide` and
+  `App.ActivationPolicy` returns the policy.
+- `App.Focus` brings the app to the front, and `App.IsActive` reports
+  whether it is there: the active app, or the one with the focused window
+  on Windows and Linux. On macOS, `App.Hide` and
   `App.Show` hide and show all its windows, and `App.ShowAboutPanel` shows
   the standard about panel.
 

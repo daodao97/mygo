@@ -31,10 +31,11 @@ func runBuild(args []string) error {
 	flags := newFlags("build", "[flags] [dir]", `Builds a production app for each platform. It runs buildCommand from
 mygo.json, then compiles the app with the frontendDist files embedded, served
 at mygo://localhost/. macOS gets a signed .app bundle and a
-"<name> <version> <arch>.dmg" disk image, without the arch for
-darwin/universal, whose window invites dragging the app to Applications;
-other platforms get an executable. Linux also gets a Debian
-package, and the app as <name>-<version>-linux-<arch>.tar.gz with
+"<slug>-<version>-<arch>.dmg" disk image (slug in mygo.json, by default
+the name in lower case), without the arch for darwin/universal, whose
+window invites dragging the app to Applications; other platforms get an
+executable. Linux also gets a Debian
+package, and the app as <slug>-<version>-linux-<arch>.tar.gz with
 install.sh, which installs it for the user in ~/.local, where it can update
 itself. The contents of the
 resources directory and the resources listed in mygo.json are copied into
@@ -47,8 +48,8 @@ signing and disk images need macOS. ios/arm64 builds a native UI app and
 its Xcode host project, with cgo and the iOS SDK on macOS. Use -ios-team
 for development signing, or -ios-simulator for an Apple Silicon simulator.
 Windows also gets
-"<name> Setup <version> <arch>.exe", made with NSIS, which mygo build downloads
-on Windows when it is not installed.
+"<slug>-setup-<version>-<arch>.exe", made with NSIS, which mygo build
+downloads on Windows when it is not installed.
 
 Set macos.signingIdentity in mygo.json (or -sign) to a Developer ID to ship
 outside the Mac App Store, and macos.notarize to notarize the disk image.
@@ -180,6 +181,15 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 		built = append(built, paths...)
 		if err != nil {
 			return err
+		}
+	}
+	if c.Updates != nil {
+		sums, err := writeChecksums(c.path(c.Out), built)
+		if err != nil {
+			return err
+		}
+		if sums != "" {
+			built = append(built, sums)
 		}
 	}
 	con.println(buildSummary(c, built, time.Since(started)))
@@ -352,11 +362,11 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		}
 		artifacts = append(artifacts, exe)
 	default:
-		exe := filepath.Join(stage, slugify(name))
+		exe := filepath.Join(stage, c.slug())
 		if err := compile(goarch, exe); err != nil {
 			return nil, err
 		}
-		files, err := writeLinuxDesktop(c, stage, slugify(name))
+		files, err := writeLinuxDesktop(c, stage, c.slug())
 		if err != nil {
 			return nil, err
 		}
@@ -395,7 +405,7 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		}
 	}
 	if _, ok := debArch[goarch]; goos == "linux" && ok {
-		deb, err := writeDeb(c, stage, slugify(name), goarch, installed)
+		deb, err := writeDeb(c, stage, c.slug(), goarch, installed)
 		if err != nil {
 			return nil, err
 		}
@@ -406,8 +416,17 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		return nil, err
 	}
 	artifacts = append(artifacts, files...)
-	if goos == "linux" {
+	// install.sh installs on Linux, and with updates on macOS; install.ps1
+	// runs the Windows installer of the latest version.
+	if goos == "linux" || goos == "darwin" && c.Updates != nil {
 		script, err := writeInstallScript(c, stage)
+		if err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, script)
+	}
+	if goos == "windows" && c.Updates != nil && slices.ContainsFunc(artifacts, func(a string) bool { return filepath.Base(a) == installerFileName(c, goarch) }) {
+		script, err := writeInstallPS1(c, stage)
 		if err != nil {
 			return nil, err
 		}

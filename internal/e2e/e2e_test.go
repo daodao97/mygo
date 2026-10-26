@@ -726,14 +726,22 @@ func TestGlass(t *testing.T) {
 		t.Errorf("material %s, style %d, corners %v; want the clear glass, or the HUD material before macOS 26, cut to 16", class, style, radius)
 	}
 	// Without SetActiveAppearance, a window draws as inactive once the app is.
+	// Focusing other activates the app, done once other is key: it is waited
+	// for so that the activation does not land after the Finder's and bring
+	// the app back in front.
 	other := newWindow(t, mygo.WindowOptions{Width: 200, Height: 100, Frameless: true, Transparent: true, Vibrancy: mygo.VibrancyGlassClear, Content: view})
+	other.Focus()
+	eventually(t, "the other window focused", other.IsFocused)
 	if deactivateApp() {
 		eventually(t, "the app deactivated", func() bool { active, _ := appActive(); return !active })
+		// The Finder can be frontmost before AppKit has told the app that it
+		// resigned active, which the windows draw by. So other's appearance
+		// is waited for, and w's is checked once the app is known inactive.
+		if !wait.Poll(func() bool { _, _, _, active, _ := material(other); return !active }) {
+			t.Error("a window without SetActiveAppearance draws as active with another app in front")
+		}
 		if _, _, _, active, _ := material(w); !active {
 			t.Error("with another app in front, the window no longer draws as active")
-		}
-		if _, _, _, active, _ := material(other); active {
-			t.Error("a window without SetActiveAppearance draws as active with another app in front")
 		}
 	}
 	w.SetVibrancy(mygo.VibrancyPopover)
@@ -875,6 +883,39 @@ func TestVibrancyWindowControls(t *testing.T) {
 		closeMenus()
 		eventually(t, "the menus to close", func() bool { menus, _ = popupMenus(); return len(menus) == 0 })
 	}
+}
+
+// TestWindowButtonsTheme draws the window controls of a hidden title bar
+// for a dark background in a light app and for a light one in a dark app,
+// then as the app again (Windows): under the pointer, the backplate of a
+// button is its glyph's color over the gray page, lighter for light glyphs.
+func TestWindowButtonsTheme(t *testing.T) {
+	mygo.Theme.SetSource(mygo.ThemeLight)
+	defer mygo.Theme.SetSource(mygo.ThemeSystem)
+	w := newWindow(t, mygo.WindowOptions{X: 40, Y: 40, Width: 300, Height: 150, TitleBarStyle: mygo.TitleBarHidden,
+		Content: ui.View(func(c *ui.Context) { c.Root().Background(ui.RGB(0x80, 0x80, 0x80)) })})
+	light := func() (light, ok bool) {
+		r, _, _, ok := titleButtonColor(w, "minimize")
+		return r > 0x80, ok && r != 0x80
+	}
+	if _, _, _, ok := titleButtonColor(w, "minimize"); !ok {
+		t.Skip("mygo draws the window controls on Windows")
+	}
+	readable := false
+	for deadline := time.Now().Add(3 * time.Second); !readable && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		l, ok := light()
+		readable = ok && !l
+	}
+	if !readable {
+		t.Skip("the screen does not show the dark glyphs of a light app's window controls")
+	}
+	w.SetWindowButtonsTheme(mygo.ThemeDark)
+	eventually(t, "light glyphs in a light app", func() bool { l, ok := light(); return ok && l })
+	mygo.Theme.SetSource(mygo.ThemeDark)
+	w.SetWindowButtonsTheme(mygo.ThemeLight)
+	eventually(t, "dark glyphs in a dark app", func() bool { l, ok := light(); return ok && !l })
+	w.SetWindowButtonsTheme(mygo.ThemeSystem)
+	eventually(t, "light glyphs again, as the dark app", func() bool { l, ok := light(); return ok && l })
 }
 
 // The toolbar that insets the traffic lights holds no items: in full screen

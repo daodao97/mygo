@@ -1035,6 +1035,21 @@ func (w *Window) SetActiveAppearance(v bool) {
 	w.do(func(n platform.Window) { n.SetActiveAppearance(v) })
 }
 
+// SetWindowButtonsTheme draws the window controls of a window with a
+// hidden title bar (TitleBarStyle) for a light or a dark background,
+// whatever the app's appearance, for a page whose title bar differs from
+// it, as a dark view under the controls of a light app: ThemeDark draws
+// light glyphs, ThemeLight dark ones, and ThemeSystem follows the app's
+// appearance again (Theme.SetSource). The page's prefers-color-scheme and
+// the menus keep the app's. Windows only: the traffic lights of macOS and
+// GTK's title buttons on Linux keep the app's appearance.
+func (w *Window) SetWindowButtonsTheme(s ThemeSource) {
+	if s == "" {
+		s = ThemeSystem
+	}
+	w.do(func(n platform.Window) { n.SetWindowButtonsTheme(string(s)) })
+}
+
 // SetContentProtection keeps the window content out of screenshots and
 // screen recordings.
 func (w *Window) SetContentProtection(v bool) {

@@ -217,6 +217,9 @@ func revealAll(root *node, ids []uint64) {
 	found := make([]*node, len(ids))
 	var walk func(e *node)
 	walk = func(e *node) {
+		if e.hidden {
+			return // it has no box to show
+		}
 		if i := slices.Index(ids, e.id); i >= 0 && found[i] == nil {
 			found[i] = e
 		}

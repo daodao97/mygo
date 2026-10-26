@@ -104,7 +104,7 @@ Register schemes before creating the windows that use them.
 `mygo.FileServer` serves an `fs.FS` with content types and range requests,
 falling back to `index.html` like the frontend. Handling the `mygo` scheme
 replaces the frontend with your handler. Pages of custom schemes are the
-app's own: they may call Go methods.
+app's own: they may call Go methods, see [trust](#trust).
 
 Audio and video are the exception: WebKitGTK's media player does not play
 from a custom scheme, so on Linux a `<video>` or `<audio>` of one fails with
@@ -132,7 +132,51 @@ that let them read the response, and MyGo answers their preflights.
 Other sites get none, unless the window trusts them
 (`PageOptions.TrustedOrigins`), and handlers may set their own.
 On Windows, fetch a scheme at `http://<scheme>.localhost/`, where
-WebView2 serves it.
+WebView2 serves it, and another host at `http://<host>.<scheme>.localhost/`
+(`myapp://abc/` is `http://abc.myapp.localhost/`). Such hosts are DNS
+names (letters, digits, hyphens and dots) and are reported in lower case;
+URLs with another host or a port aren't served there.
+
+### Trust
+
+A window trusts the app's own pages: its frontend, pages of custom schemes,
+`file:` and `about:` pages (`LoadHTML` without a base URL shows
+`about:blank`), origins in `PageOptions.TrustedOrigins`, and in development
+builds pages served from localhost. Trust follows the page's URL, in a
+window or a [web view](ui/web-view.md), and changes as it navigates. A
+trusted page may:
+
+- call every method bound with `mygo.Bind`, and the plugins the app uses;
+- call `window.mygo.window` to set the title of its window, minimize,
+  maximize, full-screen or close it;
+- get the camera, the microphone, the location and notifications without a
+  permission handler;
+- read the responses of every custom scheme, which carry CORS headers for
+  it;
+- hear the paths of the files dropped on it, and of its window's document.
+
+So never serve third-party or user-supplied HTML from a custom scheme, nor
+load it with `LoadHTML` without a base URL: a plugin's UI or a preview of
+a user's HTML would get all of the above. Show it from an origin the
+window does not trust instead, such as an `https` site or a `data:` URL:
+it calls no Go method, and gets no permission unless a
+[permission handler](windows.md#permissions) grants it.
+
+Some things reach every page, trusted or not:
+
+- events: `Broadcast` sends to every page of every window, and `Emit` to
+  every web view of a window of native UI. Send to one page with
+  `EmitPage`.
+- messages to Go: an untrusted page's calls are rejected, but the app
+  receives and decodes them first, whatever their size.
+- `window.open` and `target="_blank"` links open `http(s)` URLs in the
+  default browser, unless `SetWindowOpenHandler` decides
+  ([links and new windows](#links-and-new-windows)).
+- downloads go to the Downloads directory, unless `OnWillDownload` decides
+  ([downloads](windows.md#downloads)).
+- the page may navigate anywhere, unless `OnWillNavigate` cancels it
+  ([pages](windows.md#pages)). A page that navigates to a trusted URL is
+  trusted.
 
 ## The mygo-runtime package
 
@@ -241,7 +285,10 @@ the window:
   none, as tiling window managers are often set up. A Wayland compositor
   that decorates windows itself, as KWin, Hyprland and Sway do, has none:
   its own title bar holds the buttons, and a tiling one shows none. The
-  outer pixels of the page resize the window, as a frameless one's.
+  outer pixels of the page resize the window, as a frameless one's. The
+  window's menu bar hides, as with `AutoHideMenuBar`: Alt and F10 show it
+  above the page while its menus are open, and its shortcuts work all
+  along.
 
 ```go
 mygo.NewWindow(mygo.WindowOptions{

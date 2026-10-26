@@ -46,9 +46,10 @@ neither parsed nor laid out again.
 
 The end of a reply shows what its syntax will most likely become, as
 the chat apps show it, without changing its text: `**bol` is bold, an
-unclosed code span is code, `[the docs](https://ex` is a link whose
-destination is still coming (not clickable yet), and an open code fence
-shows as code. Lines that could still turn into something else wait for
+unclosed code span is code, `$$x_i` (and `$x_i` with `ExtDollarMath`)
+is math, whose `_` and `*` are TeX rather than emphasis,
+`[the docs](https://ex` is a link whose destination is still coming (not
+clickable yet), and an open code fence shows as code. Lines that could still turn into something else wait for
 what follows them: a line of a few markers, as `-` or `==`, which would
 make the paragraph above a heading, and a table's header, which waits
 for its delimiter row so that it does not flash as a paragraph of pipes.
@@ -178,7 +179,26 @@ Math between `$$` and `$$`, `\[` and `\]`, or `\(` and `\)` shows as its
 TeX in the code font, as language models write it; `$…$` too with the
 `ExtDollarMath` extension, except where the dollars read as money.
 `Math` builds blocks of display math instead, as with a renderer of
-your own.
+your own; a block still streaming is `Open` to `Block`, which can show
+its TeX until it closes.
+
+`InlineMath` makes math within text an object of the paragraph, from
+its TeX and the size of the text around it: a box `Width` wide,
+`Height` above the baseline and `Depth` below it, which wraps with the
+words and which `Draw` paints. Copied, as text or Markdown, it is its
+source, as `$x_i$`. When it returns false, the math shows as TeX. It is
+asked whenever its paragraph changes, as each frame of one streaming in,
+so keep what it makes:
+
+```go
+app.md.InlineMath = func(tex string, size float32) (markdown.InlineObject, bool) {
+	f, err := app.formula(tex, size) // laid out once, kept by TeX and size
+	if err != nil {
+		return markdown.InlineObject{}, false
+	}
+	return markdown.InlineObject{Width: f.W, Height: f.Ascent, Depth: f.Descent, Draw: f.Draw}, true
+}
+```
 
 Raw HTML shows as text, so that a reply cannot hide anything. Within
 text, the tags of formatting that models write (`<b>`, `<i>`, `<u>`,

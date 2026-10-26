@@ -59,6 +59,10 @@ changes the color it fills with, as when the app's own theme changes
 itself), `CapturePage` takes a screenshot of its page, and `Destroy`
 closes it.
 
+A web view trusts the app's own pages as a window does, pages of custom
+schemes included: show third-party or user-supplied HTML from an origin it
+does not trust, see [trust](../frontend.md#trust).
+
 Make a web view once, as a window, not in the view: the view only shows
 it. One the view does not build hides and keeps its page, so a view of tabs
 builds the web view of the tab shown, and switching back finds the page

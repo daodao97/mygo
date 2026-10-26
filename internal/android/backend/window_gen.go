@@ -73,8 +73,9 @@ func (w *window) SetIgnoreMouseEvents(v bool) {}
 
 func (w *window) SetContentProtection(v bool) {}
 
-func (w *window) SetVibrancy(material string) {}
-func (w *window) SetActiveAppearance(bool)    {}
+func (w *window) SetVibrancy(material string)  {}
+func (w *window) SetActiveAppearance(bool)     {}
+func (w *window) SetWindowButtonsTheme(string) {}
 
 func (w *window) SetProgressBar(state string, value float64) {}
 

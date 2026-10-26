@@ -91,6 +91,7 @@ APIs do not add mobile screen components or default timers to framework startup.
 │   ├── ios/            iOS: UIKit host and input bridge (cgo), native Go UI
 │   ├── linux/          Linux: GTK 3 + WebKitGTK through dlopen
 │   ├── windows/        Windows: Win32 + WebView2 through syscall and COM
+│   ├── schemehost/     maps custom scheme URLs to the http://*.localhost URLs WebView2 serves them at
 │   ├── web/            browsers (js/wasm): native UI on canvases, through syscall/js
 │   ├── unsupported/    stub for other platforms
 │   ├── fake/           in-memory backend for unit tests
@@ -115,6 +116,7 @@ APIs do not add mobile screen components or default timers to framework startup.
 │   ├── i18nlink/       what package i18n gives MyGo's own catalog only: a catalog that links no dates
 │   ├── l10n/           MyGo's own strings: the catalog of the controls and menu roles
 │   ├── accelerator/    parses "CmdOrCtrl+Shift+K"
+│   ├── menuicon/       menu items' PNG icons as premultiplied, scaled pixels (Windows)
 │   ├── update/         update manifests, signatures, archives and delta updates
 │   ├── idlemem/        measures apps' memory once idle, for the benchmarks
 │   ├── inputlatency/   measures how long input takes to reach the screen in native UI (macOS)
@@ -709,12 +711,14 @@ features GTK 4 lacks become X11-only code beside it.
   that report a result (Eval, CapturePage, PrintToPDF) get the reason, as
   later ones do: the window closed, or WebView2 could not create it.
   User data lives in `%LOCALAPPDATA%\<name>\WebView2`.
-- **Custom schemes** load from `http://<scheme>.localhost/`, which WebView2
+- **Custom schemes** load from `http://<scheme>.localhost/`, and their
+  other hosts from `http://<host>.<scheme>.localhost/` (`internal/schemehost`:
+  hosts of DNS labels, lower-cased, without a port), which WebView2
   lets the app answer through `WebResourceRequested`. Chromium treats
   `*.localhost` as a secure origin, and unlike `https`, `http` blocks no
   mixed content, so pages reach `ws://` and `http://` URLs as with the
   custom schemes of the other backends. The backend maps URLs both ways, so
-  the core only sees `<scheme>://localhost/`.
+  the core only sees `<scheme>://<host>/`.
   Responses are buffered: WebView2 takes a whole stream. `LoadHTML` with a
   base URL serves the document from that URL the same way.
 - **Eval** goes through the DevTools protocol (`Runtime.evaluate` with
@@ -1760,7 +1764,13 @@ as in Tauri:
   delta step resolve it in Go, and `install.sh` in sh (`latest_tag`, which
   reads the `tag_name`, `draft` and `prerelease` fields in order). Such
   drafts are made with `--latest=false`, and published the same way, so
-  the repository's latest release stays the others'. With `updates.s3` it puts the
+  the repository's latest release stays the others'. While the app turns
+  prereleases on (`Updater.SetPrereleases`, an `atomic.Bool` that `Check`
+  reads once), `Check` resolves the feed of the latest release (with the
+  prefix `v`) and tagged feeds alike with `update.ResolvePrereleaseFeed`
+  instead: the manifest of the release with the highest version
+  (`update.Compare`) that is not a draft, among the pages of releases up to
+  the one holding the newest release that is not a prerelease. With `updates.s3` it puts the
   same files, manifests last, into a bucket of S3 or a compatible service
   (`cmd/mygo/s3.go`): one `PUT` per object, signed with AWS Signature
   Version 4 in pure Go (`crypto/hmac`), its SHA-256 payload hash checked
@@ -1855,7 +1865,9 @@ as in Tauri:
   it active then). Windows makes a topmost tool window owned by the hidden
   application window (a tool window alone may get a button on other
   displays' taskbars, as PowerToys found), its corners rounded as
-  Windows 11 rounds other windows'; the key press of a `RegisterHotKey`
+  Windows 11 rounds other windows'; one the app maximizes fills the work
+  area (`maximizeInWorkArea`), where Windows would give a window without
+  a maximize box the whole monitor, over the taskbar; the key press of a `RegisterHotKey`
   shortcut lets the process take the foreground, and hiding the panel
   gives it back. Linux makes a sticky utility window, kept above, or on
   Wayland a surface of the overlay layer (`internal/linux/layer.go`):
@@ -1904,6 +1916,16 @@ backend, which:
   checkbox/radio state, performs window and view roles and calls `Click`
   with the menu's window, even while a submenu has focus instead.
 
+Item icons (`MenuItem.Icon`, made by `NewMenuIcon`) travel as a
+`*platform.MenuIcon`, which the core shares between the icons of the same
+PNG (interned by content, held weakly): backends tell a change by the
+pointer and decode an image once (`MenuIcon.Native`), freeing what they
+made with `runtime.AddCleanup` or with the menus that show it. Their code
+is linked by `NewMenuIcon` (`LinkMenuIcons`), not by the backends' menus.
+Backends that keep a snapshot to build menus from later (Windows' trays,
+the application menu of new windows) keep it current with the updates they
+get (`Menu.Apply`).
+
 macOS gets a default menu bar (App, File, Edit, View, Window), which is what
 makes Cmd+C/V/Q work; other platforms get none unless the app sets one.
 
@@ -1949,25 +1971,40 @@ their gains (a 2×2 matrix of volume and pan) over 5 ms on every change,
 pause and resume. Looping happens in the source, so a loop has no gap; the
 voice counts frames past it modulo the length for `Position`.
 
+`Position` is where a voice is heard, not mixed. The mixer counts the
+frames it mixed and, of the latest, those the device holds: as many as it
+was written, up to its latency, from when it opened (`setHeld`). Each
+voice marks the output's frame and its own source frame where each mix
+starts and ends, and forgets the marks the output played; `Position`
+interpolates them at the frame heard, which carries speed changes, a
+stream waiting for its decoder, and a pause playing out. A seek or a
+stop drops them, so the position is the target at once and stands there
+until the output plays what it mixed since.
+
 The output (`audio/output.go`) is a goroutine locked to one thread that
 opens the device when a voice starts, mixes 10 to 21 ms at a time and
 writes it with a call that blocks while the device holds enough, and
-closes the device after five idle seconds. Each platform gives one
-`openDevice`:
+closes the device after five idle seconds. `audio.SetLatency` chooses how
+much the device holds ahead, 40 ms or 250 ms; the output opens it again
+when that changes. Each platform gives one `openDevice`, which takes it:
 
-- macOS: an Audio Queue of four buffers of 512 frames, started once all
-  hold audio; its callback, created once, hands buffers back over a channel.
+- macOS: an Audio Queue of buffers of 512 frames, as many as hold that (4
+  or 24), started once all hold audio; its callback, created once, hands
+  buffers back over a channel. A theme change can keep every thread of an
+  app waiting for up to 0.2 s, which 4 buffers do not ride out.
 - Linux: `pa_simple_write` of PulseAudio's simple API (`libpulse-simple`,
-  which PipeWire serves too) with a 40 ms target, else ALSA's
+  which PipeWire serves too) with that as its target, else ALSA's
   `snd_pcm_writei` on `default`, both through purego.
-- Windows: WASAPI in shared mode, event driven, with a 40 ms buffer,
+- Windows: WASAPI in shared mode, event driven, with a buffer of that,
   `AUTOCONVERTPCM` and the default-quality resampler; it compares the
   default endpoint's ID every 500 ms and fails the write when it changed,
   which reopens the device.
-- Browsers: an AudioWorklet from a Blob URL that queues three chunks and
-  posts a request whenever it used one; the output waits for a request
-  before mixing the next. One AudioContext serves the page; closing
-  suspends it, and the first pointer or key input resumes it.
+- Browsers: an AudioWorklet from a Blob URL that queues chunks of 1024
+  frames (three, or twelve) and posts a request whenever it used one; the
+  output waits for a request before mixing the next, and asks more or
+  answers fewer when the latency changes. One AudioContext serves the
+  page, with the `latencyHint` it began with; closing suspends it, and the
+  first pointer or key input resumes it.
 
 Where `openDevice` fails, a null device takes the frames on the wall
 clock and fails after two seconds, so the output tries the device again;
@@ -2422,7 +2459,18 @@ either.
   `Painter.After`, as spinners and progress bars of unknown length do)
   paints the elements of the last frame again at its own time
   (`repaintFrame`), without building or laying out; elements out of view
-  are not painted, so they ask for none. Such a frame is asked for with
+  are not painted, so they ask for none. Nor are the others, mostly
+  (`ui/repaint.go`): the frame painting the window keeps, for each Draw or
+  DrawOver callback that asked for frames, the operations it painted and
+  the painter as it was (`paintPart`), and a frame that only paints again
+  runs those callbacks alone and splices what they paint into the last
+  frame's scene in place of what they painted (`repaintParts`). It paints
+  the window whole when anything else asked (a pose moving, a drawing
+  painting into a layer or a canvas, as `engine.untracked` notes), while
+  the inspector shows or a drag moves, and once the parts have added more
+  glyphs, stops and words than `partsGrowth` past what the whole frame
+  held. `TestRepaintPartsMatchWhole` compares the frames with those
+  painted whole (`engine.noParts`). Such a frame is asked for with
   `redraw` set, which every event of the surface clears, so that the frame
   builds anew in case the event changed what the view shows; anything
   asking for a frame clears it too, and the frame `Painter.After` has due
@@ -2435,6 +2483,21 @@ either.
   fonts the elements' layouts hold), builds anew all the same. The timers
   the last frame built armed stay; the host arms them (`afterTimer`,
   `repaintTimer`), and `Painter.After`'s posts to the main thread.
+  A drawing asking for fewer frames (`Painter.AnimationFrameRate`) has
+  those frames come every so many of the display's refreshes, the fewest
+  that give it as many frames a second at least (`engine.pace`), unless
+  anything else in the window asks for each: `Painter.AnimationFrame`, a
+  pose moving, the view animating. The refreshes between draw nothing
+  (`paceSkips`) unless something else asked for a frame since, and the
+  surface is told of the rate (`platform.FrameRateSurface`): macOS sets
+  its display link's `preferredFrameRateRange`, which has a ProMotion
+  display refresh as often while nothing else on it asks for more. A
+  surface whose frames asked for come at once rather than at the next
+  refresh (`platform.ImmediateFrameSurface`: Windows, where presenting
+  paces frames) would ask again and again until the frame is due: the
+  repaint timer asks for it then instead, and the frame it brings keeps
+  the pace's times, as the timer fires a little late. With the display's
+  rate unknown (browsers), frames come at each refresh.
   While nothing of the window shows (`platform.OccludableSurface`: a macOS
   window hidden, minimized or covered by other windows, whose display link
   still ticks, at the display's rate for half a minute, then at about 40
@@ -3351,7 +3414,20 @@ either.
   beyond a canvas of its size; what the subtree paints is clipped to that
   part, and backdrops end at its edge (`Scene.Drawn`, `Scene.BackdropOf`,
   which the painter, the builders and the CPU renderer use alike), as at a
-  canvas's. The canvas is transient (`Image.Transient`). `ui/shader` gives an
+  canvas's. The canvas is transient (`Image.Transient`), unless the
+  element is kept (`Element.Cache`, `ui/cache.go`): then it paints the
+  subtree into the other of two scenes and compares it with the last
+  through a `scene.Differ` of its own (`layerCache`), and only a scene
+  that differs, or is of another scale or part, bumps the canvas's
+  version and goes in the frame's `Canvases`; one that does not stays
+  the canvas's scene all the same, as the atlases hold its glyphs this
+  frame. The window's `Differ` then finds the image op the same, so
+  damage over the element redraws one image. A kept element alone (no
+  effect, no blur) renders, rather than its box, what it paints around
+  it (`keptLayer.area`: each one's box and shadows grown by 4, in its
+  space, clipped by those that clip). Its code is reached only through
+  the interface `Cache` stores (`layerKeeper`), so apps that never call
+  it do not link it. `ui/shader` gives an
   effect's entry point (`ColorEffect`, `DistortionEffect`, `LayerEffect`)
   a `Fragment` that calls it, and the bridge reads the content as image 3
   (`LayerImage`) from where the box's corner lies in it
@@ -3484,7 +3560,18 @@ either.
   4095 pixels a side, draws as tiles of it (`pathTiles`), each a mask of
   the whole path clipped to the tile: only the tiles that show and that
   its edges reach, and, inside a fill, tiles covered whole, which share
-  one mask.
+  one mask. A stroke's mask is the outline of its center line, each edge
+  drawn once (`strokeInto`): one side, turning at corners and ends as the
+  path's joins and caps say (`Path.Join`, `Path.Cap`), and back along the
+  other. Its dashes (`Path.Dash`) are cut from the center line as the mask
+  is drawn, from where each polyline starts in their pattern, so that a
+  trimmed path's dashes stay where they are, and its key holds that place,
+  in quarters of a pixel within one pattern, with the caps, joins and
+  dashes. As in Skia, a dash through the start of a closed subpath is one
+  dash, and the point between a dash and a gap is in the gap. Square caps
+  reach past half the stroke's width, and miter joins as far as the points
+  of its corners do within the miter limit (`flatPath.reach`, from the
+  points the mask draws), and the mask and its tiles reach as far.
   Opaque `Painter.StrokePolyline` on a GPU is the exception: each segment
   is a rotated fill with round ends, drawn as other fills are, without a
   mask; translucent ones, and the CPU renderer, take the mask's way, so
@@ -3522,8 +3609,10 @@ either.
   A span with an `ObjectWidth` makes its object replacement characters
   inline objects: boxes standing on the baseline, which lines break
   around and which draw no glyph (`Glyph.Object`), as a rich text's
-  images. The line takes their height in the shared layout; each engine
-  only gives them their width: Core Text through run delegates, whose
+  images, or a text's math with `Element.DrawObjects`, which paints them
+  after the glyphs. The line takes their height, and their descent
+  (`ObjectDescent`, encoded only for objects), in the shared layout;
+  each engine only gives them their width: Core Text through run delegates, whose
   callbacks return floats Go cannot, so they are leaves in assembly
   (`rundelegate_darwin_*.s`); DirectWrite through `IDWriteInlineObject`s,
   their places found by hit testing, as its glyph runs' are; Pango through
@@ -3562,9 +3651,15 @@ either.
   backdrop-reading effects as barriers. Its planner shares clipping rules
   with drawing, grows shadow support before transforming it, and skips
   scenes without potential opaque fills. Large shadows with a caster and
-  border-only fills draw as up to four scissored strips around interiors
-  where their output is zero. These scissors never change a clip mask's
-  sampling coordinates. Both transformations are shared by all GPU backends.
+  border-only fills draw as scissored strips that leave out where their
+  output is zero: inside the caster, between a border's edges, and outside
+  a border's outer edge. With round corners they draw in bands of rows
+  (`gpu/bands.go`), each drawing only the columns between where the outer
+  edge may reach and where the inner one certainly covers, so a circle a
+  pixel wide shades about its length rather than its box; the bands across
+  the corners are as many as pay for their draw calls (`bandCost`). With
+  continuous corners they draw around one rectangle. These scissors never
+  change a clip mask's sampling coordinates. Both transformations are shared by all GPU backends.
   Large fills, shadows and images with continuous corners (negative radii,
   which only Metal gets) draw as nine-patches (`gpu/corners.go`): their
   corners' boxes as they are, and the cross between them as a twin with
@@ -3578,7 +3673,9 @@ either.
   everywhere, stay whole and join their neighbors' batches.
   The shadow's continuous-curve solver omits the circular blend where both
   clamp factors are zero, keeping its samples and iterations. Coverage uses
-  the full formula. A reference test bounds final differences to one channel
+  the full formula in a separate function: a shortcut branch in that function
+  changes derivative rounding on thin rings even when the branch is unused.
+  A reference test bounds final differences to one channel
   unit in BGRA8 or one ULP in float16; the upstream comparison keeps the full
   formula to check the other paths byte for byte. The paired
   `BenchmarkContinuousShadowCompare` alternates both formulas after warming
@@ -3677,12 +3774,13 @@ either.
     which a timer asks for, gives it two of the window's size again.
     The swap chain flips in sequence (`FLIP_SEQUENTIAL`), so that a frame
     draws only what changed since the last, as Metal's (below): DXGI keeps
-    what each buffer holds, and as a frame is presented with the area it
-    drew as its dirty rectangle (`Present1`), copies into it what the last
-    frame changed outside that area, so there is no buffer age to track.
-    The frame clears the area (`ID3D11DeviceContext1::ClearView`, which
-    Direct3D 11.1 has, WARP too) and draws the batches scissored to it; a
-    frame that changed nothing is not presented. With WARP, on a runner
+    what each buffer holds, and as a frame is presented with the
+    rectangles it drew as its dirty rectangles (`Present1`), copies into
+    it what the last frame changed outside them, so there is no buffer
+    age to track. The frame clears the rectangles
+    (`ID3D11DeviceContext1::ClearView`, which Direct3D 11.1 has, WARP too)
+    and draws the batches scissored to each; a frame that changed nothing
+    is not presented. With WARP, on a runner
     without a GPU, a caret blinking in a window of 1280×760 pixels took a
     tenth of the CPU's time it took drawn whole;
   - `internal/gpu/metal` with a shader in Metal Shading Language
@@ -3763,7 +3861,14 @@ either.
     rather than clearing it, copies a texel cleared to the frame's color
     over the area (with the `down` pass, so that the GPU converts the
     color as it does clearing), and draws the batches scissored to it,
-    leaving out those outside. Apple's tile-based GPUs then load and store
+    leaving out those outside. The area is up to eight rectangles apart
+    from each other (`gpu.Part`, from the Differ's, which `gpu.Ages`
+    keeps for each drawable, those that meet or nearly do merged, and
+    past eight the two whose union grows least): a spinner in one corner
+    and a progress bar in the other redraw themselves, not all between,
+    each batch drawing once in each rectangle it meets, so that none is
+    blended twice. A backdrop an effect reads is within one rectangle,
+    drawn before the effect reads it. Apple's tile-based GPUs then load and store
     only the tiles the pass draws in: a caret blinking in a window of
     3200×2000 pixels takes 0.4 ms of the GPU a frame rather than 2.4,
     and a spinner 0.4 rather than 2.9, on an M5. Copying the last frame
@@ -3818,9 +3923,9 @@ either.
     differs, `load_linux.go` or `load_js.go`. A frame draws only what
     changed since the last (`Renderer.Partial`, with `scene.Differ` and
     `gpu.Pipelines`, as Metal's), into a framebuffer that keeps what was
-    drawn, so there is no buffer age to track: it clears the area with the
-    scissor test on, which `glClear` keeps to, and draws the batches
-    scissored to it. GTK keeps the GtkGLArea's framebuffer from render to
+    drawn, so there is no buffer age to track: it clears the rectangles of
+    the area with the scissor test on, which `glClear` keeps to, and
+    draws the batches scissored to each. GTK keeps the GtkGLArea's framebuffer from render to
     render, but makes its buffers anew, holding nothing defined, whenever
     it allocates the area, at the same size too: a `SurfaceResize` has the
     next frame draw whole (`Invalidate`). A canvas's WebGL 2 context keeps
@@ -3890,6 +3995,19 @@ either.
   asks for by itself, as a resize does, draws a frame in the `draw`
   signal, and repaints in the next frame what it changed outside GTK's
   clip.
+
+  On Windows, `RequestFrame` invalidates the surface's window, whose
+  `WM_PAINT` comes as soon as the message queue is empty, and frames drawn
+  in memory show at once, through GDI or DirectComposition: nothing held
+  them to the display, and a drawing asking for every frame
+  (`Painter.AnimationFrame`) drew 5,000 a second on a 60 Hz display. After
+  each, a goroutine waits for DWM's next composition (`DwmFlush`, through
+  `platform.RefreshSurface`), for half a refresh at least, as it may
+  return at once, and two at most, and paced frames (`WM_PAINT`, but a
+  resize's and `FrameNow`'s) wait for it as they do for the swap chain's
+  room (`refreshWaiter`, `windowHost.waitDisplay`): the next draws once it
+  returns, through `FrameNow`, and the main thread handles input
+  meanwhile.
 
   With a GPU renderer, every frame draws on the GPU, small changes too, so
   a gesture never switches renderers mid-way: on the CPU, a frame
@@ -4179,8 +4297,8 @@ renderer's (`gputest.Compare`).
   manifest, read with sed from the indented JSON `mygo build` writes.
   `--uninstall` removes only what points into its install, including the
   URL handler entry the app registers.
-- On a macOS host, macOS targets also get "<name> <version> <arch>.dmg",
-  or "<name> <version>.dmg" for darwin/universal
+- On a macOS host, macOS targets also get "<slug>-<version>-<arch>.dmg",
+  or "<slug>-<version>.dmg" for darwin/universal
   (`dmg.go`): the CLI puts a copy of the app (`ditto --noclone`, since a
   clone of a sparse file takes fewer blocks than its copy on HFS+ will),
   the `/Applications` link, the volume icon and a `.DS_Store` written in
@@ -4584,6 +4702,7 @@ which npm allows only for packages that exist: the first release uses an
 |---|---|---|---|
 | watching files | FSEvents, one stream per tree, no descriptor per file | inotify, per directory | `ReadDirectoryChangesW`, one for a recursive tree, and the parent to see the directory renamed |
 | menu bar | application menu bar, default menu installed | per-window GTK menu bar, none by default | per-window Win32 menu bar, none by default |
+| menu item icons | `NSMenuItem` image, 16 pt, template images tinted | a `GtkBox` of a `GtkImage` (a cairo surface at the widget's scale) and the label; none on the bar's own items; tray menus' items get `icon-data` over DBusMenu (`dbusmenu_gtk_parse_get_cached_item`) | Windows 11: drawn by MyGo in a column after the checks' (premultiplied BGRA, `internal/menuicon`); Windows 10: `hbmpItem`, a 32-bit premultiplied DIB section freed with its menu; none on the bar's own items |
 | auto-hide menu bar | ignored | the bar widget hides; `can-activate-accel` keeps its shortcuts; Alt alone or F10 show it and open its first menu until it deactivates | the menu is attached only for the `SC_KEYMENU` menu loop that Alt alone or F10 start; shortcuts come from the webview |
 | tray | NSStatusItem, click events | AppIndicator: a menu, and activation (a double click) for an icon with an `OnClick` listener | notification area icon, click events |
 | global shortcuts | Carbon hot keys | X11: `XGrabKey` on the root window (with Caps/Num Lock variants), key presses from a GDK filter. Wayland: the XDG `GlobalShortcuts` portal (see [Linux](#linux-internallinux)) | `RegisterHotKey` |
@@ -4599,7 +4718,7 @@ which npm allows only for packages that exist: the first release uses an
 | web views' language | from the app's `AppleLanguages`, next launch | `webkit_web_context_set_preferred_languages`, live | the environment's `Language`, as it is created |
 | `Theme.SetSource` | `NSApp`'s appearance (Aqua, DarkAqua, or none) | `gtk-application-prefer-dark-theme`; light also puts a theme named for its dark variant (Yaru-dark) in place of its light one (Yaru), which GTK and WebKitGTK otherwise take for dark, and the other sources reset the theme | the title bars, menus and native UI, and pages through the DevTools protocol's emulated `prefers-color-scheme` |
 | traffic lights, Dock | yes | ignored | ignored |
-| hidden title bar | AppKit's traffic lights over a full-size content view | GTK's title buttons in header bars over the page, per `gtk-decoration-layout`; none where the Wayland compositor decorates windows | caption buttons drawn in a layered child window, through DirectComposition over a material; snap layouts; a top edge that resizes |
+| hidden title bar | AppKit's traffic lights over a full-size content view | GTK's title buttons in header bars over the page, per `gtk-decoration-layout`; none where the Wayland compositor decorates windows | caption buttons drawn in a layered child window, through DirectComposition over a material, light or dark per window (`SetWindowButtonsTheme`); snap layouts; a top edge that resizes |
 | progress bar | Dock tile content view (NSBoxes: NSProgressIndicator does not draw there), app-wide | Unity launcher API over D-Bus (`com.canonical.Unity.LauncherEntry`), app-wide | `ITaskbarList3`, per window |
 | file icons | `NSWorkspace iconForFile:` drawn into an sRGB `NSBitmapImageRep` at the size | GIO's `standard::icon`, or a desktop entry's `GAppInfo` icon, through `gtk_icon_theme_lookup_by_gicon` | `IShellItemImageFactory::GetImage` (`SIIGBF_ICONONLY`), a DIB with straight alpha |
 | installed apps | `.app` bundles of the Applications folders, `NSFileManager displayNameAtPath:` and `NSBundle`, off the main thread; launched with `openURL:` | `g_app_info_get_all` filtered by `g_app_info_should_show`; launched with `g_app_info_launch` and GDK's launch context | `FOLDERID_AppsFolder` enumerated in an STA of its own; launched with `ShellExecute` of `shell:AppsFolder\<ID>` |
@@ -4633,7 +4752,7 @@ which npm allows only for packages that exist: the first release uses an
 | content protection, click-through | yes | ignored | yes |
 | panels | `NSPanel` with the nonactivating style, floating, on all Spaces as a full-screen auxiliary | sticky utility window, kept above, out of the taskbar and the pager; a gtk-layer-shell overlay surface on Wayland where it can be | topmost `WS_EX_TOOLWINDOW` owned by the hidden application window, rounded |
 | flyouts | borderless nonactivating `NSPanel` child window, or an `NSPopover`; placed in the visible frame | `GTK_WINDOW_POPUP` (override-redirect, placed in the work area, on X11; `xdg_popup` with `gdk_window_move_to_rect` on Wayland); focusable ones grab the seat | owned `WS_POPUP` + `WS_EX_TOOLWINDOW`, `WS_EX_NOACTIVATE` unless focusable, `CS_DROPSHADOW` for a shadow, with corners rounded by DWM on Windows 11 |
-| custom scheme origin | `<scheme>://localhost` | `<scheme>://localhost` | `http://<scheme>.localhost` (the page's `location`) |
+| custom scheme origin | `<scheme>://<host>` | `<scheme>://<host>` | `http://<scheme>.localhost`, or `http://<host>.<scheme>.localhost` for another host (the page's `location`) |
 | `LoadHTML` documents | a reload loads the base URL (`about:blank` without one), so the core cancels it (`Navigation.Reload`) and loads the HTML again; not in the history | as macOS | as macOS, but in the history: going back to one with a base URL loads that URL |
 | window.open | keeps the opener | independent window | keeps the opener: the new window's web view, set up, becomes the popup (`put_NewWindow`, under a deferral) |
 | native UI surface | layer-backed NSView, frames from `CADisplayLink` (a timer at the display's rate before macOS 14), input methods through NSTextInputClient | GtkGLArea (GtkDrawingArea without a GPU), GtkIMMulticontext | `MyGoSurface` child window, IMM32 |

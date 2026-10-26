@@ -39,8 +39,11 @@ type Span struct {
 	// rune of the span, an object replacement character (U+FFFC), an
 	// inline object: a box of that size in DIPs standing on the baseline,
 	// which lines break around and which draws nothing, where a rich text
-	// editor draws an image (TextLayout.Objects).
-	ObjectWidth, ObjectHeight float32
+	// editor draws an image (TextLayout.Objects) and a text what
+	// Element.DrawObjects draws. ObjectDescent extends the box that far
+	// below the baseline, as math's subscripts and fractions go: the line
+	// makes room for it.
+	ObjectWidth, ObjectHeight, ObjectDescent float32
 }
 
 // RichText creates a text whose spans differ in style, over the style of
@@ -169,7 +172,7 @@ func (sc *spanCache) update(spans []Span) {
 // layout.
 func spanStyle(s Span, end int) text.Span {
 	return text.Span{End: end, Family: s.Font, Size: s.Size, Weight: s.Weight, Italic: s.Italic, LetterSpacing: s.LetterSpacing, Features: s.Features, Lang: s.Lang,
-		ObjectWidth: s.ObjectWidth, ObjectHeight: s.ObjectHeight}
+		ObjectWidth: s.ObjectWidth, ObjectHeight: s.ObjectHeight, ObjectDescent: s.ObjectDescent}
 }
 
 // encodeSpans encodes the styles of spans for a layout.

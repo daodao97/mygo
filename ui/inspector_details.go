@@ -273,6 +273,9 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 	if e.flags&flagInvisible != 0 {
 		add("visibility", "hidden")
 	}
+	if e.hidden {
+		add("display", "none")
+	}
 	if e.flags&flagPassThrough != 0 {
 		add("pointer-events", "none")
 	}
@@ -386,6 +389,8 @@ func computed(e *node) []inspDecl {
 	add := func(name, value string) { ds = append(ds, inspDecl{name: name, value: value}) }
 	display := "flex"
 	switch {
+	case e.hidden:
+		display = "none"
 	case e.grid:
 		display = "grid"
 	case e.kind == kindText:
@@ -481,7 +486,7 @@ func properties(rt *engine, e *node) []inspSection {
 		{name: "role", value: role},
 		{name: "name", value: strconv.Quote(name)},
 		{name: "keyboard-focusable", value: yes(e.flags&flagFocusable != 0 && !e.IsDisabled())},
-		{name: "ignored", value: yes(!seen || e.flags&(flagInvisible|flagInert) != 0)},
+		{name: "ignored", value: yes(!seen || e.flags&(flagInvisible|flagInert) != 0 || e.inHidden())},
 	}}
 	if e.description != "" {
 		acc.rows = append(acc.rows, inspDecl{name: "description", value: strconv.Quote(e.description)})

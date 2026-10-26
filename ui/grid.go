@@ -145,7 +145,7 @@ func gridPlace(e *node, s *gridScratch) (items []gridItem, nc, nr int) {
 	first := len(s.items)
 	nc = max(len(e.cols), 1)
 	for c := e.first; c != nil; c = c.next {
-		if c.flags&flagAbsolute != 0 {
+		if c.flags&flagAbsolute != 0 || c.hidden {
 			continue
 		}
 		it := gridItem{e: c, col: int(c.cell.col) - 1, row: int(c.cell.row) - 1, colSpan: int(c.cell.colSpan), rowSpan: int(c.cell.rowSpan)}

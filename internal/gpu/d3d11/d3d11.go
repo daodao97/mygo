@@ -358,7 +358,7 @@ type Renderer struct {
 	diff      scene.Differ
 	pipelines gpu.Pipelines
 	held      bool
-	part      gpu.Scissor
+	part      gpu.Part
 	redrew    redrawn
 }
 
@@ -892,18 +892,20 @@ func (r *Renderer) drawFrame(s *scene.Scene) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var part *gpu.Scissor
+	var part *gpu.Part
 	r.redrew = redrewWhole
 	if r.ctx1 != 0 {
 		damage = r.pipelines.Damage(&r.b, r.batchKey, &r.diff, damage, known)
-		if known {
-			var changed image.Rectangle
-			for _, d := range damage {
-				changed = changed.Union(d)
+		if known && r.part.Set(damage, s.Width, s.Height, func(d []image.Rectangle) []image.Rectangle { return r.diff.AddBackdrops(s, d) }) {
+			if len(r.part.Rects) == 0 {
+				// What changed is outside the frame: the swap chain shows
+				// it already.
+				r.redrew = redrewNothing
+				r.diff.Remember(s)
+				r.pipelines.Remember()
+				return false, nil
 			}
-			if area, ok := gpu.Partial(changed, s.Width, s.Height, func(d []image.Rectangle) []image.Rectangle { return r.diff.AddBackdrops(s, d) }); ok {
-				part, r.part, r.redrew = &area, area, redrewPart
-			}
+			part, r.redrew = &r.part, redrewPart
 		}
 	}
 	r.held = false
@@ -1004,11 +1006,11 @@ func (r *Renderer) buildScene(s *scene.Scene, b *gpu.Builder) (*scene.Scene, err
 }
 
 // drawBuilt draws s, built with b (buildScene), into the render target
-// rtv, whole or, unless part is nil, only within part, keeping what rtv
-// holds elsewhere.
-func (r *Renderer) drawBuilt(s *scene.Scene, b *gpu.Builder, rtv uintptr, part *gpu.Scissor) error {
+// rtv, whole or, unless part is nil, only within its rectangles, keeping
+// what rtv holds elsewhere.
+func (r *Renderer) drawBuilt(s *scene.Scene, b *gpu.Builder, rtv uintptr, part *gpu.Part) error {
 	r.drawing = rtv
-	if part != nil && part.Empty() {
+	if part != nil && len(part.Rects) == 0 {
 		return nil
 	}
 
@@ -1038,8 +1040,10 @@ func (r *Renderer) drawBuilt(s *scene.Scene, b *gpu.Builder, rtv uintptr, part *
 	ctx := r.ctx
 	call(ctx, ctxOMSetRenderTargets, 1, uintptr(unsafe.Pointer(&rtv)), 0)
 	clear := s.Clear.Premul(1)
+	areas := []gpu.Scissor{{Right: int32(s.Width), Bottom: int32(s.Height)}}
 	if part != nil {
-		call(r.ctx1, ctx1ClearView, rtv, uintptr(unsafe.Pointer(&clear[0])), uintptr(unsafe.Pointer(part)), 1)
+		areas = part.Rects
+		call(r.ctx1, ctx1ClearView, rtv, uintptr(unsafe.Pointer(&clear[0])), uintptr(unsafe.Pointer(&areas[0])), uintptr(len(areas)))
 	} else {
 		call(ctx, ctxClearRenderTargetView, rtv, uintptr(unsafe.Pointer(&clear[0])))
 	}
@@ -1048,7 +1052,7 @@ func (r *Renderer) drawBuilt(s *scene.Scene, b *gpu.Builder, rtv uintptr, part *
 	r.bindState(s, 0)
 	bound, ps, blend, shaders := uintptr(0), r.ps, r.blend, false
 	for _, bt := range b.Batches {
-		if bt.Count == 0 {
+		if bt.Count == 0 || !meets(bt.Scissor, areas) {
 			continue
 		}
 		want := r.ps
@@ -1087,14 +1091,16 @@ func (r *Renderer) drawBuilt(s *scene.Scene, b *gpu.Builder, rtv uintptr, part *
 			}
 			shaders = true
 		}
-		sc := bt.Scissor // a D3D11_RECT
-		if part != nil {
-			if sc = sc.Intersect(*part); sc.Empty() {
+		// Drawn once in each rectangle of the part it meets, which are
+		// apart from each other.
+		for _, a := range areas {
+			sc := bt.Scissor.Intersect(a) // a D3D11_RECT
+			if sc.Empty() {
 				continue
 			}
+			call(ctx, ctxRSSetScissorRects, 1, uintptr(unsafe.Pointer(&sc)))
+			call(ctx, ctxDrawInstanced, 4, uintptr(bt.Count), 0, uintptr(bt.Start))
 		}
-		call(ctx, ctxRSSetScissorRects, 1, uintptr(unsafe.Pointer(&sc)))
-		call(ctx, ctxDrawInstanced, 4, uintptr(bt.Count), 0, uintptr(bt.Start))
 	}
 	if shaders {
 		// Images may be drawn into next, as canvases.
@@ -1465,7 +1471,7 @@ func (r *Renderer) present(sync uintptr) error {
 	r.lat.take()
 	var hr uintptr
 	if r.redrew == redrewPart {
-		params := presentParameters{DirtyRectsCount: 1, DirtyRects: &r.part}
+		params := presentParameters{DirtyRectsCount: uint32(len(r.part.Rects)), DirtyRects: unsafe.SliceData(r.part.Rects)}
 		hr = call(r.swapChain, scPresent1, sync, 0, uintptr(unsafe.Pointer(&params)))
 	} else {
 		hr = call(r.swapChain, scPresent, sync, 0)
@@ -1484,8 +1490,7 @@ func (r *Renderer) present(sync uintptr) error {
 func (r *Renderer) FrameInfo() string {
 	switch r.redrew {
 	case redrewPart:
-		a := r.part
-		return fmt.Sprintf("redrew %d×%d at %d,%d, %s", a.Right-a.Left, a.Bottom-a.Top, a.Left, a.Top, r.b.Summary())
+		return fmt.Sprintf("redrew %s, %s", r.part.String(), r.b.Summary())
 	case redrewNothing:
 		return "unchanged"
 	}
@@ -1509,4 +1514,14 @@ func (r *Renderer) sweep() {
 			delete(r.canvases, id)
 		}
 	}
+}
+
+// meets reports whether sc meets one of areas.
+func meets(sc gpu.Scissor, areas []gpu.Scissor) bool {
+	for _, a := range areas {
+		if !sc.Intersect(a).Empty() {
+			return true
+		}
+	}
+	return false
 }

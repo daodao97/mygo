@@ -10,6 +10,7 @@ import { defineConfig } from "mygo-cli";
 
 export default defineConfig({
   name: "My App",
+  slug: "my-app",
   identifier: "com.example.myapp",
   version: "1.2.0",
   copyright: "© 2026 Example Inc.",
@@ -43,9 +44,11 @@ the fields of [the frontend](#development-and-the-frontend).
 | Field | Default | |
 |---|---|---|
 | `name` | the directory's name | the name users see: the app, its executable, menus, installers |
+| `slug` | the name in lower case, with hyphens between its words, e.g. `my-app` of `My App`; Chinese characters take their most common Mandarin reading without tones, each its own word, and kana and Hangul their romanization, e.g. `yun-yin-le` of `云音乐`, `ramen` of `ラーメン` | the name of the app's files where a name must be plain ASCII: the disk images of macOS and the installers of Windows, the Linux executable, its desktop entry, icon, Debian package and `/opt` directory, the [update archives](updates.md) of every platform, the variables of the [install scripts](distribution.md#install-scripts-for-macos-and-windows) and the MIME types the app defines; lower-case letters and digits with single hyphens between them. Set it to choose another, as `cloud-music` for `云音乐`, and keep it once the app is released (see [Linux](distribution.md#linux)) |
 | `identifier` | `com.mygo.` and the name's letters and digits, e.g. `com.mygo.myapp` | a reverse DNS name unique to the app, e.g. `com.example.myapp`; systems key preferences, permissions and registrations on it |
 | `version` | `0.1.0` | the version of the app, which `App.Version()` returns and updates compare |
 | `copyright` | | the copyright notice of the app, in its `Info.plist` (macOS) and file properties (Windows) |
+| `publisher` | the copyright notice without its "©" and years, e.g. `Example Inc.` of `© 2026 Example Inc.` | who makes the app: the publisher that Settings > Apps lists for the installed app on Windows, and its company in the file properties |
 | `icon` | `resources/icon.png` when it exists | a square PNG, ideally 1024×1024; its name with `-dev`, as `icon-dev.png`, beside it is the development app's, when it exists |
 | `main` | `.` | the Go package of the app, relative to the project |
 

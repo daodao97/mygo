@@ -426,6 +426,7 @@ func ShadowCases() []ShadowCase {
 		{Radius: 8, Blur: []float32{4}, Spread: []float32{-2}, DY: []float32{40}},
 		{Radius: 60, Blur: []float32{8, 0}, Spread: []float32{0, 5}, DY: []float32{0, 0}},
 		{Radius: 30, Blur: []float32{60}, Spread: []float32{-40}, DY: []float32{-10}},
+		{Radius: 110, Blur: []float32{80, 6}, Spread: []float32{20, 0}, DY: []float32{0, 2}}, // a pill
 	}
 }
 
@@ -511,6 +512,23 @@ func RingCases() []RingCase {
 	add("rounded clip", true, &scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 30, Y: 30, W: 300, H: 280}, Radii: r4(30)}, ring(panel, r4(16), scene.Uniform(2), half))
 	add("frame edges", true, nil, ring(scene.Rect{X: -10, Y: -10, W: 500, H: 380}, r4(12), scene.Uniform(2), half))
 	add("two rings", true, nil, ring(panel, r4(16), scene.Uniform(2), half), ring(scene.Rect{X: 30, Y: 30, W: 420, H: 300}, r4(8), scene.Uniform(1), red))
+	add("circle", true, nil, ring(scene.Rect{X: 90.5, Y: 30.25, W: 300, H: 300}, r4(150), scene.Uniform(1), half))
+	add("pill", true, nil, ring(scene.Rect{X: 40, Y: 120, W: 400, H: 100}, r4(50), scene.Uniform(2), red))
+	add("uneven round", true, nil, ring(panel, [4]float32{150, 20, 90, 0}, [4]float32{1, 3, 2, 5}, half))
+	// Grooves rippling out of a record across a card, as a music app's:
+	// circles a pixel wide or less, most larger than the card, clipped by it.
+	func() {
+		var grooves []scene.Op
+		for i := range 12 {
+			rad := 30 + float32(i)*50
+			w := float32(1)
+			if i%2 == 1 {
+				w = 0.7
+			}
+			grooves = append(grooves, ring(scene.Rect{X: 360 - rad, Y: 180.5 - rad, W: 2 * rad, H: 2 * rad}, r4(rad), scene.Uniform(w), half))
+		}
+		add("grooves", true, &scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 20, Y: 60, W: 440, H: 240}, Radii: r4(16)}, grooves...)
+	}()
 	add("a fill with a border", false, nil, func() scene.Op {
 		op := ring(panel, r4(16), scene.Uniform(2), half)
 		op.Color = scene.Color{R: 255, G: 255, B: 255, A: 1}

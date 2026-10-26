@@ -215,7 +215,9 @@ var (
 
 	// dwmapi
 	procDwmSetWindowAttribute        = dwmapi.NewProc("DwmSetWindowAttribute")
+	procDwmGetWindowAttribute        = dwmapi.NewProc("DwmGetWindowAttribute")
 	procDwmExtendFrameIntoClientArea = dwmapi.NewProc("DwmExtendFrameIntoClientArea")
+	procDwmFlush                     = dwmapi.NewProc("DwmFlush")
 
 	// shcore
 	procGetDpiForMonitor = shcore.NewProc("GetDpiForMonitor")
@@ -416,6 +418,7 @@ const (
 
 	idcArrow = 32512
 
+	dwmwaExtendedFrameBounds    = 9
 	dwmwaUseImmersiveDarkMode   = 20
 	dwmwaWindowCornerPreference = 33
 	dwmwaSystemBackdropType     = 38

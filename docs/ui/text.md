@@ -104,6 +104,21 @@ ui.RichText(c,
 )
 ```
 
+A span with an `ObjectWidth` makes its object replacement characters
+(U+FFFC) inline objects: boxes `ObjectWidth` wide, `ObjectHeight` above
+the baseline and `ObjectDescent` below it, which wrap with the words and
+which the line makes room for, as a formula's subscripts need.
+`DrawObjects` draws them, after the glyphs, in the text's clip: it gets
+each one's rune in the paragraph and its box.
+
+```go
+ui.RichText(c,
+	ui.Span{Text: "where "},
+	ui.Span{Text: "\uFFFC", ObjectWidth: f.W, ObjectHeight: f.Ascent, ObjectDescent: f.Descent},
+	ui.Span{Text: " is the mean"},
+).DrawObjects(func(p *ui.Painter, at int, r ui.Rect) { f.Draw(p, r) })
+```
+
 ## Elements within a sentence
 
 Text elements built in a text's `Children` continue its paragraph, as

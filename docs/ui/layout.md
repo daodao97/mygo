@@ -127,7 +127,21 @@ ui.Box(c).Fill().Children(func() {
   draws over them; `ClipX` and `ClipY` clip only on the sides or above and
   below.
 - `Invisible` hides an element and its children, which keep their room
-  but draw nothing and take neither the pointer nor the focus.
+  but draw nothing and take neither the pointer nor the focus, as CSS's
+  `visibility: hidden`.
+- `Hidden(true)` hides them and takes their room away too, as CSS's
+  `display: none`: the siblings close up, with no gap left for it, and
+  assistive technology does not read it. Unlike not building the element,
+  it keeps the state of what is inside it, a scroll offset, text being
+  edited, an animation, for when `Hidden(false)` shows it again. The focus
+  leaves it as it hides, and what is attached to it (`AttachTo`) hides with
+  it.
+
+  ```go
+  ui.Column(c).Hidden(!app.showDetails).Children(func() {
+      ui.TextArea(c, &app.notes)
+  })
+  ```
 - `Debug` outlines an element and everything inside it, with their padding
   and margins, to see why the layout is what it is. The
   [inspector](inspector.md) shows the boxes of every element, and why.

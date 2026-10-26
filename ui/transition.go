@@ -405,6 +405,13 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 		if e.parent == nil {
 			continue // the root's
 		}
+		if e.inHidden() {
+			// Hidden, it has no box to go from or to, and shows again
+			// where it is then, as it hides, at once.
+			delete(rt.trans, e.id)
+			e.st.trec = nil
+			continue
+		}
 		r := rt.trans[e.id]
 		if r == nil {
 			r = &transition{}

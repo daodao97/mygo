@@ -546,6 +546,12 @@ func (a appController) IsHidden() bool        { return len(a.b.hidden) > 0 }
 func (a appController) SetBadge(label string) { a.b.badge = label }
 func (a appController) Badge() string         { return a.b.badge }
 
+// IsActive reports whether the window in front is one of the app's.
+func (a appController) IsActive() bool {
+	fg, _, _ := procGetForegroundWindow.Call()
+	return a.b.windows[fg] != nil
+}
+
 const (
 	flashwStop      = 0
 	flashwTray      = 0x2

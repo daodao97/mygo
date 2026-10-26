@@ -157,9 +157,9 @@ queries are safe from any goroutine; painting is part of a UI frame.
 `ShapeRichTextWith` lays spans out aligned (`TextShape.Align`), as the
 paragraphs of a rich text editor. A span with an `ObjectWidth` makes its
 object replacement characters (U+FFFC) inline objects: boxes of
-`ObjectWidth`×`ObjectHeight` standing on the baseline, which lines break
-around and which draw nothing; `TextLayout.Objects` gives their boxes,
-where an editor draws its images.
+`ObjectWidth`×`ObjectHeight` standing on the baseline, `ObjectDescent`
+more below it, which lines break around and which draw nothing;
+`TextLayout.Objects` gives their boxes, where an editor draws its images.
 
 For visual navigation, retain `TextCaretPosition`, including its `Affinity`.
 `TextDownstream` chooses the following logical text's edge; `TextUpstream`

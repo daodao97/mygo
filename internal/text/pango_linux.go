@@ -822,9 +822,9 @@ func (e *pangoEngine) attributes(style Style, spans []Span, text []rune) uintptr
 		add(features(sp.Features), b0, b1)
 		if sp.ObjectWidth > 0 {
 			// Each rune an inline object: a shape of its size standing on
-			// the baseline, in its own attribute.
+			// the baseline, its descent below it, in its own attribute.
 			box := pangoRectangle{y: -int32(math.Round(float64(sp.ObjectHeight) * pangoScale)),
-				width: int32(math.Round(float64(sp.ObjectWidth) * pangoScale)), height: int32(math.Round(float64(sp.ObjectHeight) * pangoScale))}
+				width: int32(math.Round(float64(sp.ObjectWidth) * pangoScale)), height: int32(math.Round(float64(sp.ObjectHeight+sp.ObjectDescent) * pangoScale))}
 			for k := start; k < to; k++ {
 				add(l.attrShapeNew(&box, &box), at[k], at[k+1])
 			}

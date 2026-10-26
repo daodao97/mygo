@@ -155,21 +155,24 @@ type windowHost struct {
 	// the web views.
 	placed []platform.WebViewPlacement
 	views  []NativeWebView
-	// waiting tells that a frame paced by the display waits for the GPU
-	// renderer waitingOn to have where to draw it (displayWaiter); wake
-	// and displayReady draw it then, at the time the display asked for it
-	// (waitedAt).
+	// waiting tells that a frame paced by the display waits for waitingOn,
+	// the GPU renderer or refresh, to be able to draw it (displayWaiter);
+	// wake and displayReady draw it then, at the time the display asked
+	// for it (waitedAt).
 	waiting      bool
-	waitingOn    gpuRenderer
+	waitingOn    displayWaiter
 	waitedAt     time.Time
 	wake         func()
 	displayReady func()
+	// refresh paces the frames drawn in memory on a surface that shows
+	// them at once (platform.RefreshSurface); nil until one is.
+	refresh *refreshWaiter
 }
 
 // displayWaiter is a GPU renderer that waits for the display off the main
 // thread: a frame following the last one draws once the display can take
 // it (Direct3D's), or once the last, built while the display could not,
-// was drawn (Metal's).
+// was drawn (Metal's). refreshWaiter is one for frames drawn in memory.
 type displayWaiter interface {
 	// Ready reports whether a frame can draw at once; otherwise wake runs,
 	// on any goroutine, once it can.
@@ -197,6 +200,112 @@ func (h *windowHost) firstFramePresented() bool {
 		return h.shown
 	}
 	return h.firstFrameShown
+}
+
+// refreshWaiter holds the frames drawn in memory on a surface that shows
+// them at once, as Windows' GDI does, to the display's refreshes: after
+// each, a goroutine waits for the next refresh
+// (platform.RefreshSurface.AwaitRefresh), and paced frames that come
+// meanwhile, as an animation's, wait for it (windowHost.waitDisplay).
+// Otherwise they follow each other as fast as the main thread draws them,
+// thousands a second. The wait lasts at least half a refresh, in case the
+// surface's returns at once, and at most two, so that a refresh missed
+// never stops an animation.
+type refreshWaiter struct {
+	surface platform.RefreshSurface
+	post    func(func())
+	period  time.Duration
+	// waiting tells that a goroutine waits for the refresh; wake is what
+	// Ready was given meanwhile.
+	waiting bool
+	wake    func()
+	// flush closes once the surface's wait under way returns, one that
+	// outlasted its bounds included, which the next wait takes up rather
+	// than start another; only the waiting goroutine reaches it.
+	flush chan struct{}
+}
+
+func (r *refreshWaiter) Ready(wake func()) bool {
+	if !r.waiting {
+		return true
+	}
+	r.wake = wake
+	return false
+}
+
+// presented has the next paced frame wait for the display's next refresh.
+func (r *refreshWaiter) presented() {
+	if r.waiting {
+		return
+	}
+	r.waiting = true
+	go r.await(r.surface, r.period)
+}
+
+// await waits for the display's next refresh, within its bounds, and has
+// the main thread tell Ready's caller.
+func (r *refreshWaiter) await(s platform.RefreshSurface, period time.Duration) {
+	start := time.Now()
+	if r.flush == nil {
+		done := make(chan struct{})
+		r.flush = done
+		go func() {
+			s.AwaitRefresh()
+			close(done)
+		}()
+	}
+	t := time.NewTimer(2 * period)
+	select {
+	case <-r.flush:
+		r.flush = nil
+	case <-t.C:
+	}
+	t.Stop()
+	if d := period/2 - time.Since(start); d > 0 {
+		time.Sleep(d)
+	}
+	r.post(r.refreshed)
+}
+
+// refreshed runs on the main thread once the refresh came.
+func (r *refreshWaiter) refreshed() {
+	r.waiting = false
+	if w := r.wake; w != nil {
+		r.wake = nil
+		w()
+	}
+}
+
+// waiter returns what paced frames wait for: the GPU renderer, or the
+// display's refresh after a frame drawn in memory; nil for nothing.
+func (h *windowHost) waiter() displayWaiter {
+	if h.gpu != nil {
+		w, _ := h.gpu.(displayWaiter)
+		return w
+	}
+	if h.refresh != nil {
+		return h.refresh
+	}
+	return nil
+}
+
+// refreshPresented has the paced frames following one drawn in memory
+// wait for the display's next refresh, where the surface shows it at once
+// (refreshWaiter).
+func (h *windowHost) refreshPresented() {
+	s, ok := h.conn.Surface.(platform.RefreshSurface)
+	if !ok || h.conn.Post == nil {
+		return
+	}
+	if h.refresh == nil {
+		h.refresh = &refreshWaiter{post: h.conn.Post}
+	}
+	period := time.Second / 60
+	if hz := h.conn.Surface.RefreshRate(); hz > 0 {
+		period = time.Duration(float64(time.Second) / hz)
+	}
+	h.refresh.surface, h.refresh.period = s, period
+	h.refresh.presented()
 }
 
 func (h *windowHost) framePath() string {
@@ -261,17 +370,18 @@ func (h *windowHost) event(ev platform.SurfaceEvent) bool {
 }
 
 // waitDisplay reports whether a frame paced by the display, asked for at,
-// waits for the GPU renderer to be able to draw it: rather than wait on
+// waits for the GPU renderer to be able to draw it, or for the display's
+// refresh after a frame drawn in memory (waiter): rather than wait on
 // the main thread, as for a drawable the display holds most of a refresh,
 // the frame draws once it can, built with the input that came meanwhile,
 // at the time it was asked for, so that what moves keeps its pace.
 func (h *windowHost) waitDisplay(at time.Time) bool {
-	w, ok := h.gpu.(displayWaiter)
+	w := h.waiter()
 	p, paced := h.conn.Surface.(platform.PacedSurface)
-	if !ok || !paced || h.conn.Post == nil {
+	if w == nil || !paced || h.conn.Post == nil {
 		return false
 	}
-	if h.waiting && h.waitingOn == h.gpu {
+	if h.waiting && h.waitingOn == w {
 		// Refreshes passing meanwhile ask for the same frame.
 		return true
 	}
@@ -289,7 +399,7 @@ func (h *windowHost) waitDisplay(at time.Time) bool {
 	if w.Ready(h.wake) {
 		return false
 	}
-	h.waiting, h.waitingOn, h.waitedAt = true, h.gpu, at
+	h.waiting, h.waitingOn, h.waitedAt = true, w, at
 	return true
 }
 
@@ -415,6 +525,7 @@ func (h *windowHost) present(s *scene.Scene) {
 	} else {
 		h.conn.Surface.PresentPixels(m.Pix, m.Stride, m.W, m.H)
 	}
+	h.refreshPresented()
 }
 
 // ready tells the window, after the first frame, that it is ready to show:
@@ -634,6 +745,17 @@ func (h *windowHost) detach() {
 }
 
 func (h *windowHost) requestFrame() { h.conn.Surface.RequestFrame() }
+
+func (h *windowHost) framesAtOnce() bool {
+	_, ok := h.conn.Surface.(platform.ImmediateFrameSurface)
+	return ok
+}
+
+func (h *windowHost) setFrameRate(fps float32) {
+	if s, ok := h.conn.Surface.(platform.FrameRateSurface); ok {
+		s.SetFrameRate(float64(fps))
+	}
+}
 
 func (h *windowHost) afterTimer(at time.Time) {
 	switch {

@@ -1212,10 +1212,11 @@ func TestProtocolCORS(t *testing.T) {
 	}
 
 	for _, origin := range []string{
-		"mygo://localhost",        // the frontend
-		"http://mygo.localhost",   // the frontend, as WebView2 serves it
-		"http://assets.localhost", // a custom scheme, as WebView2 serves it
-		"https://app.example.com", // in PageOptions.TrustedOrigins
+		"mygo://localhost",            // the frontend
+		"http://mygo.localhost",       // the frontend, as WebView2 serves it
+		"http://assets.localhost",     // a custom scheme, as WebView2 serves it
+		"http://abc.assets.localhost", // another host of a custom scheme, as WebView2 serves it
+		"https://app.example.com",     // in PageOptions.TrustedOrigins
 	} {
 		rec := send("GET", "/data", origin, nil)
 		if rec.status != 200 || rec.body.String() != "data" {
@@ -1234,7 +1235,7 @@ func TestProtocolCORS(t *testing.T) {
 			t.Errorf("dev server: Access-Control-Allow-Origin = %q", got)
 		}
 	}
-	for _, origin := range []string{"", "null", "https://example.com", "http://evil.localhost", "http://assets.localhost:8080"} {
+	for _, origin := range []string{"", "null", "https://example.com", "http://evil.localhost", "http://assets.localhost:8080", "http://abc.evil.localhost", "http://a_b.assets.localhost"} {
 		if got := send("GET", "/data", origin, nil).header.Get("Access-Control-Allow-Origin"); got != "" {
 			t.Errorf("%q got Access-Control-Allow-Origin %q", origin, got)
 		}

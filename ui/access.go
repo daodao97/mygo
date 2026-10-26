@@ -213,7 +213,7 @@ type innerTexts struct {
 }
 
 func (t *innerTexts) walk(e *node) {
-	if e.flags&flagInvisible != 0 {
+	if e.flags&flagInvisible != 0 || e.hidden {
 		return
 	}
 	if e.kind == kindText {
@@ -310,7 +310,7 @@ func (e *node) rowsOfElement() *listFrame {
 // node parent; scrolled is set inside a scroll container, and focused gets
 // the element with the keyboard focus.
 func (rt *engine) accessElement(t *platform.AccessTree, e *node, parent int, scrolled bool, focused **node) {
-	if e.flags&(flagInvisible|flagInert) != 0 {
+	if e.flags&(flagInvisible|flagInert) != 0 || e.hidden {
 		return
 	}
 	if e.id == rt.focused {

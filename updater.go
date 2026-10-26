@@ -62,6 +62,9 @@ var keepPreviousBundles atomic.Bool
 // platforms retain their existing update behavior.
 func (u *UpdaterModule) SetKeepPreviousBundles(keep bool) { keepPreviousBundles.Store(keep) }
 
+// prereleases is set while Check offers prereleases (SetPrereleases).
+var prereleases atomic.Bool
+
 // ErrUpdatesDisabled is returned by Check for builds without updates:
 // development builds, and builds of apps without updates in mygo.config.ts.
 var ErrUpdatesDisabled = errors.New("mygo: updates are not enabled for this build")
@@ -106,11 +109,30 @@ func (u *UpdaterModule) Check(ctx context.Context) (*Update, error) {
 	if !u.Enabled() {
 		return nil, ErrUpdatesDisabled
 	}
-	return checkUpdate(ctx, packageUpdateFeed, packageUpdateKey, App.Version())
+	return checkUpdate(ctx, packageUpdateFeed, packageUpdateKey, App.Version(), prereleases.Load())
 }
 
-func checkUpdate(ctx context.Context, feed, key, current string) (*Update, error) {
-	feed, err := update.ResolveFeed(ctx, feed, httpGet)
+// SetPrereleases makes Check offer prereleases too, such as 1.3.0-beta.1,
+// for the users of an app who chose its beta: with updates on GitHub,
+// Check then reads the release of the highest version that is not a
+// draft, through the GitHub API (usually one request a check), so that a
+// release newer than the prereleases is offered too. Check never offers a
+// version older than the running one, so turning it off waits for the
+// release after the prerelease the app runs. Updates of updates.url are
+// the manifest the server has, whichever is set. It is off at launch; the
+// app keeps the user's choice and sets it again. It may be called from
+// any goroutine.
+func (u *UpdaterModule) SetPrereleases(on bool) { prereleases.Store(on) }
+
+// Prereleases reports whether Check offers prereleases (SetPrereleases).
+func (u *UpdaterModule) Prereleases() bool { return prereleases.Load() }
+
+func checkUpdate(ctx context.Context, feed, key, current string, pre bool) (*Update, error) {
+	resolve := update.ResolveFeed
+	if pre {
+		resolve = update.ResolvePrereleaseFeed
+	}
+	feed, err := resolve(ctx, feed, httpGet)
 	if err != nil {
 		return nil, fmt.Errorf("mygo: checking for updates: %w", err)
 	}
@@ -356,6 +378,9 @@ func relaunchNow() {
 	if launchedByDev() {
 		os.Exit(devRelaunchCode)
 	}
+	if runtime.GOOS == "darwin" && openBundle() {
+		return
+	}
 	// The executable the app started from, which an update may have
 	// replaced.
 	cmd := exec.Command(startExe, os.Args[1:]...)
@@ -367,6 +392,25 @@ func relaunchNow() {
 	if cmd.Start() == nil {
 		_ = cmd.Process.Release()
 	}
+}
+
+// openBundle starts the app bundle again through Launch Services, as the
+// Dock does, reporting whether it did. A child of this process would stay
+// in this instance's coalition, which has no app once this instance exits:
+// when an app that the new instance started quits, as one a terminal's
+// shell ran, loginwindow takes the coalition's other processes for that
+// app's and ends them with SIGTERM.
+func openBundle() bool {
+	bundle, err := installTarget()
+	if err != nil {
+		return false
+	}
+	// -n: this instance still runs, and would only be brought forward.
+	args := []string{"-n", bundle}
+	if len(os.Args) > 1 {
+		args = append(append(args, "--args"), os.Args[1:]...)
+	}
+	return exec.Command("/usr/bin/open", args...).Run() == nil
 }
 
 // cleanUpdateLeftovers removes what an update could not remove while the
@@ -395,7 +439,10 @@ func httpGet(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "MyGo/"+Version+" "+App.Name()+"/"+App.Version())
+	// Not the app's name: GitHub's release assets come from a store that
+	// answers 400 to a User-Agent with bytes outside ASCII, as 云音乐, for
+	// every file its CDN has not cached yet.
+	req.Header.Set("User-Agent", "mygo-updater")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err

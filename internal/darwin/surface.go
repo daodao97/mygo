@@ -256,6 +256,23 @@ func (s *surface) RequestFrame() {
 	})
 }
 
+// SetFrameRate has the display link tick fps times a second, or at the
+// display's rate for 0: on a ProMotion display, the display then refreshes
+// as often, while nothing else on it asks for more. Without a display
+// link, the timer goes on at the display's rate, and package ui draws only
+// the frames due.
+func (s *surface) SetFrameRate(fps float64) {
+	if s.link == 0 {
+		return
+	}
+	r := caFrameRateRange{} // CAFrameRateRangeDefault: the display's
+	if fps > 0 {
+		f := float32(fps)
+		r = caFrameRateRange{Minimum: f, Maximum: f, Preferred: f}
+	}
+	msgSetRateRange(s.link, sel("setPreferredFrameRateRange:"), r)
+}
+
 // FrameNow draws a frame at once, for one the display link's tick left to
 // draw until the renderer had a drawable.
 func (s *surface) FrameNow() {

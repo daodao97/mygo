@@ -242,9 +242,6 @@ func TestTemplate(t *testing.T) {
 			}
 		}
 	}
-	if slugify("Hello, World!") != "hello-world" || slugify("!!!") != "app" {
-		t.Error("slugify")
-	}
 }
 
 func TestTemplateSkills(t *testing.T) {

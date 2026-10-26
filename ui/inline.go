@@ -28,6 +28,10 @@ func (e *node) inlineText() {
 	b.WriteString(e.ownText)
 	n := utf8.RuneCountInString(e.ownText)
 	for ch := e.first; ch != nil; ch = ch.next {
+		if ch.hidden {
+			ch.runes = [2]int{n, n} // no text in the paragraph
+			continue
+		}
 		m := utf8.RuneCountInString(ch.text)
 		ch.runes = [2]int{n, n + m}
 		n += m
@@ -47,6 +51,9 @@ func (e *node) inlineSpans() []Span {
 		out = append(out, Span{Text: e.ownText})
 	}
 	for ch := e.first; ch != nil; ch = ch.next {
+		if ch.hidden {
+			continue
+		}
 		spans := ch.spans
 		switch {
 		case ch.first != nil:
@@ -205,7 +212,7 @@ func (p *Painter) paintInline(e *node) {
 		}
 	}
 	for ch := e.first; ch != nil; ch = ch.next {
-		if ch.flags&flagInvisible == 0 {
+		if ch.flags&flagInvisible == 0 && !ch.hidden {
 			p.element(ch)
 		}
 	}
@@ -223,7 +230,7 @@ func (e *node) ringShown() bool {
 // parent: the text itself already reads theirs.
 func (rt *engine) accessInline(t *platform.AccessTree, e *node, parent int) {
 	for ch := e.first; ch != nil; ch = ch.next {
-		if ch.flags&flagInvisible != 0 || len(ch.frags) == 0 {
+		if ch.flags&flagInvisible != 0 || ch.hidden || len(ch.frags) == 0 {
 			continue
 		}
 		role, ok := ch.accessRole()

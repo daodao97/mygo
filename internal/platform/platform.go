@@ -223,6 +223,9 @@ type AppController interface {
 	Hide()
 	Unhide()
 	IsHidden() bool
+	// IsActive reports whether the app is the active one: in front on
+	// macOS, with a window that has the keyboard elsewhere.
+	IsActive() bool
 	SetBadge(label string)
 	Badge() string
 	// Bounce requests user attention and returns an id for CancelBounce.
@@ -505,6 +508,10 @@ type Window interface {
 	// SetActiveAppearance keeps the window drawn as active, as the key
 	// window of the app in front, while it is not (macOS).
 	SetActiveAppearance(v bool)
+	// SetWindowButtonsTheme draws the controls of a hidden title bar for a
+	// "light" or "dark" background whatever the app's appearance, or
+	// follows it again with "system" (Windows).
+	SetWindowButtonsTheme(source string)
 	// SetProgressBar shows progress on the taskbar button, Dock icon or
 	// launcher entry: state is "" (none), "normal", "indeterminate",
 	// "paused" or "error", value between 0 and 1.
@@ -802,7 +809,9 @@ type MenuItem struct {
 	Visible     bool
 	Checked     bool
 	ToolTip     string
-	Submenu     *Menu
+	// Icon is the image beside the label, nil for none.
+	Icon    *MenuIcon
+	Submenu *Menu
 }
 
 // FileFilter restricts the files shown in file dialogs.

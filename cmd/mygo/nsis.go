@@ -94,12 +94,21 @@ func downloadFile(t *task, url, sum string) fetch.File {
 	}
 }
 
-// installerFileName is "<Name> Setup <version> <arch>.exe", as "My App
-// Setup 1.2.0 amd64.exe": each architecture's installer is named apart, so
-// that the builds of two, uploaded to one release or bucket, keep both.
+// installerFileName is "<slug>-setup-<version>-<arch>.exe", as
+// "my-app-setup-1.2.0-amd64.exe": each architecture's installer is named
+// apart, so that the builds of two, uploaded to one release or bucket,
+// keep both. install.ps1 finds it by installerPrefix.
 func installerFileName(c *Config, goarch string) string {
-	return fsName(c.Name) + " Setup " + fsName(c.Version) + " " + goarch + ".exe"
+	return installerPrefix(c) + fsName(c.Version) + "-" + goarch + ".exe"
 }
+
+// installerPrefix is what the names of the app's installers start with,
+// before their version.
+func installerPrefix(c *Config) string { return c.slug() + installerMark }
+
+// installerMark follows the slug in the names of installers, which
+// uploads publishes.
+const installerMark = "-setup-"
 
 // writeInstaller builds installerFileName in stage from the app files
 // installed, built for goarch, the executable exe among them, and returns
@@ -173,19 +182,14 @@ BrandingText " "
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 ` + languages + `
+` + nsisCloseApp(c) + `
 Section
+  Push "$INSTDIR"
+  Call CloseApp
   SetOutPath "$INSTDIR"
 ` + files.String() + `  WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateShortCut "$SMPROGRAMS\` + shortcut + `" "$INSTDIR\` + nsisEscape(exe) + `"
-  WriteRegStr HKCU ` + nsisString(uninstallKey) + ` "DisplayName" ` + nsisString(c.Name) + `
-  WriteRegStr HKCU ` + nsisString(uninstallKey) + ` "DisplayVersion" ` + nsisString(c.Version) + `
-  WriteRegStr HKCU ` + nsisString(uninstallKey) + ` "DisplayIcon" "$INSTDIR\` + nsisEscape(exe) + `"
-  WriteRegStr HKCU ` + nsisString(uninstallKey) + ` "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU ` + nsisString(uninstallKey) + ` "UninstallString" '"$INSTDIR\Uninstall.exe"'
-  WriteRegStr HKCU ` + nsisString(uninstallKey) + ` "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'
-  WriteRegDWORD HKCU ` + nsisString(uninstallKey) + ` "NoModify" 1
-  WriteRegDWORD HKCU ` + nsisString(uninstallKey) + ` "NoRepair" 1
-` + register + `SectionEnd
+` + nsisUninstallEntry(c, uninstallKey, exe) + register + `SectionEnd
 
 ; The finish page offers it, so silent installs (/S) make none.
 Function CreateDesktopShortcut
@@ -215,6 +219,8 @@ Function un.DeleteShortcut
 FunctionEnd
 
 Section "Uninstall"
+  Push "$INSTDIR"
+  Call un.CloseApp
   Push "$SMPROGRAMS\` + shortcut + `"
   Call un.DeleteShortcut
   Push "$DESKTOP\` + shortcut + `"
@@ -241,6 +247,131 @@ SectionEnd
 	}
 	t.done("Created " + filepath.Base(out))
 	return out, nil
+}
+
+// nsisUninstallEntry returns the installer commands that write the entry
+// of the app in Settings > Apps, under uninstallKey.
+func nsisUninstallEntry(c *Config, uninstallKey, exe string) string {
+	var b strings.Builder
+	str := func(name, value string) {
+		fmt.Fprintf(&b, "  WriteRegStr HKCU %s %s %s\n", nsisString(uninstallKey), nsisString(name), value)
+	}
+	str("DisplayName", nsisString(c.Name))
+	str("DisplayVersion", nsisString(c.Version))
+	str("DisplayIcon", `"$INSTDIR\`+nsisEscape(exe)+`"`)
+	if p := c.publisher(); p != "" {
+		str("Publisher", nsisString(p))
+	}
+	str("InstallLocation", `"$INSTDIR"`)
+	str("UninstallString", `'"$INSTDIR\Uninstall.exe"'`)
+	str("QuietUninstallString", `'"$INSTDIR\Uninstall.exe" /S'`)
+	fmt.Fprintf(&b, "  WriteRegDWORD HKCU %s \"NoModify\" 1\n", nsisString(uninstallKey))
+	fmt.Fprintf(&b, "  WriteRegDWORD HKCU %s \"NoRepair\" 1\n", nsisString(uninstallKey))
+	return b.String()
+}
+
+// closeAppPS1 is the PowerShell that quits the processes of the app,
+// those whose executables are in the folder $env:MYGO_APP_DIR: it asks
+// their windows to close and, after 10 s, stops those still running, as an
+// app in the tray or menu bar keeps running without windows. With
+// $env:MYGO_APP_CHECK=1, it only tells whether any runs: exit code 2 when
+// one does. Exit code 1 is for processes that did not stop. It finds the
+// processes with CIM, which sees the paths of 64-bit processes from a
+// 32-bit PowerShell too.
+const closeAppPS1 = `$ErrorActionPreference = 'SilentlyContinue'
+$dir = $env:MYGO_APP_DIR.TrimEnd('\') + '\'
+# Not the installer, which starts this.
+$installer = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
+function Get-AppProcess {
+	@(Get-CimInstance Win32_Process | Where-Object {
+		$_.ExecutablePath -and $_.ProcessId -ne $PID -and $_.ProcessId -ne $installer -and $_.ExecutablePath.StartsWith($dir, [StringComparison]::OrdinalIgnoreCase)
+	} | ForEach-Object { Get-Process -Id $_.ProcessId })
+}
+$running = Get-AppProcess
+if ($running.Count -eq 0) { exit 0 }
+if ($env:MYGO_APP_CHECK -eq '1') { exit 2 }
+foreach ($p in $running) { [void]$p.CloseMainWindow() }
+$deadline = (Get-Date).AddSeconds(10)
+foreach ($p in $running) {
+	$left = [int]($deadline - (Get-Date)).TotalMilliseconds
+	if ($left -lt 0) { $left = 0 }
+	[void]$p.WaitForExit($left)
+}
+$running = @(Get-AppProcess)
+if ($running.Count -eq 0) { exit 0 }
+$running | Stop-Process -Force
+$deadline = (Get-Date).AddSeconds(10)
+foreach ($p in $running) {
+	$left = [int]($deadline - (Get-Date)).TotalMilliseconds
+	if ($left -lt 0) { $left = 0 }
+	[void]$p.WaitForExit($left)
+}
+if (@(Get-AppProcess).Count -gt 0) { exit 1 }
+exit 0
+`
+
+// nsisCloseApp returns the installer and uninstaller functions CloseApp,
+// which quit the app running from the folder on the stack before its
+// files are replaced or deleted (closeAppPS1). A silent install or
+// uninstall (/S), as an update runs, quits it without asking; the others
+// ask first and stop when the user cancels. Windows without PowerShell go
+// on as before.
+func nsisCloseApp(c *Config) string {
+	// NSIS strings hold 1024 characters, too few for the script on the
+	// command line: the installer writes it to a file, line by line, which
+	// PowerShell reads, named by the environment, as quotes would not do
+	// for every path. Execution policies do not apply to a command.
+	var write strings.Builder
+	for _, line := range strings.SplitAfter(closeAppPS1, "\n") {
+		if line != "" {
+			write.WriteString("  FileWrite $2 " + nsisString(strings.TrimSuffix(line, "\n")+"\r\n") + "\n")
+		}
+	}
+	command := `'"$1" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create([IO.File]::ReadAllText($$env:MYGO_APP_SCRIPT)))"'`
+	running := nsisString(c.Name + " is running. Close it to continue?")
+	stuck := nsisString(c.Name + " is still running. Quit it, then try again.")
+	var out strings.Builder
+	for _, prefix := range []string{"", "un."} {
+		out.WriteString(`; Quits the app running from the folder on the stack.
+Function ` + prefix + `CloseApp
+  Exch $0
+  Push $1
+  Push $2
+  ; The PowerShell of the system's own architecture, not the 32-bit one
+  ; that a 32-bit installer would otherwise start.
+  StrCpy $1 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists $1 +2
+  StrCpy $1 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists $1 0 done
+  InitPluginsDir
+  FileOpen $2 "$PLUGINSDIR\close-app.ps1" w
+` + write.String() + `  FileClose $2
+  System::Call 'Kernel32::SetEnvironmentVariable(t "MYGO_APP_SCRIPT", t "$PLUGINSDIR\close-app.ps1")'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "MYGO_APP_DIR", t r0)'
+  IfSilent close
+  System::Call 'Kernel32::SetEnvironmentVariable(t "MYGO_APP_CHECK", t "1")'
+  nsExec::Exec ` + command + `
+  Pop $2
+  System::Call 'Kernel32::SetEnvironmentVariable(t "MYGO_APP_CHECK", t "")'
+  StrCmp $2 "2" 0 done
+  MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION ` + running + ` IDOK close
+  Abort
+  close:
+  nsExec::Exec ` + command + `
+  Pop $2
+  StrCmp $2 "1" 0 done
+  MessageBox MB_OK|MB_ICONSTOP ` + stuck + ` /SD IDOK
+  SetErrorLevel 2
+  Quit
+  done:
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+`)
+	}
+	return out.String()
 }
 
 // uninstallerSigning returns the NSIS command that signs the uninstaller

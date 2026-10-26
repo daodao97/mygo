@@ -22,39 +22,22 @@ import (
 
 	"github.com/egoist/mygo/internal/accelerator"
 	"github.com/egoist/mygo/internal/platform"
+	"github.com/egoist/mygo/internal/schemehost"
 )
 
-// Custom schemes are served from http://<scheme>.localhost/, which
-// WebView2 lets the app answer (WebResourceRequested). Chromium treats
-// *.localhost as a secure origin, and unlike https, http blocks no mixed
-// content, so pages reach ws:// and http:// URLs as on macOS and Linux.
-// The rest of MyGo sees <scheme>://localhost/ URLs.
+// Custom schemes are served from http://<scheme>.localhost/, and their
+// other hosts from http://<host>.<scheme>.localhost/ (package schemehost),
+// which WebView2 lets the app answer (WebResourceRequested). Chromium
+// treats *.localhost as a secure origin, and unlike https, http blocks no
+// mixed content, so pages reach ws:// and http:// URLs as on macOS and
+// Linux. The rest of MyGo sees <scheme>://<host>/ URLs.
 
 // webURL maps a custom scheme URL of the window to the URL the webview
 // loads.
-func (w *window) webURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host != "localhost" || !w.hasScheme(u.Scheme) {
-		return raw
-	}
-	u.Host = u.Scheme + ".localhost"
-	u.Scheme = "http"
-	return u.String()
-}
+func (w *window) webURL(raw string) string { return schemehost.WebURL(raw, w.hasScheme) }
 
 // appURL maps a URL loaded by the webview back to its custom scheme URL.
-func (w *window) appURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" {
-		return raw
-	}
-	scheme, ok := strings.CutSuffix(u.Host, ".localhost")
-	if !ok || !w.hasScheme(scheme) {
-		return raw
-	}
-	u.Scheme, u.Host = scheme, "localhost"
-	return u.String()
-}
+func (w *window) appURL(raw string) string { return schemehost.AppURL(raw, w.hasScheme) }
 
 func (w *window) hasScheme(s string) bool {
 	for _, x := range w.opts.Schemes {
@@ -280,6 +263,7 @@ func (w *window) setUp(controller uintptr) {
 	add(wvAddWebResourceRequested, w.resourceRequested)
 	for _, scheme := range o.Schemes {
 		w.addFilter("http://" + scheme + ".localhost/*")
+		w.addFilter("http://*." + scheme + ".localhost/*") // its other hosts
 	}
 	w.filterAllRequests()
 	withHandler(w.acceleratorKeyPressed, func(h uintptr) uintptr {
@@ -1191,7 +1175,7 @@ func (r *schemeResponse) release() {
 }
 
 // openScript makes window.open give WebView2 the URLs of the app's schemes
-// as the http://<scheme>.localhost/ URLs that serve them (webURL), which
+// as the http://[<host>.]<scheme>.localhost/ URLs that serve them (webURL), which
 // the popup can load as it opens, keeping its opener (newWindowRequested).
 func (w *window) openScript() string {
 	schemes, _ := json.Marshal(w.opts.Schemes)
@@ -1201,8 +1185,9 @@ func (w *window) openScript() string {
 	window.open = function (url, ...rest) {
 		try {
 			const u = new URL(String(url), location.href), scheme = u.protocol.slice(0, -1);
-			if (u.hostname === "localhost" && !u.port && schemes.includes(scheme)) {
-				url = "http://" + scheme + ".localhost" + u.pathname + u.search + u.hash;
+			const host = u.hostname.toLowerCase();
+			if (!u.port && !u.username && !u.password && schemes.includes(scheme) && (host === "localhost" || /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/.test(host))) {
+				url = "http://" + (host === "localhost" ? "" : host + ".") + scheme + ".localhost" + u.pathname + u.search + u.hash;
 			}
 		} catch {}
 		return open.call(this, url, ...rest);

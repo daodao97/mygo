@@ -67,6 +67,7 @@ func (app) WithActivationToken(_ string, fn func())           { fn() }
 func (app) Hide()                                             {}
 func (app) Unhide()                                           {}
 func (app) IsHidden() bool                                    { return false }
+func (app) IsActive() bool                                    { return false }
 func (app) SetBadge(string)                                   {}
 func (app) Badge() string                                     { return "" }
 func (app) Bounce(bool) int                                   { return 0 }

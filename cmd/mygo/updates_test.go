@@ -412,7 +412,7 @@ func TestPublishGitHub(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	var artifacts []string
-	for _, name := range []string{"App 1.2.0.dmg", "app-1.2.0-darwin-arm64.tar.gz", "app-1.1.0-to-1.2.0-darwin-arm64.delta", "update-darwin-arm64.json", "App Setup 1.2.0.exe", "App.exe"} {
+	for _, name := range []string{"app-1.2.0.dmg", "app-1.2.0-darwin-arm64.tar.gz", "app-1.1.0-to-1.2.0-darwin-arm64.delta", "update-darwin-arm64.json", "app-setup-1.2.0.exe", "App.exe"} {
 		p := filepath.Join(dist, name)
 		os.WriteFile(p, nil, 0o644)
 		artifacts = append(artifacts, p)
@@ -434,7 +434,7 @@ func TestPublishGitHub(t *testing.T) {
 	if len(lines) != 4 || !strings.HasPrefix(lines[1], "release create v1.2.0 --repo me/app --draft") {
 		t.Fatalf("gh calls:\n%s", b)
 	}
-	if !strings.Contains(lines[2], "App 1.2.0.dmg") || !strings.Contains(lines[2], "App Setup 1.2.0.exe") || !strings.Contains(lines[2], ".delta") || strings.Count(lines[2], "install.sh") != 1 || strings.Contains(lines[2], "App.exe ") || strings.Contains(lines[2], "update-") {
+	if !strings.Contains(lines[2], "app-1.2.0.dmg") || !strings.Contains(lines[2], "app-setup-1.2.0.exe") || !strings.Contains(lines[2], ".delta") || strings.Count(lines[2], "install.sh") != 1 || strings.Contains(lines[2], "App.exe ") || strings.Contains(lines[2], "update-") {
 		t.Errorf("first upload: %s", lines[2])
 	}
 	if !strings.HasSuffix(lines[3], "update-darwin-arm64.json") {

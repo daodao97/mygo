@@ -49,6 +49,13 @@ A `Player` plays, pauses (`Pause`), and goes back to the start (`Stop`);
 `OnEnd` calls a function then, on a goroutine of its own, as a playlist
 plays the next track (a looping player never ends).
 
+`Position` is where the player is heard. The output mixes ahead of what
+the speakers play (see [the output](#the-output)), and `Position` lags
+what it mixed by that much, so lyrics, a progress bar or a visualizer
+drawn from it keep time with the sound: after `Pause` it goes on while
+the output plays what it held, and after `Play` it waits until the
+player is heard. `Seek` and `Stop` move it at once.
+
 | setting | effect |
 |---|---|
 | `SetVolume(v)` | a gain: 1 as decoded, 0 silent |
@@ -125,6 +132,18 @@ The output opens when something first plays and closes five seconds after
 everything stopped, so an app that plays nothing keeps no audio device
 busy. It plays at 48 kHz in stereo, about 40 ms ahead; players of other
 rates are resampled as they play.
+
+`audio.SetLatency` sets how far ahead it mixes, as Web Audio's
+`latencyHint`:
+
+| latency | ahead | for |
+|---|---|---|
+| `LatencyInteractive` (the default) | about 40 ms | games and interfaces: sounds start, stop and change as soon as asked |
+| `LatencyPlayback` | about 250 ms | music players: playback rides out the moments the system keeps an app waiting, as macOS does for up to 0.2 s while its appearance changes, where 40 ms runs dry and is heard to stop |
+
+With `LatencyPlayback`, plays, pauses, seeks and volume changes are heard
+that much later; players' `Position` follows what is heard. Set it before playing: an output already open opens
+again, which drops what it held.
 
 | platform | output |
 |---|---|

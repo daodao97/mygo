@@ -64,6 +64,22 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
   		Radius(16).Border(l.width, ui.Color{}).BorderConicGradient(glow).Blur(l.blur)
   }
   ```
+- **Caching.** `Cache()` keeps what the element and its children paint in
+  a bitmap of the GPU, as Flutter's `RepaintBoundary` and SwiftUI's
+  `drawingGroup()` do, drawn again only when what they paint changes:
+  other content, another size, the window's scale or theme. A still card
+  of gradients, blurred images and large shadows around a drawing that
+  moves then costs one image wherever a frame redraws over it, and
+  turning or scaling the element with a transform moves the bitmap
+  without drawing it again. The bitmap holds the box, its shadows and
+  children beyond it that it does not clip; text over no opaque
+  background of the subtree's own is smoothed in grayscale, as in a blur.
+  With `Blur` or an effect, their bitmap is the one kept.
+
+  ```go
+  ui.Box(c).Size(900, 212).Radius(16).Gradient(from, to, 30).
+      Shadow(0, 10, 40, 0, shade).Cache().Children(func() { /* … */ })
+  ```
 - **Materials.** `Material(m)` fills the box with a material a package
   paints, in place of a background, as the [glass
   plugin](../plugins/glass.md)'s Liquid Glass, which what is under it shows

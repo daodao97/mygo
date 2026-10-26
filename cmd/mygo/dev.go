@@ -505,6 +505,9 @@ func devConfig(c *Config) *Config {
 	d := *c
 	d.Name += " Dev"
 	d.Identifier += ".dev"
+	if d.Slug != "" {
+		d.Slug += "-dev"
+	}
 	if icon := c.devIcon(); icon != "" {
 		d.Icon = icon
 	}
@@ -536,7 +539,7 @@ func (s *devSession) buildAndLaunch(ctx context.Context, t *task, running [32]by
 	case "windows":
 		name += ".exe"
 	default:
-		name = slugify(dc.Name)
+		name = dc.slug()
 	}
 	bin := filepath.Join(stage, name)
 	cleanup := func() {}

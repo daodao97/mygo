@@ -4,6 +4,7 @@ import (
 	"math"
 	"runtime"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo/internal/scene"
@@ -33,6 +34,10 @@ type Painter struct {
 	// cull skips the elements whose ink is clipped out (paintable): in
 	// the frame's painting, where the elements are where commit put them.
 	cull bool
+	// drawing tells that a Draw or DrawOver callback paints into the
+	// window's scene, and asked that it asked to be painted again (see
+	// paintPart).
+	drawing, asked bool
 }
 
 // opaqueBox is the box of an element painting an opaque background, and
@@ -49,6 +54,7 @@ const continuousCorners = runtime.GOOS == "darwin"
 
 func (rt *engine) paint(root *node, w, h, scale float32) {
 	rt.paints++
+	rt.drawn = rt.drawn[:0]
 	s := &rt.scene
 	// The root paints the theme's background: frames start transparent, so
 	// that a transparent root shows what is behind the content, such as a
@@ -67,6 +73,8 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	}
 	rt.painter = Painter{rt: rt, s: s, scale: scale, opacity: 1, clip: Rect{0, 0, w, h}, opaque: opaque, under: under, holes: rt.holes[:0]}
 	p := &rt.painter
+	uses := rt.text.TransientUses()
+	rt.partTransient = 0
 	p.cull = !rt.inkStale && !rt.noCull
 	p.element(root)
 	p.cull = false
@@ -75,6 +83,15 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	}
 	rt.paintDrag(p, w, h)
 	rt.under, rt.holes = p.under[:0], p.holes[:0] // kept for the next frame's
+	rt.partsBase = sceneData(s)
+	rt.atlases = atlasGenerations(s)
+	rt.transient = rt.text.TransientUses()-uses > rt.partTransient
+}
+
+// atlasGenerations returns the generations of the atlases s draws glyphs
+// and masks from.
+func atlasGenerations(s *scene.Scene) [2]uint64 {
+	return [2]uint64{s.MaskAtlas.Generation(), s.ColorAtlas.Generation()}
 }
 
 // Now returns the time of the frame being painted, which drawings that
@@ -100,7 +117,26 @@ func (p *Painter) Accelerated() bool {
 // frame paints the elements of this one again without building the view.
 // Call it in every frame while the drawing moves; an element out of view
 // is not painted, so it asks for none.
-func (p *Painter) AnimationFrame() { p.rt.repainting = true }
+func (p *Painter) AnimationFrame() {
+	p.rt.repainting, p.rt.repaintFull = true, true
+	p.asks()
+}
+
+// AnimationFrameRate is AnimationFrame for a drawing that looks as smooth
+// at fps frames a second as at the display's rate, as a record turning, a
+// slow wave or a level meter: the window paints it again as often, rather
+// than at each of the display's refreshes, 120 a second on ProMotion and
+// many others, and has the display refresh as often where it can (macOS),
+// for less power. The rate rounds up to one the display shows evenly, a
+// whole number of its refreshes a frame: 60, 40 or 30 a second of a
+// 120 Hz display's, 60 or 30 of a 60 Hz one's. The window draws at the
+// fastest anything in it asks for: at the display's while another drawing
+// asks for AnimationFrame or the view animates.
+func (p *Painter) AnimationFrameRate(fps float32) {
+	p.rt.repainting = true
+	p.rt.repaintRate = max(p.rt.repaintRate, fps)
+	p.asks()
+}
 
 // After asks for the element to be painted again after d, for a drawing
 // that changes then, as a spinner's next step: unless something else
@@ -112,6 +148,7 @@ func (p *Painter) After(d time.Duration) {
 	if p.rt.repaintAt.IsZero() || at.Before(p.rt.repaintAt) {
 		p.rt.repaintAt = at
 	}
+	p.asks()
 }
 
 // snap converts a rectangle to device pixels, rounding its edges to whole
@@ -186,6 +223,9 @@ func (p *Painter) paintable(e *node) bool {
 }
 
 func (p *Painter) element(e *node) {
+	if e.hidden {
+		return
+	}
 	savedTransform, savedInline := p.transform, p.inline
 	p.transform, p.inline = e.world, nil
 	defer func() { p.transform, p.inline = savedTransform, savedInline }()
@@ -259,7 +299,7 @@ func (p *Painter) element(e *node) {
 			}
 		}
 		if e.paintFn != nil {
-			e.paintFn(p, box)
+			p.draw(e, box, false)
 		}
 		switch e.kind {
 		case kindText:
@@ -269,6 +309,9 @@ func (p *Painter) element(e *node) {
 			p.inline = e
 			if spans := e.paintSpans(&sp); !e.contentSet || !p.contentText(e, ox, oy, ts, spans) {
 				p.textLayout(e.tl, ox, oy, ts.color, ts, spans)
+				if e.objectFn != nil {
+					paintObjects(p, e.tl, ox, oy, e.objectFn)
+				}
 			}
 			p.inline = nil
 		case kindImage:
@@ -326,7 +369,7 @@ func (p *Painter) element(e *node) {
 		p.border(e, box)
 	}
 	if own && e.paintAfterFn != nil {
-		e.paintAfterFn(p, box)
+		p.draw(e, box, true)
 	}
 	if e.flags&flagDebug != 0 && (e.parent == nil || e.parent.flags&flagDebug == 0) {
 		p.debug(e)
@@ -601,7 +644,7 @@ func (p *Painter) dividers(e *node) {
 	}
 	var prev *node
 	for c := e.first; c != nil; c = c.next {
-		if c.flags&flagAbsolute != 0 || c.collapsed {
+		if c.flags&flagAbsolute != 0 || c.collapsed || c.hidden {
 			continue
 		}
 		if f := e.list; f != nil {
@@ -657,7 +700,7 @@ func (p *Painter) debug(e *node) {
 	p.opacity = 1
 	var walk func(e *node)
 	walk = func(e *node) {
-		if e.flags&flagInvisible != 0 {
+		if e.flags&flagInvisible != 0 || e.hidden {
 			return
 		}
 		box := Rect{e.x, e.y, e.w, e.h}
@@ -702,6 +745,42 @@ func (p *Painter) textLayout(l *text.Layout, x, y float32, color Color, ts textS
 		}
 	}
 	p.textForeground(l, x, y, color, ts, sp)
+}
+
+// paintObjects is textObjects once DrawObjects is called, so that apps
+// that never call it do not link it.
+var (
+	paintObjects func(p *Painter, l *text.Layout, x, y float32, fn func(p *Painter, at int, r Rect))
+	linkObjects  sync.Once
+)
+
+// textObjects calls fn with each inline object of l, laid out from
+// (x, y), that shows: its rune and its box, in the transform of the
+// inline element holding it.
+func (p *Painter) textObjects(l *text.Layout, x, y float32, fn func(p *Painter, at int, r Rect)) {
+	if l == nil {
+		return
+	}
+	var spans []text.Span
+	saved := p.transform
+	defer func() { p.transform = saved }()
+	for li := range l.Lines {
+		line := &l.Lines[li]
+		for _, g := range line.Glyphs {
+			if !g.Object {
+				continue
+			}
+			if spans == nil {
+				spans = text.DecodeSpans(l.Params.Spans)
+			}
+			h, d := objectMetrics(spans, g.Cluster)
+			r := Rect{x + g.X, y + line.Baseline - h, g.Advance, h + d}
+			p.transform = saved.Mul(p.inlineTransform(g.Cluster))
+			if p.visible(r, 0) {
+				fn(p, g.Cluster, r)
+			}
+		}
+	}
 }
 
 // textBackgrounds paints all backgrounds before the foreground, so a

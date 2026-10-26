@@ -120,8 +120,9 @@ type Span struct {
 	// rune of the span, an object replacement character (U+FFFC), an
 	// inline object: a box that wide, standing that high on the baseline,
 	// which lines break around and which draws no glyph, as an image in a
-	// rich text's line (Glyph.Object).
-	ObjectWidth, ObjectHeight float32
+	// rich text's line (Glyph.Object). ObjectDescent extends the box that
+	// far below the baseline, as math's subscripts and fractions go.
+	ObjectWidth, ObjectHeight, ObjectDescent float32
 }
 
 // style returns the style of the span's runes in a text of style base.
@@ -173,6 +174,10 @@ func EncodeSpans(spans []Span) string {
 		str(sp.Features)
 		b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.ObjectWidth))
 		b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.ObjectHeight))
+		if sp.ObjectWidth != 0 {
+			// Only objects have a descent: other spans' keys stay short.
+			b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.ObjectDescent))
+		}
 		str(sp.Lang)
 	}
 	return string(b)
@@ -224,6 +229,9 @@ func DecodeSpans(s string) []Span {
 		sp.Features = str()
 		sp.ObjectWidth = f32()
 		sp.ObjectHeight = f32()
+		if sp.ObjectWidth != 0 {
+			sp.ObjectDescent = f32()
+		}
 		sp.Lang = str()
 		if b == nil {
 			break
@@ -341,9 +349,11 @@ type System struct {
 	runs  map[runKey]*atlasEntry
 	masks map[uint64]*atlasEntry
 	// transient holds the masks drawn for the frame being painted alone,
-	// recent the frame each of them was last drawn in.
-	transient map[uint64]GlyphImage
-	recent    map[uint64]uint64
+	// recent the frame each of them was last drawn in, and transientUses
+	// counts the times Mask returned one of them (TransientUses).
+	transient     map[uint64]GlyphImage
+	recent        map[uint64]uint64
+	transientUses uint64
 	// MaskAtlas holds coverage masks, ColorAtlas color glyphs.
 	MaskAtlas, ColorAtlas *scene.Atlas
 	// full tells which atlases (mask, color) left out something the frame
@@ -1039,9 +1049,10 @@ func line(p Params, text []rune, sl shapedLine, offset int, rtl bool, m lineMetr
 				g.Runes = max(next-g.Cluster, 1)
 				if o := objectAt(spans, g.Cluster); o != nil {
 					// An inline object stands on the baseline, as high as
-					// it is, whatever font its run took.
+					// it is and as deep, whatever font its run took.
 					g.Object, g.Advance, g.ID = true, o.ObjectWidth, 0
 					line.Ascent = max(line.Ascent, o.ObjectHeight)
+					line.Descent = max(line.Descent, o.ObjectDescent)
 				}
 				g.Cluster += offset
 			}

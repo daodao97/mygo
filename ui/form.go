@@ -46,7 +46,10 @@ func (fb *formBuild) alignLabels() {
 	fb.aligned = true
 	var w float32
 	for _, l := range fb.labels {
-		w = max(w, intrinsic(l, true))
+		if !l.inHidden() {
+			// A Hidden field's label sets no width.
+			w = max(w, intrinsic(l, true))
+		}
 	}
 	for _, l := range fb.labels {
 		l.width = px(w)
@@ -326,7 +329,7 @@ func alignBaselines(e *node) {
 // comes before what is drawn beside it, as a status dot or an icon. text
 // reports whether the baseline is that of a text.
 func anchor(e *node, ascent, descent float32) (b float32, text, ok bool) {
-	if e.flags&flagInvisible != 0 {
+	if e.flags&flagInvisible != 0 || e.hidden {
 		return 0, false, false
 	}
 	switch {
@@ -365,7 +368,7 @@ func anchor(e *node, ascent, descent float32) (b float32, text, ok bool) {
 // firstLine returns the first line of text in the element, as last laid
 // out, or nil.
 func firstLine(e *node) *text.Line {
-	if e.flags&flagInvisible != 0 {
+	if e.flags&flagInvisible != 0 || e.hidden {
 		return nil
 	}
 	switch e.kind {
@@ -394,7 +397,7 @@ func firstLine(e *node) *text.Line {
 // its first line of text is, as last laid out, and false for an element
 // without text.
 func firstBaseline(e *node) (float32, bool) {
-	if e.flags&flagInvisible != 0 {
+	if e.flags&flagInvisible != 0 || e.hidden {
 		return 0, false
 	}
 	switch e.kind {

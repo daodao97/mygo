@@ -791,6 +791,10 @@ func (w *window) SetContentProtection(bool) {}
 func (w *window) SetVibrancy(string)        {}
 func (w *window) SetActiveAppearance(bool)  {}
 
+// SetWindowButtonsTheme does nothing: GTK's title buttons follow the
+// theme, which is the application's.
+func (w *window) SetWindowButtonsTheme(string) {}
+
 // StartDrag begins moving the window with the last button press. On an
 // undecorated window the compositor takes the pointer once the move
 // starts, so the move waits until the pointer moves, keeping a second

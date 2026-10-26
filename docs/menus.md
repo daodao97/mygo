@@ -43,6 +43,7 @@ A `MenuItem` has:
   group, in which checking one unchecks the others. Checkbox and radio
   items toggle `Checked` before `Click` runs;
 - `Disabled`, `Hidden` and `ToolTip`;
+- `Icon`, an image shown beside the label (see [icons](#icons));
 - `ID`, to find the item with `Menu.ItemByID`;
 - `Role`, a built-in behavior with its label and accelerator.
 
@@ -87,8 +88,8 @@ template serves every platform.
 ### Changing items
 
 Change items of a menu in use with their methods, so that the native menu
-follows: `SetLabel`, `SetEnabled`, `SetVisible`, `SetChecked` and
-`SetAccelerator`:
+follows: `SetLabel`, `SetEnabled`, `SetVisible`, `SetChecked`,
+`SetAccelerator` and `SetIcon`:
 
 ```go
 item := menu.ItemByID("sidebar")
@@ -96,6 +97,65 @@ item.SetChecked(false)
 ```
 
 `Menu.Append` and `Menu.Insert` add items.
+
+### Icons
+
+An item's `Icon` is an image shown beside its label, as the flag of each
+server of a VPN's tray menu. `NewMenuIcon` makes one of a PNG image, in
+its own colors, and returns an error for data that is not a PNG image;
+make each once and give it to as many items as show it:
+
+```go
+//go:embed flags/jp.png
+var japanPNG []byte
+
+japan, err := mygo.NewMenuIcon(japanPNG, false)
+if err != nil {
+	log.Fatal(err)
+}
+servers := mygo.NewMenu([]*mygo.MenuItem{
+	{ID: "tokyo", Label: "Tokyo", Type: mygo.MenuItemRadio, Checked: true, Icon: japan},
+	{ID: "osaka", Label: "Osaka", Type: mygo.MenuItemRadio, Icon: japan},
+	{ID: "direct", Label: "Direct", Type: mygo.MenuItemRadio},
+})
+```
+
+The image fits a box of 16 by 16 points, keeping its aspect: give it at
+least 32 by 32 pixels, or 48 by 48, so that it stays sharp on
+high-resolution displays and at 150% and 200% scaling. A checkbox or radio
+item shows its check as well. `SetIcon`
+replaces an item's icon in menus in use, and nil removes it:
+
+```go
+servers.ItemByID("tokyo").SetIcon(warning)
+servers.ItemByID("osaka").SetIcon(nil)
+```
+
+`NewMenuIcon`'s second argument, template, makes a black and transparent
+image take the color of the menu's text, as macOS tints its template
+images: white in a dark menu and on the highlight. Linux shows template
+icons as they are.
+
+MyGo decodes and scales each image once, however many items show it and
+however often their menus open or are made again, the icons of the same
+image included, and frees what it made of it once neither the app nor a
+menu holds the icon; the bitmaps of Windows 10's menus go with their
+menus. Apps that make no icon don't link the code that draws them.
+
+- **macOS** shows the icon (an `NSImage`) after the column of checks, on
+  every menu, the menu bar's own items included, which show it in the
+  menu bar.
+- **Windows 11** menus, which MyGo draws, give icons a column of their
+  own between the checks and the labels, as the system's menus do, at the
+  menu's display scaling. **Windows 10** draws them as the items'
+  bitmaps (32-bit, with alpha), in the column of its checks: a checked
+  item shows its icon framed as checked in place of a check mark. The
+  items of the menu bar itself show no icon.
+- **Linux** shows icons in the items of menu bars' menus and context
+  menus (GTK); the items of the menu bar itself show none. A tray icon's
+  menu is drawn by the panel, which gets the icons over DBusMenu
+  (`icon-data`): GNOME Shell's AppIndicator extension and KDE Plasma
+  show them, other panels may not.
 
 ## The menu bar
 
@@ -132,7 +192,10 @@ mygo.NewWindow(mygo.WindowOptions{URL: "/", AutoHideMenuBar: true})
 A Windows window without a title bar, frameless or with a hidden title
 bar, has no room for a menu bar either: Alt and F10 open its menus in a
 popup from the top-left corner, below the title bar the page draws. On
-Linux the bar shows above the page.
+Linux a window with a hidden title bar hides its menu bar as
+`AutoHideMenuBar` does, so that the window buttons stay at the top of the
+window, in the page's title bar; a frameless window shows the bar above
+the page.
 
 A window in full screen leaves the whole screen to the page: its menu bar
 hides until it leaves full screen. Alt and F10 still open its menus, in a
@@ -213,6 +276,31 @@ light and dark menu bars. A tray with a menu shows it on click. Without a
 menu, clicks reach `OnClick`, and `OnRightClick` gets right-clicks. Change
 the tray with `SetIcon`, `SetMenu`, `SetToolTip` and, on macOS,
 `SetTitle`, the text next to the icon; `Destroy` removes it.
+
+The items of a tray's menu can show [icons](#icons), as a country's flag
+beside each server, and change as the items of any menu do: the menu
+shows their state the next time it opens.
+
+A title that shows a changing number, such as a network speed, should
+keep its width, or the item grows and shrinks and the icon and the items
+beside it move. On macOS the title's digits all have the same width, so a
+value padded to a fixed number of characters keeps it: pad with figure
+spaces (U+2007), which are as wide as a digit, since an ordinary space is
+narrower.
+
+```go
+// "  9.0 MB/s", " 12.5 MB/s", "128.0 MB/s": all as wide.
+func speed(mbps float64) string {
+	return strings.ReplaceAll(fmt.Sprintf("%5.1f", mbps), " ", "\u2007") + " MB/s"
+}
+
+tray.SetTitle(speed(rate))
+```
+
+Only digits are tabular: letters keep their own widths, so a title that
+switches units (`9 KB/s`, then `1.2 MB/s`) changes width with the unit.
+Keeping that steady is the app's choice, by showing the value in one unit
+as above, for one.
 
 An app may show several icons, as a menu bar app showing its measures each
 in an item of its own. On macOS a new icon goes left of those already

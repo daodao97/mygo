@@ -59,6 +59,7 @@ type window struct {
 	frameless              bool
 	hiddenTitleBar         bool        // a TitleBarStyle that hides the caption
 	caption                *captionBar // the controls in its place, nil if they failed
+	buttonsTheme           string      // "light" or "dark" for the controls (SetWindowButtonsTheme), "" as the app
 	topEdge                uintptr     // the window over the top resize border of one without a caption (topedge.go), or 0
 	noRedirect             bool        // no redirection bitmap, for a material behind the page
 	fullScreen             bool
@@ -478,8 +479,9 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 		}
 		return 1, true
 	case wmWindowPosChanging:
+		pos := (*windowPos)(native(lp))
+		w.maximizeInWorkArea(pos)
 		if !w.movable {
-			pos := (*windowPos)(native(lp))
 			pos.Flags |= swpNoMove
 		}
 		return 0, false
@@ -534,6 +536,7 @@ func (w *window) sized(kind uintptr) {
 			w.h.Minimized()
 		}
 	case sizeMaximized:
+		w.fitWorkArea()
 		if w.state != sizeMaximized {
 			if w.state == sizeMinimized {
 				w.h.Restored()
@@ -551,6 +554,86 @@ func (w *window) sized(kind uintptr) {
 		w.state = sizeRestored
 	}
 	w.h.Resized()
+}
+
+// maximizeInWorkArea keeps a maximized window in the work area of its
+// monitor, off the taskbar, where Windows would have it cover the monitor.
+// Windows maximizes a top-level window into the work area only when it has
+// a maximize box (WS_MAXIMIZEBOX), and over the whole monitor otherwise
+// (Wine's WINPOS_GetMinMaxInfo spells the rule out): a window the user
+// cannot maximize (Maximizable false, and so every panel) that the app
+// maximizes anyway would cover the taskbar, and, topmost as panels are,
+// hide it. The rectangle is fixed as it is about to apply, in screen
+// coordinates, rather than in WM_GETMINMAXINFO, whose are given for the
+// primary monitor and adjusted by Windows for the others. Full screen
+// covers the monitor on purpose.
+func (w *window) maximizeInWorkArea(pos *windowPos) {
+	if w.fullScreen || pos.Flags&(swpNoMove|swpNoSize) != 0 || w.hasStyle(wsMaximizeBox) {
+		return
+	}
+	if zoomed, _, _ := procIsZoomed.Call(w.hwnd); zoomed == 0 {
+		return
+	}
+	r := rect{pos.X, pos.Y, pos.X + pos.CX, pos.Y + pos.CY}
+	mon, _, _ := procMonitorFromRect.Call(uintptr(unsafe.Pointer(&r)), monitorDefaultToNull)
+	if mon == 0 {
+		return
+	}
+	mi := monitorInfo(mon)
+	if fit, ok := workAreaMaximized(r, mi.Monitor, mi.Work); ok {
+		pos.X, pos.Y, pos.CX, pos.CY = fit.Left, fit.Top, fit.Right-fit.Left, fit.Bottom-fit.Top
+	}
+}
+
+// fitWorkArea moves a maximized window without a maximize box into the
+// work area once it is maximized, where maximizeInWorkArea did not as it
+// was about to be: a window not yet zoomed as the move applied, or a
+// rectangle that did not cover the monitor. It overhangs the work area by
+// its invisible borders, the window's rectangle beyond what DWM shows.
+func (w *window) fitWorkArea() {
+	if w.fullScreen || w.hasStyle(wsMaximizeBox) {
+		return
+	}
+	var r, shown rect
+	procGetWindowRect.Call(w.hwnd, uintptr(unsafe.Pointer(&r)))
+	if procDwmGetWindowAttribute.Call(w.hwnd, dwmwaExtendedFrameBounds, uintptr(unsafe.Pointer(&shown)), unsafe.Sizeof(shown)); shown.Right <= shown.Left {
+		shown = r
+	}
+	mon, _, _ := procMonitorFromWindow.Call(w.hwnd, monitorDefaultToNearest)
+	if mon == 0 {
+		return
+	}
+	mi := monitorInfo(mon)
+	if mi.Work == mi.Monitor {
+		return
+	}
+	fit := rect{
+		Left:   mi.Work.Left - (shown.Left - r.Left),
+		Top:    mi.Work.Top - (shown.Top - r.Top),
+		Right:  mi.Work.Right + (r.Right - shown.Right),
+		Bottom: mi.Work.Bottom + (r.Bottom - shown.Bottom),
+	}
+	if fit != r {
+		procSetWindowPos.Call(w.hwnd, 0, uintptr(fit.Left), uintptr(fit.Top), uintptr(fit.Right-fit.Left), uintptr(fit.Bottom-fit.Top), swpNoZOrder|swpNoActivate)
+	}
+}
+
+// workAreaMaximized returns the rectangle of a window maximized in the
+// work area of a monitor, for one, r, maximized over the whole monitor:
+// it overhangs the work area as r overhangs the monitor, by the invisible
+// borders that a maximized window has outside the screen. ok is false
+// when r does not cover the monitor, or the work area is the whole
+// monitor (no taskbar, or one that hides).
+func workAreaMaximized(r, monitor, work rect) (fit rect, ok bool) {
+	if work == monitor || r.Left > monitor.Left || r.Top > monitor.Top || r.Right < monitor.Right || r.Bottom < monitor.Bottom {
+		return r, false
+	}
+	return rect{
+		Left:   work.Left - (monitor.Left - r.Left),
+		Top:    work.Top - (monitor.Top - r.Top),
+		Right:  work.Right + (r.Right - monitor.Right),
+		Bottom: work.Bottom + (r.Bottom - monitor.Bottom),
+	}, true
 }
 
 // layoutControls lays out what sits above the webview or the surface: the
@@ -1081,6 +1164,34 @@ func backdropFor(material string) int32 {
 // SetActiveAppearance does nothing: Windows has no way to draw a window
 // that is not active as one that is.
 func (w *window) SetActiveAppearance(bool) {}
+
+// SetWindowButtonsTheme draws the controls of a hidden title bar for a
+// "light" or "dark" background, whatever the app's appearance; "system"
+// follows it again.
+func (w *window) SetWindowButtonsTheme(source string) {
+	if source == "system" {
+		source = ""
+	}
+	if source == w.buttonsTheme {
+		return
+	}
+	w.buttonsTheme = source
+	if w.caption != nil {
+		w.caption.paint()
+	}
+}
+
+// buttonsDark reports whether the controls of a hidden title bar draw for
+// a dark background: as SetWindowButtonsTheme says, else as the app.
+func (w *window) buttonsDark() bool {
+	switch w.buttonsTheme {
+	case "dark":
+		return true
+	case "light":
+		return false
+	}
+	return w.b.isDark()
+}
 
 func (w *window) SetVibrancy(material string) {
 	w.vibrancy = material

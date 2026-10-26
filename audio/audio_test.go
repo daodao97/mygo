@@ -23,7 +23,16 @@ func setup(t *testing.T) {
 	}
 	voices = nil
 	volume = 1
+	held, unheard = 0, 0
 	mu.Unlock()
+}
+
+// hold makes the output hold n frames ahead of what is heard, as a device
+// that just opened.
+func hold(n int64) {
+	mu.Lock()
+	defer mu.Unlock()
+	held, unheard = n, 0
 }
 
 // render mixes n frames.
@@ -544,7 +553,7 @@ func TestNullOutput(t *testing.T) {
 		mu.Unlock()
 	}()
 	failure := errors.New("no device here")
-	openOutput = func() (device, int, error) { return nil, 0, failure }
+	openOutput = func(time.Duration) (device, int, error) { return nil, 0, failure }
 	defer func() { openOutput = openDevice }()
 	p := NewSound(sampleRate, 1, make([]float32, sampleRate/10)).Play()
 	// How long it takes is TestNullDeviceKeepsTime's: a minute only
@@ -558,6 +567,43 @@ func TestNullOutput(t *testing.T) {
 		t.Errorf("Err = %v", Err())
 	}
 }
+
+// Setting the latency opens the output again, to hold as far ahead as it
+// says.
+func TestSetLatencyReopens(t *testing.T) {
+	setup(t)
+	opened := make(chan time.Duration, 8)
+	openOutput = func(ahead time.Duration) (device, int, error) {
+		opened <- ahead
+		return pacedDevice{}, nullFrames, nil
+	}
+	defer func() { openOutput = openDevice }()
+	mu.Lock()
+	testMode = false
+	mu.Unlock()
+	defer func() {
+		mu.Lock()
+		testMode = true
+		latency = LatencyInteractive
+		mu.Unlock()
+	}()
+	p := NewSound(sampleRate, 1, make([]float32, sampleRate)).NewPlayer().SetLoop(true)
+	p.Play()
+	defer p.Close()
+	if got := wait.For(t, "the output to open", opened); got != 40*time.Millisecond {
+		t.Errorf("opened %v ahead, want 40ms", got)
+	}
+	SetLatency(LatencyPlayback)
+	if got := wait.For(t, "the output to open again", opened); got != 250*time.Millisecond {
+		t.Errorf("opened again %v ahead, want 250ms", got)
+	}
+}
+
+// A pacedDevice takes what it is given a little at a time.
+type pacedDevice struct{}
+
+func (pacedDevice) write([]float32) error { time.Sleep(time.Millisecond); return nil }
+func (pacedDevice) close()                {}
 
 // A null device takes as long as what it plays would, on a clock of its
 // own here, does not hurry to catch up once behind, and fails after a

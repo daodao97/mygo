@@ -10,6 +10,98 @@ import (
 	"time"
 )
 
+// TestNSISUninstallEntry checks the entry of the app in Settings > Apps.
+func TestNSISUninstallEntry(t *testing.T) {
+	key := `Software\Microsoft\Windows\CurrentVersion\Uninstall\com.example.app`
+	c := &Config{Name: "My App", Version: "1.2.0", Copyright: "Copyright © 2024-2026 Example Inc. All rights reserved."}
+	entry := nsisUninstallEntry(c, key, "My App.exe")
+	for _, line := range []string{
+		`  WriteRegStr HKCU "` + key + `" "DisplayName" "My App"` + "\n",
+		`  WriteRegStr HKCU "` + key + `" "DisplayVersion" "1.2.0"` + "\n",
+		`  WriteRegStr HKCU "` + key + `" "DisplayIcon" "$INSTDIR\My App.exe"` + "\n",
+		`  WriteRegStr HKCU "` + key + `" "Publisher" "Example Inc."` + "\n",
+		`  WriteRegStr HKCU "` + key + `" "UninstallString" '"$INSTDIR\Uninstall.exe"'` + "\n",
+		`  WriteRegStr HKCU "` + key + `" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'` + "\n",
+	} {
+		if !strings.Contains(entry, line) {
+			t.Errorf("the entry has no %q:\n%s", line, entry)
+		}
+	}
+	c.Publisher = "Jane $1"
+	if entry := nsisUninstallEntry(c, key, "My App.exe"); !strings.Contains(entry, `"Publisher" "Jane $$1"`) {
+		t.Errorf("the entry does not name the configured publisher:\n%s", entry)
+	}
+	c.Publisher, c.Copyright = "", ""
+	if entry := nsisUninstallEntry(c, key, "My App.exe"); strings.Contains(entry, "Publisher") {
+		t.Errorf("the entry names a publisher without one:\n%s", entry)
+	}
+}
+
+func TestConfigPublisher(t *testing.T) {
+	for copyright, want := range map[string]string{
+		"":                          "",
+		"Copyright © 2026 HeroSizy": "HeroSizy",
+		"© 2026 Example Inc.":       "Example Inc.",
+		"(c) 2020-2026 Jane Doe":    "Jane Doe",
+		"Copyright 2019 – present Acme, Inc. All rights reserved.": "Acme, Inc.",
+		"Example Inc.": "Example Inc.",
+	} {
+		if got := (&Config{Copyright: copyright}).publisher(); got != want {
+			t.Errorf("publisher of %q = %q, want %q", copyright, got, want)
+		}
+	}
+	if got := (&Config{Copyright: "© 2026 Example Inc.", Publisher: " Jane "}).publisher(); got != "Jane" {
+		t.Errorf("publisher = %q, want the configured one", got)
+	}
+}
+
+// TestNSISCloseApp checks the functions with which the installer and the
+// uninstaller quit the app, silent ones too.
+func TestNSISCloseApp(t *testing.T) {
+	script := nsisCloseApp(&Config{Name: "My App"})
+	for _, s := range []string{"Function CloseApp\n", "Function un.CloseApp\n", "IfSilent close\n", "$$env:MYGO_APP_SCRIPT"} {
+		if !strings.Contains(script, s) {
+			t.Errorf("no %q in:\n%s", s, script)
+		}
+	}
+	for _, s := range []string{
+		"$_.ExecutablePath.StartsWith($dir, [StringComparison]::OrdinalIgnoreCase)",
+		"$running | Stop-Process -Force",
+	} {
+		if !strings.Contains(closeAppPS1, s) {
+			t.Errorf("closeAppPS1 has no %q", s)
+		}
+	}
+	for i, r := range script + closeAppPS1 {
+		if r >= 0x80 {
+			t.Fatalf("%q at %d: not ASCII", r, i)
+		}
+	}
+	// The installer writes the script, its lines escaped for NSIS, each
+	// shorter than an NSIS string.
+	var written strings.Builder
+	first, _, _ := strings.Cut(script, "FunctionEnd")
+	for _, line := range strings.Split(first, "\n") {
+		if text, ok := strings.CutPrefix(line, "  FileWrite $2 "); ok {
+			if len(text) > 1000 {
+				t.Errorf("line of %d characters: %s", len(text), text)
+			}
+			text = strings.TrimSuffix(strings.TrimPrefix(text, `"`), `"`)
+			written.WriteString(strings.NewReplacer(`$\r$\n`, "\n", `$\t`, "\t", `$\"`, `"`, `$$`, `$`).Replace(text))
+		}
+	}
+	if got := written.String(); got != closeAppPS1 {
+		t.Errorf("the installer writes\n%s", got)
+	}
+	if pwsh, err := exec.LookPath("pwsh"); err == nil {
+		path := filepath.Join(t.TempDir(), "close.ps1")
+		os.WriteFile(path, []byte(closeAppPS1), 0o644)
+		if out, err := exec.Command(pwsh, "-NoProfile", "-Command", "$null = [scriptblock]::Create((Get-Content -Raw '"+path+"'))").CombinedOutput(); err != nil {
+			t.Errorf("pwsh cannot parse closeAppPS1: %v\n%s", err, out)
+		}
+	}
+}
+
 // TestWindowsInstaller builds the installer of an app, on Windows with the
 // NSIS that mygo build downloads when it is not installed, and elsewhere
 // where NSIS is installed. Its sign command lists the files it signs: the
@@ -45,7 +137,7 @@ func TestWindowsInstaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	setup := artifacts[len(artifacts)-1]
-	if filepath.Base(setup) != "Setup Test Setup 2.0.0 amd64.exe" {
+	if filepath.Base(setup) != "setup-test-setup-2.0.0-amd64.exe" {
 		t.Fatalf("artifacts = %q", artifacts)
 	}
 	// The executable, the uninstaller that makensis made, then the
@@ -55,7 +147,7 @@ func TestWindowsInstaller(t *testing.T) {
 	for _, line := range strings.Split(strings.TrimSpace(string(listed)), "\n") {
 		signed = append(signed, filepath.Base(strings.Trim(line, "\r \"")))
 	}
-	if len(signed) != 3 || signed[0] != "Setup Test.exe" || signed[1] == signed[0] || signed[1] == signed[2] || signed[2] != "Setup Test Setup 2.0.0 amd64.exe" {
+	if len(signed) != 3 || signed[0] != "Setup Test.exe" || signed[1] == signed[0] || signed[1] == signed[2] || signed[2] != "setup-test-setup-2.0.0-amd64.exe" {
 		t.Errorf("signed %q", signed)
 	}
 	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {

@@ -177,6 +177,11 @@ Other properties:
   (`VibrancyGlassClear`) of a panel floating over it stays clear. It uses a
   private AppKit call, which a later macOS may drop: apps for the Mac App
   Store should leave it off.
+- `SetWindowButtonsTheme(mygo.ThemeDark)` draws the window buttons of a
+  hidden title bar for a dark background in a light app, as over a dark
+  view at the top of the page, and `ThemeLight` for a light one;
+  `ThemeSystem` follows the app again. The page and the menus keep the
+  app's appearance (Windows; the buttons of macOS and Linux keep it).
 - `SetProgressBar` shows the progress of a task on the taskbar button
   (Windows), the Dock icon (macOS) or the launcher entry (Linux docks that
   support it):
@@ -592,7 +597,8 @@ win.Page().OnDownloadDone(func(d *mygo.Download) {
 ### Permissions
 
 Pages ask for the camera, the microphone, the location or notifications.
-By default the app's own pages get what they ask for and other pages get
+By default the app's own pages, those of custom schemes included (see
+[trust](frontend.md#trust)), get what they ask for and other pages get
 nothing. `Page.SetPermissionHandler` decides instead; it runs on the main
 thread:
 

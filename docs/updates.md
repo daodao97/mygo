@@ -73,7 +73,8 @@ MYGO_UPDATER_PRIVATE_KEY="$(cat path/to/mygo-update.key)" go tool mygo build   #
 
 Next to the installers of each platform it writes:
 
-- `my-app-1.2.0-darwin-arm64.tar.gz`, the app as installed,
+- `my-app-1.2.0-darwin-arm64.tar.gz`, the app as installed, named after
+  the app's [`slug`](configuration.md#the-app),
 - [delta updates](#delta-updates) from the versions before, such as
   `my-app-1.1.0-to-1.2.0-darwin-arm64.delta`, and
 - `update-darwin-arm64.json`, the manifest: the version, its release
@@ -104,12 +105,40 @@ Publish the files where `updates` points to:
 - **S3**: `mygo build -upload` uploads them, with the installers, to the
   bucket of `updates.s3`; see [below](#publishing-to-s3).
 - **Your server**: upload the archives, deltas and manifests to the `url`
-  directory, with the Linux `install.sh`, and keep the files of earlier
-  versions there. Upload the manifests last, so apps never see a manifest
+  directory, with `install.sh`, `install.ps1` and `SHA256SUMS` (with the
+  lines of every platform), and keep the files of earlier versions there. Upload the manifests last, so apps never see a manifest
   whose files are missing.
 
 Each platform, such as `darwin-arm64`, `darwin-universal` or
 `windows-amd64`, has its own manifest, and a build only looks at its own.
+
+### Prereleases
+
+A release that GitHub marks a prerelease, such as `1.3.0-beta.1`, is never
+the latest release, so installed apps skip it. Apps with a beta let the
+users who chose it see prereleases with
+`mygo.Updater.SetPrereleases(true)`: their checks then read the release
+of the highest version that is not a draft, through the GitHub API, so
+they get the next prerelease, and the release after it too. Versions
+compare as semantic versioning does, `1.3.0-beta.2` before
+`1.3.0-beta.10` before `1.3.0`. Turning it off installs no older version:
+the app updates again once a release is newer than the prerelease it
+runs. The choice lasts while the app runs; the app keeps it, such as in
+its settings, and calls `SetPrereleases` at launch.
+
+```go
+mygo.Updater.SetPrereleases(settings.Beta)
+```
+
+Publish a prerelease as one, so that it does not become the latest
+release, which every app checks:
+`gh release edit v1.3.0-beta.1 --draft=false --prerelease`, or tick
+"Set as a pre-release". The checks read the releases from the newest down
+to the newest one that is not a prerelease, usually one request within
+the API's 60 an hour for each address, with or without a `tagPrefix`.
+Deltas start from the published release, so an app on a prerelease
+downloads the next one whole. Apps updated from `url` read the manifest
+the server has either way.
 
 ### Publishing to S3
 
@@ -136,7 +165,7 @@ of each platform. It needs no other tool: the credentials come from
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and, for temporary ones,
 `AWS_SESSION_TOKEN`, and the region from `s3.region`, else `AWS_REGION`
 (or `AWS_DEFAULT_REGION`), else `us-east-1`, which R2 accepts. The
-manifests and `install.sh`, whose names stay from version to version, are
+manifests, the install scripts and `SHA256SUMS`, whose names stay from version to version, are
 uploaded with `Cache-Control: no-cache`, so a CDN checks them again.
 
 The bucket is named in the host name of requests on Amazon S3 and in their

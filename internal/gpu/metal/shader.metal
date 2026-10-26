@@ -148,23 +148,34 @@ ContCorner contCorner(float r, float rh, float rv, float w, float h) {
 // contDist returns the corner's value at the point u inside its vertical
 // edge and v inside its horizontal one: about the signed distance to its
 // edge near it.
-float contDist(ContCorner c, float u, float v, bool blend = true) {
+float contDist(ContCorner c, float u, float v) {
 	float2 a = max(0.0f, 1.0f - float2(u, v) / c.e);
 	float l = length(a);
 	float hi = max(a.x, a.y);
 	float rho = hi > 0.0f ? min(min(a.x, a.y) / hi, 1.0f) : 0.0f;
 	float p = (((-0.926054f * rho + 3.15601f) * rho - 3.64122f) * rho + 1.26803f) * rho + 0.268531f;
 	float f1 = l + 1.0f - 1.0f / (1.0f - rho * rho * min(l, 1.0f) * p);
-	// Shadow integration can skip the circular blend when both curves fit.
-	// Coverage keeps the original path, including its derivative rounding.
-	if (!blend) {
-		return min(max(c.eff - u, c.eff - v), 0.0f) + c.e * (f1 - 1.0f);
-	}
 	float f2 = length(max(0.0f, a * contExtent - (contExtent - 1.0f))) * 0.654166f + 0.345834f;
 	float s = a.y > a.x ? 1.0f : -1.0f;
 	float w = saturate(0.5f - s + s * rho);
 	float fx = f1 + (f2 - f1) * c.cx, fy = f1 + (f2 - f1) * c.cy;
 	return min(max(c.eff - u, c.eff - v), 0.0f) + c.e * (fx + (fy - fx) * w - 1.0f);
+}
+
+// Shadow integration can skip the circular blend when both curves fit.
+// Keep the shortcut separate from contDist: even an unused branch there
+// changes the compiler's rounding of coverage derivatives on thin rings.
+float contShadowDist(ContCorner c, float u, float v, bool blend) {
+	if (blend) {
+		return contDist(c, u, v);
+	}
+	float2 a = max(0.0f, 1.0f - float2(u, v) / c.e);
+	float l = length(a);
+	float hi = max(a.x, a.y);
+	float rho = hi > 0.0f ? min(min(a.x, a.y) / hi, 1.0f) : 0.0f;
+	float p = (((-0.926054f * rho + 3.15601f) * rho - 3.64122f) * rho + 1.26803f) * rho + 0.268531f;
+	float f1 = l + 1.0f - 1.0f / (1.0f - rho * rho * min(l, 1.0f) * p);
+	return min(max(c.eff - u, c.eff - v), 0.0f) + c.e * (f1 - 1.0f);
 }
 
 // contInset returns how far inside its vertical edge the corner's edge is
@@ -177,7 +188,7 @@ float contInset(ContCorner c, float v) {
 	float lo = v < c.r ? c.r - sqrt(v * (2.0f * c.r - v)) : 0.0f;
 	float hi = c.e - sqrt(v * (2.0f * c.e - v));
 	bool blend = c.cx != 0.0f || c.cy != 0.0f;
-	float dlo = contDist(c, lo, v, blend), dhi = contDist(c, hi, v, blend);
+	float dlo = contShadowDist(c, lo, v, blend), dhi = contShadowDist(c, hi, v, blend);
 	if (dlo <= 0.0f) {
 		return lo;
 	}
@@ -187,7 +198,7 @@ float contInset(ContCorner c, float v) {
 	int side = 0;
 	for (int n = 0; n < 5; n++) {
 		float m = (lo * dhi - hi * dlo) / (dhi - dlo);
-		float dm = contDist(c, m, v, blend);
+		float dm = contShadowDist(c, m, v, blend);
 		if (dm > 0.0f) {
 			lo = m;
 			dlo = dm;

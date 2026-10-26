@@ -739,7 +739,11 @@ func (t *Tray) SetIcon(png []byte, template bool) error {
 	return err
 }
 
-// SetTitle sets the text next to the icon (macOS).
+// SetTitle sets the text next to the icon (macOS). Its digits all have
+// the same width, so a number that changes, such as a rate, keeps the
+// item's width as long as the text keeps its length: pad the value to a
+// fixed number of characters with figure spaces (U+2007), as wide as a
+// digit, rather than ordinary spaces.
 func (t *Tray) SetTitle(title string) { t.do(func(n platform.Tray) { n.SetTitle(title) }) }
 
 // SetToolTip sets the hover text.

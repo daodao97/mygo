@@ -176,7 +176,7 @@ func buildWeb(c *Config, opts buildOptions) ([]string, error) {
 		return nil, err
 	}
 	sum := sha256.Sum256(data)
-	name := slugify(c.Name) + "." + hex.EncodeToString(sum[:6]) + ".wasm"
+	name := c.slug() + "." + hex.EncodeToString(sum[:6]) + ".wasm"
 	if err := os.Rename(wasm, filepath.Join(stage, name)); err != nil {
 		return nil, err
 	}

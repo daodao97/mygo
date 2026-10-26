@@ -43,6 +43,12 @@ func (u *UpdaterModule) Check(ctx context.Context) (*Update, error) {
 	return nil, ErrUpdatesDisabled
 }
 
+// SetPrereleases does nothing: browsers do not update apps.
+func (u *UpdaterModule) SetPrereleases(on bool) {}
+
+// Prereleases reports false.
+func (u *UpdaterModule) Prereleases() bool { return false }
+
 // Install returns ErrUpdatesDisabled.
 func (up *Update) Install(ctx context.Context, progress func(downloaded, total int64)) error {
 	return ErrUpdatesDisabled

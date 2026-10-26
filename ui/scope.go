@@ -21,7 +21,8 @@ type focusScope struct{ modal, anchor, group uint64 }
 // frame is committed, and returns the scope to restore after them.
 func (rt *engine) enterScope(e *node) focusScope {
 	saved := rt.commitScope
-	if e.flags&flagModal != 0 {
+	if e.flags&flagModal != 0 && !rt.commitHidden {
+		// A Hidden dialog scopes nothing.
 		rt.commitScope = focusScope{modal: e.id}
 		rt.modal, rt.modalLayer = e.id, 0
 		for l := e; l.parent != nil; l = l.parent {

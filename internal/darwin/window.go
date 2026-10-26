@@ -1053,6 +1053,11 @@ func (w *window) SetActiveAppearance(v bool) {
 	}
 }
 
+// SetWindowButtonsTheme does nothing: the traffic lights look the same in
+// both appearances, and an appearance of the window's own would change its
+// page's too.
+func (w *window) SetWindowButtonsTheme(string) {}
+
 // removeEffect takes the material out of the window.
 func (w *window) removeEffect() {
 	if w.effect != 0 {

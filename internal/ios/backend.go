@@ -449,7 +449,12 @@ func (theme) Preferences() platform.Preferences {
 	return platform.Preferences{ReduceMotion: bool(motion), HighContrast: bool(contrast), TextScale: float64(scale)}
 }
 
-type app struct{ platform.AppController }
+type app struct {
+	platform.AppController
+	b *Backend
+}
+
+func (a app) IsActive() bool { return a.b.active }
 
 func (app) SetBadge(label string) {
 	n, _ := strconv.Atoi(label)
@@ -466,7 +471,7 @@ func (app) Badge() string {
 	return strconv.Itoa(n)
 }
 
-func (b *Backend) App() platform.AppController { return app{b.Backend.App()} }
+func (b *Backend) App() platform.AppController { return app{AppController: b.Backend.App(), b: b} }
 func (app) Locale() string                     { return ownedString(C.mygo_ios_locale()) }
 
 type shell struct{ platform.Shell }

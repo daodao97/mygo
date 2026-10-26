@@ -149,7 +149,7 @@ func shapeTextAligned(s string, font Font, shape TextShape, spans []Span) *TextL
 
 // TextObject is an inline object of a TextLayout (Span.ObjectWidth): the
 // UTF-16 offset of its object replacement character, and its box,
-// standing on its line's baseline.
+// standing on its line's baseline, ObjectDescent of it below.
 type TextObject struct {
 	Index int
 	Rect  Rect
@@ -170,19 +170,22 @@ func (t *TextLayout) Objects() []TextObject {
 			if spans == nil {
 				spans = text.DecodeSpans(t.l.Params.Spans)
 			}
-			h := float32(0)
-			end := 0
-			for _, sp := range spans {
-				end = sp.End
-				if g.Cluster < end {
-					h = sp.ObjectHeight
-					break
-				}
-			}
-			out = append(out, TextObject{Index: t.units[g.Cluster], Rect: Rect{X: g.X, Y: line.Baseline - h, W: g.Advance, H: h}})
+			h, d := objectMetrics(spans, g.Cluster)
+			out = append(out, TextObject{Index: t.units[g.Cluster], Rect: Rect{X: g.X, Y: line.Baseline - h, W: g.Advance, H: h + d}})
 		}
 	}
 	return out
+}
+
+// objectMetrics returns the height above the baseline and the descent
+// below it of the inline object at rune i of a text of spans.
+func objectMetrics(spans []text.Span, i int) (h, d float32) {
+	for _, sp := range spans {
+		if i < sp.End {
+			return sp.ObjectHeight, sp.ObjectDescent
+		}
+	}
+	return 0, 0
 }
 
 // Size is the layout's extent in DIPs.

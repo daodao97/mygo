@@ -134,3 +134,98 @@ func TestLinuxCommandName(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildLinuxSlug builds an app with a slug of its own, which names the
+// executable, the Debian package and its directory, the update archive
+// and install.sh's files and variables.
+func TestBuildLinuxSlug(t *testing.T) {
+	if testing.Short() {
+		t.Skip("building the app")
+	}
+	dir := t.TempDir()
+	data := templateData{Name: "云音乐", Slug: "cloud-music", Module: "cloud-music", Identifier: "com.example.cloudmusic"}
+	if err := writeTemplate(dir, nativeTemplate, data); err != nil {
+		t.Fatal(err)
+	}
+	config := `{"name": "云音乐", "slug": "cloud-music", "identifier": "com.example.cloudmusic", "out": "build", "linux": {"webview": false}}`
+	if err := os.WriteFile(filepath.Join(dir, jsonConfig), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	checkout, _ := filepath.Abs(filepath.Join("..", ".."))
+	sum, _ := os.ReadFile(filepath.Join(checkout, "go.sum"))
+	gomod := "module cloud-music\n\ngo " + goVersion() + "\n\nrequire github.com/egoist/mygo v0.0.0\n\nreplace github.com/egoist/mygo => " + checkout + "\n"
+	if os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644) != nil || os.WriteFile(filepath.Join(dir, "go.sum"), sum, 0o644) != nil {
+		t.Fatal("cannot write the module")
+	}
+	t.Setenv("GOFLAGS", "-mod=mod")
+	t.Setenv("GOPROXY", "off")
+	t.Setenv("GOWORK", "off")
+	t.Setenv("MYGO_UPDATER_PRIVATE_KEY", "")
+	if err := runBuild([]string{"-platform", "linux/amd64", dir}); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "build", "linux-amd64")
+	for _, name := range []string{"cloud-music", "cloud-music.desktop", "cloud-music-0.1.0-linux-amd64.tar.gz", "cloud-music_0.1.0_amd64.deb"} {
+		if _, err := os.Stat(filepath.Join(out, name)); err != nil {
+			t.Error(err)
+		}
+	}
+	if t.Failed() {
+		return
+	}
+	files := debData(t, filepath.Join(out, "cloud-music_0.1.0_amd64.deb"))
+	if _, ok := files["opt/cloud-music/cloud-music"]; !ok {
+		t.Error("the package has no opt/cloud-music/cloud-music")
+	}
+	if !strings.HasPrefix(debMember(t, filepath.Join(out, "cloud-music_0.1.0_amd64.deb"), "control.tar.gz")["control"], "Package: cloud-music\n") {
+		t.Error("the package is not named cloud-music")
+	}
+	script, err := os.ReadFile(filepath.Join(out, installScriptName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(script), "\nname='cloud-music'\n") {
+		t.Errorf("install.sh does not install cloud-music:\n%s", script)
+	}
+	// Its variables for tests, which it has with updates.
+	c := &Config{Name: "云音乐", Slug: "cloud-music", Updates: &Updates{PublicKey: "key", GitHub: "me/cloud-music"}}
+	if script := installScript(c); !strings.Contains(script, "${CLOUD_MUSIC_DOWNLOAD_URL:-}") {
+		t.Errorf("install.sh has no CLOUD_MUSIC_DOWNLOAD_URL:\n%s", script)
+	}
+}
+
+func TestSlug(t *testing.T) {
+	for slug, ok := range map[string]bool{"": true, "my-app": true, "app2": true, "My-App": false, "-app": false, "app-": false, "my--app": false, "my_app": false, "云音乐": false} {
+		c := &Config{Slug: slug}
+		if err := c.validate(); (err == nil) != ok {
+			t.Errorf("slug %q: %v", slug, err)
+		}
+	}
+}
+
+// TestSlugify gives names in Chinese, Japanese and Korean slugs of their
+// readings, which they had none of before but "app" or what Latin they have.
+func TestSlugify(t *testing.T) {
+	for name, want := range map[string]string{
+		"Hello, World!": "hello-world",
+		"!!!":           "app",
+		"MyGo 云音乐":      "mygo-yun-yin-le",
+		"云音乐Pro 2":      "yun-yin-le-pro-2",
+		"ラーメン":          "ramen",
+		"とうきょう":         "toukyou",
+		"キャッシュ・マッチ":     "kyasshu-matchi",
+		"じゃんけん":         "janken",
+		"ファイル":          "fairu",
+		"ウィキ":           "wiki",
+		"서울":            "seoul",
+		"한국어 사전":        "hangugeo-sajeon",
+		"東京タワー":         "dong-jing-tawa",
+	} {
+		if got := slugify(name); got != want {
+			t.Errorf("slugify(%q) = %q, want %q", name, got, want)
+		}
+	}
+	if len(kanaRomaji) != 0x3096-0x3041+1 {
+		t.Errorf("%d romanizations of kana, for %d", len(kanaRomaji), 0x3096-0x3041+1)
+	}
+}
