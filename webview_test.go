@@ -190,6 +190,10 @@ func TestWebViewPage(t *testing.T) {
 	if got := v.Page().URL(); got != "https://example.com/" {
 		t.Errorf("URL %q", got)
 	}
+	fv.SetProcessID(31)
+	if got := v.Page().ProcessID(); got != 31 {
+		t.Errorf("ProcessID %d, want 31", got)
+	}
 }
 
 // SetBackgroundColor fills the web view, not its window, and one in

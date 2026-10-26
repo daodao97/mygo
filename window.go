@@ -1335,6 +1335,22 @@ func (p *Page) SetUserAgent(ua string) { p.w.page(func(n platform.Window) { n.Se
 // UserAgent returns the user agent of the page.
 func (p *Page) UserAgent() string { return pageGet(p.w, platform.Window.UserAgent) }
 
+// ProcessID returns the ID of the operating system's process that runs
+// the page, 0 when it is unknown: before the web view started one, after
+// the window closed, for a window showing native UI, and on Linux. Which
+// process it is depends on the platform:
+//
+//   - macOS: the page's web content process (WebKit's
+//     com.apple.WebKit.WebContent), from WebKit's private
+//     -[WKWebView _webProcessIdentifier]; 0 when WebKit doesn't answer it.
+//     WebKit may give a page another process as it navigates to another
+//     site or after its process crashed, so ask again rather than keep it.
+//   - Windows: WebView2's browser process (msedgewebview2.exe), the
+//     parent of the page's renderer and other processes, which the app's
+//     web views share (ICoreWebView2::get_BrowserProcessId).
+//   - Linux: always 0, WebKitGTK has no API for the web process of a page.
+func (p *Page) ProcessID() int { return pageGet(p.w, platform.Window.ProcessID) }
+
 // OpenDevTools opens the web inspector (unless disabled with
 // PageOptions.DevTools).
 func (p *Page) OpenDevTools() { p.w.page(platform.Window.OpenDevTools) }

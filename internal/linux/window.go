@@ -1170,6 +1170,10 @@ func (w *window) UserAgent() string {
 	return goStr(webkitSettingsGetUserAgent(webkitWebViewGetSettings(w.web)))
 }
 
+// ProcessID is 0: WebKitGTK has no public API for the web process of a
+// view (webkit_web_view_get_page_id is WebKit's own page identifier).
+func (w *window) ProcessID() int { return 0 }
+
 func (w *window) OpenDevTools() {
 	if w.opts.DevTools {
 		webkitWebInspectorShow(webkitWebViewGetInspector(w.web))

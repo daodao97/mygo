@@ -287,6 +287,7 @@ func (n *webViewNative) SetZoom(factor float64) { n.web.SetZoom(factor) }
 func (n *webViewNative) Zoom() float64          { return n.web.Zoom() }
 func (n *webViewNative) SetUserAgent(ua string) { n.web.SetUserAgent(ua) }
 func (n *webViewNative) UserAgent() string      { return n.web.UserAgent() }
+func (n *webViewNative) ProcessID() int         { return n.web.ProcessID() }
 func (n *webViewNative) OpenDevTools()          { n.web.OpenDevTools() }
 func (n *webViewNative) CloseDevTools()         { n.web.CloseDevTools() }
 func (n *webViewNative) IsDevToolsOpened() bool { return n.web.IsDevToolsOpened() }

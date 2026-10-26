@@ -688,6 +688,25 @@ adopts. There:
 of a page control its inspector, when it has one, see
 [the web inspector](frontend.md#the-web-inspector).
 
+### The page's process
+
+`ProcessID` returns the ID of the operating system's process that runs a
+page, for an app's own task manager, memory reports or telling which window
+a busy process belongs to; 0 when it is unknown:
+
+```go
+pid := win.Page().ProcessID()
+```
+
+| Platform | The process |
+|---|---|
+| macOS | the page's web content process (`com.apple.WebKit.WebContent`), from WebKit's private `_webProcessIdentifier`; 0 if WebKit stops answering it. A page may move to another process when it navigates to another site or after its process crashed, so ask again rather than keep the ID |
+| Windows | WebView2's browser process (`msedgewebview2.exe`), which the app's web views share and whose children render the pages |
+| Linux | none: WebKitGTK has no API for the process of a page, so it is always 0 |
+
+It is 0 too before the web view has started a process, after the window
+closed, and for a window showing native UI.
+
 ## Finding windows
 
 - `mygo.Windows()` lists the open windows, `mygo.FocusedWindow()` returns

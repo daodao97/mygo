@@ -31,7 +31,27 @@ func TestPage(t *testing.T) {
 	if err := p.LoadURL("https://example.com/b"); err != nil || p.URL() != "https://example.com/b" {
 		t.Errorf("LoadURL: %v, URL %q", err, p.URL())
 	}
+	if got := p.ProcessID(); got != 0 {
+		t.Errorf("ProcessID before the backend knows one: %d", got)
+	}
+	fw.SetProcessID(4242)
+	if got := p.ProcessID(); got != 4242 {
+		t.Errorf("ProcessID %d, want 4242", got)
+	}
 	if _, err := EvalAs[int]((*Page)(nil), "1"); !errors.Is(err, errNoPage) {
 		t.Errorf("EvalAs of no page: %v", err)
+	}
+}
+
+func TestPageProcessIDAfterClose(t *testing.T) {
+	w := NewWindow(WindowOptions{Hidden: true, URL: "https://example.com/"})
+	fb.Windows()[len(fb.Windows())-1].SetProcessID(7)
+	p := w.Page()
+	if got := p.ProcessID(); got != 7 {
+		t.Fatalf("ProcessID %d, want 7", got)
+	}
+	w.Destroy()
+	if got := p.ProcessID(); got != 0 {
+		t.Errorf("ProcessID of a closed window's page: %d", got)
 	}
 }

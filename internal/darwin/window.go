@@ -1327,6 +1327,16 @@ func (w *window) UserAgent() string {
 	return s
 }
 
+// ProcessID returns the web content process of the page from WebKit's
+// private -[WKWebView _webProcessIdentifier] (a pid_t), 0 when WebKit
+// doesn't answer it or runs no process for the page yet.
+func (w *window) ProcessID() int {
+	if !respondsTo(w.web, "_webProcessIdentifier") {
+		return 0
+	}
+	return int(int32(send(w.web, "_webProcessIdentifier")))
+}
+
 func (w *window) inspector() id {
 	if !w.opts.DevTools || !respondsTo(w.web, "_inspector") {
 		return 0

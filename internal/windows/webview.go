@@ -913,6 +913,20 @@ func (w *window) UserAgent() string {
 	return userAgentOf(s2)
 }
 
+// ProcessID returns the browser process of the web view
+// (ICoreWebView2::get_BrowserProcessId), which every web view of the
+// app's environment shares, 0 before the web view is made.
+func (w *window) ProcessID() int {
+	if w.webview == 0 {
+		return 0
+	}
+	var pid uint32
+	if r := comCall(w.webview, wvGetBrowserProcessId, uintptr(unsafe.Pointer(&pid))); failed(r) {
+		return 0
+	}
+	return int(pid)
+}
+
 func (w *window) OpenDevTools() {
 	if !w.opts.DevTools {
 		return

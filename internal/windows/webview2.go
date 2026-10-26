@@ -50,6 +50,7 @@ const (
 	wvReload                                 = 31
 	wvAddWebMessageReceived                  = 34
 	wvCallDevToolsProtocolMethod             = 36
+	wvGetBrowserProcessId                    = 37
 	wvGetCanGoBack                           = 38
 	wvGetCanGoForward                        = 39
 	wvGoBack                                 = 40

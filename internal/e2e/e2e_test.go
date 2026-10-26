@@ -1133,6 +1133,24 @@ func TestWindowGeometryAndState(t *testing.T) {
 	}
 }
 
+// ProcessID is the page's web content process on macOS and WebView2's
+// browser process on Windows, never the app's own; Linux has none.
+func TestPageProcessID(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200})
+	w.Page().LoadHTML(`<p>process</p>`, "")
+	waitFor(t, w, "document.readyState === 'complete'")
+	pid := w.Page().ProcessID()
+	if runtime.GOOS == "linux" {
+		if pid != 0 {
+			t.Errorf("ProcessID = %d on Linux, want 0", pid)
+		}
+		return
+	}
+	if pid <= 0 || pid == os.Getpid() {
+		t.Errorf("ProcessID = %d, want another process than the app's (%d)", pid, os.Getpid())
+	}
+}
+
 // ContentBounds is where the page is on the screen: inside Bounds, below
 // the title bar and borders of a window manager's frame and below a menu
 // bar. SetContentBounds puts the page there.

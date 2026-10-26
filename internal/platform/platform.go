@@ -591,6 +591,10 @@ type Page interface {
 	Zoom() float64
 	SetUserAgent(ua string)
 	UserAgent() string
+	// ProcessID returns the ID of the operating system's process that
+	// the backend reports for the page (see Page.ProcessID in package
+	// mygo for which one), 0 when it reports none.
+	ProcessID() int
 	OpenDevTools()
 	CloseDevTools()
 	IsDevToolsOpened() bool

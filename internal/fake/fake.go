@@ -539,6 +539,7 @@ type Window struct {
 	zoom      float64
 	closed    bool
 	devtools  bool
+	pid       int // SetProcessID
 	// Dropped is what DroppedFiles returns, once.
 	Dropped []string
 	// PDF holds the options of the last PrintToPDF.
@@ -766,11 +767,16 @@ func (w *Window) SetZoom(f float64)                  { w.mu.Lock(); w.zoom = f; 
 func (w *Window) Zoom() float64                      { w.mu.Lock(); defer w.mu.Unlock(); return w.zoom }
 func (w *Window) SetUserAgent(string)                {}
 func (w *Window) UserAgent() string                  { return "fake" }
+func (w *Window) ProcessID() int                     { w.mu.Lock(); defer w.mu.Unlock(); return w.pid }
 func (w *Window) OpenDevTools()                      { w.mu.Lock(); w.devtools = true; w.mu.Unlock() }
 func (w *Window) CloseDevTools()                     { w.mu.Lock(); w.devtools = false; w.mu.Unlock() }
 func (w *Window) IsDevToolsOpened() bool             { w.mu.Lock(); defer w.mu.Unlock(); return w.devtools }
 func (w *Window) CapturePage(cb func([]byte, error)) { cb([]byte("png"), nil) }
 func (w *Window) Print()                             {}
+
+// SetProcessID sets the process ID the page reports, as a backend whose
+// web view runs in a process of that ID; 0, the default, is none known.
+func (w *Window) SetProcessID(pid int) { w.mu.Lock(); w.pid = pid; w.mu.Unlock() }
 
 // addHTML records a document LoadHTML loads.
 func (w *Window) addHTML(html string) {
