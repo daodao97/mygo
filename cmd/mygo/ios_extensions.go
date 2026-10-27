@@ -48,7 +48,7 @@ func iosVersionParts(v string) ([3]int, error) {
 }
 func validateIOSNative(n IOSNative) error {
 	for _, s := range n.Support {
-		if s != "actions" && s != "shared-store" && s != "widgets" {
+		if s != "actions" && s != "shared-store" && s != "widgets" && s != "browser" && s != "live-activities" {
 			return fmt.Errorf("unknown iOS native support %q", s)
 		}
 	}
@@ -269,7 +269,7 @@ func iosPrepareNative(c *Config, host string, privacy []byte) ([]iosNativeTarget
 			}
 			t.libraries = append(t.libraries, rel)
 		}
-		support := map[string]string{"actions": "MyGoActions.swift", "shared-store": "MyGoSharedStore.swift", "widgets": "MyGoWidgets.swift"}
+		support := map[string]string{"actions": "MyGoActions.swift", "shared-store": "MyGoSharedStore.swift", "widgets": "MyGoWidgets.swift", "browser": "MyGoBrowser.swift", "live-activities": "MyGoLiveActivities.swift"}
 		seen := map[string]bool{}
 		for _, s := range t.native.Support {
 			if seen[s] {
@@ -365,13 +365,17 @@ func iosNativeProject(base string, c *Config, team string, targets []iosNativeTa
 				frameworks = append(frameworks, "AppIntents")
 			case "widgets":
 				frameworks = append(frameworks, "WidgetKit")
+			case "browser":
+				frameworks = append(frameworks, "SafariServices")
+			case "live-activities":
+				frameworks = append(frameworks, "ActivityKit")
 			}
 		}
 		flags := []string{"$(inherited)"}
 		for _, f := range frameworks {
 			linkage := "-framework"
 			version, _ := iosVersionParts(t.minimum)
-			if f == "AppIntents" && version[0] < 16 {
+			if f == "AppIntents" && version[0] < 16 || f == "ActivityKit" && version[0] < 17 {
 				linkage = "-weak_framework"
 			}
 			flags = append(flags, linkage, f)
@@ -384,7 +388,11 @@ func iosNativeProject(base string, c *Config, team string, targets []iosNativeTa
 		for _, p := range t.headers {
 			headers = append(headers, "$(PROJECT_DIR)/"+filepath.ToSlash(p))
 		}
-		settings := ` LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");` + " SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; HEADER_SEARCH_PATHS = " + quoted(headers) + "; SWIFT_ACTIVE_COMPILATION_CONDITIONS = " + quoted(append([]string{"$(inherited)"}, t.native.SwiftConditions...)) + ";"
+		conditions := append([]string{"$(inherited)"}, t.native.SwiftConditions...)
+		if t.name != "MyGoApp" {
+			conditions = append(conditions, "MYGO_LIVE_ACTIVITY_EXTENSION")
+		}
+		settings := ` LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");` + " SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; HEADER_SEARCH_PATHS = " + quoted(headers) + "; SWIFT_ACTIVE_COMPILATION_CONDITIONS = " + quoted(conditions) + ";"
 		if t.name == "MyGoApp" {
 			embedSwift := false
 			for _, target := range targets {

@@ -171,7 +171,7 @@ export interface IOSNativeConfig {
   frameworks?: string[];
   linkerFlags?: string[];
   swiftConditions?: string[];
-  support?: ("actions" | "shared-store" | "widgets")[];
+  support?: ("actions" | "shared-store" | "widgets" | "browser" | "live-activities")[];
   /** Replaces host main.m; unavailable on extension targets. */
   entryPoint?: string;
 }

@@ -159,6 +159,35 @@ It requests WidgetKit refreshes, optionally including iOS 18 Controls. Actual
 refresh timing remains system-scheduled. Keep snapshot timestamps visible and
 define stale/missing-data UI in the application.
 
+## In-app browser and Live Activities
+
+The host can opt into `ios.native.support: ["browser", "live-activities"]`.
+`mygo.OpenInAppBrowser(ctx, url)` presents `SFSafariViewController` and returns
+when dismissed; cancellation dismisses the controller. It accepts HTTP(S) URLs
+without credentials. It does not forward network ports or bypass TLS validation.
+
+`mygo.UpdateLiveActivity(ctx, id, state)` creates/updates an ActivityKit activity
+on iOS 16.2+, returning its system identifier and current push token.
+`mygo.OnLiveActivityToken` delivers token rotation and dismissal on the main
+thread. `mygo.EndLiveActivity` ends the logical identifier. Creation requires an
+active app and system permission. Other platforms return `ErrUnsupported`.
+
+The app must set `ios.infoPlist.NSSupportsLiveActivities: true` and embed a
+WidgetKit extension. Select `live-activities` in that extension's native support
+to get the same `MyGoLiveActivityAttributes` type, then implement its own
+`ActivityConfiguration`. The packager excludes host execution code in extensions.
+The Codable content-state fields match `mygo.LiveActivityState`; keep sensitive
+content out and show stale state explicitly. The host helper marks updates stale
+after two minutes. ActivityKit does not grant the app background polling time.
+
+For background updates, a trusted provider can send `apns.Payload{LiveActivity:
+&apns.LiveActivityPayload{Timestamp: ..., Event: "update", ContentState: ...}}`.
+Only update/end are supported. `apns.Provider` uses the configured application
+topic plus `.push-type.liveactivity`, push type `liveactivity` and priority 5.
+Activity tokens are distinct from alert device tokens; keep them private, remove
+them on dismissal/provider rejection, and never distribute provider credentials
+to the mobile app.
+
 ## Verification
 
 `go test -race ./sharedstore` tests complete generations, bounded/confined files,

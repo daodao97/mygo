@@ -247,6 +247,9 @@ func (p *Provider) Send(ctx context.Context, n Notification) (Response, error) {
 	if client == nil {
 		return Response{}, errors.New("apns: provider is not configured")
 	}
+	if n.Payload.LiveActivity != nil {
+		topic += ".push-type.liveactivity"
+	}
 	if n.Topic != "" && n.Topic != topic {
 		return Response{}, errors.New("apns: notification topic differs from configured application")
 	}

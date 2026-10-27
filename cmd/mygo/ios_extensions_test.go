@@ -115,3 +115,25 @@ func TestIOSNativeCopyRejectsExternalLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestIOSLiveActivityAndBrowserOptInStaging(t *testing.T) {
+	root := t.TempDir()
+	c := Config{root: root, Identifier: "org.example.app", Version: "1.0.0", IOS: IOS{Native: IOSNative{Support: []string{"browser", "live-activities"}}, Extensions: []IOSExtension{{Name: "Live", ExtensionPoint: "com.apple.widgetkit-extension", MinimumSystemVersion: "16.2", Native: IOSNative{Support: []string{"live-activities"}}}}}}
+	if err := validateIOSPackaging(&c, buildOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	host := filepath.Join(root, "export")
+	if err := os.MkdirAll(host, 0755); err != nil {
+		t.Fatal(err)
+	}
+	targets, err := iosPrepareNative(&c, host, []byte("privacy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := iosNativeProject(iosProject(&c, "15.0", "TEAM"), &c, "TEAM", targets)
+	for _, want := range []string{"MyGoBrowser.swift", "MyGoLiveActivities.swift", "SafariServices", "ActivityKit", "MYGO_LIVE_ACTIVITY_EXTENSION", "-weak_framework"} {
+		if !strings.Contains(project, want) {
+			t.Errorf("missing native support %s", want)
+		}
+	}
+}

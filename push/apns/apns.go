@@ -148,9 +148,28 @@ type Payload struct {
 	Data                             map[string]string
 	Silent                           bool
 	Badge                            *int
+	LiveActivity                     *LiveActivityPayload
+}
+
+// LiveActivityPayload updates/ends an existing ActivityKit activity. Its
+// ContentState must match the widget extension's Codable state. No alert or
+// normal notification metadata is mixed into this dedicated push channel.
+type LiveActivityPayload struct {
+	Timestamp     int64           `json:"timestamp"`
+	Event         string          `json:"event"`
+	ContentState  json.RawMessage `json:"content-state"`
+	StaleDate     int64           `json:"stale-date,omitempty"`
+	DismissalDate int64           `json:"dismissal-date,omitempty"`
 }
 
 func (p Payload) MarshalJSON() ([]byte, error) {
+	if p.LiveActivity != nil {
+		v := p.LiveActivity
+		if v.Timestamp <= 0 || (v.Event != "update" && v.Event != "end") || !json.Valid(v.ContentState) || len(v.ContentState) == 0 || v.ContentState[0] != '{' {
+			return nil, errors.New("apns: invalid Live Activity payload")
+		}
+		return json.Marshal(map[string]any{"aps": v})
+	}
 	if p.Badge != nil && *p.Badge < 0 {
 		return nil, errors.New("apns: negative badge")
 	}
@@ -250,8 +269,13 @@ func (c *Client) send(ctx context.Context, n Notification, payload []byte, refre
 	}
 	req.Header.Set("authorization", "bearer "+bearer)
 	req.Header.Set("apns-topic", n.Topic)
-	req.Header.Set("apns-push-type", "alert")
-	req.Header.Set("apns-priority", "10")
+	if n.Payload.LiveActivity != nil {
+		req.Header.Set("apns-push-type", "liveactivity")
+		req.Header.Set("apns-priority", "5")
+	} else {
+		req.Header.Set("apns-push-type", "alert")
+		req.Header.Set("apns-priority", "10")
+	}
 	req.Header.Set("apns-expiration", strconv.FormatInt(max(0, n.Expiration.Unix()), 10))
 	req.Header.Set("content-type", "application/json")
 	if n.CollapseID != "" {
