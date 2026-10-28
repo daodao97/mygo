@@ -195,6 +195,42 @@ func resizeSettles(t *testing.T, r *Renderer) {
 	}
 }
 
+// TestSwapChainBackground checks that the window's swap chain shows its
+// frames unscaled, and the scene's background beyond them (#222): where the
+// window grew before the frame of its size presents, DWM shows that, not
+// black.
+func TestSwapChainBackground(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	r, err := New(hiddenWindow(t, 200, 150))
+	if err != nil {
+		t.Skip("no Direct3D 11:", err)
+	}
+	defer r.Release()
+	const scGetDesc1, scGetBackgroundColor = 18, 26 // IDXGISwapChain1
+	for _, bg := range []scene.Color{{R: 255, G: 255, B: 255, A: 255}, {R: 24, G: 24, B: 27, A: 255}, {}} {
+		if err := r.draw(&scene.Scene{Width: 200, Height: 150, Background: bg}); err != nil {
+			t.Fatal(err)
+		}
+		var desc swapChainDesc1
+		call(r.swapChain, scGetDesc1, uintptr(unsafe.Pointer(&desc)))
+		if desc.Scaling != scalingNone {
+			t.Fatalf("the swap chain scales frames as %d; want DXGI_SCALING_NONE", desc.Scaling)
+		}
+		var got [4]float32
+		call(r.swapChain, scGetBackgroundColor, uintptr(unsafe.Pointer(&got)))
+		want := [4]float32{float32(bg.R) / 255, float32(bg.G) / 255, float32(bg.B) / 255, 1}
+		if bg.A == 0 {
+			want = [4]float32{0, 0, 0, 1}
+		}
+		for i := range 3 {
+			if d := got[i] - want[i]; d < -0.002 || d > 0.002 {
+				t.Fatalf("background %v: the swap chain shows %v beyond the frame; want %v", bg, got, want)
+			}
+		}
+	}
+}
+
 // releaseImages arms every image of a scene to keep only the renderer's
 // copy of its pixels: the restore re-makes them from a copy it took, and
 // dropped counts the uploads and drops them again.

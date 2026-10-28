@@ -32,6 +32,12 @@ ui.Box(c).Size(200, 40).Draw(func(p *ui.Painter, r ui.Rect) {
 })
 ```
 
+Paragraphs a view lays out itself, as the pages of a book reader, are
+shaped once with `ui.ShapeRichTextWith`, justified and indented if need
+be, and drawn with `Painter.TextLayout`; their `Lines` tell where each
+line is, to break pages between them (see [retained text
+geometry](text-input-client.md#retained-text-geometry)).
+
 Draw functions only paint: MyGo may call them more than once a frame.
 `Painter.Icon` and `Painter.Image` draw SVGs and bitmaps,
 `Painter.ImageRegion` parts of bitmaps (see [Parts of

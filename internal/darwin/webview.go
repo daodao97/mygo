@@ -238,6 +238,9 @@ func (w *window) closeWebView() {
 		}
 		w.stopObserving()
 		send(w.ucc, "removeScriptMessageHandlerForName:", uintptr(nsString("mygo")))
+		if w.opts.PictureInPicture {
+			send(w.ucc, "removeScriptMessageHandlerForName:", uintptr(nsString(pipHandler)))
+		}
 		send(w.ucc, "removeAllUserScripts")
 		send(w.web, "stopLoading")
 		send(w.web, "setNavigationDelegate:", 0)

@@ -58,6 +58,8 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.cancelTouchBack()
 		rt.requestFrame()
 	case platform.SurfaceShown:
+		// A video goes on from where it stood out of sight.
+		rt.shown = rt.now()
 		if rt.held {
 			// What moves goes on from where the time puts it.
 			rt.held = false
@@ -556,8 +558,17 @@ func (rt *engine) pointerUp(button, clicks int) {
 func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool) {
 	chain := rt.appendHitChain(rt.chain[:0], rt.pointerX, rt.pointerY)
 	rt.chain = chain[:0]
-	if h := rt.handler(chain); h != nil && rt.deliver(h, InputEvent{Kind: InputScroll, DX: dx, DY: dy, Mods: mods, Precise: precise, Momentum: momentum}) {
-		return
+	// From the innermost element out, the first handling its input to
+	// take it: one whose handler leaves it passes it on, as it would
+	// without the handler, to the handlers around it, as an editor
+	// scrolls under what it shows over its text. Scroll containers move
+	// only when no handler takes it, so a handler around one, as a canvas
+	// that zooms with Ctrl and the wheel, still sees it first.
+	ev := InputEvent{Kind: InputScroll, DX: dx, DY: dy, Mods: mods, Precise: precise, Momentum: momentum}
+	for _, id := range chain {
+		if s := rt.states[id]; s != nil && s.input != nil && s.flags&flagDisabled == 0 && rt.deliver(s, ev) {
+			return
+		}
 	}
 	// Shift turns the wheel sideways: down is toward the end, which is
 	// to the left right to left.

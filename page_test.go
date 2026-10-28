@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/internal/platform"
+	"github.com/egoist/mygo/ui"
 )
 
 func TestPage(t *testing.T) {
@@ -182,4 +183,160 @@ func TestPageAudio(t *testing.T) {
 		t.Errorf("a closed window's page: IsAudible %v, IsAudioMuted %v", p.IsAudible(), p.IsAudioMuted())
 	}
 	p.SetAudioMuted(false) // does nothing
+}
+
+// TestPageBackgroundThrottling passes BackgroundThrottling to the platform,
+// for a window's page and a web view's: ThrottlingOn, the zero value,
+// leaves the page to the web view.
+func TestPageBackgroundThrottling(t *testing.T) {
+	for _, tt := range []struct {
+		throttling BackgroundThrottling
+		off        bool
+	}{{ThrottlingOn, false}, {ThrottlingOff, true}} {
+		w := NewWindow(WindowOptions{Hidden: true, Page: PageOptions{BackgroundThrottling: tt.throttling}})
+		fw := fb.Windows()[len(fb.Windows())-1]
+		if got := fw.Opts.NoBackgroundThrottling; got != tt.off {
+			t.Errorf("window with throttling %d: NoBackgroundThrottling %v, want %v", tt.throttling, got, tt.off)
+		}
+		w.Destroy()
+	}
+	w, _, s := contentWindow(t, func(c *ui.Context) {})
+	for _, throttling := range []BackgroundThrottling{ThrottlingOff, ThrottlingOn} {
+		if _, err := w.NewWebView(WebViewOptions{Page: PageOptions{BackgroundThrottling: throttling}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if views := s.WebViews(); len(views) != 2 || !views[0].Opts.NoBackgroundThrottling || views[1].Opts.NoBackgroundThrottling {
+		t.Errorf("web views %d: BackgroundThrottling not applied", len(views))
+	}
+}
+
+// TestPageAutoplay passes Autoplay to the platform, for a window's page and
+// a web view's: AutoplayUserGesture, the zero value, leaves the page to
+// the web view's policy.
+func TestPageAutoplay(t *testing.T) {
+	for _, tt := range []struct {
+		autoplay Autoplay
+		allow    bool
+	}{{AutoplayUserGesture, false}, {AutoplayAllow, true}} {
+		w := NewWindow(WindowOptions{Hidden: true, Page: PageOptions{Autoplay: tt.autoplay}})
+		fw := fb.Windows()[len(fb.Windows())-1]
+		if got := fw.Opts.Autoplay; got != tt.allow {
+			t.Errorf("window with autoplay %d: Autoplay %v, want %v", tt.autoplay, got, tt.allow)
+		}
+		w.Destroy()
+	}
+	w, _, s := contentWindow(t, func(c *ui.Context) {})
+	for _, autoplay := range []Autoplay{AutoplayAllow, AutoplayUserGesture} {
+		if _, err := w.NewWebView(WebViewOptions{Page: PageOptions{Autoplay: autoplay}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if views := s.WebViews(); len(views) != 2 || !views[0].Opts.Autoplay || views[1].Opts.Autoplay {
+		t.Errorf("web views %d: Autoplay not applied", len(views))
+	}
+}
+
+func TestPageCapture(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{Hidden: true})
+	p := w.Page()
+	type change struct {
+		kind  CaptureKind
+		state CaptureState
+	}
+	var changes []change // listeners run on the main thread, as SetCapture does
+	off := p.OnCaptureStateChanged(func(kind CaptureKind, state CaptureState) {
+		changes = append(changes, change{kind, state})
+	})
+	expect := func(what string, camera, microphone, display CaptureState, want ...change) {
+		t.Helper()
+		for kind, s := range map[CaptureKind]CaptureState{CaptureCamera: camera, CaptureMicrophone: microphone, CaptureDisplay: display} {
+			if got := p.CaptureState(kind); got != s {
+				t.Errorf("%s: CaptureState(%d) %d, want %d", what, kind, got, s)
+			}
+		}
+		if !slices.Equal(changes, want) {
+			t.Errorf("%s: changes %v, want %v", what, changes, want)
+		}
+		changes = nil
+	}
+	expect("a new page", CaptureNone, CaptureNone, CaptureNone)
+
+	// The page muted nothing: setting does nothing either.
+	p.SetCaptureState(CaptureMicrophone, CaptureMuted)
+	expect("muting a microphone the page doesn't capture", CaptureNone, CaptureNone, CaptureNone)
+
+	onMain(func() {
+		fw.SetCapture(platform.CaptureCamera, platform.CaptureActive)
+		fw.SetCapture(platform.CaptureMicrophone, platform.CaptureActive)
+	})
+	expect("a call", CaptureActive, CaptureActive, CaptureNone,
+		change{CaptureCamera, CaptureActive}, change{CaptureMicrophone, CaptureActive})
+	onMain(func() { fw.SetCapture(platform.CaptureCamera, platform.CaptureActive) })
+	expect("the camera again", CaptureActive, CaptureActive, CaptureNone) // told only when it changes
+
+	p.SetCaptureState(CaptureMicrophone, CaptureMuted)
+	expect("the microphone muted", CaptureActive, CaptureMuted, CaptureNone, change{CaptureMicrophone, CaptureMuted})
+	p.SetCaptureState(CaptureMicrophone, CaptureActive)
+	expect("the microphone unmuted", CaptureActive, CaptureActive, CaptureNone, change{CaptureMicrophone, CaptureActive})
+	p.SetCaptureState(CaptureCamera, CaptureNone)
+	expect("the camera stopped", CaptureNone, CaptureActive, CaptureNone, change{CaptureCamera, CaptureNone})
+	onMain(func() { fw.SetCapture(platform.CaptureDisplay, platform.CaptureActive) })
+	expect("sharing the screen", CaptureNone, CaptureActive, CaptureActive, change{CaptureDisplay, CaptureActive})
+
+	// Unknown kinds and states.
+	p.SetCaptureState(CaptureKind(3), CaptureMuted)
+	p.SetCaptureState(CaptureKind(-1), CaptureMuted)
+	p.SetCaptureState(CaptureMicrophone, CaptureState(3))
+	p.SetCaptureState(CaptureMicrophone, CaptureState(-1))
+	if got := p.CaptureState(CaptureKind(3)); got != CaptureNone {
+		t.Errorf("CaptureState of an unknown kind: %d", got)
+	}
+	onMain(func() { fw.H.CaptureStateChanged(platform.CaptureKind(3), platform.CaptureActive) })
+	expect("unknown kinds and states", CaptureNone, CaptureActive, CaptureActive)
+
+	off()
+	onMain(func() { fw.SetCapture(platform.CaptureDisplay, platform.CaptureNone) })
+	expect("after off", CaptureNone, CaptureActive, CaptureNone)
+
+	w.Destroy()
+	if got := p.CaptureState(CaptureMicrophone); got != CaptureNone {
+		t.Errorf("a closed window's page: CaptureState %d", got)
+	}
+	p.SetCaptureState(CaptureMicrophone, CaptureMuted) // does nothing
+}
+
+// TestPagePictureInPicture passes PictureInPicture to the backend, and
+// moves the page's video into picture in picture and back.
+func TestPagePictureInPicture(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{Hidden: true, Page: PageOptions{PictureInPicture: true}})
+	if !fw.Opts.PictureInPicture {
+		t.Error("PictureInPicture not passed to the backend")
+	}
+	if _, plain := testWindow(t, WindowOptions{Hidden: true}); plain.Opts.PictureInPicture {
+		t.Error("picture in picture on by default")
+	}
+	p := w.Page()
+	if p.IsPictureInPictureActive() {
+		t.Error("a new page's video in picture in picture")
+	}
+	p.TogglePictureInPicture()
+	if !p.IsPictureInPictureActive() {
+		t.Error("TogglePictureInPicture did not move the video out")
+	}
+	// From the main thread, as an event listener asks.
+	if !onMainValue(p.IsPictureInPictureActive) {
+		t.Error("IsPictureInPictureActive on the main thread: false")
+	}
+	p.TogglePictureInPicture()
+	if p.IsPictureInPictureActive() {
+		t.Error("TogglePictureInPicture again did not move the video back")
+	}
+
+	p.TogglePictureInPicture()
+	w.Destroy()
+	if p.IsPictureInPictureActive() {
+		t.Error("a closed window's page: IsPictureInPictureActive true")
+	}
+	p.TogglePictureInPicture() // does nothing
 }

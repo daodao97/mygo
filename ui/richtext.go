@@ -44,6 +44,12 @@ type Span struct {
 	// below the baseline, as math's subscripts and fractions go: the line
 	// makes room for it.
 	ObjectWidth, ObjectHeight, ObjectDescent float32
+	// BaselineShift raises the span's text, or its objects, that many
+	// DIPs above the baseline, or lowers it when negative, as superscripts
+	// and subscripts with a smaller Size: footnote references, exponents,
+	// chemical formulas. The line makes room for it, and its underline
+	// and strikethrough go with it.
+	BaselineShift float32
 }
 
 // RichText creates a text whose spans differ in style, over the style of
@@ -172,7 +178,7 @@ func (sc *spanCache) update(spans []Span) {
 // layout.
 func spanStyle(s Span, end int) text.Span {
 	return text.Span{End: end, Family: s.Font, Size: s.Size, Weight: s.Weight, Italic: s.Italic, LetterSpacing: s.LetterSpacing, Features: s.Features, Lang: s.Lang,
-		ObjectWidth: s.ObjectWidth, ObjectHeight: s.ObjectHeight, ObjectDescent: s.ObjectDescent}
+		ObjectWidth: s.ObjectWidth, ObjectHeight: s.ObjectHeight, ObjectDescent: s.ObjectDescent, BaselineShift: s.BaselineShift}
 }
 
 // encodeSpans encodes the styles of spans for a layout.
@@ -339,7 +345,8 @@ func (sp *spanPaint) backgrounds(p *Painter, line *text.Line, x, y float32) {
 		if r := sp.spans[k].Radius; r > 0 {
 			size := line.Glyphs[i].Size
 			px := min(size*0.22, r)
-			p.Fill(Rect{x + x0 - px, y + line.Baseline - size*0.98, x1 - x0 + 2*px, size * 1.32}, sp.spans[k].Background, r)
+			base := line.Baseline - sp.spans[k].BaselineShift
+			p.Fill(Rect{x + x0 - px, y + base - size*0.98, x1 - x0 + 2*px, size * 1.32}, sp.spans[k].Background, r)
 			return
 		}
 		p.Fill(Rect{x + x0, y + line.Y, x1 - x0, line.Height}, sp.spans[k].Background, 0)

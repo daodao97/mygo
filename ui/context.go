@@ -267,7 +267,7 @@ func (c *context) rekey(e *node, k any) {
 		// Another element of the pass has the key under the same parent.
 		rt.duplicateKey(id, k)
 	}
-	e.id, e.st = id, st
+	e.id, e.st, e.key = id, st, k
 	if rt.insp.open {
 		rt.insp.noteKey(id, k)
 		if id == rt.insp.selected {

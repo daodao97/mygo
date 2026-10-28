@@ -65,6 +65,12 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	s.MaskAtlas, s.ColorAtlas = rt.text.MaskAtlas, rt.text.ColorAtlas
 	s.Text = rt.text.TextParams()
 	opaque := root.bg.A == 255 && root.fill == fillColor && (!root.opacitySet || root.opacity >= 1)
+	s.Background = scene.Color{}
+	if opaque {
+		// What the window shows where it grew before the frame of its new
+		// size shows (platform.BackgroundSurface).
+		s.Background = root.bg.scene()
+	}
 	// The painter is the engine's, which draw callbacks get, so that
 	// painting allocates none.
 	under := rt.under[:0]

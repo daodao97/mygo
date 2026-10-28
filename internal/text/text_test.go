@@ -634,7 +634,7 @@ func TestSpans(t *testing.T) {
 }
 
 func TestEncodeSpans(t *testing.T) {
-	spans := []Span{{End: 3, Family: "A, B", Size: 1.5, Weight: 600, Italic: true, LetterSpacing: -0.5, Features: "tnum", Lang: "ja"}, {End: 9}}
+	spans := []Span{{End: 3, Family: "A, B", Size: 1.5, Weight: 600, Italic: true, LetterSpacing: -0.5, Features: "tnum", Lang: "ja"}, {End: 5, BaselineShift: -2.5}, {End: 9}}
 	if got := DecodeSpans(EncodeSpans(spans)); !slices.Equal(got, spans) {
 		t.Errorf("decoded %+v, want %+v", got, spans)
 	}

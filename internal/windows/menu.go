@@ -20,6 +20,9 @@ type menuEntry struct {
 	menu  uintptr // the HMENU holding the item
 	radio bool
 	accel string
+	// native is the number of an item of WebView2's own in a page's
+	// context menu (context_menu.go), 0 for the app's.
+	native int
 	// look is how MyGo draws the item, nil where Windows does.
 	look *menuLook
 	// icon is the item's icon, and bmp the bitmap Windows draws of it
@@ -153,13 +156,20 @@ func (b *Backend) buildMenu(m *platform.Menu, bar bool, owner int, accels map[ac
 		if it.Checked {
 			flags |= mfChecked
 		}
-		e := &menuEntry{uid: it.ID, role: it.Role, owner: owner, menu: h, radio: it.Type == platform.MenuItemRadio, icon: it.Icon}
+		e := &menuEntry{uid: it.ID, role: it.Role, owner: owner, menu: h, radio: it.Type == platform.MenuItemRadio, icon: it.Icon, native: it.Native}
 		if !bar {
 			e.dpi = dpi
 		}
 		cmd := b.menus.add(e)
 		label := it.Label
-		if a, err := accelerator.Parse(it.Accelerator, "windows"); err == nil && it.Accelerator != "" {
+		if it.Native != 0 {
+			// WebView2's item shows its shortcut as WebView2 words it, and
+			// WebView2 hears its key.
+			if it.Accelerator != "" {
+				e.accel = it.Accelerator
+				label += "\t" + e.accel
+			}
+		} else if a, err := accelerator.Parse(it.Accelerator, "windows"); err == nil && it.Accelerator != "" {
 			e.accel = acceleratorText(a)
 			label += "\t" + e.accel
 			if vk, ok := virtualKey(a.Key); ok && accels != nil {

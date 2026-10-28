@@ -62,8 +62,10 @@ func (a *Application) TryQuit() error {
 		if a.IsSystemManaged() {
 			return platform.ErrUnsupported
 		}
-		if a.prepareQuit() {
+		if a.stopping {
 			backend().Quit()
+		} else if a.prepareQuit() {
+			a.stopLoop()
 		}
 		return nil
 	})

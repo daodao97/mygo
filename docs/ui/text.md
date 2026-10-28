@@ -119,6 +119,25 @@ ui.RichText(c,
 ).DrawObjects(func(p *ui.Painter, at int, r ui.Rect) { f.Draw(p, r) })
 ```
 
+A span's `BaselineShift` raises its text that many DIPs above the
+baseline, or lowers it when negative, as superscripts and subscripts are,
+whatever the font has for them; the line makes room for it, and the
+span's underline and strikethrough go with it:
+
+```go
+ui.RichText(c,
+	ui.Span{Text: "H"},
+	ui.Span{Text: "2", Size: 10, BaselineShift: -3},
+	ui.Span{Text: "O boils at 100 °C"},
+	ui.Span{Text: "1", Size: 10, BaselineShift: 6},
+)
+```
+
+A soft hyphen (U+00AD) in a text is a place a line may break at: it
+shows as a hyphen where a line breaks there, and as nothing elsewhere, as
+in browsers. When the hyphen itself does not fit and the line has no
+other place to break but within a word, the hyphen overflows the width.
+
 ## Elements within a sentence
 
 Text elements built in a text's `Children` continue its paragraph, as

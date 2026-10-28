@@ -154,6 +154,11 @@ type surface struct {
 	// gdiFailed tells that SetDIBitsToDevice refused a frame, which was
 	// logged once.
 	gdiFailed bool
+	// bg is the content's background (SetBackground), and bgBrush a brush
+	// of it while it is opaque, which fills what the window shows beyond
+	// the surface as it grows (fillUncovered).
+	bg      platform.Color
+	bgBrush uintptr
 
 	// layer holds the web views under the frames, once there are some
 	// (webview_embed.go): placed are where the content shows them, and
@@ -285,6 +290,56 @@ func (s *surface) RefreshRate() float64 {
 func (s *surface) AwaitRefresh() { procDwmFlush.Call() }
 
 var _ platform.RefreshSurface = (*surface)(nil)
+
+// SetBackground keeps a brush of the content's background, for the window
+// to show where it grew before the surface's frame of its new size shows
+// (platform.BackgroundSurface).
+func (s *surface) SetBackground(c platform.Color) {
+	if c == s.bg {
+		return
+	}
+	s.bg = c
+	if s.bgBrush != 0 {
+		procDeleteObject.Call(s.bgBrush)
+		s.bgBrush = 0
+	}
+	if c.A == 255 {
+		s.bgBrush, _, _ = procCreateSolidBrush.Call(uintptr(c.R) | uintptr(c.G)<<8 | uintptr(c.B)<<16)
+	}
+}
+
+var _ platform.BackgroundSurface = (*surface)(nil)
+
+// fillUncovered paints the part of the window's client area that the
+// surface does not cover yet, as the window has just grown, with the
+// content's background. Windows resizes the window, and DWM may show it at
+// its new size, before WM_SIZE fits the surface to it and the surface
+// presents the frame of that size: until then, DWM would show what the
+// window's redirection bitmap holds there, black, as the window paints no
+// background of its own. Only that part is painted, once per change of
+// size, never under the surface: GDI shows nothing over a flip-model swap
+// chain, and frames are not slowed.
+func (s *surface) fillUncovered() {
+	if s.bgBrush == 0 || s.w.noRedirect {
+		// A window without a redirection bitmap shows nothing GDI draws:
+		// its material shows there, not black.
+		return
+	}
+	var c, sr rect
+	procGetClientRect.Call(s.w.hwnd, uintptr(unsafe.Pointer(&c)))
+	procGetClientRect.Call(s.hwnd, uintptr(unsafe.Pointer(&sr))) // the surface is at the client area's origin
+	if sr.Right >= c.Right && sr.Bottom >= c.Bottom {
+		return // the window did not grow
+	}
+	dc, _, _ := procGetDC.Call(s.w.hwnd)
+	if dc == 0 {
+		return
+	}
+	procExcludeClipRect.Call(dc, 0, 0, uintptr(sr.Right), uintptr(sr.Bottom))
+	procFillRect.Call(dc, uintptr(unsafe.Pointer(&c)), s.bgBrush)
+	procReleaseDC.Call(s.w.hwnd, dc)
+	procGdiFlush.Call()
+}
 
 func (s *surface) PresentPixels(pix []byte, stride, width, height int) {
 	if len(pix) < stride*height || width == 0 || height == 0 {
@@ -750,6 +805,7 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		s.destroyAccess()
 		s.revokeFileDrops()
 		s.freeComp()
+		s.SetBackground(platform.Color{})
 		delete(s.w.b.surfaces, hwnd)
 		return 0, true
 	}

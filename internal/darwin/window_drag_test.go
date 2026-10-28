@@ -17,8 +17,12 @@ func TestWindowDragNative(t *testing.T) {
 	if eat, move := d.dragged(NSPoint{140, 70}, NSPoint{50, 480}); !eat || move {
 		t.Errorf("dragged while the window server moves the window = eat %v, move %v; want eaten, no move", eat, move)
 	}
-	if d.phase != dragNative {
-		t.Errorf("phase = %v, want native", d.phase)
+	if d.phase != dragServer {
+		t.Errorf("phase = %v, want the window server's", d.phase)
+	}
+	// Even back where it was, the window stays the window server's.
+	if eat, move := d.dragged(NSPoint{108, 50}, NSPoint{10, 500}); !eat || move {
+		t.Errorf("dragged back to the start = eat %v, move %v; want eaten, no move", eat, move)
 	}
 	d.up()
 	if d.phase != dragIdle {
@@ -44,12 +48,36 @@ func TestWindowDragMovedBeforeAsked(t *testing.T) {
 	if got, want := d.target(), (NSPoint{30, 490}); got != want {
 		t.Errorf("target = %v, want %v", got, want)
 	}
+	d.placed(d.target())
 	eat, move := d.dragged(NSPoint{150, 40}, NSPoint{30, 490})
 	if !eat || !move {
 		t.Errorf("dragged = eat %v, move %v; want eaten and moved", eat, move)
 	}
 	if got, want := d.target(), (NSPoint{60, 510}); got != want {
 		t.Errorf("target = %v, want %v", got, want)
+	}
+}
+
+// The window server begins and says so before its frame moves: the frame
+// AppKit gives lags a tenth of a second, and MyGo took the window too, which
+// shook as both moved it. The press's drags stay the window server's.
+func TestWindowDragNativeWillMove(t *testing.T) {
+	var d windowDrag
+	origin := NSPoint{10, 500}
+	d.down(1, NSPoint{100, 50})
+	d.start(1, origin)
+	d.willMove(2)
+	if d.phase != dragNative {
+		t.Fatalf("phase after another window's move = %v, want native", d.phase)
+	}
+	d.willMove(1)
+	for _, p := range []NSPoint{{108, 50}, {160, 70}} {
+		if eat, move := d.dragged(p, origin); !eat || move {
+			t.Errorf("dragged %v with the window's frame still = eat %v, move %v; want eaten, no move", p, eat, move)
+		}
+	}
+	if d.phase != dragServer {
+		t.Errorf("phase = %v, want the window server's", d.phase)
 	}
 }
 
@@ -73,6 +101,38 @@ func TestWindowDragNativeDidNotBegin(t *testing.T) {
 	}
 	if got, want := d.target(), (NSPoint{18, 500}); got != want {
 		t.Errorf("target = %v, want %v", got, want)
+	}
+}
+
+// The window server begins after MyGo took over: both would move the
+// window, which shakes. Once the window is not where MyGo put it, MyGo
+// leaves it to the window server.
+func TestWindowDragNativeBeganLate(t *testing.T) {
+	var d windowDrag
+	origin := NSPoint{10, 500}
+	d.down(1, NSPoint{100, 50})
+	d.start(1, origin)
+	if _, move := d.dragged(NSPoint{108, 50}, origin); !move {
+		t.Fatal("dragged past the slop did not move the window")
+	}
+	d.placed(d.target())
+	if _, move := d.dragged(NSPoint{120.4, 50}, NSPoint{18, 500}); !move {
+		t.Fatal("dragged with the window where MyGo put it did not move the window")
+	}
+	d.placed(d.target())
+	// AppKit rounds the origin MyGo put.
+	if eat, move := d.dragged(NSPoint{130, 51}, NSPoint{30, 500}); !eat || !move {
+		t.Errorf("dragged with the window's origin rounded = eat %v, move %v; want eaten and moved", eat, move)
+	}
+	d.placed(d.target())
+	// The window server moved it to the pointer.
+	for _, p := range []NSPoint{{160, 54}, {170, 55}} {
+		if eat, move := d.dragged(p, NSPoint{70, 496}); !eat || move {
+			t.Errorf("dragged with the window server moving the window = eat %v, move %v; want eaten, no move", eat, move)
+		}
+	}
+	if d.phase != dragServer {
+		t.Errorf("phase = %v, want the window server's", d.phase)
 	}
 }
 

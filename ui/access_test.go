@@ -353,3 +353,29 @@ func BenchmarkAccessTree(b *testing.B) {
 		tt.rt.accessTree()
 	}
 }
+
+// TestRowNamedByLabels: a list's row is named by its content, an element
+// inside it with a Label by the label rather than its texts, as the web
+// names from content with a descendant's aria-label.
+func TestRowNamedByLabels(t *testing.T) {
+	var ls ListState
+	tt := NewTester(func(c *Context) {
+		List(c, &ls, 1, func(i int) {
+			Row(c).Children(func() {
+				Box(c).Label("Done").Children(func() { Text(c, "✓") })
+				Text(c, "Write the report")
+			})
+		}).Fill()
+	}, 320, 240)
+	tt.rt.access = true
+	tt.Frame()
+	for _, n := range tt.rt.accessTree().Nodes {
+		if n.Role == platform.RoleListItem {
+			if n.Label != "Done Write the report" {
+				t.Errorf("row named %q, want %q", n.Label, "Done Write the report")
+			}
+			return
+		}
+	}
+	t.Error("no row for assistive technology")
+}

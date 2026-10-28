@@ -194,11 +194,22 @@ func leafRole(r platform.AccessRole) bool {
 }
 
 // innerText returns the texts of an element and those inside it, joined
-// by spaces. Assistive technology names elements by it every frame, so a
-// single text is returned as it is, without a copy.
+// by spaces. An element inside it with a Label gives its label in place
+// of its texts, as a name from content takes a descendant's aria-label on
+// the web: a row reads "Branch main (checked out)" rather than the "✓
+// main" drawn for it. Assistive technology names elements by it every
+// frame, so a single text is returned as it is, without a copy.
 func (e *node) innerText() string {
+	if e.flags&flagInvisible != 0 || e.hidden {
+		return ""
+	}
+	if e.kind == kindText {
+		return e.text // its text holds that of the elements inside it
+	}
 	var t innerTexts
-	t.walk(e)
+	for ch := e.first; ch != nil; ch = ch.next {
+		t.walk(ch)
+	}
 	if t.b.Len() == 0 {
 		return t.first
 	}
@@ -216,10 +227,12 @@ func (t *innerTexts) walk(e *node) {
 	if e.flags&flagInvisible != 0 || e.hidden {
 		return
 	}
+	if e.label != "" {
+		t.add(e.label)
+		return
+	}
 	if e.kind == kindText {
-		if e.text != "" {
-			t.add(e.text)
-		}
+		t.add(e.text)
 		return // its text holds that of the elements inside it
 	}
 	for ch := e.first; ch != nil; ch = ch.next {
@@ -229,6 +242,7 @@ func (t *innerTexts) walk(e *node) {
 
 func (t *innerTexts) add(s string) {
 	switch {
+	case s == "":
 	case t.first == "":
 		t.first = s
 	case t.b.Len() == 0:

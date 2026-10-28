@@ -37,7 +37,8 @@ Besides the roles of MyGo's widgets, `ui.RoleHeading` is the title of a
 section, ranked with `Level`, and `ui.RoleMenu`, `ui.RoleMenuBar`,
 `ui.RoleMenuItem`, `ui.RoleMenuItemCheckBox` and `ui.RoleMenuItemRadio`
 make menus drawn in the window, as a drop-down menu or a menu bar of your
-own:
+own (an element's menu drawn in the window,
+[`PopoverMenu`](context-menu.md#drawn-in-the-window), has them):
 
 ```go
 ui.Text(c, "Appearance").Bold().Role(ui.RoleHeading).Level(2)

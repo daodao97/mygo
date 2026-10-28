@@ -16,3 +16,5 @@ func linkContentRules() { darwin.LinkContentRules() }
 func linkNowPlaying() { darwin.LinkNowPlaying() }
 
 func linkMenuIcons() { darwin.LinkMenuIcons() }
+
+func linkContextMenus() { darwin.LinkContextMenus() }

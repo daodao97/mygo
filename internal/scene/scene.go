@@ -337,9 +337,13 @@ type Scene struct {
 	Width, Height int
 	Scale, Zoom   float32
 	// Clear is the color the frame starts with.
-	Clear  Color
-	Ops    []Op
-	Glyphs []Glyph
+	Clear Color
+	// Background is the opaque color the content fills the window with,
+	// or transparent: what the window shows where no frame of its size
+	// shows yet, as while it grows. It draws nothing in the frame.
+	Background Color
+	Ops        []Op
+	Glyphs     []Glyph
 	// Stops holds the stops of gradients (Op.Stops).
 	Stops []Stop
 	// Effects holds the effects of OpEffect operations.

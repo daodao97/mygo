@@ -234,17 +234,23 @@ type AppController interface {
 	SetDockIcon(png []byte) error
 	// SetDockMenu sets the menu of the Dock icon (macOS); nil removes it.
 	SetDockMenu(m *Menu)
-	// ClearBrowsingData deletes the data pages stored; done runs on the
-	// main thread.
-	ClearBrowsingData(done func(error))
-	// Cookie operations address the default page store. Calls and exactly-once
-	// completions run on main; ListCookies returns independent Go values:
-	// every cookie, or with an http or https url the cookies a request to
-	// it sends (CookieMatchesURL where the engine cannot tell).
-	ListCookies(url string, done func([]Cookie, error))
-	SetCookie(cookie Cookie, done func(error))
-	DeleteCookie(key CookieKey, done func(error))
-	ClearCookies(done func(error))
+	// NewDataStore makes a website data store other than the default one
+	// (mygo.Session), which WindowOptions.DataStore and the calls below
+	// take. The core makes one store per session and closes it with
+	// DataStore.Close.
+	NewDataStore(opts DataStoreOptions) (DataStore, error)
+	// ClearBrowsingData deletes the data of types pages stored in store,
+	// nil for the default one; done runs on the main thread.
+	ClearBrowsingData(store DataStore, types SiteData, done func(error))
+	// Cookie operations address store, nil for the default page store.
+	// Calls and exactly-once completions run on main; ListCookies returns
+	// independent Go values: every cookie, or with an http or https url
+	// the cookies a request to it sends (CookieMatchesURL where the engine
+	// cannot tell).
+	ListCookies(store DataStore, url string, done func([]Cookie, error))
+	SetCookie(store DataStore, cookie Cookie, done func(error))
+	DeleteCookie(store DataStore, key CookieKey, done func(error))
+	ClearCookies(store DataStore, done func(error))
 	// CompileContentRules makes a content rule list of rules, in WebKit's
 	// content blocker JSON format: it loads the list kept as identifier
 	// (ContentRulesIdentifier) where the engine keeps compiled lists,
@@ -425,6 +431,28 @@ type WindowOptions struct {
 	// text fields (macOS, WKPreferences.tabFocusesLinks); the other
 	// platforms reach them already.
 	TabFocusesLinks bool
+	// NoBackgroundThrottling keeps the page running at full speed while
+	// its window is hidden, minimized or covered
+	// (mygo.PageOptions.BackgroundThrottling): its timers unthrottled, its
+	// process at the priority of a visible one.
+	NoBackgroundThrottling bool
+	// Autoplay lets the page play audible media without a user gesture
+	// (mygo.PageOptions.Autoplay).
+	Autoplay bool
+	// PictureInPicture lets the page's videos go into picture in picture
+	// (macOS, WebKit's private _allowsPictureInPictureMediaPlayback);
+	// WebView2 lets them already, and WebKitGTK has none.
+	PictureInPicture bool
+	// SwipeNavigation lets a swipe go back and forward through the page's
+	// history (mygo.PageOptions.SwipeNavigation).
+	SwipeNavigation bool
+	// PinchZoom lets a pinch magnify the page; the backends turn it off
+	// where their webview has it on by default (mygo.PageOptions.PinchZoom).
+	PinchZoom bool
+	// DataStore is the website data store of the page, one of
+	// AppController.NewDataStore; nil is the default store. A window
+	// opened by window.open has its opener's.
+	DataStore DataStore
 	// Native carries backend specific state, e.g. the WKWebViewConfiguration
 	// WebKit hands us for window.open().
 	Native uintptr
@@ -434,6 +462,51 @@ type WindowOptions struct {
 	// webview methods do nothing and the webview options are ignored.
 	Surface bool
 }
+
+// DataStoreOptions describe a website data store (AppController.NewDataStore).
+type DataStoreOptions struct {
+	// ID identifies a persistent store from one run to the next: a UUID
+	// in lowercase hex with dashes, which the core derives from the
+	// session's name. It is empty for an ephemeral store.
+	ID string
+	// Ephemeral keeps the store's data in memory, where it goes with the
+	// store.
+	Ephemeral bool
+	// DataDir and CacheDir are where a persistent store keeps its data and
+	// its caches, for the backends that choose (Linux).
+	DataDir, CacheDir string
+}
+
+// DataStore is a website data store a backend made: cookies, local and
+// session storage, IndexedDB, caches and service workers that the pages
+// using it share, apart from those of other stores.
+type DataStore interface {
+	// Close lets the store go once the backend no longer needs it: the
+	// core calls it when no page uses an ephemeral store, whose data then
+	// goes, and makes another store for the session's next page. Calls
+	// under way finish.
+	Close()
+}
+
+// SiteData are kinds of data pages store, for ClearBrowsingData.
+type SiteData uint
+
+const (
+	SiteDataCookies SiteData = 1 << iota
+	// SiteDataLocalStorage is localStorage and sessionStorage.
+	SiteDataLocalStorage
+	// SiteDataIndexedDB is IndexedDB, and WebSQL where the engine has it.
+	SiteDataIndexedDB
+	// SiteDataCaches is the HTTP caches, and Cache Storage.
+	SiteDataCaches
+	SiteDataServiceWorkers
+	// SiteDataAll is all the data the engine keeps for sites, the kinds
+	// above and the others (HSTS, media keys, …).
+	SiteDataAll SiteData = 1<<iota - 1 | 1<<31
+)
+
+// All reports whether t asks for all the data, SiteDataAll.
+func (t SiteData) All() bool { return t&SiteDataAll == SiteDataAll }
 
 // UserScript is JavaScript injected into pages.
 type UserScript struct {
@@ -606,6 +679,35 @@ type Page interface {
 	// IsAudioMuted reports what SetAudioMuted set, false where the
 	// backend cannot mute.
 	IsAudioMuted() bool
+	// CaptureState reports whether the page captures kind, and whether
+	// it is muted, as WindowHandler.CaptureStateChanged reports its
+	// changes; CaptureNone where the backend cannot tell.
+	CaptureState(kind CaptureKind) CaptureState
+	// SetCaptureState mutes the page's capture of kind (CaptureMuted),
+	// lets it go on (CaptureActive) or stops it (CaptureNone). It does
+	// nothing while the page captures no such device, and where the
+	// backend cannot.
+	SetCaptureState(kind CaptureKind, state CaptureState)
+	// TogglePictureInPicture moves a video of the page into picture in
+	// picture, or the one out back into the page (see
+	// Page.TogglePictureInPicture in package mygo for which video); a
+	// backend that cannot does nothing.
+	TogglePictureInPicture()
+	// PictureInPictureActive tells cb whether a video of the page is in
+	// picture in picture, false where the backend cannot tell. cb runs on
+	// the main thread exactly once, maybe before PictureInPictureActive
+	// returns.
+	PictureInPictureActive(cb func(active bool))
+	// SessionState returns the engine's own state of the page's
+	// back/forward list, with the scroll positions and form state it
+	// saved of its entries, nil where the backend keeps none.
+	SessionState() []byte
+	// RestoreSessionState puts back a back/forward list that
+	// SessionState returned and loads its current entry, as LoadURL
+	// loads a page, and reports whether it did: false where the backend
+	// keeps no state or can't read this one, for the core to load the
+	// page's URL instead.
+	RestoreSessionState(state []byte) bool
 	OpenDevTools()
 	CloseDevTools()
 	IsDevToolsOpened() bool
@@ -619,6 +721,27 @@ type Page interface {
 	DroppedFiles() []string
 	Print()
 }
+
+// CaptureKind is a kind of device a page captures (Page.CaptureState).
+type CaptureKind int
+
+const (
+	CaptureCamera CaptureKind = iota
+	CaptureMicrophone
+	// CaptureDisplay is the capture of a screen or a window,
+	// getDisplayMedia().
+	CaptureDisplay
+)
+
+// CaptureState is whether a page captures a kind of device. The values
+// are WebKit's WKMediaCaptureState and WebKitMediaCaptureState.
+type CaptureState int
+
+const (
+	CaptureNone CaptureState = iota
+	CaptureActive
+	CaptureMuted
+)
 
 // WebView is a web view in a window showing a Surface, which its content
 // places (Surface.NewWebView, Surface.PlaceWebViews): under the surface,
@@ -711,6 +834,9 @@ type WindowHandler interface {
 	RenderProcessGone(reason string)
 	// AudibleChanged is called when Page.IsAudible changes.
 	AudibleChanged(audible bool)
+	// CaptureStateChanged is called when Page.CaptureState of kind may
+	// have changed, with its state.
+	CaptureStateChanged(kind CaptureKind, state CaptureState)
 	SchemeRequest(req *SchemeRequest)
 	// DownloadStarted returns where to save a download, "" to cancel it;
 	// DownloadFinished reports how it ended.
@@ -722,6 +848,21 @@ type WindowHandler interface {
 	// PermissionRequested asks whether the page at origin may use kinds:
 	// "camera", "microphone", "geolocation" or "notifications".
 	PermissionRequested(kinds []string, origin string) bool
+	// AuthRequested answers an HTTP authentication challenge of the page,
+	// or of what it loads.
+	AuthRequested(req AuthRequest) AuthResponse
+	// CertificateError asks whether to load what a server sent with a
+	// certificate that does not verify: false fails it, as without the
+	// call. A backend that verifies certificates itself to tell (macOS)
+	// does so only while HandlesCertificateErrors reports true, and
+	// leaves them to the web view otherwise.
+	CertificateError(e CertificateError) bool
+	HandlesCertificateErrors() bool
+	// ContextMenu asks what the page's context menu shows, as it is
+	// about to open, and HandlesContextMenu whether to ask at all: a
+	// backend describes its menu only while it does.
+	ContextMenu(m *ContextMenu) ContextMenuResponse
+	HandlesContextMenu() bool
 
 	// SurfaceEvent delivers input on the window's Surface, and changes of
 	// it. For FileDragOver and FileDrop it reports whether the content
@@ -833,6 +974,15 @@ type MenuItem struct {
 	// Icon is the image beside the label, nil for none.
 	Icon    *MenuIcon
 	Submenu *Menu
+	// Native is set on the web view's own items of a page's context menu
+	// (WindowHandler.ContextMenu): the backend's number for the item,
+	// from 1, which it shows where the core puts it, doing what the web
+	// view does; ID is then not the backend's business. Name is such an
+	// item's name (ContextMenuReload and the other names of package mygo,
+	// else the platform's own), and Accelerator the platform's own text of
+	// its shortcut, shown as it is, where the backend draws the menu.
+	Native int
+	Name   string
 }
 
 // FileFilter restricts the files shown in file dialogs.

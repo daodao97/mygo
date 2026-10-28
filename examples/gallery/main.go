@@ -145,6 +145,11 @@ type gallery struct {
 	draft    string
 	// chart is the state of the Charts page.
 	chart galleryCharts
+	// The card whose menu is drawn in the window: its settings, and what
+	// its menu did last.
+	cardZoom   string
+	cardPinned bool
+	cardDid    string
 }
 
 // galleryTask is a task of the Drag and drop card.
@@ -1792,6 +1797,35 @@ func (g *gallery) overlays(c *ui.Context) {
 					entry.Children(func() { ui.Text(c, item) })
 				}
 			})
+			// A menu drawn in the window, with the theme's look, rather than
+			// the system's.
+			card := ui.Row(c).Padding(6, 12).Radius(t.Radius).Border(1, t.Border).Focusable().Label("Card")
+			card.PopoverMenu(func(m *ui.Menu) {
+				if m.Item("Duplicate").Shortcut(ui.Cmd, ui.KeyD).Chosen() {
+					g.cardDid = "Duplicated"
+				}
+				if m.Item("Pinned").Checked(g.cardPinned).Chosen() {
+					g.cardPinned = !g.cardPinned
+				}
+				m.Submenu("Zoom", func(m *ui.Menu) {
+					for _, z := range []string{"Small", "Medium", "Large"} {
+						if m.Item(z).Radio(g.cardZoom == z).Chosen() {
+							g.cardZoom = z
+						}
+					}
+				})
+				m.Separator()
+				if m.Item("Delete").Disabled(g.cardPinned).Chosen() {
+					g.cardDid = "Deleted"
+				}
+			})
+			card.Children(func() {
+				label := "Right-click me"
+				if g.cardDid != "" {
+					label = g.cardDid
+				}
+				ui.Text(c, label)
+			})
 			ui.Button(c, "Hover me").Tooltip("Tooltips show after the pointer rests a moment.")
 			if ui.Button(c, "Alert").Clicked() {
 				g.alert = true
@@ -1822,7 +1856,7 @@ func (g *gallery) overlays(c *ui.Context) {
 }
 
 func main() {
-	g := &gallery{router: ui.NewRouter("/overview"), items: []motionItem{{1, "Item 1"}, {2, "Item 2"}, {3, "Item 3"}}, nextItem: 3, size: "Medium", fruit: "Apple", plan: "Pro", volume: 35, picked: -1, starred: map[int]bool{}, split: 160, copies: 1, tree: map[string]bool{"ui": true}, birthday: time.Date(1815, 12, 10, 0, 0, 0, 0, time.UTC), now: time.Now(), font: "Helvetica", tags: []string{"go", "native"}, sections: [3]bool{true}, sectionsOpen: [2]bool{true, true}, stars: 4, battery: 35, quality: 75, priceLow: 100, priceHigh: 350, meeting: time.Date(2026, 10, 15, 9, 30, 0, 0, time.Local), tint: ui.Hex("#2563eb"), lens: [2]float32{110, 190}, glassEdge: 1, notes: 12, notifyMail: true, pathDepth: 4, chart: newCharts()}
+	g := &gallery{router: ui.NewRouter("/overview"), items: []motionItem{{1, "Item 1"}, {2, "Item 2"}, {3, "Item 3"}}, nextItem: 3, size: "Medium", fruit: "Apple", cardZoom: "Medium", plan: "Pro", volume: 35, picked: -1, starred: map[int]bool{}, split: 160, copies: 1, tree: map[string]bool{"ui": true}, birthday: time.Date(1815, 12, 10, 0, 0, 0, 0, time.UTC), now: time.Now(), font: "Helvetica", tags: []string{"go", "native"}, sections: [3]bool{true}, sectionsOpen: [2]bool{true, true}, stars: 4, battery: 35, quality: 75, priceLow: 100, priceHigh: 350, meeting: time.Date(2026, 10, 15, 9, 30, 0, 0, time.Local), tint: ui.Hex("#2563eb"), lens: [2]float32{110, 190}, glassEdge: 1, notes: 12, notifyMail: true, pathDepth: 4, chart: newCharts()}
 	// The languages of the Languages page's menu.
 	mygo.App.SetLanguages(galleryLanguages...)
 	mygo.App.WhenReady(func() {

@@ -65,6 +65,8 @@ var (
 	gtkGLAreaSetHasAlpha        func(a ptr, alpha bool)
 	gtkGLAreaGetError           func(a ptr) ptr
 	gtkGLAreaSetError           func(a, gerr ptr)
+	gtkGLAreaSetAutoRender      func(a ptr, auto bool)
+	gtkGLAreaQueueRender        func(a ptr)
 	gdkWindowPeekChildren       func(w ptr) ptr
 	gdkWindowGetUserData        func(w ptr, data *ptr)
 	gdkEventGetSourceDevice     func(e ptr) ptr
@@ -115,7 +117,8 @@ func loadSurface() {
 		// GtkGLArea came in GTK 3.16.
 		if !bind(t, &gtkGLAreaNew, "gtk_gl_area_new") || !bind(t, &gtkGLAreaSetRequiredVersion, "gtk_gl_area_set_required_version") ||
 			!bind(t, &gtkGLAreaSetHasAlpha, "gtk_gl_area_set_has_alpha") || !bind(t, &gtkGLAreaGetError, "gtk_gl_area_get_error") ||
-			!bind(t, &gtkGLAreaSetError, "gtk_gl_area_set_error") {
+			!bind(t, &gtkGLAreaSetError, "gtk_gl_area_set_error") ||
+			!bind(t, &gtkGLAreaSetAutoRender, "gtk_gl_area_set_auto_render") || !bind(t, &gtkGLAreaQueueRender, "gtk_gl_area_queue_render") {
 			gtkGLAreaNew = nil
 		}
 	})
@@ -211,6 +214,11 @@ func (s *surface) newArea(gl bool) {
 		// a renderbuffer it copies, which took a small window 50 MB more of
 		// the GPU's memory, and an animation half as much CPU again.
 		gtkGLAreaSetHasAlpha(s.area, s.w.opts.Transparent)
+		// GTK keeps the area's last frame as it paints the window, and
+		// renders it again only as the content asks (queueDraw): rendering
+		// on every paint, its default, built a frame for each one a web view
+		// under the area painted.
+		gtkGLAreaSetAutoRender(s.area, false)
 		connect(s.area, "create-context", cbAreaContext, data)
 		connect(s.area, "render", cbSurfaceRender, data)
 	}
@@ -336,12 +344,22 @@ func (s *surface) RequestFrame() {
 	switch {
 	case s.w.closed:
 	case s.drawsGL():
-		gtkWidgetQueueDraw(s.area)
+		s.queueDraw()
 	default:
 		s.again = true
 		if s.tick == 0 {
 			s.tick = gtkWidgetAddTickCallback(s.area, cbSurfaceTick, ptr(s.w.id), 0)
 		}
+	}
+}
+
+// queueDraw has the area paint again, a GtkGLArea rendering a frame in its
+// render signal as it does.
+func (s *surface) queueDraw() {
+	if s.gl {
+		gtkGLAreaQueueRender(s.area)
+	} else {
+		gtkWidgetQueueDraw(s.area)
 	}
 }
 
@@ -434,7 +452,7 @@ func (s *surface) PresentPixels(pix []byte, stride, width, height int) {
 			return
 		}
 		// Frames are drawn in the draw signal; outside of it, ask for one.
-		gtkWidgetQueueDraw(s.area)
+		s.queueDraw()
 		return
 	}
 	if len(pix) < stride*height || width == 0 || height == 0 {
@@ -710,7 +728,7 @@ func initSurfaceCallbacks() {
 			// The area has its context now: frames come from its render
 			// signal.
 			s.tick = 0
-			gtkWidgetQueueDraw(s.area)
+			s.queueDraw()
 			return false
 		}
 		s.again, s.ticking, s.staged.pix = false, true, nil
@@ -753,7 +771,7 @@ func initSurfaceCallbacks() {
 	cbSurfaceScale = purego.NewCallback(func(widget, pspec, data ptr) {
 		if s := b().surfaceOf(data); s != nil {
 			s.send(platform.SurfaceEvent{Kind: platform.SurfaceResize})
-			gtkWidgetQueueDraw(s.area)
+			s.queueDraw()
 		}
 	})
 	// Input methods let go of the GdkWindow before it goes, as GtkEntry
@@ -771,6 +789,9 @@ func initSurfaceCallbacks() {
 			}
 			if s.cursor != platform.CursorDefault {
 				s.SetCursor(s.cursor) // on the area that took another's place
+			}
+			if s.gl {
+				s.queueDraw() // its frame went with the context it unrealized
 			}
 		}
 	})

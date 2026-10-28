@@ -252,6 +252,7 @@ const (
 	wmQuit              = 0x0012
 	wmEraseBkgnd        = 0x0014
 	wmEndSession        = 0x0016
+	wmShowWindow        = 0x0018
 	wmSettingChange     = 0x001A
 	wmGetMinMaxInfo     = 0x0024
 	wmWindowPosChanging = 0x0046

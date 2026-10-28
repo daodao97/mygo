@@ -22,3 +22,21 @@ func TestChromiumLanguage(t *testing.T) {
 		}
 	}
 }
+
+// TestBrowserArguments checks the arguments WebView2's browser is given for
+// the options of the first page: none for neither, and both sets for both.
+func TestBrowserArguments(t *testing.T) {
+	for _, tt := range []struct {
+		unthrottled, autoplay bool
+		want                  string
+	}{
+		{false, false, ""},
+		{true, false, unthrottledArguments},
+		{false, true, "--autoplay-policy=no-user-gesture-required"},
+		{true, true, unthrottledArguments + " --autoplay-policy=no-user-gesture-required"},
+	} {
+		if got := browserArguments(tt.unthrottled, tt.autoplay); got != tt.want {
+			t.Errorf("browserArguments(%v, %v) = %q, want %q", tt.unthrottled, tt.autoplay, got, tt.want)
+		}
+	}
+}

@@ -60,8 +60,9 @@ itself), `CapturePage` takes a screenshot of its page, and `Destroy`
 closes it.
 
 A web view trusts the app's own pages as a window does, pages of custom
-schemes included: show third-party or user-supplied HTML from an origin it
-does not trust, see [trust](../frontend.md#trust).
+schemes included: show third-party or user-supplied HTML in an
+[untrusted page](../frontend.md#untrusted-pages) (`PageOptions.Untrusted`),
+or from an origin it does not trust, see [trust](../frontend.md#trust).
 
 Make a web view once, as a window, not in the view: the view only shows
 it. One the view does not build hides and keeps its page, so a view of tabs

@@ -14,3 +14,5 @@ func linkContentRules() { win.LinkContentRules() }
 func linkNowPlaying() { win.LinkNowPlaying() }
 
 func linkMenuIcons() { win.LinkMenuIcons() }
+
+func linkContextMenus() { win.LinkContextMenus() }

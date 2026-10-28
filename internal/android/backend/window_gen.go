@@ -172,3 +172,11 @@ func (w *window) CallAsyncFunction(body string, cb func(result string, err error
 func (w *window) CapturePage(cb func(png []byte, err error)) { cb(nil, nil) }
 
 func (w *window) PrintToPDF(opts platform.PDFOptions, cb func(pdf []byte, err error)) { cb(nil, nil) }
+
+// These page operations are unavailable on the native content surface.
+func (*window) CaptureState(platform.CaptureKind) platform.CaptureState     { return platform.CaptureNone }
+func (*window) SetCaptureState(platform.CaptureKind, platform.CaptureState) {}
+func (*window) TogglePictureInPicture()                                     {}
+func (*window) PictureInPictureActive(done func(bool))                      { done(false) }
+func (*window) SessionState() []byte                                        { return nil }
+func (*window) RestoreSessionState([]byte) bool                             { return false }

@@ -1,5 +1,6 @@
 // Entry point of the script MyGo injects at document start into every page.
 // The Go side wraps the bundle in a function that defines __MYGO_CONFIG__.
+import { contextTarget } from "./context-menu";
 import { find, stopFind } from "./find";
 import { type FitLimits, fitContent } from "./fit-content";
 import { createRuntime } from "./runtime";
@@ -151,6 +152,24 @@ let rootStyle: HTMLStyleElement | null = null;
       if (!e.defaultPrevented) notify("escape");
     });
   });
+
+  // What a context menu opens on (Page.OnContextMenu), told as the event
+  // starts, ahead of the page's own handlers: Go hears it before the web
+  // view asks about its menu, which a handler that cancels the event
+  // keeps from opening. The element is the innermost, inside shadow roots.
+  w.addEventListener(
+    "contextmenu",
+    (e: MouseEvent) => {
+      const el = e.composedPath()[0];
+      const target = contextTarget(el instanceof Element ? el : null, getSelection()?.toString() ?? "");
+      try {
+        post(JSON.stringify({ t: "context-menu", x: e.clientX, y: e.clientY, ...target }));
+      } catch {
+        // The page is being torn down.
+      }
+    },
+    true,
+  );
 
   // Frameless windows: `--app-region: drag` (or `-webkit-app-region: drag`
   // where the engine supports it) turns an element into a window handle.

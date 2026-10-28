@@ -258,10 +258,69 @@ func checkForUpdates(ctx context.Context) {
   checks its signature, and replaces the app. The progress callback gets
   the bytes of the delta, and when the delta fails, starts over with those
   of the archive. The running app is not affected: the new version runs
-  after `App.Relaunch`, or at the next launch.
+  after `App.Relaunch`, or at the next launch. On macOS the new bundle
+  replaces the app's once the app has exited, so that the Dock keeps the
+  app's tile.
 - `Enabled` reports whether the app can update itself: it was built with
   updates, and it can write where it is installed. Development builds
   cannot, and `Check` returns `mygo.ErrUpdatesDisabled` in them.
+- `Check` and `Install` go through the proxy of the system's settings,
+  or of `HTTPS_PROXY` when it is set (see [proxies](native.md#proxies)).
+
+## Your own update service
+
+`mygo.Updater` reads the feed of `updates` in mygo.config.ts. An app that
+has its own update service, an endpoint that needs the user's
+credentials, or a channel the user picks while it runs, gives the updater
+a source instead with `mygo.Updater.SetSource`. The source returns the
+manifest of the platform and the files the manifest names; the updater
+checks them as it checks the feed's, so an archive or delta that is not
+signed with the key of `updates.publicKey` is refused and the app stays as
+it is. A source serves what `mygo build` writes, so the app is still
+built with `updates`: the public key, and `github` or `url`, where the
+files are published.
+
+For example, with the files on a server that serves them to signed-in
+users, set `updates.url` to its directory, so that the manifests name
+its files, and add the user's token to every request:
+
+```go
+// accountUpdates downloads updates with the user's token.
+type accountUpdates struct{ token string }
+
+func (s accountUpdates) Manifest(ctx context.Context, prereleases bool) (io.ReadCloser, error) {
+	// The manifest of the platform the app was built for; a universal
+	// macOS build reads update-darwin-universal.json.
+	return s.Open(ctx, "https://downloads.example.com/my-app/update-"+runtime.GOOS+"-"+runtime.GOARCH+".json")
+}
+
+func (s accountUpdates) Open(ctx context.Context, url string) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
+	}
+	return resp.Body, nil
+}
+
+// Once the user has signed in:
+mygo.Updater.SetSource(accountUpdates{token: session.Token})
+```
+
+`Check` then reads the manifest from the source, and `Install` downloads
+the archive or delta through its `Open`; `prereleases` is what
+`SetPrereleases` set, for a source with a beta channel. The URLs are the
+manifest's, so a service that writes its own manifests from those of
+`mygo build` may name the files by ids of its own, as long as the sizes
+and signatures stay. `SetSource(nil)` goes back to the feed.
 
 ## Where apps can update
 

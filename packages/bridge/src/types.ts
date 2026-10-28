@@ -1,5 +1,6 @@
 // The public types are those of the mygo-runtime package.
 import type { Direction, Platform } from "../../runtime/src/types";
+import type { ContextTarget } from "./context-menu";
 import type { FitLimits } from "./fit-content";
 
 export type {
@@ -40,7 +41,10 @@ export type Outgoing =
    * pixels, scrollbars included. */
   | { t: "content-size"; w: number; h: number; sw: number; sh: number }
   | { t: "drag" }
-  | { t: "dblclick" };
+  | { t: "dblclick" }
+  /** A context menu opens at x, y, in CSS pixels of the viewport, on what
+   * the rest tells (ContextTarget). */
+  | ({ t: "context-menu"; x: number; y: number } & ContextTarget);
 
 /** Messages delivered from Go to the page. */
 export type Incoming =

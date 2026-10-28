@@ -250,9 +250,17 @@ func (w *Window) sendTitleBar() {
 	}
 }
 
+// maxUntrustedMessage is the size of the largest message an untrusted
+// page (PageOptions.Untrusted) may post: what MyGo's bridge posts in pages
+// that call no Go method is much smaller.
+const maxUntrustedMessage = 4 << 10
+
 // handleMessage routes a message posted by the page bridge. It runs on the
 // main thread.
 func (w *Window) handleMessage(msg string) {
+	if w.untrusted && len(msg) > maxUntrustedMessage {
+		return // what the bridge posts is smaller
+	}
 	msg, ok := strings.CutPrefix(msg, w.secret)
 	if !ok {
 		return // not from the bridge
@@ -260,6 +268,11 @@ func (w *Window) handleMessage(msg string) {
 	// Calls are decoded and executed off the main thread. The page context
 	// is captured here so a navigation cannot slip in between.
 	if len(msg) > 12 && msg[:12] == `{"t":"call",` {
+		if w.untrusted {
+			// Rejected right away, without a goroutine per message.
+			handleCall(w, nil, msg, false)
+			return
+		}
 		go handleCall(w, w.pageContext(), msg, w.trusted)
 		return
 	}
@@ -275,6 +288,14 @@ func (w *Window) handleMessage(msg string) {
 		H  float64 `json:"h"`
 		SW float64 `json:"sw"`
 		SH float64 `json:"sh"`
+		// context-menu: the link, its text, the image, the media, the
+		// selection, and whether it is editable.
+		L  string `json:"l"`
+		LT string `json:"lt"`
+		I  string `json:"i"`
+		M  string `json:"m"`
+		S  string `json:"s"`
+		E  bool   `json:"e"`
 	}
 	if err := json.Unmarshal(stringBytes(msg), &m); err != nil {
 		return
@@ -299,15 +320,25 @@ func (w *Window) handleMessage(msg string) {
 	case "content-size":
 		w.fitContentSize(contentSize{m.W, m.H, m.SW, m.SH})
 	case "drag":
-		if w.native != nil {
+		if w.native != nil && !w.untrusted {
 			w.native.StartDrag()
 		}
 	case "dblclick":
-		if w.native != nil {
+		if w.native != nil && !w.untrusted {
 			w.native.TitleBarDoubleClicked()
 		}
 	case "escape":
 		w.escape()
+	case "context-menu":
+		// What a context menu about to open was opened on, which the
+		// backend may not tell (context_menu.go). An untrusted page's
+		// record over maxUntrustedMessage, as of a long selection, is
+		// dropped with the rest.
+		if w.onContextMenu.len() > 0 {
+			w.contextTarget = &contextTarget{platform.ContextMenuTarget{
+				LinkURL: m.L, LinkText: m.LT, ImageURL: m.I, MediaURL: m.M, SelectionText: m.S, Editable: m.E,
+			}, m.X, m.Y}
+		}
 	case "drop":
 		if w.native != nil {
 			w.filesDropped(w.native.DroppedFiles(), int(m.X), int(m.Y))

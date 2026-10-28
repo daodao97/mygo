@@ -20,9 +20,20 @@ import (
 // it was, which a quick press and drag hits now and then (issue #528). So
 // MyGo watches the press. When the pointer has not moved yet, it asks the
 // window server; when it has, or when the press's drags still reach the app
-// while the window has not moved, MyGo moves the window itself, keeping the
-// point pressed under the pointer, as the window server would. Either way
-// the press's drags are the window's, not the content's.
+// past a few points and the window server has not begun, MyGo moves the
+// window itself, keeping the point pressed under the pointer, as the window
+// server would. Either way the press's drags are the window's, not the
+// content's.
+//
+// The window server tells the window as it begins (windowWillMove:), within
+// a drag or two of being asked. The window's frame says so late: AppKit
+// learns where the window is about every tenth of a second while the
+// window server moves it. Should MyGo take a frame that has not moved for a
+// window server that did not begin, both would move the window, the window
+// server to where the pointer is and MyGo to where it was an event before,
+// and the window shakes. For a window server that still begins once MyGo
+// has taken over, the window not being where MyGo put it tells MyGo to
+// leave it alone.
 
 // dragPhase is where a press stands in moving its window.
 type dragPhase uint8
@@ -32,10 +43,11 @@ const (
 	dragPressed                  // the button is down: a drag may be asked
 	dragNative                   // the window server was asked to move it
 	dragManual                   // MyGo moves it with the pointer
+	dragServer                   // the window server moves it
 )
 
 func (p dragPhase) String() string {
-	return [...]string{"idle", "pressed", "native", "manual"}[p]
+	return [...]string{"idle", "pressed", "native", "manual", "server"}[p]
 }
 
 const (
@@ -47,6 +59,10 @@ const (
 	// still reaching the app and the window not moving, before MyGo
 	// moves the window itself: the window server did not begin.
 	dragSlop = 3
+	// dragAway is how far, in points, the window may be from where MyGo
+	// put it, which AppKit rounds, before MyGo takes it that the window
+	// server moves it.
+	dragAway = 2
 )
 
 // windowDrag follows the press of the left button, for StartDrag. Points
@@ -60,11 +76,20 @@ type windowDrag struct {
 	at    NSPoint // where the pointer was last, with the button down
 	// origin is the window's frame origin when the drag was asked.
 	origin NSPoint
+	// put is the origin MyGo last moved the window to, while manual.
+	put NSPoint
 }
 
 // down notes a press of the left button in win at the point at.
 func (d *windowDrag) down(win id, at NSPoint) {
 	*d = windowDrag{phase: dragPressed, win: win, press: at, at: at}
+}
+
+// willMove notes that the window server begins to move win.
+func (d *windowDrag) willMove(win id) {
+	if d.phase == dragNative && d.win == win {
+		d.phase = dragServer
+	}
 }
 
 // up notes the release of the button, or a press elsewhere.
@@ -104,19 +129,33 @@ func (d *windowDrag) dragged(at, origin NSPoint) (eat, move bool) {
 		d.at = at
 	case dragNative:
 		d.at = at
-		if origin != d.origin || distance(at, d.press) < dragSlop {
-			// The window server moves it, or the pointer has hardly
-			// moved yet.
+		if origin != d.origin {
+			d.phase = dragServer
+			return true, false
+		}
+		if distance(at, d.press) < dragSlop {
+			// The pointer has hardly moved yet.
 			return true, false
 		}
 		d.phase = dragManual
 		return true, true
 	case dragManual:
 		d.at = at
+		if distance(origin, d.put) > dragAway {
+			// The window server began after all.
+			d.phase = dragServer
+			return true, false
+		}
 		return true, true
+	case dragServer:
+		d.at = at
+		return true, false
 	}
 	return false, false
 }
+
+// placed notes that MyGo moved the window to origin.
+func (d *windowDrag) placed(origin NSPoint) { d.put = origin }
 
 // target is the window's origin that keeps the point pressed under the
 // pointer.
@@ -211,6 +250,7 @@ func moveDraggedWindow() {
 			}
 		}
 	}
+	d.placed(origin)
 	msgSetPoint(d.win, sel("setFrameOrigin:"), origin)
 }
 

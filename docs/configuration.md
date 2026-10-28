@@ -113,7 +113,7 @@ Signed [auto-updates](updates.md). `publicKey` and one of `github` and
 
 | Field | Default | |
 |---|---|---|
-| `icon` | | the icon as an asset catalog, an `Assets.car` or an Icon Composer `.icon`, beside the `.icns` of `icon`. See [the icon](distribution.md#name-icon-and-version) |
+| `icon` | | the icon as an asset catalog, an `Assets.car` or an Icon Composer `.icon`, beside the `.icns` of `icon`; or an `.icns` in its place. See [the icon](distribution.md#name-icon-and-version) |
 | `minimumSystemVersion` | `12.0` | the oldest macOS the app runs on |
 | `signingIdentity` | `-`, ad hoc | the identity that signs the app and its disk image, e.g. `Developer ID Application: Jane Doe (TEAMID)` |
 | `entitlements` | | a property list of entitlements to sign the app with |
@@ -130,9 +130,11 @@ See [macOS](distribution.md#macos).
 | Field | Default | |
 |---|---|---|
 | `displayName` | `name` | the name Windows shows the app by: its Start menu and desktop shortcuts, its entry in Settings > Apps, the installer's title and messages, and the product name in the executable's file properties. The executable, its install folder and the files named after `name` or `slug` keep their names, e.g. `天气助手` for an app named `weather`, whose executable stays `weather.exe` |
+| `installDirName` | `name` | the name of the folder the installer installs the app in, `%LOCALAPPDATA%\Programs\<installDirName>`, e.g. an ASCII `ZhiLian` for an app named `智链`; the executable, the shortcuts, the entry in Settings > Apps and everything else users see keep the name. No path separators, `:*?"<>\|`, or `.` and `..`. Changing it moves new installs only. See [the installer](distribution.md#the-installer) |
 | `certificate` | | a code signing certificate (`.pfx`) for the executable, the unsigned executables and libraries among the resources, and the installer; its password comes from `MYGO_WINDOWS_CERTIFICATE_PASSWORD` |
 | `signCommand` | | instead of `certificate`, a command that signs a file, with `%1` for its path |
 | `timestampUrl` | `http://timestamp.digicert.com` | the time stamping server of `certificate` |
+| `installerInclude` | | an NSIS script that the installer includes, e.g. `build/installer.nsh`, whose `customInit`, `customInstall` and `customUnInstall` macros run when the installer starts, at the end of the install, and in the uninstall before the app's folder is removed. See [installer hooks](distribution.md#installer-hooks) |
 
 See [Windows](distribution.md#windows).
 

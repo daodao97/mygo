@@ -77,3 +77,12 @@ panics where the second key was given, as apps only log it.
   	t.Error("the panel keeps asking for frames")
   }
   ```
+
+## Testing the built app
+
+A tester runs a view inside `go test`. To test the app as built, with its
+real windows, from another process, as an end-to-end test runner or an
+agent does, import the [automation plugin](../plugins/automation.md) into
+a test build: it reads the elements of every window as a tester's
+`Find` does, by their labels or by their `Key`, acts on them, sends
+input, and waits for frames as `FramePending` tells.

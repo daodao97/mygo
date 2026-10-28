@@ -189,12 +189,20 @@ func installerScript(c *Config, out, exe, files, icon, signing string) (string, 
 	if err != nil {
 		return "", err
 	}
+	include, install, uninstall, err := nsisHooks(c)
+	if err != nil {
+		return "", err
+	}
 	return `Unicode true
 ManifestDPIAware true
 SetCompressor /SOLID lzma
 ` + nsisName(c.windowsName()) + `
 OutFile ` + nsisString(out) + `
-` + signing + `InstallDir "$LOCALAPPDATA\Programs\` + nsisEscape(fsName(c.Name)) + `"
+` + signing + `InstallDir "$LOCALAPPDATA\Programs\` + nsisEscape(c.installDirName()) + `"
+; An installed app is updated in its folder, the one the user chose or the
+; one of a version with another windows.installDirName, as install.ps1 and
+; the app's own updates do.
+InstallDirRegKey HKCU ` + nsisString(uninstallKey) + ` "InstallLocation"
 RequestExecutionLevel user
 BrandingText " "
 ` + icon + `!define MUI_FINISHPAGE_RUN "$INSTDIR\` + nsisEscape(exe) + `"
@@ -207,7 +215,7 @@ BrandingText " "
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
-` + languages + `
+` + languages + include + `
 ` + nsisCloseApp(c) + `
 Section
   Push "$INSTDIR"
@@ -215,7 +223,7 @@ Section
   SetOutPath "$INSTDIR"
 ` + files + `  WriteUninstaller "$INSTDIR\Uninstall.exe"
 ` + nsisRenamedShortcuts(c) + `  CreateShortCut "$SMPROGRAMS\` + shortcut + `" "$INSTDIR\` + nsisEscape(exe) + `"
-` + nsisUninstallEntry(c, uninstallKey, exe) + register + `SectionEnd
+` + nsisUninstallEntry(c, uninstallKey, exe) + register + install + `SectionEnd
 
 ; The finish page offers it, so silent installs (/S) make none.
 Function CreateDesktopShortcut
@@ -252,11 +260,46 @@ Section "Uninstall"
   Push "$DESKTOP\` + shortcut + `"
   Call un.DeleteShortcut
   DeleteRegKey HKCU ` + nsisString(uninstallKey) + `
-` + unregister + `  ; Last, so that the app's folder is gone once the uninstall is done:
+` + unregister + uninstall + `  ; Last, so that the app's folder is gone once the uninstall is done:
   ; the uninstaller runs from a copy of itself that nothing waits for.
   RMDir /r "$INSTDIR"
 SectionEnd
 `, nil
+}
+
+// nsisHooks returns the commands that let windows.installerInclude, a
+// script of the app's own, add to the installer, as electron-builder's
+// include does: include includes it, after MUI2.nsh and the languages, so
+// that its macros can use them, and runs its customInit macro in
+// .onInit; install runs its customInstall macro at the end of the install,
+// once the files are in $INSTDIR, and uninstall its customUnInstall macro
+// before the uninstaller removes $INSTDIR. Each macro runs only when the
+// script defines it, and silent installs (/S) run them too. They are all
+// "" without windows.installerInclude, which leaves the script as it was.
+func nsisHooks(c *Config) (include, install, uninstall string, err error) {
+	if c.Windows.InstallerInclude == "" {
+		return "", "", "", nil
+	}
+	path := c.path(c.Windows.InstallerInclude)
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return "", "", "", fmt.Errorf("windows.installerInclude: %s is not a file (the path is relative to the project's directory)", path)
+	}
+	include = `!include ` + nsisString(path) + `
+!ifmacrodef customInit
+Function .onInit
+  !insertmacro customInit
+FunctionEnd
+!endif
+`
+	install = `  !ifmacrodef customInstall
+    !insertmacro customInstall
+  !endif
+`
+	uninstall = `  !ifmacrodef customUnInstall
+    !insertmacro customUnInstall
+  !endif
+`
+	return include, install, uninstall, nil
 }
 
 // nsisName returns the Name command of the installer, which titles its

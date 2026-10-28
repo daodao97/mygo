@@ -88,3 +88,11 @@ func (*window) NewWebView(*platform.WindowOptions, platform.WindowHandler) (plat
 }
 func (*window) PlaceWebViews([]platform.WebViewPlacement)  {}
 func (*window) PlaceFlyout(platform.Flyout, platform.Size) {}
+
+// These page operations are unavailable on the native content surface.
+func (*window) CaptureState(platform.CaptureKind) platform.CaptureState     { return platform.CaptureNone }
+func (*window) SetCaptureState(platform.CaptureKind, platform.CaptureState) {}
+func (*window) TogglePictureInPicture()                                     {}
+func (*window) PictureInPictureActive(done func(bool))                      { done(false) }
+func (*window) SessionState() []byte                                        { return nil }
+func (*window) RestoreSessionState([]byte) bool                             { return false }

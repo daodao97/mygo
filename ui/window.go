@@ -100,9 +100,10 @@ func (v *Content) AttachContent(conn *surface.Conn) {
 	}
 	h.uiFont()
 	h.textLanguage()
+	h.automate()
 	// Load the fonts while the window shows up.
 	go text.Shared().Preload()
-	conn.Surface.RequestFrame()
+	h.requestFrame()
 }
 
 // windowHost presents frames on a window's surface, with a GPU renderer
@@ -128,13 +129,18 @@ type windowHost struct {
 	lastFrame time.Time
 	// textLayouts is the shared text system's work at the last frame.
 	textLayouts uint64
-	// framing tells that the surface asked for the frame being drawn.
-	framing bool
+	// framing tells that the surface asked for the frame being drawn, and
+	// frameAsked that the content asked the surface for a frame that has
+	// not come yet.
+	framing, frameAsked bool
 	// told is what accelerated last told the frame being painted, asked
 	// that it did.
 	told, asked bool
 	// path is how the last frame was drawn, for MYGO_FRAME_STATS.
 	path string
+	// background is the scene's Background the surface was last told
+	// (platform.BackgroundSurface).
+	background scene.Color
 	// wide tells that the GPU renderer draws the colors of scenes outside
 	// the sRGB gamut (see wideHold), until wideUntil.
 	wide      bool
@@ -344,7 +350,7 @@ func (h *windowHost) event(ev platform.SurfaceEvent) bool {
 			h.gpu = nil
 		}
 		h.gpuTried, h.retryAt = false, time.Time{}
-		h.conn.Surface.RequestFrame()
+		h.requestFrame()
 		return false
 	}
 	if ev.Kind == platform.WebViewTabOut {
@@ -363,6 +369,7 @@ func (h *windowHost) event(ev platform.SurfaceEvent) bool {
 			return true
 		}
 		h.waiting, h.waitingOn = false, nil
+		h.frameAsked = false
 		h.framing = true
 		defer func() { h.framing = false }()
 	}
@@ -466,10 +473,16 @@ func (h *windowHost) present(s *scene.Scene) {
 	if s.Width <= 0 || s.Height <= 0 {
 		return
 	}
+	if s.Background != h.background {
+		h.background = s.Background
+		if b, ok := h.conn.Surface.(platform.BackgroundSurface); ok {
+			b.SetBackground(platform.Color(s.Background))
+		}
+	}
 	if !h.framing {
 		// A frame built outside the surface's, for a capture, is shown by
 		// the surface's next.
-		h.conn.Surface.RequestFrame()
+		h.requestFrame()
 		return
 	}
 	if h.conn.ContentBackground != nil && h.rt.c.root != nil {
@@ -744,7 +757,10 @@ func (h *windowHost) detach() {
 	}
 }
 
-func (h *windowHost) requestFrame() { h.conn.Surface.RequestFrame() }
+func (h *windowHost) requestFrame() {
+	h.frameAsked = true
+	h.conn.Surface.RequestFrame()
+}
 
 func (h *windowHost) framesAtOnce() bool {
 	_, ok := h.conn.Surface.(platform.ImmediateFrameSurface)

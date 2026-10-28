@@ -231,6 +231,74 @@ menu, with Copy and Paste on text and Inspect Element in development
 builds. Windows showing [native UI](ui/context-menu.md) give elements context
 menus with `ContextMenu`, built like the rest of their interface.
 
+### The webview's menu
+
+`Page.OnContextMenu` changes that standard menu as it is about to open,
+as Electron's `context-menu` event does. The event tells what was
+right-clicked (`LinkURL`, `LinkText`, `ImageURL`, `MediaURL`,
+`SelectionText`, `Editable`, `FrameURL`), and its `Menu` holds the
+webview's own items. Hide, rename, disable or remove them, and add items
+of the app's, which work as in any other menu:
+
+```go
+page.OnContextMenu(func(e *mygo.ContextMenuEvent) {
+	e.Menu.Remove(mygo.ContextMenuReload, mygo.ContextMenuInspect)
+	if e.LinkURL != "" {
+		e.Menu.Append(mygo.Separator(), &mygo.MenuItem{
+			Label: "Open in Browser",
+			Click: func(*mygo.MenuItem, *mygo.Window) { go mygo.Shell.OpenExternal(e.LinkURL) },
+		})
+	}
+})
+```
+
+`e.PreventDefault()` shows no menu, and setting `e.Menu` to a menu of the
+app's shows that one instead. The webview's items keep doing what the
+webview does, wherever they are moved, unless the app gives one a `Click`,
+which then runs in its place. A page whose own `contextmenu` handler calls
+`preventDefault` opens no menu, and the listeners are not called.
+
+The webview's items have the same IDs on every platform that has them:
+
+| ID | item |
+|---|---|
+| `ContextMenuBack`, `ContextMenuForward`, `ContextMenuReload`, `ContextMenuStop` | the page's navigation |
+| `ContextMenuInspect` | Inspect Element, in builds with DevTools |
+| `ContextMenuUndo`, `ContextMenuRedo`, `ContextMenuCut`, `ContextMenuCopy`, `ContextMenuPaste`, `ContextMenuPasteAndMatchStyle`, `ContextMenuDelete`, `ContextMenuSelectAll` | editing |
+| `ContextMenuSpellingGuess` | each word suggested for a misspelled one |
+| `ContextMenuOpenLink`, `ContextMenuOpenLinkInNewWindow`, `ContextMenuDownloadLink`, `ContextMenuCopyLink` | links |
+| `ContextMenuOpenImageInNewWindow`, `ContextMenuDownloadImage`, `ContextMenuCopyImage`, `ContextMenuCopyImageURL` | images |
+| `ContextMenuOpenMediaInNewWindow`, `ContextMenuDownloadMedia`, `ContextMenuCopyMediaURL`, `ContextMenuMediaControls`, `ContextMenuMediaLoop`, `ContextMenuMediaFullScreen`, `ContextMenuPictureInPicture` | video and audio |
+| `ContextMenuOpenFrameInNewWindow`, `ContextMenuLookUp`, `ContextMenuSearchWeb`, `ContextMenuShare`, `ContextMenuEmoji`, `ContextMenuPrint` | the rest |
+
+The other items keep the platform's own name as their ID: WebKit's
+identifier on macOS (`WKMenuItemIdentifierTranslate`), the stock action's
+nick on Linux (`unicode`), WebView2's name on Windows (`createQrCode`).
+Separators, and items the platform names nothing, have none.
+
+What each platform does:
+
+- **macOS** changes WebKit's menu in place as it opens, so Look Up,
+  Translate, Services and the spelling suggestions keep working. WebKit
+  tells nothing of what was clicked: MyGo's runtime reports it from the
+  page's `contextmenu` event, in the page's own document, so a click in a
+  frame tells nothing and `FrameURL` stays empty.
+- **Linux** changes WebKitGTK's menu in place. WebKitGTK tells the link,
+  the image, the media and whether the element is editable, and the page
+  the selection. The app's items show no shortcut or icon, radio items show
+  as check boxes, and only items of WebKitGTK's stock actions can be
+  renamed. `FrameURL` stays empty.
+- **Windows** gets everything from WebView2 (1.0.1185 and later; older
+  runtimes never call the listeners). A menu the app changed is drawn by
+  MyGo, like its other popup menus, with WebView2's items doing what they
+  do; a menu left as it was is WebView2's own. WebView2 gives the spelling
+  suggestions no words, so a menu MyGo draws leaves them out, and it
+  leaves out the URL of a `data:` image, which the page's `contextmenu`
+  event then tells.
+
+A menu the app changed shows no separator first, last or after another,
+as removing the items between two leaves.
+
 ## The Dock menu
 
 On macOS `App.Dock.SetMenu` adds items above the standard ones of the menu
@@ -273,7 +341,8 @@ mygo.App.WhenReady(func() {
 The icon is a PNG, ideally 16×16 points (a 32×32 image for high-resolution
 displays); a template icon, black on transparent, lets macOS tint it for
 light and dark menu bars. A tray with a menu shows it on click. Without a
-menu, clicks reach `OnClick`, and `OnRightClick` gets right-clicks. Change
+menu, clicks reach `OnClick`, and `OnRightClick` gets right-clicks, and on
+macOS Control-clicks, as a Control-click is a secondary click there. Change
 the tray with `SetIcon`, `SetMenu`, `SetToolTip` and, on macOS,
 `SetTitle`, the text next to the icon; `Destroy` removes it.
 

@@ -683,3 +683,31 @@ func TestAssetCatalog(t *testing.T) {
 		t.Errorf("catalog of Mark.icon = %+v", car)
 	}
 }
+
+// TestICNSIcon bundles macos.icon's .icns as it is, in place of the one
+// rendered from icon, and adds no asset catalog.
+func TestICNSIcon(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"icon.png": string(defaultIcon()), "App.icns": "icns drawn per size", "Bad.icns": "png"})
+	c := &Config{Name: "Icns", Identifier: "com.example.icns", Version: "1.0.0", Icon: "icon.png", root: dir, MacOS: MacOS{Icon: "App.icns"}}
+	c.applyDefaults()
+	if err := c.validate(); err != nil {
+		t.Fatal(err)
+	}
+	car, err := appCatalog(c)
+	if err != nil || car != nil {
+		t.Fatalf("catalog of App.icns = %+v, %v", car, err)
+	}
+	icns, err := bundleICNS(c, car)
+	if err != nil || string(icns) != "icns drawn per size" {
+		t.Errorf("bundle .icns = %q, %v", icns, err)
+	}
+	c.MacOS.Icon = "Bad.icns"
+	if _, err := bundleICNS(c, nil); err == nil {
+		t.Error("bundled an .icns that is not one")
+	}
+	c.MacOS.Icon = ""
+	if icns, err := bundleICNS(c, nil); err != nil || !bytes.HasPrefix(icns, []byte("icns")) || string(icns) == "icns drawn per size" {
+		t.Errorf("without macos.icon, the .icns is not icon's rendering: %v", err)
+	}
+}

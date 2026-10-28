@@ -59,6 +59,9 @@ go func() {
 }()
 ```
 
+[`ui.Video`](video.md) plays a video's frames so, decoded ahead and each
+shown as it comes due, with animated GIFs out of the box.
+
 `Pixelated` draws a bitmap shown larger than its pixels as squares of
 their colors, as pixel art and game sprites are drawn, where it would
 blend neighbors smoothly. At whole multiples of its size each pixel is a

@@ -335,3 +335,28 @@ func TestDiffViewerCurrentHunk(t *testing.T) {
 		}
 	}
 }
+
+// The wheel over what the diff shows over its lines, as a comment under a
+// line, scrolls the diff, as it does over the lines.
+func TestDiffScrollsUnderAnnotation(t *testing.T) {
+	var a []string
+	for i := range 300 {
+		a = append(a, "line "+strconv.Itoa(i))
+	}
+	b := append([]string(nil), a...)
+	b[1] = "changed"
+	d := &DiffState{Old: NewBuffer(strings.Join(a, "\n")), New: NewBuffer(strings.Join(b, "\n")), Layout: DiffUnified, ExpandUnchanged: true}
+	d.Annotations = []DiffAnnotation{{Side: DiffNew, Line: 1, Height: 300, Key: "comment"}}
+	d.RenderAnnotation = func(c *ui.Context, an DiffAnnotation) { ui.Column(c).Fill().Children(func() { ui.Text(c, "comment") }) }
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 600, 400)
+	tt.Frame()
+	r, ok := tt.Find("comment")
+	if !ok {
+		t.Fatal("no comment shown")
+	}
+	tt.Scroll(r.X+r.W/2, r.Y+r.H/2, 0, 40)
+	tt.Frame()
+	if y := d.eds[1].scrollY; y != 40 {
+		t.Fatalf("scrolled to %v over the comment, want 40", y)
+	}
+}

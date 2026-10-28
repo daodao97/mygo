@@ -79,6 +79,7 @@ func registerMenuTarget() {
 		method("mygoMenuItemClicked:", func(self id, _ objc.SEL, item id) {
 			theBackend.h.MenuItemClicked(sendInt(item, "tag"))
 		}),
+		method("mygoContextItemClicked:", contextItemClicked),
 	})
 }
 
@@ -326,6 +327,19 @@ type tray struct {
 	dark bool
 }
 
+// secondaryClick reports whether a click on a status item, ending with an
+// event of type typ and modifier flags, is a right-click: the right button's,
+// or the primary button's with Control held, as a Control-click is a
+// secondary click across macOS, and in windows of native UI.
+func secondaryClick(typ, flags uint) bool {
+	const (
+		leftMouseUp  = 2       // NSEventTypeLeftMouseUp
+		rightMouseUp = 4       // NSEventTypeRightMouseUp
+		control      = 1 << 18 // NSEventModifierFlagControl
+	)
+	return typ == rightMouseUp || typ == leftMouseUp && flags&control != 0
+}
+
 func registerTrayTarget() {
 	classDef("MyGoTrayTarget", "NSObject", nil, []objc.MethodDef{
 		method("mygoTrayClicked:", func(self id, _ objc.SEL, sender id) {
@@ -334,7 +348,7 @@ func registerTrayTarget() {
 				return
 			}
 			ev := send(theBackend.app, "currentEvent")
-			if ev != 0 && sendInt(ev, "type") == 4 { // NSEventTypeRightMouseUp
+			if ev != 0 && secondaryClick(uint(sendInt(ev, "type")), uint(send(ev, "modifierFlags"))) {
 				t.h.RightClicked()
 			} else {
 				t.h.Clicked()

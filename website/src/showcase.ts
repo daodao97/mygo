@@ -28,6 +28,109 @@ export const showcase: ShowcaseApp[] = [
       "An open-source music player for macOS, Windows and Linux. One search looks through YouTube Music and Spotify, and one queue and library mix tracks from both.",
     url: "https://github.com/fzn0x/mixmusic",
     author: "fzn0x",
+    mode: "native",
+    image: "/showcase/mixmusic.jpg",
+  },
+  {
+    name: "Pulse",
+    description:
+      "An activity monitor for Mac, Windows and Linux. Every process with its app's icon, each CPU core, memory pressure, the GPU, disks, network connections, energy and temperatures, with live readings in the menu bar.",
+    url: "https://pulse.egoist.dev",
+    author: "egoist",
+    mode: "native",
+    image: "/showcase/pulse.jpg",
+  },
+  {
+    name: "Kero",
+    description:
+      "A terminal for coding agents. Sessions keep running when you quit, a sidebar shows which agents are working, which need you and which are done, and a CLI lets agents drive it, on your machine or a remote host.",
+    url: "https://kero.sh",
+    author: "egoist",
+    mode: "native",
+  },
+  {
+    name: "Lorca",
+    description:
+      "AI teammates on your computer. Chat with one bot or put several in a group chat; they read and edit files, run commands and hand work to each other, and chats sync end-to-end encrypted to your other devices.",
+    url: "https://lorca.app",
+    author: "egoist",
+    mode: "native",
+  },
+  {
+    name: "MyGo 云音乐",
+    description:
+      "A third-party NetEase Cloud Music client. Daily picks, playlists, search, personal FM, word-by-word lyrics, lossless and Hi-Res playback, podcasts with on-device transcripts, and a mini player in the notch.",
+    url: "https://cloudmusic.egoist.dev",
+    author: "egoist",
+    mode: "native",
+  },
+  {
+    name: "GoRex",
+    description:
+      "A replica of Superlogical's Rex terminal. Tabs and split panes as cards, sessions that keep running after you quit, and each pane's program and activity in its header.",
+    url: "https://github.com/egoist/gorex",
+    author: "egoist",
+    mode: "native",
+    image: "/showcase/gorex.jpg",
+  },
+  {
+    name: "Godiff",
+    description:
+      "A minimal diff viewer for reviewing Git changes and committing them. Split and unified diffs, review comments to copy for an agent, history, and GitHub pull request reviews.",
+    url: "https://github.com/egoist/godiff",
+    author: "egoist",
+    mode: "native",
+  },
+  {
+    name: "2048",
+    description:
+      "The classic 2048 puzzle, played with the arrow keys, a drag or a touchpad swipe. Its WebAssembly build runs in the browser too.",
+    url: "https://github.com/egoist/2048",
+    author: "egoist",
+    mode: "native",
+    image: "/showcase/2048.jpg",
+  },
+  {
+    name: "Uma",
+    description: "A menu bar app that shows the websites of an Umami account and their visitors.",
+    url: "https://github.com/egoist/uma",
+    author: "egoist",
+    mode: "native",
+  },
+  {
+    name: "留白 Liubai",
+    description:
+      "An open-source Markdown editor and reader for macOS, with a Windows beta. The page formats as you type, the finished document reads beside it or on its own, files stay plain .md, and eleven themes follow the hours of the day or the seasons.",
+    url: "https://liubai.echovic.com",
+    author: "echoVic",
     mode: "web",
+    image: "/showcase/liubai.jpg",
+  },
+  {
+    name: "Clipnest",
+    description:
+      "An open-source clipboard history for Mac. It keeps the text, links, code and images you copy and the snippets you reuse; press ⌘⇧V to pick one and paste it back where you were.",
+    url: "https://clipnest.echovic.com",
+    author: "echoVic",
+    mode: "web",
+    image: "/showcase/clipnest.jpg",
+  },
+  {
+    name: "Cleanzo",
+    description:
+      "An open-source disk cleaner for macOS. It clears junk, shows what fills the disk, finds large files and similar photos, uninstalls apps with their leftovers, and manages the skills used by AI tools like Claude Code and Codex.",
+    url: "https://cleanzo.echovic.com",
+    author: "echoVic",
+    mode: "web",
+    image: "/showcase/cleanzo.jpg",
+  },
+  {
+    name: "小海底 Little Reef",
+    description:
+      "A quiet, open-source focus timer for Mac. Every session you finish grows the seagrass a little and now and then a fish drops by; it also has a visitor log, 20 ambient sounds and a desktop widget.",
+    url: "https://reef.echovic.com",
+    author: "echoVic",
+    mode: "web",
+    image: "/showcase/little-reef.jpg",
   },
 ]

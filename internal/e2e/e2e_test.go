@@ -124,6 +124,10 @@ func TestMain(m *testing.M) {
 		cookiesWhileOpening()
 		return
 	}
+	if os.Getenv("MYGO_E2E_AUTOMATION_APP") == "1" {
+		automationApp()
+		return
+	}
 	mygo.Bind(Greeter{}, probe, streams, Bench{})
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +139,15 @@ func TestMain(m *testing.M) {
 		w.Header().Set("Content-Disposition", `attachment; filename="report.bin"`)
 		io.WriteString(w, "binary report")
 	})
+	mux.HandleFunc("/capture", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, capturePage)
+	})
+	mux.HandleFunc("/pip", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, pipPage)
+	})
+	mux.HandleFunc("/session/", sessionPage)
 	mux.HandleFunc("POST /echo", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		fmt.Fprintf(w, "echo:%s", b)
@@ -160,7 +173,9 @@ func TestMain(m *testing.M) {
 	mygo.App.OnWindowAllClosed(func() {})
 	// A window requested from a goroutine before Run waits for the app to
 	// be ready (TestEarlyWindow).
-	go func() { earlyWindow <- mygo.NewWindow(mygo.WindowOptions{Hidden: true, Title: "early"}) }()
+	go func() {
+		earlyWindow <- mygo.NewWindow(mygo.WindowOptions{Hidden: true, Title: "early", Page: firstPages()})
+	}()
 	code := 1
 	mygo.App.WhenReady(func() {
 		go func() {
@@ -182,7 +197,7 @@ func TestMain(m *testing.M) {
 // slow runner over ten seconds.
 func warmUp() {
 	start := time.Now()
-	w := mygo.NewWindow(mygo.WindowOptions{Hidden: true, Title: "warm-up"})
+	w := mygo.NewWindow(mygo.WindowOptions{Hidden: true, Title: "warm-up", Page: firstPages()})
 	defer w.Destroy()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -191,6 +206,22 @@ func warmUp() {
 	} else if d := time.Since(start); d > 3*time.Second {
 		fmt.Printf("e2e: the webview took %v to start\n", d.Round(time.Millisecond))
 	}
+}
+
+// firstPages are the options of the pages TestMain shows first, the one of
+// which that comes first decides the arguments of WebView2's browser:
+// with MYGO_E2E_UNTHROTTLED, those of ThrottlingOff
+// (TestBackgroundThrottling), and with MYGO_E2E_AUTOPLAY, AutoplayAllow's
+// (TestAutoplay).
+func firstPages() mygo.PageOptions {
+	var o mygo.PageOptions
+	if os.Getenv("MYGO_E2E_UNTHROTTLED") != "" {
+		o.BackgroundThrottling = mygo.ThrottlingOff
+	}
+	if os.Getenv("MYGO_E2E_AUTOPLAY") != "" {
+		o.Autoplay = mygo.AutoplayAllow
+	}
+	return o
 }
 
 // quitDuringDialog is a helper process for TestQuitDuringDialog: it quits
@@ -901,6 +932,13 @@ func TestWindowButtonsTheme(t *testing.T) {
 	if _, _, _, ok := titleButtonColor(w, "minimize"); !ok {
 		t.Skip("mygo draws the window controls on Windows")
 	}
+	t.Cleanup(func() {
+		if t.Failed() {
+			r, g, b, ok := titleButtonColor(w, "minimize")
+			noRedirect, composed, _ := composition(w)
+			t.Logf("the minimize button shows %02x%02x%02x (read %v); no redirection bitmap %v, composed %v", r, g, b, ok, noRedirect, composed)
+		}
+	})
 	readable := false
 	for deadline := time.Now().Add(3 * time.Second); !readable && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
 		l, ok := light()
@@ -3460,6 +3498,54 @@ func TestContentWindowVibrancy(t *testing.T) {
 
 	w.SetVibrancy(mygo.VibrancyNone)
 	eventually(t, "the view told no material shows", func() bool { return !shows.Load() })
+}
+
+// TestContentWindowTransparent shows a transparent window of native UI over
+// a blue one: where its view draws nothing, the screen shows the blue
+// window behind it, not black, and its opaque pane where it draws one. On
+// Windows the window has no redirection bitmap, whose opaque surface would
+// cover what is behind.
+func TestContentWindowTransparent(t *testing.T) {
+	var frames atomic.Int32
+	newWindow(t, mygo.WindowOptions{X: 40, Y: 40, Width: 400, Height: 300, Frameless: true, Content: ui.View(func(c *ui.Context) {
+		c.Root().Background(ui.RGB(0, 0, 255))
+	})})
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		c.Root().Background(ui.Transparent)
+		ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+			ui.Box(c).Width(200)
+			ui.Box(c).Grow(1).Background(ui.RGB(255, 0, 0))
+		})
+	}
+	w := newWindow(t, mygo.WindowOptions{X: 40, Y: 40, Width: 400, Height: 300, Frameless: true, Transparent: true, AlwaysOnTop: true, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	noRedirect, _, onWindows := composition(w)
+	if !onWindows {
+		t.Skip("reads the screen through a window of Windows")
+	}
+	if !canCompose() {
+		t.Skip("no DirectComposition: the window keeps its bitmap")
+	}
+	if !noRedirect {
+		t.Fatal("a transparent window of native UI has a redirection bitmap")
+	}
+	color := func(x float64, want func(r, g, b uint8) bool) func() bool {
+		return func() bool { r, g, b, ok := screenColor(w, x, 150); return ok && want(r, g, b) }
+	}
+	red := color(300, func(r, g, b uint8) bool { return r > 200 && g < 60 && b < 60 })
+	// Some displays, as the Windows ARM64 runners', never show GDI what
+	// DirectComposition composes: there the pane never reads, as in
+	// TestContentWindowVibrancy, and nothing tells it apart from a pane not
+	// shown yet.
+	readable := false
+	for deadline := time.Now().Add(3 * time.Second); !readable && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		readable = red()
+	}
+	if !readable {
+		t.Skip("the screen does not show the window's pane: not reading what is behind it")
+	}
+	eventually(t, "the window behind, beside the pane", color(100, func(r, g, b uint8) bool { return b > 200 && r < 60 && g < 60 }))
 }
 
 // TestContentWindowRepaintsWhatChanged moves the red row of a window of

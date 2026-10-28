@@ -106,6 +106,7 @@ const (
 	factoryCreateSwapChainComp = 24 // CreateSwapChainForComposition
 	scPresent                  = 8
 	scPresent1                 = 22 // IDXGISwapChain1
+	scSetBackgroundColor       = 25 // IDXGISwapChain1
 	scGetBuffer                = 9
 	scResizeBuffers            = 13
 	scSetSourceSize            = 29 // IDXGISwapChain2
@@ -291,6 +292,10 @@ type Renderer struct {
 	bw, bh     int
 	resizing   bool
 	resizedAt  time.Time
+	// bg is the background the window's swap chain shows beyond its
+	// frame (setBackground), once bgSet.
+	bg    scene.Color
+	bgSet bool
 	// lat is the swap chain's frame latency object (latency.go), pending
 	// tells that the frame drawn presents once it is signaled, through
 	// post, presentLater, and failed is why that failed; wake is what Ready
@@ -543,13 +548,24 @@ func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 	r.held = false
 	if r.swapChain == 0 {
 		desc := swapChainDesc1{Width: uint32(bw), Height: uint32(bh), Format: formatB8G8R8A8Unorm, SampleCount: 1,
-			BufferUsage: 0x20, BufferCount: uint32(n), Scaling: 0, SwapEffect: 3 /* flip sequential */, Flags: swapChainWaitable}
+			BufferUsage: 0x20, BufferCount: uint32(n), Scaling: scalingStretch, SwapEffect: 3 /* flip sequential */, Flags: swapChainWaitable}
 		if r.composed {
 			if err := r.composeSwapChain(desc); err != nil {
 				return err
 			}
 		} else {
-			if hr := call(r.factory, factoryCreateSwapChainHwnd, r.device, r.hwnd, uintptr(unsafe.Pointer(&desc)), 0, 0, uintptr(unsafe.Pointer(&r.swapChain))); failed(hr) {
+			// The window's swap chain shows its frame unscaled, from the
+			// top left corner, and its background beyond (setBackground):
+			// where the window grew before the frame of its new size
+			// presents, DWM shows the content's background, not black,
+			// nor the last frame stretched.
+			desc.Scaling = scalingNone
+			hr := call(r.factory, factoryCreateSwapChainHwnd, r.device, r.hwnd, uintptr(unsafe.Pointer(&desc)), 0, 0, uintptr(unsafe.Pointer(&r.swapChain)))
+			if failed(hr) {
+				desc.Scaling = scalingStretch
+				hr = call(r.factory, factoryCreateSwapChainHwnd, r.device, r.hwnd, uintptr(unsafe.Pointer(&desc)), 0, 0, uintptr(unsafe.Pointer(&r.swapChain)))
+			}
+			if failed(hr) {
 				return fmt.Errorf("d3d11: cannot create the swap chain: %#x", uint32(hr))
 			}
 			const noAltEnter = 2
@@ -579,6 +595,28 @@ func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 	}
 	r.w, r.h = w, h
 	return nil
+}
+
+// DXGI_SCALING: how a window's swap chain shows a frame of another size
+// than the window.
+const (
+	scalingStretch = 0
+	scalingNone    = 1
+)
+
+// setBackground makes the window's swap chain show c beyond its frame
+// (IDXGISwapChain1::SetBackgroundColor), where the window is larger than
+// the frame, as it grows until the frame of its size presents: the content's
+// background (scene.Scene.Background), opaque, or black without one. A swap
+// chain for composition has none. It costs a comparison but when c changes.
+func (r *Renderer) setBackground(c scene.Color) {
+	if r.composed || r.swapChain == 0 || r.bgSet && c == r.bg {
+		return
+	}
+	r.bg, r.bgSet = c, true
+	rgba := c.Premul(1) // over black
+	rgba[3] = 1
+	call(r.swapChain, scSetBackgroundColor, uintptr(unsafe.Pointer(&rgba)))
 }
 
 // setSourceSize makes the swap chain show the w×h pixels at the top left
@@ -867,6 +905,7 @@ func (r *Renderer) drawFrame(s *scene.Scene) (bool, error) {
 	if err := r.resize(s.Width, s.Height); err != nil {
 		return false, err
 	}
+	r.setBackground(s.Background)
 	var damage []image.Rectangle
 	known := false
 	if r.ctx1 != 0 {

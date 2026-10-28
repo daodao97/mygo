@@ -309,10 +309,8 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		if err != nil {
 			return nil, err
 		}
-		var icns []byte
-		if car != nil && car.icns != nil {
-			icns = car.icns // the .icon's own rendering for older macOS
-		} else if icns, err = appIcon(c); err != nil {
+		icns, err := bundleICNS(c, car)
+		if err != nil {
 			return nil, err
 		}
 		app, err := writeBundle(c, stage, bin, icns, car, res)

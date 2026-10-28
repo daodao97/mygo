@@ -177,6 +177,16 @@ type FramePresenter interface {
 	SetPresented()
 }
 
+// BackgroundSurface is a Surface told the color the content's frames fill
+// the window with, which its window shows where no frame of its size
+// shows yet: on Windows, DWM can show a window at its new size, as the
+// user drags its border, before the frame of that size, and would show
+// black where the window grew.
+type BackgroundSurface interface {
+	// SetBackground sets the color, opaque, or transparent for none.
+	SetBackground(c Color)
+}
+
 // TextInputState is the state of the text input that has the keyboard,
 // for input methods.
 type TextInputState struct {

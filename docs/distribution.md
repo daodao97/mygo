@@ -89,6 +89,11 @@ compiles with `actool` from Xcode 26 or later, with the `.icns` that
 the compilation fails, skips the `.icon` with a message, and the app keeps
 the PNG's `.icns`. `mygo dev` shows the `.icns`.
 
+`macos.icon` can also be an `.icns` of your own, which the app gets in place
+of the one rendered from the PNG: for an icon drawn per size, such as a
+closer crop for 16 and 32 points, made with `iconutil` from an `.iconset`.
+`mygo dev` still shows the PNG's.
+
 ```ts
 export default defineConfig({
   macos: { icon: "AppIcon.icon" }, // outside resources, which ship as they are
@@ -401,6 +406,26 @@ in the names of the shortcuts only. The installer of a version that sets
 `displayName` replaces the shortcuts that an earlier version made under
 the name.
 
+[`windows.installDirName`](configuration.md#windows) names the install
+folder alone, for an app that keeps its name everywhere else, as an ASCII
+folder for tools that handle only ASCII paths, such as scripts in the
+console's code page. Here the app installs in
+`%LOCALAPPDATA%\Programs\ZhiLian`, and its executable, shortcuts and entry
+in Settings > Apps are named `智链`:
+
+```ts
+export default defineConfig({
+  name: "智链",
+  windows: { installDirName: "ZhiLian" },
+});
+```
+
+An installed app stays in its folder: the installer of a newer version
+installs in the folder of the installed one, which the user may have
+chosen, as [`install.ps1`](#install-scripts-for-macos-and-windows) and
+[updates](updates.md) do. A new `installDirName` applies to new installs
+only, and to the app once it is uninstalled and installed again.
+
 The installer is made with [NSIS](https://nsis.sourceforge.io). On
 Windows, `mygo build` uses NSIS when it is installed, and otherwise
 downloads it the first time it needs it: the official NSIS 3.13 zip, from
@@ -408,6 +433,56 @@ a copy on MyGo's GitHub releases or else from SourceForge, checked against
 its SHA-256 and kept in `%LOCALAPPDATA%\mygo`. On macOS and
 Linux, install NSIS to make Windows installers (`brew install makensis`,
 `apt install nsis`); without it, `mygo build` skips the installer.
+
+### Installer hooks
+
+`windows.installerInclude` adds steps of the app's own to the installer:
+an NSIS script, relative to the project's directory, that the installer
+includes after MUI2.nsh and its languages, as electron-builder's `include`
+does. Of the macros it defines, `customInstall` runs at the end of the
+install, once the app's files are in `$INSTDIR`; `customUnInstall` runs in
+the uninstall, before the uninstaller removes `$INSTDIR`; and `customInit`
+runs in `.onInit`, when the installer starts, e.g. to check what the app
+needs before anything is installed. A macro the script does not define is left out, and
+`mygo build` stops when the script does not exist.
+
+```ts
+export default defineConfig({
+  windows: { installerInclude: "build/installer.nsh" },
+});
+```
+
+The script below copies a [helper executable](#helper-executables) that
+the app ships as `resources/windows/bin/helper.exe`, installed as
+`$INSTDIR\bin\helper.exe`, into the user's data directory, and removes it
+on uninstall:
+
+```nsis
+; build/installer.nsh
+!macro customInstall
+  CreateDirectory "$LOCALAPPDATA\My App\bin"
+  CopyFiles /SILENT "$INSTDIR\bin\helper.exe" "$LOCALAPPDATA\My App\bin"
+!macroend
+
+!macro customUnInstall
+  Delete "$LOCALAPPDATA\My App\bin\helper.exe"
+  RMDir "$LOCALAPPDATA\My App\bin"
+!macroend
+```
+
+The macros run in silent installs and uninstalls (`/S`) too, as
+[`install.ps1`](#install-scripts-for-macos-and-windows) runs the installer:
+`IfSilent` tells them apart, and a message box needs `/SD` to answer
+itself. [Updates](updates.md) replace the app's files without the
+installer, so they run none of the macros. Functions that
+`customUnInstall` calls are the uninstaller's, named with `un.`.
+
+The installer installs for the current user without administrator rights,
+so that the app can update itself: the hooks should keep to what the user
+can write, such as `$LOCALAPPDATA` and `HKCU`. The installer already lets
+the user choose the folder, and the uninstaller removes the app's folder
+only, keeping the app's data. Signing applies to the installer and its
+uninstaller as it does without hooks.
 
 ### Code signing
 
@@ -596,9 +671,13 @@ its source language first, which the system falls back to:
 - Linux: `Name[xx]` and `Comment[xx]` in the desktop entry, by POSIX
   locale (`de`, `zh_CN`, `zh_TW`, `sr@latin`).
 - Windows: the installer is in each of the languages, and picks the
-  system's; NSIS 3 has files of some 60 languages, and a language it has
-  none of stops the build, saying which it has. The file properties have a
-  table of strings per language.
+  one of the user's display language, or else the source language; an
+  app written in Chinese alone (`"i18n": { "source": "zh-Hans" }`) has
+  an installer in Chinese only, but for MyGo's own few texts in it, the
+  desktop shortcut's check box and the messages about the running app,
+  which are in English. NSIS 3 has files of some 60 languages,
+  and a language it has none of stops the build, saying which it has.
+  The file properties have a table of strings per language.
 
 The app's name and description in a language are its catalog's
 `mygo.appName` and `mygo.appDescription`; the configuration's `name` and

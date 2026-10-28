@@ -21,8 +21,8 @@ ui.MenuButton(c, "Sort by", func(m *ui.Menu) {
 ## Items
 
 Menus take the same items as [context menus](context-menu.md#items):
-`Item`, with `Checked`, `Disabled` and `Shortcut`, `Separator` and
-`Submenu`.
+`Item`, with `Checked`, `Radio`, `Disabled` and `Shortcut`, `Separator`
+and `Submenu`.
 
 ## Any button
 

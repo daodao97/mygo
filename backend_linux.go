@@ -14,3 +14,5 @@ func linkContentRules() { linux.LinkContentRules() }
 func linkNowPlaying() { linux.LinkNowPlaying() }
 
 func linkMenuIcons() { linux.LinkMenuIcons() }
+
+func linkContextMenus() { linux.LinkContextMenus() }

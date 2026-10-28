@@ -156,11 +156,71 @@ trusted page may:
 - hear the paths of the files dropped on it, and of its window's document.
 
 So never serve third-party or user-supplied HTML from a custom scheme, nor
-load it with `LoadHTML` without a base URL: a plugin's UI or a preview of
-a user's HTML would get all of the above. Show it from an origin the
-window does not trust instead, such as an `https` site or a `data:` URL:
-it calls no Go method, and gets no permission unless a
+load it with `LoadHTML` without a base URL, in a page that trusts it: a
+plugin's UI or a preview of a user's HTML would get all of the above.
+Show it in an untrusted page instead, or from an origin the window does
+not trust, such as an `https` site or a `data:` URL: it calls no Go
+method, and gets no permission unless a
 [permission handler](windows.md#permissions) grants it.
+
+#### Untrusted pages
+
+`PageOptions.Untrusted` makes a page someone else's whatever its URL, for
+a window or a [web view](ui/web-view.md) showing a plugin's UI from a
+custom scheme. It trusts no origin, `TrustedOrigins` included, and goes
+further than a page of an untrusted origin: what MyGo lets every page do
+by default, it lets an untrusted page do only when a handler of the
+app's decides.
+
+- Its calls, to bound methods and to `window.mygo.window`, are rejected,
+  and its drag regions do nothing. MyGo drops any message it posts above
+  4 KiB before decoding it, and answers the rest on the main thread,
+  without a goroutine per message.
+- `Broadcast` does not reach it, nor `Emit` to the window its web view is
+  in. Send to it with `EmitPage`.
+- It gets no permission without `SetPermissionHandler`, opens no window
+  nor the browser without `SetWindowOpenHandler`, downloads nothing
+  without `OnWillDownload` listeners, and goes to no other origin than
+  its page's without `OnWillNavigate` listeners.
+
+It still reads its own scheme, as any page does, and its requests reach
+the handler, which tells which page asks with `mygo.CallerPage(r.Context())`.
+That's how a plugin's UI talks to the app, and `EmitPage` how the app
+answers:
+
+```go
+mygo.Protocol.HandleFunc("plugin", func(w http.ResponseWriter, r *http.Request) {
+	p := mygo.CallerPage(r.Context())
+	plugin := pluginOf[p] // the plugin whose web view made the request
+	if plugin == nil || r.URL.Host != plugin.ID {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method == http.MethodPost {
+		msg, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+		...
+		PluginReply.EmitPage(p, reply)
+		return
+	}
+	http.FileServerFS(plugin.Files).ServeHTTP(w, r)
+})
+
+view, _ := win.NewWebView(mygo.WebViewOptions{
+	URL:  "plugin://" + plugin.ID + "/",
+	Page: mygo.PageOptions{Untrusted: true},
+})
+pluginOf[view.Page()] = plugin
+```
+
+```js
+// In the plugin's page.
+await fetch("/message", { method: "POST", body: JSON.stringify(msg) });
+window.mygo.on("plugin-reply", (reply) => { ... });
+```
+
+A page can make requests to other hosts and schemes too, without reading
+their responses: check the page, as above, before a handler acts on a
+request.
 
 Some things reach every page, trusted or not:
 
@@ -168,7 +228,8 @@ Some things reach every page, trusted or not:
   every web view of a window of native UI. Send to one page with
   `EmitPage`.
 - messages to Go: an untrusted page's calls are rejected, but the app
-  receives and decodes them first, whatever their size.
+  receives and decodes them first, whatever their size, unless the page is
+  [untrusted](#untrusted-pages).
 - `window.open` and `target="_blank"` links open `http(s)` URLs in the
   default browser, unless `SetWindowOpenHandler` decides
   ([links and new windows](#links-and-new-windows)).

@@ -132,7 +132,7 @@ func clipVisual(visual uintptr, w, h float32) {
 
 func (s *surface) NewWebView(o *platform.WindowOptions, h platform.WindowHandler) (platform.WebView, error) {
 	b := s.w.b
-	if err := b.startEnvironment(); err != nil {
+	if err := b.startEnvironment(o); err != nil {
 		return nil, err
 	}
 	if s.layer == nil {
@@ -168,12 +168,7 @@ func (s *surface) NewWebView(o *platform.WindowOptions, h platform.WindowHandler
 // createEmbedded asks WebView2 for the composition controller of a web
 // view in a window of native UI, through handler.
 func (w *window) createEmbedded(handler uintptr) uintptr {
-	env3 := queryInterface(w.b.env, &iidICoreWebView2Environment3)
-	if env3 == 0 {
-		return 0x80004002 // E_NOINTERFACE: a runtime older than visual hosting
-	}
-	defer release(env3)
-	return comCall(env3, env3CreateCompositionController, w.host.surface.hwnd, handler)
+	return w.b.createController(storeOf(w.opts.DataStore), w.host.surface.hwnd, true, handler)
 }
 
 // setUpEmbedded connects a web view's composition controller to its
@@ -306,7 +301,8 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 const dcompVisualRemoveAllVisuals = 18
 
 // placeEmbedded shows a web view where the content last showed it, or
-// hides it, once it has its controller.
+// hides it, once it has its controller. It stays hidden while its host
+// is.
 func (w *window) placeEmbedded() {
 	s := w.host.surface
 	if s == nil {
@@ -328,7 +324,7 @@ func (w *window) placeEmbedded() {
 	if w.shown {
 		putBounds(w.controller, rect{int32(fx), int32(fy), int32(px(w.frame.X + w.frame.W)), int32(px(w.frame.Y + w.frame.H))})
 	}
-	comCall(w.controller, ctlPutIsVisible, boolArg(w.shown))
+	comCall(w.controller, ctlPutIsVisible, boolArg(w.shown && !w.host.hidden))
 }
 
 // webViewAt returns the web view that takes the pointer at x, y in the

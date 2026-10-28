@@ -33,7 +33,8 @@ type WebView struct{ w *Window }
 // WebViewOptions configure Window.NewWebView.
 type WebViewOptions struct {
 	// URL is loaded right away. "/" and other URLs without a scheme are
-	// pages of the app's frontend (see Page.LoadURL).
+	// pages of the app's frontend (see Page.LoadURL). Page.SessionState,
+	// when set, takes its place.
 	URL string
 	// Page configures the web view's page.
 	Page PageOptions
@@ -78,7 +79,7 @@ func (w *Window) newWebView(opts WebViewOptions, bg *background) (*WebView, erro
 
 	// The web view's page lives in a Window of its own, which no list
 	// holds: everything a page does works through it as for a window.
-	pw := &Window{id: id, host: w, trustedOrigins: opts.Page.TrustedOrigins, secret: randomText(), background: bg}
+	pw := &Window{id: id, host: w, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), background: bg}
 	pw.pg = &Page{pw}
 	pw.resetPage()
 	popts := pw.platformOptions(&WindowOptions{Page: opts.Page, Transparent: opts.Transparent})
@@ -87,8 +88,17 @@ func (w *Window) newWebView(opts WebViewOptions, bg *background) (*WebView, erro
 		pw.background = nil
 	}
 	pw.devTools = popts.DevTools
+	if s := opts.Page.Session; s != nil {
+		store, err := s.attach()
+		if err != nil {
+			return nil, fmt.Errorf("mygo: cannot create a web view: %w", err)
+		}
+		pw.joinSession(s)
+		popts.DataStore = store
+	}
 	nv, err := w.conn.Surface.NewWebView(popts, &windowHandler{pw})
 	if err != nil {
+		pw.detachSession()
 		return nil, fmt.Errorf("mygo: cannot create a web view: %w", err)
 	}
 	pw.native = &webViewNative{Window: w.native, web: nv}
@@ -100,10 +110,8 @@ func (w *Window) newWebView(opts WebViewOptions, bg *background) (*WebView, erro
 	w.webViews = append(w.webViews, pw)
 	windows.Unlock()
 
-	if opts.URL != "" {
-		if err := pw.pg.LoadURL(opts.URL); err != nil {
-			log.Printf("mygo: web view: %v", err)
-		}
+	if err := pw.loadPage(opts.Page.SessionState, opts.URL); err != nil {
+		log.Printf("mygo: web view: %v", err)
 	}
 	return v, nil
 }
@@ -191,6 +199,7 @@ func (w *Window) destroyWebView() {
 	n.web.Close()
 	w.native = nil
 	w.destroyed.Store(true)
+	w.detachSession()
 	windows.Lock()
 	if h := w.host; h != nil {
 		for i, x := range h.webViews {
@@ -291,6 +300,10 @@ func (n *webViewNative) ProcessID() int         { return n.web.ProcessID() }
 func (n *webViewNative) IsAudible() bool        { return n.web.IsAudible() }
 func (n *webViewNative) SetAudioMuted(v bool)   { n.web.SetAudioMuted(v) }
 func (n *webViewNative) IsAudioMuted() bool     { return n.web.IsAudioMuted() }
+func (n *webViewNative) SessionState() []byte   { return n.web.SessionState() }
+func (n *webViewNative) RestoreSessionState(state []byte) bool {
+	return n.web.RestoreSessionState(state)
+}
 func (n *webViewNative) OpenDevTools()          { n.web.OpenDevTools() }
 func (n *webViewNative) CloseDevTools()         { n.web.CloseDevTools() }
 func (n *webViewNative) IsDevToolsOpened() bool { return n.web.IsDevToolsOpened() }
@@ -301,4 +314,16 @@ func (n *webViewNative) CapturePage(cb func([]byte, error)) {
 }
 func (n *webViewNative) PrintToPDF(opts platform.PDFOptions, cb func([]byte, error)) {
 	n.web.PrintToPDF(opts, cb)
+}
+func (n *webViewNative) CaptureState(kind platform.CaptureKind) platform.CaptureState {
+	return n.web.CaptureState(kind)
+}
+func (n *webViewNative) SetCaptureState(kind platform.CaptureKind, state platform.CaptureState) {
+	n.web.SetCaptureState(kind, state)
+}
+func (n *webViewNative) TogglePictureInPicture() {
+	n.web.TogglePictureInPicture()
+}
+func (n *webViewNative) PictureInPictureActive(cb func(bool)) {
+	n.web.PictureInPictureActive(cb)
 }

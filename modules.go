@@ -804,7 +804,8 @@ func (t *Tray) activatable() {
 	t.do(func(n platform.Tray) { n.SetActivatable(t.onClick.len() > 0) })
 }
 
-// OnRightClick is called when the icon is right-clicked.
+// OnRightClick is called when the icon is right-clicked, or Control-clicked
+// on macOS.
 func (t *Tray) OnRightClick(fn func()) (off func()) { return t.onRight.add(fn, false) }
 
 // Dark reports whether the bar the icon shows on is dark: the macOS menu

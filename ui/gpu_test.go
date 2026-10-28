@@ -514,3 +514,59 @@ func TestFramesInMemoryWaitForTheRefresh(t *testing.T) {
 		t.Fatalf("paced by the display: %d frames, waiting %v", ps.pixels, h.waiting)
 	}
 }
+
+// backgroundSurface is a test surface that records the backgrounds it is
+// told (platform.BackgroundSurface).
+type backgroundSurface struct {
+	testSurface
+	told []platform.Color
+}
+
+func (s *backgroundSurface) SetBackground(c platform.Color) { s.told = append(s.told, c) }
+
+var _ platform.BackgroundSurface = (*backgroundSurface)(nil)
+
+// bgGPU is a GPU renderer that records the background of the last scene.
+type bgGPU struct {
+	testGPU
+	bg scene.Color
+}
+
+func (g *bgGPU) Render(s *scene.Scene) error {
+	g.bg = s.Background
+	return g.testGPU.Render(s)
+}
+
+// TestWindowBackground checks that the surface and the GPU renderer learn
+// the theme's background, which a window shows where it grew before the
+// frame of its new size (#222): once per change, and none for a
+// transparent root.
+func TestWindowBackground(t *testing.T) {
+	g := &bgGPU{}
+	h, _, frame := gpuHost(t, func() (gpuRenderer, error) { return g, nil })
+	s := &backgroundSurface{}
+	h.conn.Surface = s
+	theme, transparent := LightTheme(), false
+	h.rt = newRuntime(func(c *context) {
+		c.SetTheme(theme)
+		if transparent {
+			c.Root().Background(Transparent)
+		}
+		coreText(c, "Hello")
+	}, h)
+	light, dark := LightTheme().Background.scene(), DarkTheme().Background.scene()
+	step := func(what string, want scene.Color, told []platform.Color) {
+		t.Helper()
+		h.rt.requestFrame()
+		frame()
+		if g.bg != want || !slices.Equal(s.told, told) {
+			t.Fatalf("%s: the renderer drew on %v, the surface was told %v; want %v and %v", what, g.bg, s.told, want, told)
+		}
+	}
+	step("light", light, []platform.Color{platform.Color(light)})
+	step("light again", light, []platform.Color{platform.Color(light)})
+	theme = DarkTheme()
+	step("dark", dark, []platform.Color{platform.Color(light), platform.Color(dark)})
+	transparent = true
+	step("transparent", scene.Color{}, []platform.Color{platform.Color(light), platform.Color(dark), {}})
+}

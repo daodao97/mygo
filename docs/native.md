@@ -447,6 +447,50 @@ func init() {
 }
 ```
 
+### Proxies
+
+Web pages reach the network through the webview, which follows the
+proxy the user set in the system's settings, with its bypass list and
+setup script (PAC file): WebView2 as Chromium does, from Windows' proxy
+settings; WKWebView from macOS's; WebKitGTK through GIO's default proxy
+resolver, which reads GNOME's settings, or KDE's through libproxy.
+
+Go's `http.DefaultClient` reads only `HTTP_PROXY`, `HTTPS_PROXY` and
+`NO_PROXY`. Package `netproxy` makes Go's requests follow the system's
+settings as the pages do, and MyGo's own requests use it: those of the
+[updater](updates.md) and, unless their options name a client, of the
+[fetch](plugins/fetch.md) and [websocket](plugins/websocket.md) plugins.
+Your own clients opt in with its transport:
+
+```go
+import "github.com/egoist/mygo/netproxy"
+
+client := &http.Client{Transport: netproxy.Transport(), Timeout: time.Minute}
+```
+
+or, for a transport of your own, `t.Proxy = netproxy.Proxy`. For each
+request:
+
+1. Loopback hosts (`localhost`, `*.localhost`, `127.0.0.0/8`, `::1`) are
+   reached directly.
+2. When `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` or `NO_PROXY` (or its
+   lowercase name) is set, the environment decides, as
+   `http.ProxyFromEnvironment` does, so that a proxy set for one run of
+   the app wins.
+3. Otherwise the system's settings for the URL decide: on Windows the
+   user's, read by WinHTTP, with automatic detection (WPAD) and setup
+   scripts; on macOS those of System Settings > Network > Proxies, read
+   by CFNetwork, with setup scripts; on Linux GIO's default proxy
+   resolver, as WebKitGTK. Without an answer, requests go direct.
+
+The system's answer for a scheme and host is kept for 5 seconds, so
+turning the proxy on or off, or changing it, applies to the requests that
+follow while the app runs. Requests under way, such as a download or a
+stream, keep their connection. Go's transport speaks to HTTP and HTTPS
+proxies and SOCKS5, not SOCKS4; it sends a proxy's password only when the
+system's answer holds it, as GNOME's settings can. In browsers, the
+browser makes Go's requests, through its own proxy.
+
 ## Secrets
 
 `mygo.Secrets` keeps small secrets, such as access tokens and API keys, in
