@@ -58,6 +58,14 @@ build-time declarations: early registration and system expiration live in an
 opt-in helper; Go workers own cancellation, app code owns update policy. These
 APIs do not add mobile screen components or default timers to framework startup.
 
+`push/apns` is also a headless, standard-library-only package. Its optional
+`ActivityManager` owns Live Activity registration versions, expiry, delivery
+deduplication and token failure cleanup; applications provide opaque routing
+IDs and submit their own state. It starts no polling workers or native runtime.
+`TestAPNsProductionDependenciesAreStandardLibraryOnly` checks its complete
+production dependency graph, so CLI/server consumers cannot silently acquire
+a GUI dependency. See [APNs push](push.md#manage-live-activity-subscriptions).
+
 ## Repository layout
 
 ```

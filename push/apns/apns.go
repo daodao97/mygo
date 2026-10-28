@@ -1,4 +1,4 @@
-// Package apns sends alert notifications through Apple's HTTP/2 provider API.
+// Package apns sends notifications through Apple's HTTP/2 provider API.
 // It is independent of the MyGo application loop and can run in desktop apps
 // and servers. Signing keys remain with the provider, never in the mobile app.
 package apns

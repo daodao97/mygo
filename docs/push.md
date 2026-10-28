@@ -98,6 +98,73 @@ sending until a successful reload. Reload cannot switch the provider to another
 application; open a separate provider for that application. Neither constructor
 starts a background worker or sends a test message.
 
+## Manage Live Activity subscriptions
+
+`apns.ActivityManager` is an independent Go building block for server-side
+ActivityKit updates. It uses only the standard library and does not import the
+MyGo application or graphics runtime. Its constructor starts no workers or
+polling timers. Feed it registrations from your authenticated endpoint, then
+publish when your application has new state or wants to refresh a stale date:
+
+```go
+manager, err := apns.NewActivityManager(provider, apns.ActivityManagerOptions{
+    MaxActivities: 32,
+})
+if err != nil {
+    return err
+}
+err = manager.Register(apns.ActivityRegistration{
+    ID: "device-42/activity-7", DeviceToken: activityKitToken,
+    ResourceID: "delivery-42",
+})
+if err != nil {
+    return err
+}
+for _, target := range manager.Targets() {
+    state, ended := deliveryState(target.ResourceID) // application-owned data
+    content, err := json.Marshal(state) // matches the widget's Codable state
+    if err != nil {
+        return err
+    }
+    if err := manager.Publish(ctx, target, apns.ActivityUpdate{
+        ContentState: content, End: ended,
+    }); err != nil && !errors.Is(err, apns.ErrActivityChanged) {
+        return err
+    }
+}
+```
+
+Keep one manager per application/provider. Registration IDs and resource IDs
+are opaque application strings; the manager never places them in a payload.
+`Targets` exposes routing IDs and an opaque registration version, not tokens.
+Always pass that snapshot to `Publish`: if a token or resource was replaced
+during a state read, an old snapshot returns `ErrActivityChanged` without
+sending. A late response from an already-running request cannot delete or
+acknowledge a replacement registration.
+
+Repeated identical content is suppressed. `RefreshInterval` defaults to one
+minute, so a later call to `Publish` may refresh an unchanged activity. If the
+content includes volatile fields such as a display timestamp, supply a stable
+`DeduplicationKey` describing its logical state. End events are always distinct
+from updates. Concurrent publications to the same registration are serialized,
+and waiting for a previous send respects context cancellation.
+
+Defaults are 256 registrations, an eight-hour registration lifetime, a
+two-minute stale date/delivery expiration, a ten-minute dismissal delay for end
+events, and an eight-second send timeout. Set these explicitly in
+`ActivityManagerOptions` for another application policy. A repeated registration
+keeps its original expiry and receipt; token/resource changes create a fresh
+registration. Expired entries are pruned by registration, target lookup and
+publication. `Remove(id)` unregisters without sending an end event.
+
+Successful end events remove the registration. Permanent APNs token failures
+also remove it, except an `Unregistered` response older than the latest token
+registration. Transient and transport failures retain it for an application
+retry; failed sends never suppress later updates. The manager has no persistent
+storage and never starts, resumes or polls application work. The application
+owns endpoint authentication, device/resource authorization, when to submit
+updates, and the content shown by its widget.
+
 ## Register and receive on iOS
 
 Before `App.Run`, register `App.OnPushToken`, `App.OnPushRegistrationError` and
@@ -116,8 +183,10 @@ until Go readiness, but application storage may still be loading asynchronously.
 
 `App.SetNotificationPresentationHandler` controls foreground banner/list/sound
 presentation and may return zero for an already visible item. It does not suppress
-system presentation in the background. Subscription authorization, opt-out,
-deduplication, routing and stale-token removal remain application policy.
+system presentation in the background. For ordinary alert notifications,
+subscription authorization, opt-out, deduplication, routing and stale-token
+removal remain application policy. ActivityKit subscriptions can use the
+optional manager described above.
 See [iOS notification APIs](ios.md) for callbacks and platform details.
 
 ## Production and checks
