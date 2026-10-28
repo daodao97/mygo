@@ -279,7 +279,9 @@ neither a border nor rounded corners there).
 
 On macOS, `Popover` gives it the look of the system's popovers instead: it
 shows in an `NSPopover`, which draws its material, rounded corners and an
-arrow pointing at the middle of the anchor, and animates. AppKit places it
+arrow pointing at the middle of the anchor, and animates. The material and
+arrow follow the application's theme, including changes while open; a tray's
+menu-bar contrast appearance does not override them. AppKit places it
 on the side `Placement` names, or the opposite one; the rest of the
 placement, and `Gap`, do not apply. As AppKit's popovers do, it has the
 keyboard while it shows, and with `Focusable` it closes as the user clicks

@@ -439,6 +439,41 @@ func TestSetWindowAppearance(handle uintptr, dark bool) {
 	})
 }
 
+// TestPopoverAppearance returns the explicit popover chrome appearance and
+// the effective appearances of its window/content, including the arrow's host.
+func TestPopoverAppearance(handle uintptr) (chrome, window, content string) {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil || w.popover == 0 {
+		return
+	}
+	name := func(object id, property string) string {
+		a := send(object, property)
+		if a == 0 {
+			return ""
+		}
+		return goString(send(a, "bestMatchFromAppearancesWithNames:", uintptr(nsArray(nsString("NSAppearanceNameAqua"), nsString("NSAppearanceNameDarkAqua")))))
+	}
+	return name(w.popover, "appearance"), name(w.win, "effectiveAppearance"), name(w.view, "effectiveAppearance")
+}
+
+// TestSetPopoverAnchorAppearance models a status item's contrast appearance,
+// which can differ from the application's own theme over desktop wallpaper.
+func TestSetPopoverAnchorAppearance(handle uintptr, dark bool) {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil {
+		return
+	}
+	view, _, _ := w.popoverAnchor()
+	if view == 0 {
+		return
+	}
+	name := "NSAppearanceNameAqua"
+	if dark {
+		name = "NSAppearanceNameDarkAqua"
+	}
+	send(view, "setAppearance:", uintptr(send(class("NSAppearance"), "appearanceNamed:", uintptr(nsString(name)))))
+}
+
 // TestWebViewAttached reports whether a window's web view is in its view
 // hierarchy.
 func TestWebViewAttached(handle uintptr) bool {

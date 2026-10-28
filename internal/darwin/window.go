@@ -328,6 +328,9 @@ func (w *window) fillSystemBacking() {
 // anew, once the appearance or the system's colors changed.
 func (b *Backend) refreshSystemBackings() {
 	for _, w := range b.byNSWindow {
+		if w.popover != 0 {
+			send(w.popover, "setAppearance:", uintptr(send(b.app, "effectiveAppearance")))
+		}
 		if w.systemBacking {
 			w.fillSystemBacking()
 		}
