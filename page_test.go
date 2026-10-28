@@ -12,6 +12,25 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// TestPreloadAllFrames: the preload script runs in the top frame only,
+// unless PreloadAllFrames asks for the iframes too.
+func TestPreloadAllFrames(t *testing.T) {
+	for _, all := range []bool{false, true} {
+		w := NewWindow(WindowOptions{Hidden: true, URL: "https://example.com/", Page: PageOptions{PreloadScript: "window.sniff = 1", PreloadAllFrames: all}})
+		fw := fb.Windows()[len(fb.Windows())-1]
+		i := slices.IndexFunc(fw.Opts.UserScripts, func(s platform.UserScript) bool { return s.Source == "window.sniff = 1" })
+		if i < 0 || fw.Opts.UserScripts[i].AllFrames != all {
+			t.Errorf("PreloadAllFrames %v: scripts %+v", all, fw.Opts.UserScripts)
+		}
+		for _, s := range fw.Opts.UserScripts[:max(i, 0)] {
+			if s.AllFrames {
+				t.Errorf("PreloadAllFrames %v: the bridge runs in iframes", all)
+			}
+		}
+		w.Destroy()
+	}
+}
+
 func TestPage(t *testing.T) {
 	w := NewWindow(WindowOptions{Hidden: true, URL: "https://example.com/a", Page: PageOptions{
 		PreloadScript: "window.preloaded = true", UserAgent: "agent", UserAgentSuffix: " MyApp/1.2 ", ZoomFactor: 1.5, DevTools: DevToolsEnabled,

@@ -521,6 +521,29 @@ type ImageSource interface {
 	imageSize() (w, h float32)
 }
 
+// ImageSize returns the size Image shows src at by default, in DIPs: a
+// bitmap's pixels, or the size an SVG says it has. It is 0×0 for nil.
+func ImageSize(src ImageSource) (w, h float32) {
+	if src == nil {
+		return 0, 0
+	}
+	return src.imageSize()
+}
+
+// DecodeImage decodes a picture whose format is not known up front, as
+// one downloaded: a bitmap of what DecodeBitmap decodes, else an SVG of a
+// size, else DecodeBitmap's error.
+func DecodeImage(data []byte) (ImageSource, error) {
+	b, err := DecodeBitmap(data)
+	if err == nil {
+		return b, nil
+	}
+	if s, serr := ParseSVG(data); serr == nil && s.w > 0 && s.h > 0 {
+		return s, nil
+	}
+	return nil, err
+}
+
 // Image creates an element showing a bitmap, or an SVG in its own colors
 // (with the text color for its currentColor), by default at its size as
 // DIPs, scaled to fit when given another size.

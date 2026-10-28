@@ -297,6 +297,10 @@ type PageOptions struct {
 	// PreloadScript is JavaScript injected into every page before the
 	// page's own scripts, after window.mygo is available.
 	PreloadScript string
+	// PreloadAllFrames runs PreloadScript in the page's iframes too, of
+	// every origin, as they start; window.mygo isn't there. A browser
+	// sees with it what a player embedded from another site loads.
+	PreloadAllFrames bool
 	// TrustedOrigins lists extra origins, such as "https://example.com",
 	// whose pages may call bound Go methods. By default only the app's own
 	// content can: custom schemes registered with Protocol, file: and

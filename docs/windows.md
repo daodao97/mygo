@@ -584,6 +584,7 @@ mygo.NewWindow(mygo.WindowOptions{
 | Option | |
 |---|---|
 | `PreloadScript` | JavaScript run before every page's own scripts |
+| `PreloadAllFrames` | runs `PreloadScript` in the page's iframes too, of every origin, where `window.mygo` isn't |
 | `TrustedOrigins` | other origins whose pages may call Go, see [who may call](bindings.md#who-may-call) |
 | `DevTools` | `DevToolsAuto` (the inspector in development builds), `DevToolsEnabled` or `DevToolsDisabled`, which also turns WebView2's own keys, as F5 reloading, on or off (Windows); for a window of native UI, its [inspector](ui/inspector.md) |
 | `ZoomFactor`, `UserAgent` | the page's zoom (1 is 100%) and user agent |

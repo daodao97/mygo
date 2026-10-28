@@ -285,8 +285,10 @@ type Window struct {
 	// iframe of another origin) are ignored.
 	secret string
 	// preload is PageOptions.PreloadScript, which the scripts of the pages
-	// loaded later keep (pageScripts).
-	preload string
+	// loaded later keep (pageScripts), in their iframes too with
+	// preloadAllFrames.
+	preload          string
+	preloadAllFrames bool
 
 	// native is only accessed on the main thread; nil once destroyed.
 	native    platform.Window
@@ -654,7 +656,7 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	if o.Parent != nil && o.Parent.native != nil {
 		p.Parent = o.Parent.native
 	}
-	w.preload = po.PreloadScript
+	w.preload, w.preloadAllFrames = po.PreloadScript, po.PreloadAllFrames
 	if w.fit != nil {
 		w.fit.zoom = p.Zoom
 	}

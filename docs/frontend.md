@@ -537,6 +537,11 @@ app's window on the app: see [Windows](windows.md#pages).
 `PageOptions.PreloadScript` runs JavaScript in every page of the window
 before the page's own scripts, once `window.mygo` exists.
 
+It runs in the top frame only. `PreloadAllFrames` runs it in the page's
+iframes too, of every origin, as each starts, which a browser needs to see
+what a player embedded from another site loads. `window.mygo` isn't in
+iframes: to tell the page what an iframe found, post it to `window.top`.
+
 ## The web inspector
 
 Development builds have the web inspector: right-click a page and choose

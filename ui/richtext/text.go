@@ -101,7 +101,7 @@ type Attachment struct {
 func (a *Attachment) size() (w, h float32) {
 	w, h = a.Width, a.Height
 	if a.Image != nil && (w <= 0 || h <= 0) {
-		iw, ih := imageSize(a.Image)
+		iw, ih := ui.ImageSize(a.Image)
 		switch {
 		case w <= 0 && h <= 0:
 			w, h = iw, ih
@@ -112,18 +112,6 @@ func (a *Attachment) size() (w, h float32) {
 		}
 	}
 	return max(w, 1), max(h, 1)
-}
-
-// imageSize returns the size an image shows at, in DIPs.
-func imageSize(src ui.ImageSource) (float32, float32) {
-	switch s := src.(type) {
-	case *ui.Bitmap:
-		w, h := s.Size()
-		return float32(w), float32(h)
-	case *ui.SVG:
-		return s.Size()
-	}
-	return 0, 0
 }
 
 // ObjectReplacement is the character an Attachment takes in a text.

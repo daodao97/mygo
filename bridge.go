@@ -74,7 +74,7 @@ const preferencesScriptIndex = 1
 func (w *Window) pageScripts() []platform.UserScript {
 	scripts := []platform.UserScript{{Source: w.bridgeScript()}, {Source: preferencesScript()}}
 	if w.preload != "" {
-		scripts = append(scripts, platform.UserScript{Source: w.preload})
+		scripts = append(scripts, platform.UserScript{Source: w.preload, AllFrames: w.preloadAllFrames})
 	}
 	return scripts
 }

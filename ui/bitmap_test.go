@@ -230,6 +230,47 @@ func TestDecodeBitmapOfWebPAndBMP(t *testing.T) {
 	}
 }
 
+func TestDecodeImageOfBitmapsAndSVGs(t *testing.T) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, stripedImage(6, 4, 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	src, err := DecodeImage(buf.Bytes())
+	if b, ok := src.(*Bitmap); err != nil || !ok || b.w != 6 || b.h != 4 {
+		t.Errorf("PNG: %T, %v", src, err)
+	}
+	for _, data := range []string{
+		`<svg width="30" height="20"/>`,
+		"\xef\xbb\xbf \n\t<?xml version=\"1.0\"?>\n<svg viewBox=\"0 0 30 20\"/>", // a BOM and spaces
+		`<!DOCTYPE svg><!-- a logo --><svg width="30" height="20"/>`,
+	} {
+		src, err := DecodeImage([]byte(data))
+		if s, ok := src.(*SVG); err != nil || !ok || s.w != 30 || s.h != 20 {
+			t.Errorf("%q: %T, %v", data, src, err)
+		}
+	}
+	for _, data := range []string{"", "not a picture \x00", `<html><body/></html>`, `<svg width="0" height="0"/>`} {
+		if src, err := DecodeImage([]byte(data)); err == nil || src != nil {
+			t.Errorf("%q: %T, no error", data, src)
+		}
+	}
+}
+
+func TestImageSize(t *testing.T) {
+	if w, h := ImageSize(NewBitmap(image.NewRGBA(image.Rect(0, 0, 6, 4)))); w != 6 || h != 4 {
+		t.Errorf("a bitmap is %v×%v", w, h)
+	}
+	if w, h := ImageSize(MustParseSVG([]byte(`<svg viewBox="0 0 30 20"/>`))); w != 30 || h != 20 {
+		t.Errorf("an SVG is %v×%v", w, h)
+	}
+	if w, h := ImageSize(nil); w != 0 || h != 0 {
+		t.Errorf("nil is %v×%v", w, h)
+	}
+	if w, h := ImageSize((*Bitmap)(nil)); w != 0 || h != 0 {
+		t.Errorf("a nil bitmap is %v×%v", w, h)
+	}
+}
+
 // BenchmarkHalvePhoto halves a photo of 4000×3000 pixels, a step of
 // drawing an image smaller than it is.
 func BenchmarkHalvePhoto(b *testing.B) {

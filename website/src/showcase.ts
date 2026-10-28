@@ -133,4 +133,22 @@ export const showcase: ShowcaseApp[] = [
     mode: "web",
     image: "/showcase/little-reef.jpg",
   },
+  {
+    name: "MyTwig",
+    description:
+      "A Git client for macOS, Windows and Linux. A commit graph of every branch, diffs and a conflict editor, with GitHub pull requests, Jenkins pipelines and Jira issues built in, plus optional AI with your own provider or CLI: explain a commit or a change, search history in plain words, plan Git steps to run and undo, and write commit messages and pull request descriptions.",
+    url: "https://mytwig.herosizy.dev",
+    author: "HeroSizy",
+    mode: "native",
+    image: "/showcase/mytwig.svg",
+  },
+  {
+    name: "Godwit",
+    description:
+      "An open-source, AI-native email client for macOS, Windows and Linux. It works with any IMAP/SMTP account, and its assistant reads, summarizes, translates and drafts mail with the model you choose; skills, plugins and MCP servers extend it.",
+    url: "https://godwit.email",
+    author: "baranwang",
+    mode: "native",
+    image: "/showcase/godwit.jpg",
+  },
 ]
