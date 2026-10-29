@@ -493,3 +493,48 @@ func TestComboboxAndTokenFieldFocus(t *testing.T) {
 		}
 	})
 }
+
+// Placeholder on a field around an input, as SearchField's, shows in its
+// input, in place of the field's own; without it, a search field shows
+// Search, and the others none.
+func TestFieldPlaceholder(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		role platform.AccessRole
+		view func(c *Context) Element
+		def  string
+	}{
+		{"SearchField", platform.RoleTextField, func(c *Context) Element {
+			var query string
+			return SearchField(c, &query)
+		}, "Search"},
+		{"TokenField", platform.RoleComboBox, func(c *Context) Element {
+			var tags []string
+			return TokenField(c, &tags, []string{"go"})
+		}, ""},
+		{"Combobox", platform.RoleComboBox, func(c *Context) Element {
+			var font string
+			return Combobox(c, &font, fonts)
+		}, ""},
+		{"Autocomplete", platform.RoleComboBox, func(c *Context) Element {
+			var city string
+			return Autocomplete(c, &city, []string{"Paris"})
+		}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, want := range []string{tc.def, "Find a thing"} {
+				tt := NewTester(func(c *Context) {
+					e := tc.view(c).Label("Field").Width(240)
+					if want != tc.def {
+						e.Placeholder(want)
+					}
+				}, 400, 300)
+				tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+				tt.Frame()
+				if n := accessNode(t, tt.h.access, tc.role, "Field"); n.Placeholder != want {
+					t.Errorf("the input's placeholder is %q, want %q", n.Placeholder, want)
+				}
+			}
+		})
+	}
+}

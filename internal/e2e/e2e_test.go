@@ -1603,6 +1603,57 @@ func TestCloseInFrame(t *testing.T) {
 	}
 }
 
+// TestHideInFrame hides a window from its own content as it builds a
+// frame, as a button hiding its window does, and shows it again; then
+// hides and shows it within one frame, and it stays shown.
+func TestHideInFrame(t *testing.T) {
+	var self atomic.Pointer[mygo.Window]
+	var frames, step atomic.Int32
+	var hidden, shown atomic.Bool // what IsVisible reported in the frame
+	w := newWindow(t, mygo.WindowOptions{Width: 320, Height: 240, Content: ui.View(func(c *ui.Context) {
+		frames.Add(1)
+		if w := self.Load(); w != nil {
+			switch step.Load() {
+			case 1:
+				w.Hide()
+				hidden.Store(!w.IsVisible())
+				step.Store(2)
+			case 3:
+				w.Hide()
+				w.Show()
+				shown.Store(w.IsVisible())
+				step.Store(4)
+			}
+		}
+		c.AnimationFrame()
+		ui.Box(c).Fill().Background(ui.RGB(255, 255, 255))
+	})})
+	var hides, shows atomic.Int32
+	w.OnHide(func() { hides.Add(1) })
+	w.OnShow(func() { shows.Add(1) })
+	self.Store(w)
+	before := shows.Load()
+	step.Store(1)
+	eventually(t, "the window hiding itself", func() bool { return step.Load() == 2 })
+	if !hidden.Load() || w.IsVisible() {
+		t.Fatalf("hidden in its frame: visible there %v, after %v", !hidden.Load(), w.IsVisible())
+	}
+	w.Show()
+	n := frames.Load()
+	eventually(t, "frames of the window shown again", func() bool { return frames.Load() > n+1 })
+
+	step.Store(3)
+	eventually(t, "the window hiding and showing itself", func() bool { return step.Load() == 4 })
+	n = frames.Load()
+	eventually(t, "frames of the window still shown", func() bool { return frames.Load() > n+1 })
+	if !shown.Load() || !w.IsVisible() {
+		t.Errorf("hidden and shown in its frame: visible there %v, after %v", shown.Load(), w.IsVisible())
+	}
+	if h, s := hides.Load(), shows.Load()-before; h != 2 || s != 2 {
+		t.Errorf("OnHide ran %d times, OnShow %d, want 2 each", h, s)
+	}
+}
+
 // TestFileDrop drops files with synthetic DOM events, the platform side
 // being played by a test hook, and checks that the page's own drag and
 // drop is undisturbed.
@@ -3650,6 +3701,46 @@ func TestContentWindowMenuButton(t *testing.T) {
 		menus, _ = popupMenus()
 		return len(menus) == 0
 	})
+}
+
+// TestContentWindowPopoverMenuButton opens the drawn menu of a menu
+// button as the button goes down, with no menu of the system's, and
+// chooses an item with the keys.
+func TestContentWindowPopoverMenuButton(t *testing.T) {
+	var frames atomic.Int32
+	var chosen atomic.Value
+	chosen.Store("")
+	// built counts the runs of the menu's function, which runs in each
+	// frame while the menu shows.
+	var built atomic.Int32
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		ui.Box(c).Fill().Padding(20).Children(func() {
+			ui.PopoverMenuButton(c, "Export", func(m *ui.Menu) {
+				built.Add(1)
+				for _, label := range []string{"As PDF", "As PNG"} {
+					if m.Item(label).Chosen() {
+						chosen.Store(label)
+					}
+				}
+			}).Size(120, 40)
+		})
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Drawn menu button", Width: 400, Height: 300, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	if !click(w, 80, 40) {
+		t.Skip("pointer automation not available on this platform")
+	}
+	eventually(t, "the menu", func() bool { return built.Load() > 0 })
+	if menus, ok := popupMenus(); ok && len(menus) != 0 {
+		t.Errorf("the system shows a menu too: %q", menus)
+	}
+	if !pressKeys("Down") {
+		t.Skip("key automation not available on this platform")
+	}
+	pressKeys("Down")
+	pressKeys("Return")
+	eventually(t, "the choice", func() bool { return chosen.Load() == "As PNG" })
 }
 
 // TestReorderByDragging drags a row of a list below another with the

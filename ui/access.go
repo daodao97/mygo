@@ -529,7 +529,7 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 	switch ev.Action {
 	case platform.AccessPress:
 		if s.flags&flagMenuButton != 0 {
-			rt.openMenuButton(s)
+			rt.openMenuButton(s, true)
 			break
 		}
 		if s.flags&flagClickable != 0 {

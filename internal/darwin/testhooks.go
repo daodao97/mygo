@@ -1260,6 +1260,41 @@ func TestEndSheetButton(handle uintptr, i int) bool {
 	return true
 }
 
+// TestModal reports whether a dialog runs for a window, as its sheet or
+// application modal (runModal), and whether it shows: AppKit ordered it
+// in, and the window server put it on screen.
+func TestModal(handle uintptr) (running, shows bool) {
+	panel := send(id(handle), "attachedSheet")
+	if panel == 0 {
+		panel = send(theBackend.app, "modalWindow")
+	}
+	if panel == 0 {
+		return false, false
+	}
+	return true, sendBool(panel, "isVisible") && TestOnScreen(uintptr(panel))
+}
+
+// TestCancelModal dismisses the dialog TestModal finds, as its Cancel
+// button or Escape would, and reports whether there was one.
+func TestCancelModal(handle uintptr) bool {
+	sheet := send(id(handle), "attachedSheet")
+	panel := sheet
+	if panel == 0 {
+		panel = send(theBackend.app, "modalWindow")
+	}
+	switch {
+	case panel == 0:
+		return false
+	case sendBool(panel, "isKindOfClass:", uintptr(class("NSSavePanel"))):
+		send(panel, "cancel:", 0)
+	case sheet != 0:
+		send(id(handle), "endSheet:returnCode:", uintptr(sheet), 0) // NSModalResponseCancel
+	default:
+		send(theBackend.app, "abortModal")
+	}
+	return true
+}
+
 // TestRightClickPage right-clicks (x, y), in points from the top-left
 // corner of a window's content, as TestClick clicks. WebKit opens the
 // page's context menu once the page heard the click, later.

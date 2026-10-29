@@ -154,9 +154,14 @@ type surface struct {
 	// gdiFailed tells that SetDIBitsToDevice refused a frame, which was
 	// logged once.
 	gdiFailed bool
+	// pixels tells that the frames are drawn in memory and copied onto the
+	// window's own pixels with GDI (PresentPixels), rather than presented
+	// by a GPU renderer's swap chain.
+	pixels bool
 	// bg is the content's background (SetBackground), and bgBrush a brush
 	// of it while it is opaque, which fills what the window shows beyond
-	// the surface as it grows (fillUncovered).
+	// the surface as it grows (fillUncovered), and the window's own pixels
+	// under the surface, which show as it shrinks (fillUnder).
 	bg      platform.Color
 	bgBrush uintptr
 
@@ -216,6 +221,7 @@ func (s *surface) toDIP(v int32) float64 { return float64(v) * 96 / float64(s.dp
 // window from then on, and the frames drawn in memory let go of it.
 func (s *surface) Native() platform.SurfaceNative {
 	s.freeComp()
+	s.pixels = false
 	return platform.SurfaceNative{HWND: s.hwnd, Composed: s.viaComposition()}
 }
 
@@ -305,6 +311,7 @@ func (s *surface) SetBackground(c platform.Color) {
 	}
 	if c.A == 255 {
 		s.bgBrush, _, _ = procCreateSolidBrush.Call(uintptr(c.R) | uintptr(c.G)<<8 | uintptr(c.B)<<16)
+		s.fillUnder()
 	}
 }
 
@@ -316,9 +323,9 @@ var _ platform.BackgroundSurface = (*surface)(nil)
 // its new size, before WM_SIZE fits the surface to it and the surface
 // presents the frame of that size: until then, DWM would show what the
 // window's redirection bitmap holds there, black, as the window paints no
-// background of its own. Only that part is painted, once per change of
-// size, never under the surface: GDI shows nothing over a flip-model swap
-// chain, and frames are not slowed.
+// background of its own. Only that part is painted, before the frame of
+// the new size: under the surface, the swap chain shows over what GDI
+// draws, and the frame is not slowed (fillUnder paints there after it).
 func (s *surface) fillUncovered() {
 	if s.bgBrush == 0 || s.w.noRedirect {
 		// A window without a redirection bitmap shows nothing GDI draws:
@@ -336,6 +343,39 @@ func (s *surface) fillUncovered() {
 		return
 	}
 	procExcludeClipRect.Call(dc, 0, 0, uintptr(sr.Right), uintptr(sr.Bottom))
+	procFillRect.Call(dc, uintptr(unsafe.Pointer(&c)), s.bgBrush)
+	procReleaseDC.Call(s.w.hwnd, dc)
+	procGdiFlush.Call()
+}
+
+// fillUnder paints the window's whole client area with the content's
+// background, under the surface too, once the surface took the window's
+// size, and when the background changes. As the window shrinks, WM_SIZE
+// fits the surface to the new size, and the surface presents the frame of
+// that size, within the window's SetWindowPos, before DWM takes the
+// window's new size: for a refresh, DWM shows the window at its last size
+// around the smaller surface, and there what the window's redirection
+// bitmap holds where the surface was. Nothing painted it there, as the
+// swap chain covered it, so it showed black, as an L along the surface's
+// new right and bottom edges but where an earlier size had left the
+// background. Painting it at each size keeps the background there for the
+// next shrink; the swap chain shows over it meanwhile. Frames copied onto
+// the window with GDI are in those pixels, which keep the last one where
+// the window shrinks: they are left as they are, as in a window without a
+// redirection bitmap, or one composing its frames, where GDI shows nothing.
+func (s *surface) fillUnder() {
+	if s.bgBrush == 0 || s.pixels || s.viaComposition() {
+		return
+	}
+	var c rect
+	procGetClientRect.Call(s.w.hwnd, uintptr(unsafe.Pointer(&c)))
+	// A DC of the window's client area that does not leave out its child
+	// windows, as GetDC does for a window with WS_CLIPCHILDREN.
+	const dcxCache = 0x2
+	dc, _, _ := procGetDCEx.Call(s.w.hwnd, 0, dcxCache)
+	if dc == 0 {
+		return
+	}
 	procFillRect.Call(dc, uintptr(unsafe.Pointer(&c)), s.bgBrush)
 	procReleaseDC.Call(s.w.hwnd, dc)
 	procGdiFlush.Call()
@@ -359,6 +399,7 @@ func (s *surface) PresentPixels(pix []byte, stride, width, height int) {
 		s.comp.show(px, int32(width), int32(height))
 		return
 	}
+	s.pixels = true
 	dc := s.paintDC
 	if dc == 0 {
 		dc, _, _ = procGetDC.Call(s.hwnd)

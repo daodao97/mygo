@@ -118,9 +118,11 @@ type surface struct {
 	linkRunning bool
 	due         bool
 	// deferred tells that the content left the last paced frame to draw
-	// later (FrameNow): the link keeps running meanwhile.
+	// later (FrameNow): the link keeps running meanwhile. soon tells that
+	// a frame waits for the backend's queue (drawSoon).
 	deferred  bool
 	timing    bool
+	soon      bool
 	resized   bool
 	lastFrame time.Time
 	framePass uint64
@@ -225,11 +227,11 @@ func (s *surface) RequestFrame() {
 		case s.linkRunning:
 			s.due = true
 		case time.Since(s.lastFrame) > 2*s.refresh() && s.visible():
-			// After a pause, the frame draws at once, at the end of this
-			// pass of the run loop, as AppKit's views do. A window out of
-			// sight waits for the link, which ticks once it shows: AppKit
-			// draws the views of hidden windows too.
-			send(s.view, "setNeedsDisplay:", 1)
+			// After a pause, the frame draws at once, in this pass of the
+			// run loop (drawSoon). A window out of sight waits for the
+			// link, which ticks once it shows: AppKit draws the views of
+			// hidden windows too.
+			s.drawSoon()
 		default:
 			// Frames that follow each other draw at the display's
 			// refreshes; the link keeps running while they come, rather
@@ -246,13 +248,40 @@ func (s *surface) RequestFrame() {
 	// One refresh after the last frame, or at once after a pause.
 	delay := s.refresh() - time.Since(s.lastFrame)
 	if delay <= 0 {
-		send(s.view, "setNeedsDisplay:", 1)
+		s.drawSoon()
 		return
 	}
 	s.timing = true
 	withPool(func() {
 		t := msgTimer(class("NSTimer"), sel("timerWithTimeInterval:target:selector:userInfo:repeats:"), delay.Seconds(), s.view, sel("mygoTimer:"), 0, false)
 		send(send(class("NSRunLoop"), "mainRunLoop"), "addTimer:forMode:", uintptr(t), kCFRunLoopCommonModes)
+	})
+}
+
+// drawSoon draws a frame in this pass of the run loop, from the backend's
+// queue, before Core Animation commits the pass's transaction, rather than
+// when AppKit displays the view: AppKit displays views in a run loop
+// observer, committing the transaction, and a frame drawn there runs the
+// app's code, as a button's Clicked, inside it. CFRunLoop runs no observer
+// again while it is in it, so a modal panel or sheet the code shows, and
+// waits for (Dialog.Open), runs a run loop of its own in which AppKit
+// displays nothing and Core Animation commits nothing: the panel never
+// shows, and runModal gives up, or the sheet never ends (#883). Only
+// frames AppKit asks for, as a resize's, which must draw with the
+// window's change, draw there (updateLayer).
+func (s *surface) drawSoon() {
+	if s.soon {
+		return
+	}
+	s.soon = true
+	last := s.lastFrame
+	s.w.b.post(func() {
+		s.soon = false
+		// A frame drawn since, as a resize's, drew what this one would.
+		if s.w.b.surfaceOf(s.view) != s || s.lastFrame != last {
+			return
+		}
+		s.frameNow(false)
 	})
 }
 
@@ -842,7 +871,7 @@ func registerSurfaceClass() {
 			// A closed window's view lives until its timer fires.
 			if s := b().surfaceOf(self); s != nil {
 				s.timing = false
-				send(self, "setNeedsDisplay:", 1)
+				s.frameNow(false)
 			}
 		}),
 		method("setFrameSize:", func(self id, cmd objc.SEL, size NSSize) {

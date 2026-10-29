@@ -1507,11 +1507,10 @@ func (v *view) scroll(ev ui.InputEvent) bool {
 		}
 	}
 	ch := float32(v.cellH) / v.scale
-	dy := ev.DY
-	if !ev.Precise {
-		dy = wheelRows(dy, runtime.GOOS) * ch
-	}
-	v.scrolled += dy
+	t.mu.Lock()
+	m := t.opts.ScrollMultiplier
+	t.mu.Unlock()
+	v.scrolled += m.rows(ev.DY, ch, ev.Precise, runtime.GOOS) * ch
 	rows := int(v.scrolled / ch)
 	v.scrolled -= float32(rows) * ch
 	if rows == 0 {

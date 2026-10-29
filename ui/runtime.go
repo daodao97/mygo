@@ -752,8 +752,9 @@ func (rt *engine) runFrame() {
 	}
 	rt.announcements = rt.announcements[:0]
 	rt.next()
-	if len(rt.retried) > 0 {
-		// The keys retried route in a frame built anew, at once.
+	if len(rt.retried) > 0 || len(rt.keys) > 0 {
+		// The keys retried, and those waiting for an element that took
+		// one (routeKeys), route in a frame built anew, at once.
 		rt.redraw, rt.repaintDue = false, time.Time{}
 		rt.host.requestFrame()
 	}
@@ -982,6 +983,12 @@ func (rt *engine) endPass() {
 		}
 	}
 	rt.clickLater = rt.clickLater[:0]
+	if mr := &rt.menu; mr.later != 0 {
+		if s := rt.states[mr.later]; s != nil {
+			rt.askMenu(s, mr.laterX, mr.laterY, true)
+		}
+		mr.later = 0
+	}
 	rt.menu.chosen = 0
 	// A shortcut the view did not ask for again, as it changed: what
 	// this frame built may take the key (settleKeys).

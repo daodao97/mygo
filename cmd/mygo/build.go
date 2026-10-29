@@ -17,6 +17,7 @@ type buildOptions struct {
 	sign            string // macOS signing identity
 	skipDMG         bool
 	skipNotarize    bool
+	skipInstaller   bool // no Windows installer, nor NSIS for it
 	iosSimulator    bool
 	iosTeam         string
 	iosArchive      bool
@@ -49,7 +50,8 @@ its Xcode host project, with cgo and the iOS SDK on macOS. Use -ios-team
 for development signing, or -ios-simulator for an Apple Silicon simulator.
 Windows also gets
 "<slug>-setup-<version>-<arch>.exe", made with NSIS, which mygo build
-downloads on Windows when it is not installed.
+downloads on Windows when it is not installed; -skip-installer leaves both
+out.
 
 Set macos.signingIdentity in mygo.json (or -sign) to a Developer ID to ship
 outside the Mac App Store, and macos.notarize to notarize the disk image.
@@ -73,6 +75,7 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 	skipBuildCommand := flags.Bool("skip-build-command", false, "do not run buildCommand")
 	skipDMG := flags.Bool("skip-dmg", false, "do not create a disk image for macOS")
 	skipNotarize := flags.Bool("skip-notarize", false, "do not notarize even when macos.notarize is set")
+	skipInstaller := flags.Bool("skip-installer", false, "do not create the Windows installer (<slug>-setup-<version>-<arch>.exe), nor download NSIS for it")
 	sign := flags.String("sign", "", `macOS signing identity (default: macos.signingIdentity, or "-" for ad hoc)`)
 	out := flags.String("o", "", "output directory (default: out from mygo.json or dist)")
 	upload := flags.Bool("upload", false, "upload the installers and updates to the GitHub release of this version (updates.github), as a draft, or to the bucket of updates.s3")
@@ -104,7 +107,7 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 			return err
 		}
 	}
-	opts := buildOptions{debug: *debug, sign: c.MacOS.SigningIdentity, skipDMG: *skipDMG, skipNotarize: *skipNotarize}
+	opts := buildOptions{debug: *debug, sign: c.MacOS.SigningIdentity, skipDMG: *skipDMG, skipNotarize: *skipNotarize, skipInstaller: *skipInstaller}
 	opts.iosSimulator, opts.iosTeam = *iosSimulator, c.IOS.DevelopmentTeam
 	opts.iosArchive, opts.iosExportMethod = *iosArchive, *iosExportMethod
 	opts.iosDevice = *iosDevice
@@ -388,7 +391,7 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 			installed = append(installed, e.Name())
 		}
 	}
-	if goos == "windows" {
+	if goos == "windows" && !opts.skipInstaller {
 		setup, err := writeInstaller(c, stage, opts.work, name+".exe", goarch, installed)
 		if err != nil {
 			return nil, err
@@ -415,13 +418,17 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 	}
 	artifacts = append(artifacts, files...)
 	// install.sh installs on Linux, and with updates on macOS; install.ps1
-	// runs the Windows installer of the latest version.
+	// runs the Windows installer of the latest version, so a build without
+	// one has none.
 	if goos == "linux" || goos == "darwin" && c.Updates != nil {
 		script, err := writeInstallScript(c, stage)
 		if err != nil {
 			return nil, err
 		}
 		artifacts = append(artifacts, script)
+	}
+	if goos == "windows" && c.Updates != nil && opts.skipInstaller {
+		warnf("Not writing install.ps1, which runs the installer that -skip-installer leaves out")
 	}
 	if goos == "windows" && c.Updates != nil && slices.ContainsFunc(artifacts, func(a string) bool { return filepath.Base(a) == installerFileName(c, goarch) }) {
 		script, err := writeInstallPS1(c, stage)

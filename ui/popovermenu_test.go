@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"runtime"
 	"slices"
 	"testing"
@@ -125,6 +126,36 @@ func TestPopoverMenuOpensAtThePointer(t *testing.T) {
 	tt.RightClickAt(x+250, y)
 	if open, _ := tt.Find("Open"); !menuShows(tt) || open.X+open.W > x+250 {
 		t.Errorf("a right-click at %v puts the menu at %+v", x+250, open)
+	}
+}
+
+// TestPopoverMenuInAScrolledElement checks the menu of an element
+// scrolled partly out of view opens at the pointer, as the menu attaches
+// to the element's whole box (#894).
+func TestPopoverMenuInAScrolledElement(t *testing.T) {
+	view := func(c *context) {
+		coreScroll(c).Fill().Children(func() {
+			col := coreColumn(c).FillWidth().Gap(10).Children(func() {
+				for i := range 60 {
+					coreText(c, fmt.Sprintf("Line %d", i))
+				}
+			})
+			col.PopoverMenu(func(m *Menu) {
+				m.Item("Open")
+			})
+		})
+	}
+	tt := coreNewTester(view, 400, 300)
+	tt.Scroll(200, 150, 0, 400)
+	tt.Frame()
+	x, y := float32(100), float32(200)
+	tt.RightClickAt(x, y)
+	open, ok := tt.Find("Open")
+	if !ok {
+		t.Fatalf("no menu: %q", tt.Texts())
+	}
+	if open.X < x || open.Y < y || open.X > x+20 || open.Y > y+20 {
+		t.Errorf("Open at %+v, not below and after the click at (%v, %v)", open, x, y)
 	}
 }
 
@@ -527,5 +558,382 @@ func TestPopoverMenuInAList(t *testing.T) {
 	}
 	if opened != 2 || tt.HasText("Open row") {
 		t.Errorf("opened row %d, menu shows %v", opened, tt.HasText("Open row"))
+	}
+}
+
+// buttonMenuApp is a view with a menu button whose menu is drawn in the
+// window, a button that takes the focus, and what its items did.
+type buttonMenuApp struct {
+	chosen   []string
+	pinned   bool
+	sort     string
+	disabled bool
+	// bottom puts the menu button at the window's bottom, and end at its
+	// end.
+	bottom, end bool
+}
+
+func (a *buttonMenuApp) view(c *context) {
+	col := coreColumn(c).Fill().Padding(20).Gap(10).AlignItems(Start)
+	if a.bottom {
+		col.Justify(End)
+	}
+	if a.end {
+		col.AlignItems(End)
+	}
+	col.Children(func() {
+		coreButton(c, "Edit")
+		corePopoverMenuButton(c, "Actions", func(m *Menu) {
+			if m.Item("Open").Shortcut(Cmd, KeyO).Chosen() {
+				a.chosen = append(a.chosen, "Open")
+			}
+			if m.Item("Pinned").Checked(a.pinned).Chosen() {
+				a.pinned = !a.pinned
+			}
+			m.Separator()
+			m.Submenu("Move to", func(m *Menu) {
+				for _, f := range []string{"Desktop", "Documents"} {
+					if m.Item(f).Chosen() {
+						a.chosen = append(a.chosen, "Move to "+f)
+					}
+				}
+			})
+			m.Submenu("Sort by", func(m *Menu) {
+				for _, by := range []string{"Name", "Date"} {
+					if m.Item(by).Radio(a.sort == by).Chosen() {
+						a.sort = by
+					}
+				}
+			})
+			if m.Item("Delete").Disabled(true).Chosen() {
+				a.chosen = append(a.chosen, "Delete")
+			}
+		}).Label("Actions").Disabled(a.disabled)
+	})
+}
+
+func TestPopoverMenuButtonOpensBelow(t *testing.T) {
+	a := &buttonMenuApp{}
+	tt := coreNewTester(a.view, 400, 300)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	// The menu opens as the button goes down, below it.
+	b, _ := tt.Find("Actions")
+	tt.Press(b.X+b.W/2, b.Y+b.H/2)
+	if !menuShows(tt) {
+		t.Fatalf("no menu as the button goes down: texts %q", tt.Texts())
+	}
+	if tt.Menu() != nil {
+		t.Errorf("the system shows a menu too: %q", tt.Menu())
+	}
+	open, _ := tt.Find("Open")
+	if open.Y < b.Y+b.H || open.Y > b.Y+b.H+20 || open.X < b.X || open.X > b.X+20 {
+		t.Errorf("Open at %+v, not below the button at %+v, at its start", open, b)
+	}
+	if s := tt.rt.states[tt.rt.focused]; s == nil || s.role != RoleMenu {
+		t.Errorf("the focus is not on the menu as it opens")
+	}
+	if n := accessNode(t, tt.h.access, platform.RoleMenuButton, "Actions"); n.States&platform.AccessExpanded == 0 {
+		t.Errorf("the button is not expanded with its menu open: states %b", n.States)
+	}
+	// The release, and frames after, leave it open.
+	tt.Release(b.X+b.W/2, b.Y+b.H/2)
+	tt.Frame()
+	if !menuShows(tt) {
+		t.Fatal("the menu closed after it opened")
+	}
+	// The button pressed again closes it, giving the focus back.
+	tt.Click("Actions")
+	if menuShows(tt) {
+		t.Error("pressing the button again left the menu open")
+	}
+	if !tt.Focused("Actions") {
+		t.Error("the focus did not go back to the button")
+	}
+	if n := accessNode(t, tt.h.access, platform.RoleMenuButton, "Actions"); n.States&platform.AccessExpanded != 0 {
+		t.Error("the button is expanded with its menu closed")
+	}
+	tt.Click("Actions")
+	if !menuShows(tt) {
+		t.Error("the button does not open its menu once closed")
+	}
+
+	// A disabled button opens none.
+	tt.Key(0, KeyEscape)
+	a.disabled = true
+	tt.Frame()
+	tt.Click("Actions")
+	if menuShows(tt) {
+		t.Error("a disabled menu button opens its menu")
+	}
+}
+
+func TestPopoverMenuButtonFlipsAtTheWindowsEdges(t *testing.T) {
+	// No room below the button: the menu goes above it.
+	a := &buttonMenuApp{bottom: true}
+	tt := coreNewTester(a.view, 400, 300)
+	tt.Click("Actions")
+	b, _ := tt.Find("Actions")
+	open, ok := tt.Find("Open")
+	if !ok {
+		t.Fatal("no menu")
+	}
+	del, _ := tt.Find("Delete")
+	if del.Y+del.H > b.Y || open.Y < 0 {
+		t.Errorf("Open at %+v, Delete at %+v: not above the button at %+v at the window's bottom", open, del, b)
+	}
+
+	// Right to left, it lines up with the button's right.
+	a = &buttonMenuApp{}
+	tt = coreNewTester(a.view, 400, 300)
+	tt.SetDirection(RightToLeft)
+	tt.Click("Actions")
+	b, _ = tt.Find("Actions")
+	open, _ = tt.Find("Open")
+	if open.Y < b.Y+b.H || open.X+open.W > b.X+b.W || open.X+open.W < b.X+b.W-20 {
+		t.Errorf("right to left, Open at %+v is not below the button at %+v, at its right", open, b)
+	}
+
+	// At the window's end, it moves along the button into the window.
+	a = &buttonMenuApp{end: true}
+	tt = coreNewTester(a.view, 400, 300)
+	tt.Click("Actions")
+	b, _ = tt.Find("Actions")
+	open, _ = tt.Find("Open")
+	if open.Y < b.Y+b.H || open.X+open.W > 400 {
+		t.Errorf("at the window's end, Open at %+v is not below the button at %+v, in the window", open, b)
+	}
+}
+
+func TestPopoverMenuButtonKeyboard(t *testing.T) {
+	a := &buttonMenuApp{}
+	tt := coreNewTester(a.view, 400, 400)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tt.Click("Edit")
+	tt.Key(0, KeyTab)
+	if !tt.Focused("Actions") {
+		t.Fatal("the menu button did not take the focus")
+	}
+	// Enter, Space and Down open it, on its first item, and Escape closes
+	// it, giving the focus back.
+	for _, k := range []Key{KeyEnter, KeySpace, KeyDown} {
+		tt.Key(0, k)
+		if !menuShows(tt) {
+			t.Fatalf("key %d opened no menu", k)
+		}
+		wantFocus(t, tt, "Open")
+		tt.Key(0, KeyEscape)
+		if menuShows(tt) {
+			t.Fatalf("Escape left the menu open")
+		}
+		if !tt.Focused("Actions") {
+			t.Fatalf("key %d: the focus did not go back to the button", k)
+		}
+	}
+	tt.Key(0, KeyDown)
+	b, _ := tt.Find("Actions")
+	if open, _ := tt.Find("Open"); open.Y < b.Y+b.H {
+		t.Errorf("Open at %+v, not below the button at %+v", open, b)
+	}
+	steps := []struct {
+		key  Key
+		want string
+	}{
+		{KeyDown, "Pinned"},
+		{KeyDown, "Move to"}, // past the separator
+		{KeyDown, "Sort by"},
+		{KeyDown, "Open"}, // past Delete, disabled, and round
+		{KeyUp, "Sort by"},
+		{KeyHome, "Open"},
+		{KeyEnd, "Sort by"},
+		{KeyRight, "Name"}, // into the submenu
+		{KeyDown, "Date"},
+		{KeyLeft, "Sort by"}, // out of it
+		{KeyUp, "Move to"},
+		{KeyEnter, "Desktop"}, // into the submenu
+		{KeyEscape, "Move to"},
+	}
+	for i, s := range steps {
+		tt.Key(0, s.key)
+		if !menuShows(tt) {
+			t.Fatalf("step %d: the menu closed", i)
+		}
+		wantFocus(t, tt, s.want)
+	}
+
+	// Typing the first letters of an item goes to it.
+	tt.TypeKey(0, KeyP, "p")
+	wantFocus(t, tt, "Pinned")
+	tt.Advance(2 * time.Second)
+	tt.TypeKey(0, KeyS, "s")
+	wantFocus(t, tt, "Sort by")
+	tt.Advance(2 * time.Second)
+	tt.TypeKey(0, KeyM, "m")
+	tt.TypeKey(0, KeyO, "o")
+	wantFocus(t, tt, "Move to")
+
+	// Enter in the submenu chooses, and the focus goes back to the button.
+	tt.Key(0, KeyRight)
+	tt.Key(0, KeyDown)
+	wantFocus(t, tt, "Documents")
+	tt.Key(0, KeyEnter)
+	if menuShows(tt) {
+		t.Error("the menu stays after a choice")
+	}
+	if !slices.Equal(a.chosen, []string{"Move to Documents"}) {
+		t.Errorf("chose %q", a.chosen)
+	}
+	if !tt.Focused("Actions") {
+		t.Error("the focus did not go back to the button")
+	}
+
+	// Space chooses too, and Tab closes it.
+	tt.Key(0, KeyEnter)
+	tt.Key(0, KeySpace)
+	if !slices.Equal(a.chosen, []string{"Move to Documents", "Open"}) || menuShows(tt) {
+		t.Errorf("Space: chose %q, menu shows %v", a.chosen, menuShows(tt))
+	}
+	tt.Key(0, KeyEnter)
+	tt.Key(0, KeyTab)
+	if menuShows(tt) || !tt.Focused("Actions") {
+		t.Errorf("Tab: menu shows %v, button focused %v", menuShows(tt), tt.Focused("Actions"))
+	}
+}
+
+// TestPopoverMenuButtonKeysInOneFrame checks keys typed quickly, coming
+// in one frame: each goes where the one before left the view, in order.
+func TestPopoverMenuButtonKeysInOneFrame(t *testing.T) {
+	a := &buttonMenuApp{}
+	tt := coreNewTester(a.view, 400, 400)
+	keys := func(ks ...Key) {
+		for _, k := range ks {
+			tt.rt.event(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: platform.Key(k)})
+			tt.rt.event(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: platform.Key(k)})
+		}
+		tt.settle()
+	}
+	tt.Click("Actions")
+	keys(KeyDown, KeyDown, KeyEnter)
+	if !a.pinned || menuShows(tt) {
+		t.Errorf("Down, Down and Enter: pinned %v, menu shows %v", a.pinned, menuShows(tt))
+	}
+
+	// Enter chooses the item highlighted before the Down after it.
+	tt.Click("Actions")
+	keys(KeyDown)
+	keys(KeyEnter, KeyDown)
+	if !slices.Equal(a.chosen, []string{"Open"}) || !a.pinned || menuShows(tt) {
+		t.Errorf("Enter and Down: chose %q, pinned %v, menu shows %v", a.chosen, a.pinned, menuShows(tt))
+	}
+}
+
+func TestPopoverMenuButtonPointer(t *testing.T) {
+	a := &buttonMenuApp{}
+	tt := coreNewTester(a.view, 400, 400)
+	tt.Click("Edit")
+	tt.Click("Actions")
+	if err := tt.Click("Pinned"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.pinned || menuShows(tt) {
+		t.Errorf("clicking Pinned: pinned %v, menu shows %v", a.pinned, menuShows(tt))
+	}
+	if !tt.Focused("Actions") {
+		t.Error("the focus did not go back to the button, which the press gave it")
+	}
+
+	// A disabled item takes no click, and the menu stays.
+	tt.Click("Actions")
+	tt.Click("Delete")
+	if len(a.chosen) != 0 || !menuShows(tt) {
+		t.Errorf("clicking Delete, disabled: chose %q, menu shows %v", a.chosen, menuShows(tt))
+	}
+
+	// The pointer opens a submenu as it moves onto its item.
+	r, _ := tt.Find("Sort by")
+	tt.Move(r.X+r.W/2, r.Y+r.H/2)
+	if err := tt.Click("Date"); err != nil {
+		t.Fatal(err)
+	}
+	if a.sort != "Date" || menuShows(tt) {
+		t.Errorf("clicking Date: sort %q, menu shows %v", a.sort, menuShows(tt))
+	}
+
+	// A press outside closes it, and goes on to what is under the pointer.
+	tt.Click("Actions")
+	tt.Click("Edit")
+	if menuShows(tt) || !tt.Focused("Edit") {
+		t.Errorf("a press on Edit: menu shows %v, Edit focused %v", menuShows(tt), tt.Focused("Edit"))
+	}
+}
+
+func TestPopoverMenuButtonAccessibility(t *testing.T) {
+	a := &buttonMenuApp{sort: "Date", pinned: true}
+	tt := coreNewTester(a.view, 400, 400)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	n := accessNode(t, tt.h.access, platform.RoleMenuButton, "Actions")
+	if n.Actions&platform.ActionPress == 0 || n.States&platform.AccessFocusable == 0 || n.States&platform.AccessExpanded != 0 {
+		t.Errorf("the menu button: %+v", n)
+	}
+	// Pressing it opens the menu, on its first item.
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessAction, ID: n.ID, Action: platform.AccessPress})
+	if !menuShows(tt) || tt.Menu() != nil {
+		t.Fatalf("pressing it: drawn menu %v, system's %q", menuShows(tt), tt.Menu())
+	}
+	wantFocus(t, tt, "Open")
+	tree := tt.h.access
+	menu := accessNode(t, tree, platform.RoleMenu, "")
+	open := accessNode(t, tree, platform.RoleMenuItem, "Open")
+	if open.PosInSet != 1 || open.SetSize != 5 || tree.Nodes[open.Parent].ID != menu.ID {
+		t.Errorf("Open: %+v", open)
+	}
+	if pinned := accessNode(t, tree, platform.RoleMenuItemCheckBox, "Pinned"); pinned.States&platform.AccessChecked == 0 {
+		t.Error("Pinned is not checked")
+	}
+	if sortBy := accessNode(t, tree, platform.RoleMenuItem, "Sort by"); sortBy.States&platform.AccessExpandable == 0 {
+		t.Errorf("Sort by: states %b", sortBy.States)
+	}
+	if n := accessNode(t, tree, platform.RoleMenuButton, "Actions"); n.States&platform.AccessExpanded == 0 {
+		t.Error("the button is not expanded with its menu open")
+	}
+}
+
+// TestPopoverMenuButtonInAToolbar opens the drawn menu of a menu button
+// that does not fit in its toolbar, from the toolbar's overflow menu.
+func TestPopoverMenuButtonInAToolbar(t *testing.T) {
+	chosen := ""
+	tt := coreNewTester(func(c *context) {
+		coreToolbar(c, func() {
+			for _, n := range []string{"Alpha", "Bravo", "Charlie", "Delta"} {
+				coreButton(c, n)
+			}
+			corePopoverMenuButton(c, "Export", func(m *Menu) {
+				for _, as := range []string{"PDF", "PNG"} {
+					if m.Item("As " + as).Chosen() {
+						chosen = as
+					}
+				}
+			})
+		}).Fill()
+	}, 260, 300)
+	if tt.HasText("Export") {
+		t.Fatal("the menu button fits")
+	}
+	tt.Click("More")
+	if err := tt.ChooseMenuItem("Export"); err != nil {
+		t.Fatal(err)
+	}
+	more, _ := tt.Find("More")
+	png, ok := tt.Find("As PNG")
+	if !ok {
+		t.Fatalf("no drawn menu: texts %q", tt.Texts())
+	}
+	if png.Y < more.Y+more.H || png.X < 0 || png.X+png.W > 260 {
+		t.Errorf("As PNG at %+v, not below the overflow button at %+v", png, more)
+	}
+	if err := tt.Click("As PNG"); err != nil {
+		t.Fatal(err)
+	}
+	if chosen != "PNG" || tt.HasText("As PDF") {
+		t.Errorf("chose %q, menu shows %v", chosen, tt.HasText("As PDF"))
 	}
 }

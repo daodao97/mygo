@@ -343,3 +343,41 @@ func TestMenuAndContextMenuOfOneElement(t *testing.T) {
 		t.Errorf("chose %q", chosen)
 	}
 }
+
+// TestMenuButtonInAToolbarsOverflow opens the menu of a menu button that
+// does not fit in its toolbar, from the toolbar's overflow menu, below
+// the overflow button.
+func TestMenuButtonInAToolbarsOverflow(t *testing.T) {
+	chosen := ""
+	tt := coreNewTester(func(c *context) {
+		coreToolbar(c, func() {
+			for _, n := range []string{"Alpha", "Bravo", "Charlie", "Delta"} {
+				coreButton(c, n)
+			}
+			coreMenuButton(c, "Export", func(m *Menu) {
+				for _, as := range []string{"PDF", "PNG"} {
+					if m.Item("As " + as).Chosen() {
+						chosen = as
+					}
+				}
+			})
+		}).Fill()
+	}, 260, 300)
+	if tt.HasText("Export") {
+		t.Fatal("the menu button fits")
+	}
+	tt.Click("More")
+	if err := tt.ChooseMenuItem("Export"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := tt.Menu(), []string{"As PDF", "As PNG"}; !slices.Equal(got, want) {
+		t.Fatalf("choosing Export shows %q, want %q", got, want)
+	}
+	more, _ := tt.Find("More")
+	if at := tt.h.menuAt; at[0] != more.X || at[1] != more.Y+more.H {
+		t.Errorf("the menu shows at %v, not below the overflow button at %+v", at, more)
+	}
+	if err := tt.ChooseMenuItem("As PNG"); err != nil || chosen != "PNG" {
+		t.Errorf("chose As PNG: %v, chosen %q", err, chosen)
+	}
+}

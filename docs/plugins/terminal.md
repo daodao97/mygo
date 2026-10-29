@@ -160,6 +160,12 @@ term, err := terminal.New(terminal.Options{
 - `Cursor` and `NoBlink` set the cursor, which programs may change.
 - `Scrollback` is about how many bytes of output to keep above the
   screen: 10 MB by default, none when negative.
+- `ScrollMultiplier` scales scrolling, as Ghostty's
+  `mouse-scroll-multiplier`: `Discrete` is the rows a notch of a mouse
+  wheel scrolls (3 by default; on Windows it scales the "lines to scroll"
+  setting as 3 would be the setting's), and `Precision` scales a
+  touchpad's distance (1 by default). `SetScrollMultiplier` changes it in
+  a running terminal.
 - `MinimumContrast` is the least contrast text has with its background,
   as Ghostty's `minimum-contrast`: a WCAG ratio from 1 (none, the
   default) to 21. Text with less, as a program's light gray on a light

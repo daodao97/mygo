@@ -548,9 +548,12 @@ func (w *window) sized(kind uintptr) {
 	if w.surface != nil {
 		// What the window grew by shows the content's background, not
 		// black, until the surface presents the frame of its new size,
-		// which fitting it draws at once.
+		// which fitting it draws at once. The window's own pixels under
+		// the surface take it too, which show where the window next
+		// shrinks, until DWM takes its new size (fillUnder).
 		w.surface.fillUncovered()
 		w.surface.fit()
+		w.surface.fillUnder()
 	}
 	if kind != sizeMinimized {
 		w.layoutControls()

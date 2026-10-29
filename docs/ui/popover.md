@@ -35,7 +35,9 @@ the focus in it, it gives the focus back to the element that had it. See
 
 For a menu of the system's, use a [menu button](menu-button.md); for an
 element's menu drawn in the window, with the keys of a menu, a
-[`PopoverMenu`](context-menu.md#drawn-in-the-window); for a tip, a
+[`PopoverMenu`](context-menu.md#drawn-in-the-window), or a
+[`PopoverMenuButton`](menu-button.md#drawn-in-the-window) below a button;
+for a tip, a
 [tooltip](tooltip.md). A popover shows in its window: one that must
 extend beyond the window's edges shows in a [flyout](../windows.md#flyouts),
 a window of its own placed next to the anchor.

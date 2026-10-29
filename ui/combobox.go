@@ -449,8 +449,8 @@ func coreAutocomplete(c *context, value *string, suggestions []string) *node {
 // SearchField creates a field for searching, editing *query: a magnifying
 // glass, the text, and a button clearing it while it holds any, as Escape
 // does then. Enter is its Submitted, and Changed reports a change. It
-// shows Search while empty, and assistive technology sees a search field;
-// name it with Label.
+// shows Search while empty, or what Placeholder sets, and assistive
+// technology sees a search field; name it with Label.
 //
 //	if ui.SearchField(c, &app.query).Label("Search mail").Changed() {
 //		app.filter()

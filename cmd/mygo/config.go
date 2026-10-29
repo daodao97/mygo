@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -409,8 +410,13 @@ func (c *Config) validate() error {
 	if c.Slug != "" && !slugRe.MatchString(c.Slug) {
 		return fmt.Errorf("slug %q is not a slug (lower-case letters and digits, with single hyphens between them)", c.Slug)
 	}
-	if cmd := c.Linux.Command; cmd != "" && !commandRe.MatchString(cmd) {
-		return fmt.Errorf("linux.command %q is not a command name (a letter or digit, then letters, digits, ., _, + or -)", cmd)
+	for i, cmd := range c.Linux.Command {
+		if !commandRe.MatchString(cmd) {
+			return fmt.Errorf("linux.command %q is not a command name (a letter or digit, then letters, digits, ., _, + or -)", cmd)
+		}
+		if slices.Contains(c.Linux.Command[:i], cmd) {
+			return fmt.Errorf("linux.command names %q twice", cmd)
+		}
 	}
 	if c.Updates != nil {
 		if err := c.Updates.validate(); err != nil {

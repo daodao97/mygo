@@ -126,3 +126,8 @@ it sees the system's.
 A drawn menu's items are elements: in tests, `tt.RightClick` opens it,
 `tt.HasText` finds its items and `tt.Click` chooses one, while `tt.Menu`
 lists only the system's menus.
+
+`PopoverMenuButton` draws the menu of a [menu
+button](menu-button.md#drawn-in-the-window) so, below the button, and takes
+the same function: a row's right-click and its ⋯ button can share one
+menu, drawn alike.

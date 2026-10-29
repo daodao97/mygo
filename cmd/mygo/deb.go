@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/md5"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"image/png"
@@ -36,11 +37,34 @@ type Linux struct {
 	// alone, and install.sh does not ask for WebKitGTK, which the app then
 	// never loads (default true).
 	WebView *bool `json:"webview"`
-	// Command is the name of a command that runs the app: a link in
+	// Command is the name of a command that runs the app, or a list of
+	// names, as ["my-app", "ma"], which adds a short one: a link in
 	// /usr/bin from the Debian package, and in ~/.local/bin from
-	// install.sh. Empty means none, and the app opens from the applications
+	// install.sh, for each, which says to run the app by the first it
+	// links. Empty means none, and the app opens from the applications
 	// menu.
-	Command string `json:"command"`
+	Command commandNames `json:"command"`
+}
+
+// commandNames are the names of linux.command, which takes one name, as
+// "my-app", or a list of them, as ["my-app", "ma"].
+type commandNames []string
+
+func (n *commandNames) UnmarshalJSON(b []byte) error {
+	var name string
+	if json.Unmarshal(b, &name) == nil {
+		*n = nil
+		if name != "" {
+			*n = commandNames{name}
+		}
+		return nil
+	}
+	var names []string
+	if json.Unmarshal(b, &names) != nil {
+		return fmt.Errorf("linux.command is a command name, or a list of them, not %s", b)
+	}
+	*n = names
+	return nil
 }
 
 // webView reports whether the app may show web pages, which need
@@ -74,8 +98,8 @@ func debVersion(v string) string {
 
 // writeDeb packages the Linux app in stage, the executable name and the
 // files next to it, as a Debian package: the app in /opt/<name>, a link in
-// /usr/bin named linux.command when there is one, its desktop entry and
-// icons. It returns the package's path.
+// /usr/bin for each name of linux.command, its desktop entry and icons. It
+// returns the package's path.
 func writeDeb(c *Config, stage, name, goarch string, app []string) (string, error) {
 	arch, ok := debArch[goarch]
 	if !ok {
@@ -130,8 +154,10 @@ func writeDeb(c *Config, stage, name, goarch string, app []string) (string, erro
 			return "", err
 		}
 	}
-	if command := c.Linux.Command; command != "" {
+	if len(c.Linux.Command) > 0 {
 		data.dir("usr/bin")
+	}
+	for _, command := range c.Linux.Command {
 		data.link("usr/bin/"+command, "../../"+opt+"/"+name)
 	}
 	if xml := mimePackage(c); xml != "" {

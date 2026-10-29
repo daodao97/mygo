@@ -49,7 +49,8 @@ when cross-compiling, set `CC` to a suitable cross compiler.
 | Linux | `my-app`, `my-app.desktop`, `my-app.png`, `my-app.xml` for the file types the app defines, the files of the app, their archive `my-app-0.1.0-linux-amd64.tar.gz` with [`install.sh`](#the-install-script), and the Debian package `my-app_0.1.0_amd64.deb` |
 
 Other flags: `-debug` keeps development features such as the inspector,
-`-skip-dmg` and `-skip-notarize` skip those steps, `-sign` overrides the
+`-skip-dmg`, `-skip-notarize` and `-skip-installer` (the Windows
+installer) skip those steps, `-sign` overrides the
 signing identity of macOS, and `-o` the output directory. See
 [the CLI](cli.md#mygo-build).
 
@@ -434,6 +435,13 @@ its SHA-256 and kept in `%LOCALAPPDATA%\mygo`. On macOS and
 Linux, install NSIS to make Windows installers (`brew install makensis`,
 `apt install nsis`); without it, `mygo build` skips the installer.
 
+`mygo build -skip-installer` makes no installer, and neither looks for
+NSIS nor downloads it: the build has the app's files to ship as you
+choose, and with [updates](updates.md) the update archive and manifest,
+which apps installed before keep updating from. It writes no `install.ps1`
+either, which runs the installer, so the one-line install needs a release
+that has both.
+
 ### Installer hooks
 
 `windows.installerInclude` adds steps of the app's own to the installer:
@@ -543,9 +551,9 @@ the app.
 `categories` places it in application menus (`Utility` by default).
 The app opens from the applications menu. `command` also gives it a
 command, `/usr/bin/my-app` from the package and `~/.local/bin/my-app` from
-[`install.sh`](#the-install-script); without it, neither adds a command,
-which leaves the name to a command-line tool of the same name, such as
-the app's own.
+[`install.sh`](#the-install-script), or several, as `["my-app", "ma"]`,
+which adds a short name; without it, neither adds a command, which leaves
+the name to a command-line tool of the same name, such as the app's own.
 
 Keep the slug of a released app. Its Linux files are named after it, and
 an update replaces the files of the same names: one to a version with
@@ -561,12 +569,12 @@ Every Linux build also gets the app as an archive,
 `my-app-1.2.0-linux-amd64.tar.gz`, and `install.sh`, which installs it for
 the user without root: the app in `~/.local/my-app.app`, where it can
 [update itself](updates.md), its desktop entry, icon, URL schemes and file
-types, and with `linux.command` that command in `~/.local/bin`, unless
-another program is there. With
-[updates](updates.md) configured, it downloads the latest version, which
-the update manifest of the machine names, and checks its size and its
-Ed25519 signature against `updates.publicKey`, as the app's updater does,
-before installing it, so one line installs the app:
+types, and with `linux.command` its commands in `~/.local/bin`, each
+unless another program is there; it says to run the app by the first it
+links. With [updates](updates.md) configured, it downloads the latest
+version, which the update manifest of the machine names, and checks its
+size and its Ed25519 signature against `updates.publicKey`, as the app's
+updater does, before installing it, so one line installs the app:
 
 ```sh
 curl -fsSL https://github.com/me/my-app/releases/latest/download/install.sh | sh
@@ -592,7 +600,10 @@ sh install.sh my-app-1.2.0-linux-amd64.tar.gz
 sh install.sh --uninstall   # keeps the settings and data of the app
 ```
 
-Running it again installs the version it finds over the installed one.
+Running it again installs the version it finds over the installed one; a
+link of a name the app no longer has, other than its slug, stays, as one
+the user made would, until `--uninstall` removes every link to the app in
+`~/.local/bin`.
 The app needs WebKitGTK, which `install.sh` does not install: when the
 system's library cache has none, it says so after installing, with the
 command that installs it on Debian, Ubuntu, Fedora, Arch and openSUSE,

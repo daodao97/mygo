@@ -62,6 +62,9 @@ func (e *node) ContextMenu(build func(m *Menu)) *node {
 //			app.duplicate()
 //		}
 //	})
+//
+// PopoverMenuButton draws the same menu in the window, with the theme's
+// look.
 func (e *node) Menu(build func(m *Menu)) *node {
 	e.flags |= flagMenuButton | flagClickable | flagFocusable
 	if e.role == RoleAuto || e.role == RoleButton {
@@ -73,7 +76,8 @@ func (e *node) Menu(build func(m *Menu)) *node {
 
 // buildMenu builds the element's menu, its menu button's or its context
 // menu, as it opens, and again for the item chosen from it. A menu drawn
-// in the window (PopoverMenu) only opens here: drawMenu builds it.
+// in the window (PopoverMenu, PopoverMenuButton) only opens here, or
+// closes as its button is pressed again: drawMenu builds it.
 func (e *node) buildMenu(button, drawn bool, build func(m *Menu)) {
 	rt := e.c.rt
 	mr := &rt.menu
@@ -81,6 +85,11 @@ func (e *node) buildMenu(button, drawn bool, build func(m *Menu)) {
 	case mr.asked == e.id && mr.button == button:
 		mr.asked = 0
 		if e.disabled() {
+			break
+		}
+		if d := mr.drawn; drawn && mr.below && d != nil && d.id == e.id && d.below {
+			// The button pressed again while its menu shows.
+			mr.drawn = nil
 			break
 		}
 		if drawn {
@@ -114,7 +123,8 @@ func (rt *engine) menuChoice(build func(m *Menu), choice int, label string, text
 }
 
 // Menu is a menu being built, by the function given to ContextMenu,
-// PopoverMenu or Element.Menu. Its items show in the order they are added.
+// PopoverMenu, Element.Menu or PopoverMenuButton. Its items show in the
+// order they are added.
 type Menu struct {
 	run  *menuRun
 	menu *platform.Menu // what the menu shows, when it opens
@@ -273,8 +283,10 @@ type menuState struct {
 	text, chosenText uint64
 	// button is set when the menu asked for is a menu button's, and
 	// chosenButton when the item chosen is from one; key when it opens for
-	// the menu key or Shift+F10.
-	button, chosenButton, key bool
+	// the menu key or Shift+F10, or a menu button's for its keys; below
+	// when a menu button's opens below the button itself, rather than
+	// from a toolbar's overflow menu.
+	button, chosenButton, key, below bool
 	// release is the element whose menu opens when the secondary button
 	// goes up, as on Windows, on the text releaseText.
 	release, releaseText uint64
@@ -282,8 +294,13 @@ type menuState struct {
 	chosen               uint64
 	choice               int
 	label                string
-	// drawn is the menu drawn in the window that shows (PopoverMenu), nil
-	// while none does.
+	// later is the menu button whose menu the view asked for, as a
+	// toolbar's overflow menu does, to show at (laterX, laterY): the next
+	// pass builds it, as one asked for before the pass.
+	later          uint64
+	laterX, laterY float32
+	// drawn is the menu drawn in the window that shows (PopoverMenu,
+	// PopoverMenuButton), nil while none does.
 	drawn *drawnMenu
 }
 
@@ -335,7 +352,7 @@ func (rt *engine) menuTarget(chain []uint64) *state {
 // focus.
 func (rt *engine) askMenu(s *state, x, y float32, button bool) {
 	mr := &rt.menu
-	mr.asked, mr.x, mr.y, mr.button, mr.text, mr.key = s.id, x, y, button, 0, false
+	mr.asked, mr.x, mr.y, mr.button, mr.text, mr.key, mr.below = s.id, x, y, button, 0, false, false
 	// The menu takes the press: the release goes to it.
 	if rt.pressed != nil {
 		rt.pressed.pressed = false
@@ -434,11 +451,21 @@ func (rt *engine) menuKey() bool {
 	return true
 }
 
+// askMenuLater has the next pass build the menu of menu button s, to show
+// at (x, y), for the view asking for it after s was built.
+func (rt *engine) askMenuLater(s *state, x, y float32) {
+	mr := &rt.menu
+	mr.later, mr.laterX, mr.laterY = s.id, x, y
+	rt.consumed = true
+}
+
 // openMenuButton has the next frame build the menu of menu button s, to
-// show below it.
-func (rt *engine) openMenuButton(s *state) {
+// show below it; key is set when the keyboard opens it, or assistive
+// technology.
+func (rt *engine) openMenuButton(s *state, key bool) {
 	x, y := s.menuCorner()
 	rt.askMenu(s, x, y, true)
+	rt.menu.key, rt.menu.below = key, true
 }
 
 // menuCorner returns where the menu of a button goes: at its bottom left

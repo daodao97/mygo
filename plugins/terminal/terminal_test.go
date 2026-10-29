@@ -1872,6 +1872,58 @@ func TestWheelNotchScrollsThreeRows(t *testing.T) {
 	}
 }
 
+// TestScrollMultiplier: Options.ScrollMultiplier's Discrete is the rows a
+// notch scrolls, its Precision scales a touchpad's distance, and
+// SetScrollMultiplier changes them in a running terminal, as Ghostty's
+// mouse-scroll-multiplier.
+func TestScrollMultiplier(t *testing.T) {
+	loadLib(t)
+	var seen []int
+	term, err := New(Options{Conn: newPipe(), ScrollMultiplier: ScrollMultiplier{Discrete: 1}, OnScroll: func(rows int) bool {
+		seen = append(seen, rows)
+		return true
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.Frame()
+	ch := float32(term.v.cellH) / term.v.scale
+	term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DY: hostNotch()})
+	term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DY: -hostNotch()})
+	term.SetScrollMultiplier(ScrollMultiplier{Precision: 0.5, Discrete: 6})
+	term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DY: hostNotch()})
+	term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DY: 4 * ch, Precise: true})
+	if !slices.Equal(seen, []int{1, -1, 6, 2}) {
+		t.Errorf("scrolled %v rows, want [1 -1 6 2]", seen)
+	}
+}
+
+// TestScrollMultiplierRows: a fraction of a notch's rows carries over, and
+// zero is the default.
+func TestScrollMultiplierRows(t *testing.T) {
+	for _, c := range []struct {
+		m       ScrollMultiplier
+		dy      float32
+		precise bool
+		goos    string
+		want    float32
+	}{
+		{ScrollMultiplier{}, 40, false, "darwin", 3},
+		{ScrollMultiplier{}, 20, true, "darwin", 1},
+		{ScrollMultiplier{Discrete: 1.5}, 40, false, "darwin", 1.5},
+		{ScrollMultiplier{Discrete: 1}, 50, false, "linux", 1},
+		{ScrollMultiplier{Discrete: 6}, 165, false, "windows", 10}, // a notch at 5 lines, doubled
+		{ScrollMultiplier{Precision: 0.5}, 40, true, "darwin", 1},
+		{ScrollMultiplier{Precision: 2}, 40, false, "darwin", 3}, // a wheel's alone
+	} {
+		if got := c.m.rows(c.dy, 20, c.precise, c.goos); got != c.want {
+			t.Errorf("%+v.rows(%v, precise %v, %q) = %v, want %v", c.m, c.dy, c.precise, c.goos, got, c.want)
+		}
+	}
+}
+
 // TestOnZoom: Options.OnZoom takes the wheel with Control (Command on
 // macOS) in notches, rolling up positive, before OnScroll and a program
 // that takes the mouse, and the font size keys.

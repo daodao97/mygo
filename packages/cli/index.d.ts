@@ -389,11 +389,13 @@ export interface LinuxConfig {
    */
   webview?: boolean;
   /**
-   * A command that runs the app, such as `my-app`: a link in `/usr/bin` from
-   * the Debian package, and in `~/.local/bin` from install.sh (default: none;
-   * the app opens from the applications menu).
+   * A command that runs the app, such as `my-app`, or a list of names, such
+   * as `["my-app", "ma"]`, which adds a short one: a link in `/usr/bin` from
+   * the Debian package, and in `~/.local/bin` from install.sh, for each,
+   * which says to run the app by the first it links (default: none; the app
+   * opens from the applications menu).
    */
-  command?: string;
+  command?: string | string[];
 }
 
 /** C-exported Go callbacks. A negative nextDelay disables scheduling. */

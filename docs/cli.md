@@ -164,6 +164,7 @@ content so that it can be cached for good, and the icon. See
 | `-skip-build-command` | does not run `buildCommand` |
 | `-skip-dmg` | does not make macOS disk images |
 | `-skip-notarize` | does not notarize, even with `macos.notarize` set |
+| `-skip-installer` | does not make Windows installers, nor download NSIS for them (nor `install.ps1`, which runs the installer) |
 | `-upload` | uploads the installers and updates to a draft GitHub release of the version (`updates.github`), with `gh`, or to the bucket of `updates.s3` |
 
 ## mygo generate

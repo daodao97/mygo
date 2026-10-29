@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -65,9 +66,9 @@ func debMember(t *testing.T, deb, archive string) map[string]string {
 }
 
 func TestDebCommand(t *testing.T) {
-	for _, command := range []string{"", "my-app-gui"} {
+	for _, commands := range []commandNames{nil, {"my-app-gui"}, {"my-app", "ma"}} {
 		c := &Config{root: t.TempDir(), Name: "My App", Version: "1.0.0"}
-		c.Linux.Command = command
+		c.Linux.Command = commands
 		stage := t.TempDir()
 		if err := os.WriteFile(filepath.Join(stage, "my-app"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatal(err)
@@ -77,17 +78,18 @@ func TestDebCommand(t *testing.T) {
 			t.Fatal(err)
 		}
 		files := debData(t, deb)
-		var commands []string
-		for name := range files {
+		var linked []string
+		for name, target := range files {
 			if rest, ok := strings.CutPrefix(name, "usr/bin/"); ok && rest != "" {
-				commands = append(commands, rest)
+				linked = append(linked, rest)
+				if target != "../../opt/my-app/my-app" {
+					t.Errorf("with the commands %q, %s links to %q", commands, name, target)
+				}
 			}
 		}
-		switch {
-		case command == "" && len(commands) != 0:
-			t.Errorf("without a command, the package has %v", commands)
-		case command != "" && (len(commands) != 1 || files["usr/bin/"+command] != "../../opt/my-app/my-app"):
-			t.Errorf("with the command %s, the package has %v, linked to %q", command, commands, files["usr/bin/"+command])
+		slices.Sort(linked)
+		if !slices.Equal(linked, slices.Sorted(slices.Values(commands))) {
+			t.Errorf("with the commands %q, the package has %v", commands, linked)
 		}
 		if entry := files["usr/share/applications/my-app.desktop"]; !strings.Contains(entry, "\nExec=/opt/my-app/my-app\n") {
 			t.Errorf("desktop entry:\n%s", entry)
@@ -126,11 +128,51 @@ func TestLinuxWebView(t *testing.T) {
 }
 
 func TestLinuxCommandName(t *testing.T) {
-	for command, ok := range map[string]bool{"": true, "my-app": true, "my_app2.1+": true, "-v": false, "my app": false, "../app": false, "bin/app": false} {
+	for _, tc := range []struct {
+		command commandNames
+		ok      bool
+	}{
+		{nil, true},
+		{commandNames{"my-app"}, true},
+		{commandNames{"my_app2.1+"}, true},
+		{commandNames{"my-app", "ma"}, true},
+		{commandNames{"-v"}, false},
+		{commandNames{"my app"}, false},
+		{commandNames{"../app"}, false},
+		{commandNames{"bin/app"}, false},
+		{commandNames{"my-app", ""}, false},
+		{commandNames{"ma", "my-app", "ma"}, false},
+	} {
 		c := &Config{}
-		c.Linux.Command = command
-		if err := c.validate(); (err == nil) != ok {
-			t.Errorf("linux.command %q: %v", command, err)
+		c.Linux.Command = tc.command
+		if err := c.validate(); (err == nil) != tc.ok {
+			t.Errorf("linux.command %q: %v", tc.command, err)
+		}
+	}
+}
+
+// linux.command takes a name, or a list of them.
+func TestLinuxCommandJSON(t *testing.T) {
+	load := func(command string) (*Config, error) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, jsonConfig), []byte(`{"name": "My App", "linux": {"command": `+command+`}}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return loadConfig(dir)
+	}
+	for command, want := range map[string]commandNames{`"my-app"`: {"my-app"}, `["my-app", "ma"]`: {"my-app", "ma"}, `""`: nil, `[]`: nil, `null`: nil} {
+		c, err := load(command)
+		if err != nil {
+			t.Fatalf("linux.command %s: %v", command, err)
+		}
+		if !slices.Equal(c.Linux.Command, want) {
+			t.Errorf("linux.command %s loaded as %q", command, c.Linux.Command)
+		}
+	}
+	// Anything else fails, naming the field.
+	for _, command := range []string{`1`, `["my-app", 1]`} {
+		if _, err := load(command); err == nil || !strings.Contains(err.Error(), "linux.command") {
+			t.Errorf("linux.command %s: %v", command, err)
 		}
 	}
 }

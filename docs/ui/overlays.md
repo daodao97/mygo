@@ -4,7 +4,8 @@ Overlays show above the window's content: [dialogs](dialog.md) over the
 dimmed window, [alert dialogs](alert-dialog.md), [popovers](popover.md)
 below an element, the popups of [selects](select.md) and
 [comboboxes](combobox.md), menus drawn in the window
-([`PopoverMenu`](context-menu.md#drawn-in-the-window)),
+([`PopoverMenu`](context-menu.md#drawn-in-the-window) and
+[`PopoverMenuButton`](menu-button.md#drawn-in-the-window)),
 [tooltips](tooltip.md) and [toasts](toast.md).
 They share how they treat the keyboard and what is behind them.
 

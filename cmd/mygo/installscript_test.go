@@ -172,7 +172,7 @@ func TestInstallScript(t *testing.T) {
 	defer srv.Close()
 	none := 0
 	c.Updates = &Updates{PublicKey: base64.StdEncoding.EncodeToString(pub), URL: srv.URL, Deltas: &none}
-	c.Linux.Command = "my-app"
+	c.Linux.Command = commandNames{"my-app", "ma"}
 	published := build(c, "1.1.0")
 	for _, name := range []string{"my-app-1.1.0-linux-amd64.tar.gz", "update-linux-amd64.json"} {
 		b, err := os.ReadFile(filepath.Join(published, name))
@@ -185,35 +185,47 @@ func TestInstallScript(t *testing.T) {
 	if !strings.Contains(string(script), "curl -fsSL "+srv.URL+"/install.sh | sh") {
 		t.Errorf("install.sh does not tell how to run it:\n%s", script)
 	}
+	if !strings.Contains(string(script), "the my-app and ma commands in ~/.local/bin,") {
+		t.Errorf("install.sh does not say what it installs:\n%s", script)
+	}
 	alone := filepath.Join(t.TempDir(), "install.sh")
 	os.WriteFile(alone, script, 0o755)
 	if out := run(alone); !strings.Contains(out, "Downloading My App 1.1.0") || !strings.Contains(out, "run "+filepath.Join(binDir, "my-app")+"\n") {
 		t.Errorf("install.sh printed:\n%s", out)
 	}
 	installed("1.1.0")
-	// The command of linux.command.
-	if out, err := exec.Command(filepath.Join(binDir, "my-app")).Output(); err != nil || string(out) != "1.1.0\n" {
-		t.Errorf("the my-app command printed %q, %v", out, err)
+	// The commands of linux.command.
+	for _, command := range c.Linux.Command {
+		if out, err := exec.Command(filepath.Join(binDir, command)).Output(); err != nil || string(out) != "1.1.0\n" {
+			t.Errorf("the %s command printed %q, %v", command, out, err)
+		}
 	}
 
-	// A command that another program has is left alone.
+	// A command that another program has is left alone, and the app runs
+	// by the next.
 	notes := filepath.Join(binDir, "notes")
 	os.WriteFile(notes, []byte("#!/bin/sh\necho notes\n"), 0o755)
-	c.Linux.Command = "notes"
+	c.Linux.Command = commandNames{"notes", "ma"}
 	withNotes := t.TempDir()
 	if _, err := writeInstallScript(c, withNotes); err != nil {
 		t.Fatal(err)
 	}
 	if out := run(filepath.Join(withNotes, "install.sh"), filepath.Join(local, "my-app-1.0.0-linux-amd64.tar.gz")); !strings.Contains(out, "Leaving "+notes+" alone: it is not My App's\n") ||
-		!strings.HasSuffix(out, "open it from the applications menu\n") {
+		!strings.HasSuffix(out, "open it from the applications menu, or run "+filepath.Join(binDir, "ma")+"\n") {
 		t.Errorf("install.sh printed:\n%s", out)
 	}
 	if b, _ := os.ReadFile(notes); string(b) != "#!/bin/sh\necho notes\n" {
 		t.Errorf("the notes command became %q", b)
 	}
 
-	// The archive given, over the installed version.
-	run(alone, filepath.Join(local, "my-app-1.0.0-linux-amd64.tar.gz"))
+	// The archive given, over the installed version; with ~/.local/bin on
+	// the PATH, it says to run the command by its name.
+	path := os.Getenv("PATH")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+path)
+	if out := run(alone, filepath.Join(local, "my-app-1.0.0-linux-amd64.tar.gz")); !strings.HasSuffix(out, "open it from the applications menu, or run my-app\n") {
+		t.Errorf("install.sh printed:\n%s", out)
+	}
+	t.Setenv("PATH", path)
 	installed("1.0.0")
 
 	// It warns when the library cache has no WebKitGTK, and only then.
@@ -245,13 +257,18 @@ func TestInstallScript(t *testing.T) {
 		t.Error("install.sh looks for other WebKitGTK libraries than the app loads")
 	}
 
-	// Uninstalling removes what install.sh and the app made, and only that.
+	// Uninstalling removes what install.sh and the app made, and only that:
+	// with the links of the commands, one of a name the app no longer has.
 	handler := filepath.Join(home, ".local", "share", "applications", "com.mygo.my-app.url-handler.desktop")
 	other := filepath.Join(home, ".local", "share", "applications", "other.url-handler.desktop")
 	os.WriteFile(handler, []byte(`Exec="`+appDir+`/my-app" %u`+"\n"), 0o644)
 	os.WriteFile(other, []byte("Exec=/usr/bin/other %u\n"), 0o644)
+	dropped := filepath.Join(binDir, "my-old-app")
+	if err := os.Symlink(filepath.Join(appDir, "my-app"), dropped); err != nil {
+		t.Fatal(err)
+	}
 	run(alone, "--uninstall")
-	for _, p := range []string{appDir, filepath.Join(home, ".local", "bin", "my-app"), handler,
+	for _, p := range []string{appDir, filepath.Join(home, ".local", "bin", "my-app"), filepath.Join(home, ".local", "bin", "ma"), dropped, handler,
 		filepath.Join(home, ".local", "share", "applications", "my-app.desktop"),
 		filepath.Join(home, ".local", "share", "mime", "packages", "my-app.xml")} {
 		if _, err := os.Lstat(p); err == nil {
@@ -266,6 +283,20 @@ func TestInstallScript(t *testing.T) {
 	}
 	if out, err := exec.Command("sh", alone, "--uninstall").CombinedOutput(); err == nil {
 		t.Errorf("uninstalling twice succeeded:\n%s", out)
+	}
+}
+
+// The opening comment of install.sh names the commands of linux.command.
+func TestCommandsPhrase(t *testing.T) {
+	for list, want := range map[string]string{
+		"":          "",
+		"my-app":    "the my-app command",
+		"my-app ma": "the my-app and ma commands",
+		"a b c":     "the a, b and c commands",
+	} {
+		if got := commandsPhrase(list); got != want {
+			t.Errorf("commandsPhrase(%q) = %q, want %q", list, got, want)
+		}
 	}
 }
 

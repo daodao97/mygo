@@ -287,9 +287,11 @@ type Renderer struct {
 
 	// swapChain2 is the swap chain's IDXGISwapChain2 (Windows 8.1), bw×bh
 	// the size of its buffers, larger than w×h while resizing, and
-	// resizedAt when the window last changed size.
+	// resizedAt when the window last changed size. unscaled tells that the
+	// window's swap chain shows its buffers unscaled (DXGI_SCALING_NONE).
 	swapChain2 uintptr
 	bw, bh     int
+	unscaled   bool
 	resizing   bool
 	resizedAt  time.Time
 	// bg is the background the window's swap chain shows beyond its
@@ -506,9 +508,13 @@ func (r *Renderer) init() error {
 // them, and a frame is free to draw while DWM holds two. A frame
 // settleDelay after the last change, which the settle timer asks for,
 // gives the swap chain two buffers of the window's size again. A swap chain
-// for composition stretches the size it shows over its buffers' instead,
-// which would magnify the frames: it shows its buffers whole, and the
-// window clips what is beyond the frame, which the frame leaves transparent.
+// that does not stretch its frames over the window, for composition or
+// unscaled (#855), stretches the size it shows over its buffers' instead,
+// which would magnify the frames (#892): it shows its buffers whole, and
+// the window clips what is beyond the frame, which the frame leaves
+// transparent, or fills with the content's background for an unscaled
+// window's swap chain (clearWhole), as it shows where the window grows
+// before the frame of its new size presents.
 const (
 	resizeBuffers = 3
 	settleTimer   = 0x6d79 // the timer's ID on the window
@@ -531,7 +537,7 @@ func (r *Renderer) resize(w, h int) error {
 	r.resizedAt = time.Now()
 	r.armSettle()
 	if r.resizing && w <= r.bw && h <= r.bh {
-		if err := r.setSourceSize(w, h); err != nil {
+		if err := r.setSourceSize(r.shown(w, h, r.bw, r.bh)); err != nil {
 			return err
 		}
 		r.w, r.h = w, h
@@ -561,6 +567,7 @@ func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 			// nor the last frame stretched.
 			desc.Scaling = scalingNone
 			hr := call(r.factory, factoryCreateSwapChainHwnd, r.device, r.hwnd, uintptr(unsafe.Pointer(&desc)), 0, 0, uintptr(unsafe.Pointer(&r.swapChain)))
+			r.unscaled = !failed(hr)
 			if failed(hr) {
 				desc.Scaling = scalingStretch
 				hr = call(r.factory, factoryCreateSwapChainHwnd, r.device, r.hwnd, uintptr(unsafe.Pointer(&desc)), 0, 0, uintptr(unsafe.Pointer(&r.swapChain)))
@@ -581,7 +588,7 @@ func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 	} else if hr := call(r.swapChain, scResizeBuffers, uintptr(n), uintptr(bw), uintptr(bh), 0, swapChainWaitable); failed(hr) {
 		return fmt.Errorf("d3d11: cannot resize the swap chain: %#x", uint32(hr))
 	}
-	if err := r.setSourceSize(w, h); err != nil {
+	if err := r.setSourceSize(r.shown(w, h, bw, bh)); err != nil {
 		return err
 	}
 	r.bw, r.bh = bw, bh
@@ -604,23 +611,80 @@ const (
 	scalingNone    = 1
 )
 
-// setBackground makes the window's swap chain show c beyond its frame
+// setBackground makes the window's swap chain show c beyond its buffers
 // (IDXGISwapChain1::SetBackgroundColor), where the window is larger than
-// the frame, as it grows until the frame of its size presents: the content's
+// them, as it grows until the frame of its size presents: the content's
 // background (scene.Scene.Background), opaque, or black without one. A swap
-// chain for composition has none. It costs a comparison but when c changes.
-func (r *Renderer) setBackground(c scene.Color) {
+// chain for composition has none. It costs a comparison but when c
+// changes, and reports whether it did.
+func (r *Renderer) setBackground(c scene.Color) bool {
 	if r.composed || r.swapChain == 0 || r.bgSet && c == r.bg {
-		return
+		return false
 	}
 	r.bg, r.bgSet = c, true
-	rgba := c.Premul(1) // over black
-	rgba[3] = 1
+	rgba := r.background()
 	call(r.swapChain, scSetBackgroundColor, uintptr(unsafe.Pointer(&rgba)))
+	return true
+}
+
+// background is the content's background (setBackground) over black, as
+// the window's swap chain shows it.
+func (r *Renderer) background() [4]float32 {
+	rgba := r.bg.Premul(1)
+	rgba[3] = 1
+	return rgba
+}
+
+// shown is the size of the part at the top left of bw×bh buffers that the
+// swap chain shows for a frame of w×h: the frame, which a window's swap
+// chain that stretches stretches over the window, or the buffers whole when
+// the swap chain does not stretch its frames over the window, as one for
+// composition, or an unscaled one, which would stretch the part over the
+// buffers' size, magnifying the frame (#892).
+func (r *Renderer) shown(w, h, bw, bh int) (int, int) {
+	if r.composed || r.unscaled {
+		return bw, bh
+	}
+	return w, h
+}
+
+// beyondFrame returns the parts of bw×bh buffers beyond a frame of w×h at
+// their top left, n of them: the strip at its right, as tall as the
+// buffers, and the one under it. None is when the frame fills the buffers.
+func beyondFrame(w, h, bw, bh int) (parts [2]gpu.Scissor, n int) {
+	if w < bw {
+		parts[n] = gpu.Scissor{Left: int32(w), Right: int32(bw), Bottom: int32(bh)}
+		n++
+	}
+	if h < bh {
+		parts[n] = gpu.Scissor{Top: int32(h), Right: int32(min(w, bw)), Bottom: int32(bh)}
+		n++
+	}
+	return parts, n
+}
+
+// clearWhole clears rtv for a frame drawn whole, with clear. What the
+// window's unscaled swap chain shows of its buffers beyond the frame, where
+// the window grows before the frame of its new size presents, it fills
+// with the content's opaque background: not black, nor what an earlier,
+// larger frame left there. Without ClearView, it clears the frame with the
+// background too, which the content fills it with anyway.
+func (r *Renderer) clearWhole(rtv uintptr, s *scene.Scene, clear [4]float32) {
+	beyond := rtv == r.rtv && r.unscaled && r.bg.A == 255 && (s.Width < r.bw || s.Height < r.bh)
+	bg := r.background()
+	if beyond && r.ctx1 == 0 {
+		clear = bg
+	}
+	call(r.ctx, ctxClearRenderTargetView, rtv, uintptr(unsafe.Pointer(&clear[0])))
+	if beyond && r.ctx1 != 0 {
+		parts, n := beyondFrame(s.Width, s.Height, r.bw, r.bh)
+		call(r.ctx1, ctx1ClearView, rtv, uintptr(unsafe.Pointer(&bg[0])), uintptr(unsafe.Pointer(&parts[0])), uintptr(n))
+	}
 }
 
 // setSourceSize makes the swap chain show the w×h pixels at the top left
-// of its buffers, unless it is for composition, which shows them whole.
+// of its buffers (shown), unless it is for composition, which shows them
+// whole.
 func (r *Renderer) setSourceSize(w, h int) error {
 	if r.swapChain2 == 0 || r.composed {
 		return nil
@@ -905,7 +969,11 @@ func (r *Renderer) drawFrame(s *scene.Scene) (bool, error) {
 	if err := r.resize(s.Width, s.Height); err != nil {
 		return false, err
 	}
-	r.setBackground(s.Background)
+	if r.setBackground(s.Background) {
+		// What the buffers hold beyond the frame takes the new background
+		// (clearWhole).
+		r.held = false
+	}
 	var damage []image.Rectangle
 	known := false
 	if r.ctx1 != 0 {
@@ -1084,7 +1152,7 @@ func (r *Renderer) drawBuilt(s *scene.Scene, b *gpu.Builder, rtv uintptr, part *
 		areas = part.Rects
 		call(r.ctx1, ctx1ClearView, rtv, uintptr(unsafe.Pointer(&clear[0])), uintptr(unsafe.Pointer(&areas[0])), uintptr(len(areas)))
 	} else {
-		call(ctx, ctxClearRenderTargetView, rtv, uintptr(unsafe.Pointer(&clear[0])))
+		r.clearWhole(rtv, s, clear)
 	}
 	call(ctx, ctxRSSetState, r.raster)
 	call(ctx, ctxIASetPrimitiveTopology, topologyTriangleStrip)

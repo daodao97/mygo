@@ -39,6 +39,8 @@ import (
 // and after where it opened, and on the other side where the window has
 // no room. Assistive technology sees a menu of items, check box items and
 // radio items, as the system's.
+//
+// PopoverMenuButton draws the menu of a menu button so.
 func (e *node) PopoverMenu(build func(m *Menu)) *node {
 	e.flags |= flagContextMenu
 	e.buildMenu(false, true, build)
@@ -46,12 +48,49 @@ func (e *node) PopoverMenu(build func(m *Menu)) *node {
 	return e
 }
 
-// drawnMenu is a menu drawn in the window (PopoverMenu) that shows, of the
-// element id.
+// PopoverMenuButton makes the element a menu button, as Menu does, whose
+// menu MyGo draws in the window with the theme's look, as PopoverMenu
+// draws a context menu, rather than the system showing one of its own. It
+// opens below the element, or above it where the window has no room, as
+// the pointer goes down on it, and for Enter, Space or Down while it has
+// the focus, which it takes. build fills it with the items Menu's
+// function takes, and the item chosen reports Chosen as there:
+//
+//	more := ui.ButtonBase(c).Label("More").Padding(4).Radius(6)
+//	more.Children(func() { ui.Icon(c, moreIcon).Size(16, 16) })
+//	more.PopoverMenuButton(func(m *ui.Menu) {
+//		if m.Item("Duplicate").Chosen() {
+//			app.duplicate()
+//		}
+//		if m.Item("Delete").Disabled(app.locked).Chosen() {
+//			app.delete()
+//		}
+//	})
+//
+// The menu has the keys of PopoverMenu's, and takes the focus as it opens
+// and gives it back as it closes, as there; a press on the element closes
+// it too. Opened by the keyboard, it starts on its first item. Assistive
+// technology sees a menu button, expanded while its menu shows, and the
+// menu as PopoverMenu's. The function PopoverMenuButton is a button with
+// such a menu, as MenuButton is one with a menu of the system's.
+func (e *node) PopoverMenuButton(build func(m *Menu)) *node {
+	e.flags |= flagMenuButton | flagClickable | flagFocusable
+	if e.role == RoleAuto || e.role == RoleButton {
+		e.role = RoleMenuButton
+	}
+	e.buildMenu(true, true, build)
+	e.c.rt.drawMenu(e, build)
+	return e
+}
+
+// drawnMenu is a menu drawn in the window (PopoverMenu, PopoverMenuButton)
+// that shows, of the element id.
 type drawnMenu struct {
 	id uint64
-	// dx and dy are where it opened, from the top left corner of the
-	// element's box; text is the text it opened on.
+	// below is set for a menu button's menu, which goes below the button;
+	// the others open at a point, dx and dy from the top left corner of the
+	// element's box. text is the text it opened on.
+	below  bool
 	dx, dy float32
 	text   uint64
 	// opened is the frame it opened in, whose presses do not close it, as
@@ -85,8 +124,11 @@ func (rt *engine) openDrawnMenu(e *node) {
 	if !e.hasState() {
 		return
 	}
-	s := e.st
-	d := &drawnMenu{id: e.id, text: mr.text, opened: rt.frame, dx: mr.x - s.vx, dy: mr.y - s.vy, focus: 0}
+	// From the element's whole box, which the menu attaches to, not its
+	// visible part: one scrolled partly out of view would put it off the
+	// point by as much (#894).
+	b := e.Bounds()
+	d := &drawnMenu{id: e.id, below: mr.below, text: mr.text, opened: rt.frame, dx: mr.x - b.X, dy: mr.y - b.Y, focus: 0}
 	d.pointer = [2]float32{rt.pointerX, rt.pointerY}
 	first := 0
 	if mr.key {
@@ -132,11 +174,14 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 	p := [2]float32{rt.pointerX, rt.pointerY}
 	md.moved = p != d.pointer
 	coreOverlay(c, func() {
-		// A point where the menu opened, which follows the element as it
-		// moves: the menu goes after it, or before it where the window has
-		// no room, as from a corner.
-		at := coreBox(c).Key(mix(d.id, 0)).Size(0, 0).AttachTo(e, AnchorTopLeft, AnchorTopLeft).Margin(d.dy, 0, 0, d.dx)
-		anchor, items := at, pm.Items
+		// A menu button's menu goes below it. Another goes at a point where
+		// it opened, which follows the element as it moves: the menu goes
+		// after it, or before it where the window has no room, as from a
+		// corner.
+		anchor, items := e, pm.Items
+		if !d.below {
+			anchor = coreBox(c).Key(mix(d.id, 0)).Size(0, 0).AttachTo(e, AnchorTopLeft, AnchorTopLeft).Margin(d.dy, 0, 0, d.dx)
+		}
 		for level := 0; level < len(d.levels) && !md.closed; level++ {
 			panel, rows := md.panel(level, items, anchor)
 			md.panels = append(md.panels, panel)
@@ -155,10 +200,15 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 	})
 	if md.closed {
 		rt.menu.drawn = nil
-	} else if f := d.focus; f >= 0 && f < len(md.panels) {
-		// After the overlay noted the focus it came with, to give it back.
-		md.panels[f].Focus()
-		d.focus = -1
+	} else {
+		if d.below {
+			e.expanded = true
+		}
+		if f := d.focus; f >= 0 && f < len(md.panels) {
+			// After the overlay noted the focus it came with, to give it back.
+			md.panels[f].Focus()
+			d.focus = -1
+		}
 	}
 	if it := md.chosen; it != nil {
 		if name := run.commands[it.ID-1]; name != "" {
@@ -175,8 +225,8 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 }
 
 // panel builds the panel of the menu at level, of items, attached to
-// anchor: the point where the menu opened, or the item opening the
-// submenu. It returns the panel and its items' rows by place.
+// anchor: the menu button, the point where the menu opened, or the item
+// opening the submenu. It returns the panel and its items' rows by place.
 func (md *menuDraw) panel(level int, items []*platform.MenuItem, anchor *node) (*node, map[int]*node) {
 	rt, c, d := md.rt, md.c, md.d
 	t := c.theme
@@ -186,9 +236,14 @@ func (md *menuDraw) panel(level int, items []*platform.MenuItem, anchor *node) (
 	panel.flags |= flagFocusable | flagClickable | flagTypeSelect | flagOwnRing | flagScrollY | flagHover
 	panel.MinWidth(t.Space(45)).Padding(t.Space(1)).Radius(t.Radius+2).Background(t.Background).Border(1, t.Border)
 	panel.Shadow(0, 6, 20, 0, RGBA(0, 0, 0, 0.18))
-	if level == 0 {
+	switch {
+	case level == 0 && d.below:
+		// Below the menu button, or above it where the window has no room,
+		// lined up with its start.
+		panel.AttachTo(anchor, AnchorBottomStart, AnchorTopStart).Margin(t.Space(1), 0, 0, 0)
+	case level == 0:
 		panel.AttachTo(anchor, AnchorTopStart, AnchorTopStart)
-	} else {
+	default:
 		// After the item opening it, its first item lined up with it.
 		panel.AttachTo(anchor, AnchorTopEnd, AnchorTopStart).Margin(-t.Space(1)-1, 0, 0, 0)
 		panel.Label(anchor.label)

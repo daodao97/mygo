@@ -234,7 +234,13 @@ rules are:
      calls `deliver`, which sends and then `Backend.Wake`s the loop. This is
      what makes `Page.Eval`, `CapturePage` and dialogs usable from event
      listeners without deadlocking. Nested runs of the dispatch source are
-     expected and safe.
+     expected and safe. A nested loop started inside a run loop observer
+     is not: CFRunLoop never runs that observer again meanwhile, and in
+     the one AppKit displays views and Core Animation commits in, no
+     window, panel or sheet would show. So native UI's frames, whose
+     handlers (`Clicked`) may show a dialog, draw outside it on macOS,
+     but those AppKit asks for, as a resize's (`drawSoon` in
+     `internal/darwin/surface.go`).
 4. **Event listeners run on the main thread**, synchronously, so cancelable
    events (`OnClose`, `OnBeforeQuit`, `OnWillNavigate`, …) can answer the
    native toolkit immediately. **IPC calls run on their own goroutines**, so
@@ -2408,9 +2414,11 @@ either.
   `gdk_monitor_get_refresh_rate`, the display mode's frequency from
   `EnumDisplaySettingsW`); asks for a frame (`RequestFrame`: a
   paused `CADisplayLink`, whose ticks draw frames that follow each other
-  themselves while a frame after a pause, or after a resize, draws when
-  AppKit displays the view, before macOS 14 an `NSTimer` at the display's
-  rate, `gtk_widget_queue_draw` or a tick callback of GTK's frame clock,
+  themselves while a frame after a pause draws at once, in the same pass
+  of the run loop, from the backend's queue (`drawSoon`), and a resize's
+  when AppKit displays the view, before macOS 14 an `NSTimer` at the
+  display's rate, `gtk_widget_queue_draw` or a tick callback of GTK's
+  frame clock,
   `InvalidateRect`); presents
   pixels drawn on the CPU (`PresentPixels`: a CGImage as the layer's
   contents, cairo in the `draw` signal, `SetDIBitsToDevice` in `WM_PAINT`;
@@ -2945,7 +2953,9 @@ either.
   the frame (`popupMenu`), and the item chosen comes back to the function
   in the frame after, matched by place and label. A menu button opens as
   the primary button goes down on it, taking the release, as AppKit's and
-  GTK's pop-up buttons do, and for Enter, Space and Down.
+  GTK's pop-up buttons do, and for Enter, Space and Down. A toolbar's
+  overflow menu asks for an overflowed menu button's menu after the pass
+  built the button (`askMenuLater`), so the next pass builds it.
 - **Routers** (`ui/router.go`). A `Router` is a history of entries, each
   a location (an escaped path and its query) and the pages showing it, one
   per level of views: `View`'s, then each `Route.View` inside a layout's
@@ -3367,7 +3377,11 @@ either.
   not fire, and the accessibility tree is the dialog's layer and what is
   above it. Overlays register Escape as overlay shortcuts
   (`OverlayShortcut`), which the keys the focus and the elements around it
-  leave reach, the last registered (the overlay on top) first. Each element
+  leave reach, the last registered (the overlay on top) first. An element
+  takes one key a frame (`routeKeys`): from a second key for it, the keys
+  wait for the next frame, which the first changed, as a Down and an
+  Enter typed quickly into a menu, the Enter choosing the item the Down
+  highlighted. Each element
   built at the top of `Overlay` notes the focus as it opens (`openers`),
   which pruning gives back once it is gone with the focus that was in it.
   An element attached to another (`AttachTo`, which `PopoverBase` and the
@@ -3508,7 +3522,14 @@ either.
   function again at once, as the choice from a menu of the system's does
   in the next frame, or does its editing command; the overlay going gives
   the focus back to the element that had it. A menu whose element a pass
-  does not build closes (`resolveMenu`).
+  does not build closes (`resolveMenu`). `PopoverMenuButton` draws a menu
+  button's menu so (`drawnMenu.below`): opened below the button itself
+  (`menuState.below`, which `openMenuButton` sets), its panel attaches to
+  the button's bottom, flipping above it, and the button shows expanded;
+  opened from a toolbar's overflow menu, it goes at the overflow button's
+  corner as a context menu goes at its point. Opened by the keys or
+  assistive technology (`menuState.key`), it starts on its first item,
+  and a press on the button while it shows closes it (`buildMenu`).
 - **Scenes** are flat lists of operations in device pixels: rounded
   rectangles with borders of a width per side, solid or dashed, filled
   with a color, a linear gradient mixed in sRGB or Oklab, a gradient of
@@ -3974,12 +3995,25 @@ either.
     `scene.Scene.Background`), and the window paints what it grew by
     around its surface with that background before fitting the surface
     to it (`platform.BackgroundSurface`, `fillUncovered`): what shows
-    meanwhile is the background, not black. Resizing the buffers takes DWM longer
+    meanwhile is the background, not black. As the window shrinks, the
+    surface takes the new size and presents its frame before DWM takes
+    the window's, so DWM may show the window at its last size for a
+    refresh, and around the surface the window's own pixels where the
+    surface was, which the swap chain covered: the window paints them with
+    the background too, under the surface, at each size (`fillUnder`),
+    unless its frames are drawn in memory onto them. Resizing the buffers takes DWM longer
     than a frame for a window about as large as a 4K screen, so while
     the window changes size the swap chain has three buffers a quarter
-    larger than the window, and shows the window's size of them
-    (`SetSourceSize`), until a frame a second after the last change,
-    which a timer asks for, gives it two of the window's size again.
+    larger than the window, until a frame a second after the last change,
+    which a timer asks for, gives it two of the window's size again. The
+    unscaled swap chain shows those buffers whole, from the top left
+    corner, and the window clips them: showing only the window's size of
+    them (`SetSourceSize`) would stretch that part over the buffers' size,
+    magnifying the frame (#892), as it does for a swap chain for
+    composition. A frame drawn whole fills what is beyond it in the
+    buffers with the content's background (`clearWhole`), which shows
+    where the window grows within them. A swap chain that stretches, where
+    the unscaled one is refused, shows the window's size of the buffers.
     The swap chain flips in sequence (`FLIP_SEQUENTIAL`), so that a frame
     draws only what changed since the last, as Metal's (below): DXGI keeps
     what each buffer holds, and as a frame is presented with the
@@ -4487,8 +4521,8 @@ renderer's (`gputest.Compare`).
   syntax. Linux
   gets a Debian package written in pure Go (`deb.go`), whose maintainer
   is `linux.maintainer`, else the `author` of package.json, else the name
-  of the app: the app in `/opt/<name>`, a `/usr/bin` link named
-  `linux.command` when there is one, the desktop entry (categories,
+  of the app: the app in `/opt/<name>`, a `/usr/bin` link for each name
+  of `linux.command`, the desktop entry (categories,
   comment, URL schemes; `Exec` is the app's path) and hicolor icons,
   depending on GTK 3 and WebKitGTK 4.1. Packages hold the same files as
   the update archive; apps installed by a package manager do not update
@@ -4497,8 +4531,8 @@ renderer's (`gputest.Compare`).
   (`installscript.go`), a POSIX sh script, the same for every
   architecture, that installs the archive for the user in
   `~/.local/<name>.app` (which updates can replace), links
-  `~/.local/bin/<linux.command>` when there is one and no other program
-  is there (and removes a `~/.local/bin/<name>` link of its own, which
+  `~/.local/bin/<command>` for each name of `linux.command` that no other
+  program has (and removes a `~/.local/bin/<name>` link of its own, which
   earlier scripts made), and registers the app's `<name>.desktop`, with
   absolute `Exec` and `Icon` paths, and `<name>.xml`, the shared-mime-info
   package of the types it defines, under `$XDG_DATA_HOME`. It then warns

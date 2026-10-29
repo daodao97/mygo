@@ -52,7 +52,7 @@ func nsisCompiler() (string, error) {
 	}
 	dir := nsis.Dir()
 	if dir == "" {
-		return "", errors.New("no cache directory to download NSIS into: install NSIS (makensis)")
+		return "", errors.New("no cache directory to download NSIS into: install NSIS (makensis), or build with -skip-installer")
 	}
 	return downloadNSIS(dir)
 }
@@ -67,7 +67,7 @@ func downloadNSIS(dir string) (string, error) {
 	t := con.start("Downloading NSIS " + v + " for the Windows installer")
 	p, err := nsis.Download(context.Background(), dir, func(url string) fetch.File { return downloadFile(t, url, "") })
 	if t.end(err, "Downloaded NSIS "+v) != nil {
-		return "", fmt.Errorf("downloading NSIS %s (or install it: https://nsis.sourceforge.io):\n%w", v, err)
+		return "", fmt.Errorf("downloading NSIS %s (install it, https://nsis.sourceforge.io, or build with -skip-installer):\n%w", v, err)
 	}
 	return p, nil
 }
@@ -119,7 +119,7 @@ func writeInstaller(c *Config, stage, work, exe, goarch string, installed []stri
 		return "", err
 	}
 	if tool == "" {
-		warnf("Skipping the Windows installer: install NSIS (makensis)")
+		warnf("Skipping the Windows installer: install NSIS (makensis), or build with -skip-installer")
 		return "", nil
 	}
 	out := filepath.Join(stage, installerFileName(c, goarch))

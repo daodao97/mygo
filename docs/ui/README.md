@@ -121,7 +121,8 @@ UI as they read other apps (see [Accessibility](accessibility.md)).
 
 - [Button](button.md): a push button, plain or in the accent color.
 - [Link](link.md): text that opens a URL, or a page of a router.
-- [Menu button](menu-button.md): a button opening a menu below it.
+- [Menu button](menu-button.md): a button opening a menu below it, the
+  system's or one MyGo draws in the window with the theme's look.
 - [Context menu](context-menu.md): a menu of the system's for any element,
   on a right click, or one MyGo draws in the window with the theme's look.
 - [Toggle](toggle.md): a button that stays pressed, and toggles joined in a

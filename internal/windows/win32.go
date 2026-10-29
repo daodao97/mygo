@@ -171,6 +171,7 @@ var (
 	procInvalidateRectW               = user32.NewProc("InvalidateRect")
 	procUpdateLayeredWindow           = user32.NewProc("UpdateLayeredWindow")
 	procGetDC                         = user32.NewProc("GetDC")
+	procGetDCEx                       = user32.NewProc("GetDCEx")
 	procReleaseDC                     = user32.NewProc("ReleaseDC")
 	procDrawTextW                     = user32.NewProc("DrawTextW")
 	procTrackMouseEvent               = user32.NewProc("TrackMouseEvent")

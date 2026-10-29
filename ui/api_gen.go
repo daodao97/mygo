@@ -861,6 +861,7 @@ func ButtonBase(c *Context) Element {
 // months, and Home and End go to the first and the last day of the month.
 // Changed reports a new date, which keeps the time of day and location of
 // *date. Assistive technology reads the day chosen as the arrows move.
+// Browse makes the keys and the buttons move without choosing.
 func Calendar(c *Context, date *time.Time) Element {
 	_ctx := c.build()
 	if _ctx == nil {
@@ -1425,6 +1426,8 @@ func Local[T any](e Element, key any, init func() T) *T {
 //			}
 //		}
 //	})
+//
+// PopoverMenuButton draws its menu in the window, with the theme's look.
 func MenuButton(c *Context, label string, build func(m *Menu)) Element {
 	_ctx := c.build()
 	if _ctx == nil {
@@ -1604,6 +1607,28 @@ func PopoverBase(c *Context, anchor Element, open *bool, fn func(panel Element))
 		}
 		return func(panel *node) { fn(wrapElement(panel)) }
 	}())
+	_ctx.rt.endBuild()
+	return wrapElement(_e)
+}
+
+// PopoverMenuButton creates a button showing label and an arrow, as
+// MenuButton does, whose menu MyGo draws in the window with the theme's
+// look, as PopoverMenu draws a context menu (Element.PopoverMenuButton):
+//
+//	ui.PopoverMenuButton(c, "Sort by", func(m *ui.Menu) {
+//		for _, by := range []string{"Name", "Date", "Size"} {
+//			if m.Item(by).Radio(app.sort == by).Chosen() {
+//				app.sort = by
+//			}
+//		}
+//	})
+func PopoverMenuButton(c *Context, label string, build func(m *Menu)) Element {
+	_ctx := c.build()
+	if _ctx == nil {
+		return Element{}
+	}
+	_ctx.rt.beginBuild()
+	_e := corePopoverMenuButton(_ctx, label, build)
 	_ctx.rt.endBuild()
 	return wrapElement(_e)
 }
@@ -1822,8 +1847,8 @@ func ScrollHorizontal(c *Context) Element {
 // SearchField creates a field for searching, editing *query: a magnifying
 // glass, the text, and a button clearing it while it holds any, as Escape
 // does then. Enter is its Submitted, and Changed reports a change. It
-// shows Search while empty, and assistive technology sees a search field;
-// name it with Label.
+// shows Search while empty, or what Placeholder sets, and assistive
+// technology sees a search field; name it with Label.
 //
 //	if ui.SearchField(c, &app.query).Label("Search mail").Changed() {
 //		app.filter()
@@ -3171,6 +3196,23 @@ func (_handle Element) Bounds() Rect {
 	_ctx := _node.c
 	_ = _ctx
 	return _node.Bounds()
+}
+
+// Browse lets the user move about a Calendar without choosing a day: its
+// buttons and Page Up and Page Down only show other months, and the
+// arrows, Home and End only move among the days, until a click, Enter or
+// Space chooses one, as in a date input's calendar. Changed then reports
+// only a day chosen, as a calendar in a popover that closes when the
+// user picks a day needs. The calendar goes back to *date as the app
+// sets another.
+func (_handle Element) Browse() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Browse())
 }
 
 // Cache keeps what the element paints, with its children, in a bitmap of
@@ -4856,6 +4898,9 @@ func (_handle Element) MaximizeButton() Element {
 //			app.duplicate()
 //		}
 //	})
+//
+// PopoverMenuButton draws the same menu in the window, with the theme's
+// look.
 func (_handle Element) Menu(build func(m *Menu)) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -5133,7 +5178,9 @@ func (_handle Element) Perspective(distance float32) Element {
 	return wrapElement(_node.Perspective(distance))
 }
 
-// Placeholder shows s in an empty text input.
+// Placeholder shows s in an empty text input. On a field around an input,
+// as SearchField, TokenField and Combobox, it shows in the field's input,
+// in place of the field's own: SearchField shows Search without one.
 func (_handle Element) Placeholder(s string) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -5188,6 +5235,8 @@ func (_handle Element) PointerPosition() (float32, float32, bool) {
 // and after where it opened, and on the other side where the window has
 // no room. Assistive technology sees a menu of items, check box items and
 // radio items, as the system's.
+//
+// PopoverMenuButton draws the menu of a menu button so.
 func (_handle Element) PopoverMenu(build func(m *Menu)) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -5196,6 +5245,41 @@ func (_handle Element) PopoverMenu(build func(m *Menu)) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.PopoverMenu(build))
+}
+
+// PopoverMenuButton makes the element a menu button, as Menu does, whose
+// menu MyGo draws in the window with the theme's look, as PopoverMenu
+// draws a context menu, rather than the system showing one of its own. It
+// opens below the element, or above it where the window has no room, as
+// the pointer goes down on it, and for Enter, Space or Down while it has
+// the focus, which it takes. build fills it with the items Menu's
+// function takes, and the item chosen reports Chosen as there:
+//
+//	more := ui.ButtonBase(c).Label("More").Padding(4).Radius(6)
+//	more.Children(func() { ui.Icon(c, moreIcon).Size(16, 16) })
+//	more.PopoverMenuButton(func(m *ui.Menu) {
+//		if m.Item("Duplicate").Chosen() {
+//			app.duplicate()
+//		}
+//		if m.Item("Delete").Disabled(app.locked).Chosen() {
+//			app.delete()
+//		}
+//	})
+//
+// The menu has the keys of PopoverMenu's, and takes the focus as it opens
+// and gives it back as it closes, as there; a press on the element closes
+// it too. Opened by the keyboard, it starts on its first item. Assistive
+// technology sees a menu button, expanded while its menu shows, and the
+// menu as PopoverMenu's. The function PopoverMenuButton is a button with
+// such a menu, as MenuButton is one with a menu of the system's.
+func (_handle Element) PopoverMenuButton(build func(m *Menu)) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.PopoverMenuButton(build))
 }
 
 // Pressed reports whether the element is being pressed with the pointer,

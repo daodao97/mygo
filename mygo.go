@@ -70,7 +70,7 @@ import (
 )
 
 // Version is the MyGo version.
-const Version = "0.7.1"
+const Version = "0.7.3"
 
 // ErrUnsupported identifies a feature unavailable on the current platform.
 // Use errors.Is to check errors returned by TryClose, TryQuit and other APIs.

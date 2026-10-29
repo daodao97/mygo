@@ -3,6 +3,7 @@
 package windows
 
 import (
+	"fmt"
 	"math"
 	"runtime"
 	"strconv"
@@ -387,4 +388,45 @@ func TestSurfacePixel(hwnd uintptr, x, y float64) (r, g, b uint8, ok bool) {
 		return 0, 0, 0, false
 	}
 	return uint8(px), uint8(px >> 8), uint8(px >> 16), true
+}
+
+// TestWindowPixelsUnderSurface reads the window's own pixels (its
+// redirection bitmap) across its client area, under the surface showing
+// native UI too, which DWM shows where the surface shrinks before the
+// window does (fillUnder), and returns the first that is not the content's
+// background, as "(x, y) is #rrggbb", or "" when all are. ok is false when
+// it cannot tell: the content has no opaque background yet, the window
+// has no pixels of its own, or the frames are drawn into them (GDI).
+func TestWindowPixelsUnderSurface(hwnd uintptr) (off string, ok bool) {
+	s := surfaceByHandle(hwnd)
+	if s == nil || s.bgBrush == 0 || s.pixels || s.viaComposition() {
+		return "", false
+	}
+	var c rect
+	procGetClientRect.Call(s.w.hwnd, uintptr(unsafe.Pointer(&c)))
+	if c.Right <= 0 || c.Bottom <= 0 {
+		return "", false
+	}
+	const dcxCache = 0x2
+	dc, _, _ := procGetDCEx.Call(s.w.hwnd, 0, dcxCache)
+	if dc == 0 {
+		return "", false
+	}
+	defer procReleaseDC.Call(s.w.hwnd, dc)
+	want := uint32(s.bg.R) | uint32(s.bg.G)<<8 | uint32(s.bg.B)<<16
+	// A grid of 17 by 17 pixels, the edges of the client area among them.
+	const n = 16
+	for i := range n + 1 {
+		for j := range n + 1 {
+			x, y := (c.Right-1)*int32(j)/n, (c.Bottom-1)*int32(i)/n
+			px, _, _ := procGetPixel.Call(dc, uintptr(x), uintptr(y))
+			if px == 0xFFFFFFFF { // CLR_INVALID
+				return "", false
+			}
+			if uint32(px) != want {
+				return fmt.Sprintf("(%d, %d) is #%02x%02x%02x", x, y, byte(px), byte(px>>8), byte(px>>16)), true
+			}
+		}
+	}
+	return "", true
 }

@@ -699,7 +699,30 @@ func chevron(c *context) {
 //			}
 //		}
 //	})
+//
+// PopoverMenuButton draws its menu in the window, with the theme's look.
 func coreMenuButton(c *context, label string, build func(m *Menu)) *node {
+	return menuButton(c, label).Menu(build)
+}
+
+// PopoverMenuButton creates a button showing label and an arrow, as
+// MenuButton does, whose menu MyGo draws in the window with the theme's
+// look, as PopoverMenu draws a context menu (Element.PopoverMenuButton):
+//
+//	ui.PopoverMenuButton(c, "Sort by", func(m *ui.Menu) {
+//		for _, by := range []string{"Name", "Date", "Size"} {
+//			if m.Item(by).Radio(app.sort == by).Chosen() {
+//				app.sort = by
+//			}
+//		}
+//	})
+func corePopoverMenuButton(c *context, label string, build func(m *Menu)) *node {
+	return menuButton(c, label).PopoverMenuButton(build)
+}
+
+// menuButton creates the button of a MenuButton, showing label and an
+// arrow.
+func menuButton(c *context, label string) *node {
 	b := button(c, "", false)
 	b.Children(func() {
 		if label != "" {
@@ -707,5 +730,5 @@ func coreMenuButton(c *context, label string, build func(m *Menu)) *node {
 		}
 		chevron(c)
 	})
-	return b.Menu(build)
+	return b
 }

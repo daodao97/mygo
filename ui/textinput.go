@@ -64,10 +64,16 @@ func textInputBase(c *context, value *string, multiline bool) *node {
 	return e
 }
 
-// Placeholder shows s in an empty text input.
+// Placeholder shows s in an empty text input. On a field around an input,
+// as SearchField, TokenField and Combobox, it shows in the field's input,
+// in place of the field's own: SearchField shows Search without one.
 func (e *node) Placeholder(s string) *node {
-	if e.st.editor != nil {
-		e.st.editor.placeholder = s
+	in := e
+	if in.st.editor == nil && in.focusTo != nil {
+		in = in.focusTo
+	}
+	if in.st.editor != nil {
+		in.st.editor.placeholder = s
 	}
 	return e
 }

@@ -741,17 +741,31 @@ func (ed *editor) paintGutter(p *ui.Painter, r ui.Rect, f *frame) {
 }
 
 // paintBar draws a diff's change bar: solid for additions, striped for
-// deletions, as Pierre's, so the two differ without their colors.
+// deletions, as Pierre's, so the two differ without their colors. The
+// stripes keep to the content, not to r, so those of consecutive lines
+// make one pattern, which scrolls with them.
 func (ed *editor) paintBar(p *ui.Painter, r ui.Rect, s lineLook) {
 	if !s.stripes {
 		p.Fill(r, s.bar, 0)
 		return
 	}
-	p.Clip(r, 0, func() {
-		for y := r.Y; y < r.Y+r.H; y += 4 {
-			p.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: 2}, s.bar, 0)
+	barStripes(r, float64(r.Y-ed.r.Y)+ed.scrollY, func(sr ui.Rect) { p.Fill(sr, s.bar, 0) })
+}
+
+// barStripes calls fn with the stripes of a deletion bar r whose top is
+// at top in the content: 2 DIPs every 4 from the content's top, cut to r.
+func barStripes(r ui.Rect, top float64, fn func(ui.Rect)) {
+	const period, width = 4, 2
+	phase := math.Mod(top, period)
+	if phase < 0 {
+		phase += period
+	}
+	for y := r.Y - float32(phase); y < r.Y+r.H; y += period {
+		y0, y1 := max(y, r.Y), min(y+width, r.Y+r.H)
+		if y1 > y0 {
+			fn(ui.Rect{X: r.X, Y: y0, W: r.W, H: y1 - y0})
 		}
-	})
+	}
 }
 
 // paintScrollbars draws the scroll bars, the vertical one with markers

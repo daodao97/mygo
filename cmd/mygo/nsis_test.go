@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -176,6 +178,66 @@ func TestWindowsInstaller(t *testing.T) {
 		}
 	}()
 	uninstall(t, install)
+}
+
+// TestSkipInstaller builds a Windows app with updates and -skip-installer,
+// with a makensis first on PATH that leaves a mark and fails: the build
+// never runs NSIS, makes no installer nor install.ps1, and has the update
+// files to upload. Without the flag, the same build runs it.
+func TestSkipInstaller(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	bin := t.TempDir()
+	mark := filepath.Join(bin, "ran")
+	fake, script := "makensis", "#!/bin/sh\ntouch '"+mark+"'\nexit 1\n"
+	if runtime.GOOS == "windows" {
+		fake, script = "makensis.bat", "@echo off\r\necho.>\""+mark+"\"\r\nexit /b 1\r\n"
+	}
+	if err := os.WriteFile(filepath.Join(bin, fake), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	t.Setenv("MYGO_UPDATER_PRIVATE_KEY", base64.StdEncoding.EncodeToString(priv))
+
+	dir := testModule(t, map[string]string{
+		"main.go":   "package main\n\nfunc main() {}\n",
+		"mygo.json": `{"name": "Skip Test", "version": "1.0.0", "updates": {"github": "me/skip-test", "deltas": 0, "publicKey": "` + base64.StdEncoding.EncodeToString(pub) + `"}}`,
+	})
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := buildOptions{sign: "-", skipInstaller: true, work: t.TempDir()}
+	if opts.pkg, err = packageDir(c); err != nil {
+		t.Fatal(err)
+	}
+	artifacts, err := buildPlatform(c, "windows", "amd64", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(mark) {
+		t.Error("the build with -skip-installer ran makensis")
+	}
+	names, err := entryNames(filepath.Join(dir, "dist", "windows-amd64"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		if strings.Contains(name, installerMark) || name == installPS1Name {
+			t.Errorf("the build with -skip-installer made %s", name)
+		}
+	}
+	files, manifests, err := uploads(artifacts)
+	if err != nil || len(files) != 1 || filepath.Base(files[0]) != "skip-test-1.0.0-windows-amd64.tar.gz" || len(manifests) != 1 {
+		t.Errorf("uploads of %q = %q, %q, %v", artifacts, files, manifests, err)
+	}
+
+	opts.skipInstaller = false
+	if _, err := buildPlatform(c, "windows", "amd64", opts); err == nil || !strings.Contains(err.Error(), "makensis") || !fileExists(mark) {
+		t.Errorf("the build without -skip-installer: %v, ran makensis: %v", err, fileExists(mark))
+	}
 }
 
 // buildTestInstaller builds the Windows installer of a module of files
