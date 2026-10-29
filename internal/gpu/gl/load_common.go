@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64) && !android) || android
+//go:build (linux && (amd64 || arm64) && !android) || (android && cgo)
 
 package gl
 

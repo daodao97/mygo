@@ -1,4 +1,4 @@
-//go:build amd64 || arm64
+//go:build !android && (amd64 || arm64)
 
 package shader
 
