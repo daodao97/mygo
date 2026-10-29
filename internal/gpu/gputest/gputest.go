@@ -227,8 +227,9 @@ func Scene() *scene.Scene {
 	inset(scene.Rect{X: 270, Y: 548, W: 40, H: 44}, 20, scene.Rect{}, 0, blue, 6)
 
 	// Gradients of stops: conic, in sRGB with a hard stop and in Oklab,
-	// linear, half transparent and to transparent, painting borders, plain
-	// and dashed, and glyphs; and images blurred, at full size and a
+	// linear, half transparent and to transparent, radial, off center
+	// with a hard stop and in Oklab to transparent, painting borders,
+	// plain and dashed, and glyphs; and images blurred, at full size and a
 	// quarter of it.
 	stops := func(st ...scene.Stop) [2]int32 {
 		a := int32(len(s.Stops))
@@ -250,6 +251,10 @@ func Scene() *scene.Scene {
 	add(scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 230, Y: 670, W: 80, H: 30}, Radii: r4(6), Border: scene.Uniform(3),
 		BorderColor: scene.Color{R: 255, G: 255, B: 255, A: 200}, BorderPaint: true, Dashed: true, Paint: scene.PaintLinearStops,
 		Gradient: [4]float32{230, 0, 310, 0}, Stops: stops(scene.Stop{Color: green, At: 0}, scene.Stop{Color: red, At: 1})})
+	add(scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 200, Y: 704, W: 50, H: 32}, Radii: r4(8), Paint: scene.PaintRadial,
+		Gradient: [4]float32{213, 714, 26.3, 0}, Stops: stops(scene.Stop{Color: yellow, At: 0}, scene.Stop{Color: red, At: 0.5}, scene.Stop{Color: blue, At: 0.5}, scene.Stop{Color: green, At: 1})})
+	add(scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 256.5, Y: 704.25, W: 56, H: 32}, Radii: r4(16), Paint: scene.PaintRadialOklab,
+		Gradient: [4]float32{284.5, 720.25, 30, 0}, Stops: stops(scene.Stop{Color: scene.Color{R: 255, G: 255, B: 255, A: 255}, At: 0.1}, scene.Stop{Color: scene.Color{R: 37, G: 99, B: 235, A: 140}, At: 0.6}, scene.Stop{Color: scene.Color{}, At: 1})})
 	start = int32(len(s.Glyphs))
 	for i := range 3 {
 		s.Glyphs = append(s.Glyphs, scene.Glyph{X: float32(10 + i*18), Y: 676, W: 16, H: 16, U: uint16(dx), V: uint16(dy), UW: 16, VH: 16, Color: ink})

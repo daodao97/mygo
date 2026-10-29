@@ -541,13 +541,17 @@ func (h *windowHost) present(s *scene.Scene) {
 	h.refreshPresented()
 }
 
-// ready tells the window, after the first frame, that it is ready to show:
-// once the frame returns, as its listeners may show the window.
+// ready tells the surface, after the first frame, that the frame reached
+// it, and the window that it is ready to show: once the frame returns, as
+// its listeners may show the window.
 func (h *windowHost) ready() {
 	if h.shown {
 		return
 	}
 	h.shown = true
+	if f, ok := h.conn.Surface.(platform.FirstFrameSurface); ok {
+		f.FirstFrame()
+	}
 	if h.conn.Ready != nil && h.conn.Post != nil {
 		h.conn.Post(h.conn.Ready)
 	}

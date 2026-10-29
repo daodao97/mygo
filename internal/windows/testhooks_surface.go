@@ -430,3 +430,64 @@ func TestWindowPixelsUnderSurface(hwnd uintptr) (off string, ok bool) {
 	}
 	return "", true
 }
+
+// TestCloaked reports whether DWM keeps the window hwnd out of sight
+// (DWMWA_CLOAKED), and whether the first frame of its native UI reached
+// its surface.
+func TestCloaked(hwnd uintptr) (cloaked, drawn bool) {
+	const dwmwaCloaked = 14
+	var v uint32
+	procDwmGetWindowAttribute.Call(hwnd, dwmwaCloaked, uintptr(unsafe.Pointer(&v)), unsafe.Sizeof(v))
+	s := surfaceByHandle(hwnd)
+	return v != 0, s != nil && s.drawn
+}
+
+// TestUndrawnCloaked reports how many windows of native UI have not had
+// their first frame reach their surface, and whether DWM keeps all of them
+// out of sight: a window's first frame may build while NewWindow creates
+// it, before a test has its handle.
+func TestUndrawnCloaked() (n int, cloaked bool) {
+	cloaked = true
+	for _, s := range theBackend.surfaces {
+		if s.drawn {
+			continue
+		}
+		n++
+		c, _ := TestCloaked(s.w.hwnd)
+		cloaked = cloaked && c
+	}
+	return n, cloaked
+}
+
+// TestWindowEdges returns the colors the screen shows at the middle of the
+// window's left, top, right and bottom edges, on the outermost pixels of
+// what DWM shows of it (DWMWA_EXTENDED_FRAME_BOUNDS, within the invisible
+// borders), inset by in pixels: on Windows 11, the thickness of the border
+// DWM draws there (DWMWA_VISIBLE_FRAME_BORDER_THICKNESS), so the colors
+// are the content's just inside it. ok is false when they cannot be read.
+func TestWindowEdges(hwnd uintptr) (edges [4][3]uint8, in int32, ok bool) {
+	const dwmwaVisibleFrameBorderThickness = 37
+	var s rect
+	if hr, _, _ := procDwmGetWindowAttribute.Call(hwnd, dwmwaExtendedFrameBounds, uintptr(unsafe.Pointer(&s)), unsafe.Sizeof(s)); hr != 0 || s.Right <= s.Left || s.Bottom <= s.Top {
+		return edges, 0, false
+	}
+	if windows11() {
+		in = 1
+		var t uint32
+		if hr, _, _ := procDwmGetWindowAttribute.Call(hwnd, dwmwaVisibleFrameBorderThickness, uintptr(unsafe.Pointer(&t)), unsafe.Sizeof(t)); hr == 0 {
+			in = int32(t)
+		}
+	}
+	procDwmFlush.Call()
+	screen, _, _ := procGetDC.Call(0)
+	defer procReleaseDC.Call(0, screen)
+	x, y := (s.Left+s.Right)/2, (s.Top+s.Bottom)/2
+	for i, pt := range [4]point{{s.Left + in, y}, {x, s.Top + in}, {s.Right - 1 - in, y}, {x, s.Bottom - 1 - in}} {
+		px, _, _ := procGetPixel.Call(screen, uintptr(pt.X), uintptr(pt.Y))
+		if px == 0xFFFFFFFF { // CLR_INVALID
+			return edges, in, false
+		}
+		edges[i] = [3]uint8{uint8(px), uint8(px >> 8), uint8(px >> 16)}
+	}
+	return edges, in, true
+}

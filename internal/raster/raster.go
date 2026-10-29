@@ -756,6 +756,9 @@ func (p *painter) at(px, py float32) [4]float32 {
 	case scene.PaintConic, scene.PaintConicOklab:
 		t := conicT(px-p.g[0], py-p.g[1], p.g[2])
 		return p.stopsAt(t)
+	case scene.PaintRadial, scene.PaintRadialOklab:
+		dx, dy := px-p.g[0], py-p.g[1]
+		return p.stopsAt(float32(math.Sqrt(float64(dx*dx+dy*dy))) / max(p.g[2], 0.0001))
 	}
 	g := p.g
 	dx, dy := g[2]-g[0], g[3]-g[1]
@@ -808,7 +811,7 @@ func (p *painter) stopsAt(t float32) [4]float32 {
 	a, b := &s[i-1], &s[i]
 	k := clamp01((t - a.at) / max(b.at-a.at, 1e-6))
 	alpha := a.c[3]*(1-k) + b.c[3]*k
-	if p.paint == scene.PaintLinearStops || p.paint == scene.PaintConic {
+	if p.paint == scene.PaintLinearStops || p.paint == scene.PaintConic || p.paint == scene.PaintRadial {
 		return [4]float32{a.c[0]*(1-k) + b.c[0]*k, a.c[1]*(1-k) + b.c[1]*k, a.c[2]*(1-k) + b.c[2]*k, alpha}
 	}
 	if alpha <= 0 {

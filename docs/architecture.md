@@ -770,8 +770,14 @@ features GTK 4 lacks become X11-only code beside it.
   bar keeps one pixel of its top, under the window's border, without which
   the maximize button opens no snap layouts while the window is not
   maximized. Windows 10, which has no snap layouts, keeps none: over a
-  window that keeps any of its top it draws its whole title bar. The build
-  comes from `RtlGetVersion`, which no manifest changes.
+  window that keeps any of its top it draws its whole title bar. A
+  resizable frameless window on Windows 10 takes the visible pixel of its
+  borders into its client area too, where the content covers the line DWM
+  draws there, white whatever the content (#916), and its frame is not
+  extended for the shadow, which its invisible borders cast: extended, it
+  shows as a white line along the top. Other windows without a caption
+  extend it by a pixel, without which a window with no borders has no
+  shadow. The build comes from `RtlGetVersion`, which no manifest changes.
 - The top edge of a window without a caption (`topedge.go`), which
   `WM_NCCALCSIZE` gives to the client area, where the webview's or the
   surface's window answers `HTCLIENT`, is a child window above them: a
@@ -2415,7 +2421,10 @@ either.
   `EnumDisplaySettingsW`); asks for a frame (`RequestFrame`: a
   paused `CADisplayLink`, whose ticks draw frames that follow each other
   themselves while a frame after a pause draws at once, in the same pass
-  of the run loop, from the backend's queue (`drawSoon`), and a resize's
+  of the run loop, from the backend's queue (`drawSoon`), as does the
+  first frame of a window out of sight, which the link does not tick
+  for (`platform.FirstFrameSurface`): a window made hidden draws it
+  while hidden, which makes it ready to show, and a resize's
   when AppKit displays the view, before macOS 14 an `NSTimer` at the
   display's rate, `gtk_widget_queue_draw` or a tick callback of GTK's
   frame clock,
@@ -2546,8 +2555,9 @@ either.
   focus colors appear together; holding the pointer asks for no further
   build passes. The engine lays it out with flexbox (`layout.go`) or
   as a grid (`grid.go`, CSS grid's placement and track sizing for fixed,
-  fractional and content-sized tracks), laying out again only what changed
-  since the last frame (see below); commits the boxes to the elements'
+  fractional and content-sized tracks, with the items' percentages of
+  their grid areas, as auto while the tracks are sized), laying out again
+  only what changed since the last frame (see below); commits the boxes to the elements'
   states with the hit list in paint order, the focus order and the labels;
   paints a `scene.Scene`; and presents it. Input between frames goes to the
   states of the last frame's elements. An element's identity hashes its
@@ -3533,8 +3543,8 @@ either.
 - **Scenes** are flat lists of operations in device pixels: rounded
   rectangles with borders of a width per side, solid or dashed, filled
   with a color, a linear gradient mixed in sRGB or Oklab, a gradient of
-  stops, linear or conic (`Scene.Stops`, which ops point into, at most 32
-  each), or stripes, the border painted with the op's gradient where it
+  stops, linear, conic or radial (`Scene.Stops`, which ops point into, at
+  most 32 each), or stripes, the border painted with the op's gradient where it
   says so (`BorderPaint`);
   shadows (blurred rounded rectangles, cut by the box casting them, as
   CSS's box-shadow is, or inner ones, inside the box where the hole they
@@ -4001,7 +4011,20 @@ either.
     refresh, and around the surface the window's own pixels where the
     surface was, which the swap chain covered: the window paints them with
     the background too, under the surface, at each size (`fillUnder`),
-    unless its frames are drawn in memory onto them. Resizing the buffers takes DWM longer
+    unless its frames are drawn in memory onto them. Until a frame of its
+    content shows in it, the window is cloaked (`DWMWA_CLOAK`, from the
+    surface's creation): shown, it would show white while the renderer
+    starts and the first frame draws, a few hundred milliseconds (#905).
+    Windows sends it `WM_PAINT` all the same, and uncloaks it after the
+    one whose frame reached the surface (`platform.FirstFrameSurface`),
+    or a second after it was shown without one (a timer, which only an
+    idle main thread lets fire); a refresh of DWM between the present and
+    its frame showing shows the background under the surface
+    (`fillUnder`). A window made hidden gets no `WM_PAINT`: its first frame is
+    drawn while it is hidden (`drawHidden`), which makes it ready to
+    show, and it uncloaks after its first `WM_PAINT` once shown; a
+    present that DXGI reports occluded leaves the next frame to draw
+    whole. Resizing the buffers takes DWM longer
     than a frame for a window about as large as a 4K screen, so while
     the window changes size the swap chain has three buffers a quarter
     larger than the window, until a frame a second after the last change,
@@ -4236,7 +4259,15 @@ either.
   of 15 MB for half of a 4K display, in 0.01 ms instead of 1. A draw GTK
   asks for by itself, as a resize does, draws a frame in the `draw`
   signal, and repaints in the next frame what it changed outside GTK's
-  clip.
+  clip. GTK neither paints a window that does not show nor runs its
+  frame clock: until its first frame reached the surface
+  (`platform.FirstFrameSurface`), `RequestFrame` of a window made hidden
+  also adds an idle callback, which realizes the window, giving the area
+  the size it will show at, and draws that frame in memory, showing it
+  nowhere (`drawHidden`), which makes the window ready to show. A
+  GtkGLArea has no context until it shows: the frame is followed by
+  `SurfaceRenew`, so that the first in its `render` signal makes the GPU
+  renderer, which the hidden one could not.
 
   On Windows, `RequestFrame` invalidates the surface's window, whose
   `WM_PAINT` comes as soon as the message queue is empty, and frames drawn

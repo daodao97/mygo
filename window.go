@@ -1708,7 +1708,7 @@ func (w *Window) OnHide(fn func()) (off func()) { return w.onHide.add(fn, false)
 // OnReadyToShow is called once, when the first page is ready to be
 // displayed. Create the window with Hidden and call Show here to avoid a
 // visual flash. A window showing Content is ready once it drew its first
-// frame, which a hidden window may not draw until shown.
+// frame, which a hidden window draws while hidden.
 func (w *Window) OnReadyToShow(fn func()) (off func()) { return w.onReadyToShow.add(fn, false) }
 
 // OnResize is called after the window was resized.

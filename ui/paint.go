@@ -482,6 +482,8 @@ func (p *Painter) background(e *node, box Rect, withBorder bool) {
 		visible = e.bg.A > 0 || e.stripes.c.A > 0
 	case fillConic:
 		visible = anyVisible(e.grads.conic.Stops)
+	case fillRadial:
+		visible = anyVisible(e.grads.radial.Stops)
 	}
 	if !visible && !border {
 		return
@@ -502,6 +504,9 @@ func (p *Painter) background(e *node, box Rect, withBorder bool) {
 		}
 	case fillConic:
 		p.conic(&op, e.grads.conic)
+		c = Color{}
+	case fillRadial:
+		p.radial(&op, e.grads.radial)
 		c = Color{}
 	case fillStripes:
 		st := e.stripes
@@ -606,6 +611,29 @@ func (p *Painter) conic(op *scene.Op, g ConicGradient) {
 		op.Paint = scene.PaintConicOklab
 	}
 	op.Gradient = [4]float32{op.Rect.X + op.Rect.W*c.X, op.Rect.Y + op.Rect.H*c.Y, g.Angle * math.Pi / 180, 0}
+	op.Stops = p.stops(g.Stops)
+}
+
+// radial sets the paint of op to g, from a point of its rectangle.
+func (p *Painter) radial(op *scene.Op, g RadialGradient) {
+	c := g.Center
+	if c == (Point{}) {
+		c = Point{0.5, 0.5}
+	}
+	r := op.Rect
+	cx, cy := r.X+r.W*c.X, r.Y+r.H*c.Y
+	radius := g.Radius * p.scale
+	if radius <= 0 {
+		// The farthest corner, as CSS's farthest-corner.
+		dx, dy := max(abs32(cx-r.X), abs32(r.X+r.W-cx)), max(abs32(cy-r.Y), abs32(r.Y+r.H-cy))
+		radius = float32(math.Sqrt(float64(dx*dx + dy*dy)))
+	}
+	op.Paint = scene.PaintRadial
+	if g.Oklab {
+		op.Paint = scene.PaintRadialOklab
+	}
+	// At least half a pixel, as in an empty box: its stops a hard edge.
+	op.Gradient = [4]float32{cx, cy, max(radius, 0.5), 0}
 	op.Stops = p.stops(g.Stops)
 }
 
@@ -1215,6 +1243,14 @@ func (p *Painter) FillConicGradient(r Rect, g ConicGradient, radius float32) {
 	p.add(op)
 }
 
+// FillRadialGradient fills a rounded rectangle with a radial gradient,
+// its colors spreading out from a point of it.
+func (p *Painter) FillRadialGradient(r Rect, g RadialGradient, radius float32) {
+	op := scene.Op{Kind: scene.OpFill, Rect: p.snap(r), Radii: p.radii([4]float32{radius, radius, radius, radius}), Continuous: continuousCorners, Opacity: p.opacity}
+	p.radial(&op, g)
+	p.add(op)
+}
+
 // Stroke paints the outline of a rounded rectangle, width DIPs wide inside
 // its edge.
 func (p *Painter) Stroke(r Rect, c Color, radius, width float32) {
@@ -1279,7 +1315,10 @@ func (p *Painter) insetShadow(box Rect, rad, bw [4]float32, sh shadow) {
 }
 
 // Line paints a straight horizontal or vertical line between two points,
-// width DIPs thick.
+// width DIPs thick. It draws no other angle: between points that differ in
+// both x and y, it paints the longer of the top and left edges of the box
+// between them, the top if they are as long. StrokePolyline draws a
+// slanted line.
 func (p *Painter) Line(x0, y0, x1, y1, width float32, c Color) {
 	r := Rect{min(x0, x1), min(y0, y1), abs32(x1 - x0), abs32(y1 - y0)}
 	if r.W < r.H {

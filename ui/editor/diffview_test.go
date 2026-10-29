@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"math"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -358,5 +359,126 @@ func TestDiffScrollsUnderAnnotation(t *testing.T) {
 	tt.Frame()
 	if y := d.eds[1].scrollY; y != 40 {
 		t.Fatalf("scrolled to %v over the comment, want 40", y)
+	}
+}
+
+// A filler's stripes are those in sight, however high it is, at -45°
+// every 8 DIPs from its bottom-left corner, which they keep to as it
+// scrolls.
+func TestFillerStripes(t *testing.T) {
+	v := ui.Rect{X: 100, Y: 0, W: 600, H: 800}
+	// pieces returns the stripes in v of a filler whose bottom-left corner
+	// is at (100, bottom), where x+y is each at its bottom.
+	pieces := func(v ui.Rect, bottom float64) []float64 {
+		var out []float64
+		fillerStripes(v, [2]float64{100, bottom}, func(a, b [2]float32) {
+			if a[1] != v.Y+v.H || b[1] != v.Y || math.Abs(float64(b[0]-a[0]-v.H)) > 1e-3 {
+				t.Fatalf("stripe from %v to %v, want from the bottom of %v to its top at -45°", a, b, v)
+			}
+			if a[0] >= v.X+v.W || b[0] <= v.X {
+				t.Fatalf("stripe from %v to %v misses %v", a, b, v)
+			}
+			out = append(out, float64(a[0])+float64(a[1]))
+		})
+		return out
+	}
+	// 12M DIPs high, 700k lines, scrolled to its middle.
+	bottom := 6e6 + 0.3
+	got := pieces(v, bottom)
+	if want := int(v.W+v.H) / 8; len(got) < want-1 || len(got) > want+1 {
+		t.Fatalf("%d stripes, want about %d", len(got), want)
+	}
+	for i, s := range got {
+		if d := math.Mod(s-(100+bottom), 8); math.Abs(d) > 1e-3 && math.Abs(math.Abs(d)-8) > 1e-3 {
+			t.Fatalf("stripe %d at %v, off the corner's phase by %v", i, s, d)
+		}
+		if i > 0 && math.Abs(s-got[i-1]-8) > 1e-3 {
+			t.Fatalf("stripes at %v and %v, want 8 DIPs apart", got[i-1], s)
+		}
+	}
+	// Scrolled by 13.25 DIPs, the stripes move with the filler.
+	moved := pieces(v, bottom-13.25)
+	for _, s := range moved {
+		if d := math.Mod(s+13.25-(100+bottom), 8); math.Abs(d) > 1e-3 && math.Abs(math.Abs(d)-8) > 1e-3 {
+			t.Fatalf("scrolled, a stripe at %v, off the filler's phase by %v", s, d)
+		}
+	}
+	if got := pieces(ui.Rect{X: 100, Y: 50}, bottom); len(got) != 0 {
+		t.Fatalf("%d stripes in an empty rectangle", len(got))
+	}
+}
+
+// A split view hatches the filler of rows a side lacks with diagonal
+// stripes, as many as show, however many lines it stands for: not a
+// line across its top.
+func TestDiffViewerFillerHatched(t *testing.T) {
+	var nw strings.Builder
+	nw.WriteString("a\n")
+	const added = 200_000
+	for range added {
+		nw.WriteString("0x4d, 0x5a, 0x90, 0x00,\n")
+	}
+	nw.WriteString("z\n")
+	d := &DiffState{Old: NewBuffer("a\nz\n"), New: NewBuffer(nw.String()), Layout: DiffSplit}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 900, 500)
+	tt.SetScale(2)
+	tt.Frame()
+	ed := &d.eds[0]
+	lh := ed.view.lineHeight
+	if h := ed.view.heights.total(); h < added*float64(lh) {
+		t.Fatalf("the old side is %v DIPs high, want a filler of %d lines", h, added)
+	}
+	bg := ed.theme.Background
+	// stripes returns where, in DIPs across the old side's text, the row
+	// at y in the window is darker than the background: the middle of
+	// each run of such pixels.
+	stripes := func(y float32) []float32 {
+		img := tt.Image()
+		s := float32(img.Bounds().Dx()) / 900
+		var out []float32
+		from := -1
+		x0, x1 := int((ed.r.X+ed.gutterW+2)*s), int((ed.r.X+ed.r.W-scrollbarWidth-2)*s)
+		for x := x0; x <= x1; x++ {
+			c := img.RGBAAt(x, int(y*s))
+			dark := x < x1 && math.Abs(float64(c.R)-float64(bg.R))+math.Abs(float64(c.G)-float64(bg.G))+math.Abs(float64(c.B)-float64(bg.B)) > 3
+			switch {
+			case dark && from < 0:
+				from = x
+			case !dark && from >= 0:
+				out = append(out, float32(from+x-1)/2/s)
+				from = -1
+			}
+		}
+		return out
+	}
+	// In the filler's top row of pixels, a stripe every 8 DIPs, not a
+	// line across.
+	top := ed.r.Y + lh + 0.25
+	n := (ed.r.W - ed.gutterW - scrollbarWidth - 4) / 8
+	if got := stripes(top); float32(len(got)) < n-2 || float32(len(got)) > n+2 {
+		t.Fatalf("at the filler's top, the row is dark in %d runs %v, want a stripe every 8 DIPs (%v)", len(got), got, n)
+	}
+	// Halfway down, the stripes go up to the right, at -45°.
+	tt.Scroll(ed.r.X+ed.r.W/2, ed.r.Y+ed.r.H/2, 0, float32(added/2)*lh+0.5)
+	tt.Frame()
+	if ed.scrollY < float64(added/4)*float64(lh) {
+		t.Fatalf("scrolled to %v", ed.scrollY)
+	}
+	y := ed.r.Y + ed.r.H/2
+	a, b := stripes(y), stripes(y+3)
+	if float32(len(a)) < n-2 || float32(len(a)) > n+2 {
+		t.Fatalf("halfway down the filler, the row is dark in %d runs %v, want a stripe every 8 DIPs (%v)", len(a), a, n)
+	}
+	for i := 1; i < len(a)-1; i++ {
+		// 3 DIPs lower, a stripe is 3 DIPs to the left.
+		found := false
+		for _, x := range b {
+			if math.Abs(float64(x-(a[i]-3))) < 1 {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("a stripe at %v, and 3 DIPs lower at %v, want one at %v", a[i], b, a[i]-3)
+		}
 	}
 }

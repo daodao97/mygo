@@ -1571,6 +1571,10 @@ func (r *Renderer) refreshed() {
 	r.woke()
 }
 
+// dxgiStatusOccluded is DXGI_STATUS_OCCLUDED, which Present returns, as a
+// success, when the window shows nowhere.
+const dxgiStatusOccluded = 0x087A0001
+
 // present shows the back buffer, after sync vertical blanks, once the
 // screen has room for it: what the frame drew, when it drew in part, and
 // DXGI the rest of the last frame.
@@ -1586,7 +1590,10 @@ func (r *Renderer) present(sync uintptr) error {
 	if failed(hr) {
 		return fmt.Errorf("d3d11: present failed: %#x", uint32(hr))
 	}
-	r.held = r.ctx1 != 0
+	// A frame presented while the window shows nowhere, as the first of a
+	// window made hidden, may not be what the window shows once it does:
+	// the next frame draws whole.
+	r.held = r.ctx1 != 0 && uint32(hr) != dxgiStatusOccluded
 	if r.frame%120 == 0 {
 		r.sweep()
 	}

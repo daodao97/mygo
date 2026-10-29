@@ -5313,6 +5313,22 @@ func (_handle Element) PressedOutside() bool {
 	return _node.PressedOutside()
 }
 
+// RadialGradient fills the element with a radial gradient, its colors
+// spreading out from a point (CSS's radial-gradient()), as a glow:
+//
+//	ui.Box(c).Size(160, 100).Radius(16).RadialGradient(ui.RadialGradient{
+//		Stops: []ui.GradientStop{{ui.RGBA(99, 102, 241, 0.6), 0}, {ui.Transparent, 1}},
+//	})
+func (_handle Element) RadialGradient(g RadialGradient) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.RadialGradient(g))
+}
+
 // Radius rounds the corners: one radius for all, or top-left, top-right,
 // bottom-right and bottom-left.
 func (_handle Element) Radius(r ...float32) Element {

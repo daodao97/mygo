@@ -305,7 +305,7 @@ func (ed *editor) paintBlock(p *ui.Painter, r ui.Rect, b *block, top float64) {
 	if br.Y > p.Visible().Y+p.Visible().H || br.Y+br.H < p.Visible().Y {
 		return
 	}
-	ed.o.decor.paintBlock(p, ed, b, br)
+	ed.o.decor.paintBlock(p, ed, b, br, top)
 }
 
 // paintLine paints the rows of a line.

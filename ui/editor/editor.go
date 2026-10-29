@@ -102,7 +102,7 @@ type decor interface {
 	lineStyle(line int) lineLook
 	words(line int) []diffRange
 	number(line int) int
-	paintBlock(p *ui.Painter, ed *editor, b *block, r ui.Rect)
+	paintBlock(p *ui.Painter, ed *editor, b *block, r ui.Rect, top float64)
 	blockInput(ed *editor, b *block, ev ui.InputEvent, r ui.Rect) bool
 }
 

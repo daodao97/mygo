@@ -113,7 +113,7 @@ func (f *TranslationFolder) fold(s *Scene) *Scene {
 			switch op.Paint {
 			case PaintLinear, PaintOklab, PaintLinearStops, PaintLinearStopsOklab:
 				op.Gradient = [4]float32{op.Gradient[0] + x, op.Gradient[1] + y, op.Gradient[2] + x, op.Gradient[3] + y}
-			case PaintConic, PaintConicOklab:
+			case PaintConic, PaintConicOklab, PaintRadial, PaintRadialOklab:
 				op.Gradient[0], op.Gradient[1] = op.Gradient[0]+x, op.Gradient[1]+y
 			}
 		}

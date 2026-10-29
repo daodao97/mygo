@@ -30,6 +30,11 @@ import (
 // they changed, which GTK paints from them, keeping the rest of its buffer
 // and telling the compositor only that changed. A draw GTK asks for by
 // itself, as when the window is resized or uncovered, draws a frame there.
+//
+// GTK paints, and its frame clock ticks for, only a window that shows: the
+// first frame of a window made hidden is drawn while it is hidden, from an
+// idle callback (drawHidden), which makes it ready to show
+// (OnReadyToShow).
 
 var (
 	surfaceOnce                 sync.Once
@@ -77,7 +82,7 @@ var (
 	cbSurfaceFocusIn, cbSurfaceFocusOut, cbSurfaceScale, cbIMCommit ptr
 	cbIMPreedit, cbIMPreeditEnd, cbSurfaceRender, cbAreaContext     ptr
 	cbSurfaceUnrealize, cbSurfaceTick, cbSurfaceGesture             ptr
-	cbRenderTick                                                    ptr
+	cbRenderTick, cbDrawHidden                                      ptr
 	surfaceCursors                                                  = map[platform.Cursor]ptr{}
 )
 
@@ -151,6 +156,11 @@ type surface struct {
 	// renderPending tells that a tick callback asks the area to render.
 	// It is not reset on unrealize: GTK keeps tick callbacks across it.
 	renderPending bool
+	// drawn tells that the content's first frame reached the surface
+	// (FirstFrame), and hiddenFrame that the first frame of a window
+	// hidden, which GTK never paints, waits for its idle callback
+	// (drawHidden).
+	drawn, hiddenFrame bool
 	// staged is the frame the tick callback drew, which the draw signal
 	// paints in the same frame of the frame clock: the host's memory,
 	// valid until it draws or frees another (see Idle).
@@ -348,6 +358,10 @@ func (s *surface) Size() (float64, float64, float64) {
 }
 
 func (s *surface) RequestFrame() {
+	if !s.drawn && !s.hiddenFrame && !s.w.closed && !s.w.IsVisible() {
+		s.hiddenFrame = true
+		gIdleAddFull(0, cbDrawHidden, ptr(s.w.id), 0)
+	}
 	switch {
 	case s.w.closed:
 	case s.drawsGL() && s.rendering:
@@ -362,6 +376,31 @@ func (s *surface) RequestFrame() {
 		if s.tick == 0 {
 			s.tick = gtkWidgetAddTickCallback(s.area, cbSurfaceTick, ptr(s.w.id), 0)
 		}
+	}
+}
+
+// FirstFrame tells that the content's first frame reached the surface
+// (platform.FirstFrameSurface).
+func (s *surface) FirstFrame() { s.drawn = true }
+
+var _ platform.FirstFrameSurface = (*surface)(nil)
+
+// drawHidden draws the content's first frame in a window hidden, which GTK
+// neither paints nor ticks the frame clock of: the window is then ready to
+// show. Realizing the window, without showing it, gives the area the size
+// it shows at. The frame is drawn in memory, and shows nowhere: a
+// GtkGLArea has no context before it shows, and once it does, the next
+// frame, in its render signal, makes the GPU renderer, which this frame
+// could not (SurfaceRenew). A window shown since draws as GTK paints it.
+func (s *surface) drawHidden() {
+	s.hiddenFrame = false
+	if s.drawn || s.w.closed || s.w.IsVisible() {
+		return
+	}
+	gtkWidgetRealize(s.w.win)
+	s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+	if s.gl && s.drawn {
+		s.send(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
 	}
 }
 
@@ -770,6 +809,12 @@ func initSurfaceCallbacks() {
 			gErrorFree(gerr)
 		}
 		return ctx
+	})
+	cbDrawHidden = purego.NewCallback(func(data ptr) int32 {
+		if s := b().surfaceOf(data); s != nil {
+			s.drawHidden()
+		}
+		return 0 // G_SOURCE_REMOVE
 	})
 	cbRenderTick = purego.NewCallback(func(widget, clock, data ptr) bool {
 		if s := b().surfaceOf(data); s != nil {

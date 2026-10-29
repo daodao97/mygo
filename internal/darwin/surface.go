@@ -119,10 +119,12 @@ type surface struct {
 	due         bool
 	// deferred tells that the content left the last paced frame to draw
 	// later (FrameNow): the link keeps running meanwhile. soon tells that
-	// a frame waits for the backend's queue (drawSoon).
+	// a frame waits for the backend's queue (drawSoon), and drawn that the
+	// content's first frame reached the surface (FirstFrame).
 	deferred  bool
 	timing    bool
 	soon      bool
+	drawn     bool
 	resized   bool
 	lastFrame time.Time
 	framePass uint64
@@ -226,11 +228,13 @@ func (s *surface) RequestFrame() {
 		switch {
 		case s.linkRunning:
 			s.due = true
-		case time.Since(s.lastFrame) > 2*s.refresh() && s.visible():
+		case time.Since(s.lastFrame) > 2*s.refresh() && (s.visible() || !s.drawn):
 			// After a pause, the frame draws at once, in this pass of the
 			// run loop (drawSoon). A window out of sight waits for the
 			// link, which ticks once it shows: AppKit draws the views of
-			// hidden windows too.
+			// hidden windows too. The first frame draws at once all the
+			// same: the link does not tick for a window made hidden, which
+			// that frame makes ready to show (OnReadyToShow).
 			s.drawSoon()
 		default:
 			// Frames that follow each other draw at the display's
@@ -257,6 +261,12 @@ func (s *surface) RequestFrame() {
 		send(send(class("NSRunLoop"), "mainRunLoop"), "addTimer:forMode:", uintptr(t), kCFRunLoopCommonModes)
 	})
 }
+
+// FirstFrame tells that the content's first frame reached the surface
+// (platform.FirstFrameSurface).
+func (s *surface) FirstFrame() { s.drawn = true }
+
+var _ platform.FirstFrameSurface = (*surface)(nil)
 
 // drawSoon draws a frame in this pass of the run loop, from the backend's
 // queue, before Core Animation commits the pass's transaction, rather than

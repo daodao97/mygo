@@ -37,9 +37,22 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
   `GradientStop{Color, At}` at its place from 0 to 1. `ConicGradient` turns
   its stops around a point instead, as CSS's `conic-gradient()` (SwiftUI's
   `AngularGradient`): from `Angle`, in degrees clockwise from upwards,
-  around `Center`, the middle unless set. `BorderLinearGradient` and
-  `BorderConicGradient` paint the border with one in place of its color,
-  as SwiftUI's `strokeBorder` with a gradient:
+  around `Center`, the middle unless set. `RadialGradient` spreads them
+  out from `Center` in circles, as CSS's `radial-gradient()` (SwiftUI's
+  and Flutter's `RadialGradient`): from 0 there to 1 at `Radius` DIPs
+  away, or at the farthest corner of the box without one, as CSS's
+  `farthest-corner`, its first color before the center and its last past
+  the radius, for glows, spotlights and vignettes:
+
+  ```go
+  ui.Box(c).Size(240, 140).Radius(16).RadialGradient(ui.RadialGradient{
+  	Center: ui.Point{X: 0.3, Y: 0.2}, Oklab: true,
+  	Stops:  []ui.GradientStop{{ui.Hex("#a5b4fc"), 0}, {ui.Hex("#312e81"), 1}},
+  })
+  ```
+
+  `BorderLinearGradient` and `BorderConicGradient` paint the border with
+  one in place of its color, as SwiftUI's `strokeBorder` with a gradient:
 
   ```go
   rainbow := []ui.GradientStop{{red, 0}, {yellow, 0.33}, {blue, 0.66}, {red, 1}}
@@ -49,8 +62,8 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
 
   `Stripes(c, width, gap, angle)` draws stripes over the background, as on
   what is unavailable. A painter fills rectangles and paths with the same
-  gradients (`FillGradient`, `FillConicGradient`, `FillPathGradient`,
-  `FillPathConicGradient`, `StrokePathConicGradient`).
+  gradients (`FillGradient`, `FillConicGradient`, `FillRadialGradient`,
+  `FillPathGradient`, `FillPathConicGradient`, `StrokePathConicGradient`).
 - **Blur.** `Blur(sigma)` blurs the element and its children, as CSS's
   `filter: blur()`: what they draw spreads about 3 sigma DIPs around,
   transparent beyond, on the GPU. They render into a bitmap first, as an

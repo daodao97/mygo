@@ -1262,6 +1262,8 @@ func (g *gallery) styling(c *ui.Context) {
 			bar("sRGB").Gradient(blue, yellow, 90)
 			bar("Oklab").LinearGradient(ui.LinearGradient{From: blue, To: yellow, Angle: 90, Oklab: true})
 			bar("Stops at 40% and 60%").LinearGradient(ui.LinearGradient{From: blue, To: yellow, Angle: 90, Start: 0.4, End: 0.6})
+			bar("Radial, from the right").RadialGradient(ui.RadialGradient{Center: ui.Point{X: 0.9, Y: 0.5}, Oklab: true,
+				Stops: []ui.GradientStop{{Color: yellow, At: 0}, {Color: blue, At: 1}}})
 			ui.Row(c).Height(30).Radius(6).Background(t.Surface).Stripes(t.Border, 4, 6, 45).Center().Children(func() {
 				ui.Text(c, "Stripes: unavailable").FontSize(12).TextColor(t.TextMuted)
 			})

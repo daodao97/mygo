@@ -20,6 +20,7 @@ func TestFoldTranslations(t *testing.T) {
 		{Kind: OpPopClip},
 		{Kind: OpPushClip, Rect: Rect{W: 50, H: 50}, Transform: m.Mul(Rotation(10))},
 		{Kind: OpPopClip},
+		{Kind: OpFill, Rect: Rect{W: 4, H: 4}, Paint: PaintRadial, Gradient: [4]float32{2, 1, 3, 0}, Transform: m},
 	}}
 	var f TranslationFolder
 	if f.Fold(s) != s {
@@ -37,6 +38,7 @@ func TestFoldTranslations(t *testing.T) {
 		s.Ops[6], // an image between pixels
 		{Kind: OpPushClip, Rect: Rect{X: 10, Y: 20, W: 50, H: 50}}, // a clip's edges are computed where they fall
 		s.Ops[8], s.Ops[9], s.Ops[10], s.Ops[11],
+		{Kind: OpFill, Rect: Rect{X: 10, Y: 20, W: 4, H: 4}, Paint: PaintRadial, Gradient: [4]float32{12, 21, 3, 0}}, // its radius kept
 	}
 	for i := range want {
 		if got.Ops[i] != want[i] {

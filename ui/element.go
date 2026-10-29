@@ -333,8 +333,9 @@ type node struct {
 	// cache keeps the element's layer while what it paints is the same
 	// (Cache).
 	cache layerKeeper
-	// grads holds a conic fill and a border's gradient, which few elements
-	// have; blur is the standard deviation of the element's blur, in DIPs.
+	// grads holds a conic or radial fill and a border's gradient, which
+	// few elements have; blur is the standard deviation of the element's
+	// blur, in DIPs.
 	grads      *gradients
 	blur       float32
 	opacity    float32
@@ -592,11 +593,12 @@ type LinearGradient struct {
 	Stops []GradientStop
 }
 
-// GradientStop is a color of a gradient (LinearGradient, ConicGradient)
-// and its place along it, from 0 to 1, as CSS's color stops are. The
-// gradient shows its first color before its first stop, its last after
-// its last, and between two stops their colors blended; two stops at one
-// place make a sharp edge. A gradient takes 32 stops at most, in sRGB.
+// GradientStop is a color of a gradient (LinearGradient, ConicGradient,
+// RadialGradient) and its place along it, from 0 to 1, as CSS's color
+// stops are. The gradient shows its first color before its first stop,
+// its last after its last, and between two stops their colors blended;
+// two stops at one place make a sharp edge. A gradient takes 32 stops at
+// most, in sRGB.
 type GradientStop struct {
 	Color Color
 	At    float32
@@ -622,9 +624,33 @@ type ConicGradient struct {
 	Oklab bool
 }
 
-// gradients is a conic fill and a border's gradient, linear or conic.
+// RadialGradient blends colors outwards from a point, as CSS's
+// radial-gradient() does (SwiftUI's RadialGradient, Flutter's
+// RadialGradient): its stops at their places from its center, at 0, to a
+// circle of its radius, at 1.
+//
+//	e.RadialGradient(ui.RadialGradient{Stops: []ui.GradientStop{{white, 0}, {ui.Transparent, 1}}})
+type RadialGradient struct {
+	Stops []GradientStop
+	// Center is the point the colors spread from, in fractions of the
+	// box's width and height from its top left corner; the zero Point is
+	// its middle, as ConicGradient's is.
+	Center Point
+	// Radius is how far the gradient reaches from its center, in DIPs; 0
+	// reaches the corner of the box farthest from the center, as CSS's
+	// farthest-corner default does. The gradient shows its first color
+	// before the center and its last past the radius.
+	Radius float32
+	// Oklab mixes the colors in the Oklab color space, as LinearGradient's
+	// does.
+	Oklab bool
+}
+
+// gradients is a conic or radial fill and a border's gradient, linear or
+// conic.
 type gradients struct {
 	conic        ConicGradient
+	radial       RadialGradient
 	borderLinear LinearGradient
 	borderConic  ConicGradient
 	border       borderPaint
@@ -655,6 +681,7 @@ const (
 	fillStripes
 	fillMaterial
 	fillConic
+	fillRadial
 )
 
 type stripes struct {
@@ -1044,7 +1071,7 @@ func (e *node) Debug() *node { e.flags |= flagDebug; return e }
 // Background fills the element, in place of a gradient.
 func (e *node) Background(c Color) *node {
 	e.bg = c
-	if e.fill == fillGradient || e.fill == fillConic {
+	if e.fill == fillGradient || e.fill == fillConic || e.fill == fillRadial {
 		e.fill = fillColor
 	}
 	return e
@@ -1072,6 +1099,17 @@ func (e *node) LinearGradient(g LinearGradient) *node {
 //	})
 func (e *node) ConicGradient(g ConicGradient) *node {
 	e.gradients().conic, e.fill = g, fillConic
+	return e
+}
+
+// RadialGradient fills the element with a radial gradient, its colors
+// spreading out from a point (CSS's radial-gradient()), as a glow:
+//
+//	ui.Box(c).Size(160, 100).Radius(16).RadialGradient(ui.RadialGradient{
+//		Stops: []ui.GradientStop{{ui.RGBA(99, 102, 241, 0.6), 0}, {ui.Transparent, 1}},
+//	})
+func (e *node) RadialGradient(g RadialGradient) *node {
+	e.gradients().radial, e.fill = g, fillRadial
 	return e
 }
 

@@ -34,7 +34,8 @@ ui.Row(c).Gap(8).Padding(12).Children(func() {
   take a share of the parent; `MinWidth`, `MaxWidth`, `MinHeight` and
   `MaxHeight` bound them, and their `Percent` forms by a share of the
   parent; `Fill`, `FillWidth` and `FillHeight` take the parent's whole
-  content box.
+  content box. In a [grid](grid.md#sizing-children), a child's percentages
+  are of its cell.
 - `Grow(1)` gives an element the free space along its parent's direction,
   like `flex: 1`: a list that fills the rest of a window, or a `Spacer` that
   pushes the elements after it to the end. `Shrink`, `Basis` and

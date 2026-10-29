@@ -78,8 +78,11 @@ win := mygo.NewWindow(mygo.WindowOptions{URL: "/", Hidden: true, BackgroundColor
 win.OnReadyToShow(win.Show)
 ```
 
-Windows of native UI need neither: they have no page to load, and draw
-their first frame as they show.
+Windows of native UI need neither: they have no page to load, and show
+with their first frame (on Windows, the window stays out of sight until
+it drew it). One created `Hidden` is ready to show once it drew its first
+frame, which it draws while hidden, so `OnReadyToShow(win.Show)` shows it
+as it does a page's.
 
 ## Remember where windows were
 
