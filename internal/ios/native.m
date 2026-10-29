@@ -30,6 +30,7 @@ void mygo_ios_idle_timer_disabled(bool disabled) {
 }
 static NSMutableArray<NSURL *> *pendingURLs;
 static NSMutableArray<NSURL *> *pendingFiles;
+static NSString *copyImport(NSURL *source, NSString *name, NSError **error);
 static void cancelPresentations(void);
 static BOOL interactiveKeyboardTracking(void);
 static void lifecycle(int event) {
@@ -49,11 +50,35 @@ static void openURL(NSURL *url) {
     return;
   }
   if (url.isFileURL) {
-    BOOL access = [url startAccessingSecurityScopedResource];
-    goIOSFile((char *)url.path.UTF8String);
-    if (access) [url stopAccessingSecurityScopedResource];
+    if (![url startAccessingSecurityScopedResource]) {
+      // A file the system already copied into the app (Documents/Inbox).
+      goIOSFile((char *)url.path.UTF8String);
+      return;
+    }
+    // A document opened in place is readable only while its security scope
+    // lasts, and Go reads it whenever its listener gets to it — often after
+    // this function returns. So it is copied while the scope lasts, as
+    // imports are (copyImport), and Go gets the copy. The copy is off the
+    // main thread; the path comes back on the main run loop, not GCD's main
+    // queue, so a listener that awaits can still be answered (see
+    // mygo_ios_dispatch).
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      NSError *error = nil;
+      NSString *copy = copyImport(url, url.lastPathComponent, &error);
+      [url stopAccessingSecurityScopedResource];
+      if (!copy) {
+        NSLog(@"MyGo: could not copy the opened file %@: %@", url.path, error);
+        return;
+      }
+      CFRunLoopRef main = CFRunLoopGetMain();
+      CFRunLoopPerformBlock(main, kCFRunLoopCommonModes, ^{
+        goIOSFile((char *)copy.UTF8String);
+      });
+      CFRunLoopWakeUp(main);
+    });
+    return;
   }
-  else goIOSURL((char *)url.absoluteString.UTF8String);
+  goIOSURL((char *)url.absoluteString.UTF8String);
 }
 static uint64_t nextTouchID;
 static NSString *explicitStatusStyle;
@@ -1278,10 +1303,22 @@ int mygo_ios_start(void) {
   }
 }
 bool mygo_ios_is_main(void) { return NSThread.isMainThread; }
+// Go runs on the main run loop, not in a block of GCD's main queue. Go code
+// that awaits (a SecureStore call from a Ready listener, say) pumps with
+// mygo_ios_step, and a nested run loop does not drain the main queue while the
+// thread is already inside one of its blocks — so the results UIKit,
+// LocalAuthentication and the keychain deliver with dispatch_async(main)
+// would never arrive, and neither would the work postMain queued. Run-loop
+// blocks have no such guard: a nested run serves both. Common modes keep Go
+// running while UIKit tracks a gesture, as the main queue did.
 void mygo_ios_dispatch(uint64_t token) {
-  dispatch_async(dispatch_get_main_queue(), ^{
-    goIOSDispatch(token);
+  CFRunLoopRef main = CFRunLoopGetMain();
+  CFRunLoopPerformBlock(main, kCFRunLoopCommonModes, ^{
+    @autoreleasepool {
+      goIOSDispatch(token);
+    }
   });
+  CFRunLoopWakeUp(main);
 }
 void mygo_ios_step(void) {
   CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, true);
@@ -1753,7 +1790,8 @@ void mygo_ios_message(uint64_t token, const char *json) {
   UIAlertController *alert = [UIAlertController alertControllerWithTitle:o[@"Title"] message:message preferredStyle:style];
   MyGoPresentation *delegate = trackPresentation(token, alert, parent);
   delegate.cancelIndex = [o[@"CancelID"] integerValue];
-  NSArray *buttons = o[@"Buttons"], *destructive = o[@"DestructiveButtons"];
+  // A nil slice arrives as JSON null (NSNull), which has no count.
+  NSArray *buttons = [o[@"Buttons"] isKindOfClass:NSArray.class] ? o[@"Buttons"] : @[], *destructive = o[@"DestructiveButtons"];
   BOOL hasCancel = NO;
   for (NSUInteger i = 0; i < buttons.count; i++) {
     UIAlertActionStyle actionStyle = i == delegate.cancelIndex && (buttons.count > 1 || style == UIAlertControllerStyleActionSheet) ? UIAlertActionStyleCancel : UIAlertActionStyleDefault;
@@ -1764,6 +1802,13 @@ void mygo_ios_message(uint64_t token, const char *json) {
     }];
     [alert addAction:action];
     if (style == UIAlertControllerStyleAlert && i == [o[@"DefaultID"] integerValue]) alert.preferredAction = action;
+  }
+  // An alert without buttons could never be dismissed, and its result would
+  // never arrive.
+  if (style == UIAlertControllerStyleAlert && buttons.count == 0) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+      [delegate finish:@{@"Response": @0, @"CheckboxChecked": @NO} error:nil];
+    }]];
   }
   if (style == UIAlertControllerStyleActionSheet && !hasCancel) {
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) {
@@ -1778,7 +1823,15 @@ void mygo_ios_share(uint64_t token, const char *json) {
   if (!parent) return;
   NSMutableArray *items = [NSMutableArray array];
   if ([o[@"Text"] length]) [items addObject:o[@"Text"]];
-  if ([o[@"URL"] length]) [items addObject:[NSURL URLWithString:o[@"URL"]]];
+  if ([o[@"URL"] length]) {
+    // Go's url.Parse accepts strings NSURL does not; adding nil would throw.
+    NSURL *url = [NSURL URLWithString:o[@"URL"]];
+    if (!url) {
+      goIOSSystemResult(token, NULL, 2, "mygo: share URL is not a valid URL");
+      return;
+    }
+    [items addObject:url];
+  }
   NSArray *files = o[@"Files"];
   if ([files isKindOfClass:NSArray.class]) for (NSString *path in files) {
     if (![NSFileManager.defaultManager fileExistsAtPath:path]) {
@@ -2088,7 +2141,8 @@ void mygo_ios_export_files(uint64_t token, const char *json) {
   UIViewController *parent = systemPresenter(token);
   if (!parent) return;
   NSMutableArray<NSURL *> *urls = [NSMutableArray array];
-  for (NSString *path in o[@"Files"]) {
+  NSArray *files = [o[@"Files"] isKindOfClass:NSArray.class] ? o[@"Files"] : @[];
+  for (NSString *path in files) {
     BOOL directory;
     if (![NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&directory] || directory) {
       goIOSSystemResult(token, NULL, 2, "mygo: exported file no longer exists"); return;

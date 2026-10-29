@@ -96,7 +96,12 @@ void mygo_ios_authenticate(uint64_t token, const char *json) {
       if (mygo_ios_auth_state() != 0) {
         finishAuthentication(token, NO, @"inactive", @"Authentication requires an active Scene."); return;
       }
-      [context evaluatePolicy:policy localizedReason:options[@"Reason"] reply:^(BOOL success, NSError *replyError) {
+      // LocalAuthentication throws on a nil or empty reason.
+      id reason = options[@"Reason"];
+      if (![reason isKindOfClass:NSString.class] || [reason length] == 0) {
+        finishAuthentication(token, NO, @"failed", @"Authentication requires a reason to show the user."); return;
+      }
+      [context evaluatePolicy:policy localizedReason:reason reply:^(BOOL success, NSError *replyError) {
         // LocalAuthentication replies on its own queue, never directly into Go.
         dispatch_async(dispatch_get_main_queue(), ^{
           finishAuthentication(token, success, authenticationCode(replyError), replyError.localizedDescription);

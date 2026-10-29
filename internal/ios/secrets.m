@@ -8,11 +8,23 @@
 #import <LocalAuthentication/LocalAuthentication.h>
 #endif
 
+// keychainQueue runs the keychain calls one at a time, in the order they were
+// made. On a concurrent queue two Sets of one key could land in either order,
+// and a Get right after a Set could read the value before it.
+static dispatch_queue_t keychainQueue(void) {
+  static dispatch_queue_t queue;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    queue = dispatch_queue_create("mygo.keychain", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
+  });
+  return queue;
+}
+
 void mygo_ios_secret(uint64_t token, const char *json) {
   NSDictionary *o = [NSJSONSerialization JSONObjectWithData:[[NSString stringWithUTF8String:json] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
   // Security services may wait for securityd or protected data. Keep those
   // synchronous calls off UIKit's thread, then deliver the result on it.
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+  dispatch_async(keychainQueue(), ^{
     @autoreleasepool {
       NSString *service = [NSString stringWithFormat:@"%@.mygo.%@", NSBundle.mainBundle.bundleIdentifier, o[@"Namespace"]];
       NSMutableDictionary *query = [@{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
