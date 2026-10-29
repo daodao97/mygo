@@ -144,3 +144,22 @@ func Java_org_mygo_Native_nativeOnSafeArea(env *C.JNIEnv, clazz C.jclass, top, r
 	androidLog("onSafeArea top=%d right=%d bottom=%d left=%d", int(top), int(right), int(bottom), int(left))
 	theBackend.OnSafeArea(int(top), int(right), int(bottom), int(left))
 }
+
+// Java_org_mygo_Native_nativeOnLifecycle is nativeOnLifecycle: kind is one
+// of the Activity's lifecycle events, numbered as the backend's lifecycle.go
+// lists them (pause, resume, low memory, stop, start).
+//
+//export Java_org_mygo_Native_nativeOnLifecycle
+func Java_org_mygo_Native_nativeOnLifecycle(env *C.JNIEnv, clazz C.jclass, kind C.jint) {
+	androidLog("onLifecycle kind=%d", int(kind))
+	theBackend.OnLifecycle(int(kind))
+}
+
+// Java_org_mygo_Native_nativeOnTheme is nativeOnTheme: whether the system's
+// night mode is on, reported at start and on every uiMode change.
+//
+//export Java_org_mygo_Native_nativeOnTheme
+func Java_org_mygo_Native_nativeOnTheme(env *C.JNIEnv, clazz C.jclass, dark C.jboolean) {
+	androidLog("onTheme dark=%v", dark != 0)
+	theBackend.OnTheme(dark != 0)
+}

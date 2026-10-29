@@ -105,6 +105,14 @@ type Backend struct {
 	// through Native.onSafeArea. Guarded by mu: it is written on Java's
 	// thread (the JNI callback) and read on the pump's.
 	safeArea platform.SafeArea
+
+	// dark is the system's night mode as Java last reported it
+	// (Native.onTheme); darkKnown tells the first report from a change.
+	// themeSource is what Theme.SetSource asked for, guarded by mu. See
+	// lifecycle.go.
+	dark        atomic.Bool
+	darkKnown   atomic.Bool
+	themeSource string
 }
 
 // New returns the Android backend, creating it on first use.
@@ -532,18 +540,58 @@ func (b *Backend) surfaceChanged(w, h, dpi int) {
 		log.Printf("mygo/android: new surface, renewing the window's renderer")
 		b.deliver(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
 	}
-	b.surface.PresentPixels(nil, 0, w, h)
+	b.resized(w, h)
 }
 
 // sizeChanged (pump) is surfaceChanged without a density.
 func (b *Backend) sizeChanged(w, h int) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if b.surface == nil || b.surface.window == nil {
+		b.mu.Unlock()
 		return
 	}
 	b.surface.width, b.surface.height = w, h
-	b.surface.PresentPixels(nil, 0, w, h)
+	b.mu.Unlock()
+	b.resized(w, h)
+}
+
+// resized (pump) shows a surface at its new size.
+//
+// 🔴 Once the app has a window, the window draws the frame, not the
+// placeholder. The placeholder fill says "nothing has drawn yet", and
+// presenting it over a live app flashed it on every rotation and, with
+// adjustResize, every time the keyboard came up. The window is told as iOS
+// tells it (goIOSResize): Resized, SurfaceResize, then a frame at the new
+// size.
+//
+// The window also takes the surface here when it has none: a window made
+// before the first surface arrived copied a nil one in NewWindow and would
+// never have asked for a frame.
+func (b *Backend) resized(width, height int) {
+	b.mu.Lock()
+	win, s := b.win, b.surface
+	b.mu.Unlock()
+	if s == nil {
+		return
+	}
+	if win == nil || win.closed {
+		s.PresentPixels(nil, 0, width, height)
+		return
+	}
+	if win.surface == nil {
+		win.surface = s
+	}
+	win.bounds = s.dipBounds()
+	win.h.Resized()
+	b.deliver(platform.SurfaceEvent{Kind: platform.SurfaceResize})
+	win.askFrame()
+}
+
+// dipBounds is the surface's size in DIPs, which is what Window.Bounds
+// reports: on a phone the window is the surface.
+func (s *Surface) dipBounds() platform.Rect {
+	w, h, _ := s.Size()
+	return platform.Rect{Width: int(w + 0.5), Height: int(h + 0.5)}
 }
 
 // surfaceDestroyed (pump) drops the EGLSurface, then the ANativeWindow

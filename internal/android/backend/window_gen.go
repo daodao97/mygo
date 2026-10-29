@@ -63,7 +63,7 @@ func (w *window) SetBackgroundColor(c platform.Color) {}
 
 func (w *window) SetOpacity(v float64) {}
 
-func (w *window) Opacity() float64 { return 0 }
+func (w *window) Opacity() float64 { return 1 }
 
 func (w *window) SetHasShadow(v bool) {}
 
@@ -142,7 +142,7 @@ func (w *window) SetContentRules([]any)                        {}
 
 func (w *window) SetZoom(factor float64) {}
 
-func (w *window) Zoom() float64 { return 0 }
+func (w *window) Zoom() float64 { return 1 }
 
 func (w *window) SetUserAgent(ua string) {}
 
@@ -165,13 +165,18 @@ func (w *window) Print() {}
 
 // The callbacks answer at once, on the calling thread: there is no page here to run the
 // body in and none to print, and answering late would only make the caller wait for
-// something that is never coming.
+// something that is never coming. They answer with ErrUnsupported, as iOS does: a nil
+// error with no data would read as an empty result rather than a missing feature.
 
-func (w *window) CallAsyncFunction(body string, cb func(result string, err error)) { cb("", nil) }
+func (w *window) CallAsyncFunction(body string, cb func(result string, err error)) {
+	cb("", platform.ErrUnsupported)
+}
 
-func (w *window) CapturePage(cb func(png []byte, err error)) { cb(nil, nil) }
+func (w *window) CapturePage(cb func(png []byte, err error)) { cb(nil, platform.ErrUnsupported) }
 
-func (w *window) PrintToPDF(opts platform.PDFOptions, cb func(pdf []byte, err error)) { cb(nil, nil) }
+func (w *window) PrintToPDF(opts platform.PDFOptions, cb func(pdf []byte, err error)) {
+	cb(nil, platform.ErrUnsupported)
+}
 
 // These page operations are unavailable on the native content surface.
 func (*window) CaptureState(platform.CaptureKind) platform.CaptureState     { return platform.CaptureNone }

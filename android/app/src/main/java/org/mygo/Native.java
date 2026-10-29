@@ -62,6 +62,22 @@ public final class Native {
      */
     private static native void nativeOnSafeArea(int top, int right, int bottom, int left);
 
+    /**
+     * Activity 生命周期事件，编号与 Go 侧 internal/android/backend/lifecycle.go 一致
+     * （也与 iOS 的 goIOSLifecycle 一致）：0=onPause，1=onResume，3=内存吃紧，
+     * 5=onStop，6=onStart。
+     */
+    private static native void nativeOnLifecycle(int kind);
+
+    /** 系统夜间模式是否开启。启动时报一次，之后 uiMode 每次变化再报。 */
+    private static native void nativeOnTheme(boolean dark);
+
+    static final int LIFECYCLE_PAUSE = 0;
+    static final int LIFECYCLE_RESUME = 1;
+    static final int LIFECYCLE_LOW_MEMORY = 3;
+    static final int LIFECYCLE_STOP = 5;
+    static final int LIFECYCLE_START = 6;
+
     // ───────────────────────── 包内包装方法（可加，不涉及契约名）─────────────────────────
     // native 方法是 private，同包的 View 需要一层包内可见的转发入口。
     // 包装方法只做转发，不改变任何语义。
@@ -92,5 +108,13 @@ public final class Native {
 
     static void onSafeArea(int top, int right, int bottom, int left) {
         nativeOnSafeArea(top, right, bottom, left);
+    }
+
+    static void onLifecycle(int kind) {
+        nativeOnLifecycle(kind);
+    }
+
+    static void onTheme(boolean dark) {
+        nativeOnTheme(dark);
     }
 }

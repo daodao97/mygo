@@ -62,6 +62,7 @@ static jmethodID mygo_mid_secret_delete = NULL;
 static jmethodID mygo_mid_scan = NULL;
 static jmethodID mygo_mid_scan_cancel = NULL;
 static jmethodID mygo_mid_take_scan = NULL;
+static jmethodID mygo_mid_exit = NULL;
 
 // mygo_platform_exception clears a pending Java exception and reports whether
 // there was one.
@@ -473,6 +474,7 @@ static jint mygo_platform_attach(JNIEnv *env, jobject thiz) {
 		{"startScan", "(J[B)Z", &mygo_mid_scan},
 		{"cancelScan", "(J)Z", &mygo_mid_scan_cancel},
 		{"takeScanResult", "()Ljava/lang/String;", &mygo_mid_take_scan},
+		{"exitApp", "()V", &mygo_mid_exit},
 	};
 	int count = (int)(sizeof(lookups) / sizeof(lookups[0]));
 	for (int n = 0; n < count; n++) {
@@ -498,6 +500,19 @@ static jint mygo_platform_write(int has_plain, const char *plain, int plain_len,
 }
 static jint mygo_platform_clear(void) {
 	return mygo_platform_call_bool(mygo_mid_clear, NULL, 0);
+}
+// mygo_platform_exit calls exitApp(), which takes nothing, so it is not one of
+// the byte[] shapes above.
+static jint mygo_platform_exit(void) {
+	JNIEnv *env = mygo_platform_env();
+	if (env == NULL || mygo_platform_obj == NULL || mygo_mid_exit == NULL) {
+		return -1;
+	}
+	(*env)->CallVoidMethod(env, mygo_platform_obj, mygo_mid_exit);
+	if (mygo_platform_exception(env)) {
+		return -1;
+	}
+	return 0;
 }
 static jint mygo_platform_open(const char *url, int url_len) {
 	return mygo_platform_call_int(mygo_mid_open, url, url_len);
@@ -587,6 +602,7 @@ import "C"
 
 import (
 	"errors"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -1063,4 +1079,19 @@ func Java_org_mygo_MygoPlatform_nativeAccessibilityAction(env *C.JNIEnv, thiz C.
 	if !backend.DispatchAccessAction(uint64(id), kind) {
 		androidLog("accessibility: %s on element %d with no action sink installed", name, int64(id))
 	}
+}
+
+// exitHost ends the app once its main has returned. The backend is a
+// process-wide singleton whose quit cannot be undone, and the app's main runs
+// once per process (see start.go), so a process that outlived its app would
+// show a dead Activity the next time the user opens it from Recents. Asking
+// Java to finish the task and end the process makes the next launch a cold
+// one, as gomobile does. Without the Java side there is nothing to finish, and
+// the process just exits.
+func exitHost() {
+	androidLog("start: ending the process")
+	if attached() && C.mygo_platform_exit() == 0 {
+		return
+	}
+	os.Exit(0)
 }

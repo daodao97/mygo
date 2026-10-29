@@ -54,6 +54,9 @@ func startApp() {
 	startFn = nil
 	androidLog("start: spawning the app's main goroutine")
 	go func() {
+		// When the app's main ends, by returning or by a panic, the process
+		// ends with it: nothing can run that main again (see exitHost).
+		defer exitHost()
 		defer func() {
 			if r := recover(); r != nil {
 				androidLog("start: PANIC in the app's main: %v", r)

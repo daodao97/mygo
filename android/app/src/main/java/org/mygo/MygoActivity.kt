@@ -1,7 +1,9 @@
 package org.mygo
 
 import android.app.Activity
+import android.content.ComponentCallbacks2
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.view.Window
@@ -93,7 +95,53 @@ class MygoActivity : Activity() {
 
         // 平台能力（剪贴板/URL/通知/无障碍）的 Java 侧握手；必须在任何平台能力被使用前调用。
         MygoPlatform.install(this, view)
+
+        // 初始的夜间模式：之后的变化走 onConfigurationChanged（manifest 声明了
+        // configChanges=uiMode，切深色模式不重建 Activity，那是 Go 唯一能听到的地方）。
+        Native.onTheme(isNight(resources.configuration))
     }
+
+    // ── 生命周期转给 Go（编号见 Native.LIFECYCLE_*，与 iOS 一致）──────────────
+    // 只转发、不做 surface 动作：surface 的来去仍由 MygoView 的回调负责。
+
+    override fun onStart() {
+        super.onStart()
+        Native.onLifecycle(Native.LIFECYCLE_START)
+    }
+
+    override fun onPause() {
+        Native.onLifecycle(Native.LIFECYCLE_PAUSE)
+        super.onPause()
+    }
+
+    override fun onStop() {
+        Native.onLifecycle(Native.LIFECYCLE_STOP)
+        super.onStop()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Go 侧去重：只有夜间位真的变了才发 ThemeChanged。
+        Native.onTheme(isNight(newConfig))
+    }
+
+    /**
+     * 内存吃紧时让渲染器释放可丢弃的缓冲。API 34 起前台只会收到
+     * UI_HIDDEN(20) 与 BACKGROUND(40)；更早的版本还有 RUNNING_LOW(10)、
+     * RUNNING_CRITICAL(15)。UI_HIDDEN 只是「看不见了」，不算吃紧。
+     */
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
+            level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
+        ) {
+            Native.onLifecycle(Native.LIFECYCLE_LOW_MEMORY)
+        }
+    }
+
+    private fun isNight(c: Configuration): Boolean =
+        (c.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
     /**
      * 把系统应用的返回结果转给平台侧：扫码就是从这里回到 Go 的。
@@ -110,6 +158,7 @@ class MygoActivity : Activity() {
         super.onResume()
         // 回到前台后焦点可能被系统收走，重新要一次；这里**不**做任何 surface 生命周期动作。
         view.grabInputFocus()
+        Native.onLifecycle(Native.LIFECYCLE_RESUME)
     }
 
     // 有意不重写 onDestroy 去释放 Go 侧状态：Go 侧负责保活。

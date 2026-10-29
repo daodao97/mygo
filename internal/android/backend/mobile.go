@@ -29,9 +29,11 @@ type androidMobile struct{ b *Backend }
 // reporting it unsupported is honest, and the ui package falls back to nothing.
 func (androidMobile) Haptic(string) error { return platform.ErrUnsupported }
 
-func (androidMobile) SetBadge(int, func(error))       {}
-func (androidMobile) SetStatusBar(string, bool) error { return platform.ErrUnsupported }
-func (androidMobile) RegisterPush() error             { return platform.ErrUnsupported }
+// SetBadge answers at once: App.SetNotificationBadge awaits done, so a stub
+// that never calls it hangs the caller for good.
+func (androidMobile) SetBadge(_ int, done func(error)) { done(platform.ErrUnsupported) }
+func (androidMobile) SetStatusBar(string, bool) error  { return platform.ErrUnsupported }
+func (androidMobile) RegisterPush() error              { return platform.ErrUnsupported }
 
 // Device names this phone to desktops. There is no JNI method for the model
 // string yet, so it is the host's answer — right on the OS, generic on the

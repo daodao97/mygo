@@ -38,12 +38,18 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	b.mu.Lock()
 	s := b.surface
 	b.mu.Unlock()
+	// The size asked for is only a hint on a phone: once the surface has a
+	// size, that is the window's (see Backend.resized).
+	bounds := platform.Rect{Width: o.Width, Height: o.Height}
+	if s != nil && s.width > 0 && s.height > 0 {
+		bounds = s.dipBounds()
+	}
 	w := &window{
 		b:       b,
 		h:       h,
 		surface: s,
 		title:   o.Title,
-		bounds:  platform.Rect{Width: o.Width, Height: o.Height},
+		bounds:  bounds,
 	}
 	b.mu.Lock()
 	b.win = w

@@ -290,6 +290,24 @@ object MygoPlatform {
     }
 
     /**
+     * Go 侧 app 的 main 结束时调用（android/jni/jni_platform.go 的 exitHost）：
+     * 关掉任务并结束进程。
+     *
+     * Go 侧的 backend 是进程级单例，quit 之后不能复位，app 的 main 每个进程也只跑
+     * 一次 —— 进程若留着，用户从最近任务切回来只会看到一个不再响应的画面。
+     * 结束进程让下次启动是冷启动（gomobile 也是这么做）。
+     *
+     * 在主线程上 finish；结束进程放到下一轮消息循环，让 finish 先走完。
+     */
+    fun exitApp() {
+        val main = Handler(Looper.getMainLooper())
+        main.post {
+            activity?.finishAndRemoveTask()
+            main.post { android.os.Process.killProcess(android.os.Process.myPid()) }
+        }
+    }
+
+    /**
      * 与 Go 侧 `validateExternalURL` 同规则的第二道检查：返回小写 scheme，非法返回 null。
      *
      * 两道检查存在的原因不同：Go 侧那道是契约的一部分（不可信输入不许变成 Intent），
