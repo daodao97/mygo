@@ -1,0 +1,74 @@
+name: Android toolchain
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md", LICENSE]
+  pull_request:
+    paths-ignore: ["**/*.md", LICENSE]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_NDK_VERSION: 28.2.13676358
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      # Without cgo, Android falls back to internal/unsupported, as AGENTS.md
+      # asks of every other platform. GOOS=android implies the linux tag, so
+      # this is what catches a desktop Linux file that forgot !android.
+      # sqlite and terminal load libraries through purego, which needs cgo on
+      # Android; e2e has only tests.
+      - name: Build without cgo (unsupported fallback)
+        env:
+          GOOS: android
+          GOARCH: arm64
+          CGO_ENABLED: "0"
+        run: |
+          go list -e ./... | grep -vE '/plugins/(sqlite|terminal)|/examples/terminal$|/internal/e2e$' | xargs go build
+          go vet . ./ui ./audio ./netproxy
+      - name: Install the NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ANDROID_NDK_VERSION" > /dev/null
+      - name: Download HarfBuzz and FreeType for Android
+        run: |
+          mkdir -p third_party/hb-build/src/lib
+          curl -fsSL https://github.com/Heyana/mygo-upstream/releases/download/hb-android-arm64/hb-android-arm64.tar.gz \
+            | tar xz -C third_party/hb-build/src/lib
+      # vet compiles the tests too, so internal/android/backend's tests at
+      # least build here even though they need a device to run.
+      - name: Vet the Android backend with the NDK
+        run: |
+          HB=$PWD/third_party/hb-build/src/lib/android
+          GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
+          CC="$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang" \
+          CGO_CFLAGS="-I$HB/include/harfbuzz -I$HB/include/freetype2" \
+          CGO_LDFLAGS="-L$HB/lib -lharfbuzz -lfreetype -lm -llog" \
+          go vet ./android/jni ./internal/android/...
+      - name: Shared library (16 KB aligned) and debug APK
+        run: bash scripts/android-build.sh
+      - name: Preserve the APK
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-debug-apk
+          retention-days: 14
+          path: android/app/build/outputs/apk/debug/*.apk

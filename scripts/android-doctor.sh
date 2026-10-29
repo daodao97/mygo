@@ -109,7 +109,7 @@ if [ -f "$JDK/bin/java" ]; then
   jmaj="$(printf '%s' "$jver" | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p' || true)"
   case "${jmaj:-}" in
     '')            note "无法解析 JDK 主版本（原文见上）" ;;
-    1[0-6]|1[0-9]|[0-9]) note "JDK 主版本=${jmaj}，低于 17 —— AGP/Gradle 需要 ≥17"
+    1[0-6]|[0-9]) note "JDK 主版本=${jmaj}，低于 17 —— AGP/Gradle 需要 ≥17"
                    hint "设 JAVA_HOME 指向 JDK 17+（本机用 /opt/homebrew/opt/openjdk@21）" ;;
     *)             ok "JDK 主版本=${jmaj}（≥17，满足 AGP/Gradle）" ;;
   esac
