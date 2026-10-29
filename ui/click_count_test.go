@@ -170,6 +170,7 @@ func TestScrollbarPressStartsOver(t *testing.T) {
 	content, bar, y := bars.vTrack.X-1, bars.vTrack.X+4, bars.v.Y+2
 	tt.Move(content, y)
 	tt.ClickAt(content, y)
+	tt.Move(bar, y)
 	tt.ClickAt(bar, y)
 	tt.Frame()
 	tt.ClickAt(content, y)
@@ -218,7 +219,7 @@ func TestHiddenScrollbarPassesPress(t *testing.T) {
 		t.Fatalf("a press on the track showing made %d clicks and scrolled to %v, want 1 and down a page", clicks, st.scrollY)
 	}
 	tt.send(platform.SurfaceEvent{Kind: platform.PointerLeave})
-	tt.Frame()
+	tt.Advance(scrollbarLinger)
 	scrolled := st.scrollY
 	press()
 	if clicks != 2 || st.scrollY != scrolled {

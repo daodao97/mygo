@@ -260,6 +260,9 @@ type engine struct {
 	pointerX, pointerY float32
 	pointerIn          bool
 	hover              []uint64
+	// barTrack is the scroll container whose bar's track the pointer is
+	// over, which shows its bars (scrollbars), or 0.
+	barTrack uint64
 	// chain is a buffer for the elements under the pointer.
 	chain       []uint64
 	pressed     *state
@@ -1375,6 +1378,16 @@ func (rt *engine) updateCursor() {
 		// pointer comes back.
 		rt.cursor = cursorUnknown
 		return
+	}
+	track := uint64(0)
+	if i := slices.IndexFunc(rt.hover, rt.overScrollbar); i >= 0 {
+		track = rt.hover[i]
+	}
+	if track != rt.barTrack {
+		// The bars show while the pointer is on their track, wherever
+		// else over the container it was.
+		rt.barTrack = track
+		rt.changed()
 	}
 	c := CursorDefault
 	switch {

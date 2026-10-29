@@ -609,9 +609,14 @@ type state struct {
 	// barInset is the element's ScrollbarInsets.
 	barInset [4]float32
 	// barsShown reports whether the last frame painted the element's
-	// scroll bars: they show only while it is hovered or a bar is
+	// scroll bars: they show only for a moment after the content
+	// scrolls, while the pointer is over a track, or while a bar is
 	// dragged.
 	barsShown bool
+	// barX and barY are the offset the last frame painted the bars at,
+	// and barMoved is when it last changed (scrollbars).
+	barX, barY float64
+	barMoved   time.Time
 	// track is the ScrollState of the last frame's element, which events
 	// that scroll it update (scrollTo).
 	track *ScrollState

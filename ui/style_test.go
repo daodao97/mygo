@@ -546,6 +546,7 @@ func TestScrollbarInsets(t *testing.T) {
 	}
 	// Dragging the thumb to the track's end scrolls to the content's.
 	x, y := g.v.X+g.v.W/2, g.v.Y+g.v.H/2
+	tt.Move(x, y)
 	tt.Press(x, y)
 	tt.Move(x, y+200)
 	tt.Release(x, y+200)

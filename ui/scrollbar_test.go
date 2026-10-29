@@ -73,3 +73,36 @@ func TestHideScrollbarsRetainsContentInteraction(t *testing.T) {
 		})
 	}
 }
+
+// The bars of a scroll container show as its content scrolls and for a
+// moment after, and while the pointer is on a track, but not all the
+// while the pointer is over the container.
+func TestScrollbarsShowWhileScrolling(t *testing.T) {
+	tt := NewTester(func(c *Context) {
+		Scroll(c).Size(100, 100).Children(func() {
+			Box(c).Size(100, 300).Background(Hex("#ffffff"))
+		})
+	}, 100, 100)
+	white := color.RGBA{255, 255, 255, 255}
+	shown := func() bool { return tt.Image().RGBAAt(94, 25) != white }
+	tt.Move(50, 50)
+	if shown() {
+		t.Fatal("the bar shows with the pointer over the content")
+	}
+	tt.Scroll(50, 50, 0, 30)
+	if !shown() {
+		t.Fatal("the bar does not show as the content scrolls")
+	}
+	tt.Advance(scrollbarLinger / 2)
+	if !shown() {
+		t.Fatal("the bar went before its moment was up")
+	}
+	tt.Advance(scrollbarLinger)
+	if shown() {
+		t.Fatal("the bar stays after the content stopped scrolling")
+	}
+	tt.Move(94, 25)
+	if !shown() {
+		t.Fatal("the bar does not show with the pointer on its track")
+	}
+}

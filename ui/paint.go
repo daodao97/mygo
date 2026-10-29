@@ -1058,6 +1058,10 @@ func (p *Painter) drawBitmap(img *Bitmap, box Rect, fit Fit, radius [4]float32, 
 		Pixelated: img.pixelated && shrink <= 1})
 }
 
+// scrollbarLinger is how long the scroll bars of a container stay after
+// its content last scrolled.
+const scrollbarLinger = time.Second
+
 // scrollbars draws the thumbs of a scroll container whose content
 // overflows it.
 func (p *Painter) scrollbars(e *node) {
@@ -1067,17 +1071,23 @@ func (p *Painter) scrollbars(e *node) {
 	st := e.st
 	rt := e.c.rt
 	theme := e.c.theme
-	hovered := false
-	for _, id := range rt.hover {
-		if id == e.id {
-			hovered = true
-			break
-		}
+	now := e.c.now
+	if st.scrollX != st.barX || st.scrollY != st.barY {
+		st.barX, st.barY, st.barMoved = st.scrollX, st.scrollY, now
 	}
+	// The bars show as the content scrolls and for a moment after, as
+	// macOS shows its overlay scroll bars, and while the pointer is on a
+	// track or drags a bar, rather than all the while the pointer is
+	// anywhere over the container.
+	recent := !st.barMoved.IsZero() && now.Sub(st.barMoved) < scrollbarLinger
+	if recent {
+		p.After(scrollbarLinger - now.Sub(st.barMoved))
+	}
+	onTrack := slices.Contains(rt.hover, e.id) && rt.overScrollbar(e.id)
 	dragging := rt.scrollDrag.st == st
 	// A press takes the bars only where the window shows them
 	// (scrollbarPress).
-	st.barsShown = hovered || dragging
+	st.barsShown = recent || onTrack || dragging
 	if !st.barsShown {
 		return
 	}
