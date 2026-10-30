@@ -59,8 +59,16 @@ var (
 
 	// caPass counts the passes of the main run loop, past Core Animation's
 	// commit of each: frames drawn in the same pass go into the same
-	// transaction.
+	// transaction. Only the passes after a frame are counted (armPass):
+	// a frame's pass is all updateLayer compares.
 	caPass uint64 = 1
+	// caPassArmed tells that an observer will count the end of this pass.
+	caPassArmed bool
+	// caPassCallout is the observer's callback, made once (purego callbacks
+	// are never freed), and observerCreate and addObserver what arms it.
+	caPassCallout  uintptr
+	observerCreate func(alloc uintptr, activities uint, repeats bool, order int, callout, ctx uintptr) uintptr
+	addObserver    func(rl, observer, mode uintptr)
 )
 
 const (
@@ -92,16 +100,39 @@ func loadSurface() {
 		name := **(**uintptr)(unsafe.Pointer(&p))
 		cgColorSpaceSRGB, _, _ = purego.SyscallN(mustDlsym(libCG, "CGColorSpaceCreateWithName"), name)
 		// An observer after Core Animation's counts the transactions it
-		// committed.
-		var observerCreate func(alloc uintptr, activities uint, repeats bool, order int, callout, ctx uintptr) uintptr
-		var addObserver func(rl, observer, mode uintptr)
+		// committed (armPass).
 		purego.RegisterLibFunc(&observerCreate, libCF, "CFRunLoopObserverCreate")
 		purego.RegisterLibFunc(&addObserver, libCF, "CFRunLoopAddObserver")
-		passed := purego.NewCallback(func(observer, activity, info uintptr) { caPass++ })
-		if o := observerCreate(0, cfRunLoopBeforeWaiting|cfRunLoopExit, true, caCommitOrder+1, passed, 0); o != 0 {
-			addObserver(cfRunLoopGetMain(), o, kCFRunLoopCommonModes)
-		}
+		caPassCallout = purego.NewCallback(func(observer, activity, info uintptr) {
+			caPass++
+			caPassArmed = false
+		})
 	})
+}
+
+// armPass has the end of this pass of the main run loop counted (caPass),
+// once: a frame drawn in it calls it.
+//
+// 🔴 The observer is not left on the run loop, and that is what keeps an idle
+// window idle. Its callout is Go, so every pass it sees enters Go from the
+// run loop: the main thread takes a P and wakes another thread, and sysmon
+// stays awake polling. AppKit's launch measurement wakes the main run loop
+// some 70 times a second for as long as an app runs, so a repeating
+// observer turned an idle window into 2,000 context switches a second, four
+// times a web view's, where a one-shot one armed by frames costs nothing
+// once they stop.
+func armPass() {
+	if caPassArmed || caPassCallout == 0 {
+		return
+	}
+	o := observerCreate(0, cfRunLoopBeforeWaiting|cfRunLoopExit, false, caCommitOrder+1, caPassCallout, 0)
+	if o == 0 {
+		return
+	}
+	addObserver(cfRunLoopGetMain(), o, kCFRunLoopCommonModes)
+	// The run loop holds it until it fires, and lets it go then.
+	cfRelease(o)
+	caPassArmed = true
 }
 
 type surface struct {
@@ -334,6 +365,7 @@ func (s *surface) FrameNow() {
 func (s *surface) frameNow(paced bool) {
 	s.resized = false
 	s.framePass = caPass
+	armPass()
 	s.lastFrame = time.Now()
 	s.deferred = s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame, Paced: paced}) && paced
 }
