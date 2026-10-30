@@ -76,7 +76,10 @@ func (a *Application) checkpoint() {
 		w.captureState()
 	}
 	saveWindowStates()
-	if err := a.saveState(); err != nil {
+	if saveRegisteredState == nil {
+		return
+	}
+	if err := saveRegisteredState(); err != nil {
 		fire1(&a.onStateSaveError, err)
 	}
 }

@@ -12,6 +12,12 @@ import (
 
 const appStateFile = "app-state.json"
 
+// saveRegisteredState saves what PersistState registered; checkpoint calls
+// it. PersistState sets it, so that an app that persists no state does not
+// link saving it (JSON, temporary files) into the quit path every app takes.
+// Main thread only.
+var saveRegisteredState func() error
+
 type appStateStore struct {
 	loaded   bool
 	values   map[string]json.RawMessage
@@ -36,6 +42,7 @@ func PersistState[T any](key string, value *T) (off func(), err error) {
 		if err = App.loadState(); err != nil {
 			return
 		}
+		saveRegisteredState = App.saveState
 		if s.bindings[key] != nil {
 			err = fmt.Errorf("mygo: state key %q is already registered", key)
 			return
