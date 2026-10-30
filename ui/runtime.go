@@ -448,7 +448,8 @@ type engine struct {
 	// are cheap, and a run of them is why a rate can read low).
 	repainted bool
 	// frameStart is when the frame being run began, which endFrame reads
-	// into the diagnostics average (diagnostics.go).
+	// into the diagnostics average (diagnostics.go). It is zero for a frame
+	// that is not timed (frameTiming).
 	frameStart time.Time
 	dark       bool
 	darkKnown  bool
@@ -579,7 +580,10 @@ func (rt *engine) runFrame() {
 		return
 	}
 	rt.inFrame = true
-	rt.frameStart = time.Now()
+	rt.frameStart = time.Time{}
+	if frameTiming.Load() {
+		rt.frameStart = time.Now()
+	}
 	defer rt.endFrame()
 
 	rt.frame++
@@ -1167,7 +1171,9 @@ func (rt *engine) close() {
 // during it.
 func (rt *engine) endFrame() {
 	rt.inFrame = false
-	recordFrameTime(time.Since(rt.frameStart), rt.repainted)
+	if frameTiming.Load() && !rt.frameStart.IsZero() {
+		recordFrameTime(time.Since(rt.frameStart), rt.repainted)
+	}
 	rt.repainted = false
 	if rt.closing {
 		rt.close()

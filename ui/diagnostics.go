@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -69,8 +70,14 @@ func callSite() string {
 
 // What an app can read about how the engine is doing: the mean of the
 // latest frames, and the heap the Go runtime holds. MYGO_FRAME_STATS logs
-// frames but writes to stderr and is off unless set; these readings are
-// always on, and cost a lock and a ReadMemStats.
+// frames but writes to stderr and is off unless set; these readings cost a
+// lock and a ReadMemStats.
+
+// frameTiming tells that an app has read the frame times (FrameAverage,
+// FrameReading), and frames are timed from then on. Until then a frame
+// neither reads the clock nor takes the lock: most apps never read them,
+// and the smallest frame is under a microsecond.
+var frameTiming atomic.Bool
 
 // diagFrames is how many of the latest frames FrameAverage covers.
 const diagFrames = 120
@@ -111,7 +118,12 @@ func recordFrameTime(d time.Duration, repaint bool) {
 //
 // The frames a window only painted again count too (engine.repaintFrame),
 // so a window that repaints as drawings move reports those frames as well.
+//
+// Frames are timed from the first call to FrameAverage or FrameReading on,
+// so the first reading is 0: a display reading every frame shows a number
+// from its next one.
 func FrameAverage() time.Duration {
+	frameTiming.Store(true)
 	frameTimes.mu.Lock()
 	defer frameTimes.mu.Unlock()
 	n := int(frameTimes.total)
@@ -194,8 +206,10 @@ type Reading struct {
 }
 
 // FrameReading returns the current reading. It takes one lock; a display
-// reading it once a frame or once a second costs nothing.
+// reading it once a frame or once a second costs nothing. As with
+// FrameAverage, frames are timed from the first reading on.
 func FrameReading() Reading {
+	frameTiming.Store(true)
 	frameTimes.mu.Lock()
 	defer frameTimes.mu.Unlock()
 	n := int(frameTimes.total)
