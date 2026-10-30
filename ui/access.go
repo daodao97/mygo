@@ -468,7 +468,10 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if disabled {
 		return
 	}
-	if e.flags&(flagFocusable|flagEditable|flagChoosable) != 0 {
+	// What ignores input takes no focus, which moving a slider with its
+	// keys needs, but is pressed as any other.
+	keys := !e.st.ignoreInput
+	if e.flags&(flagFocusable|flagEditable|flagChoosable) != 0 && keys {
 		// Focusing a row a list chooses chooses it.
 		n.States |= platform.AccessFocusable
 		n.Actions |= platform.ActionFocus
@@ -476,7 +479,7 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.flags&flagClickable != 0 {
 		n.Actions |= platform.ActionPress
 	}
-	if n.Role == platform.RoleSlider || n.Role == platform.RoleStepper {
+	if (n.Role == platform.RoleSlider || n.Role == platform.RoleStepper) && keys {
 		n.Actions |= platform.ActionIncrement | platform.ActionDecrement
 	}
 	if e.expandable {
@@ -539,6 +542,9 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 			rt.focusOn(s)
 		}
 	case platform.AccessFocus:
+		if s.ignoreInput {
+			return
+		}
 		if s.flags&flagChoosable != 0 {
 			// A row of a list choosing rows: its list takes the focus for
 			// it, choosing it.
@@ -562,6 +568,9 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 		}
 		rt.reveal(s.id)
 	case platform.AccessIncrement, platform.AccessDecrement:
+		if s.ignoreInput {
+			return // the keys would go to the element with the focus
+		}
 		rt.focusOn(s)
 		// Sliders step right and left, spin buttons up and down, as do
 		// sliders laid out right to left, whose Right goes down.
@@ -608,9 +617,10 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 	rt.requestFrame()
 }
 
-// focusOn gives an element the keyboard focus, as Tab would.
+// focusOn gives an element the keyboard focus, as Tab would, unless it
+// ignores input.
 func (rt *engine) focusOn(s *state) {
-	if s.flags&(flagFocusable|flagEditable) == 0 {
+	if s.flags&(flagFocusable|flagEditable) == 0 || s.ignoreInput {
 		return
 	}
 	if rt.focused != s.id {

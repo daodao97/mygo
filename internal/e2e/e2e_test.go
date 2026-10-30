@@ -3153,6 +3153,49 @@ func TestContentWindowAccessibility(t *testing.T) {
 	}
 }
 
+// TestContentWindowIgnoreInput shows a row with a button ignoring input,
+// transparent, over it: assistive technology finds the button and presses
+// it through the platform's bridge, and a click on it is the row's (#926).
+func TestContentWindowIgnoreInput(t *testing.T) {
+	var frames atomic.Int32
+	rowClicks, deletes := 0, 0
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		row := ui.Row(c).Width(300).Height(40).Label("Session")
+		if row.Clicked() {
+			rowClicks++
+		}
+		row.Children(func() {
+			if ui.Button(c, "Delete").Width(100).Height(40).Opacity(0).IgnoreInput(true).Clicked() {
+				deletes++
+			}
+		})
+	}
+	get := func() (r, d int) {
+		mygo.RunOnMain(func() { r, d = rowClicks, deletes })
+		return r, d
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Ignore input", Width: 400, Height: 200, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	if _, ok := accessibility(w); !ok {
+		t.Skip("accessibility automation not available on this platform")
+	}
+	eventually(t, "the button in the tree", func() bool {
+		nodes, _ := accessibility(w)
+		return slices.ContainsFunc(nodes, func(n accessNode) bool { return n.role == roleButton && n.label == "Delete" })
+	})
+	if !accessPerform(w, "Delete", "press", "") {
+		t.Fatal("cannot press the button ignoring input")
+	}
+	eventually(t, "the press", func() bool { r, d := get(); return d == 1 && r == 0 })
+	if click(w, 50, 20) {
+		eventually(t, "the click on the row", func() bool { r, _ := get(); return r == 1 })
+		if _, d := get(); d != 1 {
+			t.Errorf("the click went to the button ignoring input: %d deletes", d)
+		}
+	}
+}
+
 // TestContentWindowObserved resizes a window of native UI and acts on its
 // elements as assistive technology does while key-value observing watches
 // them, as other code may: the runtime gives each a generated subclass of

@@ -513,6 +513,43 @@ func popupLabels(h uintptr) []string {
 	return labels
 }
 
+// PopupItemWidth is how wide an item MyGo draws of a popup menu shows,
+// and how wide it needs to be for all it draws, in pixels.
+type PopupItemWidth struct {
+	Label        string
+	Shown, Needs int32
+}
+
+// TestPopupItemWidths returns the widths of the items MyGo draws of the
+// popup menus the main thread shows for a window, but separators: none
+// where Windows draws them (Windows 10). known is whether MyGo knows,
+// from items drawn, how much Windows widens them at the window's DPI.
+func TestPopupItemWidths(hwnd uintptr) (items []PopupItemWidth, known bool) {
+	getItemInfo := user32.NewProc("GetMenuItemInfoW")
+	getItemRect := user32.NewProc("GetMenuItemRect")
+	dpi := dpiOf(hwnd)
+	for _, h := range threadPopups() {
+		hmenu, _, _ := procSendMessageW.Call(h, mnGetHMenu, 0, 0)
+		n, _, _ := procGetMenuItemCount.Call(hmenu)
+		for i := range int(int32(n)) {
+			mi := menuItemInfo{Mask: miimData}
+			mi.Size = uint32(unsafe.Sizeof(mi))
+			getItemInfo.Call(hmenu, uintptr(i), 1, uintptr(unsafe.Pointer(&mi)))
+			l := theBackend.menus.looks[mi.ItemData]
+			if l == nil || l.separator {
+				continue
+			}
+			var r rect
+			if ok, _, _ := getItemRect.Call(0, hmenu, uintptr(i), uintptr(unsafe.Pointer(&r))); ok == 0 {
+				continue
+			}
+			items = append(items, PopupItemWidth{l.label, r.Right - r.Left, theBackend.itemWidth(l, dpi)})
+		}
+	}
+	_, known = theBackend.menuExtra[dpi]
+	return items, known
+}
+
 var (
 	procPrintWindow            = user32.NewProc("PrintWindow")
 	procGetPixel               = gdi32.NewProc("GetPixel")

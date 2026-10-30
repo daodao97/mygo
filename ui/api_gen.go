@@ -4402,6 +4402,46 @@ func (_handle Element) ID() uint64 {
 	return _node.ID()
 }
 
+// IgnoreInput makes the element and those inside it ignore the pointer
+// and the keyboard when ignore is true, while they still show and read to
+// assistive technology. The pointer goes through to what is under them,
+// as PassThrough lets it: hovering, pressing, scrolling, dragging and the
+// cursor are those of what is under them. Neither Tab nor a click gives
+// them the focus, and they lose it as they start ignoring input. Assistive
+// technology still finds them, with their roles and names, and presses
+// them, which Clicked reports; it can neither focus them nor move a
+// slider among them with its keys. A WebView inside them still takes the
+// pointer, which the system gives its view.
+//
+// A control a row shows while it is hovered, as a button deleting it, can
+// stay built and described at rest, without taking a press meant for the
+// row:
+//
+//	row := ui.Row(c).Padding(8)
+//	hovered := row.Hovered()
+//	row.Children(func() {
+//		ui.Text(c, item.Title).Grow(1)
+//		del := ui.Button(c, "Delete").IgnoreInput(!hovered)
+//		if !hovered {
+//			del.Opacity(0)
+//		}
+//		if del.Clicked() {
+//			removed = item.ID
+//		}
+//	})
+//
+// Unlike HTML's inert, it leaves them to assistive technology. Invisible
+// and Hidden hide them from it too, and Disabled takes their press away.
+func (_handle Element) IgnoreInput(ignore bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.IgnoreInput(ignore))
+}
+
 // InView reports whether some of the element showed in the window in the
 // frame before, within the scroll containers and clips around it: to
 // animate it in as it scrolls into view, as Motion's whileInView.

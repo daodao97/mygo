@@ -566,7 +566,10 @@ type state struct {
 	router         *Router
 	routerLevel    int
 	flags          uint64
-	cursor         Cursor
+	// ignoreInput tells that the element, or one around it, ignores the
+	// pointer and the keyboard (IgnoreInput).
+	ignoreInput bool
+	cursor      Cursor
 	// tip marks an element with a tooltip (TooltipBase).
 	tip bool
 	// effectLayer is what the element and its children render into for

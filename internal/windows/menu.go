@@ -286,7 +286,7 @@ func (w *window) popupMenuBar(key uintptr) {
 		}
 		procAppendMenuW.Call(popup, flags, item, uintptr(unsafe.Pointer(&buf[0])))
 		if fluentMenus() {
-			l := &menuLook{owner: owner, label: string(utf16Decode(buf)), submenu: flags&mfPopup != 0, first: i == 0, last: i == count-1}
+			l := &menuLook{owner: owner, label: string(utf16Decode(buf)), submenu: flags&mfPopup != 0, first: i == 0, last: i == count-1, menu: popup}
 			ownerDraw(popup, i, 0, w.b.menus.addLook(l))
 		}
 	}

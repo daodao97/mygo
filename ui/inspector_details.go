@@ -283,7 +283,7 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 	if e.hidden {
 		add("display", "none")
 	}
-	if e.flags&flagPassThrough != 0 {
+	if e.flags&flagPassThrough != 0 || e.ignoreInput {
 		add("pointer-events", "none")
 	}
 	if e.cursor != 0 {
@@ -492,7 +492,7 @@ func properties(rt *engine, e *node) []inspSection {
 	acc := inspSection{title: "Accessibility", rows: []inspDecl{
 		{name: "role", value: role},
 		{name: "name", value: strconv.Quote(name)},
-		{name: "keyboard-focusable", value: yes(e.flags&flagFocusable != 0 && !e.IsDisabled())},
+		{name: "keyboard-focusable", value: yes(e.flags&flagFocusable != 0 && !e.IsDisabled() && !e.st.ignoreInput)},
 		{name: "ignored", value: yes(!seen || e.flags&(flagInvisible|flagInert) != 0 || e.inHidden())},
 	}}
 	if e.description != "" {

@@ -107,7 +107,7 @@ func buildDMG(c *Config, app, dir, goarch string, opts buildOptions) (_ string, 
 	// LZMA gives the smallest images; it needs macOS 10.15, below the
 	// minimum MyGo supports.
 	dmg := filepath.Join(dir, file)
-	if err := command("hdiutil", "convert", rw, "-format", "ULMO", "-ov", "-o", dmg); err != nil {
+	if err := convertDMG(rw, dmg); err != nil {
 		return "", err
 	}
 	if opts.sign != "-" {
@@ -128,6 +128,17 @@ func buildDMG(c *Config, app, dir, goarch string, opts buildOptions) (_ string, 
 		}
 	}
 	return dmg, nil
+}
+
+// convertDMG writes rw as a compressed read-only image. macOS 27 fails
+// "hdiutil convert" with "Resource temporarily unavailable", and asks for
+// "diskutil image create from" instead, which overwrites dmg as -ov does;
+// older systems, whose diskutil has no image verb, use hdiutil.
+func convertDMG(rw, dmg string) error {
+	if exec.Command("diskutil", "image", "create", "from", "-h").Run() == nil {
+		return command("diskutil", "image", "create", "from", "--format", "ULMO", rw, dmg)
+	}
+	return command("hdiutil", "convert", rw, "-format", "ULMO", "-ov", "-o", dmg)
 }
 
 // hdiutilCreateArgs creates a writable HFS+ image of src, as large as its
