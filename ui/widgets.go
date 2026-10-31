@@ -588,7 +588,8 @@ func (e *node) Fit(f Fit) *node { e.fit = f; return e }
 // Overlay builds fn's elements above the rest of the window. Place them
 // with Absolute, Left and Top, in DIPs relative to the window, or beside
 // another element with AttachTo. Each, as it goes with the focus in it,
-// gives the focus back to the element that had it as it came.
+// gives the focus back to the element that had it as it came. Built inside
+// the children of a Themed, they take its theme.
 func coreOverlay(c *context, fn func()) {
 	saved := c.parent
 	o := c.overlayRoot()
@@ -597,12 +598,20 @@ func coreOverlay(c *context, fn func()) {
 	// What fn builds reads in the direction of where it was asked for.
 	dir := o.dir
 	o.dir = saved.dir &^ dirSet
+	theme := c.theme
 	fn()
 	o.dir = dir
 	c.parent = saved
 	first := o.first
 	if last != nil {
 		first = last.next
+	}
+	if theme != c.window {
+		// Asked for in a Themed: the layer is the root's, whose text is
+		// the window's theme's, so each takes the Themed's as its own.
+		for e := first; e != nil; e = e.next {
+			e.themeWith(theme)
+		}
 	}
 	if c.inert {
 		return

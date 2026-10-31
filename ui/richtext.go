@@ -192,10 +192,9 @@ func encodeSpans(spans []Span) string {
 	return text.EncodeSpans(ts)
 }
 
-// richParams returns how to lay out spans over the theme's text style,
+// richParams returns how to lay out spans over the text style of theme t,
 // wrapping lines at width (none for 0).
-func (rt *engine) richParams(width float32, spans []Span) text.Params {
-	t := rt.c.theme
+func (rt *engine) richParams(t *Theme, width float32, spans []Span) text.Params {
 	style := text.Style{Family: t.Font, Size: t.FontSize, Lang: rt.lang}
 	// Views measure the same spans frame after frame.
 	for i := range rt.measured {
@@ -234,8 +233,8 @@ type measuredSpans struct {
 //	w, _ := p.MeasureText(0, label)
 //	p.RichText(r.X+(r.W-w)/2, r.Y, 0, label)
 func (p *Painter) RichText(x, y, width float32, spans ...Span) (w, h float32) {
-	l := p.rt.text.Layout(p.rt.richParams(width, spans))
-	t := p.rt.c.theme
+	t := p.Theme()
+	l := p.rt.text.Layout(p.rt.richParams(t, width, spans))
 	p.textLayout(l, x, y, t.Text, textStyle{size: t.FontSize}, newSpanPaint(spans))
 	return l.Width, l.Height
 }
@@ -243,7 +242,7 @@ func (p *Painter) RichText(x, y, width float32, spans ...Span) (w, h float32) {
 // MeasureText returns the size spans of text take as Painter.RichText draws
 // them, wrapping lines at width DIPs (none for 0).
 func (p *Painter) MeasureText(width float32, spans ...Span) (w, h float32) {
-	l := p.rt.text.Layout(p.rt.richParams(width, spans))
+	l := p.rt.text.Layout(p.rt.richParams(p.Theme(), width, spans))
 	return l.Width, l.Height
 }
 
@@ -251,7 +250,7 @@ func (p *Painter) MeasureText(width float32, spans ...Span) (w, h float32) {
 // them, wrapping lines at width DIPs (none for 0), to lay out what depends
 // on it while building.
 func (c *context) MeasureText(width float32, spans ...Span) (w, h float32) {
-	l := c.rt.text.Layout(c.rt.richParams(width, spans))
+	l := c.rt.text.Layout(c.rt.richParams(c.theme, width, spans))
 	return l.Width, l.Height
 }
 

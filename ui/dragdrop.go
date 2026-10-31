@@ -315,13 +315,14 @@ func (rt *engine) paintDrag(p *Painter, w, h float32) {
 	} else {
 		shift(e, dx, dy)
 	}
-	saved, savedClip, dimmed := p.opacity, p.clip, e.opacitySet
-	p.opacity, p.clip, e.opacitySet = 0.75, Rect{0, 0, w, h}, false
+	saved, savedClip, savedTheme, dimmed := p.opacity, p.clip, p.theme, e.opacitySet
+	// Painted alone, it takes the theme of the Themed around it.
+	p.opacity, p.clip, p.theme, e.opacitySet = 0.75, Rect{0, 0, w, h}, e.theme(), false
 	p.element(e)
 	p.opacity = 1
 	// How many go with it, as several rows dragged.
 	if n, ok := d.value.(interface{ dragCount() int }); ok && n.dragCount() > 1 {
-		t := rt.c.theme
+		t := p.Theme()
 		label := Span{Text: itoa(n.dragCount()), Size: t.FontSize - 2, Weight: 600, Color: t.AccentText}
 		tw, th := p.MeasureText(0, label)
 		bw := max(tw+10, th+4)
@@ -330,7 +331,7 @@ func (rt *engine) paintDrag(p *Painter, w, h float32) {
 		p.Fill(Rect{x, y, bw, th + 4}, t.Accent, (th+4)/2)
 		p.RichText(x+(bw-tw)/2, y+2, 0, label)
 	}
-	p.opacity, p.clip, e.opacitySet = saved, savedClip, dimmed
+	p.opacity, p.clip, p.theme, e.opacitySet = saved, savedClip, savedTheme, dimmed
 	if affine {
 		restoreVisual(e)
 	} else {

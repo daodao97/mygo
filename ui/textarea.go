@@ -386,7 +386,7 @@ func (a *area) forget(b *buffer) {
 func (a *area) paint(e *node, p *Painter, ox, oy float32) {
 	ed := e.st.editor
 	b := &ed.buf
-	t := e.c.theme
+	t := p.Theme()
 	ts := e.resolvedText()
 	focused := e.Focused()
 	last := len(b.paras) - 1

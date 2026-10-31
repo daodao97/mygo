@@ -791,6 +791,11 @@ func ghostOf(e *node) *node {
 	g.activeDescendant, g.nameFrom, g.focusTo, g.field, g.form = nil, nil, nil, nil, nil
 	g.followX, g.colFit, g.gridFit = nil, nil, nil
 	g.inputFn, g.ghosts = nil, false
+	if g.themed != nil {
+		// The app may change its theme while the copy leaves.
+		t := *g.themed
+		g.themed = &t
+	}
 	g.poseSet = false // it keeps the pose it had
 	g.tl, g.nmeasure, g.leafOK, g.intrOK, g.lay = nil, 0, false, 0, 0
 	g.flags = g.flags&^(flagModal|flagPage|flagFocusTarget) | flagInert

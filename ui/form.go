@@ -224,7 +224,7 @@ func (e *node) Description(s string) *node {
 	if s == "" {
 		return e
 	}
-	target := e.fieldText(s, e.c.theme.TextMuted)
+	target := e.fieldText(s, e.theme().TextMuted)
 	target.description = joinDescription(target.description, s)
 	return e
 }
@@ -237,7 +237,7 @@ func (e *node) Error(msg string) *node {
 	if msg == "" {
 		return e
 	}
-	target := e.fieldText(msg, e.c.theme.Danger)
+	target := e.fieldText(msg, e.theme().Danger)
 	target.invalid = true
 	// The error first, as what to read first.
 	target.description = joinDescription(msg, target.description)

@@ -7,7 +7,11 @@ below an element, the popups of [selects](select.md) and
 ([`PopoverMenu`](context-menu.md#drawn-in-the-window) and
 [`PopoverMenuButton`](menu-button.md#drawn-in-the-window)),
 [tooltips](tooltip.md) and [toasts](toast.md).
-They share how they treat the keyboard and what is behind them.
+They share how they treat the keyboard and what is behind them. Though
+they show above the window, they take the theme of where they were asked
+for: opened inside [`Themed`](styling.md#a-theme-for-part-of-the-window),
+its theme, as `ui.Overlay`'s elements built there do; toasts are the
+window's.
 
 ```go
 more := ui.Button(c, "More ▾")

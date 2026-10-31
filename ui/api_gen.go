@@ -507,7 +507,8 @@ func (_handle *Context) Router() *Router {
 }
 
 // SetTheme makes the frame use t, for the window's root and the widgets
-// created after the call.
+// created after the call. Inside the children of a Themed, which keep its
+// theme, t is for the root and the widgets after the Themed.
 func (_handle *Context) SetTheme(t *Theme) {
 	_ctx := _handle.build()
 	if _ctx == nil {
@@ -562,7 +563,8 @@ func (_handle *Context) Size() (float32, float32) {
 }
 
 // Theme returns the theme of the frame: the light or dark theme following
-// the system's appearance, unless SetTheme replaced it.
+// the system's appearance, unless SetTheme replaced it. While the children
+// of a Themed build, it is the Themed's theme.
 func (_handle *Context) Theme() *Theme {
 	_ctx := _handle.build()
 	if _ctx == nil {
@@ -1558,7 +1560,8 @@ func OutlineTable[K comparable](c *Context, s *OutlineState[K], columns []TableC
 // Overlay builds fn's elements above the rest of the window. Place them
 // with Absolute, Left and Top, in DIPs relative to the window, or beside
 // another element with AttachTo. Each, as it goes with the focus in it,
-// gives the focus back to the element that had it as it came.
+// gives the focus back to the element that had it as it came. Built inside
+// the children of a Themed, they take its theme.
 func Overlay(c *Context, fn func()) {
 	_ctx := c.build()
 	if _ctx == nil {
@@ -2403,6 +2406,38 @@ func Textf(c *Context, format string, args ...any) Element {
 	}
 	_ctx.rt.beginBuild()
 	_e := coreTextf(_ctx, format, args...)
+	_ctx.rt.endBuild()
+	return wrapElement(_e)
+}
+
+// Themed creates a column whose children build with t, as SetTheme has
+// the whole window build: the widgets inside take their colors and metrics
+// (Spacing, Radius, FontSize) from t, Context.Theme returns t while they
+// build and Painter.Theme while they paint, and the popovers, menus,
+// tooltips and dialogs they open take t too. The column paints t's
+// Background, and the text inside takes t's Text color, FontSize and Font,
+// as the root has the window's theme's; Background(ui.Transparent) keeps
+// what is behind it instead. The root, and what is built after the column,
+// keep the window's theme. Light beside dark, as a theme picker previews
+// them:
+//
+//	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+//		for _, t := range []*ui.Theme{ui.LightTheme(), ui.DarkTheme()} {
+//			ui.Themed(c, t).Grow(1).Padding(16).Gap(8).Children(func() {
+//				ui.Text(c, "Preview")
+//				ui.Button(c, "OK")
+//			})
+//		}
+//	})
+//
+// A nil t makes it a Column.
+func Themed(c *Context, t *Theme) Element {
+	_ctx := c.build()
+	if _ctx == nil {
+		return Element{}
+	}
+	_ctx.rt.beginBuild()
+	_e := coreThemed(_ctx, t)
 	_ctx.rt.endBuild()
 	return wrapElement(_e)
 }

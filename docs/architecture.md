@@ -2895,6 +2895,21 @@ either.
   `TPM_LAYOUTRTL | TPM_RIGHTALIGN`,
   `gtk_widget_set_direction` and a north-east anchor, the web's `dir`).
   Accessibility needs nothing more: bounds are window coordinates.
+- **Themes of a subtree** (`Themed`, `ui/context.go`). An element given a
+  theme (`node.themed`) builds its children with it, as `Toolbar` flips
+  `c.buttons` for its controls: `Children` sets `c.theme` and restores
+  it, or the window's (`c.window`, the root's, which `SetTheme` sets) when
+  the scope began at the window's theme and `SetTheme` was called inside.
+  Its own text style holds the theme's color, size and family, as the
+  root's does the window's, so that text inside resolves through the
+  ancestors unchanged. What reads the theme after building finds it
+  there too: `Painter.Theme` is that of the innermost themed element
+  painting (`Painter.theme`, which canvases inherit), and the commit
+  keeps a scroll container's bar width in its state (`barWidth`) for the
+  input that hits its bars. Overlays opened in a scope are children of
+  the overlay layer, above the root: `Overlay` gives those built while
+  `c.theme` is not the window's that theme as their own. A copy leaving
+  with an exit transition copies its theme.
 - **Preferences.** `platform.Theme.Preferences` reads the settings of the
   desktop that controls follow: on macOS, `controlAccentColor` and
   `NSWorkspace`'s accessibility display options, with their notifications;

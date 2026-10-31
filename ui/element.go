@@ -385,9 +385,12 @@ type node struct {
 	runes     [2]int
 	frags     []Rect
 	ts        textStyle
-	image     *Bitmap
-	svg       *SVG // of an Icon, or an Image in its own colors
-	webView   NativeWebView
+	// themed is the theme the element's children build and paint with,
+	// in place of the window's (Themed).
+	themed  *Theme
+	image   *Bitmap
+	svg     *SVG // of an Icon, or an Image in its own colors
+	webView NativeWebView
 	// maximizeButton marks the window's maximize button (MaximizeButton).
 	maximizeButton bool
 	fit            Fit
@@ -699,7 +702,19 @@ func (e *node) Children(fn func()) *node {
 	c := e.c
 	saved := c.parent
 	c.parent = e
-	fn()
+	if t := e.themed; t != nil {
+		// As Toolbar flips c.buttons for its controls.
+		outer, window := c.theme, c.window
+		c.theme = t
+		fn()
+		if outer == window {
+			// SetTheme called inside themes what follows the scope.
+			outer = c.window
+		}
+		c.theme = outer
+	} else {
+		fn()
+	}
 	c.parent = saved
 	if e.kind == kindText && e.first != nil {
 		e.inlineText()

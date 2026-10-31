@@ -73,7 +73,7 @@ func (cv *Canvas) paint(p *Painter, scale float32, w, h int, fn func(cp *Painter
 	parent := p.s
 	s.MaskAtlas, s.ColorAtlas, s.Text = parent.MaskAtlas, parent.ColorAtlas, parent.Text
 	part := Rect{W: float32(w) / scale, H: float32(h) / scale}
-	cp := &Painter{rt: p.rt, s: s, scale: scale, opacity: 1, clip: part}
+	cp := &Painter{rt: p.rt, s: s, scale: scale, opacity: 1, clip: part, theme: p.theme}
 	if s.Drawn != (image.Point{}) {
 		cp.Clip(part, 0, func() { fn(cp) })
 	} else {

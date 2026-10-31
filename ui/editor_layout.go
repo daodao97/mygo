@@ -154,7 +154,7 @@ func (e *node) placeholderParams(width float32) text.Params {
 func (e *node) paintInput(p *Painter) {
 	ed := e.st.editor
 	l := ed.layout
-	t := e.c.theme
+	t := p.Theme()
 	if l == nil && ed.area == nil {
 		return
 	}

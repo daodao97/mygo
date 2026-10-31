@@ -21,6 +21,9 @@ type Painter struct {
 	clip      Rect
 	transform scene.Affine
 	inline    *node
+	// theme is that of the innermost Themed around the element painting
+	// (Theme), nil outside any.
+	theme *Theme
 	// opaque tells that the glyphs painted now land on an opaque
 	// background, which subpixel glyphs need: the root's, covering the
 	// window, or that of an element around them, as a pane beside a
@@ -233,9 +236,12 @@ func (p *Painter) element(e *node) {
 	if e.hidden {
 		return
 	}
-	savedTransform, savedInline := p.transform, p.inline
+	savedTransform, savedInline, savedTheme := p.transform, p.inline, p.theme
 	p.transform, p.inline = e.world, nil
-	defer func() { p.transform, p.inline = savedTransform, savedInline }()
+	if e.themed != nil {
+		p.theme = e.themed
+	}
+	defer func() { p.transform, p.inline, p.theme = savedTransform, savedInline, savedTheme }()
 
 	if e.styleFn != nil {
 		e.styleFn(e)
@@ -774,7 +780,7 @@ func (p *Painter) textLayout(l *text.Layout, x, y float32, color Color, ts textS
 		if ed := e.st.editor; ed != nil && e.flags&flagSelectable != 0 && p.rt.textSelectionVisible(e.st) {
 			if a, b := ed.selection(); a != b {
 				for _, r := range l.Selection(a, b) {
-					p.Fill(Rect{x + r.X, y + r.Y, r.W, r.H}, ts.selectionColor(e.c.theme), 0)
+					p.Fill(Rect{x + r.X, y + r.Y, r.W, r.H}, ts.selectionColor(p.Theme()), 0)
 				}
 			}
 		}
@@ -1098,7 +1104,7 @@ func (p *Painter) scrollbars(e *node) {
 	}
 	st := e.st
 	rt := e.c.rt
-	theme := e.c.theme
+	theme := p.Theme()
 	now := e.c.now
 	if st.scrollX != st.barX || st.scrollY != st.barY {
 		st.barX, st.barY, st.barMoved = st.scrollX, st.scrollY, now
@@ -1346,7 +1352,7 @@ func (p *Painter) Image(src ImageSource, r Rect, fit Fit) {
 			p.drawBitmap(s, r, fit, [4]float32{}, false)
 		}
 	case *SVG:
-		p.drawSVG(s, r, fit, [4]float32{}, p.rt.c.theme.Text, false)
+		p.drawSVG(s, r, fit, [4]float32{}, p.Theme().Text, false)
 	}
 }
 
@@ -1411,7 +1417,7 @@ func (p *Painter) FocusRing(r Rect, radius [4]float32) {
 	for i := range radius {
 		radius[i] += w + 1
 	}
-	p.fill(o, radius, Color{}, w, p.rt.c.theme.Focus)
+	p.fill(o, radius, Color{}, w, p.Theme().Focus)
 }
 
 // Clip restricts what fn draws to r.

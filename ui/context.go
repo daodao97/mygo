@@ -23,8 +23,12 @@ type context struct {
 	used   int
 	// dirty is how many elements in the arena have held references since
 	// finish last cleared the unused ones, including earlier build passes.
-	dirty    int
+	dirty int
+	// theme is the theme the widgets being built take: the window's, or
+	// that of the Themed whose children are building. window is the
+	// window's, which the root has (SetTheme).
 	theme    *Theme
+	window   *Theme
 	now      time.Time
 	w, h     float32
 	titleBar TitleBar
@@ -119,6 +123,7 @@ func (c *context) reset(now time.Time, w, h float32) {
 	c.now = now
 	c.w, c.h = w, h
 	c.theme = c.rt.defaultTheme()
+	c.window = c.theme
 	c.rt.lang = c.rt.host.locale()
 	c.tree = nil
 	clear(c.reveal)
@@ -328,15 +333,79 @@ func mix(a, b uint64) uint64 {
 }
 
 // Theme returns the theme of the frame: the light or dark theme following
-// the system's appearance, unless SetTheme replaced it.
+// the system's appearance, unless SetTheme replaced it. While the children
+// of a Themed build, it is the Themed's theme.
 func (c *context) Theme() *Theme { return c.theme }
 
 // SetTheme makes the frame use t, for the window's root and the widgets
-// created after the call.
+// created after the call. Inside the children of a Themed, which keep its
+// theme, t is for the root and the widgets after the Themed.
 func (c *context) SetTheme(t *Theme) {
-	c.theme = t
+	if c.theme == c.window {
+		c.theme = t
+	}
+	c.window = t
 	c.root.bg = t.Background
 	c.root.ts.color, c.root.ts.size, c.root.ts.family = t.Text, t.FontSize, t.Font
+}
+
+// Themed creates a column whose children build with t, as SetTheme has
+// the whole window build: the widgets inside take their colors and metrics
+// (Spacing, Radius, FontSize) from t, Context.Theme returns t while they
+// build and Painter.Theme while they paint, and the popovers, menus,
+// tooltips and dialogs they open take t too. The column paints t's
+// Background, and the text inside takes t's Text color, FontSize and Font,
+// as the root has the window's theme's; Background(ui.Transparent) keeps
+// what is behind it instead. The root, and what is built after the column,
+// keep the window's theme. Light beside dark, as a theme picker previews
+// them:
+//
+//	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+//		for _, t := range []*ui.Theme{ui.LightTheme(), ui.DarkTheme()} {
+//			ui.Themed(c, t).Grow(1).Padding(16).Gap(8).Children(func() {
+//				ui.Text(c, "Preview")
+//				ui.Button(c, "OK")
+//			})
+//		}
+//	})
+//
+// A nil t makes it a Column.
+func coreThemed(c *context, t *Theme) *node {
+	e := coreColumn(c)
+	if t != nil {
+		e.Background(t.Background)
+		e.themeWith(t)
+	}
+	return e
+}
+
+// themeWith has e build its children (Children) and paint them
+// (Painter.Theme) with t, and the text inside take t's color, size and
+// font where e sets none, as the root takes the window's theme's.
+func (e *node) themeWith(t *Theme) {
+	e.themed = t
+	ts := &e.ts
+	if ts.set&setColor == 0 {
+		ts.color = t.Text
+	}
+	if ts.set&setSize == 0 {
+		ts.size = t.FontSize
+	}
+	if ts.set&setFamily == 0 {
+		ts.family = t.Font
+	}
+	ts.set |= setColor | setSize | setFamily
+}
+
+// theme returns the theme e was built with: that of the innermost Themed
+// around it, else the window's.
+func (e *node) theme() *Theme {
+	for n := e; n != nil; n = n.parent {
+		if n.themed != nil {
+			return n.themed
+		}
+	}
+	return e.c.theme
 }
 
 // Size returns the size of the window's content in DIPs.
@@ -609,8 +678,10 @@ type state struct {
 	scrollX, scrollY float64
 	contentW         float64
 	contentH         float64
-	// barInset is the element's ScrollbarInsets.
+	// barInset is the element's ScrollbarInsets, and barWidth the width
+	// of its scroll bars, its theme's ScrollbarWidth.
 	barInset [4]float32
+	barWidth float32
 	// barsShown reports whether the last frame painted the element's
 	// scroll bars: they show only for a moment after the content
 	// scrolls, while the pointer is over a track, or while a bar is
