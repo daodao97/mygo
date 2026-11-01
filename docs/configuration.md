@@ -142,12 +142,12 @@ See [Windows](distribution.md#windows).
 
 | Field | Default | |
 |---|---|---|
-| `maintainer` | `author` in package.json, else `name` | `Name <email>`, the maintainer of the Debian package |
+| `maintainer` | `author` in package.json, else `name` | `Name <email>`, the maintainer of the Debian package and of the PKGBUILD |
 | `comment` | | a short description, for the desktop entry and the package |
 | `categories` | `["Utility"]` | the categories of the desktop entry, which place it in application menus |
-| `depends` | | Debian packages the app needs besides GTK and WebKitGTK |
-| `webview` | `true` | `false` for an app that shows no web page, as one of native UI: the Debian package depends on GTK alone, and install.sh and `mygo doctor` do not ask for WebKitGTK |
-| `command` | none | a command that runs the app, or a list of names, as `["my-app", "ma"]`, which adds a short one: `/usr/bin/<command>` from the Debian package, `~/.local/bin/<command>` from install.sh, for each |
+| `depends` | | Debian packages the app needs besides GTK and WebKitGTK; the PKGBUILD depends on the [Arch Linux packages](distribution.md#arch-linux) of those MyGo knows |
+| `webview` | `true` | `false` for an app that shows no web page, as one of native UI: the Debian package and the PKGBUILD depend on GTK alone, and install.sh and `mygo doctor` do not ask for WebKitGTK |
+| `command` | none | a command that runs the app, or a list of names, as `["my-app", "ma"]`, which adds a short one: `/usr/bin/<command>` from the Debian package and the PKGBUILD, `~/.local/bin/<command>` from install.sh, for each |
 
 See [Linux](distribution.md#linux).
 

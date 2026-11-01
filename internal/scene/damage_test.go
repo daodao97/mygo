@@ -6,15 +6,16 @@ import (
 )
 
 // TestDamageOfNestedTransformedClip checks that a clip under a
-// transform, nested in a rounded one, changes all the rounded one cuts as
-// it comes and goes: the GPU's renderers then cut the outer clip with a
-// mask rather than in the shader, at its edges a unit in the last place
-// apart.
+// transform that turns it, nested in a rounded one, changes all the
+// rounded one cuts as it comes and goes: the GPU's renderers then cut the
+// outer clip with a mask rather than in the shader, at its edges a unit in
+// the last place apart. A clip only moved changes nothing around it, as
+// the renderers cut it as any other.
 func TestDamageOfNestedTransformedClip(t *testing.T) {
 	outer := Op{Kind: OpPushClip, Rect: Rect{X: 10, Y: 10, W: 150, H: 150}, Radii: Uniform(8)}
 	corner := Op{Kind: OpFill, Rect: Rect{X: 10, Y: 10, W: 20, H: 20}, Color: Color{R: 255, A: 255}}
 	nested := []Op{
-		{Kind: OpPushClip, Rect: Rect{W: 40, H: 40}, Transform: Translation(100, 100)},
+		{Kind: OpPushClip, Rect: Rect{W: 40, H: 40}, Transform: Translation(100, 100).Mul(Rotation(10))},
 		{Kind: OpFill, Rect: Rect{X: 100, Y: 100, W: 20, H: 20}, Color: Color{G: 255, A: 255}},
 		{Kind: OpPopClip},
 	}
@@ -37,6 +38,17 @@ func TestDamageOfNestedTransformedClip(t *testing.T) {
 		}
 		if !hit {
 			t.Errorf("%d to %d ops: damage %v misses %v", len(frames[0].Ops), len(frames[1].Ops), damage, at)
+		}
+	}
+	nested[0].Transform = Translation(100.5, 100.25)
+	with.Ops = append(append([]Op{outer, corner}, nested...), Op{Kind: OpPopClip})
+	d := Differ{Reach: 2}
+	d.Diff(without)
+	d.Remember(without)
+	damage, _ := d.Diff(with)
+	for _, r := range damage {
+		if r.Overlaps(image.Rect(10, 10, 30, 30)) {
+			t.Errorf("a clip only moved coming: damage %v reaches the outer clip's corner", damage)
 		}
 	}
 }

@@ -43,7 +43,7 @@ type Differ struct {
 	bounds, next []image.Rectangle
 	// encloses and encloses2 tell, for each clip of the last scene and of
 	// the one Diff was given, that it holds an op drawn under a transform
-	// (see opBounds).
+	// that does more than move it (see opBounds).
 	encloses, encloses2 []bool
 	pushes              []int
 	versions            []uint64
@@ -394,13 +394,13 @@ func (d *Differ) opBounds(s *Scene, out []image.Rectangle) []image.Rectangle {
 			}
 		}
 		// The GPU's renderers cut what a clip holds with a mask once an op
-		// in it is drawn under a transform, and in the shader otherwise,
-		// which differ at its edge by a unit in the last place: a clip
-		// that starts or stops holding one changes all it cuts. A clip
-		// pushed under a transform is one for the clips around it, not
-		// for itself, which it was pushed onto already (as
-		// gpu.Builder.markEnclosing has it).
-		if op.Kind != OpPopClip && d.moved(s, op) {
+		// in it is drawn under a transform that does more than move it
+		// (Reshaped), and in the shader otherwise, which differ at its
+		// edge by a unit in the last place: a clip that starts or stops
+		// holding one changes all it cuts. A clip pushed under such a
+		// transform is one for the clips around it, not for itself, which
+		// it was pushed onto already (as gpu.Builder.markEnclosing has it).
+		if op.Kind != OpPopClip && Reshaped(s, op) {
 			j := len(d.pushes) - 1
 			if op.Kind == OpPushClip {
 				j--
@@ -424,20 +424,6 @@ func outsetEdges(x0, y0, x1, y1, d float32) image.Rectangle {
 func outset(rc Rect, d float32) image.Rectangle {
 	return image.Rect(int(math.Floor(float64(rc.X-d))), int(math.Floor(float64(rc.Y-d))),
 		int(math.Ceil(float64(rc.X+rc.W+d))), int(math.Ceil(float64(rc.Y+rc.H+d))))
-}
-
-// moved reports whether op of s draws under a transform, which only
-// translating draws without (TranslationFolder), but for effects and
-// holes.
-func (d *Differ) moved(s *Scene, op *Op) bool {
-	if op.Kind == OpGlyphs && op.Start >= 0 && op.Start <= op.End && int(op.End) <= len(s.Glyphs) {
-		for _, g := range s.Glyphs[op.Start:op.End] {
-			if g.Transform.Set {
-				return true
-			}
-		}
-	}
-	return op.Transform.Set && (!folding() || !folds(s, op))
 }
 
 // Remember keeps what Diff needs of s, which Diff was given last, to

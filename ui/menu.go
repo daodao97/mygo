@@ -581,26 +581,20 @@ func (rt *engine) editMenu(s *state) {
 // editCommands are the items of the editing menu of s: Copy and Select All
 // for selectable text, the platform's text field items for a text input.
 func (rt *engine) editCommands(s *state) []editItem {
-	ed := s.editor
-	a, b := ed.selection()
-	selected := a != b
-	if s.textScope != 0 && rt.selection.scope == s.textScope {
-		_, _, selected = rt.textSelectionBounds()
-	}
 	type command = editItem
 	texts := l10n.In(rt.lang)
 	var (
-		undo      = command{texts.Undo(), "undo", len(ed.undo) > 0}
-		cut       = command{texts.Cut(), "cut", selected && !ed.password}
-		copyText  = command{texts.Copy(), "copy", selected && !ed.password}
-		paste     = command{texts.Paste(), "paste", true}
-		del       = command{texts.Delete(), "delete", selected}
-		selectAll = command{texts.SelectAll(), "selectAll", ed.buf.n > 0}
+		undo      = command{texts.Undo(), "undo", rt.editCommandOn(s, "undo")}
+		cut       = command{texts.Cut(), "cut", rt.editCommandOn(s, "cut")}
+		copyText  = command{texts.Copy(), "copy", rt.editCommandOn(s, "copy")}
+		paste     = command{texts.Paste(), "paste", rt.editCommandOn(s, "paste")}
+		del       = command{texts.Delete(), "delete", rt.editCommandOn(s, "delete")}
+		selectAll = command{texts.SelectAll(), "selectAll", rt.editCommandOn(s, "selectAll")}
 		separator = command{}
 		commands  []command
 	)
 	switch {
-	case ed.readOnly:
+	case s.editor.readOnly:
 		commands = []command{copyText, separator, selectAll}
 	case runtime.GOOS == "darwin":
 		commands = []command{cut, copyText, paste, separator, selectAll}
@@ -610,6 +604,56 @@ func (rt *engine) editCommands(s *state) []editItem {
 		commands = []command{cut, copyText, paste, del, separator, selectAll}
 	}
 	return commands
+}
+
+// editCommandOn reports whether the editing command name would act on the
+// text input or selectable text s, as its editor does it.
+func (rt *engine) editCommandOn(s *state, name string) bool {
+	ed := s.editor
+	switch {
+	case s.flags&flagDisabled != 0 && (s.textScope != 0 || s.flags&flagEditable != 0),
+		ed.readOnly && name != "copy" && name != "selectAll",
+		ed.password && (name == "cut" || name == "copy"):
+		return false
+	}
+	if len(ed.queue) > 0 {
+		// The command goes behind the input the next frame applies, which
+		// changes what it acts on.
+		return true
+	}
+	a, b := ed.selection()
+	selected := a != b
+	if s.textScope != 0 && rt.selection.scope == s.textScope {
+		_, _, selected = rt.textSelectionBounds()
+	}
+	switch name {
+	case "undo":
+		return len(ed.undo) > 0
+	case "redo":
+		return len(ed.redo) > 0
+	case "cut", "copy":
+		return selected
+	case "paste", "pasteAndMatchStyle":
+		return true
+	case "delete":
+		return selected
+	case "selectAll":
+		if s.textScope != 0 {
+			// The selection holds the newlines between paragraphs too.
+			paragraphs := 0
+			for _, p := range rt.texts {
+				if p.textScope == s.textScope {
+					if p.editor.buf.n > 0 {
+						return true
+					}
+					paragraphs++
+				}
+			}
+			return paragraphs > 1
+		}
+		return ed.buf.n > 0
+	}
+	return false
 }
 
 // accelerator writes a key with modifiers as menus take it, as in

@@ -9,8 +9,13 @@ import (
 )
 
 // event handles a surface event on the main thread. It reports whether
-// an element takes files dragged over or dropped at the event's position.
+// an element takes files dragged over or dropped at the event's position,
+// the key pressed or the composition (platform.WindowHandler.SurfaceEvent).
 func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
+	if ev.Kind == platform.SurfaceCommandEnabled {
+		// A menu asking about its item changes nothing.
+		return rt.commandEnabled(ev.Text)
+	}
 	// Touch arbitration and the pointer path both hit-test content DIPs.
 	rt.fromWindow(&ev)
 	// A touch contact is arbitrated before the pointer path: it may become
@@ -130,7 +135,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 			a, b := max(0, min(ev.MarkedStart, n)), max(0, min(ev.MarkedEnd, n))
 			rt.ime.compositionLength = n - max(0, b-a)
 		}
-		rt.editEvent(rt.replaced(editEvent{kind: editCompose, text: ev.Text, caret: ev.Caret, snapshot: ev.Snapshot, markedStart: ev.MarkedStart, markedEnd: ev.MarkedEnd}, ev))
+		taken = rt.editEvent(rt.replaced(editEvent{kind: editCompose, text: ev.Text, caret: ev.Caret, snapshot: ev.Snapshot, markedStart: ev.MarkedStart, markedEnd: ev.MarkedEnd}, ev))
 	case platform.TextSelectionChanged:
 		rt.editEvent(editEvent{kind: editSelect, from: rt.ime.base + ev.From, to: rt.ime.base + ev.To})
 	case platform.SurfaceKeyboardDismiss:
@@ -168,14 +173,8 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.modsChanged(0)
 		clear(rt.byPosition)
 		if p := rt.pressed; p != nil {
-			// The release will not come: an element taking its input
-			// gets one now.
-			if p.input != nil {
-				rt.deliver(p, InputEvent{Kind: InputPointerUp, Button: rt.pressButton, Mods: rt.mods, Clicks: rt.pressClicks})
-			}
-			p.pressed = false
-			rt.pressed = nil
-			rt.requestFrame()
+			x, y := p.local(rt.pointerX, rt.pointerY)
+			rt.endPress(p.input, x, y)
 		}
 		rt.focusChanged()
 	case platform.FileDragOver:
@@ -456,6 +455,22 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 	}
 	if clicks == 2 && button == 0 {
 		target.doubleClicks++
+	}
+}
+
+// endPress ends the press whose release will not come, as the window lost
+// the focus, or the element pressed is gone: input, the handler of the
+// element pressed, gets one now, at x, y in its own axes. The element
+// gets no click, and the next press starts anew. The press ends before
+// the handler runs, so that a release or press coming meanwhile, through
+// a main loop the handler runs nested, is the next press's.
+func (rt *engine) endPress(input func(InputEvent) bool, x, y float32) {
+	p := rt.pressed
+	p.pressed = false
+	rt.pressed = nil
+	rt.requestFrame()
+	if input != nil {
+		input(InputEvent{Kind: InputPointerUp, X: x, Y: y, Button: rt.pressButton, Mods: rt.mods, Clicks: rt.pressClicks, Time: rt.now()})
 	}
 }
 
@@ -1048,7 +1063,9 @@ func (rt *engine) shortcut(id uint64, mods Modifiers, key Key) bool {
 	return false
 }
 
-func (rt *engine) editEvent(ev editEvent) {
+// editEvent delivers text, a composition or an edit command to the focus,
+// and reports whether an element took it.
+func (rt *engine) editEvent(ev editEvent) bool {
 	if s := rt.states[rt.focused]; s != nil && s.textClient != nil && !ev.snapshot && !rt.snapshotTextInput(s) && rt.windowFocus() && s.flags&flagDisabled == 0 && (s.editor == nil || !s.editor.readOnly) {
 		// 🔴 An element that pairs HandleTextInput with HandleInput takes its
 		// text through HandleInput whenever a software modifier is held, so the
@@ -1075,12 +1092,12 @@ func (rt *engine) editEvent(ev editEvent) {
 				caret := platform.UTF16Len(string([]rune(ev.text)[:max(0, min(ev.caret, len([]rune(ev.text))))]))
 				s.textAdapter.SetMarkedText(r, ev.text, TextInputRange{Start: caret, End: caret})
 			}
-			return
+			return true
 		}
 	}
 	if h := rt.focusHandler(); h != nil && h.editor == nil {
 		if h.textContext != nil && rt.contextEdit(h, ev) {
-			return
+			return true
 		}
 		kind := map[editKind]InputKind{editInsert: InputText, editCompose: InputCompose, editCommand: InputCommand}[ev.kind]
 		handled := kind != 0 && rt.deliver(h, InputEvent{Kind: kind, Text: ev.text, Caret: ev.caret})
@@ -1093,29 +1110,30 @@ func (rt *engine) editEvent(ev editEvent) {
 		} else {
 			rt.commandKey(ev, nil)
 		}
-		return
+		return handled
 	}
 	s := rt.states[rt.focused]
 	if s == nil || s.editor == nil {
 		rt.commandKey(ev, nil)
-		return
+		return false
 	}
 	// Selectable text takes selection changes and the menus' commands, as
 	// Copy, not edits.
 	if s.flags&flagEditable == 0 && (s.flags&flagSelectable == 0 || ev.kind != editCommand && ev.kind != editSelect) {
 		rt.commandKey(ev, nil)
-		return
+		return false
 	}
 	if s.editor.readOnly && rt.commandKey(ev, s.editor) {
-		return
+		return true
 	}
 	if ev.kind == editCommand && rt.textSelectionCommand(s, ev.text) {
 		rt.requestFrame()
-		return
+		return true
 	}
 	s.editor.queue = append(s.editor.queue, ev)
 	rt.blinkStart = rt.now()
 	rt.requestFrame()
+	return true
 }
 
 // commandKeys are the keys of the Edit menu's commands.
@@ -1137,6 +1155,37 @@ func (rt *engine) commandKey(ev editEvent, ed *editor) bool {
 	rt.keys = append(rt.keys, k)
 	rt.requestFrame()
 	return true
+}
+
+// commandEnabled reports whether the edit command name would act where
+// editEvent takes it, for the Edit menu to enable its item.
+func (rt *engine) commandEnabled(name string) bool {
+	s := rt.states[rt.focused]
+	// As focusHandler, without windowFocus, which would have the next
+	// change of the window's focus draw a frame.
+	if s != nil && s.input != nil && s.editor == nil && rt.windowFocused {
+		// Such an element tells what it does with a command only by
+		// doing it.
+		return true
+	}
+	if s == nil || s.editor == nil || s.flags&(flagEditable|flagSelectable) == 0 {
+		return rt.commandShortcut(name)
+	}
+	if k, ok := commandKeys[name]; ok && s.editor.readOnly && !s.editor.wants(k) {
+		return rt.commandShortcut(name)
+	}
+	return rt.editCommandOn(s, name)
+}
+
+// commandShortcut reports whether commandKey would have a shortcut take
+// the edit command name.
+func (rt *engine) commandShortcut(name string) bool {
+	k, ok := commandKeys[name]
+	if runtime.GOOS != "darwin" || !ok {
+		return false
+	}
+	_, found := routeKey(rt.regs, rt.focusChain(), k)
+	return found
 }
 
 // imeContext is how many runes around the selection input methods see.
@@ -1665,7 +1714,7 @@ func (e *node) Dismissed() bool { return e.dismissed }
 func (rt *engine) scrollbarPress(chain []uint64, x, y float32) bool {
 	for _, id := range chain {
 		s := rt.states[id]
-		if s == nil || s.flags&(flagScrollX|flagScrollY) == 0 || !s.barsShown {
+		if s == nil || s.flags&(flagScrollX|flagScrollY) == 0 || !s.barsShown || s.hideScrollbars {
 			continue
 		}
 		lx, ly := s.local(x, y)

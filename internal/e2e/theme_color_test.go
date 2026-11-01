@@ -74,4 +74,16 @@ func TestPageThemeColor(t *testing.T) {
 	waitFor(t, w, `document.body.textContent === "three" && document.readyState === "complete"`)
 	mustEval(t, w, `document.querySelectorAll('meta[name="theme-color" i]').forEach((m) => m.remove())`)
 	next("after a page of the same color", color.NRGBA{}, false)
+
+	// A page that loads in an appearance other than the system's has it
+	// from its start: it never tells the system's color first.
+	mygo.Theme.SetSource(mygo.ThemeDark)
+	p.LoadHTML(strings.Replace(metas, "%s", "four", 1), "")
+	next("a page loaded in the dark appearance", dark, true)
+	mygo.Theme.SetSource(mygo.ThemeLight)
+	next("light appearance again", dodgerBlue, true)
+	p.LoadHTML(strings.Replace(metas, "%s", "five", 1), "")
+	waitFor(t, w, `document.body.textContent === "five" && document.readyState === "complete"`)
+	mustEval(t, w, `document.querySelectorAll('meta[name="theme-color" i]').forEach((m) => m.remove())`)
+	next("after a page loaded in the light appearance", color.NRGBA{}, false)
 }

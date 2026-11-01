@@ -78,13 +78,34 @@ var (
 	menuTestOnce              sync.Once
 	gtkLabelGetLabel          func(label ptr) ptr
 	gtkCheckMenuItemGetActive func(item ptr) bool
+	gtkMenuShellSelectItem    func(shell, item ptr)
 )
 
 func loadMenuTests() {
 	menuTestOnce.Do(func() {
 		mustBind(libGTK, &gtkLabelGetLabel, "gtk_label_get_label")
 		mustBind(libGTK, &gtkCheckMenuItemGetActive, "gtk_check_menu_item_get_active")
+		mustBind(libGTK, &gtkMenuShellSelectItem, "gtk_menu_shell_select_item")
 	})
+}
+
+// TestMenuItemEnabled reports whether an item of a window's menu bar,
+// found as TestActivateMenuItem finds it, is sensitive once the bar's menu
+// holding it opens.
+func TestMenuItemEnabled(handle uintptr, path ...string) (bool, error) {
+	loadMenuTests()
+	item, err := menuItemAt(handle, path)
+	if err != nil {
+		return false, err
+	}
+	w := windowByHandle(handle)
+	top := findMenuItem(w.menubar, path[0])
+	gtkMenuShellSelectItem(w.menubar, top)
+	defer gtkMenuShellDeactivate(w.menubar)
+	if !gtkWidgetGetMapped(gtkMenuItemGetSubmenu(top)) {
+		return false, fmt.Errorf("mygo: menu %q did not open", path[0])
+	}
+	return gtkWidgetIsSensitive(item), nil
 }
 
 // TestMenuItemIcon reports the size, in points, of the icon an item of a
@@ -299,6 +320,17 @@ func TestPopups() [][]string {
 	return menus
 }
 
+// TestPopupItemEnabled reports whether the item labeled label of a context
+// menu being shown is sensitive, and whether there is one.
+func TestPopupItemEnabled(label string) (enabled, ok bool) {
+	for _, m := range theBackend.popups {
+		if item := findMenuItem(m, label); item != 0 {
+			return gtkWidgetIsSensitive(item), true
+		}
+	}
+	return false, false
+}
+
 // TestChoosePopupItem chooses the item labeled label of a context menu
 // being shown, and closes the menu, and reports whether it has one.
 func TestChoosePopupItem(label string) bool {
@@ -493,6 +525,13 @@ func TestDragSurface(handle uintptr, points [][2]float64) bool {
 // TestClickSurface does with the primary.
 func TestRightClickSurface(handle uintptr, x, y float64) bool {
 	return clickSurface(handle, x, y, 3)
+}
+
+// TestWheelSurface turns a mouse's wheel a notch down at (x, y), in DIPs,
+// in a window showing native UI, through XTEST (button 5), over whatever
+// shows there: the content, or a web view's page.
+func TestWheelSurface(handle uintptr, x, y float64) bool {
+	return clickSurface(handle, x, y, 5)
 }
 
 // TestHasRecentItem reports whether the shared recent files list holds the

@@ -184,7 +184,7 @@ Apps run on:
 | Platform | Windows with web pages need | Windows of native UI need |
 |---|---|---|
 | macOS 12 or later | nothing: WKWebView is part of macOS | nothing: they draw with Metal |
-| Linux (x64, arm64) | GTK 3 and WebKitGTK 4.1 (or 4.0): `libwebkit2gtk-4.1-0` on Debian and Ubuntu, `webkit2gtk4.1` on Fedora | GTK 3 alone |
+| Linux (x64, arm64) | GTK 3 and WebKitGTK 4.1 (or 4.0): `libwebkit2gtk-4.1-0` on Debian and Ubuntu, `webkit2gtk4.1` on Fedora, `webkit2gtk-4.1` on Arch Linux | GTK 3 alone |
 | Windows 10 and 11 (x64, arm64) | the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/), which Windows 11 includes | nothing: they draw with Direct3D 11 |
 
 An app whose windows all show native UI needs neither WebKitGTK nor the

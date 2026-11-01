@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -21,9 +22,35 @@ import (
 // the labels along its path, e.g. TestActivateMenuItem(hwnd, "File", "New").
 // plugins/automation's menu request chooses items with it too.
 func TestActivateMenuItem(hwnd uintptr, path ...string) error {
+	w, cmd, err := menuCommandAt(hwnd, path)
+	if err == nil {
+		theBackend.menuCommand(cmd, w)
+	}
+	return err
+}
+
+// TestMenuItemEnabled reports whether an item of a window's menu bar,
+// found as TestActivateMenuItem finds it, is enabled once its menu opens.
+func TestMenuItemEnabled(hwnd uintptr, path ...string) (bool, error) {
+	_, cmd, err := menuCommandAt(hwnd, path)
+	if err != nil {
+		return false, err
+	}
+	e := theBackend.menus.entries[cmd]
+	procSendMessageW.Call(hwnd, wmInitMenuPopup, e.menu, 0)
+	state, _, _ := procGetMenuState.Call(e.menu, uintptr(cmd), mfByCommand)
+	if uint32(state) == 0xFFFFFFFF {
+		return false, fmt.Errorf("mygo: no state for menu item %q", path[len(path)-1])
+	}
+	return state&mfGrayed == 0, nil
+}
+
+// menuCommandAt finds an item of a window's menu bar by the labels along
+// its path, and returns the window and the item's command.
+func menuCommandAt(hwnd uintptr, path []string) (*window, uint16, error) {
 	w := theBackend.windows[hwnd]
 	if w == nil || w.menu == nil {
-		return fmt.Errorf("mygo: the window has no menu bar")
+		return nil, 0, fmt.Errorf("mygo: the window has no menu bar")
 	}
 	items := w.menu.Items
 	for i, label := range path {
@@ -36,23 +63,22 @@ func TestActivateMenuItem(hwnd uintptr, path ...string) error {
 			if i == len(path)-1 {
 				for cmd, e := range theBackend.menus.entries {
 					if e.uid == it.ID && e.owner == w.owner {
-						theBackend.menuCommand(cmd, w)
-						return nil
+						return w, cmd, nil
 					}
 				}
-				return fmt.Errorf("mygo: menu item %q is not a command", label)
+				return nil, 0, fmt.Errorf("mygo: menu item %q is not a command", label)
 			}
 			if it.Submenu == nil {
-				return fmt.Errorf("mygo: menu %q has no submenu", label)
+				return nil, 0, fmt.Errorf("mygo: menu %q has no submenu", label)
 			}
 			items = it.Submenu.Items
 			break
 		}
 		if !found {
-			return fmt.Errorf("mygo: no menu item %q", label)
+			return nil, 0, fmt.Errorf("mygo: no menu item %q", label)
 		}
 	}
-	return nil
+	return nil, 0, fmt.Errorf("mygo: no menu item")
 }
 
 // TestMenuBarShown reports whether a window shows its menu bar.
@@ -276,6 +302,16 @@ func TestTopNonClient(hwnd uintptr) (px, want int32) {
 	return origin.Y - r.Top, want
 }
 
+// TestFrameExtension returns how far a window's frame extends over the top
+// and the bottom of its client area, -1 for all over.
+func TestFrameExtension(hwnd uintptr) (top, bottom int32) {
+	w := theBackend.windows[hwnd]
+	if w == nil {
+		return 0, 0
+	}
+	return w.glass.Top, w.glass.Bottom
+}
+
 // TestClickSurface clicks (x, y), in DIPs, in a window showing native UI,
 // with the messages a mouse sends. It reports false for a window showing a
 // web page.
@@ -461,6 +497,19 @@ func TestChoosePopupItem(label string) bool {
 		return true
 	}
 	return false
+}
+
+// TestPopupItemEnabled reports whether the item labeled label of a popup
+// menu the main thread shows is enabled, and whether there is one.
+func TestPopupItemEnabled(label string) (enabled, ok bool) {
+	for _, h := range threadPopups() {
+		hmenu, _, _ := procSendMessageW.Call(h, mnGetHMenu, 0, 0)
+		if i := slices.Index(popupLabels(h), label); i >= 0 {
+			state, _, _ := procGetMenuState.Call(hmenu, uintptr(i), mfByPosition)
+			return state&mfGrayed == 0, uint32(state) != 0xFFFFFFFF
+		}
+	}
+	return false, false
 }
 
 const (
@@ -713,6 +762,24 @@ func TestPageGestures(hwnd uintptr, webView int) (swipe, pinch, ok bool) {
 	comCall(s6, set6GetIsSwipeNavigationEnabled, uintptr(unsafe.Pointer(&sw)))
 	comCall(s6, set5GetIsPinchZoomEnabled, uintptr(unsafe.Pointer(&pz)))
 	return sw != 0, pz != 0, true
+}
+
+// TestWheelSurface turns a mouse's wheel a notch down at (x, y), in DIPs,
+// in a window showing native UI, with the message Windows sends for it,
+// over whatever shows there: the content, or a web view's page.
+func TestWheelSurface(hwnd uintptr, x, y float64) bool {
+	w := theBackend.windows[hwnd]
+	if w == nil || w.surface == nil {
+		return false
+	}
+	dpi := float64(w.surface.dpi()) / 96
+	pt := point{int32(x * dpi), int32(y * dpi)}
+	procClientToScreen.Call(w.surface.hwnd, uintptr(unsafe.Pointer(&pt)))
+	down := int16(-120) // WHEEL_DELTA, toward the user
+	wp := uintptr(uint16(down)) << 16
+	lp := uintptr(uint16(int16(pt.Y)))<<16 | uintptr(uint16(int16(pt.X)))
+	procSendMessageW.Call(w.surface.hwnd, wmMouseWheel, wp, lp)
+	return true
 }
 
 // TestPinchSurface pinches a touchpad at (x, y), in DIPs, in a window

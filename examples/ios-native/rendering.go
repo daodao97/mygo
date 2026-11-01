@@ -70,7 +70,7 @@ func (s *demo) mediaState() *mediaState {
 
 func (s *demo) imagesView(c *ui.Context, path string) {
 	m := s.mediaState()
-	ui.Scroll(c).HideScrollbars().TrackScroll(s.pageScroll(path)).Fill().Padding(20).Gap(14).Children(func() {
+	ui.Scroll(c).Scrollbars(false).TrackScroll(s.pageScroll(path)).Fill().Padding(20).Gap(14).Children(func() {
 		ui.Text(c, "Raster Images").FontSize(24).Bold()
 		ui.Text(c, "Change the format and fit. All samples have the same four colors.").FontSize(14)
 		ui.Row(c).Wrap().Gap(6).Children(func() {
@@ -217,13 +217,13 @@ func (s *demo) thumbnailView(c *ui.Context) {
 		ui.GridView(c, &m.grid, 200, 130, 110, func(i int) {
 			ui.Image(c, imageSamples[i%len(imageSamples)]).Fit(ui.Cover).Grow(1).FillWidth().Radius(8)
 			ui.Textf(c, "Thumbnail %03d", i+1).FontSize(12)
-		}).HideScrollbars().Grow(1).MinHeight(0).Gap(10).Label("Thumbnail grid")
+		}).Scrollbars(false).Grow(1).MinHeight(0).Gap(10).Label("Thumbnail grid")
 	})
 }
 
 func (s *demo) linksView(c *ui.Context, path string) {
 	m := s.mediaState()
-	ui.Scroll(c).HideScrollbars().TrackScroll(s.pageScroll(path)).Fill().Padding(20).Gap(18).Children(func() {
+	ui.Scroll(c).Scrollbars(false).TrackScroll(s.pageScroll(path)).Fill().Padding(20).Gap(18).Children(func() {
 		ui.Text(c, "Links & Text").FontSize(24).Bold()
 		appCard(c, func() {
 			ui.Text(c, "Inline Links").FontSize(18).Bold()
@@ -270,7 +270,7 @@ func (s *demo) linksView(c *ui.Context, path string) {
 }
 
 func (s *demo) linkDetailView(c *ui.Context, path string) {
-	ui.Scroll(c).HideScrollbars().TrackScroll(s.pageScroll(path)).Fill().Padding(20).Gap(18).Children(func() {
+	ui.Scroll(c).Scrollbars(false).TrackScroll(s.pageScroll(path)).Fill().Padding(20).Gap(18).Children(func() {
 		ui.Text(c, "Linked Page").FontSize(24).Bold()
 		ui.Text(c, "Opened via a relative router link with a query string. Use Back or the left-edge gesture to return.").FontSize(16).LineHeight(1.5)
 		ui.Text(c, "Source: "+s.app.Routers[s.app.Tab].Query("source"))
@@ -280,7 +280,7 @@ func (s *demo) linkDetailView(c *ui.Context, path string) {
 
 func (s *demo) renderingView(c *ui.Context, path string) {
 	m := s.mediaState()
-	ui.Scroll(c).HideScrollbars().TrackScroll(s.pageScroll(path)).Fill().Padding(20).Gap(18).Children(func() {
+	ui.Scroll(c).Scrollbars(false).TrackScroll(s.pageScroll(path)).Fill().Padding(20).Gap(18).Children(func() {
 		ui.Text(c, "Rendering Samples").FontSize(24).Bold()
 		ui.Text(c, "Gradient & Shadow").FontSize(18).Bold()
 		ui.Box(c).Height(120).FillWidth().Gradient(ui.Hex("#367cce"), ui.Hex("#845dd6"), 90).Radius(18).Shadow(0, 6, 12, 0, ui.Hex("#17223855")).Label("Gradient sample").Role(ui.RoleImage).Center().Children(func() {

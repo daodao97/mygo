@@ -260,9 +260,6 @@ type engine struct {
 	pointerX, pointerY float32
 	pointerIn          bool
 	hover              []uint64
-	// barTrack is the scroll container whose bar's track the pointer is
-	// over, which shows its bars (scrollbars), or 0.
-	barTrack uint64
 	// chain is a buffer for the elements under the pointer.
 	chain       []uint64
 	pressed     *state
@@ -283,6 +280,12 @@ type engine struct {
 	// pressClicks is the press's count of clicks, which its release
 	// carries.
 	pressClicks int
+	// pressLost is the handler of the element pressed when the frame
+	// built another element without one in its place, for prune to give
+	// the release to at pressLostX, pressLostY, the pointer in the axes
+	// the element had.
+	pressLost              func(InputEvent) bool
+	pressLostX, pressLostY float32
 	// downing counts the presses pointerDown is handling, and ups holds the
 	// releases (button, clicks) that came meanwhile, through a main loop
 	// a handler ran nested, for it to apply once the press is recorded.
@@ -1036,11 +1039,27 @@ func (rt *engine) prune() {
 			rt.host.cancelDataDrag()
 		}
 	}
+	if p := rt.pressed; p != nil {
+		// The element pressed is gone, as when its press moved it into
+		// another container: not built again, or built over by one that
+		// does not take its input. Its release will not come to it, so
+		// its handler gets one now, as when the window loses the focus,
+		// rather than taking the next press for that release.
+		input, gone := p.input, p.seen != rt.frame || p.pass != rt.pass
+		x, y := p.local(rt.pointerX, rt.pointerY)
+		if rt.pressLost != nil {
+			input, gone, x, y = rt.pressLost, true, rt.pressLostX, rt.pressLostY
+		}
+		if gone {
+			rt.endPress(input, x, y)
+			// A frame built anew for the press ended and what the handler
+			// did with it, not one only painting again.
+			rt.animating = true
+		}
+	}
+	rt.pressLost = nil
 	for id, s := range rt.states {
 		if s.seen != rt.frame || s.pass != rt.pass {
-			if rt.pressed == s {
-				rt.pressed = nil
-			}
 			if !rt.keptAlive(s) {
 				if s.textAdapter != nil {
 					s.textAdapter.release()
@@ -1214,6 +1233,12 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	saved, savedPage := rt.enterScope(e), rt.commitPage
 	defer func() { rt.commitScope, rt.commitPage, rt.commitHidden = saved, savedPage, savedHidden }()
 	s := e.st
+	if s == rt.pressed && s.input != nil && e.inputFn == nil {
+		// Another element took the place of the one pressed (prune), in
+		// the axes the element pressed had.
+		rt.pressLost = s.input
+		rt.pressLostX, rt.pressLostY = s.local(rt.pointerX, rt.pointerY)
+	}
 	s.page = rt.commitPage
 	if e.flags&flagPage != 0 {
 		rt.commitPage = e.id
@@ -1289,6 +1314,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		s.barInset = e.barInset
 		s.barWidth = e.theme().scrollbarWidth()
 	}
+	s.hideScrollbars, _ = e.scrollbars()
 	// What is invisible keeps its box but takes neither the pointer nor
 	// the focus, and has no text to find; so does what is inert, which
 	// shows, and what is Hidden, which has no box.
@@ -1384,21 +1410,14 @@ func intersect(a, b Rect) Rect {
 // thumb being dragged wherever the pointer goes, show the default, not
 // the cursor of the text under the bar.
 func (rt *engine) updateCursor() {
+	if dragging := rt.scrollDrag.st; dragging != nil && dragging.hideScrollbars {
+		rt.scrollDrag.st = nil
+	}
 	if rt.pressed == nil && rt.scrollDrag.st == nil && rt.overWebView() {
 		// The page sets the cursor over it: it is set again as the
 		// pointer comes back.
 		rt.cursor = cursorUnknown
 		return
-	}
-	track := uint64(0)
-	if i := slices.IndexFunc(rt.hover, rt.overScrollbar); i >= 0 {
-		track = rt.hover[i]
-	}
-	if track != rt.barTrack {
-		// The bars show while the pointer is on their track, wherever
-		// else over the container it was.
-		rt.barTrack = track
-		rt.changed()
 	}
 	c := CursorDefault
 	switch {
@@ -1432,7 +1451,7 @@ func (rt *engine) updateCursor() {
 // bar element id shows.
 func (rt *engine) overScrollbar(id uint64) bool {
 	s := rt.states[id]
-	if s == nil || s.flags&(flagScrollX|flagScrollY) == 0 {
+	if s == nil || s.flags&(flagScrollX|flagScrollY) == 0 || s.hideScrollbars {
 		return false
 	}
 	x, y := s.local(rt.pointerX, rt.pointerY)

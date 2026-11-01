@@ -357,6 +357,10 @@ const (
 	// "italic", "underline", "strikethrough", "alignLeft", "alignCenter"
 	// or "alignRight".
 	SurfaceCommand
+	// SurfaceCommandEnabled asks whether SurfaceCommand with Text would
+	// act now, for a menu to enable its item: WindowHandler.SurfaceEvent
+	// reports it.
+	SurfaceCommandEnabled
 	// FileDragOver reports files of another app dragged over X, Y, and
 	// FileDragLeave that they left. FileDrop drops Files at X, Y.
 	// WindowHandler.SurfaceEvent returns whether the content takes them
@@ -420,6 +424,13 @@ const (
 	PointerTouch
 	PointerPen
 )
+
+// EditCommands are the menu roles of edit commands, which native UI takes as
+// a SurfaceCommand and answers SurfaceCommandEnabled for.
+var EditCommands = map[string]bool{
+	"undo": true, "redo": true, "cut": true, "copy": true, "paste": true, "pasteAndMatchStyle": true,
+	"delete": true, "selectAll": true,
+}
 
 // SurfaceEvent is input on a Surface, or a change of it.
 type SurfaceEvent struct {

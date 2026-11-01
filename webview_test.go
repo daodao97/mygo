@@ -101,6 +101,20 @@ func TestWebViewTabFocus(t *testing.T) {
 	}
 }
 
+// TestWebViewScrollToContainer passes ScrollToContainer to the backend,
+// off unless asked for.
+func TestWebViewScrollToContainer(t *testing.T) {
+	w, _, s := contentWindow(t, func(c *ui.Context) {})
+	for _, on := range []bool{true, false} {
+		if _, err := w.NewWebView(WebViewOptions{ScrollToContainer: on}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if views := s.WebViews(); len(views) != 2 || !views[0].Opts.ScrollToContainer || views[1].Opts.ScrollToContainer {
+		t.Error("ScrollToContainer did not reach the backend as asked")
+	}
+}
+
 // TestWebViewPictureInPicture passes PictureInPicture to a web view, whose
 // page moves its video into picture in picture.
 func TestWebViewPictureInPicture(t *testing.T) {

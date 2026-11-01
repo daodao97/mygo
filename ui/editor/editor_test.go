@@ -210,6 +210,127 @@ func TestCodeEditorScrollbar(t *testing.T) {
 	ct.want("|" + strings.Repeat("x", 200))
 }
 
+// TestCodeEditorAutoscroll checks that a selection dragged past the
+// text's right or left edge scrolls the editor that way.
+func TestCodeEditorAutoscroll(t *testing.T) {
+	ct := newEditorTest(t, "", "|"+strings.Repeat("x", 200))
+	ct.tt.Press(300, 5)
+	ct.tt.Move(650, 5)
+	ct.tt.Advance(time.Second)
+	right := ct.st.ed.scrollX
+	if right <= 0 {
+		t.Fatal("dragging past the right edge did not scroll")
+	}
+	if sel := ct.st.Selections()[0]; sel.Head <= sel.Anchor {
+		t.Fatalf("selection %+v, want it to grow to the right", sel)
+	}
+	ct.tt.Move(5, 5)
+	ct.tt.Advance(time.Second)
+	ct.tt.Release(5, 5)
+	if ct.st.ed.scrollX >= right {
+		t.Fatal("dragging over the gutter did not scroll back")
+	}
+}
+
+// TestCodeEditorScrollbarOnHover checks that the scroll bar's thumb
+// shows while the pointer is over the editor, as a scroll container's
+// does, and not otherwise, and over no track.
+func TestCodeEditorScrollbarOnHover(t *testing.T) {
+	ct := newEditorTest(t, "go", "|package main\n\nfunc main() {}\n")
+	thumb := func() bool {
+		img := ct.tt.Image()
+		s := img.Bounds().Dx() / 600
+		x, y := (600-scrollbarWidth/2)*s, 5*s
+		return img.RGBAAt(x, y) != img.RGBAAt(x-scrollbarWidth*s, y)
+	}
+	ct.tt.Frame()
+	if thumb() {
+		t.Fatal("the thumb shows with the pointer away")
+	}
+	ct.tt.Move(300, 200)
+	ct.tt.Frame()
+	if !thumb() {
+		t.Fatal("the thumb doesn't show with the pointer over the editor")
+	}
+	ct.tt.Move(-10, -10)
+	ct.tt.Frame()
+	if thumb() {
+		t.Fatal("the thumb stayed as the pointer left")
+	}
+	// Over the bar, the thumb and no track: below the thumb, the bar is
+	// the editor's background.
+	x := float32(600 - scrollbarWidth/2)
+	ct.tt.Move(x, 5)
+	ct.tt.Frame()
+	img := ct.tt.Image()
+	s := img.Bounds().Dx() / 600
+	if img.RGBAAt(int(x)*s, 390*s) != img.RGBAAt((int(x)-scrollbarWidth)*s, 390*s) {
+		t.Error("the bar shows a track under its thumb")
+	}
+}
+
+// TestCodeEditorKeepScrollbars checks that KeepScrollbars shows the
+// thumb with the pointer away, as it shows on hover, and that
+// NoScrollbars shows no bar, takes no press on it and leaves its room to
+// the text, while the wheel still scrolls.
+func TestCodeEditorKeepScrollbars(t *testing.T) {
+	ct := newEditorTest(t, "go", "|package main\n\nfunc main() {}\n")
+	bar := func() []uint32 {
+		img := ct.tt.Image()
+		s := img.Bounds().Dx() / 600
+		var px []uint32
+		for y := 0; y < 400*s; y++ {
+			for x := (600 - scrollbarWidth) * s; x < 600*s; x++ {
+				c := img.RGBAAt(x, y)
+				px = append(px, uint32(c.R)<<24|uint32(c.G)<<16|uint32(c.B)<<8|uint32(c.A))
+			}
+		}
+		return px
+	}
+	ct.tt.Move(-10, -10)
+	ct.tt.Frame()
+	none := bar()
+	ct.st.KeepScrollbars = true
+	ct.tt.Frame()
+	away := bar()
+	if slices.Equal(away, none) {
+		t.Fatal("a kept thumb doesn't show with the pointer away")
+	}
+	ct.tt.Move(300, 200)
+	ct.tt.Frame()
+	if hovered := bar(); !slices.Equal(away, hovered) {
+		t.Fatal("a kept thumb looks otherwise with the pointer away than on hover")
+	}
+	ct.st.KeepScrollbars = false
+	ct.st.NoScrollbars = true
+	ct.tt.Frame()
+	if v, h := ct.st.ed.scrollbars(); v || h || ct.st.ed.trackWidth() != 0 {
+		t.Fatalf("NoScrollbars: bars %v %v, room %v", v, h, ct.st.ed.trackWidth())
+	}
+	if !slices.Equal(bar(), none) {
+		t.Fatal("NoScrollbars painted a bar on hover")
+	}
+	x := float32(600 - scrollbarWidth/2)
+	ct.tt.Move(x, 5)
+	if c := ct.tt.Cursor(); c != ui.CursorText {
+		t.Fatalf("cursor where the bar was %v, want the I-beam", c)
+	}
+	ct.tt.Press(x, 5)
+	ct.tt.Move(x, 300)
+	ct.tt.Release(x, 300)
+	if ct.st.ScrollY() != 0 {
+		t.Fatal("dragging where the bar was scrolled")
+	}
+	ct.tt.Scroll(300, 200, 0, 20)
+	ct.tt.Frame()
+	if ct.st.ScrollY() != 20 {
+		t.Fatalf("the wheel scrolled to %v without bars, want 20", ct.st.ScrollY())
+	}
+	if ct.st.ViewportHeight() != 400 {
+		t.Fatalf("ViewportHeight %v, want 400", ct.st.ViewportHeight())
+	}
+}
+
 func TestCodeEditorMultiCursor(t *testing.T) {
 	ct := newEditorTest(t, "go", "foo := 1\nbar := foo\nfoo++")
 	ct.st.Select(0, 0)
@@ -690,4 +811,26 @@ func TestFitContentFocusRevealsCaret(t *testing.T) {
 	if scroll.Y > top || scroll.Y+400 < top+lh {
 		t.Fatalf("focused, the view scrolled to %v, which doesn't show the caret at %v", scroll.Y, top)
 	}
+}
+
+// TestCodeEditorNoScrollbarsCancelsDrag checks that hiding the bars while
+// a thumb is dragged lets the drag go: the pointer's moves scroll no
+// more.
+func TestCodeEditorNoScrollbarsCancelsDrag(t *testing.T) {
+	ct := newEditorTest(t, "", "|"+strings.Repeat("line\n", 200))
+	x := float32(600 - scrollbarWidth/2)
+	ct.tt.Move(x, 5)
+	ct.tt.Press(x, 5)
+	ct.tt.Move(x, 50)
+	if ct.st.ScrollY() <= 0 {
+		t.Fatal("dragging the thumb did not scroll")
+	}
+	ct.st.NoScrollbars = true
+	ct.tt.Frame()
+	before := ct.st.ScrollY()
+	ct.tt.Move(x, 300)
+	if ct.st.ed.scrollbar.active || ct.st.ScrollY() != before {
+		t.Fatalf("hidden bars kept the drag: active %v, scrolled from %v to %v", ct.st.ed.scrollbar.active, before, ct.st.ScrollY())
+	}
+	ct.tt.Release(x, 300)
 }

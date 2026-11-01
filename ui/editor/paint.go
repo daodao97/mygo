@@ -90,6 +90,12 @@ func (ed *editor) paint(p *ui.Painter, r ui.Rect) {
 	ed.frameNow = p.Now()
 	ed.r = r
 	ed.layout(r.W, r.H, p.Scale())
+	if ed.viewH != ed.builtViewH && !ed.o.fitContent {
+		// Resized: what read ViewportHeight as the view was built reads
+		// it again.
+		ed.builtViewH = ed.viewH
+		ed.services.Invalidate()
+	}
 	more := false
 	if !v.measureWraps(ed.anchorLine, 4*time.Millisecond) {
 		more = true
@@ -107,6 +113,9 @@ func (ed *editor) paint(p *ui.Painter, r ui.Rect) {
 	clip := p.Visible()
 	y0 := ed.scrollY + float64(max(0, clip.Y-r.Y))
 	y1 := ed.scrollY + float64(min(r.H, clip.Y+clip.H-r.Y))
+	// The horizontal scroll bar at the bottom of what shows, as an editor
+	// as high as its content may run far below the window's.
+	ed.hbarY = max(0, min(r.H, clip.Y+clip.H-r.Y)) - scrollbarWidth
 	var f frame
 	f.first, f.last = ed.visibleLines(y0, y1)
 	ed.shown = [2]int{f.first, f.last}
@@ -424,6 +433,7 @@ func (ed *editor) paintLine(p *ui.Painter, r ui.Rect, f *frame, line int, g line
 		}
 		v.paintRow(p, l, row, ox, y, &f.colors, nil)
 		ed.paintWhitespace(p, f, l, row, ox, y)
+		ed.paintMarked(p, f, l, row, ox, y)
 		// Diagnostics under the text.
 		for _, d := range ed.diags {
 			if d.End < l.start || d.Start > l.start+len(l.text) {
@@ -519,6 +529,29 @@ func (ed *editor) fillRange(p *ui.Painter, f *frame, l *lineLayout, row *rowLayo
 	f.rects = mergeRects(ed.view.rangeRects(l, row, a, b, f.rects[:0]))
 	for _, rc := range f.rects {
 		p.Fill(ui.Rect{X: ox + rc.X, Y: y, W: rc.W, H: ed.view.lineHeight}, c, radius)
+	}
+}
+
+// paintMarked rules a line under what an input method composes in a row, as
+// the app's text inputs underline theirs until they are committed.
+func (ed *editor) paintMarked(p *ui.Painter, f *frame, l *lineLayout, row *rowLayout, ox, y float32) {
+	if !ed.markedActive {
+		return
+	}
+	for _, m := range ed.marked {
+		if m.End <= l.start || m.Start >= l.start+len(l.text) {
+			continue
+		}
+		a, b := max(m.Start-l.start, 0), min(m.End-l.start, len(l.text))
+		ed.ruleRange(p, f, l, row, ox, y, l.toDisp(a, false), l.toDisp(b, true), ed.theme.Text)
+	}
+}
+
+// ruleRange rules a line under displayed bytes a to b of a row.
+func (ed *editor) ruleRange(p *ui.Painter, f *frame, l *lineLayout, row *rowLayout, ox, y float32, a, b int, c ui.Color) {
+	f.rects = mergeRects(ed.view.rangeRects(l, row, a, b, f.rects[:0]))
+	for _, rc := range f.rects {
+		p.Fill(ui.Rect{X: ox + rc.X, Y: y + ed.view.lineHeight - 2, W: rc.W, H: 1}, c, 0)
 	}
 }
 
@@ -768,20 +801,27 @@ func barStripes(r ui.Rect, top float64, fn func(ui.Rect)) {
 	}
 }
 
+// barIn returns a scroll bar in the window, the element at r.
+func (ed *editor) barIn(r ui.Rect, horizontal bool) ui.Scrollbar {
+	b := ed.bar(horizontal)
+	b.Box.X += r.X
+	b.Box.Y += r.Y
+	return b
+}
+
 // paintScrollbars draws the scroll bars, the vertical one with markers
 // of the matches, diagnostics, changes and carets.
 func (ed *editor) paintScrollbars(p *ui.Painter, r ui.Rect, f *frame) {
 	v := &ed.view
 	ct := ed.theme
-	t := p.Theme()
 	vertical, horizontal := ed.scrollbars()
+	// The thumbs and the carets' marks show while the pointer is over the
+	// editor, or drags a thumb, as a scroll container's do, or always
+	// when kept (KeepScrollbars), looking the same; the marks of changes,
+	// matches and diagnostics always.
+	shown := ed.pointerIn || ed.scrollbar.active || ed.o.keepScrollbars
 	if vertical {
 		x := r.X + r.W - scrollbarWidth
-		track := ui.Rect{X: x, Y: r.Y, W: scrollbarWidth, H: r.H}
-		hovered := ed.pointerIn && ed.region == regionVScroll
-		if hovered || ed.scrollbar.active {
-			p.Fill(track, t.Scrollbar.Alpha(0.15), 0)
-		}
 		span := float32(ed.scrollMax()) + ed.viewH
 		mark := func(y float64, h float32, x0, w float32, c ui.Color) {
 			yy := r.Y + float32(y/float64(span))*r.H
@@ -840,27 +880,18 @@ func (ed *editor) paintScrollbars(p *ui.Painter, r ui.Rect, f *frame) {
 			}
 			mark(h.top(v.text.LineOf(d.Start)), v.lineHeight, 7, 3, ct.SeverityColor(d.Severity))
 		}
+		if !shown {
+			return
+		}
 		// Carets.
 		if len(ed.sels) <= 100 {
 			for _, s := range ed.sels {
 				mark(h.top(v.text.LineOf(s.head)), 2, 0, scrollbarWidth, ct.Text.Alpha(0.5))
 			}
 		}
-		t0, t1 := ed.thumb(false)
-		thumb := ui.Rect{X: x + 2, Y: r.Y + t0, W: scrollbarWidth - 4, H: t1 - t0}
-		alpha := float32(0.5)
-		if hovered || ed.scrollbar.active {
-			alpha = 0.9
-		}
-		p.Fill(thumb, t.Scrollbar.Alpha(alpha), (scrollbarWidth-4)/2)
+		p.Scrollbar(ed.barIn(r, false), ui.ScrollbarState{Dragging: ed.scrollbar.active && !ed.scrollbar.horizontal})
 	}
-	if horizontal {
-		t0, t1 := ed.thumb(true)
-		y := r.Y + r.H - scrollbarWidth
-		alpha := float32(0.4)
-		if ed.pointerIn && ed.region == regionHScroll || ed.scrollbar.active {
-			alpha = 0.9
-		}
-		p.Fill(ui.Rect{X: r.X + ed.textX + t0, Y: y + 2, W: t1 - t0, H: scrollbarWidth - 4}, t.Scrollbar.Alpha(alpha), (scrollbarWidth-4)/2)
+	if horizontal && shown {
+		p.Scrollbar(ed.barIn(r, true), ui.ScrollbarState{Dragging: ed.scrollbar.active && ed.scrollbar.horizontal})
 	}
 }

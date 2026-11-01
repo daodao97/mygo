@@ -429,7 +429,7 @@ func replacePath(src, dst string) error {
 			return err
 		}
 	}
-	if err := os.Rename(src, dst); err != nil {
+	if err := renamePackageStage(src, dst); err != nil {
 		if old != "" {
 			_ = os.Rename(old, dst)
 		}

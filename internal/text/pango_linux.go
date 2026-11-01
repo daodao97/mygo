@@ -364,11 +364,14 @@ func loadPango() error {
 
 type pangoEngine struct {
 	shapeScratch
+	nativeFonts
 	fontMap uintptr
 	context uintptr
 
-	descs  map[Style]uintptr // font descriptions, by style
-	fonts  map[uintptr]*Font // by PangoFont
+	descs map[Style]uintptr // font descriptions, by style
+	// fonts finds Fonts by their PangoFont, which they hold a reference
+	// to until they are unreachable (nativeFonts).
+	fonts  map[uintptr]*Font
 	scaled map[scaledKey]uintptr
 
 	registered map[string]bool // files of registered fonts
@@ -617,6 +620,7 @@ func (e *pangoEngine) fontOf(font uintptr) *Font {
 	l := &pangoLib
 	l.gObjectRef(font)
 	f := &Font{native: font}
+	e.own(f)
 	if d := l.fontDescribeAbsolute(font); d != 0 {
 		f.Size = float32(l.descGetSize(d)) / pangoScale
 		l.descFree(d)
@@ -1317,16 +1321,17 @@ func xmlEscape(s string) string {
 
 func (e *pangoEngine) fontCount() int { return len(e.fonts) }
 
-// forgetFonts lets go of the Pango and cairo fonts of the Fonts made so
-// far.
+// forgetFonts lets go of the Fonts made so far, and of their cairo
+// fonts, which a Font drawing on makes anew. Their Pango fonts go with
+// them, once nothing refers to them (releaseFonts).
 func (e *pangoEngine) forgetFonts() {
-	l := &pangoLib
 	for _, sf := range e.scaled {
-		l.cairoScaledFontDestroy(sf)
+		pangoLib.cairoScaledFontDestroy(sf)
 	}
 	clear(e.scaled)
-	for _, f := range e.fonts {
-		l.gObjectUnref(f.native)
-	}
 	clear(e.fonts)
+	e.dropScratch()
 }
+
+// releaseFonts releases the Pango fonts of the Fonts nothing refers to.
+func (e *pangoEngine) releaseFonts() { e.releaseDead(pangoLib.gObjectUnref) }

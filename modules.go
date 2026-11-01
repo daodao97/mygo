@@ -3,6 +3,7 @@ package mygo
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -78,6 +79,24 @@ func (ShellModule) FileIcon(path string, size int) ([]byte, error) {
 	var png []byte
 	err := onMainValue(func() (err error) {
 		png, err = backend().Shell().FileIcon(path, size)
+		return err
+	})
+	return png, err
+}
+
+// TypeIcon returns the icon the file manager shows for files with the
+// extension ext, such as "pdf" or ".pdf", as a PNG image of size by size
+// pixels, as FileIcon does, though no such file needs to exist: the icon
+// of an attachment not yet downloaded. It fails in browsers.
+func (ShellModule) TypeIcon(ext string, size int) ([]byte, error) {
+	needsApp("Shell.TypeIcon")
+	if size <= 0 {
+		return nil, errors.New("mygo: Shell.TypeIcon: size must be positive")
+	}
+	ext = strings.TrimPrefix(ext, ".")
+	var png []byte
+	err := onMainValue(func() (err error) {
+		png, err = backend().Shell().TypeIcon(ext, size)
 		return err
 	})
 	return png, err
@@ -763,7 +782,9 @@ func (t *Tray) PopUpMenu() {
 	t.do(func(n platform.Tray) { n.PopUpMenu(snap) })
 }
 
-// Bounds returns the position of the icon on screen.
+// Bounds returns the position of the icon on screen. macOS shows a menu bar
+// item on each display: Bounds is the one the user last clicked, so a window
+// placed against it, as a flyout, goes on the display the user clicked.
 func (t *Tray) Bounds() Rectangle {
 	return onMainValue(func() Rectangle {
 		if t.native == nil {
@@ -947,7 +968,14 @@ var ErrNotificationsDenied = platform.ErrNotificationsDenied
 // macOS the first notification asks the user whether to allow them, and
 // Show waits for the answer; it returns ErrNotificationsDenied when they
 // are not allowed.
-func (n *Notification) Show() error { return n.show(0) }
+func (n *Notification) Show() error {
+	return n.ShowContext(context.Background())
+}
+
+// ShowContext is Show with a cancellable delivery wait. Cancellation stops
+// waiting for authorization and removes an undelivered notification. The
+// context governs delivery only; a successfully shown notification stays.
+func (n *Notification) ShowContext(ctx context.Context) error { return n.show(ctx, 0) }
 
 // Schedule submits a one-shot local notification on iOS. Close cancels pending
 // and delivered requests with its ID. Delivery survives process termination.
@@ -957,10 +985,14 @@ func (n *Notification) Schedule(after time.Duration) error {
 	if after <= 0 {
 		return fmt.Errorf("mygo: notification delay must be positive")
 	}
-	return n.show(after)
+	return n.show(context.Background(), after)
 }
-func (n *Notification) show(after time.Duration) error {
+
+func (n *Notification) show(ctx context.Context, after time.Duration) error {
 	needsApp("Notification.Show")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if n.opts.Badge != nil && *n.opts.Badge < 0 {
 		return fmt.Errorf("mygo: notification badge cannot be negative")
 	}
@@ -968,11 +1000,25 @@ func (n *Notification) show(after time.Duration) error {
 	if notifications.byID == nil {
 		notifications.byID = map[string]*Notification{}
 	}
-	previous := notifications.byID[n.id]
+	previous, shown := notifications.byID[n.id]
 	notifications.byID[n.id] = n
 	notifications.Unlock()
 	ch := make(chan error, 1)
-	onMain(func() {
+	var completeOnce sync.Once
+	canceled := false
+	complete := func(err error, fromContext bool) {
+		completeOnce.Do(func() {
+			canceled = fromContext
+			deliver(ch, err)
+		})
+	}
+	stop := context.AfterFunc(ctx, func() { complete(ctx.Err(), true) })
+	defer stop()
+	show := func() {
+		if ctx.Err() != nil {
+			complete(ctx.Err(), true)
+			return
+		}
 		note := &platform.Notification{
 			ID:           n.id,
 			Title:        n.opts.Title,
@@ -985,15 +1031,35 @@ func (n *Notification) show(after time.Duration) error {
 		if s := n.opts.Sender; s != nil {
 			note.Sender = &platform.NotificationSender{ID: s.ID, Name: s.Name, Avatar: s.Avatar}
 		}
-		backend().ShowNotification(note, func(err error) { deliver(ch, err) })
-	})
+		backend().ShowNotification(note, func(err error) {
+			complete(err, false)
+			if canceled {
+				// An authorization answer can arrive after cancellation.
+				// Do not remove a newer notification sharing this ID.
+				postMain(func() {
+					notifications.Lock()
+					current := notifications.byID[n.id]
+					notifications.Unlock()
+					if current == nil || current == n || current == previous {
+						backend().RemoveNotification(n.id)
+					}
+				})
+			}
+		})
+	}
+	if isMainThread() {
+		show()
+	} else if !postMain(show) {
+		complete(errLoopStopped, false)
+	}
 	err := await(ch)
 	if err != nil {
+		// Nothing will be clicked. A failed replacement must retain the
+		// earlier notification's listener, and a late error must not erase a
+		// newer concurrent request.
 		notifications.Lock()
-		// A failed replacement must retain the earlier notification's listener,
-		// and a late error must not erase a newer concurrent request.
 		if notifications.byID[n.id] == n {
-			if previous != nil {
+			if shown {
 				notifications.byID[n.id] = previous
 			} else {
 				delete(notifications.byID, n.id)

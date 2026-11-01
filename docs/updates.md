@@ -194,6 +194,12 @@ archive is left out. Builds need to download the published updates then;
 when they cannot, such as for the first version, they make no deltas and
 say why.
 
+If the latest GitHub release has no manifest for the platform being built,
+the build looks through earlier releases for that platform's manifest,
+with the configured tag prefix, skipping drafts and prereleases. This
+keeps delta updates and their history when platforms are published
+separately. Installed apps still check the configured update feed.
+
 An app whose version has a delta downloads it, checks its signature and
 makes the new version from itself next to it, checking that every file has
 the size and SHA-256 that the delta gives, so that the result is exactly

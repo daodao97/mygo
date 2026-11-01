@@ -187,6 +187,52 @@ func TestRoundedClipMasksOnlyTheBranchWithATransform(t *testing.T) {
 	}
 }
 
+func TestTranslatedContentLeavesRoundedClipsUnmasked(t *testing.T) {
+	// #1002: labels moved by a fraction of a pixel, which glyphs are not
+	// folded by, in the clipped panes of a rounded frame. Moved, they sit
+	// elsewhere in the clips, which the shader cuts in the frame's
+	// coordinates as for labels that are not; turned, they keep the
+	// frame's corners, with masks.
+	scene.FoldTranslations() // as package ui does
+	atlas := scene.NewAtlas(1, 16, 16)
+	build := func(m scene.Affine) (*Builder, int) {
+		s := &scene.Scene{Width: 1280, Height: 800, MaskAtlas: atlas, Ops: []scene.Op{
+			{Kind: scene.OpPushClip, Rect: scene.Rect{X: 18, Y: 18, W: 1244, H: 764}, Radii: scene.Uniform(14)},
+		}}
+		for i, x := range []float32{18, 458, 982} {
+			start := int32(len(s.Glyphs))
+			s.Glyphs = append(s.Glyphs, scene.Glyph{X: x + 16, Y: 34, W: 8, H: 12, UW: 8, VH: 12, Color: scene.Color{A: 255}},
+				scene.Glyph{X: x + 24.5, Y: 34, W: 8, H: 12, UW: 8, VH: 12, Color: scene.Color{A: 255}})
+			s.Ops = append(s.Ops,
+				scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: x, Y: 18, W: []float32{440, 524, 280}[i], H: 764}},
+				scene.Op{Kind: scene.OpGlyphs, Start: start, End: int32(len(s.Glyphs)), Transform: m},
+				scene.Op{Kind: scene.OpPopClip})
+		}
+		s.Ops = append(s.Ops, scene.Op{Kind: scene.OpPopClip})
+		b := &Builder{}
+		masks := 0
+		b.Build(s, func(*scene.Image) uintptr { masks++; return 1 })
+		return b, masks
+	}
+	for _, m := range []scene.Affine{scene.Translation(0, -2.54), scene.Translation(0.5, 0.25)} {
+		b, masks := build(m)
+		if masks != 0 || len(b.maskSlots) != 0 {
+			t.Errorf("translation %v: rasterized %d clip masks", m, masks)
+		}
+		for i, in := range b.Instances {
+			if in.Transform1[3] != 0 || in.Transform0[3] != 1 || in.Transform1[2] != m.Y {
+				t.Errorf("translation %v: glyph %d clip mode %v, transform %v %v", m, i, in.Transform1[3], in.Transform0, in.Transform1)
+			}
+		}
+		b.Release()
+	}
+	b, masks := build(scene.Rotation(3))
+	defer b.Release()
+	if masks == 0 || len(b.Instances) == 0 || b.Instances[0].Transform1[3] != 1 {
+		t.Fatalf("turned glyphs lost their rounded ancestor's mask: %d masks", masks)
+	}
+}
+
 // shadowFragments is the area, in pixels, the scissor rectangles of the
 // batches of the shadows (kind 1) leave to the renderer to shade.
 func shadowFragments(b *Builder) (area int64, instances int) {

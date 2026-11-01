@@ -749,7 +749,7 @@ func initUIA() {
 			if hr, ok := uiaOf(this).pageCall(uiaGetProviderOptions, p); ok {
 				return hr
 			}
-			*(*int32)(native(p)) = 0x1 | 0x20 // ServerSideProvider, UseComThreading
+			*(*int32)(native(p)) = 0x2 | 0x20 // ServerSideProvider, UseComThreading
 			return sOK
 		}),
 		cb(func(this, pattern, p uintptr) uintptr { // GetPatternProvider

@@ -194,7 +194,8 @@ term, err := terminal.New(terminal.Options{
   })
   ```
 - `OptionAsAlt` makes Option on macOS the Alt key of programs (Meta),
-  instead of the key typing accented letters.
+  instead of the key typing accented letters: Option-E sends Esc and e,
+  without the ´ it types otherwise.
 - `CopyOnSelect: terminal.CopyOnSelectClipboard` copies the selection to
   the clipboard as the pointer ends it, and as Select All makes it, as
   Ghostty's `copy-on-select = clipboard`. Ghostty's `primary`, Linux's

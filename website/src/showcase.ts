@@ -169,4 +169,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/lumilo.jpg",
   },
+  {
+    name: "Tomoru",
+    description:
+      "Live bilingual subtitles for anything you watch on macOS and Windows. It listens to what your computer plays, from raw anime and VTuber streams to games and meetings, and shows each line with its translation over any app.",
+    url: "https://tomoru.acane.dev",
+    author: "ACAne0320",
+    mode: "native",
+    image: "/showcase/tomoru.jpg",
+  },
 ]

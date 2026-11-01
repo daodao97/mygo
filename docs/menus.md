@@ -85,6 +85,17 @@ shortcut, which `Label` and `Accelerator` override:
 Items with the roles of macOS are left out on other platforms, so one
 template serves every platform.
 
+The items of the editing roles, in menu bars and popups alike, are enabled
+only while the focus can act on them, as in other apps: in
+[native UI](ui/README.md), Cut and Copy with text selected, Undo with
+something to undo, Paste in a text input, all of them for an element that
+takes its input (`HandleInput`), and on macOS a role whose key a
+[shortcut](ui/input.md) of the focus or the window takes.
+On macOS the menus holding them ask the focus: a page's web view enables
+them, and the Speech items, as WebKit does, and native UI, which does not
+speak, disables the Speech items. On Linux and Windows a page's items keep
+the state the app gave them. An item the app disables stays disabled.
+
 ### Changing items
 
 Change items of a menu in use with their methods, so that the native menu

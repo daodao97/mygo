@@ -1791,7 +1791,7 @@ void mygo_ios_message(uint64_t token, const char *json) {
   MyGoPresentation *delegate = trackPresentation(token, alert, parent);
   delegate.cancelIndex = [o[@"CancelID"] integerValue];
   // A nil slice arrives as JSON null (NSNull), which has no count.
-  NSArray *buttons = [o[@"Buttons"] isKindOfClass:NSArray.class] ? o[@"Buttons"] : @[], *destructive = o[@"DestructiveButtons"];
+  NSArray *buttons = [o[@"Buttons"] isKindOfClass:NSArray.class] ? o[@"Buttons"] : @[], *destructive = o[@"DestructiveIDs"];
   BOOL hasCancel = NO;
   for (NSUInteger i = 0; i < buttons.count; i++) {
     UIAlertActionStyle actionStyle = i == delegate.cancelIndex && (buttons.count > 1 || style == UIAlertControllerStyleActionSheet) ? UIAlertActionStyleCancel : UIAlertActionStyleDefault;

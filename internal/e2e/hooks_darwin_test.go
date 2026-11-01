@@ -26,6 +26,11 @@ func activateMenu(w *mygo.Window, path ...string) (err error) {
 	return err
 }
 
+func menuItemEnabled(_ *mygo.Window, path ...string) (enabled bool, err error) {
+	mygo.RunOnMain(func() { enabled, err = darwin.TestMenuItemEnabled(path...) })
+	return enabled, err
+}
+
 func pressShortcut(key string, shift bool) (handled bool, supported bool) {
 	mygo.RunOnMain(func() { handled = darwin.TestPerformKeyEquivalent(key, shift) })
 	return handled, true
@@ -94,6 +99,10 @@ func drag(w *mygo.Window, points [][2]float64) bool {
 	mygo.RunOnMain(func() { darwin.TestDrag(w.NativeHandle(), points) })
 	return true
 }
+
+// The wheel over a web view is covered by internal/darwin's
+// TestEmbeddedWebViewScrollReachesSurface, with AppKit's events.
+func wheel(*mygo.Window, float64, float64) bool { return false }
 
 func webViewAttached(w *mygo.Window) (attached bool, supported bool) {
 	mygo.RunOnMain(func() { attached = darwin.TestWebViewAttached(w.NativeHandle()) })
@@ -240,6 +249,11 @@ func controlClick(w *mygo.Window, x, y float64) bool {
 	return true
 }
 
+func secondaryClickAsPrimary(w *mygo.Window, x, y float64) (ok bool) {
+	mygo.RunOnMain(func() { ok = darwin.TestSecondaryClickAsPrimary(w.NativeHandle(), x, y) })
+	return ok
+}
+
 func composeOver(w *mygo.Window, text string, caret int, commit bool, from, length int) (ok bool) {
 	mygo.RunOnMain(func() { ok = darwin.TestComposeOver(w.NativeHandle(), text, caret, commit, from, length) })
 	return ok
@@ -307,6 +321,7 @@ func screenColor(*mygo.Window, float64, float64) (uint8, uint8, uint8, bool) { r
 func rightClick(*mygo.Window, float64, float64) bool { return false }
 func popupMenus() ([][]string, bool)                 { return nil, false }
 func choosePopupItem(string) bool                    { return false }
+func popupItemEnabled(string) (bool, bool)           { return false, false }
 
 // pressEscape presses Escape in the key window, as the keyboard does.
 func pressEscape(*mygo.Window) bool {

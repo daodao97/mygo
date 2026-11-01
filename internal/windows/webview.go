@@ -626,22 +626,16 @@ func (w *window) acceleratorKeyPressed(_, args uintptr) {
 	w.b.menuCommand(cmd, w)
 }
 
-// pageEditRoles are the roles whose keys a page keeps, as in a browser and
-// in native UI: WebView2 cuts, copies and pastes with the page's own events
-// and every format of the clipboard, where editRole pastes text alone.
-var pageEditRoles = map[string]bool{
-	"undo": true, "redo": true, "cut": true, "copy": true, "paste": true,
-	"pasteAndMatchStyle": true, "delete": true, "selectAll": true,
-}
-
 // pageAccelerator returns the menu command a key pressed in a page runs,
-// if any.
+// if any. A page keeps the keys of the edit roles, as in a browser and in
+// native UI: WebView2 cuts, copies and pastes with the page's own events
+// and every format of the clipboard, where editRole pastes text alone.
 func (w *window) pageAccelerator(key accelKey) (uint16, bool) {
 	cmd, ok := w.accels[key]
 	if !ok {
 		return 0, false
 	}
-	if e := w.b.menus.entries[cmd]; e != nil && pageEditRoles[e.role] && pageEditKey(key) {
+	if e := w.b.menus.entries[cmd]; e != nil && platform.EditCommands[e.role] && pageEditKey(key) {
 		return 0, false
 	}
 	return cmd, true

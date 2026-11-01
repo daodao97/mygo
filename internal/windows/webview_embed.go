@@ -343,7 +343,10 @@ func (s *surface) webViewAt(x, y float64) *window {
 // forwardMouse sends a mouse message of the surface on to the web view
 // under the pointer, or that took the press, and reports whether it did:
 // the content then hears only that the pointer moved over it, or that a
-// button went down on it.
+// button went down on it. The wheel over a web view with
+// ScrollToContainer stays the content's, which scrolls as it does over
+// its own elements; a pinch still goes to the page, as on the other
+// platforms.
 func (s *surface) forwardMouse(m uint32, wp, lp uintptr) bool {
 	if s.layer == nil {
 		return false
@@ -365,6 +368,9 @@ func (s *surface) forwardMouse(m uint32, wp, lp uintptr) bool {
 	}
 	if v == nil || v.closed {
 		return false
+	}
+	if (m == wmMouseWheel || m == wmMouseHWheel) && v.opts.ScrollToContainer && !pinching(m, wp) {
+		return false // the content around the web view scrolls
 	}
 	var data uint32
 	keys := uintptr(loword(wp))
@@ -416,6 +422,12 @@ func (s *surface) forwardMouse(m uint32, wp, lp uintptr) bool {
 		}
 	}
 	return true
+}
+
+// pinching reports whether a wheel message is a touchpad's pinch, which
+// Windows sends as scrolling by less than a notch with Ctrl held.
+func pinching(m uint32, wp uintptr) bool {
+	return m == wmMouseWheel && int16(hiword(wp))%120 != 0 && loword(wp)&0x0008 != 0 // MK_CONTROL
 }
 
 // mouseLeft tells the web view the pointer was over that it left.

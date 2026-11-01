@@ -125,6 +125,9 @@ surrounding deletions and preedit/commit callbacks. Windows IMM32 uses bounded
 document-feed/reconversion context and forwards composition and commit ranges.
 Changing the client resets native preedit so a candidate cannot move to a
 newly focused field. The platform callbacks are allocated once at startup.
+Assistive technology edits the client's text too: setting the element's
+value replaces it all, and inserting text replaces the selection, as in a
+`TextInput`.
 
 Keyboard navigation, pointer selection, clipboard policy and Edit-menu
 commands come through `HandleInput`. They belong to your control. This permits

@@ -31,6 +31,7 @@ func (ed *editor) build(c *ui.Context, buf *Buffer, o options) ui.Element {
 	ed.texts = l10n.In(c.Locale())
 	ed.init(buf, o, c.Theme())
 	ed.services = c.Services()
+	ed.builtViewH = ed.viewH
 	buf.watch(ed.services)
 	ed.sync()
 	ed.syncGitDiff()

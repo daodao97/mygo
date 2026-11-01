@@ -182,5 +182,11 @@
   "clipboardRead": "プログラムがクリップボードの読み取りを求めています",
   "clipboardReadAllow": "許可",
   "clipboardReadDeny": "拒否",
-  "clipboardReadEmpty": "クリップボードは空です。"
+  "clipboardReadEmpty": "クリップボードは空です。",
+  "decimalInvalid": "数値を入力してください",
+  "decimalWhole": "整数を入力してください",
+  "decimalPlaces": "{n, plural, other {小数点以下は # 桁までにしてください}}",
+  "decimalAtLeast": "{min} 以上の値を入力してください",
+  "decimalAtMost": "{max} 以下の値を入力してください",
+  "desktopShortcut": "デスクトップにショートカットを作成"
 }

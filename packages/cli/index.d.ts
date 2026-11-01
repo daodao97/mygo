@@ -374,24 +374,24 @@ export interface WindowsConfig {
 
 /** Linux packaging. */
 export interface LinuxConfig {
-  /** `Name <email>`, the maintainer of the Debian package (default: `author` in package.json, else the app's name). */
+  /** `Name <email>`, the maintainer of the Debian package and of the PKGBUILD (default: `author` in package.json, else the app's name). */
   maintainer?: string;
   /** A short description, for the desktop entry and the package. */
   comment?: string;
   /** The categories of the desktop entry (default: `["Utility"]`). */
   categories?: string[];
-  /** Debian packages the app needs besides GTK and WebKitGTK. */
+  /** Debian packages the app needs besides GTK and WebKitGTK; the PKGBUILD depends on the Arch Linux packages of those MyGo knows. */
   depends?: string[];
   /**
    * `false` for an app that shows no web page, in a window or a `ui.WebView`,
-   * as an app of native UI: its Debian package depends on GTK alone, and
+   * as an app of native UI: its Debian package and PKGBUILD depend on GTK alone, and
    * install.sh and `mygo doctor` do not ask for WebKitGTK (default: `true`).
    */
   webview?: boolean;
   /**
    * A command that runs the app, such as `my-app`, or a list of names, such
    * as `["my-app", "ma"]`, which adds a short one: a link in `/usr/bin` from
-   * the Debian package, and in `~/.local/bin` from install.sh, for each,
+   * the Debian package and the PKGBUILD, and in `~/.local/bin` from install.sh, for each,
    * which says to run the app by the first it links (default: none; the app
    * opens from the applications menu).
    */

@@ -11,17 +11,18 @@ import (
 
 // Span is a run of a RichText with a style of its own. What it leaves
 // zero takes the style of the text around it, and Italic, Underline,
-// WavyUnderline and Strikethrough only turn those on.
+// WavyUnderline, DottedUnderline and Strikethrough only turn those on.
 type Span struct {
-	Text          string
-	Font          string // a family, as for Element.Font
-	Size          float32
-	Weight        int
-	Italic        bool
-	Color         Color
-	Underline     bool
-	WavyUnderline bool
-	Strikethrough bool
+	Text            string
+	Font            string // a family, as for Element.Font
+	Size            float32
+	Weight          int
+	Italic          bool
+	Color           Color
+	Underline       bool
+	WavyUnderline   bool
+	DottedUnderline bool
+	Strikethrough   bool
 	// DecorationColor and DecorationThickness are those of the span's
 	// underline and strikethrough, as for Element.DecorationColor.
 	DecorationColor     Color
@@ -158,7 +159,7 @@ func (sc *spanCache) update(spans []Span) {
 	paints := false
 	for i, s := range spans {
 		end += utf8.RuneCountInString(s.Text)
-		paints = paints || s.Color.A > 0 || s.Underline || s.WavyUnderline || s.Strikethrough || s.Background.A > 0
+		paints = paints || s.Color.A > 0 || s.Underline || s.WavyUnderline || s.DottedUnderline || s.Strikethrough || s.Background.A > 0
 		same = same && sc.styles[i] == spanStyle(s, end)
 	}
 	sc.paints = paints
@@ -361,7 +362,7 @@ func (sp *spanPaint) lines(p *Painter, l *text.Layout, li int, x, y float32, col
 			return
 		}
 		span := &sp.spans[k]
-		d := decoration{underline: span.Underline || span.WavyUnderline, wavy: span.WavyUnderline, strike: span.Strikethrough, color: base.color, thick: base.thick}
+		d := decoration{underline: span.Underline || span.WavyUnderline || span.DottedUnderline, wavy: span.WavyUnderline, dotted: span.DottedUnderline, strike: span.Strikethrough, color: base.color, thick: base.thick}
 		if !d.underline && !d.strike {
 			return
 		}

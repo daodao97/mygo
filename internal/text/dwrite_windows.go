@@ -344,6 +344,7 @@ var dwGeneric = map[string][]string{
 
 type dwrite struct {
 	shapeScratch
+	nativeFonts
 	factory  uintptr // IDWriteFactory
 	factory2 uintptr // IDWriteFactory2, from Windows 8.1
 	factory3 uintptr // IDWriteFactory3, from Windows 10
@@ -357,9 +358,10 @@ type dwrite struct {
 	// one family.
 	fallbacks map[string]uintptr
 	faces     map[faceKey]uintptr
-	fonts     map[fontKey]*Font
-	color     map[uintptr]bool // whether a font face has color glyphs
-	thin      map[uintptr]bool // whether a font face is too thin for antialiasing
+	// fonts are the Fonts of faces at sizes, which hold a reference to
+	// their face until they are unreachable (nativeFonts).
+	fonts map[fontKey]*Font
+	thin  map[uintptr]bool // whether a font face is too thin for antialiasing
 
 	// The system's settings for text (settings): its rendering parameters,
 	// the correction renderers apply, whether it smooths fonts with
@@ -422,7 +424,6 @@ func newDWrite() (*dwrite, error) {
 		fallbacks: map[string]uintptr{},
 		faces:     map[faceKey]uintptr{},
 		fonts:     map[fontKey]*Font{},
-		color:     map[uintptr]bool{},
 		thin:      map[uintptr]bool{},
 		aliases:   map[string]string{},
 	}
@@ -657,9 +658,10 @@ func (e *dwrite) fontOf(face uintptr, size float32) *Font {
 	var m dwFontMetrics
 	call(face, faceGetMetrics, uintptr(unsafe.Pointer(&m)))
 	em := size / float32(max(m.designUnitsPerEm, 1))
-	f := &Font{Size: size, Ascent: float32(m.ascent) * em, Descent: float32(m.descent) * em, LineGap: float32(m.lineGap) * em, native: face, thin: e.isThin(face),
+	f := &Font{Size: size, Ascent: float32(m.ascent) * em, Descent: float32(m.descent) * em, LineGap: float32(m.lineGap) * em, native: face, thin: e.isThin(face), color: isColor(face),
 		underlineTop: float32(m.underlinePosition) * em, underlineThick: float32(m.underlineThickness) * em,
 		strikeTop: float32(m.strikethroughPosition) * em, strikeThick: float32(m.strikethroughThickness) * em}
+	e.own(f)
 	e.fonts[key] = f
 	return f
 }
@@ -1109,7 +1111,7 @@ func (e *dwrite) glyph(f *Font, id uint32, scale, dx float32, _ Shade, subpixel 
 	index := uint16(id)
 	var advance float32
 	run := dwGlyphRun{fontFace: f.native, fontEmSize: f.Size * scale, glyphCount: 1, glyphIndices: &index, glyphAdvances: &advance}
-	if e.isColor(f.native) {
+	if f.color {
 		if b, ok := e.colorGlyph(&run, dx); ok {
 			return b
 		}
@@ -1195,16 +1197,14 @@ func (e *dwrite) isThin(face uintptr) bool {
 	return t
 }
 
-func (e *dwrite) isColor(face uintptr) bool {
-	c, ok := e.color[face]
-	if !ok {
-		if f2 := queryInterface(face, &iidIDWriteFontFace2); f2 != 0 {
-			c = call(f2, face2IsColorFont) != 0
-			release(f2)
-		}
-		e.color[face] = c
+// isColor reports whether a font face has color glyphs.
+func isColor(face uintptr) bool {
+	f2 := queryInterface(face, &iidIDWriteFontFace2)
+	if f2 == 0 {
+		return false
 	}
-	return c
+	defer release(f2)
+	return call(f2, face2IsColorFont) != 0
 }
 
 // analyze returns the grayscale glyph run analysis of a run drawn at
@@ -1556,11 +1556,13 @@ func englishName(strs uintptr) string {
 
 func (e *dwrite) fontCount() int { return len(e.fonts) }
 
-// forgetFonts lets go of the faces of the Fonts made so far; the faces of
-// the families stay.
+// forgetFonts lets go of the Fonts made so far; the faces of the families
+// stay. The Fonts' references to their faces go with them, once nothing
+// refers to them (releaseFonts).
 func (e *dwrite) forgetFonts() {
-	for _, f := range e.fonts {
-		release(f.native)
-	}
 	clear(e.fonts)
+	e.dropScratch()
 }
+
+// releaseFonts releases the faces of the Fonts nothing refers to.
+func (e *dwrite) releaseFonts() { e.releaseDead(release) }

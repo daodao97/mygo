@@ -13,7 +13,7 @@ func (s *demo) mobileView(c *ui.Context) {
 		s.secretView(c)
 		return
 	}
-	ui.Scroll(c.Key("mobile-services")).HideScrollbars().Fill().Padding(20).Gap(12).Children(func() {
+	ui.Scroll(c.Key("mobile-services")).Scrollbars(false).Fill().Padding(20).Gap(12).Children(func() {
 		ui.Text(c, "Mobile services").FontSize(26).Bold()
 		p := c.Preferences()
 		ui.Textf(c, "Text scale: %.2f", p.TextScale)

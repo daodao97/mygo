@@ -90,7 +90,9 @@ func (e *node) spanStyle() Span {
 		s.Color = t.color
 	}
 	if t.set&setUnderline != 0 {
-		s.Underline, s.WavyUnderline = t.underline && !t.wavy, t.underline && t.wavy
+		s.Underline = t.underline && !t.wavy && !t.dotted
+		s.WavyUnderline = t.underline && t.wavy
+		s.DottedUnderline = t.underline && t.dotted
 	}
 	if t.set&setStrike != 0 {
 		s.Strikethrough = t.strike
@@ -166,6 +168,7 @@ func over(s, base Span) Span {
 	s.Italic = s.Italic || base.Italic
 	s.Underline = s.Underline || base.Underline
 	s.WavyUnderline = s.WavyUnderline || base.WavyUnderline
+	s.DottedUnderline = s.DottedUnderline || base.DottedUnderline
 	s.Strikethrough = s.Strikethrough || base.Strikethrough
 	return s
 }

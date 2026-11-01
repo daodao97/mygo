@@ -12,7 +12,8 @@ ui.Textf(c, "%d files, %s", n, size).TextColor(c.Theme().TextMuted)
 
 `FontSize`, `FontWeight`, `Bold`, `Italic`, `Font`, `LineHeight`,
 `FixedLineHeight` (in DIPs, whatever the font size), `TextColor`,
-`TextAlign`, `Underline`, `WavyUnderline`, `Strikethrough`,
+`TextAlign`, `Underline`, `WavyUnderline`, `DottedUnderline` (as links
+mark hover), `Strikethrough`,
 `DecorationColor` and `DecorationThickness` (of the underline and
 strikethrough), `TextBackground` (a highlight behind the lines),
 `LetterSpacing` and `FontFeatures` style it, set on the text or on any

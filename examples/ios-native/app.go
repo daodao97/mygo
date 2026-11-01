@@ -176,7 +176,7 @@ func (s *demo) featureLink(c *ui.Context, f feature) {
 	}
 }
 func (s *demo) homeView(c *ui.Context) {
-	ui.Scroll(c).HideScrollbars().TrackScroll(&s.app.Scroll[0]).Fill().Padding(20).Gap(18).Children(func() {
+	ui.Scroll(c).Scrollbars(false).TrackScroll(&s.app.Scroll[0]).Fill().Padding(20).Gap(18).Children(func() {
 		ui.Text(c, "MyGo Mobile").FontSize(28).Bold()
 		ui.Text(c, "Explore a feature and try its native integration.").FontSize(14).LineHeight(1.5).TextColor(c.Theme().TextMuted)
 		appCard(c, func() {
@@ -204,7 +204,7 @@ func (s *demo) homeView(c *ui.Context) {
 	})
 }
 func (s *demo) featuresView(c *ui.Context) {
-	ui.Scroll(c).HideScrollbars().TrackScroll(&s.app.Scroll[1]).Fill().Padding(20).Gap(14).Children(func() {
+	ui.Scroll(c).Scrollbars(false).TrackScroll(&s.app.Scroll[1]).Fill().Padding(20).Gap(14).Children(func() {
 		ui.Text(c, "Feature Demos").FontSize(24).Bold()
 		ui.Text(c, "Try each integration and see the result here.").FontSize(14).TextColor(c.Theme().TextMuted)
 		for _, f := range features {
@@ -231,7 +231,7 @@ func (s *demo) featureView(c *ui.Context, p string) {
 	case strings.HasSuffix(p, "/navigation/detail"):
 		s.navigationDetail(c, p)
 	default:
-		ui.Scroll(c.Key(p)).HideScrollbars().TrackScroll(s.pageScroll(p)).Fill().Padding(20).Gap(16).Children(func() {
+		ui.Scroll(c.Key(p)).Scrollbars(false).TrackScroll(s.pageScroll(p)).Fill().Padding(20).Gap(16).Children(func() {
 			switch {
 			case strings.HasSuffix(p, "/text"):
 				ui.Text(c, "Chinese Text").FontSize(24).Bold()
@@ -307,10 +307,10 @@ func (s *demo) featureView(c *ui.Context, p string) {
 	}
 }
 func (s *demo) navigationDetail(c *ui.Context, p string) {
-	ui.Scroll(c).HideScrollbars().TrackScroll(s.pageScroll(p)).Fill().Padding(20).Gap(18).Children(func() {
+	ui.Scroll(c).Scrollbars(false).TrackScroll(s.pageScroll(p)).Fill().Padding(20).Gap(18).Children(func() {
 		ui.Text(c, "State Editor").FontSize(22).Bold()
 		ui.Text(c, "Drafts survive navigation. Cancel a back swipe to keep focus. Background the app to save.").FontSize(15).LineHeight(1.5)
-		ui.TextArea(c, &s.app.NavigationValue).HideScrollbars().Label("State input").InputOptions(ui.InputOptions{Return: ui.ReturnDefault}).MinHeight(150).FillWidth()
+		ui.TextArea(c, &s.app.NavigationValue).Scrollbars(false).Label("State input").InputOptions(ui.InputOptions{Return: ui.ReturnDefault}).MinHeight(150).FillWidth()
 		if ui.PrimaryButton(c, "Save State").FillWidth().Height(48).Clicked() {
 			s.app.SavedValue = s.app.NavigationValue
 			s.app.Routers[s.app.Tab].Pop()
@@ -358,7 +358,7 @@ func (s *demo) lifecycleControls(c *ui.Context) {
 	})
 }
 func (s *demo) statusView(c *ui.Context) {
-	ui.Scroll(c).HideScrollbars().TrackScroll(&s.app.Scroll[2]).Fill().Padding(20).Gap(18).Children(func() {
+	ui.Scroll(c).Scrollbars(false).TrackScroll(&s.app.Scroll[2]).Fill().Padding(20).Gap(18).Children(func() {
 		ui.Text(c, "Runtime Status").FontSize(24).Bold()
 		s.lifecycleControls(c)
 		ui.Text(c, "Interactions").FontSize(18).Bold()

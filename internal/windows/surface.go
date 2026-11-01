@@ -802,7 +802,7 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
 		delta := float64(int16(hiword(wp)))
 		precise := int(delta)%120 != 0
-		if m == wmMouseWheel && precise && loword(wp)&0x0008 != 0 { // MK_CONTROL
+		if pinching(m, wp) {
 			// A touchpad's pinch, which Windows sends as scrolling with
 			// Ctrl held, as it does Ctrl and two fingers: three notches'
 			// worth zoom twice as large.
@@ -1096,6 +1096,11 @@ func (s *surface) menuShortcut(vk uintptr, roles bool) bool {
 	e := w.b.menus.entries[cmd]
 	if e == nil || (e.role != "") != roles {
 		return false
+	}
+	if roles {
+		// The items of edit roles are grayed as the content was when their
+		// menu last opened, not as it is now.
+		w.enableEditItems(e.menu)
 	}
 	if st, _, _ := procGetMenuState.Call(e.menu, uintptr(cmd), mfByCommand); uint32(st) != 0xFFFFFFFF && st&mfGrayed != 0 {
 		return false

@@ -44,6 +44,13 @@ type WebViewOptions struct {
 	// Transparent shows what the window's view paints under the web view
 	// through the transparent parts of its page.
 	Transparent bool
+	// ScrollToContainer scrolls the native container around the web view
+	// instead of its page. It suits a document that fills its own height in
+	// a native reader, rather than a page that scrolls itself. The wheel
+	// and the touchpad over the web view scroll the native UI as over its
+	// own elements, on macOS, Windows and Linux; a touchpad's pinch still
+	// goes to the page.
+	ScrollToContainer bool
 }
 
 // errNoContent is returned by NewWebView for windows showing a page.
@@ -83,6 +90,7 @@ func (w *Window) newWebView(opts WebViewOptions, bg *background) (*WebView, erro
 	pw.pg = &Page{pw}
 	pw.resetPage()
 	popts := pw.platformOptions(&WindowOptions{Page: opts.Page, Transparent: opts.Transparent})
+	popts.ScrollToContainer = opts.ScrollToContainer
 	popts.BackgroundColor = pw.backgroundColor()
 	if opts.Transparent {
 		pw.background = nil

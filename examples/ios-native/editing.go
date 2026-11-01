@@ -19,7 +19,7 @@ func (s *demo) editingControls(c *ui.Context) {
 			s.editingResult = "Copied: " + mygo.Clipboard.ReadText()
 		}
 	})
-	area := ui.TextArea(c, &s.editingValue).HideScrollbars().Label("Editing sample").InputOptions(ui.InputOptions{
+	area := ui.TextArea(c, &s.editingValue).Scrollbars(false).Label("Editing sample").InputOptions(ui.InputOptions{
 		Keyboard: ui.KeyboardText, Correction: ui.CorrectionOff, Capitalization: ui.CapitalizeNone,
 	}).Height(120).FillWidth()
 	revealEditingField(c, area)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/internal/scene"
+	"github.com/egoist/mygo/internal/wait"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/image/font/gofont/goregular"
@@ -740,6 +741,121 @@ func TestFontsOfManySizes(t *testing.T) {
 			t.Fatalf("%d fonts after a frame", n)
 		}
 	}
+}
+
+// TestLayoutKeptAcrossFontFlush draws a layout kept while the System lets
+// go of its fonts, as a cross-fade draws the text it fades out (#982): its
+// fonts still draw it as before.
+func TestLayoutKeptAcrossFontFlush(t *testing.T) {
+	s := newSystem()
+	f, ok := s.engine().(fontForgetter)
+	if !ok {
+		t.Skip("the engine keeps no fonts")
+	}
+	kept := s.Layout(Params{Text: "Saved", Style: Style{Size: 13}})
+	before := layoutInk(t, s, kept)
+	for i := 0; f.fontCount() <= maxFonts; i++ {
+		s.Layout(Params{Text: "Hi", Style: Style{Size: 20 + float32(i)/10}})
+	}
+	s.EndFrame()
+	if f.fontCount() != 0 {
+		t.Fatalf("%d fonts after letting go of them", f.fontCount())
+	}
+	// The fonts nothing refers to are released.
+	runtime.GC()
+	s.EndFrame()
+	if after := layoutInk(t, s, kept); after != before {
+		t.Fatalf("the kept layout draws %d of ink, %d before", after, before)
+	}
+}
+
+// layoutInk draws a layout's glyphs and returns their coverage.
+func layoutInk(t *testing.T, s *System, l *Layout) int {
+	t.Helper()
+	ink := 0
+	for _, g := range l.Lines[0].Glyphs {
+		img := s.Glyph(g.Font, g.ID, 2, 0, 0, false)
+		if !img.OK && s.Full() {
+			s.MakeRoom()
+			img = s.Glyph(g.Font, g.ID, 2, 0, 0, false)
+		}
+		if !img.OK || img.inColor() {
+			t.Fatalf("glyph %v: %+v", g.ID, img)
+		}
+		for y := range int(img.H) {
+			for x := range int(img.W) {
+				ink += int(s.MaskAtlas.Pix[(int(img.Y)+y)*s.MaskAtlas.W+int(img.X)+x])
+			}
+		}
+	}
+	return ink
+}
+
+// releasingEngine gives its Fonts native fonts, numbered, and records
+// which it released, as the system's engines release theirs.
+type releasingEngine struct {
+	stubEngine
+	nativeFonts
+	made     uintptr
+	released map[uintptr]bool
+}
+
+func (e *releasingEngine) font(style Style) *Font {
+	f := e.stubEngine.font(style)
+	if f.native == 0 {
+		e.made++
+		f.native = e.made
+		e.own(f)
+	}
+	return f
+}
+
+func (e *releasingEngine) shape(text []rune, style Style, spans []Span, width float32, rtl, wholeWords bool) []shapedLine {
+	e.font(style) // the stub's shape finds it among its fonts
+	return e.stubEngine.shape(text, style, spans, width, rtl, wholeWords)
+}
+
+func (e *releasingEngine) fontCount() int { return len(e.fonts) }
+
+func (e *releasingEngine) forgetFonts() { clear(e.fonts) }
+
+func (e *releasingEngine) releaseFonts() {
+	e.releaseDead(func(native uintptr) { e.released[native] = true })
+}
+
+// TestFontOfKeptLayoutOutlivesFlush keeps a layout while the System lets
+// go of its fonts (#982): the native font of the layout's Font stays for
+// as long as the layout refers to it, and goes after, as the others do.
+func TestFontOfKeptLayoutOutlivesFlush(t *testing.T) {
+	s := newSystem()
+	e := &releasingEngine{released: map[uintptr]bool{}}
+	s.eng = e
+	kept := s.Layout(Params{Text: "Saved", Style: Style{Size: 13}})
+	native := kept.Lines[0].Glyphs[0].Font.native
+	for i := 0; e.fontCount() <= maxFonts; i++ {
+		s.Layout(Params{Text: "Hi", Style: Style{Size: 20 + float32(i)/10}})
+	}
+	s.EndFrame()
+	if e.fontCount() != 0 || len(e.released) != 0 {
+		t.Fatalf("%d fonts kept, %d released as the System let go of them", e.fontCount(), len(e.released))
+	}
+	wait.Until(t, "the fonts nothing refers to released", func() bool {
+		runtime.GC()
+		s.EndFrame()
+		return len(e.released) == int(e.made)-1
+	})
+	if e.released[native] {
+		t.Fatal("the font of the kept layout was released")
+	}
+	if got := kept.Lines[0].Glyphs[0].Font.native; got != native {
+		t.Fatalf("the kept layout's font is %d, was %d", got, native)
+	}
+	runtime.KeepAlive(kept)
+	wait.Until(t, "the kept layout's font released", func() bool {
+		runtime.GC()
+		s.EndFrame()
+		return e.released[native]
+	})
 }
 
 // TestPlacement checks that glyphs go to the positions within a pixel the

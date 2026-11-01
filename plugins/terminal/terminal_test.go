@@ -235,10 +235,10 @@ func TestScrollback(t *testing.T) {
 	}
 }
 
-// TestScrollbarDrag: the scroll bar shows as the viewport moves, and over
-// its strip, where the pointer is the arrow rather than the I-beam, and
-// fades out a while after. It drags the scrollback along: by the thumb, or
-// from where the track is pressed.
+// TestScrollbarDrag: the scroll bar shows while the pointer is over the
+// terminal, as the code editor's does, and goes as it leaves; over its
+// strip the pointer is the arrow rather than the I-beam. It drags the
+// scrollback along: by the thumb, or from where the track is pressed.
 func TestScrollbarDrag(t *testing.T) {
 	loadLib(t)
 	term, err := New(Options{Conn: newPipe()})
@@ -266,10 +266,13 @@ func TestScrollbarDrag(t *testing.T) {
 		return img.RGBAAt(395*s, y*s) != img.RGBAAt(380*s, y*s)
 	}
 	bottom := offset()
+	if shows(188) {
+		t.Error("the bar shows, the pointer away")
+	}
 	tt.Move(100, 100)
 	tt.Frame()
-	if shows(188) {
-		t.Error("the bar shows at the bottom, the pointer elsewhere")
+	if !shows(188) {
+		t.Error("the bar doesn't show with the pointer over the terminal")
 	}
 	// Over the strip, at the bottom: the bar, and the arrow.
 	tt.Move(395, 100)
@@ -303,22 +306,20 @@ func TestScrollbarDrag(t *testing.T) {
 	if c := tt.Cursor(); c != ui.CursorText {
 		t.Errorf("over the text, the pointer is %v, want the I-beam", c)
 	}
-	// It stays a while, and fades out though the viewport is up.
-	tt.Advance(500 * time.Millisecond)
-	tt.Frame()
 	if !shows(12) {
-		t.Error("the bar went at once")
+		t.Error("the bar went with the pointer still over the terminal")
 	}
-	tt.Advance(2 * time.Second)
+	// The pointer away, it goes though the viewport is up, and comes back
+	// with it.
+	tt.Move(100, -50)
 	tt.Frame()
 	if shows(12) {
-		t.Error("the bar didn't fade out")
+		t.Error("the bar stayed with the pointer away")
 	}
-	// A wheel shows it again.
 	tt.Wheel(100, 100, 0, 40)
 	tt.Frame()
 	if !shows(15) {
-		t.Error("scrolling didn't show the bar")
+		t.Error("the bar didn't show with the pointer back")
 	}
 	// A press low on the track brings the thumb there.
 	tt.Press(395, 190)
@@ -1407,6 +1408,66 @@ func TestKeyWithoutText(t *testing.T) {
 	tt.Key(0, ui.KeyB)
 	if got := conn.take(term); got != "b" {
 		t.Errorf("sent %q", got)
+	}
+}
+
+// TestOptionAsAltDropsText: with Options.OptionAsAlt on macOS, Option
+// and a letter go as Alt (Esc and the letter), and what macOS still types
+// for the key, or composes for a dead key as ´ for Option-E, is dropped
+// (#1000). The composition is refused, which has macOS give it up rather
+// than compose the next key with it. The key's release goes as any key's.
+func TestOptionAsAltDropsText(t *testing.T) {
+	loadLib(t)
+	defer func(was string) { goos = was }(goos)
+	goos = "darwin"
+	conn := newPipe()
+	term, err := New(Options{Conn: conn, OptionAsAlt: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.Frame()
+	v := term.v
+	// press presses key with mods as macOS does, its text coming from
+	// interpretKeyEvents: typed as text, or composed for a dead key until
+	// the next key, which macOS then composes with it unless the
+	// composition was refused.
+	composing := false
+	press := func(mods ui.Modifiers, key ui.Key, text string, dead bool) {
+		t.Helper()
+		if composing {
+			// Composed with the dead key: no key, the composition's end,
+			// then both characters.
+			composing = false
+			v.input(ui.InputEvent{Kind: ui.InputCompose})
+			v.input(ui.InputEvent{Kind: ui.InputText, Text: "´" + text})
+		} else {
+			v.input(ui.InputEvent{Kind: ui.InputKeyDown, Mods: mods, Key: key})
+			if dead {
+				composing = v.input(ui.InputEvent{Kind: ui.InputCompose, Text: text, Caret: 1})
+			} else {
+				v.input(ui.InputEvent{Kind: ui.InputText, Text: text})
+			}
+		}
+		v.input(ui.InputEvent{Kind: ui.InputKeyUp, Mods: mods, Key: key})
+	}
+	press(ui.Alt, ui.KeyE, "´", true)
+	press(0, ui.KeyX, "x", false)
+	if got, want := conn.take(term), "\x1bex"; got != want {
+		t.Errorf("Option-E and x sent %q, want %q", got, want)
+	}
+	// Option-X types ≈ on a US layout, as text.
+	press(ui.Alt, ui.KeyX, "≈", false)
+	if got, want := conn.take(term), "\x1bx"; got != want {
+		t.Errorf("Option-X sent %q, want %q", got, want)
+	}
+	// Programs that ask for the Kitty keyboard protocol's releases get
+	// them.
+	term.Feed([]byte("\x1b[>11u"))
+	press(ui.Alt, ui.KeyE, "´", true)
+	if got, want := conn.take(term), "\x1b[101;3u\x1b[101;3:3u"; got != want {
+		t.Errorf("Option-E with the Kitty keyboard protocol sent %q, want %q", got, want)
 	}
 }
 

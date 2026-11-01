@@ -98,6 +98,34 @@ func TestTextInputClientCompositionAndReplacement(t *testing.T) {
 	}
 }
 
+// TestCompositionTaken: the window tells the system whether the focus took
+// a composition, which input methods give up otherwise on macOS. An element
+// taking text itself (TextCaret) that leaves one, as a terminal leaves the
+// dead key of a key it sent as Alt, does not take it; a text input client
+// takes it, whatever its HandleInput answers.
+func TestCompositionTaken(t *testing.T) {
+	take := true
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(100, 40).Focusable().AutoFocus().TextCaret(Rect{0, 0, 1, 16}).HandleInput(func(ev InputEvent) bool {
+			return ev.Kind != InputCompose || take
+		})
+	}, 200, 100)
+	defer tt.rt.close()
+	compose := platform.SurfaceEvent{Kind: platform.TextComposition, Text: "´", Caret: 1}
+	if !tt.send2(compose) {
+		t.Error("a composition the element took was not taken")
+	}
+	take = false
+	if tt.send2(compose) {
+		t.Error("a composition the element left was taken")
+	}
+	client := primitiveTester(&primitiveClient{})
+	defer client.rt.close()
+	if !client.send2(compose) {
+		t.Error("a text input client's composition was not taken")
+	}
+}
+
 func TestTextInputClientNativeEndBeforeCommit(t *testing.T) {
 	c := &primitiveClient{text: "abc", selection: TextInputSelection{Range: TextInputRange{Start: 3, End: 3}}}
 	tt := primitiveTester(c)

@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo/internal/platform"
 )
 
-func TestHideScrollbarsRetainsContentInteraction(t *testing.T) {
+func TestScrollbarsFalseRetainsContentInteraction(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		container    func(*Context) Element
@@ -24,7 +24,7 @@ func TestHideScrollbarsRetainsContentInteraction(t *testing.T) {
 			tt := NewTester(func(c *Context) {
 				sc := tc.container(c).Size(100, 100).TrackScroll(&offset)
 				if hide {
-					sc.HideScrollbars()
+					sc.Scrollbars(false)
 				}
 				sc.Children(func() {
 					if Box(c).Size(400, 300).Background(Hex("#ffffff")).Clicked() {
@@ -68,41 +68,71 @@ func TestHideScrollbarsRetainsContentInteraction(t *testing.T) {
 			tt.Frame()
 			tt.Move(float32(tc.x), float32(tc.y))
 			if tt.Image().RGBAAt(tc.x, tc.y) == white {
-				t.Fatal("omitting HideScrollbars did not restore thumb")
+				t.Fatal("Scrollbars(true) did not restore thumb")
 			}
 		})
 	}
 }
 
-// The bars of a scroll container show as its content scrolls and for a
-// moment after, and while the pointer is on a track, but not all the
-// while the pointer is over the container.
-func TestScrollbarsShowWhileScrolling(t *testing.T) {
-	tt := NewTester(func(c *Context) {
-		Scroll(c).Size(100, 100).Children(func() {
-			Box(c).Size(100, 300).Background(Hex("#ffffff"))
+// A Scrollbar paints the thumb a scroll container shows for the same
+// view, content and offset, pixel for pixel, dragged or not; and OffsetAt
+// undoes Thumb.
+func TestScrollbarLikeContainer(t *testing.T) {
+	const content = 600
+	var offset float64
+	var dragging bool
+	tt := coreNewTester(func(c *context) {
+		coreRow(c).Size(200, 200).Children(func() {
+			sc := coreScroll(c).Size(100, 200).Children(func() { coreBox(c).Size(100, content) })
+			sc.st.scrollY = offset
+			coreBox(c).Size(100, 200).Draw(func(p *Painter, r Rect) {
+				p.Scrollbar(Scrollbar{Box: r, View: r.H, Content: content, Offset: float32(offset)}, ScrollbarState{Dragging: dragging})
+			})
 		})
-	}, 100, 100)
-	white := color.RGBA{255, 255, 255, 255}
-	shown := func() bool { return tt.Image().RGBAAt(94, 25) != white }
-	tt.Move(50, 50)
-	if shown() {
-		t.Fatal("the bar shows with the pointer over the content")
+	}, 200, 200)
+	same := func(what string) {
+		t.Helper()
+		img := tt.Image()
+		s := img.Bounds().Dx() / 200
+		painted := false
+		for y := 0; y < 200*s; y++ {
+			for x := 80 * s; x < 100*s; x++ {
+				a, b := img.RGBAAt(x, y), img.RGBAAt(x+100*s, y)
+				if a != b {
+					t.Fatalf("%s: at (%d, %d) the container's bar is %v, the Scrollbar's %v", what, x, y, a, b)
+				}
+				painted = painted || a != img.RGBAAt(10*s, 10*s)
+			}
+		}
+		if !painted {
+			t.Fatalf("%s: no thumb painted", what)
+		}
 	}
-	tt.Scroll(50, 50, 0, 30)
-	if !shown() {
-		t.Fatal("the bar does not show as the content scrolls")
+	tt.Move(50, 100)
+	tt.Frame()
+	same("at the top")
+	offset = 250
+	tt.Frame()
+	same("scrolled")
+	// The container's thumb held: both widen.
+	g := Scrollbar{Box: Rect{0, 0, 100, 200}, View: 200, Content: content, Offset: 250}
+	start, n := g.Thumb()
+	dragging = true
+	tt.Press(95, start+n/2)
+	tt.Frame()
+	same("dragged")
+	tt.Release(95, start+n/2)
+	for _, off := range []float32{0, 100, 250, 400} {
+		g.Offset = off
+		start, _ := g.Thumb()
+		if got := g.OffsetAt(start); got < off-0.01 || got > off+0.01 {
+			t.Errorf("OffsetAt(Thumb()) at %v = %v", off, got)
+		}
 	}
-	tt.Advance(scrollbarLinger / 2)
-	if !shown() {
-		t.Fatal("the bar went before its moment was up")
+	if got := g.OffsetAt(-100); got != 0 {
+		t.Errorf("OffsetAt above the track = %v, want 0", got)
 	}
-	tt.Advance(scrollbarLinger)
-	if shown() {
-		t.Fatal("the bar stays after the content stopped scrolling")
-	}
-	tt.Move(94, 25)
-	if !shown() {
-		t.Fatal("the bar does not show with the pointer on its track")
+	if got := g.OffsetAt(500); got != content-200 {
+		t.Errorf("OffsetAt below the track = %v, want %v", got, content-200)
 	}
 }

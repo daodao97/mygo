@@ -12,6 +12,8 @@ import (
 // Platforms without a backend run no GUI tests.
 func activateMenu(*mygo.Window, ...string) error { return errors.New("unsupported") }
 
+func menuItemEnabled(*mygo.Window, ...string) (bool, error) { return false, errors.ErrUnsupported }
+
 func pressShortcut(string, bool) (bool, bool) { return false, false }
 
 func endSheet(*mygo.Window) (bool, bool) { return false, false }
@@ -31,6 +33,8 @@ func drag(*mygo.Window, [][2]float64) bool { return false }
 func sideButton(*mygo.Window, bool) bool { return false }
 
 func pinch(*mygo.Window, float64, float64, float64) (float64, bool) { return 0, false }
+
+func wheel(*mygo.Window, float64, float64) bool { return false }
 
 func webViewAttached(*mygo.Window) (bool, bool) { return false, false }
 
@@ -99,6 +103,8 @@ func failWebViews(int) bool { return false }
 // A Control-click is a secondary click on macOS only.
 func controlClick(*mygo.Window, float64, float64) bool { return false }
 
+func secondaryClickAsPrimary(*mygo.Window, float64, float64) bool { return false }
+
 // Input methods, file drops and assistive technology are only automated
 // on macOS.
 func composeOver(*mygo.Window, string, int, bool, int, int) bool { return false }
@@ -133,6 +139,7 @@ func observe(*mygo.Window) (func(), bool) { return nil, false }
 func rightClick(*mygo.Window, float64, float64) bool { return false }
 func popupMenus() ([][]string, bool)                 { return nil, false }
 func choosePopupItem(string) bool                    { return false }
+func popupItemEnabled(string) (bool, bool)           { return false, false }
 
 // Input methods keep the keys typed while they compose from the content
 // themselves here (GTK's filtering, IMM32's VK_PROCESSKEY), which a

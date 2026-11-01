@@ -25,6 +25,7 @@ const (
 	env10CreateCompositionControllerWithOptions = 22
 	ctlOptsPutProfileName                       = 4 // ICoreWebView2ControllerOptions
 	ctlOptsPutIsInPrivateModeEnabled            = 6
+	profilePutPreferredColorScheme              = 9  // ICoreWebView2Profile
 	profile2ClearBrowsingData                   = 10 // ICoreWebView2Profile2
 )
 

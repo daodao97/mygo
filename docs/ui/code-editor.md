@@ -130,10 +130,17 @@ the find bar on a query and `FindMatches` counts its matches; `Fold`,
 imports, as an editor can on opening a file; `Focused` reports whether the editor has
 the keyboard focus, and `VisibleLines` the first and last lines the last
 frame showed, as a half page of Vim's moves by. `ScrollY` and
-`SetScrollY` read and set how far the lines are scrolled, in DIPs, and
-`LineTop` where a line starts, below the first: editors side by side
-scroll together with them, and an app draws what joins their lines, as
-the bands between the panes of a merge.
+`SetScrollY` read and set how far the lines are scrolled, in DIPs,
+`ViewportHeight` how high the part of them in view is, and `LineTop`
+where a line starts, below the first, `LineTop` of the count of lines
+being the height of them all: editors side by side scroll together with
+them, an app draws what joins their lines, as the bands between the
+panes of a merge, and a minimap beside the editor shows where its view
+is. The scroll bars' thumbs show while the pointer is over the editor, or
+drags one, as a scroll container's do, or all the time with
+`KeepScrollbars`; the marks of changes, matches and diagnostics on the
+vertical one show all the time. `NoScrollbars` takes the bars and their
+marks away, and gives their room to the text.
 
 `OnInput` sees each input event before the editor does: keys, the text
 typed, edit commands and the pointer. Returning true takes the event, and
@@ -196,6 +203,10 @@ app.code.OnInput = func(ev ui.InputEvent) bool {
 - `ReadOnly` lets the text be selected and copied, not edited.
 - `FitContent` makes the editor as high as its lines, rather than
   scrolling them, to show code in a scroll view or a list.
+- `KeepScrollbars` keeps the scroll bars' thumbs showing with the pointer
+  away, as a scroll container's `KeepScrollbars`; `NoScrollbars` takes
+  the bars away, with their room, the wheel and the keys still
+  scrolling.
 - `Font` and `LineHeight` set the text: the system's monospaced font of
   13 DIPs, 1.5 times as high, by default.
 - `NoAutoClose`, `NoFolding`, `NoActiveLine` and `NoScrollPastEnd` turn

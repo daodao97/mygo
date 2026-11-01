@@ -78,7 +78,7 @@ func (s *demo) diagnosticsView(c *ui.Context) {
 		t.Background = ui.Hex("#eef4f8")
 		c.SetTheme(t)
 	}
-	ui.Scroll(c).HideScrollbars().TrackScroll(&s.Scroll).Fill().Padding(20).Gap(16).Children(func() {
+	ui.Scroll(c).Scrollbars(false).TrackScroll(&s.Scroll).Fill().Padding(20).Gap(16).Children(func() {
 		ui.Text(c, "MyGo on iOS").FontSize(28).Bold()
 		ui.Text(c, "Native Go UI · UIKit · Metal").TextColor(c.Theme().TextMuted)
 		ui.Textf(c, "Count: %d", s.Count).FontSize(36).Bold()

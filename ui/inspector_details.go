@@ -202,7 +202,7 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 	if v, ok := edgesCSS(e.barInset); ok {
 		add("scrollbar-insets", v)
 	}
-	if e.flags&flagHideScrollbars != 0 {
+	if hide, _ := e.scrollbars(); hide {
 		add("scrollbar-width", "none")
 	}
 	if v, ok := edgesCSS(e.border); ok {
@@ -369,9 +369,12 @@ func textStyles(ts *textStyle, set uint32) []inspDecl {
 	}
 	var deco []string
 	if set&setUnderline != 0 && ts.underline {
-		if ts.wavy {
+		switch {
+		case ts.wavy:
 			deco = append(deco, "underline wavy")
-		} else {
+		case ts.dotted:
+			deco = append(deco, "underline dotted")
+		default:
 			deco = append(deco, "underline")
 		}
 	}

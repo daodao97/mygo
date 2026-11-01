@@ -549,6 +549,14 @@ Inspect Element (Inspect on Windows), or call `win.Page().OpenDevTools()`.
 Production builds do not, unless built with `mygo build -debug` or a window's
 page sets `DevTools: mygo.DevToolsEnabled` in `WindowOptions.Page`.
 
+On Windows, an app takes `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` and
+`WEBVIEW2_USER_DATA_FOLDER` as other WebView2 apps do. With
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`,
+another process can drive its pages over the DevTools protocol, as a test
+runner, Playwright's `connectOverCDP` or an agent does. This works in every
+build, as with Microsoft's loader: whoever starts the app sets its
+environment.
+
 On Windows, WebView2's own keys come with the inspector: F5 and Ctrl+R reload
 the page (a reload [`OnWillNavigate`](windows.md#pages) is not asked about),
 Ctrl+P prints, Ctrl+F finds and Ctrl+Plus zooms only where the inspector is

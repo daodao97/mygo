@@ -21,6 +21,20 @@ func debData(t *testing.T, deb string) map[string]string { return debMember(t, d
 // control.tar.gz or data.tar.gz.
 func debMember(t *testing.T, deb, archive string) map[string]string {
 	t.Helper()
+	files := map[string]string{}
+	debEntries(t, deb, archive, func(hdr *tar.Header, content []byte) {
+		if hdr.Typeflag == tar.TypeSymlink {
+			content = []byte(hdr.Linkname)
+		}
+		files[strings.TrimPrefix(hdr.Name, "./")] = string(content)
+	})
+	return files
+}
+
+// debEntries calls f with each entry of an archive of a Debian package and
+// its content.
+func debEntries(t *testing.T, deb, archive string, f func(hdr *tar.Header, content []byte)) {
+	t.Helper()
 	b, err := os.ReadFile(deb)
 	if err != nil {
 		t.Fatal(err)
@@ -44,25 +58,20 @@ func debMember(t *testing.T, deb, archive string) map[string]string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		files := map[string]string{}
 		tr := tar.NewReader(gz)
 		for {
 			hdr, err := tr.Next()
 			if err == io.EOF {
-				return files
+				return
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			content, _ := io.ReadAll(tr)
-			if hdr.Typeflag == tar.TypeSymlink {
-				content = []byte(hdr.Linkname)
-			}
-			files[strings.TrimPrefix(hdr.Name, "./")] = string(content)
+			f(hdr, content)
 		}
 	}
 	t.Fatal("no " + archive)
-	return nil
 }
 
 func TestDebCommand(t *testing.T) {
@@ -178,8 +187,8 @@ func TestLinuxCommandJSON(t *testing.T) {
 }
 
 // TestBuildLinuxSlug builds an app with a slug of its own, which names the
-// executable, the Debian package and its directory, the update archive
-// and install.sh's files and variables.
+// executable, the Debian package and its directory, the update archive,
+// the PKGBUILD and install.sh's files and variables.
 func TestBuildLinuxSlug(t *testing.T) {
 	if testing.Short() {
 		t.Skip("building the app")
@@ -207,7 +216,7 @@ func TestBuildLinuxSlug(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "build", "linux-amd64")
-	for _, name := range []string{"cloud-music", "cloud-music.desktop", "cloud-music-0.1.0-linux-amd64.tar.gz", "cloud-music_0.1.0_amd64.deb"} {
+	for _, name := range []string{"cloud-music", "cloud-music.desktop", "cloud-music-0.1.0-linux-amd64.tar.gz", "cloud-music_0.1.0_amd64.deb", pkgbuildName} {
 		if _, err := os.Stat(filepath.Join(out, name)); err != nil {
 			t.Error(err)
 		}
@@ -221,6 +230,13 @@ func TestBuildLinuxSlug(t *testing.T) {
 	}
 	if !strings.HasPrefix(debMember(t, filepath.Join(out, "cloud-music_0.1.0_amd64.deb"), "control.tar.gz")["control"], "Package: cloud-music\n") {
 		t.Error("the package is not named cloud-music")
+	}
+	pkgbuild, err := os.ReadFile(filepath.Join(out, pkgbuildName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(pkgbuild), "\npkgname='cloud-music'\n") || !strings.Contains(string(pkgbuild), "\nsource=('cloud-music-0.1.0-linux-amd64.tar.gz')\n") || !strings.Contains(string(pkgbuild), "\ndepends=('gtk3')\n") {
+		t.Errorf("the PKGBUILD does not package cloud-music:\n%s", pkgbuild)
 	}
 	script, err := os.ReadFile(filepath.Join(out, installScriptName))
 	if err != nil {

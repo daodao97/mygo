@@ -29,3 +29,33 @@ func TestSecondaryClick(t *testing.T) {
 		}
 	}
 }
+
+// TestClickedCopy finds the copy of a menu bar item that a click hit from the
+// pointer's place on screen and the click's place in the item's window: here a
+// copy on an external display, far from the item's window.
+func TestClickedCopy(t *testing.T) {
+	got := clickedCopy(NSPoint{X: 2251, Y: 1422}, NSPoint{X: 30, Y: 12}, NSSize{Width: 54, Height: 24})
+	want := NSRect{Origin: NSPoint{X: 2221, Y: 1410}, Size: NSSize{Width: 54, Height: 24}}
+	if got != want {
+		t.Errorf("clickedCopy = %+v, want %+v", got, want)
+	}
+}
+
+// TestItemFrame keeps the copy clicked while the item's window keeps the frame
+// it had at the click, and goes back to the window's frame without a click or
+// once the window moved.
+func TestItemFrame(t *testing.T) {
+	window := NSRect{Origin: NSPoint{X: 159, Y: 1050}, Size: NSSize{Width: 54, Height: 24}}
+	clicked := NSRect{Origin: NSPoint{X: 2221, Y: 1410}, Size: NSSize{Width: 54, Height: 24}}
+	if got := itemFrame(window, NSRect{}, NSRect{}); got != window {
+		t.Errorf("no click: %+v, want the window's %+v", got, window)
+	}
+	if got := itemFrame(window, clicked, window); got != clicked {
+		t.Errorf("clicked: %+v, want the copy's %+v", got, clicked)
+	}
+	moved := window
+	moved.Origin.X -= 40
+	if got := itemFrame(moved, clicked, window); got != moved {
+		t.Errorf("window moved: %+v, want its new frame %+v", got, moved)
+	}
+}

@@ -512,6 +512,11 @@ func (c *context) DisableAnimations() { c.rt.instantFrame = c.rt.frame }
 // (DisableAnimations).
 func (rt *engine) instant() bool { return rt.instantFrame == rt.frame && rt.frame != 0 }
 
+// Instant reports whether this frame shows animated values at once
+// (DisableAnimations). Views read it to render a change settled in the same
+// frames where its animations are disabled.
+func (c *context) Instant() bool { return c.rt.instant() }
+
 // After asks for another frame after d, for something that changes with
 // time, such as a clock.
 func (c *context) After(d time.Duration) { c.rt.scheduleAt(c.now.Add(d)) }
@@ -683,14 +688,9 @@ type state struct {
 	barInset [4]float32
 	barWidth float32
 	// barsShown reports whether the last frame painted the element's
-	// scroll bars: they show only for a moment after the content
-	// scrolls, while the pointer is over a track, or while a bar is
-	// dragged.
-	barsShown bool
-	// barX and barY are the offset the last frame painted the bars at,
-	// and barMoved is when it last changed (scrollbars).
-	barX, barY float64
-	barMoved   time.Time
+	// scroll bars: they show only while it is hovered or a bar is
+	// dragged, unless it keeps them (KeepScrollbars).
+	barsShown, hideScrollbars bool
 	// track is the ScrollState of the last frame's element, which events
 	// that scroll it update (scrollTo).
 	track *ScrollState

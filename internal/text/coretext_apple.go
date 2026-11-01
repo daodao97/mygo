@@ -392,15 +392,18 @@ func bindDirect(cf, text uintptr, addr func(lib uintptr, name string) uintptr) {
 
 type coreText struct {
 	shapeScratch
+	nativeFonts
 	styles [2]uintptr // paragraph styles: left-to-right, right-to-left
 	srgb   uintptr
 	smooth bool // the user leaves font smoothing on
-	// bands caches where glyphs' outlines cross underlines (inkInBand).
+	// bands caches where glyphs' outlines cross underlines (inkInBand),
+	// by Font: a CTFont's address may be another's once it is released.
 	bands map[bandKey][2]float32
 
 	primary map[Style]uintptr // the CTFont of each style
 	fonts   map[uint][]*Font  // by CFHash of their CTFont
-	// native finds Fonts by their CTFont, which they retain.
+	// native finds Fonts by their CTFont, which they retain until they
+	// are unreachable (nativeFonts).
 	native map[uintptr]*Font
 	// oblique maps an upright Font to its synthetic italic variant. Both
 	// are retained by fonts, and have distinct glyph/outline cache keys.
@@ -417,7 +420,6 @@ type coreText struct {
 	// seg and breaks find where lines may break (lineBreaks).
 	seg    segmenter.Segmenter
 	breaks []bool
-	color  map[uintptr]bool
 
 	// Buffers shape reuses: the text in UTF-16 with the rune of each code
 	// unit, the attributes of the string, the code unit of each rune, and
@@ -468,7 +470,6 @@ func newCoreText() (*coreText, error) {
 		native:     map[uintptr]*Font{},
 		oblique:    map[*Font]*Font{},
 		attrs:      map[attrsKey]uintptr{},
-		color:      map[uintptr]bool{},
 		registered: map[string][]registeredFace{},
 		bands:      map[bandKey][2]float32{},
 		italic:     cfString("MyGoItalic"),
@@ -925,16 +926,19 @@ func (e *coreText) fontOf(font uintptr) *Font {
 		}
 	}
 	ct.retain(font)
+	color := ct.fontGetSymbolicTraits(font)&ctFontColorGlyphsTrait != 0
 	f := &Font{
 		Size:    float32(ct.fontGetSize(font)),
 		Ascent:  float32(ct.fontGetAscent(font)),
 		Descent: float32(ct.fontGetDescent(font)),
 		LineGap: float32(ct.fontGetLeading(font)),
 		native:  font,
-		shaded:  e.smooth && !e.isColor(font),
+		shaded:  e.smooth && !color,
 		// Smoothing thickens glyphs, whatever the user's setting.
-		thickens: !e.isColor(font),
+		thickens: !color,
+		color:    color,
 	}
+	e.own(f)
 	e.fonts[h] = append(e.fonts[h], f)
 	e.native[font] = f
 	return f
@@ -1107,15 +1111,6 @@ func penAdvances(runs []shapedRun) {
 	}
 }
 
-func (e *coreText) isColor(font uintptr) bool {
-	c, ok := e.color[font]
-	if !ok {
-		c = ct.fontGetSymbolicTraits(font)&ctFontColorGlyphsTrait != 0
-		e.color[font] = c
-	}
-	return c
-}
-
 // positions follows Core Graphics' subpixel quantization, which AppKit
 // leaves on: glyphs go to the position left of their pen, among fewer the
 // larger they are, at most five a pixel and one from 34 pixels an em.
@@ -1161,7 +1156,7 @@ func (e *coreText) glyph(f *Font, id uint32, scale, dx float32, shade Shade, _ b
 	if w > 2048 || h > 2048 {
 		return bitmap{}
 	}
-	color := e.isColor(font)
+	color := f.color
 	var pix []byte
 	var ctx uintptr
 	if color {
@@ -1338,7 +1333,7 @@ func snapLine(p, t float64) float64 {
 }
 
 type bandKey struct {
-	font   uintptr
+	font   *Font
 	glyph  uint32
 	lo, hi float32
 }
@@ -1346,7 +1341,7 @@ type bandKey struct {
 // inkInBand returns how far left and right of its origin the outline of a
 // glyph reaches between lo and hi points above the baseline.
 func (e *coreText) inkInBand(f *Font, id uint32, lo, hi float32) (a, b float32, ok bool) {
-	key := bandKey{f.native, id, lo, hi}
+	key := bandKey{f, id, lo, hi}
 	if v, seen := e.bands[key]; seen {
 		return v[0], v[1], v[0] <= v[1]
 	}
@@ -1573,16 +1568,16 @@ func (e *coreText) fontCount() int {
 	return n
 }
 
-// forgetFonts lets go of the CTFonts of the Fonts made so far, and of
-// what is known of them; the fonts of styles stay.
+// forgetFonts lets go of the Fonts made so far, and of what is known of
+// them; the fonts of styles stay. Their CTFonts go with them, once
+// nothing refers to them (releaseFonts).
 func (e *coreText) forgetFonts() {
-	for _, fs := range e.fonts {
-		for _, f := range fs {
-			ct.release(f.native)
-		}
-	}
 	clear(e.fonts)
 	clear(e.native)
 	clear(e.oblique)
-	clear(e.color)
+	clear(e.bands)
+	e.dropScratch()
 }
+
+// releaseFonts releases the CTFonts of the Fonts nothing refers to.
+func (e *coreText) releaseFonts() { e.releaseDead(ct.release) }

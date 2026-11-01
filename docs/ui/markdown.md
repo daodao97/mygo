@@ -129,6 +129,24 @@ instead:
 app.md.OnLink = func(url string) { app.open(url) }
 ```
 
+`Anchor` opens a document at a heading, given its slug with or without
+the `#`: a docs reader that opens `guide.md#install` from a search hit,
+or that comes back where its user was. The view scrolls to it as the
+document shows, as another document replaces it and as `Anchor`
+changes; `AnchorVersion` asks for the same heading again. An `OnLink`
+that handles `#a-heading` links sets it:
+
+```go
+app.md.OnLink = func(url string) {
+	if strings.HasPrefix(url, "#") {
+		app.md.Anchor = url
+		app.md.AnchorVersion++
+		return
+	}
+	app.open(url)
+}
+```
+
 Images show their description until `LoadImage` loads them, on a
 goroutine of their own; without it, they stay descriptions, as a view
 loads nothing from the network by itself. `FileImages(dir)` loads the
@@ -231,7 +249,9 @@ weight, color, spacing and rule; list indentation; block quotes' bar and
 text; code blocks' background, border, corners, padding and token colors
 (an `editor.Theme`); tables' lines, header, stripes, padding and widest
 column; marked text; and check boxes. Lengths are in ems, times the font
-size, so that a theme scales with it.
+size, so that a theme scales with it. `LinkWeight` is the least weight of
+links' text, for links that read as links where color alone doesn't, in a
+gray print theme or to a colorblind reader.
 
 `Block` replaces how any block shows: it is asked first for each block,
 and builds it when it returns true, from the document's blocks and

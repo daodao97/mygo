@@ -13,11 +13,12 @@ import (
 // that the WebView2 environment reads its options from as it is created:
 // the language of the browser, which is the language of its own texts (the
 // context menus, the dialogs of pages) and the first of the pages'
-// navigator.languages and Accept-Language, and further arguments of the
-// browser (browserArguments). Its other options are those of an
-// environment created without options: no version the runtime must be, no
-// single sign-on. It implements no later version of the interface, which
-// the environment asks for and does without.
+// navigator.languages and Accept-Language, further arguments of the
+// browser (browserArguments) and, when MyGo loads the runtime itself,
+// the arguments of WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS. Its other
+// options are those of an environment created without options: no version
+// the runtime must be, no single sign-on. It implements no later version
+// of the interface, which the environment asks for and does without.
 //
 // The objects share one vtable, whose callbacks are created once; they
 // stay reachable through envOptionsLive until COM releases them.

@@ -42,13 +42,12 @@ type canvasEngine struct {
 	// its fillStyle.
 	current, kerning, fill string
 	fonts                  map[string]*Font
-	css                    []fontCSS // the CSS font of each Font, by native
 	// emoji are the twins of fonts that draw emoji, unshaded: emoji
 	// keep their colors whatever the text's.
 	emoji map[*Font]*Font
-	// The glyphs' texts, by ID.
-	ids   map[string]uint32
-	texts []string
+	// glyphs are the texts of the glyphs of the Fonts made since the
+	// System last let go of them.
+	glyphs *glyphTexts
 	// words caches the pen positions of the clusters of words.
 	words map[wordKey][]float32
 	// names are the families the app registered fonts under.
@@ -64,14 +63,33 @@ type canvasEngine struct {
 // the families after.
 type fontCSS struct{ pre, family string }
 
+// canvasFont is what the engine keeps of a Font (Font.data): its CSS font,
+// and the texts of its glyphs, which a layout kept after the System let go
+// of the Font still draws.
+type canvasFont struct {
+	css    fontCSS
+	glyphs *glyphTexts
+}
+
+// glyphTexts are the texts of glyphs, by ID: the engine's glyphs are
+// texts drawn whole.
+type glyphTexts struct {
+	ids   map[string]uint32
+	texts []string
+}
+
+func newGlyphTexts() *glyphTexts {
+	return &glyphTexts{ids: map[string]uint32{"": 0}, texts: []string{""}}
+}
+
 type wordKey struct {
-	font   uintptr
+	font   *Font
 	word   string
 	noKern bool
 }
 
 func newCanvas() *canvasEngine {
-	e := &canvasEngine{fonts: map[string]*Font{}, ids: map[string]uint32{"": 0}, texts: []string{""}, words: map[wordKey][]float32{}}
+	e := &canvasEngine{fonts: map[string]*Font{}, glyphs: newGlyphTexts(), words: map[wordKey][]float32{}}
 	doc := js.Global().Get("document")
 	if doc.IsUndefined() {
 		e.canvas = js.Global().Get("OffscreenCanvas").New(64, 64)
@@ -147,7 +165,7 @@ func (e *canvasEngine) font(style Style) *Font {
 	// Core Text's font smoothing emboldens lighter text more, and Skia
 	// corrects coverage by the text's luminance. Thick text is drawn in
 	// white, the boldest.
-	f := &Font{Size: size, native: uintptr(len(e.css)), shaded: true, thickens: true}
+	f := &Font{Size: size, data: &canvasFont{fc, e.glyphs}, shaded: true, thickens: true}
 	if a := m.Get("fontBoundingBoxAscent"); a.Type() == js.TypeNumber {
 		f.Ascent, f.Descent = float32(a.Float()), float32(m.Get("fontBoundingBoxDescent").Float())
 	} else {
@@ -164,19 +182,19 @@ func (e *canvasEngine) font(style Style) *Font {
 		f.strikeTop = size * 0.3
 	}
 	f.strikeThick = thick
-	e.css = append(e.css, fc)
 	e.fonts[css] = f
 	return f
 }
 
 // glyphID returns the ID of a glyph drawing text.
 func (e *canvasEngine) glyphID(text string) uint32 {
-	if id, ok := e.ids[text]; ok {
+	g := e.glyphs
+	if id, ok := g.ids[text]; ok {
 		return id
 	}
-	id := uint32(len(e.texts))
-	e.texts = append(e.texts, text)
-	e.ids[text] = id
+	id := uint32(len(g.texts))
+	g.texts = append(g.texts, text)
+	g.ids[text] = id
 	return id
 }
 
@@ -207,7 +225,9 @@ func noKern(style Style) bool {
 }
 
 // sized returns the CSS font of f at size px.
-func (e *canvasEngine) sized(f *Font, size float32) string { return e.css[f.native].at(size) }
+func (e *canvasEngine) sized(f *Font, size float32) string {
+	return f.data.(*canvasFont).css.at(size)
+}
 
 // cluster is a glyph being laid out: a grapheme cluster, or a word of a
 // script whose letters join, of runes [start, end).
@@ -446,7 +466,7 @@ func (e *canvasEngine) measureWord(out []cluster, text []rune, bounds []int, f *
 // each drawn alone, at the positions the browser gives them in the whole.
 func (e *canvasEngine) measureClusters(out []cluster, text []rune, bounds []int, f *Font, spacing float32, noKern bool, level bidi.Level) []cluster {
 	start, end := bounds[0], bounds[len(bounds)-1]
-	key := wordKey{f.native, string(text[start:end]), noKern}
+	key := wordKey{f, string(text[start:end]), noKern}
 	pens, ok := e.words[key]
 	if !ok {
 		pens = make([]float32, len(bounds))
@@ -588,23 +608,23 @@ func (e *canvasEngine) glyph(f *Font, id uint32, scale, dx float32, shade Shade,
 const maxTexts = 1 << 16
 
 func (e *canvasEngine) fontCount() int {
-	if len(e.texts) > maxTexts {
+	if len(e.glyphs.texts) > maxTexts {
 		return maxFonts + 1
 	}
 	return len(e.fonts)
 }
 
-// forgetFonts lets go of the fonts, and of the glyphs and measurements,
-// which refer to them by number.
+// forgetFonts lets go of the fonts, and of the glyphs and measurements.
+// A Font kept by a layout keeps its CSS font and its glyphs' texts.
 func (e *canvasEngine) forgetFonts() {
 	clear(e.fonts)
 	clear(e.emoji)
-	e.css = e.css[:0]
 	clear(e.words)
-	clear(e.ids)
-	e.ids[""] = 0
-	e.texts = e.texts[:1]
+	e.glyphs = newGlyphTexts()
 }
+
+// releaseFonts has nothing to release: the browser keeps its fonts.
+func (e *canvasEngine) releaseFonts() {}
 
 // textParams leaves coverage as the browser drew it, without subpixel
 // antialiasing, which canvases do not read back.

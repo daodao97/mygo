@@ -109,6 +109,39 @@ ui.Scroll(c).Fill().Padding(64, 16, 16).ScrollbarInsets(64, 0, 0).Children(func(
 ui.Row(c).Absolute().Top(0).Left(0).Right(0).Height(64).Children(func() { /* ... */ })
 ```
 
+`Scrollbars(false)` takes the bars away, and the presses on them, from a
+container that draws its own chrome or shows where it is by itself, as a
+carousel or a map: the wheel, `TrackScroll`, the keyboard and assistive
+technology still scroll it.
+
+`KeepScrollbars(true)` keeps them showing while the content overflows,
+with the pointer over the container or not, for a view whose place in its
+content the user should see at a glance, as a long log or a diff filling
+the window. They look as they do on hover, the same thumb on no track, so
+nothing changes as the pointer comes over them, and take presses as they
+do then; `Scrollbars(false)` still hides them. Both apply to `Scroll`,
+`ScrollHorizontal`, `ScrollBoth`, `List` and `Table`, are left at their
+defaults by leaving them out, and are not inherited:
+
+```go
+ui.List(c, &app.rows, len(app.lines), app.line).Fill().KeepScrollbars(true)
+```
+
+An element that scrolls itself rather than through a container, as the
+code editor and the terminal do, draws its bars with `ui.Scrollbar`, so
+that they look as the containers' do and follow the theme: `Painter.Scrollbar`
+paints the thumb, and `Thumb` and `OffsetAt` map a drag of it to an
+offset. Show it as a container does, while the
+pointer is over the element or drags the thumb, or always where the app
+keeps the bars, as the code editor's `KeepScrollbars` does:
+
+```go
+bar := ui.Scrollbar{Box: r, View: r.H, Content: contentH, Offset: scrollY}
+if hovered || dragging {
+	p.Scrollbar(bar, ui.ScrollbarState{Dragging: dragging})
+}
+```
+
 An element inside that zooms or pans with the wheel, the touchpad and
 pinches, as a chart, takes them from the container: see
 [Scrolling and pinching](input.md#scrolling-and-pinching).

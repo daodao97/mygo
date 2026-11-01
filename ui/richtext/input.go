@@ -660,30 +660,18 @@ func (v *view) overScrollbar(x float32) bool {
 	return v.hs.top(len(v.paras)) > float64(v.viewH) && x >= v.rect.W-scrollbarWidth
 }
 
+// bar returns the scroll bar, in the element.
+func (v *view) bar() ui.Scrollbar {
+	return ui.Scrollbar{Box: ui.Rect{W: v.rect.W, H: v.rect.H}, View: v.viewH, Content: float32(v.hs.top(len(v.paras))), Offset: float32(v.scroll)}
+}
+
 // thumbBox returns the top and the height of the scroll bar's thumb, in
 // the element.
-func (v *view) thumbBox() (top, size float32) {
-	total := v.hs.top(len(v.paras))
-	track := v.rect.H - 4
-	size = max(24, track*float32(float64(v.viewH)/max(total, 1)))
-	room := float64(track - size)
-	at := 0.0
-	if max := total - float64(v.viewH); max > 0 {
-		at = v.scroll / max
-	}
-	return 2 + float32(room*at), size
-}
+func (v *view) thumbBox() (top, size float32) { return v.bar().Thumb() }
 
 // dragThumb scrolls as the thumb is dragged to y.
 func (v *view) dragThumb(y float32) {
-	_, size := v.thumbBox()
-	track := v.rect.H - 4 - size
-	total := v.hs.top(len(v.paras)) - float64(v.viewH)
-	if track <= 0 || total <= 0 {
-		return
-	}
-	f := float64((y - v.thumbGrab - 2) / track)
-	v.setScroll(max(0, min(f, 1)) * total)
+	v.setScroll(float64(v.bar().OffsetAt(y - v.thumbGrab)))
 }
 
 // menu builds the editor's context menu.

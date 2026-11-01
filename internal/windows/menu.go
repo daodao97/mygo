@@ -23,6 +23,9 @@ type menuEntry struct {
 	// native is the number of an item of WebView2's own in a page's
 	// context menu (context_menu.go), 0 for the app's.
 	native int
+	// disabled keeps the app's choice when enableEditItems changes the native
+	// item's state.
+	disabled bool
 	// look is how MyGo draws the item, nil where Windows does.
 	look *menuLook
 	// icon is the item's icon, and bmp the bitmap Windows draws of it
@@ -156,7 +159,7 @@ func (b *Backend) buildMenu(m *platform.Menu, bar bool, owner int, accels map[ac
 		if it.Checked {
 			flags |= mfChecked
 		}
-		e := &menuEntry{uid: it.ID, role: it.Role, owner: owner, menu: h, radio: it.Type == platform.MenuItemRadio, icon: it.Icon, native: it.Native}
+		e := &menuEntry{uid: it.ID, role: it.Role, owner: owner, menu: h, radio: it.Type == platform.MenuItemRadio, disabled: !it.Enabled, icon: it.Icon, native: it.Native}
 		if !bar {
 			e.dpi = dpi
 		}
@@ -365,7 +368,7 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 			}
 			setItemBitmap(e.menu, uint32(cmd), false, e.bmp)
 		}
-		e.icon = it.Icon
+		e.icon, e.disabled = it.Icon, !it.Enabled
 		setItemInfo(e.menu, cmd, label, it.Enabled, it.Checked, e.radio, e.look != nil)
 	}
 	for _, w := range b.windows {
@@ -412,7 +415,7 @@ func editRole(w *window, role string) bool {
 		return editRole(v, role)
 	}
 	if w.surface != nil {
-		if _, ok := commands[role]; !ok && role != "paste" && role != "pasteAndMatchStyle" {
+		if !platform.EditCommands[role] {
 			return false
 		}
 		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: role})
@@ -436,6 +439,28 @@ func editRole(w *window, role string) bool {
 	params, _ := json.Marshal(map[string]any{"expression": "document.execCommand(" + jsString(cmd) + ")", "userGesture": true})
 	w.withWebView(func() { w.devtools("Runtime.evaluate", string(params), nil) })
 	return true
+}
+
+// enableEditItems enables the items of the edit roles in menu, of the
+// window's menu bar or a popup over it, as the native UI the window shows
+// can act on them. Those of a page keep the app's state: what a page would
+// do is not known before.
+func (w *window) enableEditItems(menu uintptr) {
+	native := w.surface != nil && w.focusedWebView() == nil
+	for cmd, e := range w.b.menus.entries {
+		if e.menu != menu || !platform.EditCommands[e.role] {
+			continue
+		}
+		on := !e.disabled
+		if on && native {
+			on = w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceCommandEnabled, Text: e.role})
+		}
+		flags := uintptr(mfByCommand)
+		if !on {
+			flags |= mfGrayed
+		}
+		procEnableMenuItem.Call(e.menu, uintptr(cmd), flags)
+	}
 }
 
 // formatCommands are the page's commands of the Format menu's roles; in

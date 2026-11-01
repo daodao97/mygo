@@ -469,10 +469,14 @@ func (s *System) engine() engine {
 const maxFonts = 512
 
 // fontForgetter is an engine whose Fonts the System lets go of when they
-// are many.
+// are many. forgetFonts forgets the Fonts made so far without releasing
+// their native fonts, which layouts kept elsewhere may still draw with;
+// releaseFonts releases those of the Fonts nothing refers to anymore
+// (nativeFonts).
 type fontForgetter interface {
 	fontCount() int
 	forgetFonts()
+	releaseFonts()
 }
 
 // uiFamilySetter is an engine that takes the family of the desktop's
@@ -665,11 +669,16 @@ func (s *System) EndFrame() {
 		}
 	}
 	s.frame++
-	if f, ok := s.eng.(fontForgetter); ok && f.fontCount() > maxFonts {
+	f, ok := s.eng.(fontForgetter)
+	if ok {
+		f.releaseFonts()
+	}
+	if ok && f.fontCount() > maxFonts {
 		// Fonts pile up with sizes, as with animated ones: let them all go,
 		// with what refers to them. The atlas takes back the room of their
 		// glyphs as it makes room; the next frame lays out and draws its
-		// text anew.
+		// text anew. Layouts kept elsewhere keep their Fonts, which still
+		// draw, and go once nothing refers to them.
 		s.gen++
 		s.clearLayouts()
 		clear(s.marks)
@@ -846,8 +855,8 @@ func (s *System) LayoutsMade() uint64 {
 
 // Generation returns a number that changes whenever the system forgets
 // its layouts, as it lets go of its fonts (EndFrame) or takes other ones:
-// the layouts it returned before are then to be made anew, and those of
-// fonts it let go of must not be drawn.
+// the layouts it returned before are then to be made anew. Until then they
+// still draw, with the fonts they were made with.
 func (s *System) Generation() uint64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -677,6 +677,30 @@ func (s *surface) emulated(event ptr) bool {
 	return d != 0 && gdkDeviceGetSource(d) == 5 // GDK_SOURCE_TOUCHSCREEN
 }
 
+// scrollEvent converts a GdkEventScroll to the content's scroll, at its
+// point moved by ox, oy: from the window it came to, a web view's, to the
+// area's. GdkEventScroll: x 24, y 32, state 40, direction 44, delta_x 72,
+// delta_y 80.
+func scrollEvent(event ptr, ox, oy float64) platform.SurfaceEvent {
+	ev := platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerMouse, X: ox + field[float64](event, 24), Y: oy + field[float64](event, 32), Mods: gdkMods(field[uint32](event, 40))}
+	const step = 50
+	switch field[int32](event, 44) {
+	case 0:
+		ev.DY = -step
+	case 1:
+		ev.DY = step
+	case 2:
+		ev.DX = -step
+	case 3:
+		ev.DX = step
+	case 4: // smooth
+		dx, dy := field[float64](event, 72), field[float64](event, 80)
+		ev.DX, ev.DY = dx*step, dy*step
+		ev.Precise = dx != float64(int64(dx)) || dy != float64(int64(dy))
+	}
+	return ev
+}
+
 func gdkMods(state uint32) platform.Modifiers {
 	var m platform.Modifiers
 	if state&1 != 0 {
@@ -943,29 +967,12 @@ func initSurfaceCallbacks() {
 		}
 		return false
 	})
-	// GdkEventScroll: x 24, y 32, state 40, direction 44, delta_x 72, delta_y 80.
 	cbSurfaceScroll = purego.NewCallback(func(widget, event, data ptr) bool {
 		s := b().surfaceOf(data)
 		if s == nil {
 			return false
 		}
-		ev := platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerMouse, X: field[float64](event, 24), Y: field[float64](event, 32), Mods: gdkMods(field[uint32](event, 40))}
-		const step = 50
-		switch field[int32](event, 44) {
-		case 0:
-			ev.DY = -step
-		case 1:
-			ev.DY = step
-		case 2:
-			ev.DX = -step
-		case 3:
-			ev.DX = step
-		case 4: // smooth
-			dx, dy := field[float64](event, 72), field[float64](event, 80)
-			ev.DX, ev.DY = dx*step, dy*step
-			ev.Precise = dx != float64(int64(dx)) || dy != float64(int64(dy))
-		}
-		s.send(ev)
+		s.send(scrollEvent(event, 0, 0))
 		return true
 	})
 	// The touchscreen's touches, before GTK's touch-event handler, and the

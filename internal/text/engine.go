@@ -8,8 +8,10 @@
 package text
 
 import (
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -94,6 +96,10 @@ func (s *shapeScratch) resetScratch() {
 
 func (s *shapeScratch) releaseScratch() { *s = shapeScratch{} }
 
+// dropScratch lets go of the room, and of the Fonts its glyphs and runs
+// still refer to past their lengths, so that those can be released.
+func (s *shapeScratch) dropScratch() { *s = shapeScratch{} }
+
 // glyphRoom returns room for n glyphs until the next layout.
 func (s *shapeScratch) glyphRoom(n int) []Glyph {
 	if cap(s.glyphs)-len(s.glyphs) < n {
@@ -152,7 +158,8 @@ type bitmap struct {
 
 // Font is a font of the system, or of the app, at a size. Layouts and
 // glyphs refer to fonts by pointer: an engine returns the same Font for
-// the same font and size.
+// the same font and size. A Font draws for as long as anything refers to
+// it, after the System let go of it too (nativeFonts).
 type Font struct {
 	// Size is the em size in DIPs.
 	Size float32
@@ -161,14 +168,70 @@ type Font struct {
 	Ascent, Descent, LineGap float32
 
 	native uintptr // the engine's font
+	// data is what an engine keeps of the font in Go, which lives as long
+	// as the Font: the canvas engine's CSS font and its glyphs' texts.
+	data any
 	// shaded fonts' glyphs differ by the shade of the text; thin ones are
 	// too thin for antialiasing (GlyphImage.Thin). The engine draws the
-	// glyphs of fonts that thicken thicker for Thick.
-	shaded, thin, thickens bool
+	// glyphs of fonts that thicken thicker for Thick. color ones draw
+	// their glyphs in color (emoji), for the engines that ask (Core Text
+	// and DirectWrite).
+	shaded, thin, thickens, color bool
 	// The tops of the font's underline and strikethrough, in DIPs above
 	// the baseline, and their thickness, for engines that decorate with
 	// them (DirectWrite and Pango).
 	underlineTop, underlineThick, strikeTop, strikeThick float32
+}
+
+// nativeFonts releases the native fonts of an engine's Fonts once nothing
+// refers to them. The System lets go of an engine's Fonts when they are
+// many (EndFrame), but layouts kept out of its caches, as the text a
+// cross-fade fades out or the lines an editor keeps, may still draw with
+// them: their native fonts go with the Fonts, not before. Engines embed
+// it, own the native font of each Font they make, and release the native
+// fonts of the Fonts found unreachable as the System asks
+// (fontForgetter.releaseFonts), with its lock held.
+type nativeFonts struct {
+	// dead is apart from the engine, so that the cleanups, which refer
+	// to it, keep neither the engine nor the Fonts its maps hold.
+	dead *deadFonts
+}
+
+// deadFonts are the native fonts of Fonts found unreachable, to release.
+type deadFonts struct {
+	mu     sync.Mutex
+	native []uintptr
+}
+
+// own has the native font of f released once f is unreachable.
+func (n *nativeFonts) own(f *Font) {
+	if n.dead == nil {
+		n.dead = &deadFonts{}
+	}
+	runtime.AddCleanup(f, n.dead.add, f.native)
+}
+
+// add runs on the runtime's cleanup goroutine: the native font waits for
+// releaseDead, as engines run with the System's lock held.
+func (d *deadFonts) add(native uintptr) {
+	d.mu.Lock()
+	d.native = append(d.native, native)
+	d.mu.Unlock()
+}
+
+// releaseDead releases the native fonts of the Fonts found unreachable
+// since it last ran.
+func (n *nativeFonts) releaseDead(release func(native uintptr)) {
+	if n.dead == nil {
+		return
+	}
+	n.dead.mu.Lock()
+	dead := n.dead.native
+	n.dead.native = nil
+	n.dead.mu.Unlock()
+	for _, native := range dead {
+		release(native)
+	}
 }
 
 // generic names the families "system-ui", "sans-serif", "serif" and

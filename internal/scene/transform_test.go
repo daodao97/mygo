@@ -95,3 +95,32 @@ func TestMovedClip(t *testing.T) {
 		}
 	}
 }
+
+// Reshaped tells drawing a transform only moves from drawing it scales or
+// turns, its own transform or its glyphs', as of an effect masked by
+// glyphs, which draws them with their transforms too.
+func TestReshaped(t *testing.T) {
+	s := &Scene{
+		Glyphs:  []Glyph{{W: 8, H: 12}, {W: 8, H: 12, Transform: Rotation(3)}, {W: 8, H: 12, Transform: Translation(0.5, 0.25)}},
+		Effects: []EffectOp{{Glyphs: [2]int32{0, 1}}, {Glyphs: [2]int32{1, 2}}, {Glyphs: [2]int32{2, 3}}},
+	}
+	for _, c := range []struct {
+		name string
+		op   Op
+		want bool
+	}{
+		{"fill moved", Op{Kind: OpFill, Transform: Translation(0, -1.27)}, false},
+		{"fill turned", Op{Kind: OpFill, Transform: Rotation(3)}, true},
+		{"fill scaled", Op{Kind: OpFill, Transform: Matrix(2, 0, 0, 2, 0, 0)}, true},
+		{"glyphs moved", Op{Kind: OpGlyphs, Start: 0, End: 1, Transform: Translation(0, -2.54)}, false},
+		{"glyph moved", Op{Kind: OpGlyphs, Start: 2, End: 3}, false},
+		{"glyph turned", Op{Kind: OpGlyphs, Start: 0, End: 2, Transform: Translation(0, -2.54)}, true},
+		{"effect moved", Op{Kind: OpEffect, Start: 0, Transform: Translation(0.5, 0)}, false},
+		{"effect's glyph moved", Op{Kind: OpEffect, Start: 2, Transform: Translation(0.5, 0)}, false},
+		{"effect's glyph turned", Op{Kind: OpEffect, Start: 1, Transform: Translation(0.5, 0)}, true},
+	} {
+		if got := Reshaped(s, &c.op); got != c.want {
+			t.Errorf("%s: Reshaped %v, want %v", c.name, got, c.want)
+		}
+	}
+}

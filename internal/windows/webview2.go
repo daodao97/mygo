@@ -206,17 +206,34 @@ func browserArguments(unthrottled, autoplay bool) string {
 // createEnvironment starts creating the WebView2 environment, in language,
 // the app's (envOptions), or the system's for "", with the browser's
 // additional arguments args; done runs on the main thread with it, and
-// whether it has args, or with an error. A runtime that fails to create
-// one with the options is asked for one without them.
+// whether it has args, or with an error. An official loader next to the
+// executable reads WebView2's environment variables itself. Without one,
+// the runtime's client library does not, so WEBVIEW2_USER_DATA_FOLDER
+// replaces the user data folder and WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+// are appended to args. A runtime that fails to create one with the
+// options is asked for one without them.
 func createEnvironment(userData, language, args string, done func(env uintptr, withArgs bool, err error)) error {
+	// An official loader next to the executable wins, and reads WebView2's
+	// environment variables itself; the runtime's client library does not.
+	loader := loaderProc()
+	if loader == nil {
+		var extra string
+		userData, extra = loaderVariables(os.Getenv, executableDir, userData)
+		switch {
+		case args == "":
+			args = extra
+		case extra != "":
+			args += " " + extra
+		}
+	}
 	options := language != "" || args != ""
 	without := func(env uintptr, err error) { done(env, false, err) }
-	err := createEnvironmentWith(userData, language, args, func(env uintptr, err error) {
+	err := createEnvironmentWith(loader, userData, language, args, func(env uintptr, err error) {
 		if err != nil && options {
 			// A runtime that takes no options of ours: one without them,
 			// in the language of the system.
 			log.Printf("%v; creating it again without its language and arguments", err)
-			if err := createEnvironmentWith(userData, "", "", without); err != nil {
+			if err := createEnvironmentWith(loader, userData, "", "", without); err != nil {
 				without(0, err)
 			}
 			return
@@ -224,14 +241,15 @@ func createEnvironment(userData, language, args string, done func(env uintptr, w
 		done(env, args != "", err)
 	})
 	if err != nil && options {
-		return createEnvironmentWith(userData, "", "", without)
+		return createEnvironmentWith(loader, userData, "", "", without)
 	}
 	return err
 }
 
 // createEnvironmentWith creates the environment as createEnvironment does,
-// with the options of language and args, or none when both are "".
-func createEnvironmentWith(userData, language, args string, done func(env uintptr, err error)) error {
+// through loader, or the runtime's client library for nil, with the options
+// of language and args, or none when both are "".
+func createEnvironmentWith(loader *syscall.LazyProc, userData, language, args string, done func(env uintptr, err error)) error {
 	completed := func(hr, env uintptr) {
 		if failed(hr) || env == 0 {
 			done(0, hresultError("creating the WebView2 environment", hr))
@@ -248,9 +266,9 @@ func createEnvironmentWith(userData, language, args string, done func(env uintpt
 	}
 
 	// An official loader next to the executable wins.
-	if proc := loaderProc(); proc != nil {
+	if loader != nil {
 		hr := withHandler(completed, func(h uintptr) uintptr {
-			r, _, _ := proc.Call(0, uintptr(unsafe.Pointer(dataDir)), options, h)
+			r, _, _ := loader.Call(0, uintptr(unsafe.Pointer(dataDir)), options, h)
 			return r
 		})
 		if failed(hr) {
@@ -283,6 +301,34 @@ func createEnvironmentWith(userData, language, args string, done func(env uintpt
 		return hresultError("creating the WebView2 environment", hr)
 	}
 	return nil
+}
+
+// loaderVariables returns the user data folder and the browser arguments
+// that Microsoft's loader takes from WebView2's environment variables and
+// the runtime's client library does not, so that MyGo applies them when it
+// loads the runtime itself: WEBVIEW2_USER_DATA_FOLDER replaces userData,
+// relative to the directory exeDir returns, and
+// WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS are appended to the arguments of the
+// options, after the browser's own (browserArguments).
+func loaderVariables(getenv func(string) string, exeDir func() string, userData string) (dir, args string) {
+	dir = getenv("WEBVIEW2_USER_DATA_FOLDER")
+	switch {
+	case dir == "":
+		dir = userData
+	case !filepath.IsAbs(dir):
+		dir = filepath.Join(exeDir(), dir)
+	}
+	return dir, getenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
+}
+
+// executableDir returns the directory of the executable, which a relative
+// WEBVIEW2_USER_DATA_FOLDER is relative to, or "" when it is unknown.
+func executableDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Dir(exe)
 }
 
 // loaderProc returns the official WebView2 loader next to the executable and

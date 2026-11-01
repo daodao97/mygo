@@ -24,6 +24,9 @@ type nativeItem struct {
 	item     ptr
 	check    bool
 	windowID int // menu bar or popup's window; 0 for a tray
+	// disabled keeps the app's choice when enableEditItems changes the native
+	// item's state.
+	disabled bool
 	// icon is the item's icon; image and label are the widgets of an item
 	// that shows one, or did (menuicon.go).
 	icon         *platform.MenuIcon
@@ -41,6 +44,7 @@ var (
 
 	cbMenuActivate   ptr
 	cbMenuDeactivate ptr
+	cbMenuMap        ptr
 	cbTrayActivate   ptr
 
 	// Menu bars that hide (window.menuHides), and the keys of items with a
@@ -115,6 +119,11 @@ func initMenuCallbacks() {
 	cbMenuDeactivate = purego.NewCallback(func(menu, loop ptr) {
 		gMainLoopQuit(loop)
 	})
+	cbMenuMap = purego.NewCallback(func(menu, data ptr) {
+		if w := theBackend.window(data); w != nil {
+			w.enableEditItems()
+		}
+	})
 	// Alt pressed and released alone, or F10, show a menu bar that hides.
 	cbMenuKey = purego.NewCallback(func(widget, event, data ptr) bool {
 		w := theBackend.window(data)
@@ -127,8 +136,13 @@ func initMenuCallbacks() {
 		// GTK runs those it leaves. The app's own items go first, as on macOS.
 		if field[int32](event, 0) == 8 && w.surface != nil { // GDK_KEY_PRESS
 			k := [2]uint32{gdkKeyvalToLower(field[uint32](event, 28)), field[uint32](event, 24) & modifierMask}
-			if roleKeys[w.accel][k] && gtkWindowPropagateKeyEvent(w.win, event) {
-				return true
+			if roleKeys[w.accel][k] {
+				if gtkWindowPropagateKeyEvent(w.win, event) {
+					return true
+				}
+				// GTK drops the shortcut of an item made insensitive as the
+				// content was when its menu last opened, not as it is now.
+				w.enableEditItems()
 			}
 		}
 		if !w.menuHides() || w.menubar == 0 || gtkWidgetGetVisible(w.menubar) {
@@ -221,6 +235,9 @@ func buildItem(it *platform.MenuItem, accel ptr, owner, windowID int, bar bool) 
 	}
 	if it.Submenu != nil {
 		sub := gtkMenuNew()
+		if windowID != 0 {
+			connect(sub, "map", cbMenuMap, ptr(windowID))
+		}
 		buildMenu(sub, it.Submenu, accel, owner, windowID, false)
 		gtkMenuItemSetSubmenu(item, sub)
 	} else if it.Type != platform.MenuItemSeparator {
@@ -239,7 +256,7 @@ func buildItem(it *platform.MenuItem, accel ptr, owner, windowID int, bar bool) 
 		}
 	}
 	applyState(item, it, check)
-	n := nativeItem{owner: owner, item: item, check: check, windowID: windowID, bar: bar}
+	n := nativeItem{owner: owner, item: item, check: check, windowID: windowID, disabled: !it.Enabled, bar: bar}
 	if it.Icon != nil && it.Type != platform.MenuItemSeparator && !bar && setMenuItemIcon != nil {
 		n.icon = it.Icon
 		if windowID != 0 {
@@ -428,6 +445,30 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 			}
 		}
 		applyState(n.item, it, n.check)
+		n.disabled = !it.Enabled
+	}
+}
+
+// enableEditItems makes the items of the edit roles in the window's menu
+// bar and popups sensitive as the native UI it shows can act on them.
+// Those of a page keep the app's state: what a page would do is not known
+// before.
+func (w *window) enableEditItems() {
+	native := w.surface != nil && w.focusedWebView() == nil
+	for id, role := range itemRoles {
+		if !platform.EditCommands[role] {
+			continue
+		}
+		for _, n := range itemsByID[id] {
+			if n.windowID != w.id {
+				continue
+			}
+			on := !n.disabled
+			if on && native {
+				on = w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceCommandEnabled, Text: role})
+			}
+			gtkWidgetSetSensitive(n.item, on)
+		}
 	}
 }
 
@@ -452,6 +493,7 @@ func (b *Backend) PopupMenu(m *platform.Menu, pw platform.Window, pos *platform.
 	defer dropOwner(owner)
 	menu := gtkMenuNew()
 	buildMenu(menu, m, 0, owner, w.id, false)
+	w.enableEditItems()
 	gtkWidgetShowAll(menu)
 	event, anchor := w.popupTrigger(), w.contentWindow()
 	const northWest = 1 // GDK_GRAVITY_NORTH_WEST

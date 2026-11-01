@@ -161,7 +161,10 @@ type surface struct {
 	framePass uint64
 	cursor    platform.Cursor
 	inside    bool
-	ctrlClick bool // the primary button is down for a Control-click
+	// secondaryClick is set while the primary button is down for a secondary
+	// click: a Control-click, or a press of the secondary button that an event
+	// tap posted again as a primary one.
+	secondaryClick bool
 
 	// input is the state of the text input with the keyboard; marked is
 	// the input method's composition and markedSel its selection in it.
@@ -169,6 +172,9 @@ type surface struct {
 	marked    string
 	markedSel nsRange
 	keyDown   bool // in interpretKeyEvents: text typed with the key
+	// refused: the content left the composition set in
+	// interpretKeyEvents, given up once it returns.
+	refused bool
 
 	// Accessibility: whether the content describes its frames, the last
 	// tree, the elements of its nodes and those at the top (an NSArray).
@@ -549,17 +555,14 @@ func (s *surface) SetCursor(c platform.Cursor) {
 
 func (s *surface) SetTextInput(t platform.TextInputState) {
 	if s.input.Client != t.Client && s.input.Active {
-		s.marked = ""
-		send(send(s.view, "inputContext"), "discardMarkedText")
+		s.discardComposition()
 	}
 	if s.input.Active && t.Active && t.NoInputMethod && !s.input.NoInputMethod {
 		// Input methods turned off give up what they composed.
-		s.marked = ""
-		send(send(s.view, "inputContext"), "discardMarkedText")
+		s.discardComposition()
 	}
 	if s.input.Active && !t.Active && s.marked != "" {
-		s.marked = ""
-		send(send(s.view, "inputContext"), "discardMarkedText")
+		s.discardComposition()
 	}
 	moved := t.Active != s.input.Active || t.Caret != s.input.Caret
 	s.input = t
@@ -589,6 +592,18 @@ func (s *surface) send(ev platform.SurfaceEvent) bool {
 		return false
 	}
 	return s.w.h.SurfaceEvent(ev)
+}
+
+func scrollWheel(s *surface, ev id) {
+	x, y := s.location(ev)
+	dx, dy := msgFloat(ev, sel("scrollingDeltaX")), msgFloat(ev, sel("scrollingDeltaY"))
+	precise := sendBool(ev, "hasPreciseScrollingDeltas")
+	momentum := sendInt(ev, "momentumPhase") != 0
+	if !precise {
+		// A mouse wheel scrolls by lines: 40 DIPs, as in browsers.
+		dx, dy = dx*40, dy*40
+	}
+	s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerMouse, X: x, Y: y, DX: -dx, DY: -dy, Precise: precise, Momentum: momentum, Mods: eventMods(ev)})
 }
 
 func eventMods(ev id) platform.Modifiers {
@@ -795,10 +810,13 @@ func registerSurfaceClass() {
 				}
 				btn = min(n, 2)
 			case button == 0 && kind == platform.PointerDown:
-				// A Control-click is a secondary click, until its release.
-				s.ctrlClick = eventMods(ev)&platform.ModCtrl != 0
+				// A Control-click is a secondary click, until its release, as
+				// is a press that keeps the secondary button's number: data loss
+				// prevention agents tap the secondary button's events and post
+				// them again as the primary button's.
+				s.secondaryClick = eventMods(ev)&platform.ModCtrl != 0 || sendInt(ev, "buttonNumber") == 1
 			}
-			if button == 0 && s.ctrlClick {
+			if button == 0 && s.secondaryClick {
 				btn = 1
 			}
 			if kind == platform.PointerDown {
@@ -812,7 +830,7 @@ func registerSurfaceClass() {
 			}
 			s.mouse(kind, ev, btn)
 			if kind == platform.PointerUp && button == 0 {
-				s.ctrlClick = false
+				s.secondaryClick = false
 			}
 		}
 	}
@@ -975,15 +993,7 @@ func registerSurfaceClass() {
 			if s == nil {
 				return
 			}
-			x, y := s.location(ev)
-			dx, dy := msgFloat(ev, sel("scrollingDeltaX")), msgFloat(ev, sel("scrollingDeltaY"))
-			precise := sendBool(ev, "hasPreciseScrollingDeltas")
-			momentum := sendInt(ev, "momentumPhase") != 0
-			if !precise {
-				// A mouse wheel scrolls by lines: 40 DIPs, as in browsers.
-				dx, dy = dx*40, dy*40
-			}
-			s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerMouse, X: x, Y: y, DX: -dx, DY: -dy, Precise: precise, Momentum: momentum, Mods: eventMods(ev)})
+			scrollWheel(s, ev)
 		}),
 		method("magnifyWithEvent:", func(self id, _ objc.SEL, ev id) {
 			s := b().surfaceOf(self)
@@ -1031,6 +1041,10 @@ func registerSurfaceClass() {
 				s.keyDown = true
 				send(self, "interpretKeyEvents:", uintptr(nsArray(ev)))
 				s.keyDown = false
+				if s.refused {
+					s.refused = false
+					s.discardComposition()
+				}
 			} else if text {
 				// Input methods off: the key types the characters of the
 				// layout, as winit's keys do without them.
@@ -1055,7 +1069,16 @@ func registerSurfaceClass() {
 				s.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "pasteAndMatchStyle"})
 			}
 		}),
-		method("validateMenuItem:", func(self id, _ objc.SEL, item id) bool { return true }),
+		method("validateMenuItem:", func(self id, _ objc.SEL, item id) bool {
+			s := b().surfaceOf(self)
+			action := objc.SEL(send(item, "action"))
+			for selector, name := range contextSelectors {
+				if action == sel(selector) {
+					return s != nil && s.send(platform.SurfaceEvent{Kind: platform.SurfaceCommandEnabled, Text: name})
+				}
+			}
+			return true
+		}),
 
 		// NSTextInputClient
 		method("hasMarkedText", func(self id, _ objc.SEL) bool {

@@ -50,9 +50,6 @@ func FoldTranslations() {
 	}
 }
 
-// folding reports whether renderers fold translations (FoldTranslations).
-func folding() bool { return fold.Load() != nil }
-
 // Fold returns s, or, when any of its ops only translates, a copy of it
 // with those folded: fills and shadows, and images and glyphs moved by
 // whole pixels, glyphs without transforms of their own (renderers round
