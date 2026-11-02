@@ -2589,8 +2589,9 @@ either.
   it (`ScaleContent`), across parents and scroll offsets, from the colors
   the other showed (`matches.claim` notes them before `animateExits`
   forgets it). With `Fly`, it blends the other's corners, opacity, text
-  color and transform into its own (decomposed as CSS does in 2D; one in
-  3D or in perspective switches halfway), and the transform of the
+  color and transform into its own (decomposed as CSS does, in 3D into a
+  quaternion slerped the short way, whose sign holds at half a turn), and
+  the transform of the
   elements around the other into that of its own (`worldAround`, shown
   with a transform of its own, `under`). The element it came from goes
   with it if it flies too, fading out as it fades in (Motion's crossfade
@@ -2614,7 +2615,26 @@ either.
   says flies on as its copy in the ancestor's (`matches.flyOn`), from
   where it showed to where that copy has it, its colors going on as its
   transition moved them, fading as that copy fades; other copies of
-  elements flying (`ghostOf`) no longer fly. A frame without an
+  elements flying (`ghostOf`) no longer fly. A text flying with
+  `ContentTransition`'s `Morph` takes the other's text layout into its
+  content transition instead, whose `morph` (`ui/morph.go`) pairs the
+  glyphs it comes from (`morphGlyph`, the old layout's, colored by the
+  spans its rich text last painted with, which `morphRest` keeps) with
+  the clusters of its layout (their longest common sequence, then the
+  nearest of the same characters left) and moves, scales and recolors the
+  glyphs of each pair, fading the others, the old text's going with the
+  element's box, and the lines and highlights of both texts' styles and
+  spans. It places each glyph as text at rest where the box goes would
+  (`text.System.Origin`), drawn at the quarter of an octave nearest the
+  size it shows, and moves it from there with a transform, so that the
+  glyphs move smoothly and together, rather than each a pixel at a time,
+  and end as text at rest. A text sent back to the one it morphs from
+  before it got there morphs back from as far from the end as it was from
+  the start, which shows the same; one that another text takes over
+  morphs from its glyphs as they showed (`snapMorph`, from the same walk
+  of them, `morphPairs.each`, as painting them). `ContentTransition`
+  links `morph` only for a `Morph`, so that apps without one link none of
+  it. A frame without an
   element on its way notes only where each `Match` showed and the element
   that showed it (`matchRec.node`), whose look and the transform of the
   elements around it an element flying from it reads in the next frame,

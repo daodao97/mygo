@@ -83,13 +83,15 @@ func (rt *engine) linkMatches() {
 // it from worldFrom, that of those around the other, to its own, and the
 // crossfade. That element goes with it, fading: src, a copy of it gone,
 // at srcAlpha and turned by srcTurn, or else the element of srcID while it
-// is built. Gone with the elements around it, it flies on as copy, its
-// copy in theirs, the copy of the element of transition copyIn, going as
-// its Exit says (flyOn).
+// is built; morph moves the characters of its text from that one's
+// instead (ContentTransition's Morph). Gone with the elements around it,
+// it flies on as copy, its copy in theirs, the copy of the element of
+// transition copyIn, going as its Exit says (flyOn).
 type flight struct {
 	r         *transition
 	box       [4]channel
 	fly       bool
+	morph     bool
 	look      channel
 	lookFrom  matchLook
 	lookTo    matchLook
@@ -159,9 +161,11 @@ func mixLook(a, b matchLook, k float32) matchLook {
 }
 
 // mixTransform returns the transform k of the way from a to b, as CSS
-// interpolates transforms in 2D: through their translations, rotations,
-// skews and scales, turning the short way round. One in 3D or in
-// perspective is a's until halfway, then b's.
+// interpolates them: in 2D, through their translations, rotations, skews
+// and scales; in 3D or in perspective, through their perspectives,
+// translations, rotations (as quaternions), skews and scales. Rotations
+// turn the short way round. One that cannot be decomposed, flattened to
+// nothing, is a's until halfway, then b's.
 func mixTransform(a, b Transform, k float32) Transform {
 	switch {
 	case !a.set() && !b.set() || k >= 1:
@@ -169,10 +173,15 @@ func mixTransform(a, b Transform, k float32) Transform {
 	case k <= 0:
 		return a
 	case a.d3 != nil || b.d3 != nil || a.m.G != 0 || a.m.H != 0 || b.m.G != 0 || b.m.H != 0:
-		if k < 0.5 {
-			return a
+		da, okA := decompose3(a.mat4())
+		db, okB := decompose3(b.mat4())
+		if !okA || !okB {
+			if k < 0.5 {
+				return a
+			}
+			return b
 		}
-		return b
+		return in3D(recompose3(mix3(da, db, float64(k))))
 	}
 	da, db := decompose(a.m), decompose(b.m)
 	turn := db[2] - da[2]
@@ -189,6 +198,204 @@ func mixTransform(a, b Transform, k float32) Transform {
 	sin, cos := math.Sincos(d[2])
 	sx, sy, skew := d[3], d[4], d[5]
 	return Transform{m: scene.Matrix(float32(cos*sx), float32(sin*sx), float32(sy*(cos*skew-sin)), float32(sy*(sin*skew+cos)), float32(d[0]), float32(d[1]))}
+}
+
+// decomposed3 is a transform in 3D taken apart as CSS takes it: m is the
+// perspective, of the translation, of the rotation (quaternion x, y, z,
+// w), of the skew (xy, xz, yz), of the scale.
+type decomposed3 struct {
+	perspective [4]float64
+	translate   [3]float64
+	quaternion  [4]float64
+	skew        [3]float64
+	scale       [3]float64
+}
+
+// decompose3 takes m apart, and reports whether it could: one that
+// flattens space cannot be.
+func decompose3(m mat4) (d decomposed3, ok bool) {
+	var M [16]float64
+	for i, v := range m {
+		M[i] = float64(v)
+	}
+	if M[15] == 0 {
+		return d, false
+	}
+	for i := range M {
+		M[i] /= M[15]
+	}
+	// M is the perspective, its last row, of the affine part, A and t.
+	A := [3][3]float64{{M[0], M[1], M[2]}, {M[4], M[5], M[6]}, {M[8], M[9], M[10]}}
+	inv, ok := inverse3(A)
+	if !ok {
+		return d, false
+	}
+	d.translate = [3]float64{M[3], M[7], M[11]}
+	d.perspective = [4]float64{0, 0, 0, 1}
+	if M[12] != 0 || M[13] != 0 || M[14] != 0 {
+		// The last row of M is the perspective's times the affine part's.
+		r := [3]float64{M[12], M[13], M[14]}
+		for j := range 3 {
+			d.perspective[j] = r[0]*inv[0][j] + r[1]*inv[1][j] + r[2]*inv[2][j]
+		}
+		d.perspective[3] = M[15] - (d.perspective[0]*d.translate[0] + d.perspective[1]*d.translate[1] + d.perspective[2]*d.translate[2])
+	}
+	// A is the rotation of the skew of the scale: its columns, made
+	// orthonormal in turn, give the scale and the skews.
+	var c [3][3]float64
+	for j := range 3 {
+		c[j] = [3]float64{A[0][j], A[1][j], A[2][j]}
+	}
+	d.scale[0] = length3(c[0])
+	c[0] = scale3(c[0], 1/d.scale[0])
+	d.skew[0] = dot3(c[0], c[1])
+	c[1] = combine3(c[1], c[0], -d.skew[0])
+	d.scale[1] = length3(c[1])
+	c[1] = scale3(c[1], 1/d.scale[1])
+	d.skew[0] /= d.scale[1]
+	d.skew[1] = dot3(c[0], c[2])
+	c[2] = combine3(c[2], c[0], -d.skew[1])
+	d.skew[2] = dot3(c[1], c[2])
+	c[2] = combine3(c[2], c[1], -d.skew[2])
+	d.scale[2] = length3(c[2])
+	c[2] = scale3(c[2], 1/d.scale[2])
+	d.skew[1] /= d.scale[2]
+	d.skew[2] /= d.scale[2]
+	if dot3(c[0], cross3(c[1], c[2])) < 0 {
+		// Mirrored: negative scales.
+		for i := range 3 {
+			d.scale[i] = -d.scale[i]
+			c[i] = scale3(c[i], -1)
+		}
+	}
+	// The rotation's quaternion, from its largest component, which holds
+	// at any angle (Shepperd's), as half a turn has no direction to sign
+	// the others by.
+	R := func(i, j int) float64 { return c[j][i] }
+	q := &d.quaternion
+	switch tr := R(0, 0) + R(1, 1) + R(2, 2); {
+	case tr > 0:
+		w := 0.5 * math.Sqrt(1+tr)
+		*q = [4]float64{(R(2, 1) - R(1, 2)) / (4 * w), (R(0, 2) - R(2, 0)) / (4 * w), (R(1, 0) - R(0, 1)) / (4 * w), w}
+	case R(0, 0) >= R(1, 1) && R(0, 0) >= R(2, 2):
+		x := 0.5 * math.Sqrt(max(1+R(0, 0)-R(1, 1)-R(2, 2), 0))
+		*q = [4]float64{x, (R(0, 1) + R(1, 0)) / (4 * x), (R(0, 2) + R(2, 0)) / (4 * x), (R(2, 1) - R(1, 2)) / (4 * x)}
+	case R(1, 1) >= R(2, 2):
+		y := 0.5 * math.Sqrt(max(1-R(0, 0)+R(1, 1)-R(2, 2), 0))
+		*q = [4]float64{(R(0, 1) + R(1, 0)) / (4 * y), y, (R(1, 2) + R(2, 1)) / (4 * y), (R(0, 2) - R(2, 0)) / (4 * y)}
+	default:
+		z := 0.5 * math.Sqrt(max(1-R(0, 0)-R(1, 1)+R(2, 2), 0))
+		*q = [4]float64{(R(0, 2) + R(2, 0)) / (4 * z), (R(1, 2) + R(2, 1)) / (4 * z), z, (R(1, 0) - R(0, 1)) / (4 * z)}
+	}
+	return d, true
+}
+
+// recompose3 puts d together.
+func recompose3(d decomposed3) mat4 {
+	x, y, z, w := d.quaternion[0], d.quaternion[1], d.quaternion[2], d.quaternion[3]
+	R := [3][3]float64{
+		{1 - 2*(y*y+z*z), 2 * (x*y - z*w), 2 * (x*z + y*w)},
+		{2 * (x*y + z*w), 1 - 2*(x*x+z*z), 2 * (y*z - x*w)},
+		{2 * (x*z - y*w), 2 * (y*z + x*w), 1 - 2*(x*x+y*y)},
+	}
+	K := [3][3]float64{{1, d.skew[0], d.skew[1]}, {0, 1, d.skew[2]}, {0, 0, 1}}
+	var N [4][4]float64
+	for i := range 3 {
+		for j := range 3 {
+			var v float64
+			for l := range 3 {
+				v += R[i][l] * K[l][j]
+			}
+			N[i][j] = v * d.scale[j]
+		}
+		N[i][3] = d.translate[i]
+	}
+	N[3][3] = 1
+	var m mat4
+	for i := range 3 {
+		for j := range 4 {
+			m[4*i+j] = float32(N[i][j])
+		}
+	}
+	for j := range 4 {
+		var v float64
+		for i := range 4 {
+			v += d.perspective[i] * N[i][j]
+		}
+		m[12+j] = float32(v)
+	}
+	return m
+}
+
+// mix3 returns the transform k of the way from a to b, its rotation
+// turning the short way round.
+func mix3(a, b decomposed3, k float64) decomposed3 {
+	var d decomposed3
+	for i := range 4 {
+		d.perspective[i] = a.perspective[i] + (b.perspective[i]-a.perspective[i])*k
+	}
+	for i := range 3 {
+		d.translate[i] = a.translate[i] + (b.translate[i]-a.translate[i])*k
+		d.skew[i] = a.skew[i] + (b.skew[i]-a.skew[i])*k
+		d.scale[i] = a.scale[i] + (b.scale[i]-a.scale[i])*k
+	}
+	qa, qb := a.quaternion, b.quaternion
+	product := qa[0]*qb[0] + qa[1]*qb[1] + qa[2]*qb[2] + qa[3]*qb[3]
+	if product < 0 {
+		for i := range qb {
+			qb[i] = -qb[i]
+		}
+		product = -product
+	}
+	wa, wb := 1-k, k
+	if product < 0.9995 {
+		theta := math.Acos(min(product, 1))
+		sin := math.Sin(theta)
+		wa, wb = math.Sin((1-k)*theta)/sin, math.Sin(k*theta)/sin
+	}
+	var n float64
+	for i := range 4 {
+		d.quaternion[i] = wa*qa[i] + wb*qb[i]
+		n += d.quaternion[i] * d.quaternion[i]
+	}
+	n = math.Sqrt(n)
+	for i := range 4 {
+		d.quaternion[i] /= n
+	}
+	return d
+}
+
+// inverse3 returns the inverse of m, and reports whether it has one.
+func inverse3(m [3][3]float64) (inv [3][3]float64, ok bool) {
+	det := m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1]) - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0]) + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0])
+	if math.Abs(det) < 1e-12 {
+		return inv, false
+	}
+	inv[0][0] = (m[1][1]*m[2][2] - m[1][2]*m[2][1]) / det
+	inv[0][1] = (m[0][2]*m[2][1] - m[0][1]*m[2][2]) / det
+	inv[0][2] = (m[0][1]*m[1][2] - m[0][2]*m[1][1]) / det
+	inv[1][0] = (m[1][2]*m[2][0] - m[1][0]*m[2][2]) / det
+	inv[1][1] = (m[0][0]*m[2][2] - m[0][2]*m[2][0]) / det
+	inv[1][2] = (m[0][2]*m[1][0] - m[0][0]*m[1][2]) / det
+	inv[2][0] = (m[1][0]*m[2][1] - m[1][1]*m[2][0]) / det
+	inv[2][1] = (m[0][1]*m[2][0] - m[0][0]*m[2][1]) / det
+	inv[2][2] = (m[0][0]*m[1][1] - m[0][1]*m[1][0]) / det
+	return inv, true
+}
+
+func dot3(a, b [3]float64) float64 { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2] }
+
+func length3(a [3]float64) float64 { return math.Sqrt(dot3(a, a)) }
+
+func scale3(a [3]float64, k float64) [3]float64 { return [3]float64{a[0] * k, a[1] * k, a[2] * k} }
+
+// combine3 returns a plus k times b.
+func combine3(a, b [3]float64, k float64) [3]float64 {
+	return [3]float64{a[0] + k*b[0], a[1] + k*b[1], a[2] + k*b[2]}
+}
+
+func cross3(a, b [3]float64) [3]float64 {
+	return [3]float64{a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]}
 }
 
 // decompose returns the translation, rotation (radians), scale and skew of
@@ -356,6 +563,13 @@ func (m *matches) starts(r *transition, e *node, rec *matchRec) bool {
 	return r.fresh && rec != nil && rec.id != e.id && rec.frame+1 == m.rt.frame
 }
 
+// morphs reports whether e moves the characters of its text from those
+// of the element of its Match, from (ContentTransition's Morph).
+func morphs(e, from *node) bool {
+	return e.kind == kindText && e.first == nil && e.contentSet && e.content.Morph && morphText != nil &&
+		from.kind == kindText && from.first == nil && from.tl != nil
+}
+
 func (m *matches) claim() {
 	rt := m.rt
 	if !m.moves() {
@@ -385,6 +599,9 @@ func (m *matches) claim() {
 		// an Exit.
 		delete(rt.trans, rec.id)
 		e := from.elem
+		if morphs(u.e, e) {
+			continue // its characters move instead
+		}
 		g, alpha := ghostOf(e), float32(1)
 		if g.opacitySet {
 			alpha = g.opacity
@@ -573,9 +790,48 @@ func (m *matches) start(r *transition, u transitionUse, rec *matchRec, now time.
 	} else if x := rt.trans[rec.id]; x != nil && x.built == rt.frame && x.t.Fly {
 		f.srcID = rec.id // still built, it flies itself
 	}
-	if f.src != nil || f.srcID != 0 {
+	if rec.kept && morphs(e, rec.node) {
+		f.morph = true
+		m.morphFrom(r, e, rec, f.lookFrom.text, now)
+	}
+	if f.src != nil || f.srcID != 0 || f.morph {
 		m.gone = append(m.gone, rec.id)
 	}
+}
+
+// morphFrom moves the characters of the text of e, of transition r, from
+// those of the text that rec noted, from where they were: its content
+// transition, as of the frame it paints next.
+func (m *matches) morphFrom(r *transition, e *node, rec *matchRec, color Color, now time.Time) {
+	from := rec.node
+	tx, ty := from.contentX(), from.contentY()
+	pairs := &morphPairs{boxOf: from.tl, boxX: rec.box.X, boxY: rec.box.Y}
+	was := from.st.crec
+	if was != nil {
+		if pr, _ := was.morph.(*morphPairs); pr != nil {
+			// The colors of its spans, as rich text painted them last.
+			pairs.spans = pr.spans
+		} else {
+			was = nil
+		}
+	}
+	cr := &contentRec{frame: m.rt.paints + 1, text: e.text, tl: e.tl, oldText: from.text, oldTL: from.tl,
+		oldX: rec.box.X + tx, oldY: rec.box.Y + ty, oldColor: color, morph: pairs}
+	cr.k = channel{at: now}
+	if rec.lookSet && was != nil && was.k.value > 0 && was.k.value < 1 {
+		// The other was morphing on its way.
+		color := from.resolvedText().color
+		if was.oldText == e.text {
+			// Back to the text the other morphed from, from where it is: a
+			// morph k of the way shows as the morph back 1-k of the way.
+			cr.k.value, cr.oldColor = 1-was.k.value, color
+		} else {
+			// From its characters as they showed, morphing.
+			snapMorph(was, rec.box.X, rec.box.Y, rec.box.X+tx, rec.box.Y+ty, color, cr)
+		}
+	}
+	headFor(&cr.k, 1, r.animation(), now)
+	e.st.crec = cr
 }
 
 // hideCopies hides the copies of the elements of ids inside g, a copy
@@ -673,6 +929,11 @@ func (m *matches) fly(f *flight, e *node, shown, box Rect, uses []transitionUse,
 	if src == nil && f.srcID != 0 {
 		src = m.builtWith(uses, f.srcID)
 	}
+	if src != nil && f.morph {
+		// Its characters move into this one's.
+		src.flags |= flagInvisible
+		src = nil
+	}
 	if src != nil {
 		alpha := float32(1)
 		var srcAround scene.Affine
@@ -708,19 +969,38 @@ func (m *matches) fly(f *flight, e *node, shown, box Rect, uses []transitionUse,
 	// look lays out nothing.
 	look := mixLook(f.lookFrom, f.lookTo, k)
 	e.transform = look.turn
-	m.show(e, shown, scaled)
-	f.shift = m.pin(e, box)
+	if f.morph {
+		// Its text as laid out, which its characters move to, as they
+		// will show where its box goes.
+		e.x, e.y, e.w, e.h = shown.X, shown.Y, shown.W, shown.H
+		if cr := e.st.crec; cr != nil {
+			if pr, _ := cr.morph.(*morphPairs); pr != nil {
+				pr.toX, pr.toY, pr.toFrame = box.X-shown.X, box.Y-shown.Y, rt.frame
+			}
+			// Its characters go to its color as they move.
+			look.text = mixPremultiplied(cr.oldColor, f.lookTo.text, max(0, min(float32(cr.k.value), 1)))
+		}
+		// Its characters place themselves (morph): without the translation
+		// of the elements flying around it.
+		if a := m.around(e); a != (Point{}) {
+			e.transform = e.transform.Then(Transform{m: scene.Translation(-a.X, -a.Y)})
+		}
+		f.shift = Point{}
+	} else {
+		m.show(e, shown, scaled)
+		f.shift = m.pin(e, box)
+	}
 	under(e, world, around)
 	shows := look
 	if src != nil {
 		shows.opacity *= fadeIn(k)
 	}
-	if look.text != f.lookTo.text {
+	if look.text != f.lookTo.text && !f.morph {
 		e.ts.color, e.ts.set = look.text, e.ts.set|setColor
 	}
 	e.opacity, e.opacitySet = shows.opacity*fade, true
 	e.radius = look.radius
-	if scaled && e.w > 0 && e.h > 0 {
+	if scaled && !f.morph && e.w > 0 && e.h > 0 {
 		// Its corners as round as they show, scaled.
 		s := 2 / (shown.W/e.w + shown.H/e.h)
 		for i := range e.radius {

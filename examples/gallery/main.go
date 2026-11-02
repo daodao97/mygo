@@ -1525,18 +1525,20 @@ type (
 )
 
 // tileSpring moves the tiles into their detail view and back: tileFlight
-// flies what the views share, while tileFade fades the rest in and out.
+// flies what the views share, and tileMorph the characters of their
+// titles, while tileFade fades the rest in and out.
 var (
 	tileSpring = ui.Animation{Spring: ui.SpringOptions{Duration: 450 * time.Millisecond, Bounce: 0.12}}
 	tileFlight = ui.ElementTransition{Animation: &tileSpring, Fly: true}
 	tileFade   = ui.ElementTransition{Animation: &tileSpring, Enter: &ui.Motion{}, Exit: &ui.Motion{}}
+	tileMorph  = ui.ContentTransition{Morph: true, Animation: &tileSpring}
 )
 
-// tileNames are the titles of the tiles, which the headings of their
-// detail views show over tilePlaces.
+// tileNames are the titles of the tiles, and tileHeadings those of their
+// detail views.
 var (
-	tileNames  = []string{"Ocean", "Forest", "Desert"}
-	tilePlaces = []string{"At dusk", "In the rain", "At noon"}
+	tileNames    = []string{"Ocean", "Forest", "Desert"}
+	tileHeadings = []string{"Ocean at dusk", "Forest in the rain", "Desert at noon"}
 )
 
 func (g *gallery) motion(c *ui.Context) {
@@ -1610,13 +1612,13 @@ func (g *gallery) motion(c *ui.Context) {
 			})
 		})
 		card(c, "Magic Move", func() {
-			ui.Text(c, "A tile flies into its detail view from where it was, its title growing into the heading, as the rest fades.").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "A tile flies into its detail view from where it was, its title morphing into the heading, as the rest fades.").FontSize(12).TextColor(t.TextMuted)
 			ui.Box(c).Key("tile-stage").Height(190).Radius(10).Border(1, t.Border).Clip().Children(func() {
 				// What the views share flies (Match, Fly), the titles
-				// scaled, as the rest fades.
+				// morphing, as the rest fades.
 				shared := func(i int) (tile, title ui.ElementTransition) {
 					tile, title = tileFlight, tileFlight
-					tile.Match, title.Match, title.ScaleContent = tileMatch{i}, tileTitle{i}, true
+					tile.Match, title.Match = tileMatch{i}, tileTitle{i}
 					return tile, title
 				}
 				if g.tileOpen == 0 {
@@ -1626,7 +1628,8 @@ func (g *gallery) motion(c *ui.Context) {
 							box := ui.Column(c.Key(i)).Size(80, 80).Padding(8).Justify(ui.End).Radius(12).Background(col).
 								Cursor(ui.CursorPointer).Transition(tile)
 							box.Children(func() {
-								ui.Text(c, tileNames[i]).FontSize(12).Bold().TextColor(ui.RGB(255, 255, 255)).AlignSelf(ui.Start).Transition(title)
+								ui.Text(c, tileNames[i]).FontSize(12).Bold().TextColor(ui.RGB(255, 255, 255)).
+									Transition(title).ContentTransition(tileMorph)
 							})
 							if box.Clicked() {
 								g.tileOpen = i + 1
@@ -1640,10 +1643,7 @@ func (g *gallery) motion(c *ui.Context) {
 				ui.Column(c.Key("detail")).Absolute().Fill().Padding(12).Gap(10).Transition(tileFade).Children(func() {
 					ui.Box(c.Key("hero")).Height(110).Radius(16).Background(motionColors[i]).Transition(tile)
 					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-						ui.Column(c).Grow(1).Children(func() {
-							ui.Text(c, tileNames[i]).FontSize(18).Bold().AlignSelf(ui.Start).Transition(title)
-							ui.Text(c, tilePlaces[i]).FontSize(12).TextColor(t.TextMuted)
-						})
+						ui.Text(c, tileHeadings[i]).FontSize(18).Bold().Grow(1).Transition(title).ContentTransition(tileMorph)
 						if ui.Button(c, "Back").Clicked() {
 							g.tileOpen = 0
 						}

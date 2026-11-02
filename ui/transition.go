@@ -50,7 +50,7 @@ type ElementTransition struct {
 	Match any
 	// Fly, with a Match, flies the element appearing from where the other
 	// was, as Keynote's Magic Move and Flutter's Hero do: from its
-	// corners, opacity, text color and transform too, and from the
+	// corners, opacity, text color and transform (in 3D too), and from the
 	// transforms of the elements around it, drawn over the rest of the
 	// window (or of its overlay) on the way, out of the clips around it,
 	// where it takes the pointer. The other, flying too, goes with it,

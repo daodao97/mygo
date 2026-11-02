@@ -267,6 +267,19 @@ func (s *System) Glyph(f *Font, id uint32, scale, x float32, shade Shade, opaque
 	return g
 }
 
+// Origin returns where Glyph puts the origin of a glyph of f whose pen is
+// x device pixels from the left: at the position within a pixel the
+// system's text stack draws it at.
+func (s *System) Origin(f *Font, scale, x float32, opaque bool) float32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if f == nil {
+		return x
+	}
+	q, n, carry := s.place(f, scale, opaque && s.subpixel, x)
+	return float32(math.Floor(float64(x))) + carry + float32(q)/float32(n)
+}
+
 // place returns where the system's text stack draws a glyph of f whose pen
 // is at x: at position q of the n within a pixel, carry pixels right of
 // the pixel x is in.

@@ -12,12 +12,13 @@ type (
 	benchTitle struct{ i int }
 )
 
-// Shared elements in the Magic Move benchmarks: none, a Match, or a
-// Match flying.
+// Shared elements in the Magic Move benchmarks: none, a Match, a Match
+// flying, or flying with the titles morphing.
 const (
 	unmatched = iota
 	matched
 	flying
+	morphing
 )
 
 // magicMoveScene is a grid of n tiles with titles, in a scroll view, that
@@ -36,10 +37,14 @@ func magicMoveScene(n, period, shared int) func() (func(c *Context), func()) {
 			if shared != unmatched {
 				tile.Match, title.Match = benchTile{i}, benchTitle{i}
 			}
-			if shared == flying {
-				tile.Fly, title.Fly, title.ScaleContent = true, true, true
+			if shared >= flying {
+				tile.Fly, title.Fly, title.ScaleContent = true, true, shared == flying
 			}
 			return tile, title
+		}
+		var morph ContentTransition
+		if shared == morphing {
+			morph = ContentTransition{Morph: true}
 		}
 		color := func(i int) Color { return RGB(uint8(40+i*37%180), uint8(80+i*13%150), uint8(120+i*29%120)) }
 		view := func(c *Context) {
@@ -51,7 +56,7 @@ func magicMoveScene(n, period, shared int) func() (func(c *Context), func()) {
 								for i := range n {
 									tile, title := transitions(i)
 									Column(c.Key(i)).Height(90).Padding(8).Justify(End).Radius(12).Background(color(i)).Transition(tile).Children(func() {
-										Textf(c, "Tile %d", i).FontSize(12).Bold().TextColor(RGB(255, 255, 255)).Transition(title)
+										Textf(c, "Tile %d", i).FontSize(12).Bold().TextColor(RGB(255, 255, 255)).Transition(title).ContentTransition(morph)
 									})
 								}
 							})
@@ -62,7 +67,11 @@ func magicMoveScene(n, period, shared int) func() (func(c *Context), func()) {
 				tile, title := transitions(open)
 				Column(c.Key("detail")).Absolute().Fill().Padding(24).Gap(16).Transition(fade).Children(func() {
 					Box(c.Key("hero")).Height(320).Radius(16).Background(color(open)).Transition(tile)
-					Textf(c, "Tile %d", open).FontSize(28).Bold().Transition(title)
+					heading := "Tile %d"
+					if shared == morphing {
+						heading = "Tile %d at dusk"
+					}
+					Textf(c, heading, open).FontSize(28).Bold().Transition(title).ContentTransition(morph)
 					Text(c, "The light goes from the sea to the sky as the sun sets behind the hills, and the boats come in.").Wrap()
 				})
 			})
@@ -85,7 +94,8 @@ func magicMoveScene(n, period, shared int) func() (func(c *Context), func()) {
 // 60 tiles opening one into a detail view and closing it: steady, with
 // nothing moving, and toggling every 18 frames, the 300 ms the
 // transitions take, with the views' shared elements moving (match),
-// flying (fly), or the views only fading.
+// flying (fly), flying with the titles morphing (morph), or the views
+// only fading.
 func BenchmarkMagicMove(b *testing.B) {
 	for _, sc := range []struct {
 		name           string
@@ -97,6 +107,7 @@ func BenchmarkMagicMove(b *testing.B) {
 		{"toggle", 18, unmatched},
 		{"toggle_match", 18, matched},
 		{"toggle_fly", 18, flying},
+		{"toggle_morph", 18, morphing},
 	} {
 		b.Run(sc.name, func(b *testing.B) {
 			f := newStressFrames(magicMoveScene(60, sc.period, sc.shared), nil)

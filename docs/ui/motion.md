@@ -439,6 +439,18 @@ ui.Text(c, strconv.Itoa(app.count)).FontSize(32).Bold().
 ui.Icon(c, playOrPause).ContentTransition(ui.ContentTransition{})
 ```
 
+`Morph` moves the characters the old and the new text share from where
+they were to where they are, those of the old text alone fading out and
+those of the new fading in, as Keynote's Magic Move by characters: words
+reflowing, a title rewritten, letters rearranged. Rich text morphs too,
+its characters going to the colors of their spans. A text flying with a
+[`Match`](transitions.md#text-that-morphs) morphs from the text of the
+element of its `Match`.
+
+```go
+ui.Text(c, app.title).ContentTransition(ui.ContentTransition{Morph: true})
+```
+
 Content transitions run in frames that only paint. While the desktop asks
 for less motion, content fades without moving.
 

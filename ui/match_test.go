@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/internal/scene"
+	"github.com/egoist/mygo/internal/text"
 )
 
 // matchTile is the identity of the tiles of these tests.
@@ -699,5 +700,483 @@ func TestFlyKeepsItsTheme(t *testing.T) {
 	tt.Frame()
 	if p := tt.Image().RGBAAt(120, 70); p.R < 250 || p.G > 5 || p.B < 250 {
 		t.Errorf("halfway, the hero paints %v, not in its Themed's theme", p)
+	}
+}
+
+// layoutOf lays s out in the tester's text system.
+func layoutOf(tt *Tester, s string, size float32) *text.Layout {
+	return tt.rt.text.Layout(text.Params{Text: s, Style: text.Style{Size: size}})
+}
+
+func TestMorphPairsCharacters(t *testing.T) {
+	tt, _ := clockTester(func(c *context) {}, 100, 100)
+	for _, c := range []struct {
+		from, to string
+		paired   int
+	}{
+		{"listen", "silent", 6},
+		{"abc", "abd", 2},
+		{"Daily", "Daily deals", 5},
+		{"", "new", 0},
+		{"same", "same", 4},
+	} {
+		var pr morphPairs
+		pr.from = glyphsOf(layoutOf(tt, c.from, 13), 0, 0, Color{}, nil, nil)
+		pr.pair(layoutOf(tt, c.to, 13))
+		n := 0
+		for j, i := range pr.pairs {
+			if i < 0 {
+				continue
+			}
+			n++
+			a, b := pr.from[i].runes, pr.curC[j]
+			if string(a) != string(pr.cur.Runes[b.at:b.at+b.n]) {
+				t.Errorf("%q to %q pairs %q with %q", c.from, c.to, string(a), string(pr.cur.Runes[b.at:b.at+b.n]))
+			}
+		}
+		if n != c.paired {
+			t.Errorf("%q to %q pairs %d characters, not %d", c.from, c.to, n, c.paired)
+		}
+	}
+}
+
+// glyphsPainted returns how many glyphs the last frame painted.
+func glyphsPainted(tt *Tester) int { return len(tt.rt.scene.Glyphs) }
+
+func TestMorphMovesCharacters(t *testing.T) {
+	s := "ab"
+	a := Animation{Duration: 100 * time.Millisecond, Ease: Linear}
+	tt, now := clockTester(func(c *context) {
+		keep("text", coreText(c, s)).ContentTransition(ContentTransition{Morph: true, Animation: &a})
+	}, 200, 100)
+	s = "ba"
+	tt.Frame()
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	// The two move, neither fading: two glyphs, not four.
+	if n := glyphsPainted(tt); n != 2 {
+		t.Errorf("halfway from ab to ba, %d glyphs paint", n)
+	}
+	s = "abc"
+	*now = now.Add(time.Second)
+	tt.Frame()
+	tt.Frame()
+	s = "abd"
+	tt.Frame()
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	// a and b move, c fades out as d fades in.
+	if n := glyphsPainted(tt); n != 4 {
+		t.Errorf("halfway from abc to abd, %d glyphs paint", n)
+	}
+}
+
+func TestMorphMovesAsOne(t *testing.T) {
+	detail := false
+	type title struct{}
+	tr := ElementTransition{Animation: &Snappy, Match: title{}, Fly: true}
+	morph := ContentTransition{Morph: true}
+	tt, now := clockTester(func(c *context) {
+		coreBox(c).Size(400, 300).Children(func() {
+			if !detail {
+				coreText(c, "Daily deals").Key("small").Absolute().Left(10.3).Top(10.6).FontSize(12).Transition(tr).ContentTransition(morph)
+				return
+			}
+			keep("big", coreText(c, "Daily")).Key("big").Absolute().Left(100.2).Top(100.7).FontSize(24).Transition(tr).ContentTransition(morph)
+		})
+	}, 400, 300)
+	tt.SetScale(2)
+	tt.Frame()
+	detail = true
+	tt.Frame()
+	ms := tt.rt.matches.(*matches)
+	var frames [][]scene.Glyph
+	fading := 0
+	for range 120 {
+		*now = now.Add(time.Second / 60)
+		tt.Frame()
+		big := keyed(tt, "big")
+		if ms.flights[big.id] == nil {
+			break
+		}
+		if big.st.crec.oldTL == nil {
+			t.Fatal("on its way, the title no longer morphs")
+		}
+		gs := tt.rt.scene.Glyphs
+		frames = append(frames, slices.Clone(gs))
+		if len(gs) != 10 {
+			continue // " deals" faded out
+		}
+		// The glyphs of " deals" go with the box, from where they were.
+		fading++
+		for _, g := range gs[:5] {
+			m := g.Transform
+			if !m.Set || m.A != 1 || m.D != 1 || m.B != 0 || m.C != 0 || !within(m.X, (big.x-10.3)*2, 0.01) || !within(m.Y, (big.y-10.6)*2, 0.01) {
+				t.Fatalf("with the box %v from where it was, a glyph fading moves by %+v", Point{big.x - 10.3, big.y - 10.6}, m)
+			}
+		}
+	}
+	if fading == 0 || len(frames) < 10 {
+		t.Fatalf("on its way for %d frames, %d fading", len(frames), fading)
+	}
+	if keyed(tt, "big").st.crec.oldTL != nil {
+		t.Fatal("once there, the title still morphs")
+	}
+	// Each glyph drawn on the way as at rest is placed where it rests,
+	// frame after frame, and moved from there: as the text at rest draws
+	// it, where the system draws glyphs one by one, as the way's last frame
+	// where it joins those whose edges touch (Pango's cairo).
+	rest, same := tt.rt.scene.Glyphs, 0
+	if tt.rt.text.JoinsGlyphs() {
+		rest = frames[len(frames)-1]
+		rest = rest[len(rest)-5:]
+	}
+	for _, gs := range frames {
+		for i, g := range gs[len(gs)-5:] {
+			if g.U != rest[i].U || g.V != rest[i].V || g.W != rest[i].W || g.H != rest[i].H {
+				continue
+			}
+			same++
+			if g.X != rest[i].X || g.Y != rest[i].Y {
+				t.Errorf("drawn as at rest, glyph %d is placed at %v, %v, not at %v, %v", i, g.X, g.Y, rest[i].X, rest[i].Y)
+			}
+		}
+	}
+	if same < 5 {
+		t.Errorf("%d glyphs drew as at rest on the way", same)
+	}
+	for i, g := range tt.rt.scene.Glyphs {
+		if g.Transform.Set {
+			t.Errorf("at rest, glyph %d is transformed", i)
+		}
+	}
+}
+
+func TestMorphReversesWhereItIs(t *testing.T) {
+	detail := false
+	type title struct{}
+	tr := ElementTransition{Duration: 100 * time.Millisecond, Ease: Linear, Match: title{}, Fly: true}
+	morph := ContentTransition{Morph: true}
+	tt, now := clockTester(func(c *context) {
+		coreBox(c).Size(400, 300).Children(func() {
+			if !detail {
+				keep("small", coreText(c, "Daily")).Key("small").Absolute().Left(10).Top(10).FontSize(12).
+					TextColor(RGB(255, 0, 0)).Transition(tr).ContentTransition(morph)
+				return
+			}
+			coreText(c, "Daily deals").Key("big").Absolute().Left(100).Top(100).FontSize(24).
+				TextColor(RGB(0, 0, 255)).Transition(tr).ContentTransition(morph)
+		})
+	}, 400, 300)
+	detail = true
+	tt.Frame()
+	*now = now.Add(40 * time.Millisecond)
+	tt.Frame()
+	before := slices.Clone(tt.rt.scene.Glyphs)
+	// Back before it got there.
+	detail = false
+	tt.Frame()
+	if r := keyed(tt, "small").st.crec; !within(float32(r.k.value), 0.6, 0.01) || r.oldColor != RGB(0, 0, 255) {
+		t.Errorf("back 0.4 of the way, the title morphs from %v of the way, from %v", r.k.value, r.oldColor)
+	}
+	// It shows as it did: its characters where they were, as large, as
+	// opaque, in their colors.
+	showsAlike(t, "back", before, tt.rt.scene.Glyphs)
+	*now = now.Add(time.Second)
+	tt.Frame()
+	tt.Frame()
+	if r := keyed(tt, "small").st.crec; r.oldTL != nil {
+		t.Error("once back, the title still morphs")
+	}
+}
+
+// showsAlike checks that the glyphs of after show as those of before:
+// where they were, as large, as opaque, in their colors.
+func showsAlike(t *testing.T, when string, before, after []scene.Glyph) {
+	t.Helper()
+	type shown struct {
+		x, y, w float32
+		c       scene.Color
+	}
+	shows := func(gs []scene.Glyph) []shown {
+		var out []shown
+		for _, g := range gs {
+			x, y, w := g.X+g.W/2, g.Y+g.H/2, g.W
+			if m := g.Transform; m.Set {
+				x, y, w = m.A*x+m.X, m.D*y+m.Y, m.A*w
+			}
+			out = append(out, shown{x, y, w, g.Color})
+		}
+		slices.SortFunc(out, func(a, b shown) int { return int(a.x - b.x) })
+		return out
+	}
+	was, is := shows(before), shows(after)
+	if len(is) != len(was) {
+		t.Fatalf("%s, %d glyphs paint, not %d", when, len(is), len(was))
+	}
+	for i := range is {
+		a, b := was[i], is[i]
+		if !within(a.x, b.x, 1.5) || !within(a.y, b.y, 1.5) || !within(a.w, b.w, 2.5) ||
+			absDiff(a.c.A, b.c.A) > 12 || absDiff(a.c.R, b.c.R) > 12 || absDiff(a.c.B, b.c.B) > 12 {
+			t.Errorf("%s, glyph %d shows as %+v, not as %+v", when, i, b, a)
+		}
+	}
+}
+
+func TestMorphTakesOverWhereItIs(t *testing.T) {
+	view := 0
+	type title struct{}
+	tr := ElementTransition{Duration: 100 * time.Millisecond, Ease: Linear, Match: title{}, Fly: true}
+	morph := ContentTransition{Morph: true}
+	tt, now := clockTester(func(c *context) {
+		coreBox(c).Size(400, 300).Children(func() {
+			switch view {
+			case 0:
+				coreText(c, "Daily").Key("small").Absolute().Left(10).Top(10).FontSize(12).
+					TextColor(RGB(255, 0, 0)).Transition(tr).ContentTransition(morph)
+			case 1:
+				coreText(c, "Daily deals").Key("big").Absolute().Left(100).Top(100).FontSize(24).
+					TextColor(RGB(0, 0, 255)).Transition(tr).ContentTransition(morph)
+			default:
+				keep("news", coreText(c, "Daily news")).Key("news").Absolute().Left(200).Top(40).FontSize(16).
+					TextColor(RGB(0, 160, 0)).Transition(tr).ContentTransition(morph)
+			}
+		})
+	}, 400, 300)
+	view = 1
+	tt.Frame()
+	*now = now.Add(40 * time.Millisecond)
+	tt.Frame()
+	before := slices.Clone(tt.rt.scene.Glyphs)
+	// Another before it got there.
+	view = 2
+	tt.Frame()
+	showsAlike(t, "taken over", before, tt.rt.scene.Glyphs)
+	*now = now.Add(time.Second)
+	tt.Frame()
+	tt.Frame()
+	if r := keyed(tt, "news").st.crec; r.oldTL != nil {
+		t.Error("once there, the title still morphs")
+	}
+	if n := glyphsPainted(tt); n != 9 {
+		t.Errorf("once there, %d glyphs paint", n)
+	}
+}
+
+// absDiff returns how far apart a and b are.
+func absDiff(a, b uint8) uint8 { return max(a, b) - min(a, b) }
+
+func TestMorphRichText(t *testing.T) {
+	spans := []Span{{Text: "Daily", Color: RGB(255, 0, 0)}, {Text: " deals", Color: RGB(0, 0, 255), Underline: true}}
+	a := Animation{Duration: 100 * time.Millisecond, Ease: Linear}
+	tt, now := clockTester(func(c *context) {
+		coreRichText(c, spans...).ContentTransition(ContentTransition{Morph: true, Animation: &a})
+	}, 300, 100)
+	spans = []Span{{Text: "Daily", Color: RGB(255, 0, 0)}, {Text: " news", Color: RGB(0, 160, 0)}}
+	tt.Frame()
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	// "d", "a" and "l" of "deals" fade out, blue; "Daily" moves, red; "n"
+	// and "w" fade in, green; "e" and "s" go from blue to green.
+	gs := tt.rt.scene.Glyphs
+	if len(gs) != 12 {
+		t.Fatalf("halfway, %d glyphs paint", len(gs))
+	}
+	for i, want := range []struct {
+		r, g, b, a uint8
+	}{{0, 0, 255, 128}, {0, 0, 255, 128}, {0, 0, 255, 128}, {255, 0, 0, 255}, {255, 0, 0, 255}, {255, 0, 0, 255}, {255, 0, 0, 255}, {255, 0, 0, 255},
+		{0, 160, 0, 128}, {0, 80, 128, 255}, {0, 160, 0, 128}, {0, 80, 128, 255}} {
+		c := gs[i].Color
+		if absDiff(c.R, want.r) > 16 || absDiff(c.G, want.g) > 16 || absDiff(c.B, want.b) > 16 || absDiff(c.A, want.a) > 16 {
+			t.Errorf("halfway, glyph %d is %+v, not %+v", i, c, want)
+		}
+	}
+	*now = now.Add(time.Second)
+	tt.Frame()
+	tt.Frame()
+	if n := glyphsPainted(tt); n != 9 {
+		t.Errorf("once over, %d glyphs paint", n)
+	}
+}
+
+func TestMorphFromMatch(t *testing.T) {
+	detail := false
+	type title struct{}
+	tr := ElementTransition{Duration: 100 * time.Millisecond, Ease: Linear, Match: title{}, Fly: true}
+	morph := ContentTransition{Morph: true}
+	tt, now := clockTester(func(c *context) {
+		coreBox(c).Size(400, 300).Children(func() {
+			if !detail {
+				keep("small", coreText(c, "Daily")).Key("small").Absolute().Left(10).Top(10).FontSize(12).Transition(tr).ContentTransition(morph)
+				return
+			}
+			keep("big", coreText(c, "Daily deals")).Key("big").Absolute().Left(100).Top(100).FontSize(24).Transition(tr).ContentTransition(morph)
+		})
+	}, 400, 300)
+	detail = true
+	tt.Frame()
+	big := keyed(tt, "big")
+	if r := big.st.crec; r == nil || r.oldText != "Daily" || r.oldTL == nil || !within(r.oldX, 10, 0.01) {
+		t.Fatalf("the title morphs from %+v", r)
+	}
+	// No copy of the small title: its characters move instead.
+	if ls := lifted(tt); len(ls) != 1 || ls[0] != big {
+		t.Errorf("the title moves with %d elements", len(ls))
+	}
+	// "Daily" moves and grows; " deals" fades in, from nothing at first,
+	// its space drawing nothing.
+	if n := glyphsPainted(tt); n != 5 {
+		t.Errorf("at first, %d glyphs paint", n)
+	}
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	if n := glyphsPainted(tt); n != 10 {
+		t.Errorf("halfway, %d glyphs paint", n)
+	}
+	*now = now.Add(time.Second)
+	tt.Frame()
+	tt.Frame()
+	if r := keyed(tt, "big").st.crec; r.oldTL != nil {
+		t.Error("once over, the title still morphs")
+	}
+}
+
+func TestMixTransform3D(t *testing.T) {
+	near := func(a, b mat4) bool {
+		for i := range a {
+			if !within(a[i], b[i], 1e-4*max(1, abs32(b[i]))) {
+				return false
+			}
+		}
+		return true
+	}
+	normal := func(m mat4) mat4 {
+		for i := range m {
+			m[i] /= m[15]
+		}
+		return m
+	}
+	for _, tr := range []Transform{
+		RotationX(30).Then(RotationY(40)).Then(Perspective(800)),
+		Translation(10, 20).Then(RotationY(70)),
+		Scaling(2, 3).Then(Skewing(10, 0)).Then(RotationX(20)),
+		Scaling(-1, 1).Then(RotationY(30)),
+		RotationY(150).Then(Translation(5, -5)).Then(Perspective(400)),
+	} {
+		d, ok := decompose3(tr.mat4())
+		if got, want := recompose3(d), normal(tr.mat4()); !ok || !near(got, want) {
+			t.Errorf("taken apart and put together, %v is %v", want, got)
+		}
+	}
+	for _, c := range []struct {
+		a, b  Transform
+		k     float32
+		want  Transform
+		label string
+	}{
+		{RotationY(0), RotationY(90), 0.5, RotationY(45), "a turn in 3D"},
+		{Rotation(0), RotationY(90), 0.5, RotationY(45), "from 2D"},
+		{RotationX(0).Then(Perspective(800)), RotationX(60).Then(Perspective(800)), 0.5, RotationX(30).Then(Perspective(800)), "in perspective"},
+		{RotationY(170), RotationY(-170), 0.5, RotationY(180), "the short way round"},
+		{RotationY(30), in3D(mat4{}), 0.4, RotationY(30), "flattened, before halfway"},
+		{RotationY(30), in3D(mat4{}), 0.6, in3D(mat4{}), "flattened, after halfway"},
+	} {
+		got, want := mixTransform(c.a, c.b, c.k).mat4(), c.want.mat4()
+		if want[15] != 0 {
+			got, want = normal(got), normal(want)
+		}
+		if !near(got, want) {
+			t.Errorf("%s: %v, not %v", c.label, got, want)
+		}
+	}
+}
+
+func TestMorphInsideMatch(t *testing.T) {
+	detail := false
+	type title struct{}
+	tile := linear
+	name := ElementTransition{Duration: 100 * time.Millisecond, Ease: Linear, Match: title{}, Fly: true}
+	morph := ContentTransition{Morph: true}
+	tt, _ := clockTester(func(c *context) {
+		coreBox(c).Size(400, 300).Children(func() {
+			if !detail {
+				keep("thumb", coreColumn(c).Key("thumb")).Size(80, 80).Background(RGB(255, 0, 0)).Transition(tile).Children(func() {
+					keep("small", coreText(c, "Ocean")).Key("small").Transition(name).ContentTransition(morph)
+				})
+				return
+			}
+			coreColumn(c).Key("detail").Absolute().Left(100).Top(50).Children(func() {
+				keep("hero", coreBox(c).Key("hero")).Size(200, 100).Background(RGB(0, 0, 255)).Transition(tile)
+				keep("big", coreText(c, "Ocean at dusk")).Key("big").FontSize(24).Transition(name).ContentTransition(morph)
+			})
+		})
+	}, 400, 300)
+	small := keyed(tt, "small").id
+	detail = true
+	tt.Frame()
+	// The tile's copy, the hero over it, and the title, whose characters
+	// move out of the copy, which shows them no more.
+	ls := lifted(tt)
+	if len(ls) != 3 || ls[0].leaving == 0 || ls[1] != keyed(tt, "hero") || ls[2] != keyed(tt, "big") {
+		t.Fatalf("on the way, %d elements paint over the window", len(ls))
+	}
+	if in := ls[0].first; in == nil || in.id != small || in.flags&flagInvisible == 0 {
+		t.Errorf("the tile's copy shows its title, %+v", in)
+	}
+}
+
+// A text morphing on its way, removed with the view around it, which goes
+// as its Exit says, morphs on in that view's copy.
+func TestMorphRemovedOnItsWay(t *testing.T) {
+	stage := 0
+	type title struct{}
+	tr := ElementTransition{Duration: 100 * time.Millisecond, Ease: Linear, Match: title{}, Fly: true}
+	page := ElementTransition{Duration: 200 * time.Millisecond, Ease: Linear, Exit: &Motion{}}
+	morph := ContentTransition{Morph: true, Animation: &Animation{Duration: 100 * time.Millisecond, Ease: Linear}}
+	tt, now := clockTester(func(c *context) {
+		keep("stage", coreBox(c).Key("stage")).Size(400, 300).Children(func() {
+			switch stage {
+			case 0:
+				coreText(c, "Ocean").Key("small").Absolute().Left(10).Top(10).FontSize(12).Transition(tr).ContentTransition(morph)
+			case 1:
+				coreColumn(c).Key("detail").Absolute().Left(100).Top(100).Transition(page).Children(func() {
+					keep("big", coreText(c, "Ocean at dusk")).Key("big").FontSize(24).Transition(tr).ContentTransition(morph)
+				})
+			}
+		})
+	}, 400, 300)
+	stage = 1
+	tt.Frame()
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	was := slices.Clone(tt.rt.scene.Glyphs)
+	stage = 2
+	tt.Frame()
+	var detail *node
+	for g := keyed(tt, "stage").first; g != nil; g = g.next {
+		if g.leaving != 0 {
+			detail = g
+		}
+	}
+	if detail == nil || detail.first == nil {
+		t.Fatalf("the detail view's copy going away is %+v", detail)
+	}
+	if ls := lifted(tt); len(ls) != 1 || ls[0] != detail.first {
+		t.Fatalf("gone, the title's copy does not fly on: %d elements fly", len(ls))
+	}
+	// It shows as it did, its characters where they were.
+	showsAlike(t, "gone", was, tt.rt.scene.Glyphs)
+	*now = now.Add(25 * time.Millisecond)
+	tt.Frame()
+	// Its characters go on to where they rest, which their transforms
+	// move them to.
+	gs := tt.rt.scene.Glyphs
+	if len(gs) == 0 || len(was) == 0 || gs[0].Transform.X <= was[0].Transform.X+1 || gs[0].Transform.Y <= was[0].Transform.Y+1 {
+		t.Errorf("the title's characters do not go on: the first was moved by %v, is by %v", was[0].Transform, gs[0].Transform)
+	}
+	*now = now.Add(100 * time.Millisecond)
+	tt.Frame()
+	if len(lifted(tt)) != 0 || detail.first.lift {
+		t.Error("there, the title's copy still flies")
 	}
 }
