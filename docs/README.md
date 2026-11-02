@@ -159,6 +159,9 @@ components, from buttons to tables.
 - [Automation](plugins/automation.md): drive a running app from another
   process, as end-to-end test runners and agents do: its windows,
   elements, input, menus and screenshots.
+- [PermissionFlow](plugins/permissionflow.md): the system's permissions,
+  such as Accessibility and Screen Recording, checked and asked for, and a
+  guide to System Settings with the app to drag into its list.
 
 ## Reference
 

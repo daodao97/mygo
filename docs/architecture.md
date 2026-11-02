@@ -121,9 +121,11 @@ framework safely. Read it before changing anything under `internal/`.
 │                       terminal, a view of native UI running programs with
 │                       libghostty-vt, glass, game, what games need
 │                       beyond what apps do (game/gamepad), loading,
-│                       loading.dev's indicators for native UI, and
+│                       loading.dev's indicators for native UI,
 │                       automation, a socket other processes drive the
-│                       app through, for end-to-end tests
+│                       app through, for end-to-end tests, and
+│                       permissionflow, the system's permissions and a
+│                       guide to System Settings, after PermissionFlow
 ├── ui/                 native UI: views, layout, widgets, text editing, Tester;
 │                       ui/chart: charts without a look, on ui's public API;
 │                       ui/editor: the code editor and the diff viewer;
@@ -144,7 +146,8 @@ framework safely. Read it before changing anything under `internal/`.
 │                       native UI); wind (a texture of glyphs lit by a
 │                       wind, two shaders of ui/shader); loading (the
 │                       loading plugin's indicators); video (a GIF
-│                       looping behind a window's content)
+│                       looping behind a window's content); permissionflow
+│                       (the permissions, asked for and guided to)
 ├── docs/               the user guides, the official plugins' pages
 │                       (plugins/), and this architecture guide
 └── website/            the website, with these docs: TanStack Start, prerendered

@@ -72,6 +72,7 @@ go run ./examples/markdown-chat            # Markdown replies streaming in (ui/m
 go run ./examples/notes                    # the rich text editor (ui/richtext), in a notes app
 go run ./examples/terminal                 # a terminal (downloads libghostty-vt once)
 go run ./examples/loading                  # loading.dev's 29 indicators (plugins/loading)
+go run ./examples/permissionflow           # the system's permissions, asked for and guided to (plugins/permissionflow)
 go generate ./plugins/terminal             # build libghostty-vt for every platform (with Zig), write Ghostty's themes
 go generate ./internal/gpu/d3d11           # recompile the Direct3D shader (on Windows)
 go generate ./internal/gpu/metal           # recompile the Metal shader (on macOS, with Xcode)
@@ -118,6 +119,10 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   (`mygo_noinspector`): a socket (`MYGO_AUTOMATION`) through which
   other processes drive the app, reaching native UI only through
   `surface.Automate`, which it sets.
+  The permissionflow plugin is Go only too, after PermissionFlow: TCC's
+  permissions through purego on macOS, with a panel of AppKit under
+  System Settings to drag the app from, the consent store on Windows,
+  and errors.ErrUnsupported elsewhere.
 - The `dist/` of npm packages is not committed: run `bun run build` after
   `bun install` (CI and releases do). Commit `internal/bridge/bridge.js`
   whenever its sources change, and keep the generated clients of examples
