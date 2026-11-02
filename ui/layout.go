@@ -116,7 +116,7 @@ func (rt *engine) lateInput() {
 	rt.late = false
 	rt.forgetInput()
 	if rt.consumed {
-		rt.animating = true
+		rt.animate()
 	}
 }
 
@@ -151,8 +151,11 @@ func place(e *node, x, y float32) {
 		if s.movedIn(e.c.rt.frame) {
 			// What was built read the old offset, as List's rows or the
 			// app from its ScrollState: build the next frame with the new.
-			e.c.rt.animating = true
+			e.c.rt.animate()
 		}
+		ex, ey := e.c.rt.elasticOffset(s)
+		cx -= ex
+		cy -= ey
 		cx -= float32(e.scrollLeft())
 		cy -= float32(s.scrollY - e.scrollBase)
 	}

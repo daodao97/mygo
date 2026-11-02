@@ -312,7 +312,7 @@ func (in *inspector) snapshot(rt *engine, root *node) {
 	sum = mix(sum, uint64(len(rt.warnings)))
 	in.sum = sum
 	if in.sum != in.shown || in.changed {
-		rt.animating = true
+		rt.animate()
 	}
 }
 

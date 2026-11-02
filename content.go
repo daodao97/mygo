@@ -3,6 +3,7 @@ package mygo
 import (
 	"bytes"
 	"errors"
+	"github.com/egoist/mygo/internal/framewhy"
 	"image"
 	"image/png"
 	"math"
@@ -186,6 +187,7 @@ func pageGet[T any](w *Window, fn func(n platform.Window) T) T {
 // its user interface shows. It is safe from any goroutine; calls made
 // before the next frame make one frame. It does nothing for a web page.
 func (w *Window) Invalidate() {
+	framewhy.Note("invalidate", 0)
 	if w.content == nil || !w.invalidating.CompareAndSwap(false, true) {
 		return
 	}
@@ -206,6 +208,7 @@ func (w *Window) Invalidate() {
 //
 // It returns without waiting for fn.
 func (w *Window) Update(fn func()) {
+	framewhy.Note("update", 0)
 	postMain(func() {
 		fn()
 		w.contentChanged()

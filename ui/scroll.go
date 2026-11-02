@@ -140,7 +140,7 @@ func (e *node) glide(t *ScrollState) {
 	g.y.advance(now)
 	t.X, t.Y = float32(g.x.value), float32(g.y.value)
 	if g.x.moving || g.x.pending || g.y.moving || g.y.pending {
-		rt.animating = true
+		rt.animate()
 	} else {
 		t.glide = nil
 	}

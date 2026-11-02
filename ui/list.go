@@ -1328,7 +1328,7 @@ func (e *node) layoutList(w, h float32) {
 	if g := e.gridFit; g != nil && max(1, int(math.Floor(float64((cw+g.gap)/(g.minW+g.gap))))) != g.cols {
 		// The items of a grid take other columns: the next frame builds
 		// them so.
-		e.c.rt.animating = true
+		e.c.rt.animate()
 	}
 	if cw != s.width {
 		// The rows wrap anew: heights measured at another width are gone.
@@ -1624,7 +1624,7 @@ func (s *ListState) glideToEnd(e *node, n, lo, hi int, H, C float64, shift func(
 		s.follow.key = s.Key(n - 1)
 	}
 	if ch.moving || ch.pending {
-		rt.animating = true
+		rt.animate()
 	}
 	lag := ch.value
 	if lag > 0.01 || lag < -0.01 {
@@ -1671,7 +1671,7 @@ func (e *node) relayoutList(ch *node, y float64) {
 func (s *ListState) remember(e *node, first, last int, atEnd bool, scroll float64) {
 	f, n := e.list, e.list.n
 	if s.read && (first != s.first || last != s.last || atEnd != s.atEnd) {
-		e.c.rt.animating = true
+		e.c.rt.animate()
 	}
 	s.laidOut, s.wroteY, s.req, s.read = true, scroll, listRequest{}, false
 	s.first, s.last, s.atEnd = first, last, atEnd

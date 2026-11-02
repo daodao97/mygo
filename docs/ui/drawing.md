@@ -214,6 +214,39 @@ skeleton := ui.Box(c).Height(14).Radius(7).Background(t.Border)
 skeleton.Opacity(0.4 + 0.6*skeleton.Loop("pulse", 1600*time.Millisecond, ui.Bounce(ui.EaseInOut)))
 ```
 
+### What motion that lasts costs
+
+`Loop`, `Animate` on its way and `c.AnimationFrame()` move values the view
+reads, so each frame they ask for runs the view of the whole window, lays
+it out, paints it and presents it: not only the element that moves. They
+ask at the display's rate, 120 frames a second on ProMotion displays. For
+motion that ends in a fraction of a second, a panel opening or a value
+easing, that is right. For motion that lasts as long as work goes on, a
+spinner, a pulse, a label that shimmers while a job runs, it is the most
+expensive way there is, and it is spent the whole time the element shows:
+a chat window whose "Working for…" label flowed with two `Loop`s took a
+third of a core while a conversation ran, against about one percent once
+the label was still and its spinners stepped 8 times a second.
+
+For motion that lasts, choose, in this order:
+
+1. **`ui.Spinner`**, or another indicator MyGo draws: it steps from its
+   `Draw` with `p.After`, so its frames only paint, a few a second.
+2. **A `Draw` that animates**, with `p.After(d)` for steps or
+   `p.AnimationFrameRate(fps)` for smooth motion at a low rate (below):
+   its frames paint the last frame's elements again without running the
+   view.
+3. **`LoopFPS(key, period, ease, fps)`** where the motion must move a value
+   the view reads, an element's opacity or rotation: it asks for the next
+   frame `1/fps` later rather than at each refresh. Every one of those
+   frames still runs the whole view, so keep `fps` low (10 to 24).
+4. `Loop`, only for motion short enough that its cost does not matter.
+
+Still is better than all of them where the state reads as well without
+motion. To see what keeps a window drawing, set `MYGO_FRAME_WHY=1`
+([Rendering](rendering.md)): an idle window should draw no frames, a
+window showing work a few a second.
+
 To animate in other ways, compute from `c.Now()` and call
 `c.AnimationFrame()` in every frame that moves: MyGo draws the next frame
 when the display can show it, and draws nothing while nothing changes.

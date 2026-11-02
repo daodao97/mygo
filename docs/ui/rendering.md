@@ -38,6 +38,33 @@ included, as `runtime/metrics` counts them: a span at a time, so that
 small counts read low. While the variable is unset, frames measure
 nothing.
 
+Set `MYGO_FRAME_WHY=1` to find what keeps a window drawing. Every request
+for a frame notes where it came from: an animation (`animate`, from
+`AnimationFrame`, `Loop`, `Animate` and what moves in layout), a repaint
+(`repaint`, from `Painter.AnimationFrame`), a timer (`after`, from
+`Context.After`; `paint-after`, from `Painter.After`), or the app
+(`invalidate`, `update`, from `Window.Invalidate` and `Window.Update`).
+Once a second the log shows how many frames the window drew and the
+sources that asked most, each with the calls that led to it, up to the
+app's own:
+
+```
+mygo frame-why: 121 frames in 1.0s
+    121  animate  ui.(*context).AnimationFrame:500 < ui.(*node).Loop:80 < ui.Element.Loop:4899 < main.waveText:219 < …
+      3  invalidate  mygo.(*Window).Invalidate:190 < …
+```
+
+There, a `Loop` in `waveText` asked for every frame: 120 a second, each
+running the whole view. An idle window should log nothing, and a window
+showing work in progress a few frames a second (see [What motion that lasts
+costs](drawing.md#what-motion-that-lasts-costs)). While the variable is
+unset, a request costs one test of a boolean.
+
+On macOS, `sample` can show the main thread waiting in `mach_msg` while it
+runs Go code in callbacks from the run loop; Instruments' Time Profiler
+(`xcrun xctrace record --template 'Time Profiler' --attach <pid>`) sees
+where the time goes.
+
 MyGo draws a frame only when something changes: input, `Invalidate`,
 `After`, or an animation that moves. An idle window draws nothing, and two
 seconds after its last frame it frees the frame it drew in memory.

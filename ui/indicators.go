@@ -18,11 +18,18 @@ func coreSpinner(c *context) *node {
 	e.widget = "Spinner"
 	e.hasRange, e.accRange = true, [3]float64{0, 1, -1}
 	e.Draw(func(p *Painter, r Rect) {
-		// A spoke a twelfth of a turn on every twelfth of 0.9 s: it is
+		// A spoke an eighth of a turn on every eighth of a second: it is
 		// painted again for the next, while it shows, without building the
-		// view.
-		const spokes, turn = 12, 900
-		ms := int(p.Now().UnixMilli() % turn)
+		// view. Each step is a frame of the whole window, so the steps are
+		// few: 8 a second, still read as turning, and half as many while
+		// the window is in the background. Spinners share the clock, so
+		// any number of them step in the same frames.
+		const spokes = 8
+		turn := 1000
+		if !p.rt.windowFocused {
+			turn = 2000
+		}
+		ms := int(p.Now().UnixMilli() % int64(turn))
 		lead := ms * spokes / turn
 		p.After(time.Duration((lead+1)*turn/spokes-ms) * time.Millisecond)
 		cx, cy := r.X+r.W/2, r.Y+r.H/2

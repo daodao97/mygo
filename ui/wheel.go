@@ -107,7 +107,7 @@ func (rt *engine) glideWheels(now time.Time) {
 			s.wheel = nil
 			continue
 		}
-		rt.animating = true
+		rt.animate()
 		kept = append(kept, id)
 	}
 	rt.wheeling = kept

@@ -171,7 +171,8 @@ func TestIndicatorsRepaint(t *testing.T) {
 	})
 	// The spinner is painted again for its next spoke, the progress bar of
 	// unknown length as soon as the display can show it.
-	if !tt.rt.redraw || tt.rt.animating || tt.rt.repaintDue.IsZero() || tt.rt.repaintDue.Sub(tt.clock) > 75*time.Millisecond {
+	// A spoke lasts an eighth of a second in a focused window.
+	if !tt.rt.redraw || tt.rt.animating || tt.rt.repaintDue.IsZero() || tt.rt.repaintDue.Sub(tt.clock) > 125*time.Millisecond {
 		t.Errorf("the spinner alone: asks to be painted again %v (at %v), keeps building frames %v", tt.rt.redraw, tt.rt.repaintDue.Sub(tt.clock), tt.rt.animating)
 	}
 	value = -1

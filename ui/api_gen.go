@@ -4889,6 +4889,12 @@ func (_handle Element) LocalToWindow(x float32, y float32) (float32, float32) {
 // spinner turns with Loop("spin", time.Second, ui.Linear) * 360, and a
 // placeholder pulses with an opacity of 0.5 + 0.5*Loop("pulse", d,
 // ui.Bounce(ui.EaseInOut)).
+//
+// Each of those frames runs the view of the whole window, at the
+// display's rate (120 a second on ProMotion), for as long as the element
+// shows: for motion that lasts while work goes on, use Spinner, a Draw
+// with Painter.After or Painter.AnimationFrameRate, or LoopFPS at a low
+// rate (docs/ui/drawing.md, "What motion that lasts costs").
 func (_handle Element) Loop(key any, period time.Duration, ease Easing) float32 {
 	_node := _handle.node()
 	if _node == nil {
@@ -4897,6 +4903,22 @@ func (_handle Element) Loop(key any, period time.Duration, ease Easing) float32 
 	_ctx := _node.c
 	_ = _ctx
 	return _node.Loop(key, period, ease)
+}
+
+// LoopFPS is Loop for an animation that looks as smooth at fps frames a
+// second as at the display's rate, as a slow shimmer or a gradient that
+// flows: rather than have every refresh of the display (120 a second on
+// ProMotion) build the view anew, it asks for the next frame 1/fps later.
+// The whole view builds in each of those frames, so a low rate saves the
+// most where the view is large. An fps of 0 or less is Loop.
+func (_handle Element) LoopFPS(key any, period time.Duration, ease Easing, fps float32) float32 {
+	_node := _handle.node()
+	if _node == nil {
+		return 0
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.LoopFPS(key, period, ease, fps)
 }
 
 // Margin sets the space around the element, as Padding does. Auto

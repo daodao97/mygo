@@ -128,7 +128,7 @@ func (p *Painter) Accelerated() bool {
 // Call it in every frame while the drawing moves; an element out of view
 // is not painted, so it asks for none.
 func (p *Painter) AnimationFrame() {
-	p.rt.repainting, p.rt.repaintFull = true, true
+	p.rt.repaintFrames(true)
 	p.asks()
 }
 
@@ -143,7 +143,7 @@ func (p *Painter) AnimationFrame() {
 // fastest anything in it asks for: at the display's while another drawing
 // asks for AnimationFrame or the view animates.
 func (p *Painter) AnimationFrameRate(fps float32) {
-	p.rt.repainting = true
+	p.rt.repaintFrames(false)
 	p.rt.repaintRate = max(p.rt.repaintRate, fps)
 	p.asks()
 }
@@ -154,6 +154,7 @@ func (p *Painter) AnimationFrameRate(fps float32) {
 // without building the view. An element out of view is not painted, so
 // it asks for none.
 func (p *Painter) After(d time.Duration) {
+	whyNote("paint-after")
 	at := p.rt.c.now.Add(d)
 	if p.rt.repaintAt.IsZero() || at.Before(p.rt.repaintAt) {
 		p.rt.repaintAt = at

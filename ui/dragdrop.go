@@ -289,7 +289,7 @@ func (rt *engine) dragScroll() {
 			dy = (edge - bottom) / 2
 		}
 		if dy != 0 && scrollBy(s, 0, dy) {
-			rt.animating = true
+			rt.animate()
 			// The element under the pointer changes as the content moves.
 			if d != nil && !d.native && !d.canceled {
 				d.over = rt.valueTarget(rt.pointerX, rt.pointerY, d.value)

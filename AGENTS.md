@@ -199,6 +199,15 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   guide); never commit the CLI's binaries.
 - The configuration types of `packages/cli/index.d.ts` (for `mygo.config.ts`)
   mirror `Config` in `cmd/mygo/config.go`; `TestConfigTypes` checks them.
+- Motion that lasts while work goes on (spinners, pulses, shimmering
+  labels) must not run the view at the display's rate: `Loop`, `Animate`
+  and `Context.AnimationFrame` run the whole window's view in every frame,
+  120 a second on ProMotion. Use `ui.Spinner`, a `Draw` with
+  `Painter.After` or `Painter.AnimationFrameRate`, or `LoopFPS` at a low
+  rate; keep `Loop` for motion that ends. Check with `MYGO_FRAME_WHY=1`:
+  an idle window draws no frames, one showing work a few a second ("What
+  motion that lasts costs" in `docs/ui/drawing.md`). Views must not parse,
+  sort or group data in every frame either: do it when the data changes.
 - Tests: unit tests through `internal/fake`; GUI behavior in `internal/e2e`.
 - Tests never pass or fail on wall-clock time ("Waiting in tests" in the
   architecture guide): wait for the condition or event with

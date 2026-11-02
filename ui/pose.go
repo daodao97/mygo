@@ -110,7 +110,7 @@ func (rt *engine) showPose(e *node, r *poseRec) {
 		if moving && !d.moving() {
 			// It came to rest in a frame that only paints: the view
 			// builds again, to see it there (Transitioning).
-			rt.animating = true
+			rt.animate()
 		}
 		p := d.shown()
 		v[0] += p.X
@@ -122,7 +122,7 @@ func (rt *engine) showPose(e *node, r *poseRec) {
 	}
 	e.poseFade = max(0, min(v[4], 1))
 	if r.moving() || d.current(rt) && d.moving() {
-		rt.repainting, rt.repaintFull = true, true
+		rt.repaintFrames(true)
 		rt.untracked = true // moving what is inside it
 	}
 }

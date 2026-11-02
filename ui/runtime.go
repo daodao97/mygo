@@ -96,6 +96,8 @@ type host interface {
 // the view function, lays them out, paints them and routes input to the
 // elements of the last frame. Main thread only, except where noted.
 type engine struct {
+	// elastic is the visual displacement of the one touch-owned scroller.
+	elastic *elasticScroll
 	// gestures are the pinch and rotation captures in progress, by the
 	// kind of gesture the surface named (gesture.go).
 	gestures map[string]gestureCapture
@@ -271,6 +273,8 @@ type engine struct {
 		selecting          bool
 		holdUntil          time.Time
 		scrollTarget       uint64
+		text               touchTextPolicy // installed only by Selectable
+		scrollAxis         uint8           // 1 horizontal, 2 vertical; 0 for custom two-axis widgets
 		x, y, lastX, lastY float32
 		back               *Router
 		backEntry          *routeEntry
@@ -414,6 +418,8 @@ type engine struct {
 	// ime is the text input state the host has, and base the rune of the
 	// focused editor its text starts at.
 	ime struct {
+		scope             nativeSelectionScope
+		newScope          func(uint64) nativeSelectionScope
 		state             platform.TextInputState
 		base              int
 		compositionID     uint64
@@ -611,6 +617,7 @@ func (rt *engine) runFrame() {
 	rt.painted = [3]float32{w, h, scale}
 	rt.animating, rt.repainting, rt.repaintAt = false, false, time.Time{}
 	rt.repaintRate, rt.repaintFull, rt.untracked = 0, false, false
+	rt.advanceElastic(now)
 	rt.advanceTouch()
 	rt.routeKeys()
 	rt.glideWheels(now)
@@ -708,7 +715,8 @@ func (rt *engine) runFrame() {
 			over = s.id
 		}
 		if rt.dataOver != over {
-			rt.dataOver, rt.animating = over, true
+			rt.dataOver = over
+			rt.animate()
 		}
 	}
 	rt.commitFocusBindings()
@@ -806,6 +814,7 @@ func (rt *engine) frameTime() time.Time {
 // (SurfaceShown) rather than draw frames nobody sees, as browsers pause
 // the animation frames of windows out of sight.
 func (rt *engine) next() {
+	whyFrame()
 	if rt.touch.active && !rt.touch.holdUntil.IsZero() {
 		rt.scheduleAt(rt.touch.holdUntil)
 	}
@@ -1054,7 +1063,7 @@ func (rt *engine) prune() {
 			rt.endPress(input, x, y)
 			// A frame built anew for the press ended and what the handler
 			// did with it, not one only painting again.
-			rt.animating = true
+			rt.animate()
 		}
 	}
 	rt.pressLost = nil
@@ -1118,12 +1127,14 @@ func (rt *engine) requestFrame() {
 // changed asks the host for a frame built anew after the app changed what
 // the view shows, from outside the view (surface.Conn.Changed).
 func (rt *engine) changed() {
+	whyNote("changed")
 	rt.redraw, rt.repaintDue = false, time.Time{}
 	rt.host.requestFrame()
 }
 
 // scheduleAt asks for a frame at t (After).
 func (rt *engine) scheduleAt(t time.Time) {
+	whyNote("after")
 	rt.wakeMu.Lock()
 	if rt.wakeAt.IsZero() || t.Before(rt.wakeAt) {
 		rt.wakeAt = t

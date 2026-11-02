@@ -66,7 +66,33 @@ func (e *node) AnimateWith(key any, target float32, d time.Duration, ease Easing
 // spinner turns with Loop("spin", time.Second, ui.Linear) * 360, and a
 // placeholder pulses with an opacity of 0.5 + 0.5*Loop("pulse", d,
 // ui.Bounce(ui.EaseInOut)).
+//
+// Each of those frames runs the view of the whole window, at the
+// display's rate (120 a second on ProMotion), for as long as the element
+// shows: for motion that lasts while work goes on, use Spinner, a Draw
+// with Painter.After or Painter.AnimationFrameRate, or LoopFPS at a low
+// rate (docs/ui/drawing.md, "What motion that lasts costs").
 func (e *node) Loop(key any, period time.Duration, ease Easing) float32 {
+	e.c.AnimationFrame()
+	return e.loopProgress(key, period, ease)
+}
+
+// LoopFPS is Loop for an animation that looks as smooth at fps frames a
+// second as at the display's rate, as a slow shimmer or a gradient that
+// flows: rather than have every refresh of the display (120 a second on
+// ProMotion) build the view anew, it asks for the next frame 1/fps later.
+// The whole view builds in each of those frames, so a low rate saves the
+// most where the view is large. An fps of 0 or less is Loop.
+func (e *node) LoopFPS(key any, period time.Duration, ease Easing, fps float32) float32 {
+	if fps <= 0 {
+		return e.Loop(key, period, ease)
+	}
+	e.c.After(time.Duration(float64(time.Second) / float64(fps)))
+	return e.loopProgress(key, period, ease)
+}
+
+// loopProgress is where the animation under key is in its period now.
+func (e *node) loopProgress(key any, period time.Duration, ease Easing) float32 {
 	st := e.st
 	if st.anims == nil {
 		st.anims = map[any]*anim{}
@@ -77,7 +103,6 @@ func (e *node) Loop(key any, period time.Duration, ease Easing) float32 {
 		a = &anim{start: now}
 		st.anims[key] = a
 	}
-	e.c.AnimationFrame()
 	p := max(period, time.Millisecond)
 	t := float32(now.Sub(a.start)%p) / float32(p)
 	return ease(t)

@@ -445,6 +445,12 @@ for spinners and pulses (see [Drawing and animation](drawing.md#animation)).
 To animate otherwise, compute from `c.Now()` and call `c.AnimationFrame()`
 in every frame that moves.
 
+Both run the view of the whole window in every frame, at the display's
+rate, for as long as the element shows. Motion that lasts while work goes
+on belongs in a `Draw` (`p.After`, `p.AnimationFrameRate`), or in
+`LoopFPS` at a low rate when it must move a value the view reads: see
+[What motion that lasts costs](drawing.md#what-motion-that-lasts-costs).
+
 ## Less motion and frames
 
 When the desktop asks for less motion (`c.Preferences().ReduceMotion`),

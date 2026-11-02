@@ -484,7 +484,7 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 			shown = r.sample(next, now)
 		}
 		if r.moving != 0 {
-			rt.animating = true
+			rt.animate()
 		} else {
 			r.rest(next, now)
 		}
@@ -553,7 +553,7 @@ func (rt *engine) animateMatches() {
 			} else {
 				shown = Rect{v[0], v[1], max(v[2], 0), max(v[3], 0)}
 				e.showAt(shown)
-				rt.animating = true
+				rt.animate()
 			}
 		}
 		if rec == nil {
@@ -728,7 +728,7 @@ func (rt *engine) animateExits(root *node, now time.Time, still, instant bool) {
 			g.transform = g.transform.Then(t)
 		}
 		r.shown = s
-		rt.animating = true
+		rt.animate()
 	}
 	clear(going)
 	rt.going = going[:0]
@@ -837,7 +837,7 @@ func (rt *engine) animateColors(e *node, r *transition) {
 			} else {
 				k := max(0, min(float32(r.colorK.value), 1))
 				r.colorShown = [2]Color{mixPremultiplied(r.colorFrom[0], target[0], k), mixPremultiplied(r.colorFrom[1], target[1], k)}
-				rt.animating = true
+				rt.animate()
 			}
 		}
 		if m := r.t.Match; m != nil {

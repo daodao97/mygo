@@ -258,7 +258,7 @@ func (rt *engine) scrollTextSelection() {
 			dy = min(edge-bottom, edge) / 2
 		}
 		if dy != 0 && scrollBy(s, 0, dy) {
-			rt.animating = true
+			rt.animate()
 		}
 		return
 	}

@@ -152,6 +152,6 @@ func (rt *engine) scrollDragSelect() {
 		dx = speed(x, st.w)
 	}
 	if (dx != 0 || dy != 0) && scrollBy(st, dx, dy) {
-		rt.animating = true
+		rt.animate()
 	}
 }
