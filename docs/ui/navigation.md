@@ -221,6 +221,15 @@ in. With less motion asked of the desktop, all fade, and
 `router.Transition = ui.TransitionNone` shows them at once. The page going
 away takes neither the pointer nor the keyboard as it slides.
 
+For a mobile navigation stack, use `TransitionStack`. It follows history
+rather than path nesting: pushing `/settings` after `/notes` slides the new
+page in from the right, and Back slides it out to reveal the preceding
+page. Forward uses the same entering motion. Reduce Motion uses fades.
+
+```go
+router.Transition = ui.TransitionStack
+```
+
 `router.Animation` sets how pages move, as a spring or a curve (see
 [Motion](motion.md)), in place of easing out over 250 ms as they slide and
 150 ms as they fade:

@@ -326,8 +326,18 @@ native calls. UIKit paints the surrounding safe area with that color and
 selects status-bar text contrast through the view controller. The content
 retains its safe-area bounds, and Scene reconnection restores the backdrop.
 
-The single content window is a `UIView` inside the safe area. Its bounds
-shrink above the software keyboard. The viewport changes without animating
+The single content window is a `UIView` inside the safe area by default.
+`WindowOptions.ExtendIntoSafeArea` opts into drawing backgrounds, drawers and
+scrims behind the status bar and home indicator. These windows report the
+chrome overlapping their current viewport through `ui.Context.SafeArea`;
+controls pad by those insets. Insets update on rotation or changes to system
+chrome, and bottom padding becomes zero above a docked keyboard. Other
+platforms ignore the option. The surface's bounds
+shrink above the software keyboard. A clear UIKit proxy animates with the
+keyboard notification's duration and curve; the display link samples its
+presentation position to lay out each Go viewport at the current height.
+Interactive keyboard dragging uses the supplied frames directly, and interrupted
+animations start from their presentation position. The viewport changes without animating
 the surface bounds, and an old CPU image or Metal drawable stays at its
 original point scale, clipped from the top left until its replacement is
 presented. Keyboard avoidance must not stretch the page's already-drawn pixels.
@@ -344,7 +354,14 @@ callbacks, so the Core Animation pixel completion handles first-frame handoff.
 
 UIKit touch events carry contact identities and a pointer type. The Go UI
 arbitrates taps and scrolling, cancels pressed widgets at the scroll
-threshold, and handles cancellation separately from pointer release.
+threshold, and handles cancellation separately from pointer release. Read-only
+selectable text reserves a touch until a 500 ms hold. Short taps dismiss
+selection instead of focusing the text; scrolling and cancellation abandon the
+hold. The selection policy is registered by `Selectable`, and mouse selection
+keeps its immediate behavior. UIKit body taps route through this policy while
+native handles retain their own gestures. Its long-press callback flushes the
+first Go selection before presenting the edit menu, even if keyboard dismissal
+resizes the viewport between the timer and UIKit callback.
 Deactivating a keyboard for a pressed non-editable control waits until its
 primary touch ends, so synchronous viewport resizing cannot move that control
 away before release. Editor-to-editor focus changes remain immediate.
@@ -354,13 +371,34 @@ flushes text snapshots before the next replacement, and synchronizes
 selection back to the proxy. On iOS 17 and later, UIKit selection display
 interactions draw the caret, highlight and handles above the Metal layer.
 Their caret/selection/hit geometry comes from the existing Go text layout,
-with focused-field identity checks and visible-paragraph-only queries.
+with focused-field identity checks and visible-paragraph-only queries. Display handles
+have dedicated pan recognizers and at least 44-point touch targets. Their
+original finger-to-caret offset and opposite endpoint remain fixed during a
+drag; Go hit geometry maps the moving endpoint, including cross-paragraph
+ranges. Handle touches bypass Go tap/scroll arbitration and the Back edge.
+Read-only handle changes are synchronized once to Go before repainting;
+editable input keeps UIKit's own gestures.
 System cut/copy/paste/select-all actions use the shared Go editor, clipboard
-and undo history. Older iOS versions retain Go selection visuals. Password
+and undo history. Read-only Copy flushes the clipboard write before collapsing the shared
+selection and releasing UIKit's responder; editable Copy keeps its selection.
+iOS accepts plain text, HTML and Markdown together, so Markdown selection
+copy is not rejected for containing rich alternatives. Clipboard providers
+are materialized before changing the pasteboard; validate this path with
+`go test -tags mygo_ios_clipboard ./internal/ios` on desktop. Older iOS versions retain Go selection visuals. Password
 input does not export surrounding text or offer copy/cut; custom TextCaret
 handlers continue drawing their own selection. Accessibility nodes become UIKit accessibility elements with actions
 routed back to the existing Go tree. Memory warnings release renderer
 buffers; activation, theme and termination notify the existing handlers.
+
+Touch-owned scroll containers keep logical offsets clamped for `ScrollState`
+and virtual list row selection. Placement applies a separate, resisted edge
+displacement to flowing children. Releasing or cancelling the contact starts a
+clock-driven critically damped return; a new contact can interrupt it. Native
+editor/keyboard pans send begin/end/cancel phases too. Momentum stops at the
+first touched edge instead of repeatedly feeding the spring or chaining to a
+parent. Reduced motion disables the displacement. The implementation is built
+only for iOS; `go test -tags mygo_touch_elastic ./ui ./ui/markdown` exercises the
+same paths with the headless clock on desktop.
 
 Marked-text snapshots update committed surrounding text and provisional text
 atomically in one Go frame. The input context stays pinned while UIKit keeps
@@ -3037,7 +3075,10 @@ either.
   over the page left, the one going away built too, inert (`flagInert`:
   painted, without hits, focus, labels, accessibility nor `Context`
   shortcuts), absolutely positioned over the one in flow, both offset by
-  their insets as relative positioning; others fade in alone. The first
+  their insets as relative positioning; others fade in alone. Opt into
+  `TransitionStack` for navigation-stack motion: every pushed history entry
+  slides from the right and Back from the left, including sibling paths.
+  Reduce Motion keeps these transitions as fades. The first
   router of a frame takes the back and forward keys for the window, each
   one also for the focus inside it, which comes first.
   `NewRouter` enables `InteractiveBack` on iOS (other platforms can opt in).
@@ -3281,6 +3322,11 @@ either.
     as painting does, and the paint that finds the paragraphs elsewhere
     than read asks for a frame (`Services.Invalidate`), as
     `ListState.Visible` builds another.
+  - *Application paste handling.* `EditorOptions.OnPaste` intercepts keyboard,
+    native Edit-menu and match-style paste before the document changes. A
+    callback that consumes a paste can attach files or edit the document;
+    the view synchronizes before publishing its selection. The optional
+    `ContextMenu` builder replaces the default menu during construction.
   - *Formats out of the process.* The clipboard carries the editor's JSON,
     HTML (`golang.org/x/net/html` reads what is pasted) and plain text;
     browsers carry each text format through the clipboard events. The

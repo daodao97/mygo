@@ -305,6 +305,10 @@ func (e *node) Selectable() *node {
 	if e.kind == kindText || e.kind == kindBox {
 		e.flags &^= flagUnselectable
 		e.flags |= flagSelectable
+		e.c.rt.ime.newScope = makeNativeTextScope
+		if e.c.rt.touch.text == nil {
+			e.c.rt.touch.text = &textTouchSelection{rt: e.c.rt}
+		}
 	}
 	return e
 }

@@ -409,6 +409,9 @@ const (
 	// the surface has the keyboard again, and the content moves the focus
 	// on from the web view's element.
 	WebViewTabOut
+	// PointerLongPress confirms a native timed press for the active touch.
+	// Read-only text may start selection; taps and scrolling cannot.
+	PointerLongPress
 )
 
 // DrawableSurface observes native drawable presentation (Metal on iOS).
@@ -434,11 +437,14 @@ var EditCommands = map[string]bool{
 
 // SurfaceEvent is input on a Surface, or a change of it.
 type SurfaceEvent struct {
-	Gesture, Phase string
-	Rotation       float64
-	Kind           SurfaceEventKind
-	PointerID      uint64
-	PointerType    PointerType
+	Gesture string
+	// Phase is a SurfaceGesture phase, or begin/end/cancel for a native
+	// touch PointerScroll pan. Empty scroll phases carry movement only.
+	Phase       string
+	Rotation    float64
+	Kind        SurfaceEventKind
+	PointerID   uint64
+	PointerType PointerType
 	// X and Y locate the pointer in DIPs relative to the surface.
 	X, Y float64
 	// Button is 0 for the primary button, 1 the secondary, 2 the middle.

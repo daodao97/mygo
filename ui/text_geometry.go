@@ -6,14 +6,30 @@ import (
 	"github.com/egoist/mygo/internal/platform"
 )
 
+// A container installs this bridge only when Selectable is used. Native
+// scope snapshots and their indexing do not grow apps without selectable text.
+type nativeSelectionScope interface {
+	owns(uint64) bool
+	input(*engine, *state, platform.TextInputState) platform.TextInputState
+	point(int) textPoint
+	geometry(*engine, platform.TextGeometryQuery) platform.TextGeometry
+}
+
 func platformRect(r Rect) platform.RectF {
 	return platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)}
 }
 
 func (rt *engine) nativeSelection(s *state) bool {
 	h, ok := rt.host.(interface{ nativeTextSelection() bool })
-	return ok && h.nativeTextSelection() && rt.windowFocused && rt.focused == s.id &&
-		s.editor != nil && !s.editor.password && s.editor.compose == ""
+	if !ok || !h.nativeTextSelection() || !rt.windowFocused || s.editor == nil || s.editor.password || s.editor.compose != "" {
+		return false
+	}
+	if rt.focused == s.id {
+		return true
+	}
+	// UIKit paints one shared selection over all paragraphs of a message.
+	f := rt.states[rt.focused]
+	return s.textScope != 0 && f != nil && f.textScope == s.textScope && f.editor != nil && f.editor.readOnly
 }
 
 // textGeometry reads the same layouts used to paint the text. The native
@@ -24,6 +40,9 @@ func (rt *engine) textGeometry(q platform.TextGeometryQuery) platform.TextGeomet
 	if !rt.ime.state.Active || q.ID != rt.ime.state.ID || s == nil || s.id != q.ID ||
 		s.editor == nil || s.editor.password || s.editor.compose != "" {
 		return platform.TextGeometry{}
+	}
+	if d := rt.ime.scope; d != nil && d.owns(s.textScope) {
+		return d.geometry(rt, q)
 	}
 	ed := s.editor
 	n := utf8.RuneCountInString(rt.ime.state.Text)

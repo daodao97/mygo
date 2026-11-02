@@ -29,6 +29,14 @@ type EditorOptions struct {
 	// NoMarkdown turns off the Markdown shortcuts: "# " at the start of a
 	// paragraph making a heading, **bold** making bold, and the others.
 	NoMarkdown bool
+	// OnPaste runs before keyboard or native-menu paste on the UI thread.
+	// Returning true consumes the paste without changing the document unless
+	// the callback edits it. Return false to use the editor's normal paste.
+	// Use Services for clipboard access; do not retain a frame's Element.
+	OnPaste func() bool
+	// ContextMenu replaces the editor's context menu. It is installed while
+	// the editor builds, so its default menu cannot consume the same request.
+	ContextMenu func(menu *ui.Menu)
 	// OnLink opens the URL of a link clicked, instead of the system,
 	// which opens only those ui.SafeToOpen allows.
 	OnLink func(url string)
@@ -240,7 +248,11 @@ func build(c *ui.Context, doc *Document, options []EditorOptions, styled bool) u
 	e.HandleInput(v.input)
 	e.Cursor(v.cursor)
 	e.Draw(v.paint)
-	e.ContextMenu(v.menu)
+	if v.opts.ContextMenu != nil {
+		e.ContextMenu(v.opts.ContextMenu)
+	} else {
+		e.ContextMenu(v.menu)
+	}
 	if styled {
 		e.FocusRing(false)
 	}

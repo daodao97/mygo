@@ -382,7 +382,8 @@ type WindowOptions struct {
 	Transparent    bool
 	// BackgroundColor is painted before the page renders; nil keeps the
 	// platform default.
-	BackgroundColor *Color
+	BackgroundColor    *Color
+	ExtendIntoSafeArea bool // iOS native surface draws behind system chrome.
 	// TitleBarStyle is "default", "hidden" or "hiddenInset". A hidden title
 	// bar gives the page the whole window, under the window controls:
 	// AppKit's traffic lights on macOS, and on Linux and Windows controls

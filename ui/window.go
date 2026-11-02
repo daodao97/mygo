@@ -85,6 +85,9 @@ func (v *Content) AttachContent(conn *surface.Conn) {
 		rt.themeChanged()
 	}
 	conn.TitleBarChanged = rt.requestFrame
+	// Insets can change while the surface keeps its size; cached paint is
+	// insufficient because controls must be laid out inside the new safe area.
+	conn.SafeAreaChanged = rt.changed
 	conn.Changed = rt.changed
 	conn.LocaleChanged = func() {
 		h.textLanguage()

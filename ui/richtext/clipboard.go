@@ -206,6 +206,12 @@ func (v *view) copySelection() {
 // format the editor reads, or its plain text in the typing attributes when
 // matching the style.
 func (v *view) paste(matchStyle bool) {
+	if v.opts.OnPaste != nil && v.opts.OnPaste() {
+		// The callback may have changed the document and its selection.
+		// Synchronize before the input handler publishes its own selection.
+		v.sync()
+		return
+	}
 	var t Text
 	ok := false
 	if !matchStyle {

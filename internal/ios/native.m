@@ -183,6 +183,16 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @interface MyGoUndoManager : NSUndoManager
 @property(nonatomic, weak) MyGoEditor *editor;
 @end
+// Display interactions draw handles but do not supply their drag behavior.
+@interface MyGoSelectionHandlePan : UIPanGestureRecognizer
+@property(nonatomic) BOOL leading;
+@property(nonatomic) uint64_t ownerID;
+@property(nonatomic) NSUInteger fixedIndex;
+@property(nonatomic) NSUInteger movingIndex;
+@property(nonatomic) CGPoint caretOffset;
+@end
+@implementation MyGoSelectionHandlePan @end
+
 @interface MyGoEditor : UITextView <UITextSelectionDisplayInteractionDelegate>
 @property(nonatomic) uint64_t windowID;
 @property(nonatomic) uint64_t fieldID;
@@ -199,6 +209,13 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 - (BOOL)applyKeyboardType:(UIKeyboardType)type;
 - (void)applyPendingKeyboard;
 @property(nonatomic, strong) UITextSelectionDisplayInteraction *selectionDisplay API_AVAILABLE(ios(17.0));
+@property(nonatomic, strong) UIEditMenuInteraction *editMenu API_AVAILABLE(ios(16.0));
+- (void)showEditMenu;
+- (void)dismissEditMenu;
+- (UIView *)selectionHandleAtPoint:(CGPoint)point;
+- (void)installSelectionHandleGestures;
+- (BOOL)isDraggingSelectionHandle;
+@property(nonatomic) BOOL updatingHandleSelection;
 @end
 
 // Native buttons stay outside the Go focus chain. Expanding secondary keys
@@ -389,6 +406,127 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 @end
 
 @implementation MyGoEditor
+- (UIView *)selectionHandleAtPoint:(CGPoint)point {
+  if (!self.fieldID || !self.isFirstResponder || self.secureTextEntry || !self.selectedRange.length) return nil;
+  if (@available(iOS 17.0, *)) {
+    UIView *nearest = nil;
+    CGFloat distance = CGFLOAT_MAX;
+    for (UIView *handle in self.selectionDisplay.handleViews) {
+      if (!handle.superview || handle.hidden || handle.alpha <= .01) continue;
+      CGRect bounds = [handle convertRect:handle.bounds toView:self];
+      CGRect target = self.editable ? CGRectInset(bounds,-10,-10) : CGRectInset(bounds, -MAX(0,(44-bounds.size.width)/2), -MAX(0,(44-bounds.size.height)/2));
+      if (!CGRectContainsPoint(target,point)) continue;
+      CGFloat dx = point.x-CGRectGetMidX(bounds), dy = point.y-CGRectGetMidY(bounds);
+      CGFloat d = dx*dx+dy*dy;
+      if (d < distance) { nearest=handle;distance=d; }
+    }
+    return nearest;
+  }
+  return nil;
+}
+- (BOOL)isDraggingSelectionHandle {
+  if (@available(iOS 17.0,*)) {
+    for (UIView *handle in self.selectionDisplay.handleViews)
+      for (UIGestureRecognizer *gesture in handle.gestureRecognizers)
+        if ([gesture isKindOfClass:MyGoSelectionHandlePan.class] &&
+            (gesture.state==UIGestureRecognizerStateBegan || gesture.state==UIGestureRecognizerStateChanged)) return YES;
+  }
+  return NO;
+}
+- (void)installSelectionHandleGestures {
+  if (@available(iOS 17.0, *)) {
+    NSUInteger index=0;
+    for (UIView<UITextSelectionHandleView> *handle in self.selectionDisplay.handleViews) {
+      MyGoSelectionHandlePan *pan=nil;
+      for (UIGestureRecognizer *gesture in handle.gestureRecognizers)
+        if ([gesture isKindOfClass:MyGoSelectionHandlePan.class]) { pan=(MyGoSelectionHandlePan *)gesture;break; }
+      if (!pan) {
+        pan=[[MyGoSelectionHandlePan alloc] initWithTarget:self action:@selector(dragSelectionHandle:)];
+        pan.maximumNumberOfTouches=1;
+        [handle addGestureRecognizer:pan];
+      }
+      BOOL leading=(handle.direction & NSDirectionalRectEdgeLeading)!=0;
+      if (!(handle.direction & (NSDirectionalRectEdgeLeading|NSDirectionalRectEdgeTrailing))) leading=index==0;
+      pan.leading=leading;
+      pan.enabled=!self.editable;
+      if (!self.editable) handle.userInteractionEnabled=YES;
+      handle.accessibilityIdentifier=leading ? @"Selection start handle" : @"Selection end handle";
+      index++;
+    }
+  }
+}
+- (void)dragSelectionHandle:(MyGoSelectionHandlePan *)pan {
+  if (!self.fieldID || !self.isFirstResponder || self.secureTextEntry) return;
+  if (pan.state==UIGestureRecognizerStateBegan) {
+    if (!self.selectedRange.length) return;
+    [self dismissEditMenu];
+    pan.ownerID=self.fieldID;
+    pan.fixedIndex=pan.leading ? NSMaxRange(self.selectedRange) : self.selectedRange.location;
+    pan.movingIndex=pan.leading ? self.selectedRange.location : NSMaxRange(self.selectedRange);
+    UITextPosition *position=[self positionFromPosition:self.beginningOfDocument offset:pan.movingIndex];
+    CGRect caret=[self caretRectForPosition:position];
+    CGPoint finger=[pan locationInView:self], translation=[pan translationInView:self];
+    // Preserve the offset between the finger on the lollipop and the caret,
+    // rather than jumping to a different line when the drag starts.
+    pan.caretOffset=CGPointMake(CGRectGetMidX(caret)-finger.x+translation.x,
+                               CGRectGetMidY(caret)-finger.y+translation.y);
+  }
+  if (pan.ownerID!=self.fieldID) return;
+  if (pan.state==UIGestureRecognizerStateBegan || pan.state==UIGestureRecognizerStateChanged) {
+    CGPoint point=[pan locationInView:self];point.x+=pan.caretOffset.x;point.y+=pan.caretOffset.y;
+    UITextPosition *position=[self closestPositionToPoint:point];
+    if (!position) return;
+    NSUInteger moving=MIN(self.text.length,MAX(0,[self offsetFromPosition:self.beginningOfDocument toPosition:position]));
+    NSUInteger fixed=MIN(pan.fixedIndex,self.text.length);
+    // Keep a full composed character when the ends meet, retaining visible
+    // handles. Crossing the fixed end swaps the range without moving it.
+    if (moving==fixed && self.text.length) {
+      BOOL before=pan.movingIndex<fixed || fixed==self.text.length;
+      NSRange character=[self.text rangeOfComposedCharacterSequenceAtIndex:before ? fixed-1 : fixed];
+      moving=before ? character.location : NSMaxRange(character);
+    }
+    pan.movingIndex=moving;
+    self.updatingHandleSelection=YES;
+    self.selectedRange=NSMakeRange(MIN(moving,fixed),MAX(moving,fixed)-MIN(moving,fixed));
+    self.updatingHandleSelection=NO;
+    // UITextView normally reports this change. Forward explicitly as well:
+    // a custom display handle must not rely on TextKit's private gestures.
+    [self.delegate textViewDidChangeSelection:self];
+    if (@available(iOS 17.0,*)) {
+      [self.selectionDisplay setNeedsSelectionUpdate];
+      [self.selectionDisplay layoutManagedSubviews];
+    }
+  } else if (pan.state==UIGestureRecognizerStateEnded) {
+    pan.ownerID=0;
+    [self showEditMenu];
+  } else if (pan.state==UIGestureRecognizerStateCancelled || pan.state==UIGestureRecognizerStateFailed) {
+    pan.ownerID=0;
+  }
+}
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  UIView *handle=self.editable ? nil : [self selectionHandleAtPoint:point];
+  return handle ?: [super hitTest:point withEvent:event];
+}
+- (void)showEditMenu {
+  if (!self.isFirstResponder || !self.selectedTextRange) return;
+  CGRect rect = [self firstRectForRange:self.selectedTextRange];
+  if (@available(iOS 16.0, *)) {
+    if (!self.editMenu) {
+      self.editMenu = [[UIEditMenuInteraction alloc] initWithDelegate:nil];
+      [self addInteraction:self.editMenu];
+    }
+    UIEditMenuConfiguration *configuration = [UIEditMenuConfiguration
+        configurationWithIdentifier:@(self.fieldID)
+        sourcePoint:CGPointMake(CGRectGetMidX(rect), CGRectGetMidY(rect))];
+    [self.editMenu presentEditMenuWithConfiguration:configuration];
+  } else {
+    [UIMenuController.sharedMenuController showMenuFromView:self rect:rect];
+  }
+}
+- (void)dismissEditMenu {
+  if (@available(iOS 16.0, *)) [self.editMenu dismissMenu];
+  [UIMenuController.sharedMenuController hideMenuFromView:self];
+}
 - (BOOL)applyKeyboardType:(UIKeyboardType)type {
  if (self.markedTextRange && self.keyboardType!=type) {
   self.pendingKeyboardType=type;self.hasPendingKeyboardType=YES;
@@ -437,18 +575,11 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   if (self.secureTextEntry && ([@[@"a", @"c", @"x"] containsObject:key.input])) return;
   if (!self.editable && ([@[@"x", @"v", @"z"] containsObject:key.input])) return;
   hardwareCommand(self.windowID, key);
-  [UIMenuController.sharedMenuController hideMenuFromView:self];
+  [self dismissEditMenu];
 }
 - (UIView *)textInputView { return self; }
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
-  if ([super pointInside:point withEvent:event]) return YES;
-  if (@available(iOS 17.0, *)) {
-    if (self.fieldID && !self.secureTextEntry && self.selectedRange.length) {
-      for (UIView *handle in self.selectionDisplay.handleViews)
-        if (handle.superview && !handle.hidden && CGRectContainsPoint(CGRectInset([self convertRect:handle.bounds fromView:handle], -5, -5), point)) return YES;
-    }
-  }
-  return NO;
+  return [self selectionHandleAtPoint:point]!=nil || [super pointInside:point withEvent:event];
 }
 // Go scrolls the editor and its ancestors. TextKit's invisible layout must
 // not move the proxy or selection handles independently of those layouts.
@@ -534,10 +665,10 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   return [self.tokenizer rangeEnclosingPosition:p withGranularity:UITextGranularityCharacter inDirection:UITextStorageDirectionForward];
 }
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
-  // Custom TextCaret handlers own their paste command, including image data.
-  // Native text fields keep their text-only menu and password restrictions.
-  BOOL canPaste = self.editable && (UIPasteboard.generalPasteboard.hasStrings ||
-      (!self.fieldID && !self.secureTextEntry && UIPasteboard.generalPasteboard.hasImages));
+  // Offer the user-initiated paste command without probing the pasteboard.
+  // Cross-app/Universal Clipboard content may not be available until paste
+  // is requested. Go reads supported formats only when the user chooses it.
+  BOOL canPaste = self.editable;
   if (action == @selector(undoManager)) return YES;
   if (action == @selector(mygoHardwareCommand:)) {
     if (self.markedTextRange) return NO;
@@ -559,19 +690,19 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   if (action == @selector(selectAll:)) return self.text.length > self.selectedRange.length;
   return NO;
 }
-- (void)copy:(id)sender { goIOSEditCommand(self.windowID, "copy"); [UIMenuController.sharedMenuController hideMenuFromView:self]; }
-- (void)cut:(id)sender { goIOSEditCommand(self.windowID, "cut"); [UIMenuController.sharedMenuController hideMenuFromView:self]; }
-- (void)paste:(id)sender { goIOSEditCommand(self.windowID, "paste"); [UIMenuController.sharedMenuController hideMenuFromView:self]; }
+- (void)copy:(id)sender { goIOSEditCommand(self.windowID, "copy"); [self dismissEditMenu]; }
+- (void)cut:(id)sender { goIOSEditCommand(self.windowID, "cut"); [self dismissEditMenu]; }
+- (void)paste:(id)sender { goIOSEditCommand(self.windowID, "paste"); [self dismissEditMenu]; }
 - (void)selectAll:(id)sender {
   if (self.secureTextEntry) return;
   goIOSEditCommand(self.windowID, "selectAll");
   uint64_t field = self.fieldID;
   dispatch_async(dispatch_get_main_queue(), ^{
     if (self.isFirstResponder && self.fieldID == field)
-      [UIMenuController.sharedMenuController showMenuFromView:self rect:[self firstRectForRange:self.selectedTextRange]];
+      [self showEditMenu];
   });
 }
-- (void)delete:(id)sender { goIOSEditCommand(self.windowID, "delete"); [UIMenuController.sharedMenuController hideMenuFromView:self]; }
+- (void)delete:(id)sender { goIOSEditCommand(self.windowID, "delete"); [self dismissEditMenu]; }
 - (CGRect)accessibilityFrame {
   return self.isAccessibilityElement ? self.goAccessibilityFrame
                                      : [super accessibilityFrame];
@@ -607,17 +738,24 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 }
 @end
 
+@protocol MyGoKeyboardViewport <NSObject>
+- (BOOL)updateKeyboardViewport;
+@end
+
 @interface MyGoSurface : UIView <UITextViewDelegate, UIGestureRecognizerDelegate>
 @property(nonatomic) uint64_t windowID;
 @property(nonatomic, strong) CADisplayLink *displayLink;
+@property(nonatomic, weak) id<MyGoKeyboardViewport> keyboardViewportController;
 @property(nonatomic, strong) MyGoEditor *editor;
 @property(nonatomic, strong) UITouch *contact;
 @property(nonatomic) uint64_t contactID;
+@property(nonatomic) uint64_t momentumContactID;
 @property(nonatomic) CGPoint origin;
 @property(nonatomic) CGPoint previous;
 @property(nonatomic) CGPoint velocity;
 @property(nonatomic) NSTimeInterval previousTime;
 @property(nonatomic) BOOL scrolling;
+@property(nonatomic) BOOL textPanHorizontal;
 @property(nonatomic) CGSize reportedSize;
 @property(nonatomic) CGFloat reportedScale;
 @property(nonatomic) BOOL framePending;
@@ -702,6 +840,8 @@ static const NSUInteger MyGoAccessoryColumns = 6;
     }
     [self addSubview:self.editor];
     UILongPressGestureRecognizer *select = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(selectText:)];
+    select.minimumPressDuration = 0.5;
+    select.allowableMovement = 12; // Go cancels selection after 8 points on either axis.
     select.cancelsTouchesInView = NO;
     select.delegate = self;
     [self addGestureRecognizer:select];
@@ -712,6 +852,11 @@ static const NSUInteger MyGoAccessoryColumns = 6;
  UIRotationGestureRecognizer *rotate=[[UIRotationGestureRecognizer alloc] initWithTarget:self action:@selector(multiGesture:)];rotate.delegate=self;[self addGestureRecognizer:rotate];
   }
   return self;
+}
+- (void)safeAreaInsetsDidChange {
+  [super safeAreaInsetsDidChange];
+  if (self.windowID) goIOSSafeAreaChanged(self.windowID);
+  [self requestFrame];
 }
 - (void)layoutSubviews {
   [super layoutSubviews];
@@ -728,27 +873,40 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 // Only the focused editable field receives UIKit selection gestures. Go
 // continues handling other widgets, scrolling and the reserved back edge.
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-  UIView *hit = [super hitTest:point withEvent:event];
-  if ([hit isDescendantOfView:self.editor] &&
-      (!((MyGoEditor *)self.editor).fieldID || !self.editor.isFirstResponder || self.editor.secureTextEntry || point.x < 24)) return self;
+  // Handles have priority even in the reserved Back edge and outside the
+  // text proxy's bounds. Ordinary read-only taps still go through Go.
+  UIView *handle=self.editor.editable ? nil : [self.editor selectionHandleAtPoint:[self convertPoint:point toView:self.editor]];
+  if (handle) return handle;
+  UIView *hit=[super hitTest:point withEvent:event];
+  if (![hit isDescendantOfView:self.editor]) return hit;
+  if (!self.editor.fieldID || !self.editor.isFirstResponder || self.editor.secureTextEntry || point.x<24 || !self.editor.editable) return self;
   return hit;
 }
 - (void)selectText:(UILongPressGestureRecognizer *)gesture {
-  if (gesture.state != UIGestureRecognizerStateBegan || !((MyGoEditor *)self.editor).fieldID || !self.editor.isFirstResponder) return;
+  if (gesture.state != UIGestureRecognizerStateBegan) return;
   CGPoint p = [gesture locationInView:self];
-  if (p.x < 24 || !CGRectContainsPoint(self.editor.frame, p)) return;
+  if (p.x < 24) return;
+  BOOL selectedReadOnly = NO;
   if (self.contact) {
-    goIOSTouch(self.windowID, self.contactID, 3, self.previous.x, self.previous.y);
+    selectedReadOnly = goIOSTouch(self.windowID,self.contactID,4,p.x,p.y);
+    if (selectedReadOnly) goIOSFrame(self.windowID);
+    if (!selectedReadOnly && (!self.editor.fieldID || !self.editor.editable || !self.editor.isFirstResponder || !CGRectContainsPoint(self.editor.frame,p))) return;
+    goIOSTouch(self.windowID,self.contactID,3,self.previous.x,self.previous.y);
     self.contact = nil;
+  } else if (!self.editor.editable) {
+    return; // UIKit owns long presses on its selection handles.
   }
+  if (!self.editor.fieldID || !self.editor.isFirstResponder || !CGRectContainsPoint(self.editor.frame,p)) return;
   self.velocity = CGPointZero;
-  if (!self.editor.secureTextEntry) {
+  if (!selectedReadOnly && !self.editor.secureTextEntry) {
     UITextPosition *at = [self.editor closestPositionToPoint:[self convertPoint:p toView:self.editor]];
     UITextRange *word = [self.editor.tokenizer rangeEnclosingPosition:at withGranularity:UITextGranularityWord inDirection:UITextStorageDirectionForward];
     if (word) self.editor.selectedTextRange = word;
     else [self.editor select:self];
   }
-  [UIMenuController.sharedMenuController showMenuFromView:self.editor rect:[self.editor firstRectForRange:self.editor.selectedTextRange]];
+  if (selectedReadOnly && self.editor.selectedRange.length)
+    mygo_ios_haptic("selection");
+  [(MyGoEditor *)self.editor showEditMenu];
 }
 - (void)multiGesture:(UIGestureRecognizer *)gesture {
  BOOL pinch=[gesture isKindOfClass:UIPinchGestureRecognizer.class];
@@ -768,9 +926,15 @@ static const NSUInteger MyGoAccessoryColumns = 6;
  }
   if (![gesture isKindOfClass:UIPanGestureRecognizer.class]) return YES;
   CGPoint p = [gesture locationInView:self], v = [(UIPanGestureRecognizer *)gesture velocityInView:self];
+  // Test the original touch position: by the time a pan begins, the
+  // finger may already have moved beyond a thin handle's visible bounds.
+  CGPoint translation=[(UIPanGestureRecognizer *)gesture translationInView:self];
+  CGPoint origin=CGPointMake(p.x-translation.x,p.y-translation.y);
+  if ([self.editor isDraggingSelectionHandle] || [self.editor selectionHandleAtPoint:[self convertPoint:origin toView:self.editor]]) return NO;
   return ((MyGoEditor *)self.editor).fieldID && self.editor.isFirstResponder && !self.editor.secureTextEntry &&
-      self.editor.selectedRange.length == 0 && p.x >= 24 &&
-      CGRectContainsPoint(self.editor.frame, p) && fabs(v.y) > fabs(v.x);
+      (self.editor.selectedRange.length == 0 || !self.editor.editable) && p.x >= 24 &&
+      CGRectContainsPoint(self.editor.frame, p) &&
+      (!self.editor.editable || fabs(v.y) > fabs(v.x));
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
   if (([gesture isKindOfClass:UIPinchGestureRecognizer.class] || [gesture isKindOfClass:UIRotationGestureRecognizer.class]) &&
@@ -780,7 +944,14 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 }
 - (void)scrollText:(UIPanGestureRecognizer *)gesture {
   if (gesture.state == UIGestureRecognizerStateBegan) {
+    // Read-only text can cover a horizontally scrolling Markdown table.
+    // Keep its pan on the initial axis so finger jitter cannot move the
+    // surrounding conversation, including during momentum at a table edge.
+    CGPoint velocity = [gesture velocityInView:self];
+    self.textPanHorizontal = !self.editor.editable && fabs(velocity.x) > fabs(velocity.y);
     [self commitText];
+    [self.editor dismissEditMenu];
+    self.momentumContactID = 0;
     if (self.contact) {
       goIOSTouch(self.windowID, self.contactID, 3, self.previous.x, self.previous.y);
       self.contact = nil;
@@ -790,12 +961,18 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   }
   if (gesture.state == UIGestureRecognizerStateBegan || gesture.state == UIGestureRecognizerStateChanged) {
     CGPoint delta = [gesture translationInView:self];
-    goIOSScroll(self.windowID, self.origin.x, self.origin.y, -delta.x, -delta.y);
+    if (self.textPanHorizontal) delta.y = 0;
+    else delta.x = 0;
+    goIOSScroll(self.windowID, self.origin.x, self.origin.y, -delta.x, -delta.y, 0, false, gesture.state == UIGestureRecognizerStateBegan ? 1 : 0);
     [gesture setTranslation:CGPointZero inView:self];
   } else if (gesture.state == UIGestureRecognizerStateEnded) {
+    goIOSScroll(self.windowID, self.origin.x, self.origin.y, 0, 0, 0, false, 2);
     self.velocity = [gesture velocityInView:self];
+    if (self.textPanHorizontal) self.velocity = CGPointMake(self.velocity.x, 0);
+    else self.velocity = CGPointMake(0, self.velocity.y);
     [self requestFrame];
-  } else if (gesture.state == UIGestureRecognizerStateCancelled) {
+  } else if (gesture.state == UIGestureRecognizerStateCancelled || gesture.state == UIGestureRecognizerStateFailed) {
+    goIOSScroll(self.windowID, self.origin.x, self.origin.y, 0, 0, 0, false, 3);
     self.velocity = CGPointZero;
   }
 }
@@ -821,19 +998,23 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   double dt =
       self.lastTick > 0 ? MIN(link.timestamp - self.lastTick, 0.05) : 1.0 / 60;
   self.lastTick = link.timestamp;
+  BOOL keyboardAnimating = [self.keyboardViewportController updateKeyboardViewport];
   if (!self.contact &&
       (fabs(self.velocity.x) > 5 || fabs(self.velocity.y) > 5)) {
-    goIOSScroll(self.windowID, self.origin.x, self.origin.y,
-                -self.velocity.x * dt, -self.velocity.y * dt);
-    double decay = exp(-7 * dt);
-    self.velocity =
-        CGPointMake(self.velocity.x * decay, self.velocity.y * decay);
+    // Integrate UIKit's per-millisecond deceleration analytically, so
+    // travel is the same at 60 Hz and ProMotion refresh rates.
+    double rate = -1000 * log(UIScrollViewDecelerationRateNormal);
+    double decay = exp(-rate * dt), distance = (1 - decay) / rate;
+    BOOL travelling = goIOSScroll(self.windowID, self.origin.x, self.origin.y,
+                -self.velocity.x * distance, -self.velocity.y * distance,
+                self.momentumContactID, true, 0);
+    self.velocity = travelling ? CGPointMake(self.velocity.x * decay, self.velocity.y * decay) : CGPointZero;
   }
   if (self.framePending) {
     self.framePending = NO;
     goIOSFrame(self.windowID);
   }
-  if (!self.framePending &&
+  if (!self.framePending && !keyboardAnimating &&
       (self.contact || hypot(self.velocity.x, self.velocity.y) < 5)) {
     self.displayLink.paused = YES;
     self.lastTick = 0;
@@ -842,6 +1023,10 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
   if (self.contact)
     return;
+  // A display handle may forward unhandled UIView touches up the responder
+  // chain. Keep that contact out of Go's tap/scroll arbitration entirely.
+  CGPoint point=[touches.anyObject locationInView:self.editor];
+  if ([self.editor selectionHandleAtPoint:point]) return;
   // Commit before Go moves focus: UIKit's resignation notifications would
   // otherwise deliver a pending composition to the newly focused widget.
   [self commitText];
@@ -871,6 +1056,7 @@ static const NSUInteger MyGoAccessoryColumns = 6;
     return;
   CGPoint p = [self.contact locationInView:self];
   goIOSTouch(self.windowID, self.contactID, 2, p.x, p.y);
+  self.momentumContactID = self.contactID;
   if (!self.scrolling || self.contact.timestamp - self.previousTime > 0.1)
     self.velocity = CGPointZero;
   self.contact = nil;
@@ -923,7 +1109,7 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   }
 }
 - (void)textViewDidChangeSelection:(UITextView *)textView {
-  if (self.syncing || self.sending || textView.markedTextRange)
+  if (self.syncing || self.sending || self.editor.updatingHandleSelection || textView.markedTextRange)
     return;
   // UIKit may report the selection moved by an insertion before it reports
   // the new text. Synchronizing the old Go value here would erase that edit.
@@ -994,25 +1180,33 @@ static UIStatusBarStyle statusStyle(UIColor *color, UITraitCollection *traits) {
  if (pan.state==UIGestureRecognizerStateBegan) {
  self.panLast=CGPointZero;self.panOrigin=[pan locationInView:self.surface];
  self.surface.origin=self.panOrigin;
- [self.surface commitText];self.surface.velocity=CGPointZero;
+ [self.surface commitText];self.surface.velocity=CGPointZero;self.surface.momentumContactID=0;
  }
  if (pan.state==UIGestureRecognizerStateBegan || pan.state==UIGestureRecognizerStateChanged) {
  goIOSScroll(self.surface.windowID,self.panOrigin.x,self.panOrigin.y,
- self.panLast.x-translation.x,self.panLast.y-translation.y);
+ 0,self.panLast.y-translation.y,0,false,pan.state==UIGestureRecognizerStateBegan ? 1 : 0);
  self.panLast=translation;
  } else if (pan.state==UIGestureRecognizerStateEnded) {
- self.surface.velocity=[pan velocityInView:self];
+ goIOSScroll(self.surface.windowID,self.panOrigin.x,self.panOrigin.y,0,0,0,false,2);
+ self.surface.velocity=CGPointMake(0,[pan velocityInView:self].y);
  [self.surface requestFrame];
- } else if (pan.state==UIGestureRecognizerStateCancelled) {
+ } else if (pan.state==UIGestureRecognizerStateCancelled || pan.state==UIGestureRecognizerStateFailed) {
+ goIOSScroll(self.surface.windowID,self.panOrigin.x,self.panOrigin.y,0,0,0,false,3);
  self.surface.velocity=CGPointZero;
  }
 }
 @end
-@interface MyGoController : UIViewController
+@interface MyGoController : UIViewController <MyGoKeyboardViewport>
 @property(nonatomic, strong) MyGoSurface *surface;
 @property(nonatomic, strong) MyGoKeyboardScroll *keyboardScroll;
 @property(nonatomic, copy) NSString *keyboardDismiss;
 @property(nonatomic) CGFloat keyboardTop;
+@property(nonatomic) BOOL extendIntoSafeArea;
+// Animate a clear proxy with UIKit's keyboard curve; sample its presentation
+// position to resize Go without ever stretching a rendered surface.
+@property(nonatomic, strong) UIView *keyboardMotion;
+@property(nonatomic) BOOL keyboardAnimating;
+@property(nonatomic) NSUInteger keyboardGeneration;
 @property(nonatomic, strong) UIView *launchOverlay;
 @property(nonatomic) BOOL launchDismissing;
 @property(nonatomic, copy) NSString *statusBarStyle;
@@ -1111,7 +1305,7 @@ static UIStatusBarStyle statusStyle(UIColor *color, UITraitCollection *traits) {
     self.surface.layer.contentsGravity = kCAGravityTopLeft;
     for (CALayer *layer in self.surface.layer.sublayers)
       if ([layer isKindOfClass:CAMetalLayer.class]) layer.contentsGravity = kCAGravityTopLeft;
-    CGRect full = UIEdgeInsetsInsetRect(self.view.bounds, self.view.safeAreaInsets);
+    CGRect full = self.extendIntoSafeArea ? self.view.bounds : UIEdgeInsetsInsetRect(self.view.bounds, self.view.safeAreaInsets);
     CGRect r = full;
     r.size.height = MAX(0, MIN(CGRectGetMaxY(r), self.keyboardTop) - r.origin.y);
     // UIKit interactive dismissal needs its scroll viewport behind the
@@ -1129,15 +1323,65 @@ static UIStatusBarStyle statusStyle(UIColor *color, UITraitCollection *traits) {
  MyGoSurface *s=self.surface;
  if (s && !s.syncing && s.editor.editable && !s.editor.isFirstResponder && [self.keyboardDismiss isEqual:@"interactive"]) goIOSDismissKeyboard(s.windowID);
 }
+- (BOOL)updateKeyboardViewport {
+  if (!self.keyboardAnimating) return NO;
+  CALayer *layer = self.keyboardMotion.layer.presentationLayer;
+  CGFloat top = layer ? layer.position.y - .5 : self.keyboardMotion.frame.origin.y;
+  if (fabs(top - self.keyboardTop) > .1) {
+    self.keyboardTop = top;
+    [self.view setNeedsLayout];
+    [self.view layoutIfNeeded];
+  }
+  return YES;
+}
 - (void)keyboard:(NSNotification *)n {
   CGRect screen = [n.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
   CGRect frame = [self.view convertRect:screen fromView:nil];
- CGRect overlap=CGRectIntersection(self.view.bounds,frame);
- // Floating/split iPad keyboards must not collapse the full-width viewport.
- BOOL docked=!CGRectIsNull(overlap) && overlap.size.width>=self.view.bounds.size.width*.9 && CGRectGetMaxY(frame)>=CGRectGetMaxY(self.view.bounds)-1;
- self.keyboardTop=![n.name isEqual:UIKeyboardWillHideNotification] && docked ? CGRectGetMinY(frame) : CGFLOAT_MAX;
-  [self.view setNeedsLayout];
-  [self.view layoutIfNeeded];
+  CGRect overlap = CGRectIntersection(self.view.bounds, frame);
+  // Floating/split iPad keyboards must not collapse the full-width viewport.
+  BOOL docked = !CGRectIsNull(overlap) && overlap.size.width >= self.view.bounds.size.width*.9 &&
+                CGRectGetMaxY(frame) >= CGRectGetMaxY(self.view.bounds)-1;
+  CGRect full = self.extendIntoSafeArea ? self.view.bounds : UIEdgeInsetsInsetRect(self.view.bounds, self.view.safeAreaInsets);
+  CGFloat target = ![n.name isEqual:UIKeyboardWillHideNotification] && docked ? CGRectGetMinY(frame) : CGRectGetMaxY(full);
+  target = MAX(CGRectGetMinY(full), MIN(target, CGRectGetMaxY(full)));
+  NSTimeInterval duration = [n.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+  NSUInteger curve = [n.userInfo[UIKeyboardAnimationCurveUserInfoKey] unsignedIntegerValue];
+  NSUInteger generation = ++self.keyboardGeneration;
+  CGFloat current = MIN(self.keyboardTop, CGRectGetMaxY(full));
+  if (self.keyboardAnimating && self.keyboardMotion.layer.presentationLayer)
+    current = self.keyboardMotion.layer.presentationLayer.position.y - .5;
+  self.keyboardAnimating = NO;
+  [self.keyboardMotion.layer removeAllAnimations];
+  // Interactive dismissal supplies finger-tracked frames. Re-animating them
+  // would lag behind the finger and can reopen a cancelled keyboard gesture.
+  if (duration <= 0 || interactiveKeyboardTracking() || UIAccessibilityIsReduceMotionEnabled() || fabs(target-current)<.1) {
+    self.keyboardTop = target;
+    [self.view setNeedsLayout];
+    [self.view layoutIfNeeded];
+    return;
+  }
+  if (!self.keyboardMotion) {
+    self.keyboardMotion = [[UIView alloc] initWithFrame:CGRectZero];
+    self.keyboardMotion.userInteractionEnabled = NO;
+    self.keyboardMotion.accessibilityElementsHidden = YES;
+    [self.view insertSubview:self.keyboardMotion atIndex:0];
+  }
+  [UIView performWithoutAnimation:^{ self.keyboardMotion.frame = CGRectMake(0,current,1,1); }];
+  self.keyboardTop = current;
+  self.keyboardAnimating = YES;
+  UIViewAnimationOptions options = (UIViewAnimationOptions)(curve << 16) |
+      UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction;
+  [UIView animateWithDuration:duration delay:0 options:options animations:^{
+    self.keyboardMotion.frame = CGRectMake(0,target,1,1);
+  } completion:^(BOOL finished) {
+    if (self.keyboardGeneration != generation) return;
+    self.keyboardAnimating = NO;
+    self.keyboardTop = target;
+    [self.view setNeedsLayout];
+    [self.view layoutIfNeeded];
+    [self.surface requestFrame];
+  }];
+  [self.surface requestFrame];
 }
 - (void)dealloc {
   [NSNotificationCenter.defaultCenter removeObserver:self];
@@ -1284,6 +1528,7 @@ void mygo_ios_attach(uintptr_t view) {
   if (!c) return;
   MyGoSurface *s = (__bridge MyGoSurface *)(void *)view;
   c.surface = s;
+  s.keyboardViewportController = c;
   c.view.backgroundColor = s.backgroundColor;
   hostWindow.backgroundColor = s.backgroundColor;
   [c setNeedsStatusBarAppearanceUpdate];
@@ -1324,10 +1569,11 @@ void mygo_ios_step(void) {
   CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, true);
 }
 void mygo_ios_wake(void) { CFRunLoopWakeUp(CFRunLoopGetMain()); }
-uintptr_t mygo_ios_create(uint64_t id) {
+uintptr_t mygo_ios_create(uint64_t id, bool extendIntoSafeArea) {
   MyGoController *c = (MyGoController *)hostWindow.rootViewController;
   if (!c)
     return 0;
+  c.extendIntoSafeArea = extendIntoSafeArea;
   MyGoSurface *s = [[MyGoSurface alloc] initWithFrame:c.view.bounds];
   s.windowID = id;
   ((MyGoEditor *)s.editor).windowID = id;
@@ -1373,6 +1619,20 @@ void mygo_ios_size(uintptr_t view, double *w, double *h, double *scale) {
   *w = s.bounds.size.width;
   *h = s.bounds.size.height;
   *scale = s.window.windowScene.screen.scale ?: s.traitCollection.displayScale;
+}
+void mygo_ios_safe_area(uintptr_t view, double *top, double *right, double *bottom, double *left) {
+  *top = *right = *bottom = *left = 0;
+  MyGoSurface *surface = (__bridge MyGoSurface *)(void *)view;
+  MyGoController *c = (MyGoController *)hostWindow.rootViewController;
+  if (!surface || !c || !c.extendIntoSafeArea) return;
+  CGRect safe = UIEdgeInsetsInsetRect(c.view.bounds, c.view.safeAreaInsets);
+  CGRect viewport = [surface convertRect:surface.bounds toView:c.view];
+  // The keyboard shortens the surface above the home indicator; padding
+  // belongs only to system chrome that still overlaps the surface.
+  *top = ceil(MIN(viewport.size.height, MAX(0, CGRectGetMinY(safe)-CGRectGetMinY(viewport))));
+  *bottom = ceil(MIN(MAX(0,viewport.size.height-*top), MAX(0, CGRectGetMaxY(viewport)-CGRectGetMaxY(safe))));
+  *left = ceil(MIN(viewport.size.width, MAX(0, CGRectGetMinX(safe)-CGRectGetMinX(viewport))));
+  *right = ceil(MIN(MAX(0,viewport.size.width-*left), MAX(0, CGRectGetMaxX(viewport)-CGRectGetMaxX(safe))));
 }
 double mygo_ios_hz(uintptr_t view) {
   return ((__bridge MyGoSurface *)(void *)view)
@@ -1438,7 +1698,10 @@ void mygo_ios_input(uintptr_t view, bool active, bool readonly, bool password, b
  MyGoController *controller=(MyGoController *)hostWindow.rootViewController;
  controller.keyboardScroll.scrollEnabled=active && !readonly && [controller.keyboardDismiss isEqual:@"interactive"];
   if (!active) {
-    [UIMenuController.sharedMenuController hideMenuFromView:e];
+    [(MyGoEditor *)e dismissEditMenu];
+    // Clear UIKit's own highlight too. Its selection subviews can extend
+    // outside this transparent proxy even after its frame becomes zero.
+    if (!e.editable) e.selectedRange = NSMakeRange(0, 0);
     e.tintColor = UIColor.clearColor;
     ((MyGoEditor *)e).fieldID = 0;
     e.frame = CGRectZero;
@@ -1487,6 +1750,7 @@ void mygo_ios_input(uintptr_t view, bool active, bool readonly, bool password, b
     selection.highlightView.tintColor = e.tintColor;
     selection.highlightView.alpha = 0.2;
     for (UIView *handle in selection.handleViews) handle.tintColor = e.tintColor;
+    [(MyGoEditor *)e installSelectionHandleGestures];
   }
   s.syncing = syncing;
 }
@@ -1496,7 +1760,7 @@ void mygo_ios_input_bounds(uintptr_t view, const char *id, double x, double y, d
   BOOL syncing = s.syncing;
   s.syncing = YES;
   uint64_t field = strtoull(id, NULL, 10);
-  if (e.fieldID != field) [UIMenuController.sharedMenuController hideMenuFromView:e];
+  if (e.fieldID != field) [(MyGoEditor *)e dismissEditMenu];
   e.fieldID = field;
   // Custom TextCaret proxies stay outside surface hit testing, but need
   // a real layout width for software keyboard caret navigation.
@@ -1664,10 +1928,12 @@ void *mygo_ios_clipboard_png(size_t *length) {
     return bytes;
   }
 }
-bool mygo_ios_set_clipboard_data(const char *text, const void *png, size_t length) {
+bool mygo_ios_set_clipboard_data(const char *text, const char *html, const char *markdown, const void *png, size_t length) {
   @autoreleasepool {
     NSMutableDictionary *item = [NSMutableDictionary dictionary];
-    if (text) item[@"public.utf8-plain-text"] = str(text);
+    if (text) item[UTTypeUTF8PlainText.identifier] = str(text);
+    if (html) item[UTTypeHTML.identifier] = [str(html) dataUsingEncoding:NSUTF8StringEncoding];
+    if (markdown) item[@"net.daringfireball.markdown"] = [str(markdown) dataUsingEncoding:NSUTF8StringEncoding];
     if (png && length) {
       NSData *data = [NSData dataWithBytes:png length:length];
       if (![UIImage imageWithData:data]) return false;

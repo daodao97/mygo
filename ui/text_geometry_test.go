@@ -183,3 +183,139 @@ func snapshotTester(view func(*Context), width, height int) *Tester {
 	tt.Frame()
 	return tt
 }
+
+// Markdown messages share selection across paragraphs. UIKit's selection
+// must update that shared selection, rather than being overwritten next frame.
+func TestReadOnlyNativeSelectionInsideContainer(t *testing.T) {
+	tt := snapshotTester(func(c *Context) {
+		Column(c).Selectable().Width(280).Children(func() {
+			Text(c, "First Hello paragraph").Label("first")
+			Text(c, "Second paragraph").Label("second")
+		})
+	}, 320, 160)
+	tt.rt.host = &selectionTestHost{tt.h}
+	tt.Click("first")
+	if !tt.h.ime.Active || !tt.h.ime.ReadOnly {
+		t.Fatal("missing native read-only proxy")
+	}
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: 6, To: 11})
+	tt.Frame()
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "copy"})
+	if tt.h.clipboard != "Hello" {
+		t.Fatalf("shared selection reset UIKit's selection: %q", tt.h.clipboard)
+	}
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: 6, To: 21})
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "copy"})
+	if tt.h.clipboard != "Hello paragraph" {
+		t.Fatalf("moving the native handle lost selection: %q", tt.h.clipboard)
+	}
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "selectAll"})
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "copy"})
+	if tt.h.clipboard != "First Hello paragraph\nSecond paragraph" {
+		t.Fatalf("select all no longer spans paragraphs: %q", tt.h.clipboard)
+	}
+}
+
+func TestNativeSelectionSpansParagraphs(t *testing.T) {
+	const first, second = "First 你好👋 paragraph", "Second paragraph"
+	const joined = first + "\n" + second
+	tt := snapshotTester(func(c *Context) {
+		Column(c).Selectable().Width(280).Gap(18).Children(func() {
+			Text(c, first).Label("first")
+			Text(c, second).Label("second")
+		})
+	}, 320, 180)
+	tt.rt.host = &selectionTestHost{tt.h}
+	tt.Click("first")
+	if tt.h.ime.Text != joined {
+		t.Fatalf("native proxy is limited to one paragraph: %q", tt.h.ime.Text)
+	}
+	id := tt.h.ime.ID
+	start, end := 6, utf8.RuneCountInString(first)+1+6
+	g := tt.rt.textGeometry(platform.TextGeometryQuery{ID: id, Kind: "caret", Start: end})
+	r, _ := tt.Find("second")
+	if !g.Valid || g.Caret.Y < float64(r.Y) {
+		t.Fatalf("endpoint stayed in the first paragraph: %+v", g)
+	}
+	hit := tt.rt.textGeometry(platform.TextGeometryQuery{ID: id, Kind: "hit", X: g.Caret.X, Y: g.Caret.Y + g.Caret.H/2})
+	if !hit.Valid || hit.Index != end {
+		t.Fatalf("cross-paragraph hit mapping: %+v want %d", hit, end)
+	}
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: start, To: end})
+	tt.Frame()
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "copy"})
+	if tt.h.clipboard != "你好👋 paragraph\nSecond" {
+		t.Fatalf("cross-paragraph copy: %q", tt.h.clipboard)
+	}
+	g = tt.rt.textGeometry(platform.TextGeometryQuery{ID: id, Kind: "selection", Start: start, End: end})
+	if !g.Valid || len(g.Rects) < 2 {
+		t.Fatalf("missing highlight rectangles across paragraphs: %+v", g)
+	}
+	// Dragging upward from a later paragraph uses the same document offsets.
+	tt.Click("second")
+	if tt.h.ime.Text != joined {
+		t.Fatal("starting in the second paragraph changed the document")
+	}
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: end, To: start})
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "copy"})
+	if tt.h.clipboard != "你好👋 paragraph\nSecond" {
+		t.Fatalf("reverse cross-paragraph copy: %q", tt.h.clipboard)
+	}
+}
+
+func TestNativeSelectionScopeKeepsMessageBoundaries(t *testing.T) {
+	const long = "first "
+	tt := snapshotTester(func(c *Context) {
+		Column(c).Children(func() {
+			Column(c).Selectable().Children(func() {
+				Text(c, strings.Repeat(long, 200)).Label("long")
+				Text(c, "last paragraph").Label("last")
+			})
+			Text(c, "another message").Selectable().Label("other")
+		})
+	}, 320, 300)
+	tt.rt.host = &selectionTestHost{tt.h}
+	tt.Click("last")
+	if !strings.HasSuffix(tt.h.ime.Text, "\nlast paragraph") || strings.Contains(tt.h.ime.Text, "another message") || tt.rt.ime.base != 0 {
+		t.Fatalf("message scope was truncated or escaped: base=%d text=%q", tt.rt.ime.base, tt.h.ime.Text)
+	}
+	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: 0, To: utf8.RuneCountInString(tt.h.ime.Text)})
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "copy"})
+	if tt.h.clipboard != strings.Repeat(long, 200)+"\nlast paragraph" {
+		t.Fatalf("long message selection was truncated: %d", len(tt.h.clipboard))
+	}
+}
+
+// Native handle pans map their caret location through Go geometry, then send
+// a document range. Check both edges expanding/shrinking across paragraphs.
+func TestNativeHandleRangesExpandShrinkAndCross(t *testing.T) {
+	const first, second = "Alpha 你好👋 omega", "Second paragraph"
+	all := []rune(first + "\n" + second)
+	tt := snapshotTester(func(c *Context) {
+		Column(c).Selectable().Gap(12).Children(func() { Text(c, first).Label("first"); Text(c, second).Label("second") })
+	}, 320, 180)
+	tt.rt.host = &selectionTestHost{tt.h}
+	tt.Click("first")
+	field := tt.h.ime.ID
+	for _, span := range [][2]int{{6, 9}, {0, 9}, {6, 9}, {6, len(all)}, {6, len(all) - 5}, {2, len(all) - 5}, {len(all) - 7, len(all) - 5}, {len(all) - 5, 2}, {6, 9}} {
+		for _, index := range span {
+			caret := tt.rt.textGeometry(platform.TextGeometryQuery{ID: field, Kind: "caret", Start: index})
+			if !caret.Valid {
+				t.Fatalf("missing handle caret at %d", index)
+			}
+			hit := tt.rt.textGeometry(platform.TextGeometryQuery{ID: field, Kind: "hit", X: caret.Caret.X, Y: caret.Caret.Y + caret.Caret.H/2})
+			if !hit.Valid || hit.Index != index {
+				t.Fatalf("handle hit %d mapped to %+v", index, hit)
+			}
+		}
+		tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: span[0], To: span[1]})
+		start, end := min(span[0], span[1]), max(span[0], span[1])
+		if tt.h.ime.Start != start || tt.h.ime.End != end {
+			t.Fatalf("range snapped back after handle drag: %+v", tt.h.ime)
+		}
+		tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "copy"})
+		if want := string(all[start:end]); tt.Clipboard() != want {
+			t.Fatalf("handles selected %q want %q", tt.Clipboard(), want)
+		}
+	}
+}

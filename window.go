@@ -151,6 +151,10 @@ type WindowOptions struct {
 	// On iOS it also fills the surrounding safe area. Without an explicit
 	// color, native UI's opaque root background fills that area automatically.
 	BackgroundColor string
+	// ExtendIntoSafeArea lets iOS native UI draw under the status bar, notch
+	// and home indicator. Keep controls inside ui.Context.SafeArea. By default
+	// UIKit insets the entire surface. Other platforms ignore this option.
+	ExtendIntoSafeArea bool
 	// Vibrancy puts a translucent, blurred material behind a transparent
 	// page, or behind native UI where it draws no background (macOS and
 	// Windows 11 22H2), e.g. VibrancySidebar; ui.Context.Vibrancy tells
@@ -586,40 +590,41 @@ func newWindow(opts WindowOptions, bg *background, native uintptr, flyout *flyou
 func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	po := o.Page
 	p := &platform.WindowOptions{
-		Title:             o.Title,
-		X:                 o.X,
-		Y:                 o.Y,
-		Width:             or(o.Width, 800),
-		Height:            or(o.Height, 600),
-		Center:            o.X == 0 && o.Y == 0,
-		UseContentSize:    o.UseContentSize,
-		MinSize:           platform.Size{Width: o.MinWidth, Height: o.MinHeight},
-		MaxSize:           platform.Size{Width: o.MaxWidth, Height: o.MaxHeight},
-		Resizable:         !o.DisableResize,
-		Movable:           !o.DisableMove,
-		Minimizable:       !o.DisableMinimize,
-		Maximizable:       !o.DisableMaximize,
-		Closable:          !o.DisableClose,
-		Focusable:         true,
-		Fullscreenable:    !o.DisableFullScreen,
-		AlwaysOnTop:       o.AlwaysOnTop,
-		FullScreen:        o.FullScreen,
-		Maximized:         o.Maximized,
-		SkipTaskbar:       o.SkipTaskbar,
-		AutoHideMenu:      o.AutoHideMenuBar,
-		HasShadow:         !o.DisableShadow,
-		Frameless:         o.Frameless,
-		Transparent:       o.Transparent,
-		TitleBarStyle:     string(o.TitleBarStyle),
-		TitleBarHeight:    max(o.TitleBarHeight, 0),
-		HideWindowButtons: o.HideWindowButtons,
-		Vibrancy:          string(o.Vibrancy),
-		CornerRadius:      max(o.CornerRadius, 0),
-		Opacity:           o.Opacity,
-		Modal:             o.Modal,
-		UserAgent:         po.UserAgent,
-		UserAgentSuffix:   strings.TrimSpace(po.UserAgentSuffix),
-		Zoom:              po.ZoomFactor,
+		Title:              o.Title,
+		X:                  o.X,
+		Y:                  o.Y,
+		Width:              or(o.Width, 800),
+		Height:             or(o.Height, 600),
+		Center:             o.X == 0 && o.Y == 0,
+		UseContentSize:     o.UseContentSize,
+		MinSize:            platform.Size{Width: o.MinWidth, Height: o.MinHeight},
+		MaxSize:            platform.Size{Width: o.MaxWidth, Height: o.MaxHeight},
+		Resizable:          !o.DisableResize,
+		Movable:            !o.DisableMove,
+		Minimizable:        !o.DisableMinimize,
+		Maximizable:        !o.DisableMaximize,
+		Closable:           !o.DisableClose,
+		Focusable:          true,
+		Fullscreenable:     !o.DisableFullScreen,
+		AlwaysOnTop:        o.AlwaysOnTop,
+		FullScreen:         o.FullScreen,
+		Maximized:          o.Maximized,
+		SkipTaskbar:        o.SkipTaskbar,
+		AutoHideMenu:       o.AutoHideMenuBar,
+		HasShadow:          !o.DisableShadow,
+		Frameless:          o.Frameless,
+		Transparent:        o.Transparent,
+		ExtendIntoSafeArea: o.ExtendIntoSafeArea,
+		TitleBarStyle:      string(o.TitleBarStyle),
+		TitleBarHeight:     max(o.TitleBarHeight, 0),
+		HideWindowButtons:  o.HideWindowButtons,
+		Vibrancy:           string(o.Vibrancy),
+		CornerRadius:       max(o.CornerRadius, 0),
+		Opacity:            o.Opacity,
+		Modal:              o.Modal,
+		UserAgent:          po.UserAgent,
+		UserAgentSuffix:    strings.TrimSpace(po.UserAgentSuffix),
+		Zoom:               po.ZoomFactor,
 		// Tab reaches every control, as desktop apps do, unless the app
 		// asked for Safari's behavior.
 		TabFocusesLinks:        !po.SafariTabFocus,

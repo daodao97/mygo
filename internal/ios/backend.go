@@ -99,8 +99,8 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 		return nil, errors.New("mygo: iOS currently supports one content window")
 	}
 	b.nextID++
-	w := &window{b: b, h: h, id: b.nextID, title: o.Title}
-	w.view = uintptr(C.mygo_ios_create(C.uint64_t(w.id)))
+	w := &window{b: b, h: h, id: b.nextID, title: o.Title, extendIntoSafeArea: o.ExtendIntoSafeArea}
+	w.view = uintptr(C.mygo_ios_create(C.uint64_t(w.id), C.bool(o.ExtendIntoSafeArea)))
 	if w.view == 0 {
 		return nil, errors.New("mygo: UIKit could not create the content surface")
 	}
@@ -174,13 +174,20 @@ func goIOSResize(id C.uint64_t) {
 	}
 }
 
+//export goIOSSafeAreaChanged
+func goIOSSafeAreaChanged(id C.uint64_t) {
+	if w := find(uint64(id)); w != nil {
+		w.h.SafeAreaChanged()
+	}
+}
+
 //export goIOSTouch
 func goIOSTouch(id, pointer C.uint64_t, kind C.int, x, y C.double) C.bool {
 	w := find(uint64(id))
 	if w == nil {
 		return false
 	}
-	kinds := []platform.SurfaceEventKind{platform.PointerDown, platform.PointerMove, platform.PointerUp, platform.PointerCancel}
+	kinds := []platform.SurfaceEventKind{platform.PointerDown, platform.PointerMove, platform.PointerUp, platform.PointerCancel, platform.PointerLongPress}
 	if int(kind) < 0 || int(kind) >= len(kinds) {
 		return false
 	}
@@ -191,11 +198,17 @@ func goIOSTouch(id, pointer C.uint64_t, kind C.int, x, y C.double) C.bool {
 }
 
 //export goIOSScroll
-func goIOSScroll(id C.uint64_t, x, y, dx, dy C.double) {
+func goIOSScroll(id C.uint64_t, x, y, dx, dy C.double, contact C.uint64_t, momentum C.bool, phase C.int) C.bool {
 	platform.NoteInput()
 	if w := find(uint64(id)); w != nil {
-		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerTouch, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy), Precise: true})
+		phases := [...]string{"", "begin", "end", "cancel"}
+		p := ""
+		if int(phase) >= 0 && int(phase) < len(phases) {
+			p = phases[int(phase)]
+		}
+		return C.bool(w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerTouch, X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy), Precise: true, PointerID: uint64(contact), Momentum: bool(momentum), Phase: p}))
 	}
+	return false
 }
 
 //export goIOSText
@@ -269,8 +282,18 @@ func goIOSTextGeometry(id C.uint64_t, field C.uint64_t, kind *C.char, start, end
 //export goIOSEditCommand
 func goIOSEditCommand(id C.uint64_t, command *C.char) {
 	if w := find(uint64(id)); w != nil {
-		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: C.GoString(command)})
+		name := C.GoString(command)
+		field := w.input
+		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: name})
 		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+		if name == "copy" && field.Active && field.ReadOnly && !field.Password && w.input.ID == field.ID {
+			// Copy was flushed before changing the selection. Collapse both
+			// UIKit's document range and Go's paragraph endpoints, then release
+			// the read-only proxy. Editable copy keeps its selection and focus.
+			w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: field.End, To: field.End})
+			w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceKeyboardDismiss})
+			w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+		}
 	}
 }
 

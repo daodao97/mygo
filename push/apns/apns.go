@@ -173,11 +173,15 @@ func (p Payload) MarshalJSON() ([]byte, error) {
 	if p.Badge != nil && *p.Badge < 0 {
 		return nil, errors.New("apns: negative badge")
 	}
-	aps := map[string]any{"alert": map[string]string{"title": p.Title, "subtitle": p.Subtitle, "body": p.Body}}
+	aps := map[string]any{}
+	hasAlert := p.Title != "" || p.Subtitle != "" || p.Body != ""
+	if hasAlert {
+		aps["alert"] = map[string]string{"title": p.Title, "subtitle": p.Subtitle, "body": p.Body}
+	}
 	if p.Group != "" {
 		aps["thread-id"] = p.Group
 	}
-	if !p.Silent {
+	if !p.Silent && hasAlert {
 		aps["sound"] = "default"
 	}
 	if p.Badge != nil {

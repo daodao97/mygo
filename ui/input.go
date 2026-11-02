@@ -22,6 +22,15 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	// a scroll of a container, which the pointer path would have made a
 	// press of a row (touch.go).
 	if ev.PointerType == platform.PointerTouch && rt.touchEvent(ev) {
+		if ev.Kind == platform.PointerLongPress {
+			focus := rt.states[rt.focused]
+			// Keyboard dismissal can resize the viewport after Go selects
+			// but before UIKit's recognizer calls back. Keep that same
+			// contact's completed selection available for its native menu.
+			return ev.PointerID == rt.touch.id && rt.windowFocused &&
+				(rt.touch.selecting || rt.touch.text != nil && rt.touch.text.started()) &&
+				focus != nil && focus.editor != nil && focus.editor.readOnly
+		}
 		return rt.touch.scrolling
 	}
 	if ev.Kind != platform.SurfaceFrame {
@@ -56,7 +65,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		// goes on — the keyboard opening is the resize this happens on, and
 		// the finger that opened it is still on the surface, so ending the
 		// contact here would stop the scroll the tap began.
-		if rt.touch.active && (rt.touch.selecting || rt.touch.scrollTarget != 0 && !rt.touch.scrolling) {
+		if rt.touch.active && (rt.touch.selecting || (rt.touch.scrollTarget != 0 || rt.pendingTouchText()) && !rt.touch.scrolling) {
 			rt.cancelPointer()
 			rt.touch.active = false
 		}
@@ -102,11 +111,31 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 			rt.requestFrame()
 		}
 	case platform.PointerScroll:
+		// Native momentum belongs to the contact that picked the axis.
+		// Editor/keyboard pans have no contact ID and keep their own policy.
+		if ev.PointerType == platform.PointerTouch && ev.Momentum && ev.PointerID != 0 && ev.PointerID == rt.touch.id {
+			if rt.touch.scrollAxis == 1 {
+				ev.DY = 0
+			} else if rt.touch.scrollAxis == 2 {
+				ev.DX = 0
+			}
+		}
 		if ev.PointerType == platform.PointerTouch && abs32(float32(ev.DY)) > abs32(float32(ev.DX)) {
 			rt.dismissKeyboardOnDrag()
 		}
 		rt.pointerMove(x, y)
-		rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise, ev.Momentum)
+		if ev.PointerType == platform.PointerTouch {
+			switch ev.Phase {
+			case "begin":
+				rt.holdElastic()
+			case "end", "cancel":
+				rt.releaseElastic()
+				return false
+			}
+			taken = rt.scrollInput(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), true, ev.Momentum, true)
+		} else {
+			rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise, ev.Momentum)
+		}
 	case platform.PointerZoom:
 		rt.pointerMove(x, y)
 		rt.zoom(float32(ev.Scale), Modifiers(ev.Mods))
@@ -159,6 +188,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.blinkStart = rt.now()
 		rt.focusChanged()
 	case platform.SurfaceBlur:
+		rt.releaseElastic()
 		if rt.touch.active {
 			// Losing focus may end a contact without another pointer event.
 			// Cancel its handlers and release arbitration for the next touch.
@@ -571,6 +601,12 @@ func (rt *engine) pointerUp(button, clicks int) {
 }
 
 func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool) {
+	rt.scrollInput(dx, dy, mods, precise, momentum, false)
+}
+
+// scrollInput reports whether native momentum may keep travelling. A touch
+// keeps its nearest matching container at an edge instead of chaining out.
+func (rt *engine) scrollInput(dx, dy float32, mods Modifiers, precise, momentum, touch bool) bool {
 	chain := rt.appendHitChain(rt.chain[:0], rt.pointerX, rt.pointerY)
 	rt.chain = chain[:0]
 	// From the innermost element out, the first handling its input to
@@ -582,7 +618,7 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 	ev := InputEvent{Kind: InputScroll, DX: dx, DY: dy, Mods: mods, Precise: precise, Momentum: momentum}
 	for _, id := range chain {
 		if s := rt.states[id]; s != nil && s.input != nil && s.flags&flagDisabled == 0 && rt.deliver(s, ev) {
-			return
+			return true
 		}
 	}
 	// Shift turns the wheel sideways: down is toward the end, which is
@@ -606,16 +642,20 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 		if glide {
 			if wheelMoves(s, sx, sy) {
 				rt.wheelScroll(s, sx, sy)
-				return
+				return true
 			}
 			continue
+		}
+		if touch && elasticAccepts(s, sx, sy) {
+			return rt.elasticBy(s, sx, sy, momentum)
 		}
 		s.wheel = nil
 		if scrollBy(s, sx, sy) {
 			rt.requestFrame()
-			return
+			return true
 		}
 	}
+	return false
 }
 
 // zoom gives a pinch to the element under the pointer that handles its
@@ -1130,6 +1170,18 @@ func (rt *engine) editEvent(ev editEvent) bool {
 		rt.requestFrame()
 		return true
 	}
+	if ev.kind == editSelect && s.textScope != 0 {
+		// UIKit's document covers the Selectable container. Map its range
+		// back to paragraph endpoints before syncTextSelection paints it.
+		anchor := textPoint{s.id, max(0, min(ev.from, s.editor.buf.n))}
+		caret := textPoint{s.id, max(0, min(ev.to, s.editor.buf.n))}
+		if d := rt.ime.scope; d != nil && d.owns(s.textScope) {
+			anchor, caret = d.point(ev.from), d.point(ev.to)
+		}
+		rt.selection = textSelection{scope: s.textScope, anchor: anchor, caret: caret}
+		rt.requestFrame()
+		return true
+	}
 	s.editor.queue = append(s.editor.queue, ev)
 	rt.blinkStart = rt.now()
 	rt.requestFrame()
@@ -1266,7 +1318,20 @@ func (rt *engine) updateTextInput() {
 			}
 			t.ID = rt.focused
 			t.Bounds = rt.toWindow(platform.RectF{X: float64(s.vx), Y: float64(s.vy), W: float64(s.vw), H: float64(s.vh)})
+			if ed.readOnly && s.textScope != 0 && rt.nativeSelection(s) && rt.ime.newScope != nil {
+				if rt.ime.scope == nil || !rt.ime.scope.owns(s.textScope) {
+					rt.ime.scope = rt.ime.newScope(s.textScope)
+				}
+				t = rt.ime.scope.input(rt, s, t)
+				base = 0
+			} else {
+				rt.ime.scope = nil
+			}
+		} else {
+			rt.ime.scope = nil
 		}
+	} else {
+		rt.ime.scope = nil
 	}
 	// Resigning a mobile keyboard can synchronously resize the surface. Keep
 	// it until a non-editable control's touch ends, so the control cannot move

@@ -31,35 +31,29 @@ func (clipboard) ReadImage() []byte {
 // UIKit copies all supplied representations before returning. No Go provider
 // or pointer remains retained by the pasteboard.
 func (c clipboard) WriteData(data transfer.Data, released func()) error {
-	var text *C.char
-	var png []byte
-	for _, f := range data.Formats() {
-		switch f {
-		case transfer.Text:
-			value, err := data.Read(f)
-			if err != nil {
-				return err
-			}
-			text = C.CString(string(value))
-			defer C.free(unsafe.Pointer(text))
-		case transfer.PNG:
-			var err error
-			png, err = data.Read(f)
-			if err != nil {
-				return err
-			}
-			if len(png) == 0 {
-				return errors.New("mygo: empty clipboard image")
-			}
-		default:
-			return platform.ErrUnsupported
-		}
+	payload, err := prepareClipboard(data)
+	if err != nil {
+		return err
 	}
+	var text, html, markdown *C.char
+	if payload.text != nil {
+		text = C.CString(*payload.text)
+		defer C.free(unsafe.Pointer(text))
+	}
+	if payload.html != nil {
+		html = C.CString(*payload.html)
+		defer C.free(unsafe.Pointer(html))
+	}
+	if payload.markdown != nil {
+		markdown = C.CString(*payload.markdown)
+		defer C.free(unsafe.Pointer(markdown))
+	}
+	png := payload.png
 	var image unsafe.Pointer
 	if len(png) > 0 {
 		image = unsafe.Pointer(&png[0])
 	}
-	ok := bool(C.mygo_ios_set_clipboard_data(text, image, C.size_t(len(png))))
+	ok := bool(C.mygo_ios_set_clipboard_data(text, html, markdown, image, C.size_t(len(png))))
 	runtime.KeepAlive(png)
 	if !ok {
 		return errors.New("mygo: invalid clipboard image")

@@ -17,13 +17,14 @@ import (
 )
 
 type window struct {
-	b       *Backend
-	h       platform.WindowHandler
-	id      uint64
-	view    uintptr
-	title   string
-	visible bool
-	input   platform.TextInputState
+	b                  *Backend
+	h                  platform.WindowHandler
+	id                 uint64
+	view               uintptr
+	title              string
+	visible            bool
+	input              platform.TextInputState
+	extendIntoSafeArea bool
 }
 
 func (w *window) Handle() uintptr           { return w.view }
@@ -78,8 +79,16 @@ func (w *window) Bounds() platform.Rect {
 }
 func (w *window) ContentBounds() platform.Rect { return w.Bounds() }
 
-// UIKit already sizes the content view inside the safe area.
-func (*window) SafeArea() platform.SafeArea { return platform.SafeArea{} }
+// Default surfaces are already inset by UIKit. Extended surfaces report only
+// chrome overlapping the current viewport, so a keyboard removes bottom padding.
+func (w *window) SafeArea() platform.SafeArea {
+	if !w.extendIntoSafeArea {
+		return platform.SafeArea{}
+	}
+	var top, right, bottom, left C.double
+	C.mygo_ios_safe_area(C.uintptr_t(w.view), &top, &right, &bottom, &left)
+	return platform.SafeArea{Top: int(top), Right: int(right), Bottom: int(bottom), Left: int(left)}
+}
 
 func (w *window) SetTitle(s string) { w.title = s }
 func (w *window) Title() string     { return w.title }

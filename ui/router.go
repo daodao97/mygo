@@ -139,6 +139,10 @@ const (
 	TransitionFade
 	// TransitionNone shows pages at once.
 	TransitionNone
+	// TransitionStack slides forward through history from the right and
+	// backward from the left, including between sibling paths. Reduce Motion
+	// uses a fade, as with TransitionAuto.
+	TransitionStack
 )
 
 const (
@@ -325,6 +329,14 @@ var browserHistory interface {
 // CanGoForward one to go forward to.
 func (r *Router) CanGoBack() bool    { return r.at > 0 }
 func (r *Router) CanGoForward() bool { return r.at < len(r.entries)-1 }
+
+// Transitioning reports whether the router's outer View has a pending
+// navigation, an outgoing page or an interactive back preview. Keep
+// outgoing page data alive until this is false; the View requests frames
+// while it animates.
+func (r *Router) Transitioning() bool {
+	return r.back != nil || r.view.leaving != nil || r.view.shown != nil && r.view.shown != r.current()
+}
 
 // Path returns the path of the page shown, as "/notes/42", without its
 // query.
@@ -705,7 +717,12 @@ func (r *Router) show(c *context, box *node, v *routeView, parent *Route, cur *r
 		v.progress = channel{at: c.now}
 		headFor(&v.progress, 1, r.animation(v.dir), c.now)
 	}()
-	if r.Transition == TransitionAuto && !rt.preferences().ReduceMotion {
+	if r.Transition == TransitionStack && !rt.preferences().ReduceMotion {
+		v.dir = 1
+		if previous := slices.Index(r.entries, old); previous >= 0 && r.at < previous {
+			v.dir = -1
+		}
+	} else if r.Transition == TransitionAuto && !rt.preferences().ReduceMotion {
 		from, to := segmentsOf(old.loc), segmentsOf(cur.loc)
 		from, to = from[min(offset, len(from)):], to[min(offset, len(to)):]
 		switch {

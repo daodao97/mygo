@@ -15,10 +15,14 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 		if t.active {
 			return true
 		}
+		rt.holdElastic()
 		t.id, t.active, t.scrolling = ev.PointerID, true, false
 		t.keyboardTap = false
 		t.selecting, t.holdUntil = false, time.Time{}
-		t.scrollTarget = 0
+		t.scrollTarget, t.scrollAxis = 0, 0
+		if t.text != nil {
+			t.text.reset()
+		}
 		t.x, t.y, t.lastX, t.lastY = x, y, x, y
 		t.back, t.backWidth, t.backLevel = rt.backAt(x, y)
 		t.backEntry = nil
@@ -37,6 +41,14 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 			}
 			return true
 		}
+		if t.text != nil && t.text.reserve(x, y) {
+			return true
+		}
+	case platform.PointerLongPress:
+		if t.active && ev.PointerID == t.id && !t.scrolling {
+			rt.beginTouchTextSelection()
+		}
+		return true
 	case platform.PointerMove:
 		if !t.active || ev.PointerID != t.id {
 			return true
@@ -74,13 +86,25 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 			}
 			// Custom drags and text selection keep their press. Other widgets
 			// yield to a scrollable ancestor once a finger starts moving.
-			if rt.pressed == nil || rt.pressed.flags&(flagDraggable|flagEditable|flagTrackPointer) == 0 {
+			if t.scrollTarget == 0 && (rt.pressed == nil || rt.pressed.flags&(flagDraggable|flagEditable|flagTrackPointer) == 0) {
+				horizontal := abs32(x-t.x) > abs32(y-t.y)
 				for _, id := range rt.hitChain(t.x, t.y) {
 					s := rt.states[id]
-					if s != nil && (s.flags&flagScrollY != 0 && abs32(y-t.y) > 8 || s.flags&flagScrollX != 0 && abs32(x-t.x) > 8) {
+					if s == nil {
+						continue
+					}
+					axis := uint8(0)
+					if horizontal && s.flags&flagScrollX != 0 && s.contentW > float64(s.w) {
+						axis = 1
+					} else if !horizontal && s.flags&flagScrollY != 0 && s.contentH > float64(s.h) {
+						axis = 2
+					}
+					if axis != 0 {
 						rt.cancelPointer()
-						t.scrolling = true
-						rt.dismissKeyboardOnDrag()
+						t.scrolling, t.scrollAxis = true, axis
+						if axis == 2 {
+							rt.dismissKeyboardOnDrag()
+						}
 						break
 					}
 				}
@@ -88,11 +112,17 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 		}
 		if t.scrolling {
 			rt.pointerX, rt.pointerY = t.x, t.y
-			rt.scroll(t.lastX-x, t.lastY-y, 0, true, false)
+			dx, dy := t.lastX-x, t.lastY-y
+			if t.scrollAxis == 1 {
+				dy = 0
+			} else if t.scrollAxis == 2 {
+				dx = 0
+			}
+			rt.scrollInput(dx, dy, 0, true, false, true)
 			t.lastX, t.lastY = x, y
 			return true
 		}
-		if t.scrollTarget != 0 {
+		if t.scrollTarget != 0 || rt.pendingTouchText() {
 			return true
 		}
 		t.lastX, t.lastY = x, y
@@ -104,12 +134,16 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 			rt.focused = 0
 		}
 		t.keyboardTap = false
+		rt.releaseElastic()
 		t.active = false
 		t.holdUntil = time.Time{}
 		rt.pointerIn = false
 		if t.selecting {
 			t.selecting = false
 			return false
+		}
+		if t.text != nil && t.text.finish(ev.Kind) {
+			return true
 		}
 		if id := t.scrollTarget; id != 0 {
 			t.scrollTarget = 0
@@ -128,6 +162,9 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
 				r.moveBack(x-t.x, rt.now())
 				r.endBack(ev.Kind == platform.PointerCancel, rt.now())
 			} else if ev.Kind == platform.PointerUp && r.current() == entry && abs32(x-t.x) <= 8 && abs32(y-t.y) <= 8 {
+				if rt.touchTextAt(t.x, t.y) != nil {
+					return true
+				}
 				rt.pointerMove(t.x, t.y)
 				rt.pointerDown(t.x, t.y, ev.Button, 0, ev.Clicks)
 				return false // the ordinary Up completes the reserved tap
@@ -154,6 +191,11 @@ func (rt *engine) advanceTouch() {
 	if !t.active || t.scrolling || t.holdUntil.IsZero() || rt.now().Before(t.holdUntil) {
 		return
 	}
+	if rt.pendingTouchText() {
+		rt.beginTouchTextSelection()
+		t.holdUntil = time.Time{}
+		return
+	}
 	t.holdUntil = time.Time{}
 	s := rt.states[t.scrollTarget]
 	if s == nil || !s.touchSelection || s.flags&(flagDisabled|flagInert) != 0 || rt.handler(rt.hitChain(t.x, t.y)) != s {
@@ -168,6 +210,7 @@ func (rt *engine) advanceTouch() {
 }
 
 func (rt *engine) cancelPointer() {
+	rt.selection.dragging = false
 	if s := rt.pressed; s != nil {
 		if s.input != nil {
 			rt.deliver(s, InputEvent{Kind: InputPointerCancel, Button: rt.pressButton, Mods: rt.mods})
@@ -182,4 +225,29 @@ func (rt *engine) cancelPointer() {
 	rt.dragCancel()
 	rt.setHover(nil)
 	rt.requestFrame()
+}
+
+// Selectable installs the touch selection policy; other native views do
+// not link its hit testing, focus and word-selection implementation.
+type touchTextPolicy interface {
+	hit(float32, float32) *state
+	reset()
+	reserve(float32, float32) bool
+	begin()
+	finish(platform.SurfaceEventKind) bool
+	pending() bool
+	started() bool
+}
+
+func (rt *engine) pendingTouchText() bool { return rt.touch.text != nil && rt.touch.text.pending() }
+func (rt *engine) touchTextAt(x, y float32) *state {
+	if rt.touch.text == nil {
+		return nil
+	}
+	return rt.touch.text.hit(x, y)
+}
+func (rt *engine) beginTouchTextSelection() {
+	if rt.touch.text != nil {
+		rt.touch.text.begin()
+	}
 }

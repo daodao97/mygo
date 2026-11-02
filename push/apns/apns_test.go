@@ -204,3 +204,20 @@ func TestRejectInvalidPayloadAndPreventRedirectLeaks(t *testing.T) {
 		t.Fatal("redirect followed")
 	}
 }
+
+func TestBadgeOnlyPayloadDoesNotAlertOrPlaySound(t *testing.T) {
+	zero := 0
+	data, err := json.Marshal(Payload{Badge: &zero, Silent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p struct {
+		APS map[string]any `json:"aps"`
+	}
+	if err := json.Unmarshal(data, &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.APS["badge"] != float64(0) || p.APS["alert"] != nil || p.APS["sound"] != nil {
+		t.Fatalf("clearing a badge must not create an empty notification: %s", data)
+	}
+}
