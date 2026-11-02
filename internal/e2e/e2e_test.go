@@ -652,7 +652,7 @@ func TestReloadLoadHTML(t *testing.T) {
 		{"Reload", w.Page().Reload},
 		{"location.reload()", func() { w.Page().Eval("setTimeout(() => location.reload())") }},
 	}
-	for _, base := range []string{"", "app://localhost/"} {
+	for _, base := range []string{"", "about:blank", "app://localhost/"} {
 		w.Page().LoadHTML(fmt.Sprintf("<p id=html data-base=%q>html</p>", base), base)
 		shown := fmt.Sprintf("document.getElementById('html')?.dataset.base === %q", base)
 		for _, r := range reloads {

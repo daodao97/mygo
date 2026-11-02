@@ -667,7 +667,7 @@ func (w *window) LoadURL(raw string) {
 func (w *window) LoadHTML(html, baseURL string) {
 	w.withWebView(func() {
 		w.programmatic = true
-		if baseURL == "" {
+		if !servedAtBase(baseURL) {
 			comCall(w.webview, wvNavigateToString, uintptr(unsafe.Pointer(u16(html))))
 			return
 		}
@@ -681,6 +681,15 @@ func (w *window) LoadHTML(html, baseURL string) {
 		}
 		comCall(w.webview, wvNavigate, uintptr(unsafe.Pointer(u16(target))))
 	})
+}
+
+// servedAtBase reports whether LoadHTML serves its document at baseURL,
+// answering the navigation's request for it. WebView2 requests no about:
+// URL, about:blank among them, so their documents, as those without a base
+// URL, go through NavigateToString, which shows them at about:blank.
+func servedAtBase(baseURL string) bool {
+	scheme, _, _ := strings.Cut(baseURL, ":")
+	return baseURL != "" && !strings.EqualFold(scheme, "about")
 }
 
 func (w *window) LoadFile(path, _ string) {
