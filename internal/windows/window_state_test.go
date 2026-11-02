@@ -8,10 +8,15 @@ import (
 	"github.com/egoist/mygo/internal/platform"
 )
 
-// TestInitialWindowBounds creates a restored window on its display: moved
-// there, it would have its size scaled a second time by Windows.
+// TestInitialWindowBounds creates a restored window, and one with a
+// position, on its display: moved there, it would have its size scaled a
+// second time by Windows.
 func TestInitialWindowBounds(t *testing.T) {
 	saved := platform.Rect{X: 3941, Y: 748, Width: 1575, Height: 1050}
+	space := newDIPSpace([]screenDisplay{
+		{bounds: platform.Rect{Width: 3840, Height: 2160}, dpi: 192},
+		{bounds: platform.Rect{X: 3840, Y: 647, Width: 2560, Height: 1600}, dpi: 168},
+	}, 96)
 	for _, tt := range []struct {
 		name string
 		opts platform.WindowOptions
@@ -23,8 +28,21 @@ func TestInitialWindowBounds(t *testing.T) {
 			want: rect{3941, 748, 5516, 1798},
 		},
 		{
-			name: "new window",
+			name: "centered window",
+			opts: platform.WindowOptions{Center: true, Width: 900, Height: 600},
 			want: rect{},
+		},
+		{
+			name: "window on the primary display",
+			opts: platform.WindowOptions{X: 100, Y: 50, Width: 900, Height: 600},
+			want: rect{200, 100, 2000, 1300},
+		},
+		{
+			// The secondary display's DIPs start at 3840 × 96 / 168 = 2194
+			// and 647 × 96 / 168 = 370, and go on at 175%.
+			name: "window on the secondary display",
+			opts: platform.WindowOptions{X: 2194 + 100, Y: 370 + 40, Width: 900, Height: 600},
+			want: rect{3840 + 175, 647 + 70, 3840 + 175 + 1575, 647 + 70 + 1050},
 		},
 		{
 			name: "flyout",
@@ -33,7 +51,7 @@ func TestInitialWindowBounds(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := initialWindowBounds(&tt.opts); got != tt.want {
+			if got := initialWindowBounds(&tt.opts, space); got != tt.want {
 				t.Fatalf("initialWindowBounds() = %+v, want %+v", got, tt.want)
 			}
 		})
@@ -43,13 +61,13 @@ func TestInitialWindowBounds(t *testing.T) {
 // TestRestoreStateBounds keeps a window at its pixels, with its size in
 // the scale of its display, as long as it would show on a display.
 func TestRestoreStateBounds(t *testing.T) {
-	primary := stateDisplay{
+	primary := screenDisplay{
 		bounds: platform.Rect{Width: 3072, Height: 1920},
 		work:   platform.Rect{Width: 3072, Height: 1880},
 		dpi:    192,
 	}
-	right := func(dpi int) []stateDisplay {
-		return []stateDisplay{primary, {
+	right := func(dpi int) []screenDisplay {
+		return []screenDisplay{primary, {
 			bounds: platform.Rect{X: 3072, Width: 2560, Height: 1600},
 			work:   platform.Rect{X: 3072, Width: 2560, Height: 1560},
 			dpi:    dpi,
@@ -60,7 +78,7 @@ func TestRestoreStateBounds(t *testing.T) {
 		name     string
 		saved    platform.Rect
 		size     platform.Size
-		displays []stateDisplay
+		displays []screenDisplay
 		want     platform.Rect
 		ok       bool
 	}{
@@ -80,7 +98,7 @@ func TestRestoreStateBounds(t *testing.T) {
 			name:  "reported 4K primary and vertically offset secondary",
 			saved: platform.Rect{X: 3940, Y: 747, Width: 1575, Height: 1050},
 			size:  size,
-			displays: []stateDisplay{
+			displays: []screenDisplay{
 				{bounds: platform.Rect{Width: 3840, Height: 2160}, work: platform.Rect{Width: 3840, Height: 2120}, dpi: 192},
 				{bounds: platform.Rect{X: 3840, Y: 647, Width: 2560, Height: 1600}, work: platform.Rect{X: 3840, Y: 647, Width: 2560, Height: 1560}, dpi: 168},
 			},
@@ -96,7 +114,7 @@ func TestRestoreStateBounds(t *testing.T) {
 			name:  "negative horizontal position",
 			saved: platform.Rect{X: -2413, Y: 137, Width: 1125, Height: 750},
 			size:  size,
-			displays: []stateDisplay{primary, {
+			displays: []screenDisplay{primary, {
 				bounds: platform.Rect{X: -2560, Width: 2560, Height: 1600},
 				work:   platform.Rect{X: -2560, Width: 2560, Height: 1560}, dpi: 120,
 			}},
@@ -106,7 +124,7 @@ func TestRestoreStateBounds(t *testing.T) {
 			name:  "negative vertical position",
 			saved: platform.Rect{X: 100, Y: -1501, Width: 1125, Height: 750},
 			size:  size,
-			displays: []stateDisplay{primary, {
+			displays: []screenDisplay{primary, {
 				bounds: platform.Rect{Y: -1600, Width: 2560, Height: 1600},
 				work:   platform.Rect{Y: -1600, Width: 2560, Height: 1560}, dpi: 120,
 			}},
@@ -133,7 +151,7 @@ func TestRestoreStateBounds(t *testing.T) {
 		{
 			name:  "disconnected display is offscreen",
 			saved: platform.Rect{X: 3200, Y: 100, Width: 1125, Height: 750},
-			size:  size, displays: []stateDisplay{primary},
+			size:  size, displays: []screenDisplay{primary},
 		},
 		{
 			name:  "no connected displays",
@@ -188,7 +206,7 @@ func TestRestoreStateBoundsRepeated(t *testing.T) {
 		{name: "175 percent secondary", dpi: 168, width: 1575, height: 1050},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			displays := []stateDisplay{
+			displays := []screenDisplay{
 				{bounds: platform.Rect{Width: 3072, Height: 1920}, work: platform.Rect{Width: 3072, Height: 1880}, dpi: 192},
 				{bounds: platform.Rect{X: 3072, Width: 2560, Height: 1600}, work: platform.Rect{X: 3072, Width: 2560, Height: 1560}, dpi: tt.dpi},
 			}

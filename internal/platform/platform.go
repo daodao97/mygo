@@ -132,8 +132,8 @@ type Backend interface {
 	WebViewAvailable() bool
 }
 
-// WindowStateWindow is a window whose bounds in DIPs, in the scale of its
-// display, cannot tell apart displays of different scales (Windows).
+// WindowStateWindow is a window whose bounds in DIPs change with the
+// scales of the displays where they differ (Windows).
 // WindowStateBounds is its rectangle in the screen's pixels, which window
 // states keep with them.
 type WindowStateWindow interface {

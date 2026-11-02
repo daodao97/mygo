@@ -96,8 +96,9 @@ stay the defaults of the first launch. Give each kind of window its own key:
 `"main"`, `"preferences"`.
 
 On Windows, a state also keeps the window's bounds in the screen's pixels
-(`PixelX`, `PixelY`, `PixelWidth`, `PixelHeight`): its position, in the
-scale of its display, cannot tell apart displays of different scales.
+(`PixelX`, `PixelY`, `PixelWidth`, `PixelHeight`): where displays have
+different scales, its position in DIPs changes with the scales, and
+earlier versions' cannot tell the displays apart.
 
 An app that keeps its data elsewhere, such as in its own database, keeps
 the states there with a `WindowStateStore`, set before the first window

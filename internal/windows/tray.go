@@ -256,8 +256,7 @@ func (t *tray) Bounds() platform.Rect {
 	if !ok {
 		return platform.Rect{}
 	}
-	dpi := monitorDPI(monitorAt(int(r.Left), int(r.Top)))
-	return platform.Rect{X: toDIP(r.Left, dpi), Y: toDIP(r.Top, dpi), Width: toDIP(r.Right-r.Left, dpi), Height: toDIP(r.Bottom-r.Top, dpi)}
+	return screenSpace().rectToDIP(pixelRect(r))
 }
 
 // rect returns where the icon is on the screen, in physical pixels.

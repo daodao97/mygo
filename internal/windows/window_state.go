@@ -8,13 +8,6 @@ import (
 	"github.com/egoist/mygo/internal/platform"
 )
 
-// stateDisplay is a display in the screen's pixels, in which displays
-// never overlap: their rectangles in DIPs, each in its own scale, can.
-type stateDisplay struct {
-	bounds, work platform.Rect
-	dpi          int
-}
-
 // WindowStateBounds is the window's rectangle in the screen's pixels,
 // which Bounds rounds through the scale of the window's display.
 func (w *window) WindowStateBounds() platform.Rect {
@@ -27,12 +20,7 @@ func (w *window) WindowStateBounds() platform.Rect {
 // DIPs cannot tell when displays have different scales, and the window's
 // size in that display's scale.
 func (b *Backend) RestoreWindowState(o *platform.WindowOptions, pixels platform.Rect) bool {
-	var displays []stateDisplay
-	enumMonitors(func(m uintptr) {
-		info := monitorInfo(m)
-		displays = append(displays, stateDisplay{bounds: pixelRect(info.Monitor), work: pixelRect(info.Work), dpi: monitorDPI(m)})
-	})
-	r, ok := restoreStateBounds(pixels, platform.Size{Width: o.Width, Height: o.Height}, displays)
+	r, ok := restoreStateBounds(pixels, platform.Size{Width: o.Width, Height: o.Height}, screenDisplays())
 	if !ok {
 		return false
 	}
@@ -48,7 +36,7 @@ func pixelRect(r rect) platform.Rect {
 // pixels, if enough of it shows on a display to reach it, as onDisplay
 // decides in the core. Its size is in the scale of the display with the
 // most of saved, whose scale Windows gives a window across displays.
-func restoreStateBounds(saved platform.Rect, size platform.Size, displays []stateDisplay) (platform.Rect, bool) {
+func restoreStateBounds(saved platform.Rect, size platform.Size, displays []screenDisplay) (platform.Rect, bool) {
 	if saved.Width <= 0 || saved.Height <= 0 || size.Width <= 0 || size.Height <= 0 {
 		return platform.Rect{}, false
 	}

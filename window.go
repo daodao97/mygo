@@ -216,10 +216,10 @@ type WindowState struct {
 	Maximized  bool `json:"maximized,omitempty"`
 	FullScreen bool `json:"fullScreen,omitempty"`
 	// PixelX, PixelY, PixelWidth and PixelHeight are the normal bounds in
-	// the screen's pixels, which Windows keeps: X and Y are in the scale
-	// of the display the window was on, and cannot tell apart displays of
-	// different scales. Without them, a window is centered there when the
-	// displays have different scales.
+	// the screen's pixels, which Windows keeps: where displays have
+	// different scales, X and Y change with the scales, and earlier
+	// versions' cannot tell the displays apart. Without them, a window is
+	// centered there when the displays have different scales.
 	PixelX      int `json:"pixelX,omitzero"`
 	PixelY      int `json:"pixelY,omitzero"`
 	PixelWidth  int `json:"pixelWidth,omitzero"`

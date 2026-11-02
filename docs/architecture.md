@@ -574,8 +574,20 @@ features GTK 4 lacks become X11-only code beside it.
   in assembly (`uia_*.s`), which move the doubles' bits to the integer
   registers of their positions, touching only registers a call may
   change, and jump to the callbacks.
-- DPI: the process is per-monitor aware (v2); the backend converts between
-  pixels and DIPs with the window's or monitor's DPI. Frameless windows, and
+- DPI: the process is per-monitor aware (v2); the backend converts sizes
+  between pixels and DIPs with the window's or monitor's DPI, and points
+  and rectangles of the screen (windows' bounds, the displays, the cursor,
+  tray icons) through one space of DIPs in which displays never overlap
+  and a point names one display (`dipSpace`, in `dips.go`, which builds
+  on every platform for its tests): a display's DIPs start at its
+  top-left pixel scaled by the smallest scale of the displays, as Qt
+  anchors them at that pixel, and go on in its own scale. The primary
+  display's DIPs, and those of displays that all have one scale, are the
+  screen's pixels at that scale. A window takes the scale of the display
+  it is the most on, whose DPI Windows gives it; it is created on its
+  display, at its rectangle, and `place` moves it, keeping its rectangle
+  in `WM_DPICHANGED`, whose suggested one would scale the size, already
+  in the new display's scale, a second time (#1039). Frameless windows, and
   those with a hidden title bar, drop the caption in `WM_NCCALCSIZE` but
   keep the side and bottom borders, which Windows 10+ draws invisibly
   outside the window, so they still resize. On Windows 11 a hidden title
@@ -1586,8 +1598,9 @@ as in Tauri:
   and when the app quits, if it changed, and kept for the next save when
   saving fails. A saved window that would not show on any
   display keeps its size and is centered. On Windows, where a window's
-  position in DIPs is in its display's scale, and displays of different
-  scales can overlap in DIPs, the state also keeps the window's
+  position in DIPs changes with the displays' scales (`dipSpace`), and
+  earlier versions' could not tell displays of different scales apart,
+  the state also keeps the window's
   rectangle in pixels (`platform.WindowStateWindow`), and the backend
   creates the restored window at it, on its display
   (`platform.WindowStateBackend`, `WindowOptions.StateBounds`); a state

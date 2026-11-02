@@ -124,8 +124,9 @@ func restoreWindowState(key string, p *platform.WindowOptions) {
 
 // restoreWindowStateFrom applies st to p, through b. A backend that
 // places windows in pixels (Windows) restores the state's pixels. It
-// takes X and Y, in the scale of the window's display, only for a state
-// without pixels while every display has the same scale.
+// takes X and Y only for a state without pixels while every display has
+// the same scale: where scales differ, DIPs change with them, and
+// earlier versions' were in the scale of the window's display.
 func restoreWindowStateFrom(st WindowState, p *platform.WindowOptions, b platform.Backend) {
 	r := Rectangle{st.X, st.Y, st.Width, st.Height}
 	p.UseContentSize = false
