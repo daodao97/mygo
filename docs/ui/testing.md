@@ -44,7 +44,10 @@ panics where the second key was given, as apps only log it.
   `tt.SetPreferences` and `tt.SetDirection` (lay it out
   [right to left](right-to-left.md)) change the window and the desktop's
   settings;
-  `tt.SetFocused` takes the keyboard from the window and gives it back.
+  `tt.SetFocused` takes the keyboard from the window and gives it back,
+  and `tt.SetWindowActive` draws it as inactive and active again, as
+  another window taking the user's input does
+  ([inactive windows](windows.md#active-and-inactive-windows)).
 - **What it shows.** `tt.Texts`, `tt.HasText`, `tt.Find` (the box of a
   text), `tt.Focused`, `tt.Cursor`, `tt.Clipboard`, `tt.OpenedURLs` and
   `tt.Announcements`, what the view asked screen readers to read out;

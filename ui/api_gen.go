@@ -605,6 +605,27 @@ func (_handle *Context) Vibrancy() bool {
 	return _ctx.Vibrancy()
 }
 
+// WindowActive reports whether the window is drawn as active: the window
+// the user's input goes to, as native apps draw it, while it or one of its
+// flyouts has the keyboard (and always as Window.SetActiveAppearance keeps
+// it). The built-in widgets fade their accent to gray in a window that is
+// not, as AppKit's do (Theme.InactiveAccent), and macOS fades the
+// window's material. A frame that reads it is drawn again as it changes;
+// draw what shows which window has the user's input in a view of your own
+// with it:
+//
+//	icon := c.Theme().Accent
+//	if !c.WindowActive() {
+//		icon = c.Theme().TextMuted
+//	}
+func (_handle *Context) WindowActive() bool {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return false
+	}
+	return _ctx.WindowActive()
+}
+
 func (_handle *Context) WriteClipboard(s string) {
 	_ctx := _handle.build()
 	if _ctx == nil {

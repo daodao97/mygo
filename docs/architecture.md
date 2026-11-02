@@ -1717,6 +1717,44 @@ as in Tauri:
   (`SecTrustEvaluateAsyncWithError`) only while
   `HandlesCertificateErrors` is true, and Linux and Windows extract the
   certificate only then. Client certificates are left to the platform.
+- Active windows (`active.go`): a window is drawn as active, the one the
+  user's input goes to, while it or a flyout of it (through flyouts'
+  parents) has the keyboard (`windows.focused`), always while
+  `SetActiveAppearance` keeps it so, and so are panels and flyouts
+  without a parent; a flyout with one is as active as its parent, and a
+  window that never had the keyboard nor showed without it
+  (`focusKnown`) counts as active, so that the first frame of a window
+  about to take it draws active, which package `ui` assumes too. No
+  backend reports it: `Focused` and `Blurred` post `updateActive` once
+  (`scheduleActive`), which works out every window's state after the
+  native event returns, so that a window blurred by its flyout taking
+  the keyboard in the same event (AppKit's resign and become key,
+  Win32's `WM_ACTIVATE`s, GTK's focus events before an idle source)
+  never shows inactive for a frame. A change reaches native UI through
+  `surface.Conn.Active` and `ActiveChanged`, and pages, and those of the
+  window's web views, as the `mygo:window-active` event (true or
+  false); pages start active, and one whose DOM is ready in an inactive
+  window is told so. The bridge keeps it for mygo-runtime's
+  `windowActive()`, telling listeners of changes only, and sets the
+  `data-mygo-window-inactive` attribute of `<html>` while it is false.
+  The system draws the materials itself: macOS's `NSVisualEffectView` of
+  a window follows AppKit's active state
+  (`NSVisualEffectStateFollowsWindowActiveState`), the main window's
+  look, which agrees for flyouts (a panel never becomes main) and differs
+  while a sheet or one of AppKit's own panels (Fonts, Colors) is key: the
+  material stays active there while the content is not. Panels',
+  flyouts' and those of windows `SetActiveAppearance` keeps active stay
+  `NSVisualEffectStateActive`, as they did for all windows before;
+  `NSGlassEffectView` has no such state and follows AppKit's. DWM draws
+  Mica and Acrylic as a solid fill in a window it frames inactive: a
+  window whose focusable flyout Windows activates, as a window of its
+  own, keeps its frame active (`keepsActive`: `WM_NCACTIVATE` passed to
+  `DefWindowProc` as active, and its drawn caption), until the
+  activation leaves the flyout for another app's window
+  (`ownersInactive`, `flyoutLeft`). GTK styles a window `:backdrop` by
+  GDK's focus, which a focusable flyout takes from its parent: the
+  window's own title bar then shows it, while its content stays active.
+  In browsers, a window is active while its canvas has the focus.
 - Flyouts (`flyout.go`, `internal/platform/flyout.go`): `NewFlyout`
   creates a window with `platform.WindowOptions.Flyout`, which backends
   make a borderless, transparent popup owned by its parent, and place
@@ -2499,7 +2537,11 @@ either.
   The window gaining or losing the keyboard focus draws a frame only when
   the last frame read it (`windowFocus`, as a focus ring, a caret, a
   selection's color or a focused text input's IME state do): a window
-  hiding or showing again draws nothing it would draw the same. Each
+  hiding or showing again draws nothing it would draw the same. So does
+  the window becoming active or inactive (`windowActive`, which the
+  widgets read through `context.emphasized` and `context.accent` where
+  they would fill with the accent, and `Context.WindowActive`), told by
+  `surface.Conn.ActiveChanged`. Each
   frame matters on macOS, where the Metal driver takes 30 to 45 MB of the
   process's footprint ("owned unmapped (graphics)") for the first command
   buffer encoding anything after a pause, and gives them back a second or
@@ -4923,6 +4965,7 @@ which npm allows only for packages that exist: the first release uses an
 | WebViewAvailable (any goroutine, before `Run` too) | `WKWebView` is there, which macOS always has | WebKitGTK 4.1 (or 4.0), JavaScriptCore and libsoup load, as `webKit` loads them for a window showing a page | `internal/webview2` finds a runtime, or a `WebView2Loader.dll` next to the executable exports what `createEnvironment` calls; once an environment was made, whether that worked. A runtime whose files are there but whose browser is not passes, and fails later, making the web view |
 | secrets | Security.framework generic passwords in the login keychain (`SecItem*`), service and account as keytar | libsecret's `org.freedesktop.Secret.Generic` schema (attributes `service`, `account`), loaded on first use, libsecret 0.19 or later; no libsecret, no session bus (`g_bus_get_sync`) or no Secret Service on it (`G_DBUS_ERROR_SERVICE_UNKNOWN`, `NAME_HAS_NO_OWNER`, `NO_SERVER`) is `ErrUnsupported` | Credential Manager generic credentials (`CredWriteW`), target `service/account` |
 | vibrancy | all materials, behind pages and native UI; Liquid Glass (`NSGlassEffectView`) from macOS 26, the popover and HUD materials before; frameless windows cut to `CornerRadius`; `SetActiveAppearance` through AppKit's private `_setForceMainAppearance:` | ignored | Windows 11 22H2 Mica, Acrylic, Tabbed, behind pages and native UI, in windows created with a material, which have no menu bar; Liquid Glass as Acrylic; frameless windows given a `CornerRadius` rounded by DWM |
+| active windows | the core's state, from key windows; materials follow AppKit's (`NSVisualEffectStateFollowsWindowActiveState`), but panels', flyouts' and kept ones' (`NSVisualEffectStateActive`) | the core's state, from GDK's focus; GTK's own title bar goes `:backdrop` as a focusable flyout takes the keyboard | the core's state, from `WM_ACTIVATE`; DWM's Mica and Acrylic follow the frame, kept active while the window's focusable flyout is (`WM_NCACTIVATE`) |
 | accent color and accessibility preferences | `NSColor.controlAccentColor` (10.14+), `accessibilityDisplayShouldReduceMotion` (10.12+), `accessibilityDisplayShouldReduceTransparency` and `accessibilityDisplayShouldIncreaseContrast` (10.10+), with `NSSystemColorsDidChangeNotification` and `NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification`; no text scale | GTK's `gtk-enable-animations` and theme name, and the settings portal's accent, contrast and GNOME's `text-scaling-factor` (`ReadAll`, `SettingChanged`); no reduced transparency | DWM's `AccentColor`, `SPI_GETCLIENTAREAANIMATION`, Personalize's `EnableTransparency`, `SPI_GETHIGHCONTRAST` and Accessibility's `TextScaleFactor`, with `WM_SETTINGCHANGE` |
 | preferred languages | the global `AppleLanguages` (`CFPreferencesCopyValue`), not the app's | `LANGUAGE`, then `LC_ALL`, `LC_MESSAGES`, `LANG`; read when asked, no changes reported | `GetUserPreferredUILanguages`, `WM_SETTINGCHANGE` "intl" |
 | regional formats | `autoupdatingCurrentLocale`, its calendar's first weekday, the hour of the skeleton "j"; `NSCurrentLocaleDidChangeNotification` and System Settings' distributed notifications | glibc's `nl_langinfo_l` of `LC_TIME` (`_NL_TIME_FIRST_WEEKDAY`, `T_FMT`), else by region | `GetLocaleInfoEx` of the user's default: `LOCALE_IFIRSTDAYOFWEEK`, `LOCALE_STIMEFORMAT` |

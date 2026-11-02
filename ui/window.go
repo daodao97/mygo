@@ -84,6 +84,7 @@ func (v *Content) AttachContent(conn *surface.Conn) {
 		rt.themeChanged()
 	}
 	conn.TitleBarChanged = rt.requestFrame
+	conn.ActiveChanged = rt.activeChanged
 	conn.Changed = rt.changed
 	conn.LocaleChanged = func() {
 		h.textLanguage()
@@ -881,6 +882,8 @@ func (h *windowHost) vibrancy() bool {
 	s, ok := h.conn.Surface.(platform.MaterialSurface)
 	return ok && s.ShowsMaterial()
 }
+
+func (h *windowHost) active() bool { return h.conn.Active == nil || h.conn.Active() }
 
 func (h *windowHost) invalidate() { h.conn.Invalidate() }
 

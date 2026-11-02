@@ -127,6 +127,11 @@ type window struct {
 	htmlNext     bool              // LoadHTML started the next navigation
 	calls        map[int]func(string, error)
 	nextCall     int
+
+	// flyoutLeft tells that the activation left the window's focusable
+	// flyout for another app's window, which draws the window inactive
+	// though the flyout still shows (keepsActive).
+	flyoutLeft bool
 }
 
 func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler) (platform.Window, error) {
@@ -409,6 +414,15 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 	if m == wmMouseActivate && w.ownsFocusableFlyout() {
 		return maActivateAndEat, true
 	}
+	if m == wmNCActivate && wp == 0 && w.keepsActive() {
+		// Its flyout takes the activation: the frame and the material
+		// stay active, as the window's own menus and popovers keep them.
+		if r, ok := w.menuBarMessage(m, 1, lp); ok {
+			return r, true
+		}
+		r, _, _ := procDefWindowProcW.Call(w.hwnd, uintptr(m), 1, lp)
+		return r, true
+	}
 	if m == wmInitMenuPopup {
 		w.enableEditItems(wp)
 	}
@@ -458,8 +472,11 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 		w.h.Moved()
 		return 0, true
 	case wmActivate:
+		if loword(wp) != waInactive {
+			w.flyoutLeft = false
+		}
 		if w.caption != nil {
-			w.caption.activate(loword(wp) != waInactive)
+			w.caption.activate(loword(wp) != waInactive || w.keepsActive())
 		}
 		if loword(wp) == waInactive {
 			w.h.Blurred()

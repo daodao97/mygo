@@ -120,6 +120,7 @@ func (w *window) flyoutMessage(m uint32, wp, lp uintptr) (uintptr, bool) {
 					return 0, false
 				}
 			}
+			w.ownersInactive(w.b.windows[lp])
 			// A press on its own tray icon, which activates the taskbar:
 			// the icon's click toggles it.
 			if t, ok := w.flyout.Tray.(*tray); ok {
@@ -158,6 +159,35 @@ func (w *window) ownsFocusableFlyout() bool {
 		}
 	}
 	return false
+}
+
+// keepsActive reports whether the window draws its frame active though
+// it is not the active window: while its focusable flyout is, which
+// Windows activates as a window of its own.
+func (w *window) keepsActive() bool {
+	return w.opts.Flyout == nil && !w.flyoutLeft && w.ownsFocusableFlyout()
+}
+
+// ownersInactive draws the windows that own the flyout inactive as the
+// activation leaves it for next, unless next is one of them, which
+// Windows activates itself, or another flyout of theirs.
+func (w *window) ownersInactive(next *window) {
+	for n := next; n != nil; n = n.parent {
+		for p := w.parent; p != nil; p = p.parent {
+			if p == n {
+				return
+			}
+		}
+	}
+	for p := w.parent; p != nil; p = p.parent {
+		if p.opts.Flyout == nil && !p.closed && !p.flyoutLeft {
+			p.flyoutLeft = true
+			procSendMessageW.Call(p.hwnd, wmNCActivate, 0, 0)
+			if p.caption != nil {
+				p.caption.activate(false)
+			}
+		}
+	}
 }
 
 // dismissFlyout closes a focusable flyout another window was activated

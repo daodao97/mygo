@@ -63,8 +63,9 @@ type headless struct {
 	// atOnce has requestFrame stand for a surface whose frames come at
 	// once rather than at the display's next refresh (framesAtOnce).
 	atOnce bool
-	// material tells that the window shows one (SetVibrancy).
-	material bool
+	// material tells that the window shows one (SetVibrancy), and
+	// inactive that it is not drawn as active (SetWindowActive).
+	material, inactive bool
 	// reading runs once as the clipboard is next read, as GTK's nested
 	// event loop may draw a frame then.
 	reading func()
@@ -173,6 +174,7 @@ func (h *headless) locale() string                    { return h.lang }
 func (h *headless) region() i18n.Region               { return h.reg }
 func (h *headless) titleBar() TitleBar                { return h.bar }
 func (h *headless) vibrancy() bool                    { return h.material }
+func (h *headless) active() bool                      { return !h.inactive }
 func (h *headless) invalidate() {
 	h.invalidated.Store(true)
 	h.requested.Store(true)
@@ -400,6 +402,17 @@ func (t *Tester) SetTitleBar(bar TitleBar) {
 func (t *Tester) SetVibrancy(shows bool) {
 	t.h.material = shows
 	t.Frame()
+}
+
+// SetWindowActive draws the window as active, the window the user's
+// input goes to, or not, as when the user switches to another window or
+// app: Context.WindowActive returns it. It leaves the keyboard focus to
+// SetFocused, as a window's flyout taking the keyboard leaves the window
+// active.
+func (t *Tester) SetWindowActive(active bool) {
+	t.h.inactive = !active
+	t.rt.activeChanged()
+	t.settle()
 }
 
 // SetDark switches between the light and the dark appearance.

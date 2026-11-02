@@ -181,7 +181,7 @@ func coreSidebarItem(c *context, id string, icon *SVG, label string) *node {
 			sb.chosen = item
 		}
 	}
-	iconColor := t.Accent
+	iconColor := c.accent(t)
 	switch {
 	case chosen && focused:
 		item.checked = 2

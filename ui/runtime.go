@@ -70,6 +70,9 @@ type host interface {
 	// vibrancy reports whether the window shows a material where the
 	// frames are transparent.
 	vibrancy() bool
+	// active reports whether the window is drawn as active, the window
+	// the user's input goes to; it costs nothing.
+	active() bool
 	// invalidate asks for a frame from any goroutine.
 	invalidate()
 	// post runs fn on the main thread soon; it is safe from any goroutine.
@@ -313,6 +316,10 @@ type engine struct {
 	// windowFocus reads; focusRead, that the last frame read it, so that a
 	// change of it draws a frame.
 	windowFocused, focusRead bool
+	// activeRead tells that the last frame read whether the window is
+	// drawn as active (windowActive), so that a change of it draws a
+	// frame.
+	activeRead bool
 	// toasts are the toasts the window holds, oldest first, and
 	// toastList those showing, as ToastViewportBase gives them; their time
 	// stops while toastsPaused. A viewport of them was built in the pass
@@ -560,7 +567,7 @@ func (rt *engine) runFrame() {
 
 	rt.frame++
 	rt.input = false
-	rt.focusRead = false
+	rt.focusRead, rt.activeRead = false, false
 	rt.stats.begin(rt)
 	now := rt.frameTime()
 	rt.zoomChanged = false

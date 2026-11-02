@@ -141,6 +141,38 @@ the window drawn as active, with a private AppKit call that a later macOS may
 drop, the window then drawn as any other: apps for the Mac App Store
 should leave it off.
 
+## Active and inactive windows
+
+Native apps draw the window the user's input goes to apart from the
+others, so that users tell at a glance which window has it: macOS fades
+the material of an inactive window's sidebar to an opaque gray and the
+accent of its selections and controls to gray, Windows draws its Mica as
+a solid fill, GTK styles it `:backdrop`. A window is active while it, or
+one of its flyouts, has the keyboard (a menu or popover belongs to its
+window), and always while `SetActiveAppearance` keeps it so; panels and
+flyouts without a parent float over whatever app is in front and are
+always active.
+
+The built-in widgets follow on their own: selected rows, the icons of a
+sidebar, checked check boxes, radio buttons and switches, sliders,
+progress bars and the line of the selected tab fade from the accent to
+the theme's `InactiveAccent`, a gray, and primary buttons look as the
+others ([themes](styling.md#themes) keep the accent with
+`InactiveAccent: Accent`). A view draws its own with `c.WindowActive()`:
+
+```go
+dot := c.Theme().Accent
+if !c.WindowActive() {
+	dot = c.Theme().TextMuted
+}
+```
+
+A frame that reads it is drawn again as it changes; one that does not
+draws nothing more. `Tester.SetWindowActive` switches it in tests,
+leaving the keyboard focus to `SetFocused`. The window's material follows
+the system (macOS fades it in a window other than a panel or a flyout,
+Windows its Mica); `examples/vibrancy` shows both together.
+
 ## Closing
 
 A view can close its own window, from a button's click or its callback.

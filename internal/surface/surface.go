@@ -53,6 +53,10 @@ type Conn struct {
 	// TitleBar returns the room the window controls take in a window with
 	// a hidden title bar, zero in other windows.
 	TitleBar func() platform.TitleBar
+	// Active reports whether the window is drawn as active, as the window
+	// the user's input goes to (see ui.Context.WindowActive), which
+	// ActiveChanged tells changes of; nil is active. It costs nothing.
+	Active func() bool
 	// OpenURL opens a link in the default browser, and gives done, unless
 	// nil, what came of it on the main thread.
 	OpenURL func(url string, done func(error))
@@ -87,6 +91,8 @@ type Conn struct {
 	// TitleBarChanged when TitleBar does.
 	ThemeChanged    func()
 	TitleBarChanged func()
+	// ActiveChanged is called when Active changed.
+	ActiveChanged func()
 	// LocaleChanged is called when Locale or Region changed, for the
 	// content to build its frame anew.
 	LocaleChanged func()

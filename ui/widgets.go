@@ -154,8 +154,13 @@ func styleButton(c *context, b *node, primary bool) {
 	b.Padding(t.Space(1.5), t.Space(3.5)).Gap(t.Space(1.5)).Radius(t.Radius)
 	base, hover, pressed, fg, border := t.Surface, t.SurfaceHover, t.SurfacePressed, t.Text, t.Border
 	switch {
-	case primary:
+	case primary && c.emphasized(t):
 		base, hover, pressed, fg, border = t.Accent, t.AccentHover, t.AccentPressed, t.AccentText, Color{}
+	case primary:
+		// As other buttons in a window not drawn as active, as AppKit's
+		// default button: its border inside the padding, so that it is as
+		// large as active and nothing around it moves.
+		b.Padding(t.Space(1.5)-1, t.Space(3.5)-1)
 	case c.buttons == toolbarButtons:
 		b.Padding(t.Space(1.5), t.Space(2.5))
 		base, border = Color{}, Color{}
@@ -218,7 +223,7 @@ func coreCheckbox(c *context, checked *bool, label string) *node {
 	row.Children(func() {
 		box := coreBox(c).Size(t.Space(4), t.Space(4)).Radius(t.Space(1)).Shrink(0)
 		if on {
-			box.Background(t.Accent)
+			box.Background(c.accent(t))
 		} else {
 			box.Background(t.Background).Border(1, t.Border.Mix(t.Text, 0.25))
 		}
@@ -251,7 +256,7 @@ func coreRadio[T comparable](c *context, selected *T, value T, label string) *no
 	row.Children(func() {
 		dot := coreBox(c).Size(t.Space(4), t.Space(4)).Radius(t.Space(2)).Shrink(0)
 		if on {
-			dot.Background(t.Accent)
+			dot.Background(c.accent(t))
 		} else {
 			dot.Background(t.Background).Border(1, t.Border.Mix(t.Text, 0.25))
 		}
@@ -282,7 +287,11 @@ func coreSwitch(c *context, on *bool) *node {
 	sw := coreSwitchBase(c, on).Size(t.Space(9), t.Space(5)).Radius(t.Space(2.5))
 	pos := sw.Animate("knob", b2f(*on), 140*time.Millisecond)
 	off := t.Border.Mix(t.Text, 0.15)
-	sw.Background(off.Mix(t.Accent, pos))
+	if pos > 0 {
+		sw.Background(off.Mix(c.accent(t), pos))
+	} else {
+		sw.Background(off)
+	}
 	rtl := sw.rtl()
 	sw.Draw(func(p *Painter, r Rect) {
 		in := t.Space(0.5)
@@ -332,6 +341,7 @@ func slider(c *context, value *float64, lo, hi, step float64) *node {
 		frac = 1 - frac
 	}
 	held := s.Animate("held", b2f(s.st.pressed), 150*time.Millisecond)
+	fill := c.accent(t)
 	s.Draw(func(p *Painter, r Rect) {
 		// As thick as Progress; above the ticks.
 		h := t.Space(1.5)
@@ -346,9 +356,9 @@ func slider(c *context, value *float64, lo, hi, step float64) *node {
 		}
 		p.Fill(track, t.Border, h/2)
 		if rtl {
-			p.Fill(Rect{x, track.Y, track.X + track.W - x, h}, t.Accent, h/2)
+			p.Fill(Rect{x, track.Y, track.X + track.W - x, h}, fill, h/2)
 		} else {
-			p.Fill(Rect{track.X, track.Y, x - track.X, h}, t.Accent, h/2)
+			p.Fill(Rect{track.X, track.Y, x - track.X, h}, fill, h/2)
 		}
 		paintKnob(p, t, k, held, s.FocusVisible())
 	})
@@ -466,6 +476,7 @@ func coreProgress(c *context, value float64) *node {
 	rad := t.Space(0.75)
 	e := coreBox(c).Height(t.Space(1.5)).Radius(rad).Background(t.Border).Clip()
 	e.role, e.hasRange, e.accRange = RoleProgress, true, [3]float64{0, 1, value}
+	fill := c.accent(t)
 	e.Draw(func(p *Painter, r Rect) {
 		fromRight := e.reverse != e.rtl()
 		if value >= 0 {
@@ -474,7 +485,7 @@ func coreProgress(c *context, value float64) *node {
 			if fromRight {
 				x = r.X + r.W - w
 			}
-			p.Fill(Rect{x, r.Y, w, r.H}, t.Accent, rad)
+			p.Fill(Rect{x, r.Y, w, r.H}, fill, rad)
 			return
 		}
 		// It moves while it shows, painted again without building the
@@ -486,7 +497,7 @@ func coreProgress(c *context, value float64) *node {
 		if fromRight {
 			x = r.X + r.W - (r.W+w)*phase
 		}
-		p.Clip(r, rad, func() { p.Fill(Rect{x, r.Y, w, r.H}, t.Accent, rad) })
+		p.Clip(r, rad, func() { p.Fill(Rect{x, r.Y, w, r.H}, fill, rad) })
 	})
 	return e
 }

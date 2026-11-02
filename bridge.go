@@ -247,6 +247,18 @@ func (w *Window) sendTitleBar() {
 	}
 }
 
+// sendActive tells the page of a window, or of a web view in one, whether
+// the window is drawn as active (active.go). Pages start active, and hear
+// otherwise as their DOM is ready. Main thread only.
+func (w *Window) sendActive() {
+	if w.content != nil || w.native == nil {
+		return
+	}
+	if msg, err := encodeEvent(bridge.WindowActiveEvent, w.top().active); err == nil {
+		w.enqueue(msg, true)
+	}
+}
+
 // maxUntrustedMessage is the size of the largest message an untrusted
 // page (PageOptions.Untrusted) may post: what MyGo's bridge posts in pages
 // that call no Go method is much smaller.
@@ -308,6 +320,9 @@ func (w *Window) handleMessage(msg string) {
 		// the controls before a change.
 		w.sendTitleBar()
 		w.sendLocale()
+		if !w.top().active {
+			w.sendActive()
+		}
 		w.flush()
 		fire(&w.onDOMReady)
 		w.readyToShow()

@@ -129,6 +129,12 @@ func material(w *mygo.Window) (class string, style int, radius float64, active b
 	return class, style, radius, active, true
 }
 
+// materialState returns the NSVisualEffectState of the window's material.
+func materialState(w *mygo.Window) (state int, supported bool) {
+	mygo.RunOnMain(func() { state = darwin.TestMaterialState(w.NativeHandle()) })
+	return state, true
+}
+
 func roundedBacking(w *mygo.Window) (opaque bool, alpha, red float64, supported bool) {
 	mygo.RunOnMain(func() { opaque, alpha, red = darwin.TestRoundedBacking(w.NativeHandle()) })
 	return opaque, alpha, red, true

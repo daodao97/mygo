@@ -254,6 +254,11 @@ type Window struct {
 	flyoutSize platform.Size
 	// panel is WindowOptions.Panel.
 	panel bool
+	// active tells that the window is drawn as active (active.go);
+	// focusKnown, that it had the keyboard once or showed without it;
+	// keepActive, that SetActiveAppearance keeps it active. Main thread
+	// only.
+	active, focusKnown, keepActive bool
 	// fit sizes a window that takes its page's size (FitContent), nil
 	// for others. Main thread only.
 	fit *fitContent
@@ -501,7 +506,7 @@ func newWindow(opts WindowOptions, bg *background, native uintptr, flyout *flyou
 	id := windows.nextID
 	windows.Unlock()
 
-	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), stateKey: opts.StateKey, background: bg, content: opts.Content, panel: opts.Panel && flyout == nil}
+	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), stateKey: opts.StateKey, background: bg, content: opts.Content, panel: opts.Panel && flyout == nil, active: true}
 	w.pg = &Page{w}
 	if opts.Content == nil {
 		if flyout != nil {
@@ -817,6 +822,10 @@ func (w *Window) ShowInactive() {
 		visible := w.native.IsVisible()
 		w.native.ShowInactive()
 		w.shown = true
+		if !w.focusKnown {
+			w.focusKnown = true
+			scheduleActive()
+		}
 		if !visible {
 			fire(&w.onShow)
 		}
@@ -1120,9 +1129,15 @@ func (w *Window) SetIgnoreMouseEvents(v bool) {
 // clear in a panel floating over another app, which never is active and
 // whose glass the system would frost. It uses AppKit's private
 // _setForceMainAppearance:, which a later macOS may drop: the window then
-// looks as any other. Apps for the Mac App Store should not call it.
+// looks as any other, but for its NSVisualEffectView material. Apps for
+// the Mac App Store should not call it. On every platform, its pages and
+// native UI stay active too (ui.Context.WindowActive).
 func (w *Window) SetActiveAppearance(v bool) {
-	w.do(func(n platform.Window) { n.SetActiveAppearance(v) })
+	w.do(func(n platform.Window) {
+		n.SetActiveAppearance(v)
+		w.keepActive = v
+		scheduleActive()
+	})
 }
 
 // SetWindowButtonsTheme draws the window controls of a window with a
@@ -1803,6 +1818,7 @@ func (h *windowHandler) Closed() {
 	}
 	if windows.focused == w {
 		windows.focused = nil
+		scheduleActive()
 	}
 	children := []*Window{}
 	for _, x := range windows.list {
@@ -1838,6 +1854,8 @@ func (h *windowHandler) Focused() {
 	windows.Lock()
 	windows.focused = h.w
 	windows.Unlock()
+	h.w.focusKnown = true
+	scheduleActive()
 	fire(&h.w.onFocus)
 }
 
@@ -1847,6 +1865,7 @@ func (h *windowHandler) Blurred() {
 		windows.focused = nil
 	}
 	windows.Unlock()
+	scheduleActive()
 	fire(&h.w.onBlur)
 }
 

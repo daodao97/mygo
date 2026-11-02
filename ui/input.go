@@ -1664,6 +1664,22 @@ func (rt *engine) windowFocus() bool {
 	return rt.windowFocused
 }
 
+// windowActive reports whether the window is drawn as active, the window
+// the user's input goes to (Context.WindowActive), noting that the frame
+// depends on it.
+func (rt *engine) windowActive() bool {
+	rt.activeRead = true
+	return rt.host.active()
+}
+
+// activeChanged draws a frame after the window became active or ceased to
+// be, when the last frame read it, as focusChanged does.
+func (rt *engine) activeChanged() {
+	if rt.activeRead {
+		rt.requestFrame()
+	}
+}
+
 // focusChanged draws a frame after the window gained or lost the keyboard
 // focus, when the last frame read it (a focus ring, a caret, a selection):
 // another frame would draw the same, as a window hides or shows again, and

@@ -25,7 +25,16 @@ type Theme struct {
 	AccentHover   Color
 	AccentPressed Color
 	AccentText    Color
-	Danger        Color
+	// InactiveAccent is what the accent fades to in a window that is not
+	// drawn as active (Context.WindowActive), as AppKit fades an inactive
+	// window's: the fill of selected rows, of checked check boxes, radio
+	// buttons and switches, of sliders and progress bars, the line of the
+	// selected tab and the icons of a sidebar, with AccentText on it as on
+	// the accent; primary buttons show as the others there. Left zero, it
+	// is a gray AccentText stands out on; set it to Accent to keep the
+	// accent in every window.
+	InactiveAccent Color
+	Danger         Color
 	// Warning and Success color what calls for attention and what went
 	// well, as a Meter's levels.
 	Warning Color
@@ -64,6 +73,20 @@ func (t *Theme) Space(n float32) float32 {
 		s = 4
 	}
 	return n * s
+}
+
+// inactiveAccent returns what the accent fades to in a window that is not
+// drawn as active (InactiveAccent).
+func (t *Theme) inactiveAccent() Color {
+	if t.InactiveAccent != Transparent {
+		return t.InactiveAccent
+	}
+	// As far from AccentText as text on it needs, 4.5 times its contrast.
+	far := Color{A: 255}
+	if t.AccentText.gray().R <= 127 {
+		far = Color{R: 255, G: 255, B: 255, A: 255}
+	}
+	return t.AccentText.Mix(far, 0.55)
 }
 
 // inverse returns the fill of tooltips and toasts, and the color of text

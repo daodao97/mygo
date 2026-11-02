@@ -446,6 +446,37 @@ func (c *context) TitleBar() TitleBar { return c.titleBar }
 //	})
 func (c *context) Vibrancy() bool { return c.vibrancy }
 
+// WindowActive reports whether the window is drawn as active: the window
+// the user's input goes to, as native apps draw it, while it or one of its
+// flyouts has the keyboard (and always as Window.SetActiveAppearance keeps
+// it). The built-in widgets fade their accent to gray in a window that is
+// not, as AppKit's do (Theme.InactiveAccent), and macOS fades the
+// window's material. A frame that reads it is drawn again as it changes;
+// draw what shows which window has the user's input in a view of your own
+// with it:
+//
+//	icon := c.Theme().Accent
+//	if !c.WindowActive() {
+//		icon = c.Theme().TextMuted
+//	}
+func (c *context) WindowActive() bool { return c.rt.windowActive() }
+
+// emphasized reports whether the widgets show what is selected and the
+// primary action in t's accent: in a window drawn as active, and in every
+// window when t keeps it (Theme.InactiveAccent).
+func (c *context) emphasized(t *Theme) bool {
+	return t.InactiveAccent == t.Accent || c.rt.windowActive()
+}
+
+// accent returns the color the widgets fill what is checked or filled
+// with: t's accent in a window drawn as active, else what it fades to.
+func (c *context) accent(t *Theme) Color {
+	if c.emphasized(t) {
+		return t.Accent
+	}
+	return t.inactiveAccent()
+}
+
 // Now returns the time the frame started, for animations.
 func (c *context) Now() time.Time { return c.now }
 

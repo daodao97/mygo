@@ -663,6 +663,16 @@ func TestMaterial(handle uintptr) (class string, style int, radius float64, acti
 	return class, style, radius, active
 }
 
+// TestMaterialState returns the NSVisualEffectState of a window's
+// material, -1 for none or glass.
+func TestMaterialState(handle uintptr) int {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil || w.effect == 0 || w.glass {
+		return -1
+	}
+	return sendInt(w.effect, "state")
+}
+
 // TestRoundedBacking reports whether a window is opaque, and the alpha and
 // red, in sRGB, of its content view's background, which fills its rounded
 // corners' inside.

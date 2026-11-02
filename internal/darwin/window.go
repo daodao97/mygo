@@ -62,6 +62,8 @@ type window struct {
 	// NSVisualEffectView, or an NSGlassEffectView when glass is.
 	effect id
 	glass  bool
+	// keepActive is SetActiveAppearance's.
+	keepActive bool
 	// provisionalURL is the URL of the navigation started last, which a
 	// load failed before it committed is of when its error doesn't tell.
 	provisionalURL string
@@ -1216,7 +1218,7 @@ func (w *window) SetVibrancy(material string) {
 			w.glass = glass
 			if !glass {
 				send(w.effect, "setBlendingMode:", 0) // NSVisualEffectBlendingModeBehindWindow
-				send(w.effect, "setState:", 1)        // NSVisualEffectStateActive
+				send(w.effect, "setState:", w.effectState())
 			}
 			send(w.effect, "setAutoresizingMask:", nsViewWidthHeightSizable)
 			// Behind the page and a docked inspector.
@@ -1239,9 +1241,26 @@ func (w *window) SetVibrancy(material string) {
 // is. NSVisualEffectView has a public setting for it (its state, which
 // SetVibrancy sets); NSGlassEffectView has none.
 func (w *window) SetActiveAppearance(v bool) {
+	w.keepActive = v
 	if respondsTo(w.win, "_setForceMainAppearance:") {
 		send(w.win, "_setForceMainAppearance:", boolArg(v))
 	}
+	if w.effect != 0 && !w.glass {
+		send(w.effect, "setState:", w.effectState())
+	}
+}
+
+// effectState returns the NSVisualEffectState of the window's material: a
+// window's follows its active state, as AppKit's sidebars do, and fades to
+// an opaque gray while the window is not the one the user's input goes to.
+// Panels and flyouts float over whatever app is in front, never active as
+// AppKit tells it, and keep theirs active, as SetActiveAppearance keeps a
+// window's.
+func (w *window) effectState() uintptr {
+	if w.keepActive || w.opts.Panel || w.opts.Flyout != nil {
+		return 1 // NSVisualEffectStateActive
+	}
+	return 0 // NSVisualEffectStateFollowsWindowActiveState
 }
 
 // SetWindowButtonsTheme does nothing: the traffic lights look the same in
