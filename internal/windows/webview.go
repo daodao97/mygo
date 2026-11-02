@@ -229,6 +229,9 @@ func (w *window) setUp(controller uintptr) {
 	w.applyWebViewBackground()
 
 	w.addUserScripts()
+	if w.host != nil {
+		forwardKeys(w)
+	}
 
 	// The add methods write a registration token. Its address is taken in
 	// each call (go:uintptrescapes), as a uintptr saved earlier goes stale

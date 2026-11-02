@@ -305,3 +305,45 @@ func TestPopoverLastPressDecides(t *testing.T) {
 		t.Error("a press on the anchor then elsewhere left the popover open")
 	}
 }
+
+// A key the page of a web view leaves unhandled acts as if the web view's
+// element had the focus, which a press on the page gave it: Page Down
+// scrolls the container around it, as a reader showing its document in
+// native UI needs, and the shortcuts around it see the key.
+func TestWebViewKey(t *testing.T) {
+	page := &testWebView{"page"}
+	var scroll ScrollState
+	var text string
+	nexts := 0
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Fill().AlignItems(Stretch).Children(func() {
+			coreTextInput(c, &text).Label("Name")
+			reader := coreScroll(c).Grow(1).TrackScroll(&scroll).Children(func() {
+				coreWebView(c, page).Height(1000)
+			})
+			if reader.Shortcut(0, KeyJ) {
+				nexts++
+			}
+		})
+	}, 300, 300)
+	tt.ClickAt(150, 200)
+	if s := tt.rt.states[tt.rt.focused]; s == nil || s.webView != page || tt.rt.focusVisible {
+		t.Fatal("a press on the page did not give the web view's element the focus, unshown")
+	}
+	tt.rt.webViewKey(page, 0, KeyPageDown, KeyUnknown, false)
+	tt.Frame()
+	if scroll.Y <= 0 {
+		t.Errorf("Page Down the page left scrolled the container to %v", scroll.Y)
+	}
+	tt.rt.webViewKey(page, 0, KeyJ, KeyUnknown, false)
+	tt.Frame()
+	if nexts != 1 {
+		t.Errorf("J the page left reached the container's shortcut %d times, want 1", nexts)
+	}
+	// A key of a web view no element shows goes nowhere.
+	tt.rt.webViewKey(&testWebView{"other"}, 0, KeyJ, KeyUnknown, false)
+	tt.Frame()
+	if nexts != 1 {
+		t.Error("a key of another web view reached the shortcut")
+	}
+}

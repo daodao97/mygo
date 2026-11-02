@@ -3401,8 +3401,8 @@ either.
   page's where it shows and nothing painted over it takes the pointer
   (`WebViewPlacement.At`), as a dialog's backdrop does over all of it. A
   press there goes to the page and comes to the content as `WebViewPress`,
-  which notes it for `PressedOutside` and takes the focus from the
-  content; the engine sets no cursor while the pointer is over a web view
+  which notes it for `PressedOutside` and moves the focus to the web
+  view's element, unshown; the engine sets no cursor while the pointer is over a web view
   (`cursorUnknown`), whose page sets it. Web views the frame does not build
   hide and keep their pages. Glyphs over a hole are not on an opaque
   background (`Painter.holes`), so that subpixel ones do not color the
@@ -3410,7 +3410,11 @@ either.
   it away (`OpHole`'s `Opacity`), so the page blends over it. The element
   is a Tab stop: focusing it gives the page the keyboard
   (`WebView.TabInto`, from its end going back), and Tab past the page's
-  ends comes back as `WebViewTabOut`, from which the focus moves on. The
+  ends comes back as `WebViewTabOut`, from which the focus moves on. A
+  key the page leaves unhandled comes as `WebViewKey`: the engine moves
+  the focus to the web view's element, if it was elsewhere, and takes the
+  key as from the keyboard (`webViewKey`), so that the shortcuts around
+  the element and the window's see it; Tab never comes. The
   access tree has a node for each page, inside its element
   (`AccessNode.WebView`), which the backends fill with the page's own
   accessibility, as SwiftUI's `WebView` is in place. Backends:
@@ -3432,7 +3436,15 @@ either.
     into `WebViewTabOut`. The page's node lists the WKWebView, whose
     `accessibilityParent` is that node; the clip view lists none. With
     `ScrollToContainer`, `MyGoWebView`'s `scrollWheel:` gives the event to
-    the surface's conversion (`scrollWheel`) instead of WebKit.
+    the surface's conversion (`scrollWheel`) instead of WebKit. WebKit
+    sends a key the page did not handle again, and the WKWebView on up
+    the responder chain: `MyGoClipView`'s `keyDown:` sends it to the
+    surface as `WebViewKey` (`unhandledKey`), Tab aside. An Escape (or
+    Cmd+.) comes as `cancelOperation:` first: WebKit sends a command its
+    web process does not know up the chain and resends the key only if
+    no responder took the command, and the `NSPanel` of a flyout takes
+    it, so `MyGoClipView` takes `cancelOperation:` itself and sends
+    `WebViewKey` with Escape (`unhandledCommand`).
   - Linux: the first web view puts the surface's area in a `GtkOverlay`,
     over a `GtkLayout` holding the WebKitWebViews (which, unlike a
     `GtkFixed`, asks for no size), as an overlay, which GTK realizes again
@@ -3452,7 +3464,13 @@ either.
     surface's alone. With `ScrollToContainer`, a handler of the view's
     `scroll-event`, which runs before WebKit's class handler, converts the
     event as the area's does (`scrollEvent`, moved by the view's
-    allocation), sends it to the content and stops the signal.
+    allocation), sends it to the content and stops the signal. WebKitGTK
+    dispatches a key the page did not handle again once its web process
+    says so, and its class handler of `key-press-event` then passes it
+    on: a handler connected after it (`cbWebViewKey`) gets those keys
+    alone and sends them as `WebViewKey`, but Tab, modifier keys on their
+    own and the shortcuts of menu items with a role, which go on to the
+    menu (`cbMenuKey`).
   - Windows: WebView2 in visual hosting, a composition controller
     (`ICoreWebView2Environment3`) whose visual is in a DirectComposition
     target of the surface's window that is not topmost (a window has one
@@ -3476,7 +3494,18 @@ either.
     keeps the wheel over that web view (`WM_MOUSEWHEEL`, `WM_MOUSEHWHEEL`)
     for the surface, which scrolls the content as over its own elements;
     a touchpad's pinch, the wheel by less than a notch with Ctrl held,
-    still goes to the page, as pinches do on the other platforms. For UI
+    still goes to the page, as pinches do on the other platforms.
+    WebView2 tells of no key a page leaves unhandled: `keys.js`, built
+    from `packages/bridge/src/keys-world.ts`, runs in an isolated world of
+    each document of the web view, frames in its process included
+    (`Page.addScriptToEvaluateOnNewDocument` with a `worldName`), decides
+    after the page's handlers ran with the rules of `keys.ts`, and calls
+    a binding of that world alone (`Runtime.addBinding` with an
+    `executionContextName`, after `Runtime.enable`), which WebView2
+    raises as `Runtime.bindingCalled` (`GetDevToolsProtocolEventReceiver`);
+    `bindingCalled` sends `WebViewKey`. The page's scripts reach neither
+    the world nor the binding, bridge or not, and their events are not
+    trusted. For UI
     Automation the root also answers `IRawElementProviderHwndOverride`:
     for the window WebView2 shows a page with, it returns the page's node,
     which answers with WebView2's provider of the page

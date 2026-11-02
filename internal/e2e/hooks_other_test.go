@@ -180,3 +180,5 @@ func choosePageMenuItem(string) bool                     { return false }
 func dismissPageMenu()                                   {}
 
 func takeForeground(*mygo.Window) {}
+
+func pressLetter(*mygo.Window, byte, bool) bool { return false }

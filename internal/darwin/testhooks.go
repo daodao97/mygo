@@ -931,12 +931,30 @@ func TestPageKeyShift(handle uintptr, code uint16, chars string, shift bool) boo
 	return true
 }
 
+// TestKeyCmd presses a key with Command held in a window showing native
+// UI, which the window sends to its first responder as it does the
+// keyboard's: the content, or the page of a web view.
+func TestKeyCmd(handle uintptr, code uint16, chars string) bool {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil || w.surface == nil {
+		return false
+	}
+	sendKeyFlags(w, code, chars, 1<<20) // NSEventModifierFlagCommand
+	return true
+}
+
 // sendKeyToWindow sends a key down and up to a window, as the keyboard does.
 func sendKeyToWindow(w *window, code uint16, chars string, shift bool) {
 	var flags uint
 	if shift {
 		flags = 1 << 17 // NSEventModifierFlagShift
 	}
+	sendKeyFlags(w, code, chars, flags)
+}
+
+// sendKeyFlags sends a key down and up to a window with the modifier
+// flags held, as the keyboard does.
+func sendKeyFlags(w *window, code uint16, chars string, flags uint) {
 	withPool(func() {
 		number := sendInt(w.win, "windowNumber")
 		s := nsString(chars)

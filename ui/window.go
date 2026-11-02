@@ -316,9 +316,14 @@ func (h *windowHost) event(ev platform.SurfaceEvent) bool {
 		h.requestFrame()
 		return false
 	}
-	if ev.Kind == platform.WebViewTabOut {
-		if i := slices.IndexFunc(h.placed, func(p platform.WebViewPlacement) bool { return p.WebView == ev.WebView }); i >= 0 {
+	if ev.Kind == platform.WebViewTabOut || ev.Kind == platform.WebViewKey {
+		i := slices.IndexFunc(h.placed, func(p platform.WebViewPlacement) bool { return p.WebView == ev.WebView })
+		switch {
+		case i < 0:
+		case ev.Kind == platform.WebViewTabOut:
 			h.rt.webViewTabOut(h.views[i], ev.Mods&platform.ModShift != 0)
+		default:
+			h.rt.webViewKey(h.views[i], Modifiers(ev.Mods), Key(ev.Key), Key(ev.PhysicalKey), ev.Repeat)
 		}
 		return false
 	}

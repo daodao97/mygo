@@ -465,3 +465,19 @@ func takeForeground(w *mygo.Window) {
 		}
 	})
 }
+
+// pressLetter presses the key of an uppercase letter, with Ctrl held when
+// cmd is set, like a keyboard, in the window brought to the foreground.
+func pressLetter(w *mygo.Window, letter byte, cmd bool) (ok bool) {
+	mygo.RunOnMain(func() {
+		if ok = win.TestForeground(w.NativeHandle()); !ok {
+			return
+		}
+		if cmd {
+			win.TestPressKeys(0x11, letter) // VK_CONTROL
+		} else {
+			win.TestPressKeys(letter)
+		}
+	})
+	return ok
+}

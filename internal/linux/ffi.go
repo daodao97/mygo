@@ -1021,3 +1021,9 @@ func loadWebKit() error {
 func connect(instance ptr, signal string, handler ptr, data ptr) uint64 {
 	return gSignalConnectData(instance, cs(signal), handler, data, 0, 0)
 }
+
+// connectAfter connects a signal handler that runs after the class's
+// (G_CONNECT_AFTER).
+func connectAfter(instance ptr, signal string, handler ptr, data ptr) uint64 {
+	return gSignalConnectData(instance, cs(signal), handler, data, 0, 1)
+}

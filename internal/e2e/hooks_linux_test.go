@@ -422,3 +422,13 @@ func dismissPageMenu() { mygo.RunOnMain(linux.TestDismissPageMenu) }
 
 // Only Windows' tests start a process that takes the foreground.
 func takeForeground(*mygo.Window) {}
+
+// pressLetter presses the key of an uppercase letter, with Ctrl held when
+// cmd is set, like a keyboard.
+func pressLetter(_ *mygo.Window, letter byte, cmd bool) bool {
+	key := string(rune(letter - 'A' + 'a'))
+	if cmd {
+		return pressKeys("Control_L", key)
+	}
+	return pressKeys(key)
+}

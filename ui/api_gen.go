@@ -2717,8 +2717,10 @@ func View(view func(c *Context)) *Content {
 // menus, dialogs, tooltips and toasts. The page takes the pointer where
 // it shows and nothing painted over it takes it, and the keyboard once
 // clicked, focused (mygo.WebView.Focus) or tabbed into: Tab stops at the
-// element. Its background and border paint around the page, which its
-// opacity fades, and assistive technology finds the page inside it.
+// element. The keys the page leaves unhandled come to the native UI as if
+// the element had the focus, which the shortcuts around it and the
+// window's see. Its background and border paint around the page, which
+// its opacity fades, and assistive technology finds the page inside it.
 func WebView(c *Context, v NativeWebView) Element {
 	_ctx := c.build()
 	if _ctx == nil {
