@@ -150,6 +150,33 @@ func TestTextInputClientNativeEndBeforeCommit(t *testing.T) {
 	}
 }
 
+// An input method that gives its composition up with no empty preedit
+// first, as IMM32's Microsoft Japanese IME does on Esc, leaves the text
+// as it was before the composition.
+func TestTextInputClientNativeCancel(t *testing.T) {
+	c := &primitiveClient{text: "abc", selection: TextInputSelection{Range: TextInputRange{Start: 1, End: 3}}}
+	tt := primitiveTester(c)
+	defer tt.rt.close()
+	client := tt.h.ime.Client
+	var composition platform.InputComposition
+	composition.Cancel(client) // nothing marked: the selection stays
+	if c.text != "abc" || c.selection.Range != (TextInputRange{Start: 1, End: 3}) {
+		t.Fatal("cancel without a composition changed the document", c.text, c.selection)
+	}
+	client.SetMarkedText(nil, "にほｎ", TextInputRange{Start: 3, End: 3})
+	composition.Cancel(client)
+	composition.End(client)
+	if c.mark != nil || c.text != "a" {
+		t.Fatal("cancelled composition was kept", c.text, c.mark)
+	}
+	client.SetMarkedText(nil, "にほん", TextInputRange{Start: 3, End: 3})
+	composition.Replace(client, nil, "日本")
+	composition.End(client)
+	if c.mark != nil || c.text != "a日本" {
+		t.Fatal("commit after a cancel", c.text, c.mark)
+	}
+}
+
 func TestTextInputClientQueriesGeometryAndLifetime(t *testing.T) {
 	c := &primitiveClient{text: strings.Repeat("a", 10000), selection: TextInputSelection{Range: TextInputRange{Start: 8000, End: 8000}}}
 	show := true

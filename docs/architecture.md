@@ -2300,6 +2300,10 @@ either.
   alone, as Enter choosing a candidate: on macOS `keyDown:` sends no
   `KeyPressed` while there is marked text, as GTK's input method filters
   such keys on Linux and IMM32 makes them `VK_PROCESSKEY` on Windows.
+  A composition an input method gives up, as with Escape, goes: the
+  Microsoft Japanese IME sends `WM_IME_COMPOSITION` with neither
+  `GCS_COMPSTR` nor `GCS_RESULTSTR` then, which empties the marked text
+  (`InputComposition.Cancel`) before `WM_IME_ENDCOMPOSITION` unmarks it.
   A composition the content does not take (`SurfaceEvent` returns false
   for `TextComposition`) macOS gives up (`discardMarkedText`, once
   `interpretKeyEvents:` returns), as the terminal leaves the dead key ´
