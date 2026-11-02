@@ -3,6 +3,7 @@ package editor
 import (
 	"math"
 	"slices"
+	"sort"
 )
 
 // diffPrepared is what the blocks and hidden lines were made of.
@@ -167,23 +168,37 @@ func (d *DiffState) prepare() {
 			*s.blks = append(*s.blks, block{kind: blockSpacer, line: line, below: true, height: extra})
 		}
 	}
+	// Sides as wide as each other wrap an unchanged line alike; sides
+	// the line between them made unlike (SplitPercent) wrap it in as many
+	// rows as their widths take, and the side with fewer leaves the room
+	// of the others under it, as under an annotation. Collapsed lines
+	// take no room on either side.
+	alignRows := d.Wrap && viewA.wrapWidth != viewB.wrapWidth
+	hidden := func(line int) bool {
+		i := sort.Search(len(hideA), func(i int) bool { return hideA[i].to >= line })
+		return i < len(hideA) && hideA[i].from <= line
+	}
 	prevA, prevB := 0, 0
 	unchanged := func(a0, b0, n int) {
 		// Annotations on unchanged lines leave room on the other side.
 		for i := 0; i < n; i++ {
 			ha, hb := sides[0].ann[a0+i], sides[1].ann[b0+i]
-			if ha == 0 && hb == 0 {
+			var ra, rb float32
+			if alignRows && !hidden(a0+i) {
+				ra, rb = rowsOf(viewA, a0+i), rowsOf(viewB, b0+i)
+			}
+			if ha == 0 && hb == 0 && ra == rb {
 				continue
 			}
-			hmax := max(ha, hb)
+			hmax := max(ra+ha, rb+hb)
 			if ha > 0 {
 				*sides[0].blks = append(*sides[0].blks, block{kind: blockAnnotation, line: a0 + i, below: true, height: ha, id: a0 + i})
 			}
 			if hb > 0 {
 				*sides[1].blks = append(*sides[1].blks, block{kind: blockAnnotation, line: b0 + i, below: true, height: hb, id: b0 + i})
 			}
-			emitAnn(sides[0], a0+i, hmax-ha)
-			emitAnn(sides[1], b0+i, hmax-hb)
+			emitAnn(sides[0], a0+i, hmax-ra-ha)
+			emitAnn(sides[1], b0+i, hmax-rb-hb)
 		}
 	}
 	for hi, h := range d.model.hunks {

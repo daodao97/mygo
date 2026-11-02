@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/egoist/mygo/internal/l10n"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -18,6 +19,14 @@ type DiffState struct {
 	Old, New *Buffer
 	// Layout shows the texts side by side, or one over the other.
 	Layout DiffLayout
+	// SplitPercent is the percentage of a split view's width the old
+	// side takes, from 0 to 100, half when 0: the user drags the line
+	// between the sides to change it, or moves it with the arrows once it
+	// has the keyboard focus, as ui.SplitPercent's divider, and the app
+	// keeps it to show the sides as the user left them. Each side keeps
+	// the room of its gutter and 12 columns of text, where the view is
+	// wide enough for both, and the share is kept for when it is again.
+	SplitPercent float32
 	// Editable lets the new text be edited where it shows, with all an
 	// editor does; the diff follows as it is typed.
 	Editable bool
@@ -91,6 +100,7 @@ type DiffState struct {
 	sides   [2]diffSide
 	oldView view // the old text, for its lines in a unified view
 	scroll  sharedScroll
+	split   diffSplit
 	// revealed are the unchanged lines expanded, in the old text, which
 	// edits of the new text leave where they are; revealedVer is the old
 	// text's version they are of.
@@ -599,13 +609,26 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 	// The old text on the left, as code reads left to right.
 	row := ui.Row(c).Direction(ui.LeftToRight).Clip()
 	row.Draw(func(p *ui.Painter, r ui.Rect) {
-		w := (r.W - 1) / 2
+		if r.W != d.split.width {
+			// Resized: the build shares the new width between the sides.
+			d.split.width = r.W
+			d.eds[1].services.Invalidate()
+		}
+		w := d.split.widths(r.W)
 		for i := range d.eds {
-			d.eds[i].layout(w, r.H, p.Scale())
+			d.eds[i].layout(w[i], r.H, p.Scale())
+		}
+		if d.Wrap && d.eds[0].view.wrapWidth != d.eds[1].view.wrapWidth {
+			// Sides wrapping at unlike widths are aligned line by line
+			// (prepare): the lines in view measured first, which the
+			// editors would measure as they paint, after.
+			for i := range d.eds {
+				d.eds[i].view.measureWraps(d.eds[i].anchorLine, 0)
+			}
 		}
 		d.prepare()
 		for i := range d.eds {
-			d.eds[i].layout(w, r.H, p.Scale())
+			d.eds[i].layout(w[i], r.H, p.Scale())
 		}
 		if !d.FitContent {
 			d.scroll.set(d.scroll.y)
@@ -623,6 +646,8 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 		d.rebuildIfMoved()
 	})
 	row.Children(func() {
+		var sides [2]ui.Element
+		var div ui.Element
 		for i, b := range []*Buffer{d.Old, d.New} {
 			o := opts(i == 0)
 			o.decor = &d.sides[i]
@@ -634,14 +659,19 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 			if d.Indicators == DiffClassic {
 				o.signs = true
 			}
-			ed := d.eds[i].build(c, b, o)
-			ed.Grow(1).Basis(0).FillHeight()
+			sides[i] = d.eds[i].build(c, b, o).Basis(0).FillHeight()
 			if i == 0 {
-				ui.Box(c).Width(1).FillHeight().Background(ct.Background.Mix(t.Border, 0.6))
+				div = ui.Box(c).Key("diff divider").Width(1).Shrink(0).FillHeight()
 			}
 			if d.eds[i].focused {
 				d.oldActive = i == 0
 			}
+		}
+		if d.buildDivider(c, ct, div) {
+			row.SetChanged()
+		}
+		for i := range sides {
+			sides[i].Grow(d.split.grow[i])
 		}
 		d.buildSeparators(c, ct)
 	})
@@ -650,6 +680,131 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 		row.Height(float32(max(d.eds[0].view.heights.total(), d.eds[1].view.heights.total())))
 	}
 	return row
+}
+
+// diffMinColumns is how many columns of text a side of a split view
+// keeps at least, besides its gutter, wherever the line between the
+// sides is dragged.
+const diffMinColumns = 12
+
+// diffSplit is how a split view shares its width between its sides.
+type diffSplit struct {
+	// width is the view's as the last frame drew it, which the build
+	// shares out and the divider moves within.
+	width float32
+	// grow are the sides' factors of growth as built, by which the frame
+	// lays them out (widths).
+	grow [2]float32
+}
+
+// widths returns the widths the layout gives the sides in a view w wide,
+// the divider taking 1 DIP: its arithmetic, that of a row whose items
+// grow from nothing, so that the sides are laid out for painting at the
+// widths they are drawn at to the bit.
+func (s *diffSplit) widths(w float32) [2]float32 {
+	free := w - 1
+	var sum float32
+	sum += s.grow[0]
+	sum += s.grow[1]
+	if sum == 0 {
+		return [2]float32{}
+	}
+	return [2]float32{free * s.grow[0] / sum, free * s.grow[1] / sum}
+}
+
+// sideMin returns the least width of a side of a split view: its gutter
+// and diffMinColumns columns of text, as its editor was last laid out,
+// and at least what ui.Split keeps of a pane.
+func (d *DiffState) sideMin(t *ui.Theme) float32 {
+	m := t.Space(10)
+	for i := range d.eds {
+		ed := &d.eds[i]
+		m = max(m, ed.textX+diffMinColumns*ed.view.charWidth+ed.trackWidth()+4)
+	}
+	return m
+}
+
+// buildDivider builds the line between the sides of a split view, div,
+// as ui.Split's divider: the pointer drags it, from a handle a few DIPs
+// wide over either side, and it takes the focus between the sides, in
+// their order, and moves with the arrows. It shares the view's width
+// between the sides by SplitPercent (split.grow), and reports whether a
+// drag or a key moved it.
+func (d *DiffState) buildDivider(c *ui.Context, ct *Theme, div ui.Element) bool {
+	t := c.Theme()
+	minSide, grip, step := d.sideMin(t), t.Space(1.5), t.Space(2.5)
+	// The room to share, as the last frame drew it: none before.
+	room := max(d.split.width-1, 0)
+	fits := d.split.width > 0 && room >= 2*minSide
+	fit := func(v float32) float32 { return max(minSide, min(v, room-minSide)) }
+	share := min(d.SplitPercent, 100) / 100
+	// shown is the old side's width as the last frame laid it out, which
+	// drags and keys move the line from: half the room with no share, or
+	// where the sides do not fit beside each other.
+	shown := room / 2
+	if d.SplitPercent > 0 && fits {
+		shown = fit(share * room)
+	}
+	moved := false
+	set := func(v float32) {
+		if !fits {
+			return
+		}
+		if v = fit(v); v != shown {
+			d.SplitPercent, shown, moved = v*100/room, v, true
+		}
+	}
+	div.Focusable().FocusRing(false).Role(ui.RoleSplitter).Label(l10n.In(c.Locale()).Divider())
+	// The arrows move the line the way they point: the view is laid out
+	// left to right in either direction, as code reads.
+	if div.Shortcut(0, ui.KeyLeft) {
+		set(shown - step)
+	}
+	if div.Shortcut(0, ui.KeyRight) {
+		set(shown + step)
+	}
+	// The handle the pointer drags spans a few DIPs over either side,
+	// above them. The wheel over it scrolls the diff, as over the lines.
+	handle := ui.Box(c).Key("diff divider handle").Absolute().Top(0).Bottom(0).Width(grip).
+		Cursor(ui.CursorResizeEW).HandleInput(d.eds[1].wheelOnly)
+	// A press there focuses the line, as a press on it would; only a move
+	// moves it.
+	dx, _, held := handle.Dragged()
+	if held {
+		div.Focus()
+		if dx != 0 {
+			set(shown + dx)
+		}
+	}
+	handle.Left(shown - (grip-1)/2)
+	lo, hi := minSide, max(room-minSide, minSide)
+	if !fits {
+		lo, hi = shown, shown
+	}
+	div.Range(float64(lo), float64(hi), float64(shown)).Step(float64(step))
+	line := ct.Background.Mix(t.Border, 0.6)
+	if held || handle.Hovered() {
+		line = t.Accent
+	}
+	div.Background(line)
+	handle.Draw(func(p *ui.Painter, r ui.Rect) {
+		if div.FocusVisible() {
+			p.FocusRing(r, [4]float32{})
+		}
+	})
+	// The layout shares this frame's width as the last frame's: the old
+	// side's width, as shown, and the rest; halves, as two items growing
+	// alike are laid out, where the share is not set or the sides do not
+	// fit beside each other.
+	switch {
+	case d.SplitPercent > 0 && fits:
+		d.split.grow = [2]float32{shown, room - shown}
+	case d.SplitPercent > 0 && d.split.width == 0:
+		d.split.grow = [2]float32{share, 1 - share}
+	default:
+		d.split.grow = [2]float32{1, 1}
+	}
+	return moved
 }
 
 // fit lays out a diff that fits its content as its Draw does, its

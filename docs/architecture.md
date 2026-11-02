@@ -3025,9 +3025,18 @@ either.
     character apart joined (Pierre's word-alt). An edit re-diffs only the
     region of the hunks it touched, extended to the unchanged lines
     around. The split view is two editors sharing their scroll, their
-    lines aligned by spacer blocks; the unified view one editor of the
-    new text, with blocks painting the deleted lines from a view of the
-    old one. Unchanged runs collapse into hidden spans under separator
+    lines aligned by spacer blocks, unchanged lines too where the sides
+    wrap at unlike widths; the unified view one editor of the new text,
+    with blocks painting the deleted lines from a view of the old one.
+    The split view's sides share its width by `SplitPercent`, across a
+    divider that moves as `ui.Split`'s does. The view lays both editors
+    out in its `Draw`, before they paint, to align them, so the build
+    gives the sides factors of growth from nothing (`diffSplit`), whose
+    widths the `Draw` works out with the layout's own arithmetic, to the
+    bit: a width off by a rounding would wrap a line otherwise and build
+    the view again, frame after frame. The sides' minimum is kept
+    against the last frame's width, and a resize builds the view again
+    to keep it at the new one. Unchanged runs collapse into hidden spans under separator
     blocks. The split view's editors scroll as it is drawn, the unified
     view's as it is built; a frame whose layout or build moved the scroll
     builds the view again (`rebuildIfMoved`, `DiffView`), as one laying
