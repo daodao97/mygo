@@ -393,6 +393,12 @@ type System struct {
 	// padding: area alone does not tell whether a long, thin mask fits.
 	wantSize [2]image.Point
 	failed   int
+	// outGlyphs, outRuns and outMasks are what the atlases left out since they
+	// last could have room: a glyph a frame draws a thousand times counts
+	// once in want, which sizes the atlas, and is rasterized once.
+	outGlyphs map[glyphKey]struct{}
+	outRuns   map[runKey]struct{}
+	outMasks  map[uint64]struct{}
 	// subpixel tells that the system's settings ask for subpixel
 	// antialiasing (TextParams).
 	subpixel bool

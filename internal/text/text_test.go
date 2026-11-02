@@ -359,6 +359,71 @@ func TestMakeRoom(t *testing.T) {
 	s.EndFrame()
 }
 
+// What a frame draws many times counts once in the room it needs: an atlas
+// that grew by every use of a glyph took 2048×2048 pixels, 16 MB of memory and
+// as much of the GPU's, for 24 paragraphs that fill 3% of it.
+func TestLeftOutCountsOnce(t *testing.T) {
+	s := newSystem()
+	s.BeginFrame()
+	draws := 0
+	draw := func(int) func() (int, int, []byte) {
+		return func() (int, int, []byte) {
+			draws++
+			return 200, 200, make([]byte, 200*200)
+		}
+	}
+	if !s.Mask(1, draw(1)).OK {
+		t.Fatal("the first mask does not fit")
+	}
+	draws = 0
+	for range 100 {
+		if s.Mask(2, draw(2)).OK {
+			t.Fatal("the second mask fit")
+		}
+	}
+	if draws != 1 {
+		t.Fatalf("a mask left out was drawn %d times", draws)
+	}
+	if want := 201 * 201; s.want[0] != want {
+		t.Fatalf("the frame wants %d pixels, not %d", s.want[0], want)
+	}
+	s.MakeRoom()
+	if s.MaskAtlas.W != 512 {
+		t.Fatalf("the atlas grew to %d for two masks of 200", s.MaskAtlas.W)
+	}
+	if !s.Mask(2, draw(2)).OK {
+		t.Fatal("the mask does not fit after making room")
+	}
+	s.EndFrame()
+
+	// So does a glyph, in a frame after one that left it out too.
+	s = newSystem()
+	l := s.Layout(Params{Text: "Hi", Style: Style{Size: 40}})
+	g := l.Lines[0].Glyphs[0]
+	s.BeginFrame()
+	s.MaskAtlas = scene.NewAtlas(1, 4, 4)
+	s.MaskAtlas.Put(0, 0, 1, 1, []byte{1}, 1)
+	if s.Glyph(g.Font, g.ID, 1, 0, 0, false).OK || !s.Full() {
+		t.Skip("the glyph takes no room in the mask atlas")
+	}
+	want := s.want[0]
+	for range 50 {
+		s.Glyph(g.Font, g.ID, 1, 0, 0, false)
+	}
+	if s.want[0] != want {
+		t.Fatalf("a glyph left out grew the room wanted from %d to %d", want, s.want[0])
+	}
+	s.MakeRoom()
+	if !s.Glyph(g.Font, g.ID, 1, 0, 0, false).OK {
+		t.Fatal("the glyph does not fit after making room")
+	}
+	s.EndFrame()
+	s.BeginFrame()
+	if len(s.outGlyphs) != 0 {
+		t.Fatal("a new frame remembers what was left out")
+	}
+}
+
 // Thin masks can need a much wider or taller atlas without taking much
 // area: one MakeRoom must accommodate them, whatever the starting size.
 func TestMakeRoomForLongMasks(t *testing.T) {

@@ -3761,7 +3761,8 @@ either.
   and moves to the lasting zone at the top once another frame draws it, so
   animated shapes never fill the atlas. When an atlas fills up during a
   frame anyway, the engine calls `MakeRoom`, which repacks what the frame
-  drew, grows the atlas when that is much of it and forgets the rest, and
+  drew, grows the atlas when that is much of it (what the frame left
+  out counting once, however many times it draws it) and forgets the rest, and
   paints the frame again: no frame shows with glyphs missing. The mask
   atlas starts at 256×256, and the color atlas at one transparent texel
   until a color or subpixel glyph draws. Growth accounts for the width
@@ -3800,8 +3801,8 @@ either.
   everywhere, stay whole and join their neighbors' batches.
   Metal opts into three further builder capabilities: marking fills whose
   clip coverage is one, splitting opaque cores from blended edges, and
-  batching by fragment class. Other renderers keep the original instance
-  flags and class-independent batching. Metal binds the instance buffer
+  batching by fragment class, the last of which Direct3D 11 takes too. OpenGL
+  keeps the original instance flags and class-independent batching. Metal binds the instance buffer
   once a pass and draws each batch with its first instance as the base
   instance, which `[[instance_id]]` includes; a batch binds its pipeline,
   image, clip mask and scissor rectangle only when they changed, with
@@ -3868,19 +3869,37 @@ either.
     `shader.hlsl` falls back to compiling that with the same DLL, which
     Windows has, and its test fails. Both compilation paths enable IEEE
     strictness with optimization, avoiding a native compiler optimizer crash
-    on transformed coverage sampling. It draws into a flip-model swap
+    on transformed coverage sampling. Batches of a class (`gpu.Class`) draw
+    with shaders of their own (`classes.hlsl`, after `shader.hlsl`, whose
+    functions they share, which leaves the sources effects are compiled from
+    as they are): instances of a class are not transformed, so they leave out
+    the general shader's coordinates, pass on 6 to 10 values rather than 15,
+    skip the clip where the vertex shader finds it holds the whole quad, and
+    write one color, blended by its alpha, but for subpixel glyphs, which need
+    dual-source blending. A plain fill takes 83 instruction slots rather than
+    the general shader's 3,627. A set of classes draws with the first of
+    `classShaders` holding them, made as first drawn: each class, the sets that
+    small batches join most, and all of them, which still costs less than the
+    general shader, which only transformed instances and effects need. It draws
+    into a flip-model swap
     chain on the surface's window, or, over a material, one for
     DirectComposition shown on it, with WARP when no hardware device
     works. At most one frame waits ahead of the screen, not DXGI's three,
-    so frames that follow each other, as when scrolling or animating,
-    show their input two frames sooner, and `Present` does not block for
+    and `Present` does not block for
     it: the swap chain's frame latency object (`latency.go`) tells room
     for a frame, and a frame drawn before there is presents once there is,
     as a goroutine waiting on the object has the main thread present it
     (`SetPost`); frames paced by the display (`WM_PAINT`, but a resize's
     and `FrameNow`'s) are not built meanwhile (`Renderer.Ready`). Every
     present takes one of the object's signals, so its count stays the
-    frames the screen can take. A frame of a new size is
+    frames the screen can take. Frames that make the refresh without building
+    ahead, as the last ones' cost tells (`frameCost`: the main thread's time and
+    the GPU's timestamps, taken after the frame's clear, which waits for the
+    window manager to give the buffer back; a frame no `Ready` started, as a
+    resize's, counts none, its main thread's time not known), build once it composed the last
+    (`DwmFlush`) and there is room, and present with sync interval 0, to show at
+    its next composition. Heavier frames build ahead and present with sync
+    interval 1, which keeps them at the display's pace a refresh later. A frame of a new size is
     presented at once (sync interval 0), not after the frame queued
     before it, and waits until DWM shows it (`DwmFlush`), so a live
     resize shows no stretched frames: the window takes its next size
@@ -4734,13 +4753,15 @@ What was measured and left as it is:
   states from run to run, with no gain that held, and with two drawables
   frames waited for them.
 
-On Windows, one frame waits ahead of the screen, which a swap chain's
-frame latency object tells room for (Direct3D 11 above): the frame drawn
-while one waits presents once the screen took that one, and the next,
-built when input asks for one after, reads input from that refresh, as
-it did when `Present` blocked. Linux's frames follow GTK's frame clock.
-Neither is measured: GitHub's runners and the containers have no display
-that refreshes.
+On Windows, frames that make the refresh without building ahead present
+with sync interval 0 right after the window manager composed the last,
+and heavier ones wait ahead of the screen (Direct3D 11 above). Pointer
+moves posted to a window of 900×640 pixels with 300 boxes moving show in
+25 ms on average (a Radeon 780M at 60 Hz, from the post to the desktop
+image's `LastPresentTime`), and took 43 ms when every frame was built ahead: half a refresh waits for the next frame on average, half
+a millisecond builds it, and a refresh or so goes from its present to
+the screen. Linux's frames follow GTK's frame clock, which is not measured:
+the containers have no display that refreshes.
 
 ### Binary size
 

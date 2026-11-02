@@ -255,7 +255,8 @@ type Builder struct {
 	// NoClasses puts every batch in ClassGeneral, for tests and
 	// measurements that compare the specialized shaders with the general one.
 	NoClasses bool
-	// Classes separates batches for renderers with specialized fragment shaders.
+	// Classes separates batches for renderers with specialized fragment shaders
+	// (Metal's and Direct3D 11's).
 	Classes bool
 	// GeneralClasses has a bit (1 << Class) for each class that draws with the
 	// general shader, for tests that find which specialized one differs.
