@@ -215,11 +215,23 @@ type WindowState struct {
 	Height     int  `json:"height"`
 	Maximized  bool `json:"maximized,omitempty"`
 	FullScreen bool `json:"fullScreen,omitempty"`
+	// PixelX, PixelY, PixelWidth and PixelHeight are the normal bounds in
+	// the screen's pixels, which Windows keeps: X and Y are in the scale
+	// of the display the window was on, and cannot tell apart displays of
+	// different scales. Without them, a window is centered there when the
+	// displays have different scales.
+	PixelX      int `json:"pixelX,omitzero"`
+	PixelY      int `json:"pixelY,omitzero"`
+	PixelWidth  int `json:"pixelWidth,omitzero"`
+	PixelHeight int `json:"pixelHeight,omitzero"`
 }
 
 // WindowStateStore keeps the states of the windows with a
 // WindowOptions.StateKey, by key, for App.SetWindowStateStore. MyGo calls
-// it on the main thread, so it should return quickly.
+// it on the main thread, so it should return quickly. It keeps every
+// field of a state, as JSON does: on Windows, a window whose state lost
+// its pixels (WindowState.PixelX) is centered when the displays have
+// different scales.
 type WindowStateStore interface {
 	// LoadWindowStates returns the saved states. It is called once, when
 	// the first window with a StateKey is created. Without states (nil, or

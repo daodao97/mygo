@@ -181,7 +181,8 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 			class = flyoutShadowClass
 		}
 	}
-	w.hwnd = createWindow(ex, class, o.Title, style, 0, 0, 0, 0, owner)
+	initial := initialWindowBounds(o)
+	w.hwnd = createWindow(ex, class, o.Title, style, initial.Left, initial.Top, initial.Right-initial.Left, initial.Bottom-initial.Top, owner)
 	if w.hwnd == 0 {
 		return nil, errors.New("mygo: cannot create a window")
 	}
@@ -255,6 +256,16 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	return w, nil
 }
 
+// initialWindowBounds creates a restored window on its target display so
+// moving it there does not send WM_DPICHANGED for the size already restored.
+func initialWindowBounds(o *platform.WindowOptions) rect {
+	if o.Flyout != nil || o.StateBounds == nil {
+		return rect{}
+	}
+	r := o.StateBounds
+	return rect{int32(r.X), int32(r.Y), int32(r.X + r.Width), int32(r.Y + r.Height)}
+}
+
 func (w *window) styles() (style, ex uint32) {
 	o := w.opts
 	style = wsOverlappedWindow | wsClipChildren
@@ -288,6 +299,10 @@ func (w *window) styles() (style, ex uint32) {
 // monitor it appears on.
 func (w *window) placeInitially() {
 	o := w.opts
+	if r := o.StateBounds; r != nil {
+		procSetWindowPos.Call(w.hwnd, 0, uintptr(r.X), uintptr(r.Y), uintptr(r.Width), uintptr(r.Height), swpNoZOrder|swpNoActivate)
+		return
+	}
 	var mon uintptr
 	if o.Center {
 		mon, _, _ = procMonitorFromPoint.Call(0, monitorDefaultToPrimary)

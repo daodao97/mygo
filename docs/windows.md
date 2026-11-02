@@ -95,9 +95,15 @@ as long as it would show on a connected display. They override `X`, `Y`,
 stay the defaults of the first launch. Give each kind of window its own key:
 `"main"`, `"preferences"`.
 
+On Windows, a state also keeps the window's bounds in the screen's pixels
+(`PixelX`, `PixelY`, `PixelWidth`, `PixelHeight`): its position, in the
+scale of its display, cannot tell apart displays of different scales.
+
 An app that keeps its data elsewhere, such as in its own database, keeps
 the states there with a `WindowStateStore`, set before the first window
-with a `StateKey`, and no `window-state.json` is written:
+with a `StateKey`, and no `window-state.json` is written. It keeps every
+field of a `WindowState`, as JSON does: on Windows, a window whose state
+lost its pixels is centered when the displays have different scales.
 
 ```go
 type windowStates struct{ db *sql.DB }

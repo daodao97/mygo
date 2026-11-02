@@ -1585,7 +1585,14 @@ as in Tauri:
   state) and when the window closes; it is saved when a window closes
   and when the app quits, if it changed, and kept for the next save when
   saving fails. A saved window that would not show on any
-  display keeps its size and is centered. `WindowOptions.Maximized` starts
+  display keeps its size and is centered. On Windows, where a window's
+  position in DIPs is in its display's scale, and displays of different
+  scales can overlap in DIPs, the state also keeps the window's
+  rectangle in pixels (`platform.WindowStateWindow`), and the backend
+  creates the restored window at it, on its display
+  (`platform.WindowStateBackend`, `WindowOptions.StateBounds`); a state
+  without pixels is restored in DIPs where every display has the same
+  scale, and centered elsewhere. `WindowOptions.Maximized` starts
   a window maximized: `zoom:` on macOS, `gtk_window_maximize` before
   mapping on Linux, `SW_SHOWMAXIMIZED` on the first show on Windows, where
   `Maximize` on a hidden window also waits for it to be shown.
