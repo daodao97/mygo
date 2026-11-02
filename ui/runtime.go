@@ -267,6 +267,11 @@ type engine struct {
 	// pressClicks is the press's count of clicks, which its release
 	// carries.
 	pressClicks int
+	// pressEnded is the element of the last press while its release, which
+	// came with moves no pass read, waits for the pass that reads them
+	// (releaseLater) and no press came since: that pass sees it still
+	// pressed, by the button pressButton holds.
+	pressEnded *state
 	// pressLost is the handler of the element pressed when the frame
 	// built another element without one in its place, for prune to give
 	// the release to at pressLostX, pressLostY, the pointer in the axes
@@ -1011,6 +1016,9 @@ func (rt *engine) prune() {
 				delete(rt.states, id)
 				if rt.scrollDrag.st == s {
 					rt.scrollDrag.st = nil
+				}
+				if rt.pressEnded == s {
+					rt.pressEnded = nil
 				}
 				// Recycle the state itself, without keeping the editor,
 				// local resources or callbacks of the element that went.

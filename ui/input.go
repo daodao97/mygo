@@ -313,6 +313,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 	chain := rt.hitChain(x, y)
 	rt.setHover(chain)
 	rt.pressDragger = 0
+	rt.pressEnded = nil
 	if len(chain) > 0 {
 		rt.downs = append(rt.downs, chain[0])
 	} else {
@@ -518,6 +519,8 @@ func (rt *engine) pointerUp(button, clicks int) {
 	// now.
 	if s.dragX == 0 && s.dragY == 0 {
 		rt.applyRelease(s)
+	} else {
+		rt.pressEnded = s
 	}
 	rt.setHover(rt.hitChain(rt.pointerX, rt.pointerY))
 	rt.requestFrame()
@@ -535,6 +538,9 @@ func (rt *engine) applyRelease(s *state) {
 		s.clickMods = r.clickMods
 	}
 	r.due, r.clicks, r.rightClicks = false, 0, 0
+	if rt.pressEnded == s {
+		rt.pressEnded = nil
+	}
 }
 
 // click clicks s with mods held, for the next pass to see: after the
