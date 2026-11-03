@@ -559,8 +559,13 @@ features GTK 4 lacks become X11-only code beside it.
   base URL serves the document from that URL the same way.
 - **Eval** goes through the DevTools protocol (`Runtime.evaluate` with
   `awaitPromise`), which reports syntax errors and ignores the page's CSP.
-  Edit roles run `document.execCommand` with a user gesture; paste inserts
-  the clipboard text.
+  Edit roles run `document.execCommand` with a user gesture, except Paste:
+  `Input.dispatchKeyEvent` carries Chromium's `paste` command on an
+  `Unidentified` raw key-down, followed by key-up once it completes. The
+  page sees these events without modifiers, avoiding its Ctrl+V handlers,
+  and a paste event with the clipboard's formats. The controller gets
+  focus first, after the menu closes. Paste and Match Style still inserts
+  the clipboard's text with `Input.insertText`.
 - Scripts injected at document creation run in every frame, so the
   main-frame-only ones (the bridge) are wrapped in `window === window.top`.
   Iframes get no `chrome.webview` handler.
@@ -1895,9 +1900,10 @@ backend, which:
 - performs edit roles natively (first responder on macOS,
   `webkit_web_view_execute_editing_command` on Linux; on Windows a page
   keeps their keys, which WebView2 performs, and the menu items run
-  `document.execCommand` through DevTools, paste typing the clipboard's
-  text), or sends them to a window showing native UI as a
-  `SurfaceCommand`, and reports everything
+  `document.execCommand` through DevTools, except Paste, which runs
+  Chromium's paste command with the clipboard's formats, and Paste and
+  Match Style, which inserts text), or sends them to a window showing
+  native UI as a `SurfaceCommand`, and reports everything
   else through `WindowHandler.MenuItemClicked` for a window's menu, or
   `AppHandler.MenuItemClicked` for menus without one; the core toggles
   checkbox/radio state, performs window and view roles and calls `Click`
