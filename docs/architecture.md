@@ -2287,7 +2287,9 @@ Recent (about 290 KB).
   `flock` or `LockFileEx` while the instance runs; at launch an instance
   takes the sessions whose lock it gets, reopens their documents edited
   (in conflict when the file's stamp changed), writes them into its own
-  session, then removes the old ones.
+  session, then removes only the old copies it restored. A copy it skips or
+  cannot read, and one whose new copy cannot be written, stays for the next
+  launch.
 - *Watches.* One `WatchFiles` per file of open documents, shared by
   reference count, which costs the same whatever else its folder holds: a
   watch covers the folder, not each file in it. A batch
