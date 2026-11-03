@@ -153,3 +153,48 @@ test("refuses a GET body", async () => {
   go = fakeGo({});
   expect(fetch("https://example.com", { body: "x" })).rejects.toThrow(TypeError);
 });
+
+test("does not send a JSON POST aborted before its body is ready", async () => {
+  go = fakeGo({
+    "plugin:fetch.Fetch": (c) => {
+      c.send(1, head());
+    },
+  });
+  const ctrl = new AbortController();
+  const pending = fetch("https://example.com/items", {
+    method: "POST",
+    body: JSON.stringify({ name: "Ada" }),
+    signal: ctrl.signal,
+  });
+  ctrl.abort();
+  const result = await pending.then(() => "sent", (error: unknown) => error);
+  expect(result).toBe(ctrl.signal.reason);
+  expect(go.calls).toEqual([]);
+});
+
+for (const source of ["init", "Request"] as const) {
+  test(`does not send a request aborted while reading its ${source} body`, async () => {
+    go = fakeGo({
+      "plugin:fetch.Fetch": (c) => {
+        c.send(1, head());
+      },
+    });
+    let finish!: () => void;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("upload"));
+        finish = () => controller.close();
+      },
+    });
+    const ctrl = new AbortController();
+    const reason = new Error("Upload canceled");
+    const pending = source === "init"
+      ? fetch("https://example.com/upload", { method: "POST", body, signal: ctrl.signal })
+      : fetch(new Request("https://example.com/upload", { method: "POST", body, signal: ctrl.signal }));
+    ctrl.abort(reason);
+    finish();
+    const result = await pending.then(() => "sent", (error: unknown) => error);
+    expect(result).toBe(reason);
+    expect(go.calls).toEqual([]);
+  });
+}
