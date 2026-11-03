@@ -214,6 +214,20 @@ func goIOSScroll(id C.uint64_t, x, y, dx, dy C.double, contact C.uint64_t, momen
 //export goIOSText
 func goIOSText(id C.uint64_t, kind C.int, text *C.char, from, to, caret C.int) {
 	if w := find(uint64(id)); w != nil {
+		if w.input.Client != nil && kind < 4 {
+			switch kind {
+			case 0:
+				w.clientInput.commit(C.GoString(text), int(caret))
+			case 1:
+				w.input.Client.SetMarkedText(nil, C.GoString(text), platform.TextRange{})
+			case 2:
+				w.clientInput.selectRange(int(from), int(to))
+			case 3:
+				w.input.Client.ReplaceText(nil, C.GoString(text))
+			}
+			w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+			return
+		}
 		k := platform.TextInput
 		if kind == 1 {
 			k = platform.TextComposition
@@ -259,6 +273,11 @@ func goIOSInputAction(id, owner C.uint64_t, action *C.char) {
 //export goIOSComposition
 func goIOSComposition(id C.uint64_t, text *C.char, start, end, caret C.int) {
 	if w := find(uint64(id)); w != nil {
+		if w.input.Client != nil {
+			w.clientInput.compose(C.GoString(text), int(start), int(end), int(caret))
+			w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+			return
+		}
 		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.TextComposition, Text: C.GoString(text),
 			Replace: true, Snapshot: true, To: len([]rune(w.input.Text)),
 			MarkedStart: int(start), MarkedEnd: int(end), Caret: int(caret)})
@@ -270,7 +289,9 @@ func goIOSComposition(id C.uint64_t, text *C.char, start, end, caret C.int) {
 func goIOSTextGeometry(id C.uint64_t, field C.uint64_t, kind *C.char, start, end C.int, x, y C.double) *C.char {
 	var result platform.TextGeometry
 	if w := find(uint64(id)); w != nil {
-		if h, ok := w.h.(platform.TextGeometryHandler); ok {
+		if w.input.Client != nil && w.input.ID == uint64(field) {
+			result = w.clientInput.geometry(platform.TextGeometryQuery{ID: uint64(field), Kind: C.GoString(kind), Start: int(start), End: int(end), X: float64(x), Y: float64(y)})
+		} else if h, ok := w.h.(platform.TextGeometryHandler); ok {
 			result = h.TextGeometry(platform.TextGeometryQuery{ID: uint64(field), Kind: C.GoString(kind),
 				Start: int(start), End: int(end), X: float64(x), Y: float64(y)})
 		}
@@ -286,6 +307,9 @@ func goIOSEditCommand(id C.uint64_t, command *C.char) {
 		field := w.input
 		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: name})
 		w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+		if w.input.Client != nil {
+			w.SetTextInput(w.input)
+		}
 		if name == "copy" && field.Active && field.ReadOnly && !field.Password && w.input.ID == field.ID {
 			// Copy was flushed before changing the selection. Collapse both
 			// UIKit's document range and Go's paragraph endpoints, then release

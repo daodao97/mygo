@@ -376,8 +376,10 @@ have dedicated pan recognizers and at least 44-point touch targets. Their
 original finger-to-caret offset and opposite endpoint remain fixed during a
 drag; Go hit geometry maps the moving endpoint, including cross-paragraph
 ranges. Handle touches bypass Go tap/scroll arbitration and the Back edge.
-Read-only handle changes are synchronized once to Go before repainting;
-editable input keeps UIKit's own gestures.
+Editable and read-only handles both synchronize Go geometry. Editable
+long presses position the caret without selecting a word; a stationary hold
+opens the system edit menu. Native selection callbacks cannot overwrite the
+range owned by an active drag or explicit selection action.
 System cut/copy/paste/select-all actions use the shared Go editor, clipboard
 and undo history. Read-only Copy flushes the clipboard write before collapsing the shared
 selection and releasing UIKit's responder; editable Copy keeps its selection.

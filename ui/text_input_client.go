@@ -2,6 +2,7 @@ package ui
 
 import (
 	"reflect"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/internal/platform"
 )
@@ -45,6 +46,25 @@ type TextInputClient interface {
 	UnmarkText()
 	BoundsForRange(TextInputRange) (Rect, TextInputRange, bool)
 	IndexForPoint(Point) (int, bool)
+}
+
+// TextInputSelectionClient optionally accepts native caret and handle moves.
+// Positions use the same UTF-16 units as TextInputClient.
+type TextInputSelectionClient interface {
+	SetSelection(TextInputSelection)
+}
+
+// TextInputSelectionRect describes a visible part of a selection relative
+// to the element. RTL identifies a right-to-left segment.
+type TextInputSelectionRect struct {
+	Rect
+	RTL bool
+}
+
+// TextInputSelectionGeometryClient optionally supplies selection highlights
+// from the same visible layouts that draw the custom editor.
+type TextInputSelectionGeometryClient interface {
+	SelectionRectsForRange(TextInputRange) []TextInputSelectionRect
 }
 
 // HandleTextInput connects an element to the system's text-input services.
@@ -115,6 +135,46 @@ func (a *textInputAdapter) Selection() platform.TextSelection {
 		return s
 	}
 	return platform.TextSelection{}
+}
+
+func (a *textInputAdapter) SetSelection(selection platform.TextSelection) {
+	if c, s := a.client(); c != nil {
+		if client, ok := c.(TextInputSelectionClient); ok {
+			client.SetSelection(selection)
+		} else if s.input != nil {
+			// Older clients accept rune selections through HandleInput.
+			text, actual := c.TextForRange(TextInputRange{End: max(selection.Range.Start, selection.Range.End)})
+			if actual.Start != 0 {
+				return
+			}
+			start, end := utf8.RuneCountInString(text[:UTF16ByteOffset(text, selection.Range.Start)]), utf8.RuneCountInString(text[:UTF16ByteOffset(text, selection.Range.End)])
+			if selection.Reversed {
+				start, end = end, start
+			}
+			a.rt.deliver(s, InputEvent{Kind: InputSelect, Start: start, End: end})
+		}
+		a.changed()
+	}
+}
+
+func (a *textInputAdapter) SelectionRectsForRange(r platform.TextRange) []platform.TextSelectionRect {
+	c, s := a.client()
+	if c == nil {
+		return nil
+	}
+	client, ok := c.(TextInputSelectionGeometryClient)
+	if !ok {
+		return nil
+	}
+	var out []platform.TextSelectionRect
+	for _, part := range client.SelectionRectsForRange(r) {
+		b := transformRect(s.world, Rect{X: s.x + part.X, Y: s.y + part.Y, W: part.W, H: part.H})
+		b = intersect(b, Rect{s.vx, s.vy, s.vw, s.vh})
+		if b.W > 0 && b.H > 0 {
+			out = append(out, platform.TextSelectionRect{RectF: a.rt.toWindow(platformRect(b)), RTL: part.RTL})
+		}
+	}
+	return out
 }
 func (a *textInputAdapter) MarkedRange() (platform.TextRange, bool) {
 	if c, _ := a.client(); c != nil {

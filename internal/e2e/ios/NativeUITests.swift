@@ -654,6 +654,75 @@ final class NativeUITests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label ==[c] %@", title)).firstMatch
     }
 
+    func testEditableLongPressDragsCaretWithoutSelectingText() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "com.mygo.iosnative")
+        try openService("editing", in: app)
+        app.buttons["Reset sample"].tap()
+        let field = app.descendants(matching: .any)["Editing sample"].firstMatch
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let sample = field.value as! String
+        let start = field.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 90, dy: 18))
+        let beginning = field.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 2, dy: 18))
+        start.press(forDuration: 1, thenDragTo: beginning, withVelocity: .slow, thenHoldForDuration: 0.2)
+        screenshot("editable-long-press-caret-drag", app)
+        app.typeText("X")
+        XCTAssertEqual(field.value as? String, "X" + sample, "A long drag must move the caret without replacing a selected word")
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        app.buttons["Reset sample"].tap()
+        field.tap()
+        let top = field.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 12, dy: 15))
+        let thirdLine = field.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 12, dy: 48))
+        top.press(forDuration: 1, thenDragTo: thirdLine, withVelocity: .slow, thenHoldForDuration: 0.2)
+        app.typeText("Y")
+        XCTAssertEqual(field.value as? String, sample.replacingOccurrences(of: "中文", with: "Y中文"), "Vertical caret positioning became a scroll or selected text")
+    }
+
+    func testEditableHoldOffersNativePaste() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "com.mygo.iosnative")
+        try openService("editing", in: app)
+        app.buttons["Reset sample"].tap()
+        let field = app.descendants(matching: .any)["Editing sample"].firstMatch
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let sample = field.value as! String
+        field.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 30, dy: 18)).press(forDuration: 1)
+        tapEditingMenu("Select All", in: app)
+        tapEditingMenu("Copy", in: app)
+        app.typeText("draft")
+        XCTAssertEqual(field.value as? String, "draft")
+        field.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 200, dy: 18)).press(forDuration: 1)
+        XCTAssertTrue(editingMenu("Paste", in: app).waitForExistence(timeout: 5), app.debugDescription)
+        screenshot("editable-native-paste-menu", app)
+        tapEditingMenu("Paste", in: app)
+        XCTAssertEqual(field.value as? String, "draft" + sample, "Native Paste must insert into the Go document at the caret")
+    }
+
+    func testEditableSelectionHandlesUseGoGeometry() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(bundleIdentifier: "com.mygo.iosnative")
+        try openService("editing", in: app)
+        app.buttons["Reset sample"].tap()
+        let field = app.descendants(matching: .any)["Editing sample"].firstMatch
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        field.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 30, dy: 18)).press(forDuration: 1)
+        tapEditingMenu("Select All", in: app)
+        let handles = app.descendants(matching: .any).matching(NSPredicate(format: "identifier IN %@", ["Selection end handle", "com.apple.text.grabber.trailing"]))
+        XCTAssertTrue(handles.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        let handle = try XCTUnwrap(handles.allElementsBoundByIndex.first { $0.frame.width > 0 && $0.frame.height > 0 && $0.isHittable }, app.debugDescription)
+        let earlier = field.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 80, dy: 18))
+        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.1, thenDragTo: earlier, withVelocity: .slow, thenHoldForDuration: 0.2)
+        screenshot("editable-selection-handle-drag", app)
+        tapEditingMenu("Copy", in: app)
+        app.buttons["Read editing clipboard"].tap()
+        let copied = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Copied: Hello'")).firstMatch
+        XCTAssertTrue(copied.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(copied.label.contains("intact."), "Dragging the editable handle did not update the Go selection: handle \(handle.frame), field \(field.frame)")
+    }
+
     private func tapEditingMenu(_ title: String, in app: XCUIApplication) {
         for _ in 0..<4 {
             let item = editingMenu(title, in: app)
@@ -676,6 +745,7 @@ final class NativeUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         let point = field.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.16))
         point.press(forDuration: 1)
+        tapEditingMenu("Select", in: app)
         XCTAssertTrue(editingMenu("Copy", in: app).waitForExistence(timeout: 5), app.debugDescription)
         screenshot("editing-word-selection-menu", app)
         tapEditingMenu("Select All", in: app)
@@ -694,7 +764,7 @@ final class NativeUITests: XCTestCase {
         XCTAssertFalse(shortened.label.contains("intact."), "Dragging the native handle did not change Go selection")
         app.buttons["Reset sample"].tap()
         field.tap()
-        point.press(forDuration: 1)
+        point.doubleTap()
         tapEditingMenu("Select All", in: app)
         tapEditingMenu("Cut", in: app)
         XCTAssertTrue(app.staticTexts["Editor is empty"].waitForExistence(timeout: 5), app.debugDescription)

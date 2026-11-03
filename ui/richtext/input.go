@@ -480,6 +480,10 @@ func shortcut(key ui.Key, mods ui.Modifiers) (string, bool) {
 // editCommand performs an edit command of a menu or a shortcut.
 func (v *view) editCommand(name string) bool {
 	a, z := v.selection()
+	if (name == "copy" || name == "cut" && !v.opts.ReadOnly) && v.opts.OnCopy != nil && v.opts.OnCopy(name == "cut") {
+		v.sync()
+		return true
+	}
 	switch name {
 	case "copy":
 		if a != z {

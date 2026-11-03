@@ -24,6 +24,7 @@ type window struct {
 	title              string
 	visible            bool
 	input              platform.TextInputState
+	clientInput        clientInput
 	extendIntoSafeArea bool
 }
 
@@ -62,6 +63,10 @@ func (w *window) SetTextInput(t platform.TextInputState) {
 		cString(string(data), func(p *C.char) { C.mygo_ios_input_options(C.uintptr_t(w.view), p) })
 	}
 	w.input = t
+	w.clientInput.bind(t.Client)
+	if t.Client != nil {
+		t = w.clientInput.snapshot(t)
+	}
 	C.mygo_ios_input_history(C.uintptr_t(w.view), C.bool(t.CanUndo), C.bool(t.CanRedo))
 	cString(fmt.Sprint(t.ID), func(id *C.char) {
 		r := t.Bounds

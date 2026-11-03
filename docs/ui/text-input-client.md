@@ -261,3 +261,17 @@ is never emitted as new input. `InputCompose` contains only provisional text.
 Candidate commits retain software modifiers for the next ordinary character.
 This creates no visible text field and does not take over pointer selection.
 Use `HandleTextInput` for full document selection and indexed geometry.
+
+### iOS caret and selection gestures
+
+iOS gives custom clients a native text proxy using the same field identity and
+visible bounds as their Go element. The proxy uses a bounded text window; its
+base stays fixed while an input method composes. UIKit snapshots are translated
+back to client UTF-16 offsets without replacing text outside that window.
+
+Clients can implement `ui.TextInputSelectionClient.SetSelection` for native
+caret and handle moves, and `ui.TextInputSelectionGeometryClient.SelectionRectsForRange`
+for visible selection rectangles from their retained layouts. The rich text
+editor implements both; rectangles are clipped to the element's visible bounds.
+Applications that customize clipboard formats can use `richtext.EditorOptions.OnCopy`
+for both native-menu and keyboard copy/cut, alongside `OnPaste`.

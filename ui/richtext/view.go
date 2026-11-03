@@ -34,6 +34,9 @@ type EditorOptions struct {
 	// the callback edits it. Return false to use the editor's normal paste.
 	// Use Services for clipboard access; do not retain a frame's Element.
 	OnPaste func() bool
+	// OnCopy runs before keyboard or native-menu copy/cut. Returning true
+	// consumes the command. A cut hook owns deleting its selected content.
+	OnCopy func(cut bool) bool
 	// ContextMenu replaces the editor's context menu. It is installed while
 	// the editor builds, so its default menu cannot consume the same request.
 	ContextMenu func(menu *ui.Menu)

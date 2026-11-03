@@ -10,7 +10,7 @@ import (
 const editingSample = "Hello MyGo 👋\nSelect text, then cut, copy or paste.\n中文与 emoji stay intact."
 
 func (s *demo) editingControls(c *ui.Context) {
-	ui.Text(c, "Long-press text to select it. Drag the system handles to adjust the selection.").FontSize(15).LineHeight(1.4)
+	ui.Text(c, "Long-press and drag to move the caret. Use Select or Select All, then drag the handles to adjust the selection.").FontSize(15).LineHeight(1.4)
 	ui.Row(c).Gap(8).Children(func() {
 		if ui.Button(c, "Reset sample").Height(40).Clicked() {
 			s.editingValue, s.editingResult = editingSample, ""

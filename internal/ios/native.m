@@ -193,7 +193,7 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @end
 @implementation MyGoSelectionHandlePan @end
 
-@interface MyGoEditor : UITextView <UITextSelectionDisplayInteractionDelegate>
+@interface MyGoEditor : UITextView <UITextSelectionDisplayInteractionDelegate, UIEditMenuInteractionDelegate>
 @property(nonatomic) uint64_t windowID;
 @property(nonatomic) uint64_t fieldID;
 @property(nonatomic) BOOL multiline;
@@ -212,10 +212,15 @@ static NSSet<UIPress *> *remainingHardwarePresses(NSSet<UIPress *> *presses, NSM
 @property(nonatomic, strong) UIEditMenuInteraction *editMenu API_AVAILABLE(ios(16.0));
 - (void)showEditMenu;
 - (void)dismissEditMenu;
+- (CGRect)editMenuInteraction:(UIEditMenuInteraction *)interaction targetRectForConfiguration:(UIEditMenuConfiguration *)configuration API_AVAILABLE(ios(16.0));
 - (UIView *)selectionHandleAtPoint:(CGPoint)point;
 - (void)installSelectionHandleGestures;
 - (BOOL)isDraggingSelectionHandle;
 @property(nonatomic) BOOL updatingHandleSelection;
+@property(nonatomic) uint64_t selectionGestureField;
+@property(nonatomic) BOOL publishingGestureSelection;
+- (void)publishGestureSelection;
+- (void)endSelectionGestureShowingMenu:(BOOL)menu;
 @end
 
 // Native buttons stay outside the Go focus chain. Expanding secondary keys
@@ -406,6 +411,28 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 @end
 
 @implementation MyGoEditor
+- (void)publishGestureSelection {
+  self.publishingGestureSelection=YES;
+  [self.delegate textViewDidChangeSelection:self];
+  self.publishingGestureSelection=NO;
+}
+- (void)endSelectionGestureShowingMenu:(BOOL)menu {
+  uint64_t field=self.selectionGestureField;
+  NSRange selection=self.selectedRange;
+  // UIKit may finish its parallel text gesture after ours. Commit the Go
+  // geometry once more after that callback, before releasing ownership.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (self.selectionGestureField!=field) return;
+    if (field && self.fieldID==field && self.isFirstResponder && !self.markedTextRange && !self.secureTextEntry) {
+      self.updatingHandleSelection=YES;
+      self.selectedRange=selection;
+      self.updatingHandleSelection=NO;
+      [self publishGestureSelection];
+      self.selectionGestureField=0;
+      if (menu) [self showEditMenu];
+    } else self.selectionGestureField=0;
+  });
+}
 - (UIView *)selectionHandleAtPoint:(CGPoint)point {
   if (!self.fieldID || !self.isFirstResponder || self.secureTextEntry || !self.selectedRange.length) return nil;
   if (@available(iOS 17.0, *)) {
@@ -448,8 +475,8 @@ static const NSUInteger MyGoAccessoryColumns = 6;
       BOOL leading=(handle.direction & NSDirectionalRectEdgeLeading)!=0;
       if (!(handle.direction & (NSDirectionalRectEdgeLeading|NSDirectionalRectEdgeTrailing))) leading=index==0;
       pan.leading=leading;
-      pan.enabled=!self.editable;
-      if (!self.editable) handle.userInteractionEnabled=YES;
+      pan.enabled=YES;
+      handle.userInteractionEnabled=YES;
       handle.accessibilityIdentifier=leading ? @"Selection start handle" : @"Selection end handle";
       index++;
     }
@@ -461,6 +488,7 @@ static const NSUInteger MyGoAccessoryColumns = 6;
     if (!self.selectedRange.length) return;
     [self dismissEditMenu];
     pan.ownerID=self.fieldID;
+    self.selectionGestureField=self.fieldID;
     pan.fixedIndex=pan.leading ? NSMaxRange(self.selectedRange) : self.selectedRange.location;
     pan.movingIndex=pan.leading ? self.selectedRange.location : NSMaxRange(self.selectedRange);
     UITextPosition *position=[self positionFromPosition:self.beginningOfDocument offset:pan.movingIndex];
@@ -472,7 +500,7 @@ static const NSUInteger MyGoAccessoryColumns = 6;
                                CGRectGetMidY(caret)-finger.y+translation.y);
   }
   if (pan.ownerID!=self.fieldID) return;
-  if (pan.state==UIGestureRecognizerStateBegan || pan.state==UIGestureRecognizerStateChanged) {
+  if (pan.state==UIGestureRecognizerStateBegan || pan.state==UIGestureRecognizerStateChanged || pan.state==UIGestureRecognizerStateEnded) {
     CGPoint point=[pan locationInView:self];point.x+=pan.caretOffset.x;point.y+=pan.caretOffset.y;
     UITextPosition *position=[self closestPositionToPoint:point];
     if (!position) return;
@@ -491,20 +519,22 @@ static const NSUInteger MyGoAccessoryColumns = 6;
     self.updatingHandleSelection=NO;
     // UITextView normally reports this change. Forward explicitly as well:
     // a custom display handle must not rely on TextKit's private gestures.
-    [self.delegate textViewDidChangeSelection:self];
+    [self publishGestureSelection];
     if (@available(iOS 17.0,*)) {
       [self.selectionDisplay setNeedsSelectionUpdate];
       [self.selectionDisplay layoutManagedSubviews];
     }
-  } else if (pan.state==UIGestureRecognizerStateEnded) {
+  }
+  if (pan.state==UIGestureRecognizerStateEnded) {
     pan.ownerID=0;
-    [self showEditMenu];
+    [self endSelectionGestureShowingMenu:YES];
   } else if (pan.state==UIGestureRecognizerStateCancelled || pan.state==UIGestureRecognizerStateFailed) {
     pan.ownerID=0;
+    [self endSelectionGestureShowingMenu:NO];
   }
 }
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-  UIView *handle=self.editable ? nil : [self selectionHandleAtPoint:point];
+  UIView *handle=[self selectionHandleAtPoint:point];
   return handle ?: [super hitTest:point withEvent:event];
 }
 - (void)showEditMenu {
@@ -512,16 +542,26 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   CGRect rect = [self firstRectForRange:self.selectedTextRange];
   if (@available(iOS 16.0, *)) {
     if (!self.editMenu) {
-      self.editMenu = [[UIEditMenuInteraction alloc] initWithDelegate:nil];
+      self.editMenu = [[UIEditMenuInteraction alloc] initWithDelegate:self];
       [self addInteraction:self.editMenu];
     }
     UIEditMenuConfiguration *configuration = [UIEditMenuConfiguration
         configurationWithIdentifier:@(self.fieldID)
         sourcePoint:CGPointMake(CGRectGetMidX(rect), CGRectGetMidY(rect))];
+    configuration.preferredArrowDirection=UIEditMenuArrowDirectionDown;
     [self.editMenu presentEditMenuWithConfiguration:configuration];
   } else {
     [UIMenuController.sharedMenuController showMenuFromView:self rect:rect];
   }
+}
+- (CGRect)editMenuInteraction:(UIEditMenuInteraction *)interaction targetRectForConfiguration:(UIEditMenuConfiguration *)configuration {
+  if (!self.selectedTextRange) return CGRectZero;
+  // Keep the menu outside the complete visible selection, including the
+  // handle knobs. Anchoring only its first line can cover the trailing grip.
+  CGRect rect=[self firstRectForRange:self.selectedTextRange];
+  for (UITextSelectionRect *part in [self selectionRectsForRange:self.selectedTextRange])
+    rect=CGRectUnion(rect,part.rect);
+  return CGRectInset(rect,-6,-14);
 }
 - (void)dismissEditMenu {
   if (@available(iOS 16.0, *)) [self.editMenu dismissMenu];
@@ -574,8 +614,11 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 - (void)mygoHardwareCommand:(UIKeyCommand *)key {
   if (self.secureTextEntry && ([@[@"a", @"c", @"x"] containsObject:key.input])) return;
   if (!self.editable && ([@[@"x", @"v", @"z"] containsObject:key.input])) return;
+  BOOL keepSelection=self.editable && self.fieldID && ([@[@"a",@"c"] containsObject:key.input]);
+  if (keepSelection) self.selectionGestureField=self.fieldID;
   hardwareCommand(self.windowID, key);
   [self dismissEditMenu];
+  if (keepSelection) [self endSelectionGestureShowingMenu:NO];
 }
 - (UIView *)textInputView { return self; }
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
@@ -690,17 +733,31 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   if (action == @selector(selectAll:)) return self.text.length > self.selectedRange.length;
   return NO;
 }
-- (void)copy:(id)sender { goIOSEditCommand(self.windowID, "copy"); [self dismissEditMenu]; }
+- (void)copy:(id)sender {
+  BOOL keepSelection=self.editable && self.fieldID;
+  if (keepSelection) self.selectionGestureField=self.fieldID;
+  goIOSEditCommand(self.windowID, "copy");
+  [self dismissEditMenu];
+  if (keepSelection) [self endSelectionGestureShowingMenu:NO];
+}
 - (void)cut:(id)sender { goIOSEditCommand(self.windowID, "cut"); [self dismissEditMenu]; }
 - (void)paste:(id)sender { goIOSEditCommand(self.windowID, "paste"); [self dismissEditMenu]; }
 - (void)selectAll:(id)sender {
   if (self.secureTextEntry) return;
+  self.selectionGestureField=self.fieldID;
   goIOSEditCommand(self.windowID, "selectAll");
-  uint64_t field = self.fieldID;
-  dispatch_async(dispatch_get_main_queue(), ^{
-    if (self.isFirstResponder && self.fieldID == field)
-      [self showEditMenu];
-  });
+  [self endSelectionGestureShowingMenu:YES];
+}
+- (void)select:(id)sender {
+  if (self.secureTextEntry || !self.fieldID || !self.selectedTextRange) return;
+  UITextRange *word=[self.tokenizer rangeEnclosingPosition:self.selectedTextRange.start withGranularity:UITextGranularityWord inDirection:UITextStorageDirectionForward];
+  if (!word) return;
+  self.selectionGestureField=self.fieldID;
+  self.updatingHandleSelection=YES;
+  self.selectedTextRange=word;
+  self.updatingHandleSelection=NO;
+  [self publishGestureSelection];
+  [self endSelectionGestureShowingMenu:YES];
 }
 - (void)delete:(id)sender { goIOSEditCommand(self.windowID, "delete"); [self dismissEditMenu]; }
 - (CGRect)accessibilityFrame {
@@ -756,6 +813,9 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 @property(nonatomic) NSTimeInterval previousTime;
 @property(nonatomic) BOOL scrolling;
 @property(nonatomic) BOOL textPanHorizontal;
+@property(nonatomic) uint64_t caretPressField;
+@property(nonatomic) CGPoint caretPressOrigin;
+@property(nonatomic) BOOL caretPressMoved;
 @property(nonatomic) CGSize reportedSize;
 @property(nonatomic) CGFloat reportedScale;
 @property(nonatomic) BOOL framePending;
@@ -875,7 +935,7 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
   // Handles have priority even in the reserved Back edge and outside the
   // text proxy's bounds. Ordinary read-only taps still go through Go.
-  UIView *handle=self.editor.editable ? nil : [self.editor selectionHandleAtPoint:[self convertPoint:point toView:self.editor]];
+  UIView *handle=[self.editor selectionHandleAtPoint:[self convertPoint:point toView:self.editor]];
   if (handle) return handle;
   UIView *hit=[super hitTest:point withEvent:event];
   if (![hit isDescendantOfView:self.editor]) return hit;
@@ -883,6 +943,25 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   return hit;
 }
 - (void)selectText:(UILongPressGestureRecognizer *)gesture {
+  if (self.caretPressField && gesture.state != UIGestureRecognizerStateBegan) {
+    CGPoint p=[gesture locationInView:self];
+    self.caretPressMoved |= fabs(p.x-self.caretPressOrigin.x)>8 || fabs(p.y-self.caretPressOrigin.y)>8;
+    if ((gesture.state==UIGestureRecognizerStateChanged || gesture.state==UIGestureRecognizerStateEnded) &&
+        self.editor.fieldID==self.caretPressField && self.editor.editable && !self.editor.markedTextRange) {
+      UITextPosition *at=[self.editor closestPositionToPoint:[self convertPoint:p toView:self.editor]];
+      self.editor.updatingHandleSelection=YES;
+      self.editor.selectedTextRange=[self.editor textRangeFromPosition:at toPosition:at];
+      self.editor.updatingHandleSelection=NO;
+      [self.editor publishGestureSelection];
+    }
+    if (gesture.state==UIGestureRecognizerStateEnded || gesture.state==UIGestureRecognizerStateCancelled || gesture.state==UIGestureRecognizerStateFailed) {
+      BOOL menu=gesture.state==UIGestureRecognizerStateEnded && !self.caretPressMoved &&
+          self.editor.fieldID==self.caretPressField && self.editor.editable && self.editor.isFirstResponder;
+      self.caretPressField=0;
+      [self.editor endSelectionGestureShowingMenu:menu];
+    }
+    return;
+  }
   if (gesture.state != UIGestureRecognizerStateBegan) return;
   CGPoint p = [gesture locationInView:self];
   if (p.x < 24) return;
@@ -898,6 +977,24 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   }
   if (!self.editor.fieldID || !self.editor.isFirstResponder || !CGRectContainsPoint(self.editor.frame,p)) return;
   self.velocity = CGPointZero;
+  // Finish an IME candidate before a caret gesture, as UITextView does
+  // when editing committed text. Otherwise geometry remains provisional.
+  if (!selectedReadOnly && self.editor.editable && self.editor.markedTextRange) [self commitText];
+  if (!selectedReadOnly && self.editor.editable && !self.editor.secureTextEntry && !self.editor.markedTextRange) {
+    // UIKit positions/drags the caret. A stationary hold still needs the
+    // edit menu (notably Paste); do not turn it into a word selection.
+    self.caretPressField=self.editor.fieldID;
+    self.editor.selectionGestureField=self.editor.fieldID;
+    self.caretPressOrigin=p;
+    self.caretPressMoved=NO;
+    [self.editor dismissEditMenu];
+    UITextPosition *at=[self.editor closestPositionToPoint:[self convertPoint:p toView:self.editor]];
+    self.editor.updatingHandleSelection=YES;
+    self.editor.selectedTextRange=[self.editor textRangeFromPosition:at toPosition:at];
+    self.editor.updatingHandleSelection=NO;
+    [self.editor publishGestureSelection];
+    return;
+  }
   if (!selectedReadOnly && !self.editor.secureTextEntry) {
     UITextPosition *at = [self.editor closestPositionToPoint:[self convertPoint:p toView:self.editor]];
     UITextRange *word = [self.editor.tokenizer rangeEnclosingPosition:at withGranularity:UITextGranularityWord inDirection:UITextStorageDirectionForward];
@@ -920,11 +1017,17 @@ static const NSUInteger MyGoAccessoryColumns = 6;
  // UIView also consults the hit view for recognizers attached to ancestors.
  // Restrict our editor-scroll decision to this surface's own recognizers.
  if (gesture.view != self) return [super gestureRecognizerShouldBegin:gesture];
+ if ([gesture isKindOfClass:UILongPressGestureRecognizer.class]) {
+  CGPoint p=[gesture locationInView:self];
+  // Never let a surface hold compete with a selection handle drag.
+  if ([self.editor selectionHandleAtPoint:[self convertPoint:p toView:self.editor]]) return NO;
+ }
  if ([gesture isKindOfClass:UIPinchGestureRecognizer.class] || [gesture isKindOfClass:UIRotationGestureRecognizer.class]) {
  CGPoint p=[gesture locationInView:self];
  return goIOSGesture(self.windowID,(char *)([gesture isKindOfClass:UIPinchGestureRecognizer.class]?"pinch":"rotate"),"probe",p.x,p.y,1,0);
  }
   if (![gesture isKindOfClass:UIPanGestureRecognizer.class]) return YES;
+  if (self.caretPressField) return NO;
   CGPoint p = [gesture locationInView:self], v = [(UIPanGestureRecognizer *)gesture velocityInView:self];
   // Test the original touch position: by the time a pan begins, the
   // finger may already have moved beyond a thin handle's visible bounds.
@@ -1111,6 +1214,7 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 - (void)textViewDidChangeSelection:(UITextView *)textView {
   if (self.syncing || self.sending || self.editor.updatingHandleSelection || textView.markedTextRange)
     return;
+  if (self.editor.selectionGestureField==self.editor.fieldID && self.editor.selectionGestureField && !self.editor.publishingGestureSelection) return;
   // UIKit may report the selection moved by an insertion before it reports
   // the new text. Synchronizing the old Go value here would erase that edit.
   // textViewDidChange will deliver the text and its selection together.

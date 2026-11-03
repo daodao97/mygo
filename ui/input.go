@@ -1252,6 +1252,10 @@ func (rt *engine) updateTextInput() {
 		t.Active, t.Client, t.NoInputMethod = true, s.textAdapter, s.noIME
 		t.Options = s.inputOptions.nativeOptions()
 		sel := s.textAdapter.Selection()
+		t.ID = rt.focused
+		t.Bounds = rt.toWindow(platform.RectF{X: float64(s.vx), Y: float64(s.vy), W: float64(s.vw), H: float64(s.vh)})
+		// Publish changes to only the anchor to snapshot-based native hosts.
+		t.Start, t.End = sel.Range.Start, sel.Range.End
 		caret := sel.Caret()
 		if bounds, _, ok := s.textAdapter.BoundsForRange(TextInputRange{Start: caret, End: caret}); ok {
 			t.Caret = bounds

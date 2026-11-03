@@ -38,6 +38,16 @@ type TextInputClient interface {
 	IndexForPoint(x, y float64) (int, bool)
 }
 
+// TextInputSelectionClient lets native caret/handle gestures update a client.
+type TextInputSelectionClient interface {
+	SetSelection(TextSelection)
+}
+
+// TextInputSelectionGeometryClient supplies visible selection rectangles.
+type TextInputSelectionGeometryClient interface {
+	SelectionRectsForRange(TextRange) []TextSelectionRect
+}
+
 // InputComposition preserves the native end-preedit/commit ordering without
 // owning text. Some input methods unmark before delivering their result.
 type InputComposition struct{ pending *TextRange }

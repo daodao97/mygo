@@ -441,8 +441,11 @@ navigation still needs more device coverage.
 
 ### Text selection and editing
 
-Long-press a focused `TextInput` or `TextArea` to select a word and open
-the system menu. Cut, copy, paste and select-all edit the Go value and use
+Long-press and drag in a focused `TextInput` or `TextArea` to move the
+caret with UIKit’s editing gestures. Use the system selection actions to
+select text; both selection handles can be dragged using the Go layout.
+A stationary long press opens the native edit menu, including Paste.
+Cut, copy, paste and select-all edit the Go value and use
 its existing undo history. Select-all covers the entire Go document,
 including text outside the keyboard proxy's bounded surrounding-text window.
 On iOS 17 and later, system caret, selection highlights and handles use

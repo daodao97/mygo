@@ -204,7 +204,8 @@ type FirstFrameSurface interface {
 type TextInputState struct {
 	// Active is true while an editable element has the keyboard.
 	Active bool
-	// ID identifies a focused built-in editor (zero for a custom TextCaret).
+	// ID identifies a focused built-in editor or indexed text client
+	// (zero for a custom TextCaret).
 	// Bounds is its visible rectangle in surface DIPs.
 	ID     uint64
 	Bounds RectF
