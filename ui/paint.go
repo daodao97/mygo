@@ -884,7 +884,7 @@ func (p *Painter) textForeground(l *text.Layout, x, y float32, color Color, ts t
 	}
 	sys := p.rt.text
 	s := p.scale
-	deco := decoration{underline: ts.underline, wavy: ts.wavy, dotted: ts.dotted, strike: ts.strike, color: ts.decoColor, thick: ts.decoThick}
+	deco := decoration{underline: ts.underline, wavy: ts.wavy, dotted: ts.dotted, strike: ts.strike, solid: ts.solid, color: ts.decoColor, thick: ts.decoThick}
 	shade := text.ShadeOf(color.R, color.G, color.B)
 	start := int32(len(p.s.Glyphs))
 	// Inline transforms do not change while the text paints; look for them once.
@@ -996,6 +996,8 @@ func (r *glyphRun) flush(p *Painter, baseline float32) {
 // decoration is how lines go through or under text.
 type decoration struct {
 	underline, wavy, dotted, strike bool
+	// solid draws the underline through descenders.
+	solid bool
 	// color, if set, is the lines', and thick their thickness in DIPs.
 	color Color
 	thick float32
@@ -1033,7 +1035,11 @@ func (p *Painter) decorationRun(l *text.Layout, li, i, j int, x, y float32, d de
 		if k == text.Underline && !d.underline || k == text.Strikethrough && !d.strike {
 			continue
 		}
-		for _, st := range p.rt.text.Decorate(l, li, i, j, x, y, p.scale, k, d.thick) {
+		kind := k
+		if k == text.Underline && d.solid {
+			kind = text.SolidUnderline
+		}
+		for _, st := range p.rt.text.Decorate(l, li, i, j, x, y, p.scale, kind, d.thick) {
 			if st.X1 <= st.X0 || st.Bottom <= st.Top {
 				continue
 			}

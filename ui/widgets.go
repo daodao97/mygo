@@ -204,7 +204,10 @@ func coreLink(c *context, label, url string) *node {
 			}
 		}
 		if e.Hovered() {
+			// Whole, through descenders: a link's URL is mostly slashes
+			// and letters below the baseline, which skipping ink cuts up.
 			e.Underline()
+			e.ts.solid = true
 		}
 	})
 	return e
