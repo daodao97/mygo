@@ -1616,10 +1616,11 @@ func TestCloseInFrame(t *testing.T) {
 	mygo.App.SetPath(mygo.PathUserData, t.TempDir())
 	defer mygo.App.SetPath(mygo.PathUserData, "")
 	var self atomic.Pointer[mygo.Window]
-	var frames, closes atomic.Int32
+	var frames, closes, closeFrame atomic.Int32
 	w := newWindow(t, mygo.WindowOptions{StateKey: "e2e-close-" + run, Width: 320, Height: 240, Content: ui.View(func(c *ui.Context) {
-		if frames.Add(1) >= 2 {
+		if n := frames.Add(1); n >= 2 {
 			if w := self.Load(); w != nil {
+				closeFrame.CompareAndSwap(0, n)
 				w.Close()
 				w.Close()
 			}
@@ -1629,7 +1630,12 @@ func TestCloseInFrame(t *testing.T) {
 	})})
 	w.OnClosed(func() { closes.Add(1) })
 	self.Store(w)
-	eventually(t, "the window closed", w.IsDestroyed)
+	if !wait.Poll(w.IsDestroyed) {
+		// Whether the frames stopped, and where: before the second, or
+		// after the view closed the window.
+		t.Fatalf("the window closed never happened (waited %v): %d views built, closed in view %d, OnClosed ran %d times, visible %v",
+			wait.Guard, frames.Load(), closeFrame.Load(), closes.Load(), w.IsVisible())
+	}
 
 	var later atomic.Int32
 	other := newWindow(t, mygo.WindowOptions{Width: 200, Height: 150, Content: ui.View(func(c *ui.Context) {
