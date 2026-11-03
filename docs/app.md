@@ -397,11 +397,15 @@ the main thread the app keeps handling events while they wait. Cookies
 may carry the user's credentials: rather than binding the module to the
 pages, bind a backend method that does what the page needs.
 
-On Windows, WebView2 gives cookies only through a web view: before a
-window shows a page, the methods, and `App.ClearBrowsingData`, make a
-hidden one, which also makes the WebView2 browser process start, and a
-window's first page waits for the calls under way when its web view is
-made. WebView2 applies changes after its calls return, so the methods
+On Windows, WebView2 gives cookies only through a web view: while no
+window or web view in native UI shows a page, the methods, and
+`App.ClearBrowsingData`, make a hidden one, which also makes the WebView2
+browser process start, and a window's first page waits for the calls
+under way when its web view is made. The hidden web view closes once a
+page shows, or, in an app showing none, a few seconds after the last
+call, and WebView2's processes exit with it; it stays while the
+session has cookies that WebView2 keeps only while they run: those with
+a zero `Expires`, and any of an ephemeral session. WebView2 applies changes after its calls return, so the methods
 wait until the change shows, and fail when it does not within two
 seconds, as when the engine refuses a cookie. On Linux they need
 WebKitGTK 2.42 or newer, and `Set` libsoup 2.70 or newer; WebKitGTK keeps

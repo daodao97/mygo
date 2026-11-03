@@ -125,6 +125,10 @@ func TestMain(m *testing.M) {
 		cookiesWhileOpening()
 		return
 	}
+	if os.Getenv("MYGO_E2E_COOKIE_VIEW") == "1" {
+		cookieViewApp()
+		return
+	}
 	if os.Getenv("MYGO_E2E_AUTOMATION_APP") == "1" {
 		automationApp()
 		return
