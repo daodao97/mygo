@@ -25,8 +25,8 @@ in `WhenReady`, or from any goroutine after that.
 
 Before `Run`, `main` sets the app up: it binds services, handles protocols,
 adds listeners, and makes settings such as `App.SetName`, `App.SetMenu`,
-`App.Dock.SetMenu` and `Theme.SetSource`, which take effect when the app
-starts. It may also read what needs no running app, such as `App.Path`,
+`App.Dock.SetMenu`, `Theme.SetSource` and `Theme.SetGTKCSS`, which take
+effect when the app starts. It may also read what needs no running app, such as `App.Path`,
 `App.Locale` or `Power.IsOnBattery`, and register the app with the system
 (`App.SetOpenAtLogin`, `App.RegisterURLScheme`). Everything else needs the
 running app: when `main` calls the clipboard, displays, dialogs,

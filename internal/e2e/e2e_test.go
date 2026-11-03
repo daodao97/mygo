@@ -306,6 +306,7 @@ func beforeRun(source mygo.ThemeSource) {
 	// Asked before the first window, which may then show native UI.
 	fmt.Println("webview:", mygo.WebViewAvailable())
 	mygo.Power.IsOnBattery()
+	styled := gtkCSSBeforeRun()
 	for _, c := range beforeRunCalls {
 		func() {
 			defer func() { fmt.Printf("%s: %v\n", c.name, recover()) }()
@@ -314,6 +315,7 @@ func beforeRun(source mygo.ThemeSource) {
 	}
 	mygo.App.WhenReady(func() {
 		fmt.Println("dark:", mygo.Theme.IsDark())
+		fmt.Println("gtk css:", styled())
 		go func() {
 			defer mygo.App.Quit()
 			titles, ok := dockMenu(0)
@@ -335,9 +337,9 @@ func beforeRun(source mygo.ThemeSource) {
 }
 
 // TestBeforeRun: apps set up and configure themselves in main, before Run,
-// e.g. with a saved appearance, while calls that need the running app fail
-// clearly on every platform. Both appearances are tried, so one differs
-// from the system's.
+// e.g. with a saved appearance or a GTK style sheet, while calls that need
+// the running app fail clearly on every platform. Both appearances are
+// tried, so one differs from the system's.
 func TestBeforeRun(t *testing.T) {
 	for _, source := range []mygo.ThemeSource{mygo.ThemeDark, mygo.ThemeLight} {
 		ctx, cancel := context.WithTimeout(t.Context(), wait.Guard)
@@ -350,7 +352,7 @@ func TestBeforeRun(t *testing.T) {
 			t.Errorf("%s: %v:\n%s", source, err, out)
 			continue
 		}
-		wants := []string{"locale: true\n", "webview: true\n", fmt.Sprintf("dark: %v\n", source == mygo.ThemeDark)}
+		wants := []string{"locale: true\n", "webview: true\n", fmt.Sprintf("dark: %v\n", source == mygo.ThemeDark), "gtk css: true\n"}
 		for _, c := range beforeRunCalls {
 			wants = append(wants, c.name+": mygo: "+c.name+" called before ")
 		}

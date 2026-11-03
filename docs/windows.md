@@ -1261,6 +1261,54 @@ closed, and for a window showing native UI.
   window and the page that made it.
 - `mygo.App.OnWindowCreated` is called for every new window.
 
+## GTK's style on Linux
+
+On Linux, GTK draws part of a window's frame itself, in the desktop's
+GTK 3 theme: the title bar and decorations of a window the desktop leaves
+to decorate itself (GNOME on Wayland), the shadow and border GTK puts
+around a frameless window or a hidden title bar on Wayland, and the title
+buttons of a hidden title bar; its menus and dialogs too.
+`mygo.Theme.SetGTKCSS` styles them with a GTK 3 style sheet of the app's,
+for a frame that matches the rest of the desktop, such as the flat header
+bars and round title buttons of GTK 4 and libadwaita apps:
+
+```go
+const gtk4Frame = `
+decoration { border-radius: 12px; box-shadow: 0 3px 9px 1px rgba(0, 0, 0, .28); }
+.maximized decoration, .fullscreen decoration, .tiled decoration { border-radius: 0; }
+.csd.popup decoration, tooltip.csd decoration { border-radius: 5px; }
+headerbar { min-height: 46px; padding: 0 6px; background-color: #f9fafb;
+            background-image: none; border-width: 0; box-shadow: none; }
+button.titlebutton { min-width: 24px; min-height: 24px; margin: 0 3px; padding: 0;
+                     border: none; border-radius: 9999px; background-color: transparent; }
+`
+
+if err := mygo.Theme.SetGTKCSS(gtk4Frame); err != nil {
+	log.Print(err) // the sheet does not parse
+}
+```
+
+- GTK takes the sheet at the user's priority
+  (`GTK_STYLE_PROVIDER_PRIORITY_USER`): its rules win over the theme's,
+  MyGo's own and those of the user's `~/.config/gtk-3.0/gtk.css`.
+- Another call replaces the sheet, as a switch of the app's theme does, and
+  `""` removes it. A sheet that does not parse returns GTK's error, with
+  where it is, and the sheet set before stays.
+- It may be called from any goroutine, before `App.Run` too: other
+  goroutines wait for Run to load the sheet, and main's sheet waits for
+  Run, which logs its error, as no call is left to return it.
+- Pages and native UI never see it: MyGo draws them, and pages have their
+  own CSS. On macOS, Windows and in browsers it does nothing and returns
+  nil.
+
+GTK 3 rounds only the top corners of a window it decorates, whatever the
+`border-radius` of `decoration`: it clips the decorations to the radius but
+never the window's content, so the page or the native UI covers the
+bottom corners, which stay square. A window that needs four rounded
+corners draws them itself: a `Frameless`, `Transparent` window, which GTK
+leaves undecorated, without its shadow, whose page or native UI rounds its
+own background, under a compositing window manager or on Wayland.
+
 ## Native access
 
 `win.NativeHandle()` returns the native window, an `NSWindow*` on macOS, a

@@ -1895,6 +1895,34 @@ func TestThemePreferences(t *testing.T) {
 
 // TestThemePreferencesJSON checks the JSON of the preferences, which is
 // mygo-runtime's ThemePreferences: the accent a CSS color or null.
+// Theme.SetGTKCSS gives the backend the sheet, from any goroutine, each
+// in place of the one before, and returns why one did not load (#1121).
+func TestThemeGTKCSS(t *testing.T) {
+	defer onMain(func() { fb.StyleSheet, fb.StyleSheetError = "", nil })
+	sheet := func() (s string) {
+		onMain(func() { s = fb.StyleSheet })
+		return s
+	}
+	for _, css := range []string{"headerbar { min-height: 46px; }", "button.titlebutton { min-width: 24px; }"} {
+		if err := Theme.SetGTKCSS(css); err != nil {
+			t.Fatal(err)
+		}
+		if got := sheet(); got != css {
+			t.Errorf("sheet = %q, want %q", got, css)
+		}
+	}
+
+	parse := errors.New("<data>:1:29: not a number")
+	onMain(func() { fb.StyleSheetError = parse })
+	err := Theme.SetGTKCSS("button.titlebutton { min-width: nonsense; }")
+	if !errors.Is(err, parse) || err.Error() != "mygo: Theme.SetGTKCSS: <data>:1:29: not a number" {
+		t.Errorf("SetGTKCSS of a sheet that does not load = %v, want the backend's error", err)
+	}
+	if got := sheet(); got != "button.titlebutton { min-width: 24px; }" {
+		t.Errorf("sheet after one that does not load = %q, want the one before", got)
+	}
+}
+
 func TestThemePreferencesJSON(t *testing.T) {
 	for _, tt := range []struct {
 		p    ThemePreferences
@@ -2179,6 +2207,7 @@ func beforeRun() {
 	NewEvent[int]("test:before-run")
 	// Settings, which Run applies.
 	Theme.SetSource(ThemeDark)
+	_ = Theme.SetGTKCSS("headerbar {}")
 	App.Dock.SetMenu(NewMenu([]*MenuItem{{Label: "New Window"}}))
 	// Calls that work without the running app.
 	App.Locale()
@@ -2196,6 +2225,7 @@ func beforeRun() {
 	}
 	App.WhenReady(func() {
 		fmt.Println("dark:", Theme.IsDark())
+		fmt.Println("gtk css:", fb.StyleSheet == "headerbar {}")
 		fmt.Println("dock menu:", fb.DockMenu != nil && fb.DockMenu.Items[0].Label == "New Window")
 		App.Quit()
 	})
@@ -2225,7 +2255,7 @@ func TestBeforeRun(t *testing.T) {
 		return string(out)
 	}
 	out := run()
-	wants := []string{"dark: true\n", "dock menu: true\n"}
+	wants := []string{"dark: true\n", "gtk css: true\n", "dock menu: true\n"}
 	for _, c := range needsAppCalls {
 		wants = append(wants, c.name+": mygo: "+c.name+" called before ")
 	}

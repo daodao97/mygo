@@ -149,6 +149,14 @@ type WindowStateBackend interface {
 	RestoreWindowState(opts *WindowOptions, pixels Rect) bool
 }
 
+// StyleBackend styles the widgets the toolkit draws for the app with the
+// app's own style sheet (Linux: GTK's CSS, Theme.SetGTKCSS). SetStyleSheet
+// replaces the sheet set before, or removes it for "", and keeps that one
+// when css does not parse, returning why.
+type StyleBackend interface {
+	SetStyleSheet(css string) error
+}
+
 // AppOptions configures Backend.Init.
 type AppOptions struct {
 	Name string

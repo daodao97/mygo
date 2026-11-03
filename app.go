@@ -132,6 +132,10 @@ func (a *Application) Run() error {
 	a.initialized = true
 	// Settings made before Run, which the backend could not take yet.
 	Theme.apply()
+	if load := pendingGTKCSS; load != nil {
+		pendingGTKCSS = nil
+		load()
+	}
 	a.startLocale()
 	if m := a.Dock.Menu(); m != nil {
 		b.App().SetDockMenu(m.snapshot())

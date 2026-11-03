@@ -196,8 +196,9 @@ rules are:
    functions directly, and generate mode never initializes it. So a public
    method that reaches the backend either keeps its value in the core
    until the backend can take it, for settings (`SetActivationPolicy`
-   through `AppOptions`, `SetMenu` once ready, `Theme.SetSource` and
-   `Dock.SetMenu` right after `Init`), or starts with `needsApp`, which
+   through `AppOptions`, `SetMenu` once ready, `Theme.SetSource`,
+   `Theme.SetGTKCSS` and `Dock.SetMenu` right after `Init`), or starts
+   with `needsApp`, which
    panics on the main thread before `Run` with the name of the call,
    rather than letting it crash on Linux, hang in `await` or answer wrong
    on macOS. Only calls that work before `Init` on every backend (`Locale`,
@@ -423,6 +424,17 @@ purego gives three primitives, used everywhere:
   decorations, unlike a frameless one, so the compositor's title bar, or a
   tiling compositor's lack of one, stands for the buttons, whatever the
   layout says.
+- The app's GTK style sheet (`Theme.SetGTKCSS`, `style.go`) is a
+  `GtkCssProvider` of its own for the default screen, at
+  `GTK_STYLE_PROVIDER_PRIORITY_USER`: GTK 3 looks providers up from the
+  highest priority, and among equal ones from the last added, so it wins
+  over the theme, MyGo's own provider (600) and the user's `gtk.css`.
+  Each sheet loads into a new provider, which replaces the one before only
+  once it parsed (`gtk_css_provider_load_from_data` with a `GError`, which
+  takes GTK's first parse error instead of a warning). The core reaches it
+  through `platform.StyleBackend`, which only Linux and the fake backend
+  implement, so apps that never set a sheet do not link it; one set on the
+  main goroutine before `Run` waits in `pendingGTKCSS` until `Init`.
 - `WEBKIT_DISABLE_DMABUF_RENDERER=1` is set before GTK starts unless the
   user set it, which avoids blank webviews on NVIDIA drivers, VMs and
   containers, at the cost of drawing pages on the CPU. `App.SetDMABUFRenderer`
@@ -5227,6 +5239,7 @@ which npm allows only for packages that exist: the first release uses an
 | the app's language kept | `AppleLanguages` of the app's defaults | the file `locale` in PathUserData | the file `locale` in PathUserData, and the process's preferred UI languages |
 | web views' language | from the app's `AppleLanguages`, next launch | `webkit_web_context_set_preferred_languages`, live | the environment's `Language`, as it is created |
 | `Theme.SetSource` | `NSApp`'s appearance (Aqua, DarkAqua, or none) | `gtk-application-prefer-dark-theme`; light also puts a theme named for its dark variant (Yaru-dark) in place of its light one (Yaru), which GTK and WebKitGTK otherwise take for dark, and the other sources reset the theme. Without a source, or with system, the setting follows the settings portal's `color-scheme` (GNOME's and KDE's dark style, which GTK 3 does not read) from `Init` on: dark where the portal prefers dark, else the desktop's own GTK settings | the title bars, menus and native UI, and pages through the DevTools protocol's emulated `prefers-color-scheme` |
+| `Theme.SetGTKCSS` | nothing | a `GtkCssProvider` for the default screen at `GTK_STYLE_PROVIDER_PRIORITY_USER`, replaced by the next sheet that parses | nothing |
 | traffic lights, Dock | yes | ignored | ignored |
 | hidden title bar | AppKit's traffic lights over a full-size content view | GTK's title buttons in header bars over the page, per `gtk-decoration-layout`; none where the Wayland compositor decorates windows | caption buttons drawn in a layered child window, through DirectComposition over a material, light or dark per window (`SetWindowButtonsTheme`); snap layouts; a top edge that resizes |
 | progress bar | Dock tile content view (NSBoxes: NSProgressIndicator does not draw there), app-wide | Unity launcher API over D-Bus (`com.canonical.Unity.LauncherEntry`), app-wide | `ITaskbarList3`, per window |

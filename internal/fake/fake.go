@@ -149,6 +149,12 @@ type Backend struct {
 	// NoWebView makes WebViewAvailable report no system webview, as a
 	// machine without one does.
 	NoWebView bool
+	// StyleSheet is the sheet SetStyleSheet loaded last, as GTK styles the
+	// widgets it draws with it. StyleSheetError, when set, is what loading
+	// one fails with, as a sheet that does not parse, which keeps the one
+	// before. Main thread only.
+	StyleSheet      string
+	StyleSheetError error
 	// notifications are the notifications shown and not yet removed, by
 	// id.
 	notifications map[string]*platform.Notification
@@ -1254,6 +1260,16 @@ func (screen) Displays() []platform.Display {
 	}}
 }
 func (screen) CursorPoint() platform.Point { return platform.Point{X: 10, Y: 20} }
+
+// SetStyleSheet loads css in place of the sheet before, as Linux's GTK
+// does (platform.StyleBackend).
+func (b *Backend) SetStyleSheet(css string) error {
+	if b.StyleSheetError != nil {
+		return b.StyleSheetError
+	}
+	b.StyleSheet = css
+	return nil
+}
 
 type theme struct{ b *Backend }
 
