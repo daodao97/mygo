@@ -226,6 +226,18 @@ launch at login apart, to start in the background:
 mygo.NewWindow(mygo.WindowOptions{URL: "/", Hidden: mygo.App.WasOpenedAtLogin()})
 ```
 
+On Windows the Run entry starts the app with the user's normal
+(unelevated) token, even when the user is an administrator: the app
+cannot create network adapters, change the system's proxy or write to
+protected folders. An app that needs administrator rights registers a
+logon task in Task Scheduler with the run level `HighestAvailable`
+instead (`schtasks /Create /SC ONLOGON /RL HIGHEST`, or the Task
+Scheduler API), which starts it elevated without asking, and does not
+call `SetOpenAtLogin`. Creating the task needs administrator rights
+itself, so the app asks for them once, as the user turns the setting on.
+`WasOpenedAtLogin` does not tell such a launch apart: give the task's
+command an argument of the app's own for that.
+
 ## Directories
 
 `App.Path` returns well-known directories:
