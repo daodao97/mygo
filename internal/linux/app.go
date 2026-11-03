@@ -118,6 +118,9 @@ func (b *Backend) Init(h platform.AppHandler, opts platform.AppOptions) error {
 	if !gtkInitCheck(0, 0) {
 		return errors.New("mygo: cannot open display (is DISPLAY or WAYLAND_DISPLAY set?)")
 	}
+	// Before any page loads, so that the first already has the desktop's
+	// prefers-color-scheme; Run then applies a source the app set.
+	followSystemScheme(gtkSettingsGetDefault())
 	var x11Type func() uintptr
 	b.onX11 = bind(libGDK, &x11Type, "gdk_x11_display_get_type") && gTypeCheckInstanceIsA(gdkDisplayGetDefault(), x11Type()) &&
 		bind(libGDK, &b.wmName, "gdk_x11_screen_get_window_manager_name")

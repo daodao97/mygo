@@ -113,6 +113,10 @@ func TestMain(m *testing.M) {
 		clipboardPeer(mode)
 		return
 	}
+	if os.Getenv("MYGO_E2E_FAKE_PORTAL") == "1" {
+		fakePortal()
+		return
+	}
 	if os.Getenv("MYGO_E2E_QUIT_DURING_DIALOG") == "1" {
 		quitDuringDialog()
 		return
