@@ -1068,7 +1068,9 @@ on Linux), which awaits promises and ignores the page's Content Security
 Policy. The code is first wrapped as `return JSON.stringify({ok, v: await (code)})`;
 if that fails to compile the code is not an expression, and it is run again as
 a function body. A compile error means nothing executed, so code never runs
-twice. The result travels as a JSON string and is decoded in Go.
+twice. The result travels as a JSON string and is decoded in Go. A page whose
+window closed never answers, so a window closing fails the evals waiting for
+it, and an eval with the quit under way fails at once.
 
 ### Trust
 

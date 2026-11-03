@@ -474,6 +474,7 @@ func createWindow(caller string, opts WindowOptions, bg *background, flyout *fly
 	if w == nil {
 		// The event loop has already stopped.
 		w = &Window{}
+		w.pg = &Page{w}
 		w.destroyed.Store(true)
 	}
 	return w
@@ -1530,7 +1531,8 @@ var errNoPage = errors.New("mygo: the window shows Content, not a web page")
 //
 //	n, err := win.Page().Eval("const items = document.querySelectorAll('li'); return items.length")
 //
-// Eval is not subject to the page's Content Security Policy.
+// Eval is not subject to the page's Content Security Policy. It returns an
+// error when the window closes or the app quits before the page answers.
 func (p *Page) Eval(code string) (any, error) {
 	return p.EvalContext(context.Background(), code)
 }

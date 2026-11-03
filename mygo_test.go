@@ -61,6 +61,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("MYGO_TEST_STUCK_QUIT") == "1" {
 		stuckQuit()
 	}
+	if os.Getenv("MYGO_TEST_EVAL_AFTER_QUIT") == "1" {
+		evalAfterQuit()
+	}
 	// A quit that a test lets through must not end the tests.
 	stopGrace = 0
 	if os.Getenv("MYGO_TEST_BEFORE_RUN") == "1" {
@@ -1126,6 +1129,112 @@ func TestEvalLateReply(t *testing.T) {
 	case <-time.After(wait.Guard):
 		t.Fatal("the late reply blocked the main thread")
 	}
+}
+
+// TestEvalWindowCloses: a page whose window closes never answers, and Eval,
+// which may have no context to end it, must not wait for it.
+func TestEvalWindowCloses(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{})
+	asked := make(chan struct{})
+	fw.AsyncFunction = func(string) (string, error) {
+		close(asked)
+		return "", fake.ErrNoReply
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := w.Page().Eval("1")
+		done <- err
+	}()
+	<-asked
+	w.Destroy()
+	select {
+	case err := <-done:
+		if !errors.Is(err, errDestroyed) {
+			t.Errorf("Eval = %v", err)
+		}
+	case <-time.After(wait.Guard):
+		t.Fatal("Eval still waits for the page of a closed window")
+	}
+}
+
+// TestEvalWebViewDestroyed is TestEvalWindowCloses for a web view's page.
+func TestEvalWebViewDestroyed(t *testing.T) {
+	show := true
+	_, v, _, fv := webViewWindow(t, &show)
+	asked := make(chan struct{})
+	fv.Window.AsyncFunction = func(string) (string, error) {
+		close(asked)
+		return "", fake.ErrNoReply
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := v.Page().Eval("1")
+		done <- err
+	}()
+	<-asked
+	v.Destroy()
+	select {
+	case err := <-done:
+		if !errors.Is(err, errDestroyed) {
+			t.Errorf("Eval = %v", err)
+		}
+	case <-time.After(wait.Guard):
+		t.Fatal("Eval still waits for the page of a destroyed web view")
+	}
+}
+
+// TestEvalAfterQuit: a window created once the app has quit has a page, as
+// the documentation of Page says, on which Eval fails.
+func TestEvalAfterQuit(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=^$")
+	cmd.Env = append(os.Environ(), "MYGO_TEST_EVAL_AFTER_QUIT=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, want := range []string{"while stopping: " + errLoopStopped.Error() + "\n", "stopped: " + errDestroyed.Error() + "\n"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("no %q in:\n%s", want, out)
+		}
+	}
+}
+
+// evalAfterQuit is a helper process for TestEvalAfterQuit: Eval with the quit
+// under way, in a window no one will close and on a loop that will soon stop,
+// and then with the loop stopped.
+func evalAfterQuit() {
+	App.OnWindowAllClosed(func() {})
+	eval := func(when string) {
+		w := NewWindow(WindowOptions{})
+		if wins := fb.Windows(); !w.IsDestroyed() {
+			wins[len(wins)-1].AsyncFunction = func(string) (string, error) { return "", fake.ErrNoReply }
+		}
+		_, err := w.Page().Eval("1")
+		fmt.Printf("%s: %v\n", when, err)
+	}
+	fb.IgnoresQuit = true
+	stopGrace = 0
+	App.WhenReady(func() {
+		App.Quit()
+		go func() {
+			onMain(func() {})
+			eval("while stopping")
+			fb.IgnoresQuit = false
+			App.Quit()
+		}()
+	})
+	App.Run()
+	done := make(chan struct{})
+	go func() {
+		eval("stopped")
+		close(done)
+	}()
+	<-done
+	os.Exit(0)
 }
 
 // Custom protocols.

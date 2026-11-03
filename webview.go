@@ -223,6 +223,7 @@ func (w *Window) destroyWebView() {
 	cancel := w.pageCancel
 	w.mu.Unlock()
 	cancel()
+	fire(&w.onClosed)
 }
 
 // destroyWebViews closes the web views of a window that closed. Main

@@ -174,9 +174,9 @@ func (w *Window) eval(ctx context.Context, code string) (jsontext.Value, error) 
 		raw string
 		err error
 	}
-	// Both the cancellation and the page may answer; the first one counts
-	// and the other must not block.
-	ch := make(chan result, 2)
+	// The cancellation, the page and the window closing may all answer; the
+	// first one counts and the others must not block.
+	ch := make(chan result, 3)
 	stop := context.AfterFunc(ctx, func() {
 		deliver(ch, result{err: ctx.Err()})
 		if evalCanceled != nil {
@@ -186,8 +186,17 @@ func (w *Window) eval(ctx context.Context, code string) (jsontext.Value, error) 
 	defer stop()
 
 	ran := false
+	var off func()
 	w.do(func(n platform.Window) {
 		ran = true
+		// A window opened with the quit under way: no one will close it, and
+		// the event loop stops before the page answers.
+		if nativeCalls.stopped {
+			deliver(ch, result{err: errLoopStopped})
+			return
+		}
+		// The page of a closed window never answers.
+		off = w.onClosed.add(func() { deliver(ch, result{err: errDestroyed}) }, false)
 		expr := strings.TrimRight(code, " \t\r\n;")
 		n.CallAsyncFunction(fmt.Sprintf(evalExpr, expr), func(res string, err error) {
 			if err == nil {
@@ -217,6 +226,9 @@ func (w *Window) eval(ctx context.Context, code string) (jsontext.Value, error) 
 		return nil, errDestroyed
 	}
 	r := await(ch)
+	if off != nil {
+		off()
+	}
 	if r.err != nil {
 		return nil, r.err
 	}
