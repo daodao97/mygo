@@ -141,6 +141,18 @@ term, err := terminal.New(terminal.Options{
   shell (`-zsh`), as terminal apps start it, so that it reads the user's
   profile: `$SHELL`, else `/bin/zsh` on macOS and `/bin/sh` elsewhere, and
   PowerShell on Windows.
+- `ShellIntegration: true` enables zsh prompt integration. A temporary
+  `.zshenv` restores the original `ZDOTDIR` before sourcing the user's startup
+  files and installs OSC 133 prompt markers after the user's prompt theme.
+  Powerlevel10k is asked to emit its own markers for asynchronous redraws.
+  When columns change, the marked prompt is cleared at its old width before
+  reflow, and zsh redraws it after `SIGWINCH`; right and multiline prompts
+  therefore do not accumulate in the scrollback. Command output and alternate
+  screens retain their normal resize behavior. The user's files are never
+  modified, temporary files are removed when the terminal exits or closes,
+  and other local shells are unchanged. With `Conn`, the source must provide
+  OSC 133 markers and redraw its prompt on resize; the plugin does not inject
+  shell startup configuration into remote sessions. Integration is off by default.
 - `Env` adds to the environment, which has `TERM=xterm-256color`,
   `COLORTERM=truecolor`, and `LANG=en_US.UTF-8` when no locale is set, as
   for apps started from the Finder.
