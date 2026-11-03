@@ -2764,6 +2764,34 @@ func (_handle Element) Access(fn func(n *platform.AccessNode)) Element {
 	return wrapElement(_node.Access(fn))
 }
 
+// AccessHidden leaves the element and those inside it out of what
+// assistive technology reads when hide is true, while they still show, as
+// HTML's aria-hidden does: none of them is in its tree, their text names
+// no element around them, and it can neither press, focus nor edit them.
+// The pointer and the keyboard still reach them, unless they IgnoreInput
+// too, which makes them inert, as HTML's inert does; without it, keep the
+// keyboard focus out of them, where assistive technology cannot follow.
+//
+// What shows but is not there to read is so read once, or not at all: a
+// page sliding out beside the one that replaces it, the cards peeking from
+// behind the front one of a stack, a copy of a text fading into another:
+//
+//	if app.leaving >= 0 {
+//		page(c, app.leaving).Absolute().Translate(-x, 0).IgnoreInput(true).AccessHidden(true)
+//	}
+//	page(c, app.tab).Translate(width-x, 0)
+//
+// RoleNone leaves out the element but not those inside it.
+func (_handle Element) AccessHidden(hide bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.AccessHidden(hide))
+}
+
 // ActiveDescendant tells assistive technology that d has the keyboard
 // focus while the element does: the option the arrows are on in a list or
 // a menu that keeps the focus itself, as a combobox's input does. Call it
@@ -4438,7 +4466,8 @@ func (_handle Element) ID() uint64 {
 //	})
 //
 // Unlike HTML's inert, it leaves them to assistive technology. Invisible
-// and Hidden hide them from it too, and Disabled takes their press away.
+// and Hidden hide them from it too, and Disabled takes their press away;
+// AccessHidden hides them from it alone.
 func (_handle Element) IgnoreInput(ignore bool) Element {
 	_node := _handle.node()
 	if _node == nil {

@@ -2431,7 +2431,12 @@ either.
   the flags are all taken, and of its state, which the elements inside
   it inherit at commit) adds no hits nor stop of Tab and drops the focus,
   but stays in the tree, its presses counted as any other's; it offers no
-  focus, nor the increments that go through the keys.
+  focus, nor the increments that go through the keys. One hidden from
+  assistive technology (`AccessHidden`, a field of the node and of its
+  inherited state, as `IgnoreInput`; inert ones count too) paints and
+  takes input, but `accessElement` skips it with what is inside it, as an
+  invisible one, its text names no ancestor (`innerText`), and its
+  state drops what `AccessAction` sends it.
   `AccessTree.Announcements` are texts to read out once
   (`Context.Announce`, toasts, routers): `AXAnnouncementRequested` posted
   on the application with a medium priority on macOS, AtkObject's

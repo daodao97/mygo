@@ -314,6 +314,10 @@ type node struct {
 	// elements inside it by, which still show and read to assistive
 	// technology (IgnoreInput).
 	ignoreInput bool
+	// accessHidden leaves it and the elements inside it out of what
+	// assistive technology reads, while they still show and take input
+	// (AccessHidden).
+	accessHidden bool
 
 	// Painting.
 	bg          Color
@@ -1100,8 +1104,29 @@ func (e *node) Invisible() *node { e.flags |= flagInvisible; return e }
 //	})
 //
 // Unlike HTML's inert, it leaves them to assistive technology. Invisible
-// and Hidden hide them from it too, and Disabled takes their press away.
+// and Hidden hide them from it too, and Disabled takes their press away;
+// AccessHidden hides them from it alone.
 func (e *node) IgnoreInput(ignore bool) *node { e.ignoreInput = ignore; return e }
+
+// AccessHidden leaves the element and those inside it out of what
+// assistive technology reads when hide is true, while they still show, as
+// HTML's aria-hidden does: none of them is in its tree, their text names
+// no element around them, and it can neither press, focus nor edit them.
+// The pointer and the keyboard still reach them, unless they IgnoreInput
+// too, which makes them inert, as HTML's inert does; without it, keep the
+// keyboard focus out of them, where assistive technology cannot follow.
+//
+// What shows but is not there to read is so read once, or not at all: a
+// page sliding out beside the one that replaces it, the cards peeking from
+// behind the front one of a stack, a copy of a text fading into another:
+//
+//	if app.leaving >= 0 {
+//		page(c, app.leaving).Absolute().Translate(-x, 0).IgnoreInput(true).AccessHidden(true)
+//	}
+//	page(c, app.tab).Translate(width-x, 0)
+//
+// RoleNone leaves out the element but not those inside it.
+func (e *node) AccessHidden(hide bool) *node { e.accessHidden = hide; return e }
 
 // Hidden hides the element and its children when hide is true, as CSS's
 // display: none does: unlike an Invisible element, it takes no room in

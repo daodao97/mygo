@@ -3357,6 +3357,48 @@ func TestContentWindowIgnoreInput(t *testing.T) {
 	}
 }
 
+// TestContentWindowAccessHidden shows a card behind the front one, hidden
+// from assistive technology: the platform's tree has the front card's
+// button but not the one behind, which a click still presses (#1093).
+func TestContentWindowAccessHidden(t *testing.T) {
+	var frames atomic.Int32
+	backs := 0
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		ui.Column(c).Children(func() {
+			ui.Button(c, "Front").Width(100).Height(40)
+			ui.Column(c).AccessHidden(true).Children(func() {
+				if ui.Button(c, "Behind").Width(100).Height(40).Clicked() {
+					backs++
+				}
+			})
+		})
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Access hidden", Width: 400, Height: 200, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	if _, ok := accessibility(w); !ok {
+		t.Skip("accessibility automation not available on this platform")
+	}
+	var nodes []accessNode
+	eventually(t, "the front button in the tree", func() bool {
+		nodes, _ = accessibility(w)
+		return slices.ContainsFunc(nodes, func(n accessNode) bool { return n.role == roleButton && n.label == "Front" })
+	})
+	if slices.ContainsFunc(nodes, func(n accessNode) bool { return n.label == "Behind" }) {
+		t.Errorf("the button hidden from assistive technology is in the tree: %v", nodes)
+	}
+	if accessPerform(w, "Behind", "press", "") {
+		t.Error("assistive technology pressed the hidden button")
+	}
+	if click(w, 50, 60) {
+		eventually(t, "the click on the hidden button", func() bool {
+			var n int
+			mygo.RunOnMain(func() { n = backs })
+			return n == 1
+		})
+	}
+}
+
 // TestContentWindowObserved resizes a window of native UI and acts on its
 // elements as assistive technology does while key-value observing watches
 // them, as other code may: the runtime gives each a generated subclass of

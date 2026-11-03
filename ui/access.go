@@ -197,8 +197,9 @@ func leafRole(r platform.AccessRole) bool {
 // by spaces. An element inside it with a Label gives its label in place
 // of its texts, as a name from content takes a descendant's aria-label on
 // the web: a row reads "Branch main (checked out)" rather than the "✓
-// main" drawn for it. Assistive technology names elements by it every
-// frame, so a single text is returned as it is, without a copy.
+// main" drawn for it; one hidden from assistive technology
+// (AccessHidden) gives nothing. Assistive technology names elements by it
+// every frame, so a single text is returned as it is, without a copy.
 func (e *node) innerText() string {
 	if e.flags&flagInvisible != 0 || e.hidden {
 		return ""
@@ -224,7 +225,7 @@ type innerTexts struct {
 }
 
 func (t *innerTexts) walk(e *node) {
-	if e.flags&flagInvisible != 0 || e.hidden {
+	if e.flags&flagInvisible != 0 || e.hidden || e.accessHidden {
 		return
 	}
 	if e.label != "" {
@@ -324,7 +325,7 @@ func (e *node) rowsOfElement() *listFrame {
 // node parent; scrolled is set inside a scroll container, and focused gets
 // the element with the keyboard focus.
 func (rt *engine) accessElement(t *platform.AccessTree, e *node, parent int, scrolled bool, focused **node) {
-	if e.flags&(flagInvisible|flagInert) != 0 || e.hidden {
+	if e.flags&(flagInvisible|flagInert) != 0 || e.hidden || e.accessHidden {
 		return
 	}
 	if e.id == rt.focused {
@@ -531,7 +532,8 @@ func (rt *engine) accessibilityOn() {
 // of the last frame, as the keyboard or the pointer would.
 func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 	s := rt.states[ev.ID]
-	if s == nil || s.flags&flagDisabled != 0 {
+	// What is hidden from it, as a page leaving, takes none of its actions.
+	if s == nil || s.flags&flagDisabled != 0 || s.accessHidden {
 		return
 	}
 	switch ev.Action {

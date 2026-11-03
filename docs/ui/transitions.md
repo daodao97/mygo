@@ -119,8 +119,10 @@ proportion: only its `Enter` plays. When an element is no longer built
 while its parent still is, a copy of it, as the last frame showed it, goes
 to its `Exit` under its siblings: it takes no room, so the siblings move
 into its place at once, smoothly if they have transitions, and it takes
-neither the pointer nor the focus. Built again before its exit ends, the
-element comes back from where its copy was.
+neither the pointer nor the focus, nor reads to assistive technology, as an
+element with both `IgnoreInput` and
+[`AccessHidden`](accessibility.md#out-of-assistive-technologys-way). Built
+again before its exit ends, the element comes back from where its copy was.
 
 ## Shared elements
 

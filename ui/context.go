@@ -632,9 +632,10 @@ type state struct {
 	parent         uint64
 	flags          uint32
 	// ignoreInput tells that the element, or one around it, ignores the
-	// pointer and the keyboard (IgnoreInput).
-	ignoreInput bool
-	cursor      Cursor
+	// pointer and the keyboard (IgnoreInput); accessHidden, that it is
+	// out of what assistive technology reads (AccessHidden, or inert).
+	ignoreInput, accessHidden bool
+	cursor                    Cursor
 	// tip marks an element with a tooltip (TooltipBase), which shows once
 	// the pointer has rested on it for tipDelay, or at once within tipWarm
 	// of another going: its theme's TooltipDelay.
