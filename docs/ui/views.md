@@ -165,6 +165,21 @@ value printed. `Element.Key` can
 key a container before its children or local state are built. Use
 `Context.Key` for stateful controls and custom base widgets.
 
+`Context.Key` sets one pending key for the next control; calling it again
+replaces that key. `c.Key("account").Key("secret")` uses only `"secret"`.
+Create a keyed parent to give its children a separate identity scope:
+
+```go
+ui.Column(c.Key(app.accountID)).Children(func() {
+	ui.TextInput(c.Key("secret"), &app.secret).Password()
+})
+```
+
+Changing the account ID gives the input a new identity, even though its
+own key stays `"secret"`. Within the same account, that input keeps its
+state from build to build. The new editor starts with `app.secret`; clear
+or load that model value separately when switching accounts.
+
 ## Change the state from other goroutines
 
 The view reads your state on the main thread. Change it from other
