@@ -22,7 +22,9 @@ type Span struct {
 	Underline       bool
 	WavyUnderline   bool
 	DottedUnderline bool
-	Strikethrough   bool
+	// solid draws Underline through descenders, as a link's hover.
+	solid         bool
+	Strikethrough bool
 	// DecorationColor and DecorationThickness are those of the span's
 	// underline and strikethrough, as for Element.DecorationColor.
 	DecorationColor     Color
@@ -362,7 +364,7 @@ func (sp *spanPaint) lines(p *Painter, l *text.Layout, li int, x, y float32, col
 			return
 		}
 		span := &sp.spans[k]
-		d := decoration{underline: span.Underline || span.WavyUnderline || span.DottedUnderline, wavy: span.WavyUnderline, dotted: span.DottedUnderline, strike: span.Strikethrough, color: base.color, thick: base.thick}
+		d := decoration{underline: span.Underline || span.WavyUnderline || span.DottedUnderline, wavy: span.WavyUnderline, dotted: span.DottedUnderline, strike: span.Strikethrough, solid: span.solid, color: base.color, thick: base.thick}
 		if !d.underline && !d.strike {
 			return
 		}

@@ -12,6 +12,9 @@ type Decoration uint8
 const (
 	Underline Decoration = iota
 	Strikethrough
+	// SolidUnderline is an Underline drawn through descenders, as links
+	// mark hover, instead of skipping the ink of glyphs as Core Text does.
+	SolidUnderline
 )
 
 // A Stroke is a stretch of a decoration's line, in device pixels: from X0
@@ -32,6 +35,8 @@ type decoRange struct {
 	shift float32
 	scale float32
 	d     Decoration
+	// solid keeps an underline whole, through the ink of glyphs.
+	solid bool
 }
 
 // Decorate returns the strokes the system's text stack draws for
@@ -44,6 +49,10 @@ type decoRange struct {
 func (s *System) Decorate(l *Layout, li, i, j int, x, y, scale float32, d Decoration, thick float32) []Stroke {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	solid := d == SolidUnderline
+	if solid {
+		d = Underline
+	}
 	if l == nil || li < 0 || li >= len(l.Lines) {
 		return nil
 	}
@@ -67,7 +76,7 @@ func (s *System) Decorate(l *Layout, li, i, j int, x, y, scale float32, d Decora
 	if f == nil {
 		return nil
 	}
-	strokes := s.engine().decorate(decoRange{l: l, line: line, i: i, j: j, font: f, x: x, y: y, shift: shift, scale: scale, d: d})
+	strokes := s.engine().decorate(decoRange{l: l, line: line, i: i, j: j, font: f, x: x, y: y, shift: shift, scale: scale, d: d, solid: solid})
 	if thick > 0 {
 		h := max(float32(math.Round(float64(thick*scale))), 1)
 		for k := range strokes {

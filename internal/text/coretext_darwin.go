@@ -1209,7 +1209,7 @@ func (e *coreText) decorate(r decoRange) []Stroke {
 		})
 	}
 	pieces := [][2]float32{{x0, x1}}
-	if r.d == Underline {
+	if r.d == Underline && !r.solid {
 		var cuts [][2]float32
 		for k := i; k < j; k++ {
 			g := gs[k]

@@ -249,7 +249,7 @@ func (e *node) resolvedText() textStyle {
 			out.align = t.align
 		}
 		if take&setUnderline != 0 {
-			out.underline, out.wavy = t.underline, t.wavy
+			out.underline, out.wavy, out.solid = t.underline, t.wavy, t.solid
 		}
 		if take&setSpacing != 0 {
 			out.spacing = t.spacing
