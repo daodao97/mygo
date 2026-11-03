@@ -500,28 +500,102 @@ func (t *Tester) HasText(s string) bool {
 	return false
 }
 
-// targetCenter returns the center of the element showing text or labeled s,
-// or an error when no element matches or its center lies outside the window.
-// Find walks the element tree without checking geometry, so it can return an
-// element the window never shows; clicking it would land on nothing while
-// reporting success.
-func (t *Tester) targetCenter(s string) (float32, float32, error) {
-	r, ok := t.Find(s)
-	if !ok {
+// targetCenter checks the named element before sending any input. Labels
+// include clipped boxes, and a visible box may be covered by another control.
+func (t *Tester) targetCenter(s string, button int) (float32, float32, error) {
+	var n *labelNode
+	for i := range t.rt.labels {
+		if t.rt.labels[i].text == s {
+			n = &t.rt.labels[i]
+			break
+		}
+	}
+	if n == nil {
 		return 0, 0, fmt.Errorf("ui: no element shows %q", s)
 	}
-	x, y := r.X+r.W/2, r.Y+r.H/2
+	r, z := n.r, t.rt.zoomFactor()
+	cx, cy := r.X+r.W/2, r.Y+r.H/2
+	x, y := cx*z, cy*z
 	if x < 0 || y < 0 || x >= t.h.w || y >= t.h.h {
 		return 0, 0, fmt.Errorf("ui: %q is at (%v, %v), outside the window", s, x, y)
+	}
+	if r.W <= 0 || r.H <= 0 {
+		return 0, 0, fmt.Errorf("ui: %q has no visible area", s)
+	}
+	var named []uint64
+	for st := t.rt.states[n.id]; st != nil; st = t.rt.states[st.parent] {
+		named = append(named, st.id)
+		if st.parent == 0 {
+			break
+		}
+	}
+	// Native pages take the pointer before UI hit testing, even inside
+	// IgnoreInput: the system gives the press to their view.
+	if page := t.WebViewAt(x, y); page != nil {
+		for _, id := range named {
+			if t.rt.states[id].webView == page {
+				return x, y, nil
+			}
+		}
+		return 0, 0, fmt.Errorf("ui: %q is covered by a web view", s)
+	}
+	hit := t.rt.hitChain(cx, cy)
+	if button == 0 {
+		for _, id := range hit {
+			st := t.rt.states[id]
+			if st == nil || st.flags&(flagScrollX|flagScrollY) == 0 || !st.barsShown || st.hideScrollbars {
+				continue
+			}
+			lx, ly := st.local(cx, cy)
+			lx, ly = lx+st.x, ly+st.y
+			g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH),
+				float32(st.scrollX), float32(st.scrollY), st.flags, st.barWidth, st.rtl)
+			if g.vertical && g.vTrack.Contains(lx, ly) || g.horizontal && g.hTrack.Contains(lx, ly) {
+				return 0, 0, fmt.Errorf("ui: %q is covered by a scroll bar", s)
+			}
+		}
+	}
+	// A button's label is often a text child. Noninteractive siblings
+	// inside it may take the hit too; both must still reach that button.
+	flags := interactive
+	if button == 1 {
+		flags |= flagContextMenu
+	}
+	receiver := func(chain []uint64) *state {
+		for _, id := range chain {
+			if st := t.rt.states[id]; st != nil &&
+				(st.flags&flags != 0 || st.input != nil || st.webView != nil) {
+				return st
+			}
+		}
+		return nil
+	}
+	want := receiver(named)
+	// A field's label can name its outer container, which delegates focus
+	// to an input nested inside. Clicking that input is the same target.
+	matches := slices.Contains(hit, n.id)
+	if want != nil {
+		matches = receiver(hit) == want && t.rt.handler(hit) == t.rt.handler(named) &&
+			(button != 1 || t.rt.menuTarget(hit) == t.rt.menuTarget(named))
+		for i := range t.rt.c.used {
+			e := t.rt.nodeAt(uint32(i))
+			if e.id == want.id && e.focusTo != nil && receiver(hit) == e.focusTo.st && slices.Contains(hit, n.id) {
+				matches = true
+				break
+			}
+		}
+	}
+	if !matches || len(named) == 0 || t.rt.states[n.id].ignoreInput {
+		return 0, 0, fmt.Errorf("ui: %q is not the input target at (%v, %v)", s, x, y)
 	}
 	return x, y, nil
 }
 
 // Click clicks the center of the element showing text or labeled s. It
-// returns an error when no element shows s, or when the element's center
-// is outside the window, where the click would land on nothing.
+// returns an error without sending input when no element shows s, it has
+// no visible area, or its center would reach another control or nothing.
 func (t *Tester) Click(s string) error {
-	x, y, err := t.targetCenter(s)
+	x, y, err := t.targetCenter(s, 0)
 	if err != nil {
 		return err
 	}
@@ -533,9 +607,10 @@ func (t *Tester) Click(s string) error {
 func (t *Tester) ClickAt(x, y float32) { t.ClickAtWith(0, x, y) }
 
 // ClickWith clicks the center of the element showing text or labeled s
-// holding the modifier keys mods, as a Shift-click.
+// holding the modifier keys mods, as a Shift-click. It checks the target
+// before sending input, as Click does.
 func (t *Tester) ClickWith(mods Modifiers, s string) error {
-	x, y, err := t.targetCenter(s)
+	x, y, err := t.targetCenter(s, 0)
 	if err != nil {
 		return err
 	}
@@ -555,10 +630,10 @@ func (t *Tester) ClickAtWith(mods Modifiers, x, y float32) {
 }
 
 // RightClick clicks the center of the element showing text or labeled s
-// with the secondary button. Like Click, it returns an error when no
-// element shows s or its center is outside the window.
+// with the secondary button. It checks the target before sending input,
+// as Click does.
 func (t *Tester) RightClick(s string) error {
-	x, y, err := t.targetCenter(s)
+	x, y, err := t.targetCenter(s, 1)
 	if err != nil {
 		return err
 	}
