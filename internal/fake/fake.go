@@ -100,6 +100,10 @@ type Backend struct {
 	DockMenu *platform.Menu
 	// Active is what App.IsActive answers; SetActive changes it.
 	Active bool
+	// FramesOnShow makes a window draw the frame its content asked for as
+	// it shows, as AppKit may display a window it orders in. Main thread
+	// only.
+	FramesOnShow bool
 	// ForegroundAllowed counts AllowForeground calls.
 	ForegroundAllowed int
 	// ActivationToken is the token of WithActivationToken while its
@@ -696,8 +700,17 @@ func (w *Window) Show() {
 	w.visible = true
 	w.focused = w.focused || w.Opts.Flyout == nil || w.Opts.Flyout.Focusable
 	w.mu.Unlock()
+	w.framesOnShow()
 }
-func (w *Window) ShowInactive()              { w.mu.Lock(); w.visible = true; w.mu.Unlock() }
+func (w *Window) ShowInactive() { w.mu.Lock(); w.visible = true; w.mu.Unlock(); w.framesOnShow() }
+
+// framesOnShow draws the frame the content asked for with FramesOnShow.
+func (w *Window) framesOnShow() {
+	if w.b.FramesOnShow && w.surface != nil {
+		w.surface.Frame()
+	}
+}
+
 func (w *Window) Hide()                      { w.mu.Lock(); w.visible = false; w.mu.Unlock() }
 func (w *Window) IsVisible() bool            { w.mu.Lock(); defer w.mu.Unlock(); return w.visible }
 func (w *Window) Focus()                     { w.H.Focused() }

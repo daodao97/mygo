@@ -64,6 +64,106 @@ func TestContentReadyToShow(t *testing.T) {
 	}
 }
 
+// TestContentViewRunsAfterNewWindow checks that the view of native UI
+// first runs once NewWindow returned, where the system draws a window as it
+// shows it too, so that the view can use the window NewWindow returns
+// (#1053). The window shows on the main loop's next turn, or once a method
+// acts on it; Hide right after NewWindow keeps it from showing, as Hidden
+// does. Called from another goroutine, NewWindow shows it before it
+// returns.
+func TestContentViewRunsAfterNewWindow(t *testing.T) {
+	onMain(func() { fb.FramesOnShow = true })
+	t.Cleanup(func() { onMain(func() { fb.FramesOnShow = false }) })
+	newWindow := func(opts WindowOptions, titles *[]string) (*Window, *fake.Window) {
+		var w *Window
+		opts.Content = ui.View(func(c *ui.Context) {
+			if w == nil {
+				*titles = append(*titles, "<nil>")
+				return
+			}
+			*titles = append(*titles, w.Title())
+			ui.Text(c, w.Title())
+		})
+		w = NewWindow(opts)
+		t.Cleanup(w.Destroy)
+		wins := fb.Windows()
+		return w, wins[len(wins)-1]
+	}
+
+	var titles []string
+	shows := 0
+	var fw *fake.Window
+	onMain(func() {
+		var w *Window
+		w, fw = newWindow(WindowOptions{Title: "Next turn"}, &titles)
+		w.OnShow(func() { shows++ })
+		if len(titles) != 0 || fw.IsVisible() {
+			t.Errorf("in NewWindow: frames %q, visible %v", titles, fw.IsVisible())
+		}
+	})
+	onMain(func() {}) // the next turn
+	if !slices.Equal(titles, []string{"Next turn"}) || !fw.IsVisible() || shows != 1 {
+		t.Errorf("on the next turn: frames %q, visible %v, OnShow %d times", titles, fw.IsVisible(), shows)
+	}
+
+	// A method acting on the window shows it first, as NewWindow returned
+	// it: after NewWindow returned.
+	titles = nil
+	onMain(func() {
+		w, fw := newWindow(WindowOptions{Title: "Method"}, &titles)
+		if !w.IsVisible() || !fw.IsVisible() || !slices.Equal(titles, []string{"Method"}) {
+			t.Errorf("IsVisible right after NewWindow: %v, frames %q", w.IsVisible(), titles)
+		}
+	})
+
+	// A first frame drawn while the window is hidden, as systems draw it
+	// on that turn, does not show the window from within the frame, where
+	// the view asks for its title.
+	onMain(func() { fb.FramesOnShow = false })
+	titles = nil
+	var visibleInFrame []bool
+	onMain(func() {
+		var w *Window
+		w = NewWindow(WindowOptions{Title: "Hidden frame", Content: ui.View(func(c *ui.Context) {
+			ui.Text(c, w.Title())
+			visibleInFrame = append(visibleInFrame, fb.Windows()[len(fb.Windows())-1].IsVisible())
+		})})
+		t.Cleanup(w.Destroy)
+		fb.Windows()[len(fb.Windows())-1].FakeSurface().Frame()
+	})
+	onMain(func() {})
+	if fw := fb.Windows()[len(fb.Windows())-1]; !slices.Equal(visibleInFrame, []bool{false}) || !fw.IsVisible() {
+		t.Errorf("visible in the frame drawn hidden: %v, then %v", visibleInFrame, fw.IsVisible())
+	}
+	onMain(func() { fb.FramesOnShow = true })
+
+	// Called from another goroutine, NewWindow shows the window before it
+	// returns, as the main thread goes on.
+	onMain(func() { fb.FramesOnShow = false })
+	w := NewWindow(WindowOptions{Content: ui.View(func(c *ui.Context) {})})
+	t.Cleanup(w.Destroy)
+	if fw := fb.Windows()[len(fb.Windows())-1]; !fw.IsVisible() {
+		t.Error("not shown by NewWindow called from another goroutine")
+	}
+	onMain(func() { fb.FramesOnShow = true })
+
+	// Hide right after NewWindow, and Hidden, keep the window hidden.
+	for _, hide := range []bool{true, false} {
+		titles = nil
+		onMain(func() {
+			w, f := newWindow(WindowOptions{Title: "Hidden", Hidden: !hide}, &titles)
+			if hide {
+				w.Hide()
+			}
+			fw = f
+		})
+		onMain(func() {})
+		if fw.IsVisible() || len(titles) != 0 {
+			t.Errorf("hide %v: visible %v, frames %q", hide, fw.IsVisible(), titles)
+		}
+	}
+}
+
 func TestContentDrawsAndHandlesInput(t *testing.T) {
 	clicks := 0
 	view := func(c *ui.Context) {

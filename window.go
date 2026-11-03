@@ -203,6 +203,20 @@ type WindowOptions struct {
 	// on the GPU where it can, instead of a web page: create it with
 	// package ui. The window then has no page (Window.Page is nil): URL
 	// and Page are ignored.
+	//
+	// The view first runs once NewWindow returned, so that it can use the
+	// window NewWindow returns, kept in a variable:
+	//
+	//	a.win = mygo.NewWindow(mygo.WindowOptions{Content: ui.View(func(c *ui.Context) {
+	//		ui.Text(c, a.win.Title())
+	//	})})
+	//
+	// Called on the main thread, as in App.WhenReady or an event handler,
+	// NewWindow leaves showing the window to the main loop's next turn, or
+	// to the first method that acts on it, such as IsVisible or Maximize,
+	// which finds it shown. Called from another goroutine, NewWindow shows
+	// the window and returns while the main thread goes on drawing it:
+	// guard the variable there, or set it with Window.Update.
 	Content Content
 }
 
@@ -311,6 +325,10 @@ type Window struct {
 	destroyed atomic.Bool
 	shown     bool
 	readyShow bool
+	// showLater tells that NewWindow left showing the window of native UI
+	// to the main loop's next turn (settleShow), and framing that its
+	// content draws a frame. Main thread only.
+	showLater, framing bool
 	// background is the BackgroundColor, if any. Main thread only.
 	background *background
 	// hiddenTitleBar is a TitleBarStyle that hides the title bar: the pages
@@ -464,13 +482,22 @@ func NewWindow(opts WindowOptions) *Window {
 // createWindow creates a window, or a flyout, once the application is
 // ready.
 func createWindow(caller string, opts WindowOptions, bg *background, flyout *flyoutOptions) *Window {
-	if !isMainThread() {
+	main := isMainThread()
+	if !main {
 		App.waitReady()
 	} else if !App.IsReady() {
 		panic("mygo: " + caller + " called before the application is ready; create windows in App.WhenReady")
 	}
 	var w *Window
-	onMain(func() { w = newWindow(opts, bg, 0, flyout) })
+	onMain(func() {
+		w = newWindow(opts, bg, 0, flyout)
+		if !main {
+			// Called from another goroutine, NewWindow returns while the
+			// main thread goes on drawing: the window of native UI shows
+			// before it does, as one of a page.
+			w.settleShow()
+		}
+	})
 	if w == nil {
 		// The event loop has already stopped.
 		w = &Window{}
@@ -591,7 +618,20 @@ func newWindow(opts WindowOptions, bg *background, native uintptr, flyout *flyou
 	if w.content == nil {
 		w.loadPage(opts.Page.SessionState, opts.URL)
 	}
-	if !opts.Hidden {
+	switch {
+	case opts.Hidden:
+	case w.content != nil:
+		// The window of native UI shows, and its view runs for the first
+		// frame, once NewWindow returned on the main thread, so that the
+		// view can use what NewWindow returns (#1053): shown now, the
+		// window would draw its first frame at once on some systems, as
+		// AppKit may display a window it orders in and Windows a window
+		// maximized as it shows. The frame the content asked for draws on
+		// that turn as well, while the window is still hidden, as a
+		// window made Hidden draws its first, or as it shows.
+		w.showLater = true
+		postMain(w.settleShow)
+	default:
 		w.Show()
 	}
 	return w
@@ -736,6 +776,7 @@ func (w *Window) Parent() *Window { return w.parent }
 // has been destroyed.
 func (w *Window) do(fn func(n platform.Window)) {
 	onMain(func() {
+		w.settleShow()
 		if w.native != nil {
 			fn(w.native)
 		}
@@ -745,12 +786,26 @@ func (w *Window) do(fn func(n platform.Window)) {
 // get is do for functions returning a value.
 func get[T any](w *Window, fn func(n platform.Window) T) T {
 	return onMainValue(func() T {
+		w.settleShow()
 		if w.native == nil {
 			var zero T
 			return zero
 		}
 		return fn(w.native)
 	})
+}
+
+// settleShow shows the window that NewWindow left to show on the main
+// loop's next turn, unless Show, ShowInactive or Hide came first: the
+// methods acting on the native window show it first, so that they find it
+// shown, as NewWindow returned it. Not from the first frame, drawn while
+// the window is hidden, whose view may call them (Title): the system may
+// draw a frame as the window shows, which would run within that one. Main
+// thread only.
+func (w *Window) settleShow() {
+	if w.showLater && !w.framing {
+		w.show()
+	}
 }
 
 // Close closes the window as if the user clicked its close button, so
@@ -813,23 +868,25 @@ func (w *Window) destroy() {
 }
 
 // Show shows and focuses the window.
-func (w *Window) Show() {
-	onMain(func() {
-		if w.native == nil {
-			return
-		}
-		visible := w.native.IsVisible()
-		w.native.Show()
-		w.shown = true
-		if !visible {
-			fire(&w.onShow)
-		}
-	})
+func (w *Window) Show() { onMain(w.show) }
+
+func (w *Window) show() {
+	w.showLater = false
+	if w.native == nil {
+		return
+	}
+	visible := w.native.IsVisible()
+	w.native.Show()
+	w.shown = true
+	if !visible {
+		fire(&w.onShow)
+	}
 }
 
 // ShowInactive shows the window without focusing it.
 func (w *Window) ShowInactive() {
 	onMain(func() {
+		w.showLater = false
 		if w.native == nil {
 			return
 		}
@@ -846,9 +903,11 @@ func (w *Window) ShowInactive() {
 	})
 }
 
-// Hide hides the window.
+// Hide hides the window. Called right after NewWindow, it keeps a window
+// of native UI from showing at all.
 func (w *Window) Hide() {
 	onMain(func() {
+		w.showLater = false
 		if w.native == nil || !w.native.IsVisible() {
 			return
 		}

@@ -17,6 +17,11 @@ mygo.NewWindow(mygo.WindowOptions{
 })
 ```
 
+The view first runs once `NewWindow` returned, so it can use the window
+kept from it, as `app.win.Title()`: called on the main thread, `NewWindow`
+shows the window on the main loop's next turn (see
+[showing windows](../windows.md#show-windows-without-flashing)).
+
 ## Title bars
 
 With `TitleBarStyle: mygo.TitleBarHidden`, the view draws the title bar

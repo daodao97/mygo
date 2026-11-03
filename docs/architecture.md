@@ -1578,6 +1578,24 @@ as in Tauri:
 - `NewWindow` validates options, waits for readiness when called off the main
   thread, builds `platform.WindowOptions` (all defaults applied, bridge and
   preload scripts, registered schemes) and registers the window.
+- Called on the main thread, `NewWindow` leaves showing a window of
+  native UI to the main loop's next turn (`showLater`, `settleShow`), so
+  that its view first runs once `NewWindow` returned and can use the
+  window kept from it (#1053): shown within `NewWindow`, a window draws
+  its first frame at once on
+  some systems, as AppKit may display a window it orders in, and Windows
+  a window maximized as it shows (`WM_SIZE`). The frame the content asked
+  for draws on that turn too, while the window is still hidden, as a
+  window made `Hidden` draws its first (`drawSoon`, `drawHidden`), or as
+  it shows. A method acting on the native window (`do`, `get`) shows it
+  first, so that it finds the window as `NewWindow` returned it, but not
+  from within a frame (`framing`), whose view may call one (`Title`): a
+  frame drawn as the window shows would run inside it. `Show`,
+  `ShowInactive` and `Hide` take the deferred show's place, so `Hide`
+  right after `NewWindow` keeps the window from showing. Called from
+  another goroutine, which `NewWindow` returns to while the main thread
+  goes on, `NewWindow` shows the window before it returns, as it does a
+  window of a page, whose page loads later anyway.
 - A window's page API is on `Page`, a handle on the window that
   `Window.Page` returns unless the window shows native UI; the page's state
   stays in `Window`, where IPC and the backend's callbacks reach it.

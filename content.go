@@ -216,9 +216,15 @@ func (w *Window) captureContent() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// SurfaceEvent passes the surface's events to the Content. Files the
-// Content does not take go to OnFileDrop, when it has listeners.
+// SurfaceEvent passes the surface's events to the Content, noting while it
+// draws a frame (framing). Files the Content does not take go to
+// OnFileDrop, when it has listeners.
 func (h *windowHandler) SurfaceEvent(ev platform.SurfaceEvent) bool {
+	if ev.Kind == platform.SurfaceFrame {
+		framing := h.w.framing
+		h.w.framing = true
+		defer func() { h.w.framing = framing }()
+	}
 	resolveDataDrag(ev.Drag)
 	c := h.w.conn
 	if c == nil || c.Event == nil {
