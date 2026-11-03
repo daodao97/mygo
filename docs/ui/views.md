@@ -183,6 +183,23 @@ go func() {
 Within the view, `c.Invalidate()` asks for another frame and `c.After(d)` for
 one after a delay, such as a clock's next second.
 
+`Update` builds the view again after every call, whether the function
+changed the state or not. A goroutine that polls data that rarely
+changes, as a connection count or a status, compares it on the main thread
+with `mygo.RunOnMain`, which draws nothing, and calls `Invalidate` only
+when it changed:
+
+```go
+for n := range counts {
+	mygo.RunOnMain(func() {
+		if n != app.connections {
+			app.connections = n
+			win.Invalidate()
+		}
+	})
+}
+```
+
 ## State of an element
 
 An element keeps state of its own from frame to frame with `ui.Local`, for

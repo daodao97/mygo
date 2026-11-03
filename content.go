@@ -169,7 +169,18 @@ func (w *Window) Invalidate() {
 //		win.Update(func() { app.items = items })
 //	}()
 //
-// It returns without waiting for fn.
+// It returns without waiting for fn. The Content builds again after every
+// call, whether fn changed the state or not. A goroutine that polls data
+// that rarely changes, as a counter or a status, compares it on the main
+// thread with RunOnMain, which redraws nothing, and calls Invalidate when
+// it changed:
+//
+//	mygo.RunOnMain(func() {
+//		if n != app.connections {
+//			app.connections = n
+//			win.Invalidate()
+//		}
+//	})
 func (w *Window) Update(fn func()) {
 	postMain(func() {
 		fn()
