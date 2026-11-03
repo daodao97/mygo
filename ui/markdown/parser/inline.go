@@ -713,6 +713,12 @@ func (ip *inlineParser) scanDelims(c byte) (n int, canOpen, canClose bool) {
 	beforeSpace, beforePunct := isUnicodeSpace(before), isPunct(before)
 	left := !afterSpace && (!afterPunct || beforeSpace || beforePunct)
 	right := !beforeSpace && (!beforePunct || afterSpace || afterPunct)
+	// Next to CJK text, punctuation such as 。 or “ doesn't stop * or ~
+	// from opening or closing: Chinese writes **结论。**后文 with no
+	// space, which strict CommonMark would leave as literal asterisks.
+	if c != '_' && (isCJK(before) || isCJK(after)) {
+		left, right = !afterSpace, !beforeSpace
+	}
 	switch c {
 	case '_':
 		canOpen = left && (!right || beforePunct)
@@ -728,6 +734,17 @@ func (ip *inlineParser) scanDelims(c byte) (n int, canOpen, canClose bool) {
 		canOpen, canClose = left, right
 	}
 	return
+}
+
+// isCJK reports whether r is a Chinese, Japanese or Korean character,
+// or the full-width punctuation written with them.
+func isCJK(r rune) bool {
+	if r < 0x2E80 {
+		return r >= 0x2018 && r <= 0x201F // curly quotes, used in CJK text
+	}
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) ||
+		r >= 0x3000 && r <= 0x303F || // CJK symbols and punctuation
+		r >= 0xFF00 && r <= 0xFFEF // full-width forms
 }
 
 func isAlnum(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
