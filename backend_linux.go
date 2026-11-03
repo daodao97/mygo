@@ -18,3 +18,5 @@ func linkNotificationImages() { linux.LinkNotificationImages() }
 func linkMenuIcons() { linux.LinkMenuIcons() }
 
 func linkContextMenus() { linux.LinkContextMenus() }
+
+func linkDMABUFProbe() { linux.LinkDMABUFProbe() }

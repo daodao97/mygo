@@ -155,6 +155,9 @@ type AppOptions struct {
 	// ActivationPolicy is "regular" (default), "accessory" or "prohibited".
 	// Only meaningful on macOS.
 	ActivationPolicy string
+	// DMABUFRenderer is "off" (or ""), "on" or "auto": whether WebKitGTK
+	// may draw with its DMA-BUF renderer. Only meaningful on Linux.
+	DMABUFRenderer string
 }
 
 // AppHandler receives application level events from the backend.

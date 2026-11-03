@@ -112,9 +112,7 @@ func (b *Backend) Init(h platform.AppHandler, opts platform.AppOptions) error {
 	if err := load(); err != nil {
 		return err
 	}
-	if os.Getenv("WEBKIT_DISABLE_DMABUF_RENDERER") == "" {
-		// Avoid blank windows on setups where WebKitGTK's DMA-BUF renderer
-		// fails (NVIDIA, VMs, containers).
+	if disableDMABUF(opts.DMABUFRenderer, os.Getenv, "/") {
 		_ = os.Setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
 	}
 	if !gtkInitCheck(0, 0) {

@@ -423,8 +423,13 @@ purego gives three primitives, used everywhere:
   decorations, unlike a frameless one, so the compositor's title bar, or a
   tiling compositor's lack of one, stands for the buttons, whatever the
   layout says.
-- `WEBKIT_DISABLE_DMABUF_RENDERER=1` is set unless the user set it, which
-  avoids blank webviews on NVIDIA drivers, VMs and containers.
+- `WEBKIT_DISABLE_DMABUF_RENDERER=1` is set before GTK starts unless the
+  user set it, which avoids blank webviews on NVIDIA drivers, VMs and
+  containers, at the cost of drawing pages on the CPU. `App.SetDMABUFRenderer`
+  (`AppOptions.DMABUFRenderer`) leaves it unset: always (`on`), or where
+  `dmabufSafe` (`dmabuf.go`) finds Wayland and a GPU of Mesa's outside
+  containers and virtual machines (`auto`, whose call links that probe in
+  with `LinkDMABUFProbe`).
 - XDG desktop portal calls go through `portalCall` (`portal.go`), which
   first registers the app's ID, the name of its desktop entry, with
   `org.freedesktop.host.portal.Registry`: the portal only accepts that
