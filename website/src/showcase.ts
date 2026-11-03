@@ -187,4 +187,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/quaver-astra.webp",
   },
+  {
+    name: "Meiro",
+    description:
+      "YouTube Music, without the bloat. A native Material 3 Expressive player that takes about 100 MB, with no ads, synced lyrics, Last.fm scrobbling and colours that match each song.",
+    url: "https://meiro.elianiva.com",
+    author: "elianiva",
+    mode: "native",
+    image: "/showcase/meiro.jpg",
+  },
 ]
