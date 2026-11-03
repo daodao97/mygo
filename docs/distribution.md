@@ -613,7 +613,7 @@ the archive holds the original. Its fields come from the configuration:
 | `pkgdesc` | `linux.comment`, else the name |
 | `arch` | `x86_64` of amd64, `aarch64` of arm64 |
 | `url` | `homepage` in package.json, else the repository of `updates.github` |
-| `license` | `license` in package.json, else `LicenseRef-custom` |
+| `license` | `license` in mygo.json, else in package.json, else `LicenseRef-custom` |
 | `depends` | `gtk3` and, unless `linux.webview` is `false`, `webkit2gtk-4.1`, then the Arch Linux packages of `linux.depends` that MyGo knows, as `libnotify` of `libnotify4`; the build warns about a Debian package it knows no Arch Linux package for, and leaves it out |
 
 `-upload` leaves the PKGBUILD out: it packages the archive next to it, and

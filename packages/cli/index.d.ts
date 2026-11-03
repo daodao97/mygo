@@ -74,6 +74,11 @@ export interface Config {
    * the copyright notice without its "©" and years).
    */
   publisher?: string;
+  /**
+   * The SPDX license expression of the app, such as `MIT`, which the PKGBUILD
+   * of Arch Linux records (default: `license` in `package.json`).
+   */
+  license?: string;
   /** A square PNG, ideally 1024×1024 (default: `resources/icon.png` when it exists). */
   icon?: string;
   /** The Go package of the app, relative to the project (default: `.`). */

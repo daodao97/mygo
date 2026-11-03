@@ -49,6 +49,7 @@ the fields of [the frontend](#development-and-the-frontend).
 | `version` | `0.1.0` | the version of the app, which `App.Version()` returns and updates compare |
 | `copyright` | | the copyright notice of the app, in its `Info.plist` (macOS) and file properties (Windows) |
 | `publisher` | the copyright notice without its "©" and years, e.g. `Example Inc.` of `© 2026 Example Inc.` | who makes the app: the publisher that Settings > Apps lists for the installed app on Windows, and its company in the file properties |
+| `license` | `license` in package.json | the SPDX license expression of the app, such as `MIT` or `Apache-2.0 WITH LLVM-exception`, which the PKGBUILD of Arch Linux records |
 | `icon` | `resources/icon.png` when it exists | a square PNG, ideally 1024×1024; its name with `-dev`, as `icon-dev.png`, beside it is the development app's, when it exists |
 | `main` | `.` | the Go package of the app, relative to the project |
 

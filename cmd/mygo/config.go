@@ -42,6 +42,11 @@ type Config struct {
 	// installed app (default: the copyright notice without its "©" and
 	// years, as "Example Inc." of "Copyright © 2026 Example Inc.").
 	Publisher string `json:"publisher"`
+	// License is the SPDX license expression of the app, such as "MIT" or
+	// "Apache-2.0 WITH LLVM-exception", which the PKGBUILD of Arch Linux
+	// records. It defaults to the license of package.json, for apps whose
+	// frontend declares one (default: package.json's license).
+	License string `json:"license"`
 	// Icon is a square PNG, ideally 1024x1024 (default:
 	// resources/icon.png when it exists). Beside it, the same name with
 	// -dev, as icon-dev.png, is the development app's, when it exists.
