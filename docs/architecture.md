@@ -3313,7 +3313,12 @@ either.
   as they register with it (`Context.checks`), then applies a click to
   them all. A text input notes the modifiers of the Enter submitting it
   (`submitMods`), as the editor takes Shift+Enter: the find bar goes back
-  with it.
+  with it. A toast keeps the time it showed (`spent`) and since when it
+  runs (`at`): its time stops while the pointer rests on the toasts or
+  the keyboard focus is in them with the window's (`toastsPaused`), and
+  while the window is in the background (`toastsBackground`) unless it
+  runs there (`RunInBackground`), whose time over closes it on the next
+  frame, before the toasts build.
 - **Dates, times and colors** (`ui/date.go`, `ui/timeinput.go`,
   `ui/colorpicker.go`). `DateInput` and `Calendar` share one month's grid,
   whose day under the keys is its active descendant. A time input's

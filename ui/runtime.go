@@ -322,14 +322,16 @@ type engine struct {
 	activeRead bool
 	// toasts are the toasts the window holds, oldest first, and
 	// toastList those showing, as ToastViewportBase gives them; their time
-	// stops while toastsPaused. A viewport of them was built in the pass
-	// toastPass of the frame toastFrame.
-	toasts       []toast
-	nextToast    uint64
-	toastList    []Toast
-	toastsPaused bool
-	toastFrame   uint64
-	toastPass    int
+	// stops while toastsPaused, as the user holds them, and, but for those
+	// that RunInBackground, while toastsBackground. A viewport of them was
+	// built in the pass toastPass of the frame toastFrame.
+	toasts           []toast
+	nextToast        uint64
+	toastList        []Toast
+	toastsPaused     bool
+	toastsBackground bool
+	toastFrame       uint64
+	toastPass        int
 	// mods are the modifiers of the last pointer event.
 	mods Modifiers
 
