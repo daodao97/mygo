@@ -82,7 +82,7 @@ func tooltipBase(c *context, anchor *node, fn func(tip *node)) (*node, bool) {
 	}
 	var tip *node
 	coreOverlay(c, func() {
-		tip = coreBox(c).Absolute().PassThrough().Role(RoleTooltip)
+		tip = coreBox(c).Absolute().IgnoreInput(true).Role(RoleTooltip)
 		fn(tip)
 		if tip.attach == 0 {
 			tip.AttachTo(anchor, AnchorTop, AnchorBottom)

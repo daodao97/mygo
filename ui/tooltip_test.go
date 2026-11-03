@@ -170,6 +170,36 @@ func TestTooltipAnchored(t *testing.T) {
 	}
 }
 
+// TestTooltipTakesNoWheel checks that the wheel over a tip scrolls what
+// shows under it: the tip takes no pointer, its text included.
+func TestTooltipTakesNoWheel(t *testing.T) {
+	var s ScrollState
+	tt := coreNewTester(func(c *context) {
+		coreScroll(c).Fill().TrackScroll(&s).Children(func() {
+			coreBox(c).Height(80).Shrink(0)
+			coreButton(c, "Save").Label("save").Tooltip("Saves the file")
+			coreBox(c).Height(1000).Shrink(0)
+		})
+	}, 300, 300)
+	// The keyboard focus shows the tip, which stays as the pointer comes
+	// to it.
+	tt.Key(0, KeyTab)
+	tip, ok := tt.Find("Saves the file")
+	if !ok {
+		t.Fatalf("no tip for the focus; texts %q", tt.Texts())
+	}
+	x, y := tip.X+tip.W/2, tip.Y+tip.H/2
+	tt.Move(x, y)
+	if !tt.HasText("Saves the file") {
+		t.Fatalf("the tip went as the pointer came to it; texts %q", tt.Texts())
+	}
+	tt.Wheel(x, y, 0, 100)
+	tt.Advance(time.Second)
+	if s.Y == 0 {
+		t.Error("the wheel over the tip did not scroll the content under it")
+	}
+}
+
 func TestTooltipInnermost(t *testing.T) {
 	tt, now := clockTester(func(c *context) {
 		coreRow(c).Padding(20).Tooltip("The toolbar").Children(func() {
