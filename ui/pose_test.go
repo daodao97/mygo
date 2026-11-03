@@ -106,3 +106,40 @@ func TestNestedPosesInFramesThatOnlyPaint(t *testing.T) {
 		t.Errorf("halfway, the element under the resting pose shows at %+v, want 60, 0", w)
 	}
 }
+
+// An element posed for the first time shows at its pose at once, and
+// stays there until a build poses it elsewhere; posed elsewhere in the
+// next build, which the first asks for, it moves there, as AnimatePose's
+// documentation says an entrance goes.
+func TestPoseEntersAfterASecondBuild(t *testing.T) {
+	for _, second := range []bool{false, true} {
+		var card *node
+		tt := coreNewTester(func(c *context) {
+			card = coreBox(c).Size(40, 40)
+			entered := coreLocal(card, "entered", func() bool { return false })
+			p := Pose{}
+			if !*entered {
+				p, *entered = Pose{Y: 8, Fade: 1}, true
+				if second {
+					c.Invalidate()
+				}
+			}
+			card.AnimatePose(p, Animation{Duration: 100 * time.Millisecond, Ease: Linear})
+		}, 200, 200)
+		tt.Advance(50 * time.Millisecond)
+		y, fade := card.st.world.Y, card.poseFade
+		if !second {
+			if y != 8 || fade != 1 {
+				t.Errorf("without a second build, the card shows at %v, faded %v: want 8, 1", y, fade)
+			}
+			continue
+		}
+		if y < 3.9 || y > 4.1 || fade < 0.49 || fade > 0.51 {
+			t.Errorf("halfway in, the card shows at %v, faded %v: want 4, 0.5", y, fade)
+		}
+		tt.Advance(100 * time.Millisecond)
+		if y, fade := card.st.world.Y, card.poseFade; y != 0 || fade != 0 {
+			t.Errorf("in, the card shows at %v, faded %v", y, fade)
+		}
+	}
+}

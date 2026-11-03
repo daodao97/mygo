@@ -25,10 +25,28 @@ func (p Pose) vals() [5]float32 {
 // Animation and the Web Animations API run transforms and opacity: the
 // cheapest motion there is, which a view large or slow to build keeps
 // smooth. The pointer, carets and overlays follow it as they follow
-// transforms. It starts at the first pose. While the desktop asks for less
-// motion, it moves at once, and only fades smoothly.
+// transforms. While the desktop asks for less motion, it moves at once,
+// and only fades smoothly.
 //
 //	card.AnimatePose(ui.Pose{Y: lift, Scale: 1.02}, ui.Snappy)
+//
+// It starts at the first pose: an element that the frame before did not
+// pose, as one built for the first time, shows at p at once, and moves
+// only when a later frame poses it elsewhere. To come in from a pose, as
+// a flyout's panel rising as it shows, pose the element there in one
+// build, ask for another frame (Context.Invalidate), and pose it at its
+// place in the next:
+//
+//	entered := ui.Local(panel, "entered", func() bool { return false })
+//	p := ui.Pose{}
+//	if !*entered {
+//		p, *entered = ui.Pose{Y: 8, Fade: 1}, true
+//		c.Invalidate()
+//	}
+//	panel.AnimatePose(p, ui.Snappy)
+//
+// An element appearing in a parent that the frame before showed comes in
+// with the Enter of its Transition too.
 func (e *node) AnimatePose(p Pose, a Animation) *node {
 	for _, v := range p.vals() {
 		finiteTransform(v)
