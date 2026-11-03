@@ -15,6 +15,9 @@ import (
 // focusable is never activated (WS_EX_NOACTIVATE, MA_NOACTIVATE), and one
 // that is closes when another window is activated. Owned windows do not
 // follow their owner: the core places flyouts again as their parent moves.
+// A window modal to a flyout disables it, as it disables any owner, and
+// keeps it open: the flyout is inactive until the window closes, which
+// gives it the activation back.
 
 const (
 	wmMouseActivate  = 0x0021
@@ -114,11 +117,15 @@ func (w *window) flyoutMessage(m uint32, wp, lp uintptr) (uintptr, bool) {
 		}
 	case wmActivate:
 		if loword(wp) == waInactive && w.flyout.Focusable {
-			// Unless the window activated is a flyout of its own.
+			// Unless the window activated is a flyout or a window of
+			// its own, or one is modal to it.
 			for x := w.b.windows[lp]; x != nil; x = x.parent {
 				if x == w {
 					return 0, false
 				}
+			}
+			if w.hasModal() {
+				return 0, false
 			}
 			w.ownersInactive(w.b.windows[lp])
 			// A press on its own tray icon, which activates the taskbar:
@@ -149,7 +156,7 @@ func (w *window) flyoutMessage(m uint32, wp, lp uintptr) (uintptr, bool) {
 // what opened them toggles them.
 func (w *window) ownsFocusableFlyout() bool {
 	for _, x := range w.b.windows {
-		if f := x.opts.Flyout; f == nil || !f.Focusable || x.closed || !x.IsVisible() {
+		if f := x.opts.Flyout; f == nil || !f.Focusable || x.closed || !x.IsVisible() || x.hasModal() {
 			continue
 		}
 		for p := x.parent; p != nil; p = p.parent {
@@ -188,6 +195,17 @@ func (w *window) ownersInactive(next *window) {
 			}
 		}
 	}
+}
+
+// hasModal reports whether a window modal to w is open, which disables
+// w until it closes.
+func (w *window) hasModal() bool {
+	for _, x := range w.b.windows {
+		if x.parent == w && x.opts.Modal && !x.closed && !x.destroying {
+			return true
+		}
+	}
+	return false
 }
 
 // dismissFlyout closes a focusable flyout another window was activated

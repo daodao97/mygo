@@ -172,9 +172,15 @@ type WindowOptions struct {
 	// as its parent moves. On macOS it is ordered above its parent
 	// whenever the parent comes in front, stays above a parent that is
 	// AlwaysOnTop, goes with it into full screen, and hides while the
-	// parent is minimized or hidden.
+	// parent is minimized or hidden. The Parent may be a flyout, a tray's
+	// included: without X and Y, the window is centered over it, in the
+	// work area of its display, and stays above it.
 	Parent *Window
-	// Modal makes a child window modal to its Parent.
+	// Modal makes a child window modal to its Parent, which takes no
+	// input until it closes: a sheet of the parent on macOS, unless the
+	// parent is a flyout. A flyout stays open while a window is modal to
+	// it, wherever the keyboard goes, and closing the flyout closes the
+	// window: a confirmation a tray's flyout asks for, wider than it.
 	Modal bool
 
 	// Panel makes the window a panel, as the windows of launchers and
@@ -709,6 +715,10 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	}
 	if o.Parent != nil && o.Parent.native != nil {
 		p.Parent = o.Parent.native
+		if o.Parent.flyout != nil && p.Center {
+			p.Center = false
+			p.X, p.Y = overFlyout(o.Parent.native.Bounds(), platform.Size{Width: p.Width, Height: p.Height})
+		}
 	}
 	w.preload, w.preloadAllFrames = po.PreloadScript, po.PreloadAllFrames
 	if w.fit != nil {
@@ -719,6 +729,19 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	// pagesLocaleChanged).
 	w.userScripts = p.UserScripts
 	return p
+}
+
+// overFlyout returns where a window of size goes over a flyout at
+// bounds: centered on it, and moved into the work area of its display,
+// which a dialog wider than a flyout at the edge of the screen, as a
+// tray's, would cross.
+func overFlyout(bounds platform.Rect, size platform.Size) (x, y int) {
+	r := platform.Rect{X: bounds.X + (bounds.Width-size.Width)/2, Y: bounds.Y + (bounds.Height-size.Height)/2, Width: size.Width, Height: size.Height}
+	if wa := platform.WorkAreaFor(bounds, backend().Screen().Displays()); wa.Width > 0 && wa.Height > 0 {
+		r.X = max(min(r.X, wa.X+wa.Width-r.Width), wa.X)
+		r.Y = max(min(r.Y, wa.Y+wa.Height-r.Height), wa.Y)
+	}
+	return r.X, r.Y
 }
 
 func jsPlatform() string {

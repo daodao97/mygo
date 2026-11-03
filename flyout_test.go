@@ -219,6 +219,49 @@ func TestTrayFlyout(t *testing.T) {
 	}()
 }
 
+// TestFlyoutModalWindow opens a window modal to a flyout, a tray's too:
+// centered over it, in the work area, and closing with it.
+func TestFlyoutModalWindow(t *testing.T) {
+	parent, _ := testWindow(t, WindowOptions{X: 100, Y: 100, Width: 400, Height: 300})
+	fl, fw := testFlyout(t, FlyoutOptions{Parent: parent, Anchor: Rectangle{X: 10, Y: 20, Width: 80, Height: 24}, Gap: 4, Width: 200, Height: 100, Focusable: true})
+	dialog, dw := testWindow(t, WindowOptions{Parent: fl, Modal: true, Width: 300, Height: 200})
+	if dw.Opts.Parent != platform.Window(fw) || !dw.Opts.Modal || dw.Opts.Center {
+		t.Errorf("modal window's options %+v, want modal to the flyout, placed", dw.Opts)
+	}
+	if got := dialog.Bounds(); got != (Rectangle{X: 110 - 50, Y: 148 - 50, Width: 300, Height: 200}) {
+		t.Errorf("modal window at %+v, want centered over the flyout at %+v", got, fl.Bounds())
+	}
+	if dialog.Parent() != fl {
+		t.Errorf("modal window's parent %v", dialog.Parent())
+	}
+	// A position of its own stays.
+	placed, _ := testWindow(t, WindowOptions{Parent: fl, Modal: true, X: 300, Y: 400, Width: 300, Height: 200})
+	if got := placed.Bounds(); got.X != 300 || got.Y != 400 {
+		t.Errorf("modal window with a position at %+v", got)
+	}
+	fl.Close()
+	if !dialog.IsDestroyed() || !placed.IsDestroyed() {
+		t.Errorf("closing the flyout left its modal windows: %v, %v", dialog.IsDestroyed(), placed.IsDestroyed())
+	}
+
+	tray, err := NewTray(TrayOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tray.Destroy()
+	panel, _ := testFlyout(t, FlyoutOptions{Tray: tray, Placement: PlacementBottom, Gap: 2, Width: 300, Height: 200, Focusable: true})
+	// Centered over the flyout below the icon, it would cross the top
+	// and the right edge of the work area.
+	confirm, _ := testWindow(t, WindowOptions{Parent: panel, Modal: true, Width: 500, Height: 300})
+	if got := confirm.Bounds(); got != (Rectangle{X: 1440 - 500, Y: 25, Width: 500, Height: 300}) {
+		t.Errorf("modal window of a tray's flyout at %+v, want in the work area", got)
+	}
+	panel.Close()
+	if !confirm.IsDestroyed() {
+		t.Error("closing the tray's flyout left its modal window")
+	}
+}
+
 // TestTrayID names the icons that have an ID, so that macOS keeps where
 // the user put each of an app's icons.
 func TestTrayID(t *testing.T) {

@@ -1850,7 +1850,19 @@ as in Tauri:
   A global monitor of mouse downs
   closes macOS's focusable panels on clicks outside the app, which a
   panel taking the keyboard of an app that was not activated never
-  hears as the key window changing. The design follows GPUI's
+  hears as the key window changing. A window modal to a flyout
+  (`WindowOptions.Parent`, `Modal`) is centered over it by the core
+  (`overFlyout`), in its display's work area, and keeps it open: the
+  flyout's dismissals skip a flyout a window is modal to (`modalChild`
+  on macOS and Linux, `hasModal` on Windows, where `EnableWindow`
+  disables the owner as for any modal window). macOS attaches the window
+  as an AppKit child window at the flyout's level rather than a sheet,
+  and a local monitor eats the flyout's mouse and key events while it
+  shows (`watchModalInput`); `popoverShouldClose:` keeps a popover.
+  Windows makes it topmost over a topmost flyout. On X11 the popup lets
+  its grab go while the window shows and grabs again as it hides
+  (`enterFlyout`, `leaveFlyout`); a tray's flyout, a toplevel, does not
+  close as it loses the keyboard to it. The design follows GPUI's
   `WindowKind::AnchoredPopup` and winit's `WindowType::Popup`, which
   model xdg_positioner too.
 - Panels (`WindowOptions.Panel`), the windows of launchers: the core makes

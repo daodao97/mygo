@@ -189,6 +189,10 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 			class = flyoutShadowClass
 		}
 	}
+	if p := w.parent; p != nil && p.opts.Flyout != nil && p.IsAlwaysOnTop() {
+		// Above a tray's flyout, which is above other apps' windows.
+		ex |= wsExTopmost
+	}
 	initial := initialWindowBounds(o, screenSpace())
 	w.hwnd = createWindow(ex, class, o.Title, style, initial.Left, initial.Top, initial.Right-initial.Left, initial.Bottom-initial.Top, owner)
 	if w.hwnd == 0 {
@@ -855,6 +859,12 @@ func (w *window) destroy() {
 	// Re-enable the owner first, or Windows activates another app.
 	if w.opts.Modal && w.parent != nil && !w.parent.closed {
 		procEnableWindow.Call(w.parent.hwnd, 1)
+		// And give it the activation while w has it, as EndDialog does:
+		// Windows otherwise activates the window under w, another app's
+		// once the user switched to one and back (#1055).
+		if fg, _, _ := procGetForegroundWindow.Call(); fg == w.hwnd && w.parent.IsVisible() && !w.parent.IsMinimized() {
+			w.parent.Focus()
+		}
 	}
 	procDestroyWindow.Call(w.hwnd)
 }

@@ -101,7 +101,8 @@ type FlyoutOptions struct {
 	// pointer, but on Anchor, as AppKit's popovers: so a click on the
 	// button that opened it closes it, and does not open it again.
 	// Menus, lists to choose from and popovers are focusable, and handle
-	// their own keys.
+	// their own keys. A window modal to the flyout (WindowOptions.Modal)
+	// keeps it open while it shows: a confirmation the flyout asks for.
 	//
 	// Without it, the flyout never takes the keyboard, which stays in
 	// the parent, and stays until it is closed: tooltips, hover cards,

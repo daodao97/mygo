@@ -124,6 +124,42 @@ func TestFocusableFlyout(t *testing.T) {
 	eventually(t, "the parent focused", parent.IsFocused)
 }
 
+// TestFlyoutModalWindow opens a window modal to a focusable flyout, which
+// takes the keyboard and keeps the flyout open, over it; the flyout gets
+// the keyboard back as it closes, and closes it as it closes.
+func TestFlyoutModalWindow(t *testing.T) {
+	parent := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200})
+	parent.Focus()
+	eventually(t, "the parent focused", parent.IsFocused)
+	fl := mygo.NewFlyout(mygo.FlyoutOptions{Parent: parent, Anchor: mygo.Rectangle{X: 10, Y: 10}, Width: 160, Height: 100, Focusable: true, Content: ui.View(func(c *ui.Context) {})})
+	defer fl.Destroy()
+	eventually(t, "the flyout focused", fl.IsFocused)
+	var closes atomic.Int32
+	fl.OnClose(func(*mygo.CloseEvent) { closes.Add(1) })
+
+	open := func() *mygo.Window {
+		t.Helper()
+		dialog := mygo.NewWindow(mygo.WindowOptions{Parent: fl, Modal: true, Width: 360, Height: 160, Content: ui.View(func(c *ui.Context) {})})
+		eventually(t, "the modal window focused", dialog.IsFocused)
+		return dialog
+	}
+	dialog := open()
+	if b, f := dialog.Bounds(), fl.Bounds(); b.X > f.X || b.X+b.Width < f.X+f.Width {
+		t.Errorf("the modal window at %+v does not cover the flyout at %+v", b, f)
+	}
+	dialog.Close()
+	eventually(t, "the modal window closed", dialog.IsDestroyed)
+	eventually(t, "the flyout focused again", fl.IsFocused)
+	if fl.IsDestroyed() || closes.Load() != 0 {
+		t.Fatalf("the flyout closed (%d times asked) for its modal window", closes.Load())
+	}
+
+	dialog = open()
+	fl.Close()
+	eventually(t, "the modal window closed with the flyout", dialog.IsDestroyed)
+	eventually(t, "the flyout closed", fl.IsDestroyed)
+}
+
 // TestPopoverFlyout shows a flyout in a popover of the system where there
 // is one (macOS), which closes as the user clicks elsewhere when it is
 // focusable, and is a plain flyout elsewhere.

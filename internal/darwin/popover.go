@@ -24,6 +24,44 @@ const (
 	popoverBehaviorTransient          = 1
 )
 
+// holdPopover keeps a transient popover open as a window is modal to it,
+// as an application-defined one, until it hides: refusing AppKit's close
+// instead left it open for good, as AppKit then no longer closed it on
+// clicks elsewhere, and ate the clicks on its tray icon (#1055, as #1050).
+// Making it transient again once it shows does not have AppKit close it
+// on clicks elsewhere either: held (popoverHeld), the clicks elsewhere
+// close it as they close other focusable flyouts (closeHeldPopovers).
+func (w *window) holdPopover() {
+	if w.popover == 0 || w.closed || !w.flyout.Focusable || w.popoverHeld {
+		return
+	}
+	w.popoverHeld = true
+	send(w.popover, "setBehavior:", popoverBehaviorApplicationDefined)
+	w.b.watchOutsideClicks()
+}
+
+// closeHeldPopovers closes the popovers held open (holdPopover) that no
+// window is modal to anymore, for a press in another window, in the app
+// (win), or outside it (0), unless on a popover's tray icon, whose click
+// toggles it.
+func (b *Backend) closeHeldPopovers(win id) {
+	var open []*window
+	for _, w := range b.byNSWindow {
+		if !w.popoverHeld || w.closed || w.win == win || !sendBool(w.popover, "isShown") || w.modalChild() != nil {
+			continue
+		}
+		if t, ok := w.flyout.Tray.(*tray); ok && (t.pressed() || win != 0 && t.button != 0 && send(t.button, "window") == win) {
+			continue
+		}
+		open = append(open, w)
+	}
+	for _, w := range open {
+		if !w.closed && w.h.ShouldClose() {
+			w.Close()
+		}
+	}
+}
+
 func (w *window) createPopover(content NSRect) {
 	w.delegate = alloc("MyGoWindowDelegate")
 	w.createContent(content)
@@ -73,6 +111,10 @@ func (w *window) showPopover() {
 		return
 	}
 	w.popoverClosing = false
+	if w.popoverHeld {
+		w.popoverHeld = false
+		send(w.popover, "setBehavior:", popoverBehaviorTransient)
+	}
 	if w.flyout.Tray != nil {
 		// The popover of a menu bar app takes the keyboard of an app the
 		// user did not activate, as AppKit's own status items' do.
