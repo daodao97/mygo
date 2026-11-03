@@ -992,6 +992,14 @@ func TestDecorate(t *testing.T) {
 			t.Errorf("an underline of gypsy in %d pieces", n)
 		}
 	}
+	// A solid underline stays whole through descenders, where the
+	// underline is, on every system.
+	l = s.Layout(Params{Text: "gypsy/url", Style: Style{Size: 24}})
+	solid := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 2, SolidUnderline, 0)
+	plain := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 2, Underline, 0)
+	if len(solid) != 1 || len(plain) == 0 || solid[0].Top != plain[0].Top || solid[0].Bottom != plain[0].Bottom {
+		t.Errorf("solid underline %+v, underline %+v", solid, plain)
+	}
 }
 
 func TestLangRuns(t *testing.T) {
