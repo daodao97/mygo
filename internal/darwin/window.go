@@ -116,10 +116,14 @@ type window struct {
 	// surface shows the content MyGo draws, in place of the web view.
 	surface *surface
 	// webViews are the web views under the surface (webview.go), and host
-	// the window whose surface a web view is under, in the clip view clip.
+	// the window whose surface a web view is under, in the clip view clip,
+	// in pane, which shows it scaled and cut to its corners; mask is the
+	// layer cutting pane to corners of different radii.
 	webViews []*window
 	host     *window
 	clip     id
+	pane     id
+	mask     id
 	// pointerIn tells that the page of a web view has the pointer, where
 	// nothing the content painted covers it.
 	pointerIn bool

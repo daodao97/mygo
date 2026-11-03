@@ -3398,16 +3398,22 @@ either.
   backend's `platform.WebView` and window methods from the host's, which
   drag regions use. `ui.WebView` places it: committing a frame notes where
   each web view's element shows (`noteWebView`: its content box on whole
-  pixels, clipped as its hits are), and painting it makes a hole
+  pixels, clipped as its hits are, with the hole's corners and, under a
+  transform that only moves and scales, the size the page lays out at,
+  `WebViewPlacement.Width` and `Height`, which `Frame` shows scaled; under
+  another transform, the bounds, upright), and painting it makes a hole
   (`OpHole`) through what the window painted, rounded as the border's
   inner edge and cut by the clips around it, so that what paints after
   the element paints over the page. The native web view is under the
   surface, which shows it through its transparent frames; what shows over
   it blends with it as over any pixels. After presenting a frame, the
   engine gives the surface each web view's frame and clip and the boxes
-  of the hits after its own within its clip (`Covers`): the pointer is the
-  page's where it shows and nothing painted over it takes the pointer
-  (`WebViewPlacement.At`), as a dialog's backdrop does over all of it. A
+  of the hits after its own within its clip, as they show (`Covers`): the
+  pointer is the page's where it shows, inside its corners (`Radii`), and
+  nothing painted over it takes the pointer (`WebViewPlacement.At`), as a
+  dialog's backdrop does over all of it. Backends cut the page to the
+  corners and show it scaled, keeping its layout, so that it shows as its
+  hole does over a transparent window too. A
   press there goes to the page and comes to the content as `WebViewPress`,
   which notes it for `PressedOutside` and moves the focus to the web
   view's element, unshown; the engine sets no cursor while the pointer is over a web view
@@ -3428,7 +3434,13 @@ either.
   accessibility, as SwiftUI's `WebView` is in place. Backends:
   - macOS: the WKWebView is in a flipped clip view (`MyGoClipView`, its
     layer masking to its bounds) placed at the clip, under the surface in
-    the content view, in paint order; the Metal layer is not opaque, and
+    the content view, in paint order, in a pane (another) at its frame,
+    whose bounds are the page's size: AppKit draws it scaled and finds the
+    pointer in it as in any view of scaled bounds, and the pane's layer is
+    cut to the corners (`cornerRadius`, continuous, and `maskedCorners`;
+    a `CAShapeLayer` mask for corners of different radii), in the layer's
+    units and orientation, which `convertPointToLayer:` tells, whatever
+    AppKit does to scale it. The Metal layer is not opaque, and
     frames drawn in memory have their alpha. The surface's `hitTest:`
     returns nil where a web view takes the pointer, so AppKit finds the
     page under it. A web view's tracking areas get the mouse's moves
@@ -3472,13 +3484,20 @@ either.
     surface's alone. With `ScrollToContainer`, a handler of the view's
     `scroll-event`, which runs before WebKit's class handler, converts the
     event as the area's does (`scrollEvent`, moved by the view's
-    allocation), sends it to the content and stops the signal. WebKitGTK
-    dispatches a key the page did not handle again once its web process
-    says so, and its class handler of `key-press-event` then passes it
-    on: a handler connected after it (`cbWebViewKey`) gets those keys
-    alone and sends them as `WebViewKey`, but Tab, modifier keys on their
-    own and the shortcuts of menu items with a role, which go on to the
-    menu (`cbMenuKey`).
+    allocation), sends it to the content and stops the signal. A scaled
+    page's view is as large as it shows, and WebKit zooms it by the scale
+    over the page's own zoom (`pageScale`), so that it lays out at the same
+    width in CSS pixels. GTK runs each handler of `draw` with a clip of its
+    own, and GDK draws WebKit's frames with OpenGL within a clip's
+    rectangles alone: the view's handler of `draw` clips to the page's
+    corners on whole pixels and calls WebKit's class handler itself
+    (`GtkWidgetClass.draw`), and the region shaping the area keeps the
+    pixels the corners cut off. WebKitGTK dispatches a key the page did not
+    handle again once its web process says so, and its class handler of
+    `key-press-event` then passes it on: a handler connected after it
+    (`cbWebViewKey`) gets those keys alone and sends them as `WebViewKey`,
+    but Tab, modifier keys on their own and the shortcuts of menu items with
+    a role, which go on to the menu (`cbMenuKey`).
   - Windows: WebView2 in visual hosting, a composition controller
     (`ICoreWebView2Environment3`) whose visual is in a DirectComposition
     target of the surface's window that is not topmost (a window has one
@@ -3490,7 +3509,11 @@ either.
     chain for composition, or shows frames drawn in memory through the
     compositor; GDI would draw under the web views. Each web view's
     visual is in one clipped to its clip, the page at its bounds in the
-    surface's pixels. The surface gets the mouse everywhere and sends it on
+    surface's pixels, cut to its corners by a rectangle clip
+    (`IDCompositionRectangleClip`, its setters taking floats through
+    purego) and, scaled, at the page's size, which the visual's transform
+    scales to its frame; the mouse goes to the page through the inverse.
+    The surface gets the mouse everywhere and sends it on
     (`SendMouseInput`) where a web view takes the pointer, or to the one a
     press went to until the buttons are let go (with the capture), with a
     leave as the pointer goes; it sets the cursor the page asks for
@@ -5033,6 +5056,7 @@ which npm allows only for packages that exist: the first release uses an
 | global shortcuts | Carbon hot keys | X11: `XGrabKey` on the root window (with Caps/Num Lock variants), key presses from a GDK filter. Wayland: the XDG `GlobalShortcuts` portal (see [Linux](#linux-internallinux)) | `RegisterHotKey` |
 | notifications | UserNotifications, packaged apps only; `Group` is the `threadIdentifier`; `Image` a `UNNotificationAttachment` of a temporary file named for its format, which the system moves into its store; optional `Sender` uses communication notifications with the signed capability; the delegate is attached at launch, for the click that launched the app | org.freedesktop.Notifications over D-Bus; `Image` is the `image-data` hint, decoded by GdkPixbuf and fit to 256 pixels; ignores `Group` and `Sender` | notification-area balloons (toasts); `Image` is the balloon's large icon (`hBalloonIcon`, `NIIF_LARGE_ICON`), decoded by WIC, twice `SM_CXICON`; ignores `Group` and `Sender` |
 | notification removal | `removeDeliveredNotificationsWithIdentifiers:`; `ClearNotifications` removes all, earlier runs' too | `CloseNotification` on the bus, for those of this run | hides the balloon, which goes away by itself anyway |
+| a web view scaled and rounded with native UI (`WebViewPlacement`) | the pane's bounds scale it, its layer's corners cut it | WebKitGTK zooms the page to its view's size, which `resize`s it at the same width; `draw` clipped to the corners on whole pixels | the visual's transform scales it, a rectangle clip cuts it |
 | WebViewAvailable (any goroutine, before `Run` too) | `WKWebView` is there, which macOS always has | WebKitGTK 4.1 (or 4.0), JavaScriptCore and libsoup load, as `webKit` loads them for a window showing a page | `internal/webview2` finds a runtime, or a `WebView2Loader.dll` next to the executable exports what `createEnvironment` calls; once an environment was made, whether that worked. A runtime whose files are there but whose browser is not passes, and fails later, making the web view |
 | secrets | Security.framework generic passwords in the login keychain (`SecItem*`), service and account as keytar | libsecret's `org.freedesktop.Secret.Generic` schema (attributes `service`, `account`), loaded on first use, libsecret 0.19 or later; no libsecret, no session bus (`g_bus_get_sync`) or no Secret Service on it (`G_DBUS_ERROR_SERVICE_UNKNOWN`, `NAME_HAS_NO_OWNER`, `NO_SERVER`) is `ErrUnsupported` | Credential Manager generic credentials (`CredWriteW`), target `service/account` |
 | vibrancy | all materials, behind pages and native UI; Liquid Glass (`NSGlassEffectView`) from macOS 26, the popover and HUD materials before; frameless windows cut to `CornerRadius`; `SetActiveAppearance` through AppKit's private `_setForceMainAppearance:` | ignored | Windows 11 22H2 Mica, Acrylic, Tabbed, behind pages and native UI, in windows created with a material, which have no menu bar; Liquid Glass as Acrylic; frameless windows given a `CornerRadius` rounded by DWM |

@@ -4,6 +4,7 @@ package linux
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"net/url"
@@ -58,6 +59,11 @@ type window struct {
 	webViews     []*window
 	host         *window
 	accessParent ptr
+	// pageScale is how much the content scales a web view's page, which
+	// WebKit zooms by over the page's own zoom, and corners the radii,
+	// in its allocation's DIPs, its drawing is cut to (webview.go).
+	pageScale float64
+	corners   [4]float64
 	// controls are the title buttons over the page of a window with a
 	// hidden title bar (titlebar.go), in an overlay with the web view.
 	controls *windowControls
@@ -1188,8 +1194,9 @@ func (w *window) CallAsyncFunction(body string, cb func(string, error)) {
 	webkitWebViewCallAsyncJavascriptFunction(w.web, unsafe.StringData(body), len(body), 0, nil, nil, 0, cbAsyncReady, id)
 }
 
-func (w *window) SetZoom(f float64) { webkitWebViewSetZoomLevel(w.web, f) }
-func (w *window) Zoom() float64     { return webkitWebViewGetZoomLevel(w.web) }
+// SetZoom zooms the page, a web view's as the content scales it too.
+func (w *window) SetZoom(f float64) { webkitWebViewSetZoomLevel(w.web, f*cmp.Or(w.pageScale, 1)) }
+func (w *window) Zoom() float64     { return webkitWebViewGetZoomLevel(w.web) / cmp.Or(w.pageScale, 1) }
 
 func (w *window) SetUserAgent(ua string) {
 	settings := webkitWebViewGetSettings(w.web)

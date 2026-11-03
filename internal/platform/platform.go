@@ -753,14 +753,51 @@ type WebView interface {
 // (Surface.PlaceWebViews), in DIPs relative to the surface.
 type WebViewPlacement struct {
 	WebView WebView
-	// Frame is the web view's box; Clip the part of it that shows, which
-	// the frames leave transparent but where the content painted over it.
+	// Frame is the web view's box as it shows; Clip the part of it that
+	// shows, which the frames leave transparent but where the content
+	// painted over it.
 	Frame, Clip RectF
+	// Width and Height are the size the page lays out at, in its own
+	// DIPs: the element's content box before a scale of the transforms
+	// around it, which shows the page in Frame scaled as a picture of it,
+	// its viewport the same (Scale). Zero is Frame's size.
+	Width, Height float64
+	// Radii are those of the page's corners, in its DIPs, from its
+	// top-left clockwise, as the hole showing it has: the page shows, and
+	// takes the pointer, inside them.
+	Radii [4]float64
 	// Covers are the boxes, within Clip, of what the content painted over
 	// the web view that takes the pointer: there the pointer is the
 	// surface's, elsewhere in Clip the web view's.
 	Covers []RectF
 }
+
+// Size returns the size the page lays out at, in its DIPs.
+func (p *WebViewPlacement) Size() (w, h float64) {
+	if p.Width <= 0 || p.Height <= 0 {
+		return p.Frame.W, p.Frame.H
+	}
+	return p.Width, p.Height
+}
+
+// Scale returns how much Frame scales the page: 1, 1 unless a transform
+// scales it.
+func (p *WebViewPlacement) Scale() (x, y float64) {
+	w, h := p.Size()
+	if w <= 0 || h <= 0 {
+		return 1, 1
+	}
+	return p.Frame.W / w, p.Frame.H / h
+}
+
+// ToPage converts a point of the surface to the page's DIPs.
+func (p *WebViewPlacement) ToPage(x, y float64) (float64, float64) {
+	sx, sy := p.Scale()
+	return (x - p.Frame.X) / sx, (y - p.Frame.Y) / sy
+}
+
+// Rounded reports whether the page's corners are rounded.
+func (p *WebViewPlacement) Rounded() bool { return p.Radii != [4]float64{} }
 
 // At reports whether the pointer at x, y is the web view's.
 func (p *WebViewPlacement) At(x, y float64) bool {
@@ -769,6 +806,32 @@ func (p *WebViewPlacement) At(x, y float64) bool {
 	}
 	for _, c := range p.Covers {
 		if c.Contains(x, y) {
+			return false
+		}
+	}
+	if p.Rounded() {
+		w, h := p.Size()
+		px, py := p.ToPage(x, y)
+		return InsideCorners(w, h, p.Radii, px, py)
+	}
+	return true
+}
+
+// InsideCorners reports whether x, y is inside the corners of radii
+// (from the top-left clockwise) of a box w by h at the origin.
+func InsideCorners(w, h float64, radii [4]float64, x, y float64) bool {
+	// Each corner's center, and the side of it the corner is on.
+	for i, c := range [4][2]float64{{0, 0}, {1, 0}, {1, 1}, {0, 1}} {
+		r := radii[i]
+		if r <= 0 {
+			continue
+		}
+		cx, cy := r+c[0]*(w-2*r), r+c[1]*(h-2*r)
+		dx, dy := x-cx, y-cy
+		if (c[0] == 0) != (dx < 0) || (c[1] == 0) != (dy < 0) {
+			continue // not in the corner's square
+		}
+		if dx*dx+dy*dy > r*r {
 			return false
 		}
 	}

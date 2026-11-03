@@ -654,8 +654,7 @@ func (t *Tester) Release(x, y float32) {
 // painted nothing over it that takes the pointer; nil for none.
 func (t *Tester) WebViewAt(x, y float32) NativeWebView {
 	for _, v := range slices.Backward(t.h.webViews) {
-		p := platform.WebViewPlacement{Clip: v.clip, Covers: v.covers}
-		if p.At(float64(x), float64(y)) {
+		if p := v.placement(nil); p.At(float64(x), float64(y)) {
 			return v.v
 		}
 	}

@@ -1,6 +1,7 @@
 package mygo
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -2055,8 +2056,9 @@ func (w *Window) filesDropped(paths []string, x, y int) {
 		return
 	}
 	if n, ok := w.native.(*webViewNative); ok {
-		// Where the web view shows in its window.
-		x, y = x+int(n.frame.X), y+int(n.frame.Y)
+		// Where the web view shows in its window, scaled as it shows.
+		sx, sy := cmp.Or(n.scaleX, 1), cmp.Or(n.scaleY, 1)
+		x, y = int(n.frame.X+float64(x)*sx), int(n.frame.Y+float64(y)*sy)
 	}
 	fire1(&w.top().onFileDrop, &FileDropEvent{Paths: paths, X: x, Y: y})
 	// Local paths are none of other pages' business.

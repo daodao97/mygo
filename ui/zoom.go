@@ -130,6 +130,12 @@ func (rt *engine) windowWebViews(views []placedWebView) []placedWebView {
 	for i := range views {
 		v := &views[i]
 		v.frame, v.clip = rt.toWindow(v.frame), rt.toWindow(v.clip)
+		// The page lays out at the window's DIPs, unscaled by the zoom.
+		z := float64(rt.contentZoom)
+		v.size = [2]float64{v.size[0] * z, v.size[1] * z}
+		for j := range v.radii {
+			v.radii[j] *= z
+		}
 		for j := range v.covers {
 			v.covers[j] = rt.toWindow(v.covers[j])
 		}
