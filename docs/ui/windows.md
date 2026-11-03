@@ -76,6 +76,18 @@ move; a wheel's lines scroll as far as unzoomed. The window controls keep
 their size: `c.TitleBar()` is the room they take, zoomed, so that a title
 bar laid out clear of them stays clear.
 
+The window's own sizes are not zoomed: `WindowOptions.Width` and `Height`,
+`Window.SetContentSize` and `Window.ContentSize` are in the window's DIPs,
+`z` times the size the view sees, as a page's are at its zoom
+(`Page.SetZoomFactor`). A flyout of 320 × 400 zoomed by 1.5 lays its view
+out in about 213 × 267. To give the view a size in its own DIPs, multiply
+it by the zoom:
+
+```go
+z := c.Zoom()
+flyout.SetContentSize(int(math.Ceil(float64(320*z))), int(math.Ceil(float64(400*z))))
+```
+
 A transform's `Scale`, by contrast, scales what is drawn at the content's
 own size: its text is drawn as bitmaps of their untransformed size,
 sampled bilinearly ([Transforms](transforms.md#rendering)), right for

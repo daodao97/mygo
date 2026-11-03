@@ -214,8 +214,12 @@ win.Hide()              // Show, ShowInactive (without focusing), IsVisible
 win.Focus()             // Blur, IsFocused
 ```
 
-`Bounds`, `ContentBounds`, `Size`, `ContentSize` and `Position` read them
-back; [`mygo.Screen`](native.md#displays) tells where the displays are.
+Sizes and positions are in the window's DIPs, whatever the zoom of its
+page (`Page.SetZoomFactor`) or of its [native UI](ui/windows.md#zoom):
+at a zoom of 1.25, a page area of 1000 DIPs shows 800 of the page's CSS
+pixels, or of the view's DIPs. `Bounds`, `ContentBounds`, `Size`,
+`ContentSize` and `Position` read them back;
+[`mygo.Screen`](native.md#displays) tells where the displays are.
 `Bounds` are the whole window's, title bar and borders included (on Linux
 X11, the window manager's frame), and `ContentBounds` those of the area the
 page or native UI shows in, below a menu bar. On Linux under Wayland the

@@ -23,7 +23,8 @@ const (
 // What the view sees is zoomed: Size, TitleBar, Bounds and every length
 // are in the content's DIPs, z of them to the window's. The pointer, text
 // input, input methods, accessibility, context menus, drags and web views
-// follow it.
+// follow it. The window's own sizes are not zoomed: Window.SetContentSize
+// and Window.ContentSize are in the window's DIPs, z times the content's.
 //
 //	c.SetZoom(app.zoom) // 1.25 for 125%
 func (c *context) SetZoom(z float32) { c.rt.setZoom(z) }

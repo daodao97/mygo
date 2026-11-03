@@ -1104,7 +1104,14 @@ func (w *Window) Size() (width, height int) {
 	return b.Width, b.Height
 }
 
-// SetContentSize resizes the window so the page area has the given size.
+// SetContentSize resizes the window so the page area has the given size,
+// in the window's DIPs. A zoom does not change them: a page zoomed by z
+// (Page.SetZoomFactor), or native UI (ui's Context.SetZoom), lays out in
+// width/z × height/z of its own. Multiply a size the view needs by the
+// zoom:
+//
+//	z := c.Zoom() // in native UI; Page.ZoomFactor for a page
+//	win.SetContentSize(int(math.Ceil(float64(320*z))), int(math.Ceil(float64(400*z))))
 func (w *Window) SetContentSize(width, height int) {
 	w.do(func(n platform.Window) {
 		if w.setFlyoutSize(width, height) {
@@ -1116,7 +1123,8 @@ func (w *Window) SetContentSize(width, height int) {
 	})
 }
 
-// ContentSize returns the size of the page area.
+// ContentSize returns the size of the page area, in the window's DIPs:
+// a view zoomed by z sees it divided by z, as ui's Context.Size returns it.
 func (w *Window) ContentSize() (width, height int) {
 	b := w.ContentBounds()
 	return b.Width, b.Height
