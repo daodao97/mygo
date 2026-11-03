@@ -3081,9 +3081,11 @@ either.
     edits and gives tokens per line; the default tokenizes lines from the
     state the line above ended in (`lexer.go`, `lexers.go`), keeping the
     states, and after an edit goes on below it only until a line starts
-    as it did before. Optional interfaces give a parser's structure to
-    Select Larger, folding, brackets and indentation, so that tree-sitter
-    can plug in as a `Language.Highlighter` without the editor changing.
+    as it did before. A patch's texts start each hunk in state 0, at
+    lines the buffer moves with its edits (`setRestarts`). Optional
+    interfaces give a parser's structure to Select Larger, folding,
+    brackets and indentation, so that tree-sitter can plug in as a
+    `Language.Highlighter` without the editor changing.
     Brackets are matched by scanning lines a batch at a time
     (`rope.Text.EachLine`), skipping strings and comments by their tokens,
     and only lines holding brackets are tokenized for it.

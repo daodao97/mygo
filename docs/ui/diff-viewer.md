@@ -246,6 +246,11 @@ and `diff -u` print them, with renames, modes and new and deleted files;
 `FilePatch.Apply` applies one to the old file's text. `SetPatch` shows a
 file's patch without the files, as a pull request's diff arrives: its
 hunks' lines, numbered as in the files, each hunk under its header.
+Each hunk is highlighted on its own, from the start of its first line,
+as `git diff` colors it, so a comment or a string that the hunk before
+ends in doesn't go on into it. A language's own `Highlighter`
+([Highlighters](code-editor.md#highlighters)) sees the hunks' lines as
+one text.
 
 ```go
 files, err := editor.ParsePatch(output) // of git diff

@@ -266,7 +266,10 @@ A language can instead bring a highlighter of its own, as one of a parser
 such as tree-sitter: `Language.Highlighter` makes the `Highlighter` of each
 buffer of the language, and the editor uses it in place of the tokenizer.
 The tokenizer itself is one (`NewTokenHighlighter`), so a highlighter
-plugs in without the editor changing.
+plugs in without the editor changing. The text of a patch's side
+(`DiffState.SetPatch`) is its hunks' lines one after another: the
+tokenizer starts each hunk in state 0, while a highlighter of its own
+sees one text, and highlights it as it sees fit.
 
 ```go
 type Highlighter interface {
