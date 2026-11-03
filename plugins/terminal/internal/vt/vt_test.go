@@ -121,6 +121,35 @@ func TestWideAndGraphemes(t *testing.T) {
 	}
 }
 
+// The rows of a shell's prompt (OSC 133): where it starts, and those its
+// input wraps onto, which the terminal and a render state tell alike.
+func TestRowPrompt(t *testing.T) {
+	loadLib(t)
+	term, _ := NewTerminal(10, 5, Effects{})
+	defer term.Free()
+	term.Write([]byte("out\r\n\x1b]133;A\a$ \x1b]133;B\aecho hello world"))
+	want := []struct {
+		prompt RowPrompt
+		wrap   bool
+	}{{NoPrompt, false}, {PromptStart, true}, {PromptContinuation, false}, {NoPrompt, false}}
+	r, _ := NewRenderState()
+	defer r.Free()
+	r.Update(term)
+	r.Rows()
+	for y, w := range want {
+		r.NextRow()
+		if p, wrap := term.Row(y); p != w.prompt || wrap != w.wrap {
+			t.Errorf("row %d is %d, wrapping %v; want %d, %v", y, p, wrap, w.prompt, w.wrap)
+		}
+		if p := r.RowPrompt(); p != w.prompt {
+			t.Errorf("render state's row %d is %d, want %d", y, p, w.prompt)
+		}
+	}
+	if p, _ := term.Row(99); p != NoPrompt {
+		t.Errorf("row 99 is %d", p)
+	}
+}
+
 func TestEncoders(t *testing.T) {
 	loadLib(t)
 	term, _ := NewTerminal(80, 24, Effects{})

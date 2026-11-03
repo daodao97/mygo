@@ -10,7 +10,8 @@ import (
 // reads.
 
 const (
-	rowDataWrap = 1
+	rowDataWrap           = 1
+	rowDataSemanticPrompt = 6
 
 	dataKittyKeyboardFlags = 8
 	dataScrollbackRows     = 15

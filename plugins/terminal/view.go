@@ -30,7 +30,9 @@ import (
 // and zooms with Control held (Command on macOS; Options.OnZoom). Hold
 // Shift to select while a program takes the mouse, and Command (Control
 // elsewhere) to underline a link and open it on click: a hyperlink (OSC 8),
-// a URL printed as text, or a file path with Options.OpenLink.
+// a URL printed as text, or a file path with Options.OpenLink. Alt+click
+// (Option+click on macOS) on the input of a shell's prompt moves the
+// shell's cursor there, when the shell marks its prompt (OSC 133).
 func View(c *ui.Context, t *Terminal) ui.Element {
 	v := t.viewOf(c)
 	// A terminal's grid is left to right in a right-to-left interface too.
@@ -1065,6 +1067,9 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 		}
 		if ev.Button != 0 {
 			return false // the context menu
+		}
+		if ev.Mods&ui.Alt != 0 && v.clickToMove(col, row) {
+			return true
 		}
 		ref, ok := t.term.CellAt(col, row)
 		if !ok {

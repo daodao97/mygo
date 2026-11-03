@@ -74,10 +74,25 @@ The terminal does what terminal apps do:
 
 - **Selecting** with the pointer works as in Ghostty: a drag selects
   cells, a double click words and a triple click lines, and dragging past
-  the top or the bottom scrolls. Option (Alt elsewhere) drags a rectangle.
+  the top or the bottom scrolls. Option (Alt elsewhere) drags a rectangle
+  (from off a shell's command, where Option+click moves the cursor).
   Shift-click extends an existing selection from its original anchor;
   subsequent Shift-clicks can extend or shrink it, including across lines.
   While a program takes the mouse, as editors do, Shift selects.
+- **Moving the cursor**: Option+click (Alt+click elsewhere) on the
+  command being typed at a shell's prompt moves the shell's cursor to the
+  clicked cell, as in Ghostty and kitty, even on a command that wraps over
+  rows: the terminal sends the Left or Right arrows that take the cursor
+  there (in the application's mode, `ESC O`, when the shell set DECCKM).
+  A click past the end of the command moves to its end and no further, so
+  that a Right arrow does not accept a suggestion (zsh-autosuggestions,
+  fish). It takes a shell that marks its prompt with OSC 133 (shell
+  integration, as Ghostty's, kitty's or the shell's own). Without it, off
+  the command, on a full-screen program's screen and while the view shows
+  the scrollback, Option+click and Option drags select as before; on the
+  command, the click is the cursor's, so a rectangle starts off it. A
+  `Mirror` marks the prompt's rows for the other terminal too, where a
+  click works the same.
 - **The pointer** is Ghostty's: the I-beam over a shell, the arrow while a
   program takes the mouse (the I-beam again while Shift is held, as Shift
   selects then), and the shape a program asks for with OSC 22 (`pointer`,
@@ -571,8 +586,9 @@ before to what the server's shows now. The window's terminal reads them from
 its `Conn` as if a program wrote them, and shows the server's screen and
 scrollback cell for cell, with its cursor and the modes that change what it
 sends (the cursor keys', the keyboard protocols', the mouse's, bracketed
-paste) and the colors programs set (OSC 4, 10, 11, 12), while it still selects, copies, opens links and composes as any
-terminal does. It never lays out a program's output itself, so it cannot
+paste), the colors programs set (OSC 4, 10, 11, 12) and the rows of a
+shell's prompt (OSC 133), while it still selects, copies, opens links,
+composes and moves the shell's cursor on Option+click as any terminal does. It never lays out a program's output itself, so it cannot
 come to show something else: a window fed the program's output from a
 snapshot of the server's screen can, as programs that redraw by moving the
 cursor relative to where it is show, as agents' interfaces do.
