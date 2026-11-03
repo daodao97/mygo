@@ -1,6 +1,9 @@
 package ui
 
-import "runtime"
+import (
+	"runtime"
+	"time"
+)
 
 // Theme holds the colors and metrics widgets use. Change a copy of
 // LightTheme or DarkTheme and set it with Context.SetTheme.
@@ -63,6 +66,12 @@ type Theme struct {
 	// FontSize is the size of text, Font its family ("" is the system's).
 	FontSize float32
 	Font     string
+	// TooltipDelay is how long the pointer rests on an element before its
+	// tooltip shows (Tooltip, TooltipBase): 0 is 0.6 seconds, and a
+	// negative delay shows it at once. Within two thirds of it after
+	// another tip goes, as the pointer moves along a toolbar, the next one
+	// shows at once: 0.4 seconds by default.
+	TooltipDelay time.Duration
 }
 
 // Space returns n units of the theme's Spacing, to size elements of your
@@ -107,6 +116,20 @@ func (t *Theme) scrollbarWidth() float32 {
 		return 6
 	}
 	return t.ScrollbarWidth
+}
+
+// tooltipDelay returns how long the pointer rests on an element before its
+// tip shows (TooltipDelay), and how soon after a tip goes the next one
+// shows at once.
+func (t *Theme) tooltipDelay() (delay, warm time.Duration) {
+	switch d := t.TooltipDelay; {
+	case d == 0:
+		return tooltipDelay, tooltipWarm
+	case d < 0:
+		return 0, 0
+	default:
+		return d, d * 2 / 3
+	}
 }
 
 // Rem returns n times the theme's FontSize, as CSS's rem, to size elements

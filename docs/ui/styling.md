@@ -173,6 +173,10 @@ rather keep them dark sets both:
 t.Inverse, t.InverseText = ui.Hex("#3f3f46"), ui.Hex("#fafafa")
 ```
 
+`TooltipDelay` is how long the pointer rests on an element before its
+tooltip shows, 0.6 seconds when left zero (see
+[Tooltip](tooltip.md#the-delay)).
+
 In a window that is not the one the user's input goes to, the widgets
 fade their accent to gray, as AppKit fades an inactive window's (see
 [Active and inactive windows](windows.md#active-and-inactive-windows)):

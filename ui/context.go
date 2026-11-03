@@ -635,8 +635,11 @@ type state struct {
 	// pointer and the keyboard (IgnoreInput).
 	ignoreInput bool
 	cursor      Cursor
-	// tip marks an element with a tooltip (TooltipBase).
-	tip bool
+	// tip marks an element with a tooltip (TooltipBase), which shows once
+	// the pointer has rested on it for tipDelay, or at once within tipWarm
+	// of another going: its theme's TooltipDelay.
+	tip               bool
+	tipDelay, tipWarm time.Duration
 	// effectLayer is what the element and its children render into for
 	// its Effect, kept from frame to frame.
 	effectLayer *Canvas

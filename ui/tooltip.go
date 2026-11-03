@@ -8,7 +8,8 @@ import (
 const (
 	// tooltipDelay is how long the pointer rests on an element before its
 	// tip shows, and tooltipWarm how soon after a tip goes another shows at
-	// once, as the pointer moves along a toolbar: Base UI's.
+	// once, as the pointer moves along a toolbar: Base UI's, which a
+	// theme's TooltipDelay changes.
 	tooltipDelay = 600 * time.Millisecond
 	tooltipWarm  = 400 * time.Millisecond
 )
@@ -37,7 +38,8 @@ type tooltips struct {
 // builds its content. It shows once the pointer has rested on anchor for
 // 0.6 seconds, at once as anchor gets the keyboard focus from the
 // keyboard, and at once too within 0.4 seconds of another tip going, as
-// the pointer moves along a toolbar. It goes as the pointer leaves anchor
+// the pointer moves along a toolbar; the theme's TooltipDelay changes
+// both. It goes as the pointer leaves anchor
 // or presses it, and with Escape, until the pointer comes back or the
 // focus does. Over elements inside one another, the innermost one's tip
 // shows; one shows at a time.
@@ -65,6 +67,9 @@ func coreTooltipBase(c *context, anchor *node, fn func(tip *node)) *node {
 func tooltipBase(c *context, anchor *node, fn func(tip *node)) (*node, bool) {
 	anchor.flags |= flagHover
 	anchor.tip = true
+	// The theme the anchor builds with sets how long the pointer rests on
+	// it, which showTooltip reads from its state.
+	anchor.st.tipDelay, anchor.st.tipWarm = c.theme.tooltipDelay()
 	rt := c.rt
 	// A press or a click on the anchor, by the pointer, the keys or
 	// assistive technology, hides its tip, as Base UI's closeOnClick: a
@@ -166,8 +171,9 @@ func (rt *engine) showTooltip(c *context) uint64 {
 	case focus != 0 && (hover == 0 || !t.focusSince.Before(t.hoverSince)):
 		t.shown, t.byFocus = focus, true
 	case hover != 0:
-		warm := !t.lastShown.IsZero() && t.hoverSince.Sub(t.lastShown) <= tooltipWarm
-		if wait := tooltipDelay - now.Sub(t.hoverSince); wait > 0 && !warm {
+		s := rt.states[hover]
+		warm := !t.lastShown.IsZero() && t.hoverSince.Sub(t.lastShown) <= s.tipWarm
+		if wait := s.tipDelay - now.Sub(t.hoverSince); wait > 0 && !warm {
 			rt.scheduleAt(now.Add(wait))
 			break
 		}
