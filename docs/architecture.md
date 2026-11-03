@@ -3803,7 +3803,8 @@ either.
   - *Decorations.* `System.Decorate` places underlines and strikethroughs
     as the platform does: Core Text's own geometry for AppKit, snapped in
     points, an underline as low and thick as the fonts under it want,
-    skipping the ink of descenders, a strikethrough through the middle of
+    skipping the ink of descenders (but a link's, on hover:
+    `SolidUnderline`), a strikethrough through the middle of
     the x-height, from the text's start to its width rounded up to a
     point; Direct2D's, an underline at the font's offset rounded to whole
     pixels from the snapped baseline, a strikethrough from the baseline as

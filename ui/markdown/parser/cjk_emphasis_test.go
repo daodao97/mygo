@@ -12,6 +12,12 @@ func TestCJKEmphasis(t *testing.T) {
 		"~~删除。~~保留":       "<p><del>删除。</del>保留</p>\n",
 		"snake_case_name": "<p>snake_case_name</p>\n",
 		"a **b** c":       "<p>a <strong>b</strong> c</p>\n",
+		// _ and a single ~ keep CommonMark's rule next to CJK text.
+		"中文__粗体。__后文":      "<p>中文__粗体。__后文</p>\n",
+		"第1章~“附录”和“序”~第3章": "<p>第1章~“附录”和“序”~第3章</p>\n",
+		// Latin text with curly quotes reads as before.
+		"He said “*hello*” to me.":       "<p>He said “<em>hello</em>” to me.</p>\n",
+		"**Alice**’s and **Bob**’s toys": "<p><strong>Alice</strong>’s and <strong>Bob</strong>’s toys</p>\n",
 	} {
 		if got := render(src, Default); got != want {
 			t.Errorf("%q: got %q, want %q", src, got, want)

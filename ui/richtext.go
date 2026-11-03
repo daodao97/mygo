@@ -22,9 +22,7 @@ type Span struct {
 	Underline       bool
 	WavyUnderline   bool
 	DottedUnderline bool
-	// solid draws Underline through descenders, as a link's hover.
-	solid         bool
-	Strikethrough bool
+	Strikethrough   bool
 	// DecorationColor and DecorationThickness are those of the span's
 	// underline and strikethrough, as for Element.DecorationColor.
 	DecorationColor     Color
@@ -53,6 +51,9 @@ type Span struct {
 	// chemical formulas. The line makes room for it, and its underline
 	// and strikethrough go with it.
 	BaselineShift float32
+
+	// solid draws Underline through descenders, as a link's hover.
+	solid bool
 }
 
 // RichText creates a text whose spans differ in style, over the style of

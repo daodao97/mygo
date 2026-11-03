@@ -313,10 +313,11 @@ other parsers, as cmark does, and depends on nothing outside the
 standard library.
 
 One rule is relaxed for Chinese, Japanese and Korean, which put no space
-around emphasis: next to a CJK character or full-width punctuation, `*`
-and `~` open and close even where punctuation would stop them in
-CommonMark, so `**结论。**后文` is bold. `_` keeps CommonMark's rule. No
-example of the spec has CJK text there, so all of them still pass.
+around emphasis: next to a CJK character, full-width punctuation or a
+curly quote, `*` and `~~` open and close even where punctuation would
+stop them in CommonMark, so `**结论。**后文` is bold. `_` and a single `~`
+keep CommonMark's rule. No example of the spec has CJK text there, so
+all of them still pass.
 
 ## Performance
 
