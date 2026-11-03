@@ -438,7 +438,9 @@ term, err := terminal.New(terminal.Options{Font: terminal.Font{
 - `Features` turn OpenType features on and off: `"ss01"` or `"+ss01"` on,
   `"calt=0"` or `"-calt"` off, `"cv05=2"` an alternate. Coding fonts make
   most of their ligatures with `calt`, the others with `liga`; a ligature
-  spans the cells of its characters.
+  spans the cells of its characters. On macOS, kerning is off unless the
+  list names `kern`, so that each character keeps its place in its cells;
+  `"+kern"` keeps the font's.
 - `LineHeight` makes rows taller or shorter than the font's line height,
   with the text centered in them; box drawing still joins.
 - `Thicken` draws text with a thicker stroke, with Core Text's font

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image/png"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1325,11 +1326,75 @@ func TestFont(t *testing.T) {
 		t.Errorf("features are %q", got)
 	}
 	k := (&Font{Weight: 300, Features: []string{"-calt"}}).key(1)
-	if f := k.variant(1); f.Weight != 700 || f.Features != "calt=0" {
+	features := "calt=0"
+	if runtime.GOOS == "darwin" {
+		features = "kern=0,calt=0"
+	}
+	if f := k.variant(1); f.Weight != 700 || f.Features != features {
 		t.Errorf("the bold of weight 300 is %+v", f)
+	}
+	// Kerning is off unless the features name it, on macOS.
+	for in, want := range map[string]string{"": "kern=0", "calt=0": "kern=0,calt=0", "kern": "kern", "kern=1": "kern=1", " kern =0": " kern =0"} {
+		if got := unkerned(in); got != want {
+			t.Errorf("unkerned(%q) = %q, want %q", in, got, want)
+		}
 	}
 	if f := (&Font{Weight: 800}).key(1).variant(3); f.Weight != 900 || !f.Italic {
 		t.Errorf("the bold italic of weight 800 is %+v", f)
+	}
+}
+
+// TestCJKPunctuationKeepsItsPlace checks that a wide character sits at
+// the same place in its cells wherever it is in a run. Core Text shrank
+// the CJK punctuation of the system's monospaced font that ends a run, as
+// a 。 being typed does, to half its width, and the first of two in a
+// row: centered in its two cells, it jumped when text followed. Each
+// character is checked against itself, so that it holds whatever fonts
+// the system falls back to.
+func TestCJKPunctuationKeepsItsPlace(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Core Text's kerning")
+	}
+	loadLib(t)
+	type place struct{ off, adv float32 }
+	for _, size := range []float32{12, 13} {
+		seen := map[rune]place{}
+		for _, in := range []string{"清理。", "清理。地方", "清理。\x1b[31m地方", "清理。。地", "日本語。", "日本語。地"} {
+			term, err := New(Options{Conn: newPipe(), Font: Font{Size: size}, NoBlink: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill() }, 400, 120)
+			term.Feed([]byte(in))
+			tt.Frame()
+			term.mu.Lock()
+			v := term.v
+			cw := float32(v.cellW) / v.scale
+			var got []place
+			line := v.lines[0]
+			for _, r := range line.runs {
+				for i, g := range r.glyphs {
+					if slices.Contains(line.wide, r.cols[i]) {
+						got = append(got, place{g.X - float32(r.cols[i])*cw, g.Advance})
+					}
+				}
+			}
+			term.mu.Unlock()
+			term.Close()
+			chars := []rune(strings.ReplaceAll(in, "\x1b[31m", ""))
+			if len(got) != len(chars) {
+				t.Errorf("size %v, %q: %d wide glyphs, want %d", size, in, len(got), len(chars))
+				continue
+			}
+			for i, r := range chars {
+				p, ok := seen[r]
+				if !ok {
+					seen[r] = got[i]
+				} else if math.Abs(float64(got[i].off-p.off)) > 0.01 || math.Abs(float64(got[i].adv-p.adv)) > 0.01 {
+					t.Errorf("size %v, %q: %c %d at offset %v, advance %v, elsewhere %v, %v", size, in, r, i, got[i].off, got[i].adv, p.off, p.adv)
+				}
+			}
+		}
 	}
 }
 
