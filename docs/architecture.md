@@ -4319,7 +4319,20 @@ either.
     draws the batches scissored to each. GTK keeps the GtkGLArea's framebuffer from render to
     render, but makes its buffers anew, holding nothing defined, whenever
     it allocates the area, at the same size too: a `SurfaceResize` has the
-    next frame draw whole (`Invalidate`). A canvas's WebGL 2 context keeps
+    next frame draw whole (`Invalidate`). Once the area has a context, GTK
+    composites the whole window with OpenGL and tells EGL what each paint
+    changed (`eglSwapBuffersWithDamageEXT`) in the window's coordinates
+    unscaled, where EGL takes the buffer's pixels from the bottom left: at
+    a scale of 2, Mesa told a compositor that a change at the top of the
+    window was in its lower half, at half its size. A compositor that
+    redraws only what it is told changed (Mesa's llvmpipe tells it whole
+    frames changed, a GPU's buffers what GTK said) then showed title
+    buttons the pointer hovered flickering or gone, and a shadow missing on
+    some sides (#1071). At a scale of 2 or more on Wayland, the toplevel's
+    `draw` signal adds what GTK repaints (cairo's clip) as
+    `wl_surface.damage`, in the surface's coordinates, to the commit of the
+    swap that follows (`damageGLPaint`); `TestGLDamageWayland` checks it
+    under `weston --scale=2`. A canvas's WebGL 2 context keeps
     its drawing buffer (`preserveDrawingBuffer`), which browsers then copy
     as they composite each frame drawn; in Chrome on an M5 a caret blinking
     still took a quarter of the GPU's time it took drawn whole, and a frame

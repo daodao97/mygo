@@ -64,6 +64,9 @@ type Backend struct {
 	// announceCSD tells a Wayland compositor that a window decorates
 	// itself, so that it draws no title bar (gdk_wayland_window_announce_csd).
 	announceCSD func(window ptr)
+	// waylandSurface returns a GdkWindow's wl_surface on Wayland
+	// (gdk_wayland_window_get_wl_surface; see damageGLPaint).
+	waylandSurface func(window ptr) ptr
 
 	// What the launcher entry shows (Window.SetProgressBar, badges).
 	launcher struct {
@@ -130,6 +133,7 @@ func (b *Backend) Init(h platform.AppHandler, opts platform.AppOptions) error {
 		bind(libGDK, &prefersSSD, "gdk_wayland_display_prefers_ssd") && prefersSSD(gdkDisplayGetDefault())
 	if onWayland {
 		bind(libGDK, &b.announceCSD, "gdk_wayland_window_announce_csd")
+		bind(libGDK, &b.waylandSurface, "gdk_wayland_window_get_wl_surface")
 	}
 	initCallbacks()
 	return nil
