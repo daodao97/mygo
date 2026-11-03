@@ -868,6 +868,14 @@ type NotificationOptions struct {
 	Badge *int
 	// Data survives notification delivery and a cold launch on iOS.
 	Data map[string]string
+	// Image is an encoded image, PNG or JPEG, that the notification shows
+	// with its text, such as the cover of the track that started playing:
+	// an attachment on macOS, whose thumbnail grows as the notification
+	// expands, the notification's image on Linux, and the balloon's large
+	// icon on Windows. An image the system cannot decode leaves the
+	// notification without one. MyGo does not fetch remote images.
+	// NewNotification copies it.
+	Image []byte
 	// Sender describes the sender of an incoming direct message. macOS 12+
 	// can show its avatar with the app's small icon when the signed app has
 	// the Communication Notifications capability. Otherwise, or if preparing
@@ -945,6 +953,10 @@ func NewNotification(opts NotificationOptions) *Notification {
 	if opts.Badge != nil {
 		n := *opts.Badge
 		opts.Badge = &n
+	}
+	opts.Image = slices.Clone(opts.Image)
+	if len(opts.Image) > 0 {
+		linkNotificationImages()
 	}
 	if opts.Sender != nil {
 		sender := *opts.Sender
@@ -1026,7 +1038,10 @@ func (n *Notification) show(ctx context.Context, after time.Duration) error {
 			Body:         n.opts.Body,
 			Silent:       n.opts.Silent,
 			Group:        n.opts.Group,
-			DelaySeconds: after.Seconds(), Badge: n.opts.Badge, Data: maps.Clone(n.opts.Data),
+			Image:        n.opts.Image,
+			DelaySeconds: after.Seconds(),
+			Badge:        n.opts.Badge,
+			Data:         maps.Clone(n.opts.Data),
 		}
 		if s := n.opts.Sender; s != nil {
 			note.Sender = &platform.NotificationSender{ID: s.ID, Name: s.Name, Avatar: s.Avatar}

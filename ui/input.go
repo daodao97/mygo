@@ -394,6 +394,16 @@ func (rt *engine) pointerMove(x, y float32) {
 	}
 }
 
+// pointer returns where the pointer is in the window as the element sees
+// it: where it let go of the element while the release waits
+// (releaseLater), else where it is.
+func (s *state) pointer(rt *engine) (x, y float32) {
+	if r := &s.releaseLater; r.due {
+		return r.x, r.y
+	}
+	return rt.pointerX, rt.pointerY
+}
+
 const interactive = flagClickable | flagFocusable | flagEditable | flagSelectable | flagDragWindow | flagDraggable | flagTrackPointer
 
 func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks int) {
@@ -402,6 +412,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 	chain := rt.hitChain(x, y)
 	rt.setHover(chain)
 	rt.pressDragger = 0
+	rt.pressEnded = nil
 	if len(chain) > 0 {
 		rt.downs = append(rt.downs, chain[0])
 	} else {
@@ -575,13 +586,19 @@ func (rt *engine) pointerUp(button, clicks int) {
 		rt.selection.dragging = false
 	}
 	rt.pressed = nil
-	s.pressed = false
+	r := &s.releaseLater
+	r.due, r.x, r.y = true, rt.pointerX, rt.pointerY
 	// A press that moved ends a drag; a click does not.
-	s.released = s.drag.n > 1
+	r.released = s.drag.n > 1
 	v := s.drag.velocities(rt.now())
 	s.releaseVX, s.releaseVY, s.releaseWX, s.releaseWY = v[0], v[1], v[2], v[3]
-	if s.editor != nil {
-		s.editor.release()
+	if ed := s.editor; ed != nil {
+		if ed.dragging {
+			// Its selection ends where the pointer let go, as the text
+			// selection's does, before the keys that come after.
+			ed.drag(s.local(rt.pointerX, rt.pointerY))
+		}
+		ed.release()
 	}
 	inside := rt.contains(s, Rect{s.x, s.y, s.w, s.h}, rt.pointerX, rt.pointerY)
 	if inside && s.flags&flagDisabled == 0 {
@@ -590,14 +607,52 @@ func (rt *engine) pointerUp(button, clicks int) {
 			if s.dragRec.dragged(rt, s) {
 				break // it moved the element (Draggable): no click
 			}
-			s.clicks++
-			s.clickMods = s.pressMods
+			s.click(s.pressMods)
 		case 1:
-			s.rightClicks++
+			r.rightClicks++
 		}
+	}
+	// Moves no pass read yet (Dragged, or the pointer while Pressed) come
+	// with the element still pressed, and the pass that reads them applies
+	// the release as it ends (forgetInput); with none waiting, it applies
+	// now.
+	if s.dragX == 0 && s.dragY == 0 {
+		rt.applyRelease(s)
+	} else {
+		rt.pressEnded = s
 	}
 	rt.setHover(rt.hitChain(rt.pointerX, rt.pointerY))
 	rt.requestFrame()
+}
+
+// applyRelease gives s what the release of its press does, as frames see
+// it. A press that came since the release keeps it pressed.
+func (rt *engine) applyRelease(s *state) {
+	r := &s.releaseLater
+	s.pressed = rt.pressed == s
+	s.released = r.released
+	s.clicks += r.clicks
+	s.rightClicks += r.rightClicks
+	if r.clicks > 0 {
+		s.clickMods = r.clickMods
+	}
+	r.due, r.clicks, r.rightClicks = false, 0, 0
+	if rt.pressEnded == s {
+		rt.pressEnded = nil
+	}
+}
+
+// click clicks s with mods held, for the next pass to see: after the
+// release of its press while that waits (releaseLater), so that the clicks
+// come in order, with the last one's modifiers.
+func (s *state) click(mods Modifiers) {
+	if r := &s.releaseLater; r.due {
+		r.clicks++
+		r.clickMods = mods
+		return
+	}
+	s.clicks++
+	s.clickMods = mods
 }
 
 func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool) {
@@ -895,8 +950,7 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, repeat bool
 		s := rt.states[rt.focused]
 		window := s != nil && key == KeyEnter && s.flags&flagToggle != 0
 		if s != nil && !rt.claimedBy(k, window) && s.flags&flagClickable != 0 && s.flags&flagDisabled == 0 {
-			s.clicks++
-			s.clickMods = 0
+			s.click(0)
 			rt.focusVisible = true
 			rt.requestFrame()
 			return false
@@ -1498,7 +1552,8 @@ func (e *node) Pressed() bool {
 	e.flags |= flagClickable | flagHover
 	s := e.st
 	rt := e.c.rt
-	if !s.pressed || e.disabled() || !rt.contains(s, Rect{s.x, s.y, s.w, s.h}, rt.pointerX, rt.pointerY) {
+	x, y := s.pointer(rt)
+	if !s.pressed || e.disabled() || !rt.contains(s, Rect{s.x, s.y, s.w, s.h}, x, y) {
 		return false
 	}
 	if s.pressPending {
@@ -1596,7 +1651,8 @@ func (e *node) Shortcut(mods Modifiers, key Key) bool {
 
 // PointerPosition returns the pointer's position relative to the
 // element's box and whether it is over the element. Elements asking for it
-// get a frame whenever the pointer moves over them.
+// get a frame whenever the pointer moves over them. The build that reads
+// the last moves of a press on the element sees where the pointer let go.
 func (e *node) PointerPosition() (x, y float32, over bool) {
 	if !e.hasState() {
 		return 0, 0, false
@@ -1604,12 +1660,15 @@ func (e *node) PointerPosition() (x, y float32, over bool) {
 	e.flags |= flagTrackPointer
 	rt := e.c.rt
 	s := e.st
-	x, y = s.local(rt.pointerX, rt.pointerY)
-	return x, y, rt.pointerIn && rt.contains(s, Rect{s.x, s.y, s.w, s.h}, rt.pointerX, rt.pointerY)
+	wx, wy := s.pointer(rt)
+	x, y = s.local(wx, wy)
+	return x, y, rt.pointerIn && rt.contains(s, Rect{s.x, s.y, s.w, s.h}, wx, wy)
 }
 
 // Dragged reports how far the pointer moved in the element's local axes
-// since the last frame while pressing it.
+// since the last frame while pressing it. The moves just before the
+// pointer let go come while the element is still pressed, and the press
+// ends in the build after.
 func (e *node) Dragged() (dx, dy float32, ok bool) {
 	if !e.hasState() {
 		return 0, 0, false
@@ -1835,6 +1894,22 @@ func (rt *engine) scrollbarPress(chain []uint64, x, y float32) bool {
 func (rt *engine) windowFocus() bool {
 	rt.focusRead = true
 	return rt.windowFocused
+}
+
+// windowActive reports whether the window is drawn as active, the window
+// the user's input goes to (Context.WindowActive), noting that the frame
+// depends on it.
+func (rt *engine) windowActive() bool {
+	rt.activeRead = true
+	return rt.host.active()
+}
+
+// activeChanged draws a frame after the window became active or ceased to
+// be, when the last frame read it, as focusChanged does.
+func (rt *engine) activeChanged() {
+	if rt.activeRead {
+		rt.requestFrame()
+	}
 }
 
 // focusChanged draws a frame after the window gained or lost the keyboard

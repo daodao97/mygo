@@ -95,9 +95,16 @@ as long as it would show on a connected display. They override `X`, `Y`,
 stay the defaults of the first launch. Give each kind of window its own key:
 `"main"`, `"preferences"`.
 
+On Windows, a state also keeps the window's bounds in the screen's pixels
+(`PixelX`, `PixelY`, `PixelWidth`, `PixelHeight`): where displays have
+different scales, its position in DIPs changes with the scales, and
+earlier versions' cannot tell the displays apart.
+
 An app that keeps its data elsewhere, such as in its own database, keeps
 the states there with a `WindowStateStore`, set before the first window
-with a `StateKey`, and no `window-state.json` is written:
+with a `StateKey`, and no `window-state.json` is written. It keeps every
+field of a `WindowState`, as JSON does: on Windows, a window whose state
+lost its pixels is centered when the displays have different scales.
 
 ```go
 type windowStates struct{ db *sql.DB }
@@ -223,7 +230,9 @@ Other properties:
   another app is in front (macOS), so that the clear Liquid Glass
   (`VibrancyGlassClear`) of a panel floating over it stays clear. It uses a
   private AppKit call, which a later macOS may drop: apps for the Mac App
-  Store should leave it off.
+  Store should leave it off. Its material stays active then as well, and
+  its pages and native UI too, on every platform (see
+  [inactive windows](#active-and-inactive-windows)).
 - `SetWindowButtonsTheme(mygo.ThemeDark)` draws the window buttons of a
   hidden title bar for a dark background in a light app, as over a dark
   view at the top of the page, and `ThemeLight` for a light one;
@@ -242,6 +251,29 @@ Other properties:
 - `FlashFrame(true)` asks for attention: the taskbar button flashes
   (Windows), the window is marked urgent (Linux) or the Dock icon bounces
   (macOS).
+
+## Active and inactive windows
+
+A window is drawn as active while the user's input goes to it: while it,
+or one of its flyouts, has the keyboard. Native apps draw the others apart
+so that users tell at a glance which window has it, and MyGo's do too:
+
+- The material (`Vibrancy`) of a window fades to an opaque gray on macOS
+  while it is inactive, as AppKit's sidebars do, and Windows 11 draws
+  its Mica or Acrylic as a solid fill. Panels and flyouts keep theirs
+  active, floating over whatever app is in front, as does a window
+  `SetActiveAppearance(true)` keeps active.
+- Pages get the `data-mygo-window-inactive` attribute on `<html>` while
+  their window is inactive, for CSS, and `windowActive()` of
+  `mygo-runtime` (see [inactive windows](frontend.md#inactive-windows)).
+- Native UI reads `c.WindowActive()`, and its built-in widgets fade their
+  accent to gray (see [native UI](ui/windows.md#active-and-inactive-windows)).
+
+A window's focusable flyout taking the keyboard leaves the window active:
+on Windows its title bar and Mica stay active too. A window that never had
+the keyboard counts as active, so that the first frame of a window about
+to take it is drawn active; one shown with `ShowInactive` is not. Panels,
+and flyouts without a parent, are always active.
 
 ## Child and modal windows
 

@@ -32,8 +32,10 @@ type NativeWebView = surface.WebView
 // menus, dialogs, tooltips and toasts. The page takes the pointer where
 // it shows and nothing painted over it takes it, and the keyboard once
 // clicked, focused (mygo.WebView.Focus) or tabbed into: Tab stops at the
-// element. Its background and border paint around the page, which its
-// opacity fades, and assistive technology finds the page inside it.
+// element. The keys the page leaves unhandled come to the native UI as if
+// the element had the focus, which the shortcuts around it and the
+// window's see. Its background and border paint around the page, which
+// its opacity fades, and assistive technology finds the page inside it.
 func coreWebView(c *context, v NativeWebView) *node {
 	e := c.newElement(kindBox)
 	e.webView = v
@@ -147,9 +149,9 @@ func (rt *engine) placeWebViews() {
 }
 
 // webViewPress handles a press that went to the web view at x, y: the
-// elements under it hover, and the focus leaves the content, as the
-// page has the keyboard, but nothing is pressed; popovers see a press
-// outside them (PressedOutside).
+// elements under it hover, and the focus goes to the web view's element,
+// as its page has the keyboard, but nothing is pressed; popovers see a
+// press outside them (PressedOutside).
 func (rt *engine) webViewPress(x, y float32, button int) {
 	chain := rt.hitChain(x, y)
 	rt.pointerX, rt.pointerY, rt.pointerIn = x, y, true
@@ -159,11 +161,50 @@ func (rt *engine) webViewPress(x, y float32, button int) {
 	} else {
 		rt.downs = append(rt.downs, 0)
 	}
-	if button == 0 && rt.focused != 0 {
-		rt.focused = 0
-		rt.focusVisible = false
+	if button == 0 {
+		var id uint64
+		for _, i := range chain {
+			if s := rt.states[i]; s != nil && s.webView != nil {
+				id = i
+				break
+			}
+		}
+		if rt.focused != id {
+			rt.focused = id
+			rt.focusVisible = false
+		}
 	}
 	rt.requestFrame()
+}
+
+// webViewKey handles a key pressed in the page of v that the page left
+// unhandled, as the platform tells (platform.WebViewKey): the content
+// takes it as if the element showing v had the focus, which it moves
+// there, without showing it, as the page has the keyboard. The shortcuts
+// of the elements around it and the window's see it; the modifiers the
+// content knows stay as they were, as it hears none let go of.
+func (rt *engine) webViewKey(v NativeWebView, mods Modifiers, key, physical Key, repeat bool) {
+	if key == KeyTab || key == KeyUnknown && physical == KeyUnknown {
+		return // the page's own, or no key
+	}
+	var id uint64
+	for _, i := range rt.focusOrder {
+		if s := rt.states[i]; s != nil && s.webView == v {
+			id = i
+			break
+		}
+	}
+	if id == 0 {
+		return // no element shows it now
+	}
+	rt.redraw = false
+	rt.input = true
+	if rt.focused != id {
+		rt.focused = id
+		rt.focusVisible = false
+	}
+	rt.keyDownPhysical(mods, key, physical, repeat)
+	rt.updateTextInput()
 }
 
 // webViewTabOut moves the focus on from the element showing v, whose page

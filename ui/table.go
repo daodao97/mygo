@@ -239,9 +239,9 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 				switch {
 				case !on && !at, box.FocusWithin():
 				case on && at:
-					box.Background(t.Accent).TextColor(t.AccentText).DrawOver(cursorBorder(table, t.AccentText))
+					box.Background(c.accent(t)).TextColor(t.AccentText).DrawOver(cursorBorder(table, t.AccentText))
 				case on:
-					box.Background(t.Accent).TextColor(t.AccentText)
+					box.Background(c.accent(t)).TextColor(t.AccentText)
 				case at:
 					box.DrawOver(cursorBorder(table, t.Accent))
 				}
@@ -637,6 +637,6 @@ func (e *node) Selected(on bool) *node {
 	}
 	t := e.theme()
 	e.checked = 2
-	e.Background(t.Accent).TextColor(t.AccentText)
+	e.Background(e.c.accent(t)).TextColor(t.AccentText)
 	return e
 }

@@ -116,13 +116,77 @@ takes the pointer: a dialog's backdrop or a select's keeps the pointer
 from the page while open, a popover keeps it only over its panel, and an
 element with `PassThrough` lets it through. Files dragged there drop on
 the page. A press on the page closes the popovers it is outside of
-(`PressedOutside`), and takes the keyboard from the native UI, which gets
-it back as the user clicks it. The page sets the cursor over it.
+(`PressedOutside`), and gives the page the keyboard: the native UI's focus
+goes to the web view's element, and the native UI gets the keyboard back
+as the user clicks it. The page sets the cursor over it.
 
 Tab stops at the web view among the native UI's controls: its page takes
 the keyboard at its first element, or its last with Shift+Tab, Tab moves
 through its elements, and past its last one goes on to the control after
 the web view. `Focus` gives the page the keyboard where it had it.
+
+## Keys the page leaves
+
+A mail app shows a message's HTML in a web view beside a list that the
+keyboard drives: J and K move through the messages, and Cmd+K (Ctrl+K on
+Windows and Linux) opens a command palette. The user clicks into the
+message to select text or follow a link, and the page has the keyboard,
+but J, K and Cmd+K keep working: the keys the page leaves unhandled go to
+the native UI as if the web view's element had the focus. The shortcuts
+of the elements around it (`Element.Shortcut`) and the window's
+(`c.Shortcut`) see them, the keys that scroll scroll the container around
+it, and Escape closes a dialog or a flyout of native UI. The keyboard
+stays with the page, which still selects, copies, types and follows its
+links.
+
+```go
+func (app *mail) view(c *ui.Context) {
+	if c.Shortcut(ui.Cmd, ui.KeyK) {
+		app.palette = true
+	}
+	reader := ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+		app.list(c)
+		ui.WebView(c, app.message).Grow(1) // an untrusted page
+	})
+	if reader.Shortcut(0, ui.KeyJ) {
+		app.next()
+	}
+	if reader.Shortcut(0, ui.KeyK) {
+		app.previous()
+	}
+}
+```
+
+The page keeps a key when it:
+
+- cancels it (`preventDefault` in a `keydown` handler);
+- types or edits with it in a text field, a textarea or editable content,
+  or an input method composes with it, or it types a character with
+  AltGr, as @ on a German keyboard, wherever the focus is;
+- acts with it: Enter or Space on a link or a button, the arrows on a
+  slider, Ctrl+C copying its selection, the arrows, Space and Page Down
+  scrolling it while it can scroll that way;
+- or it is Tab, which moves through the page and out of it, or a modifier
+  key on its own.
+
+The keys of untrusted pages and of the frames in a page come too, and a
+page cannot make up a key: the native UI gets only those the user
+pressed.
+
+- **macOS** and **Linux**: WebKit decides which keys the page handled,
+  and sends the others on to the web view's parent (AppKit's responder
+  chain, GTK's `key-press-event` once WebKit's web process answered),
+  where MyGo takes them. On Linux WebKitGTK keeps the arrow keys, and
+  the shortcuts of the menu items with a role, as Edit › Copy's, go on
+  to the menu.
+- **Windows**: WebView2 tells of no such key. A script in an isolated
+  world of each document, of the page and of its frames, sees the page's
+  keys after its handlers ran and tells MyGo of those it left, by the
+  rules above. The page's own scripts reach neither the script nor its
+  way to MyGo, and the script needs no bridge, so untrusted pages give
+  their keys too. A frame of another site, which WebView2 runs in a
+  process of its own, keeps its keys.
+- **Browsers** (`GOOS=js`) have no web views.
 
 Assistive technology finds the page inside the web view's element, where
 it is among the native UI: VoiceOver and Orca read and move through it as

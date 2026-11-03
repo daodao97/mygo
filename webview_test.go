@@ -365,3 +365,89 @@ func TestWebViewPress(t *testing.T) {
 		t.Errorf("a press on the page: web view %v, focused %v, popover open %v", pressed, fv.Focused, open)
 	}
 }
+
+// TestWebViewUnhandledKeys passes the keys a web view's page leaves
+// unhandled to the native UI, as if the web view's element had the focus:
+// the shortcuts of the elements around it and of the window see them,
+// those of other elements do not, and a native text input that had the
+// focus types none of them.
+func TestWebViewUnhandledKeys(t *testing.T) {
+	var v *WebView
+	var got []string
+	name := "ab"
+	w, _, s := contentWindow(t, func(c *ui.Context) {
+		note := func(ok bool, what string) {
+			if ok {
+				got = append(got, what)
+			}
+		}
+		note(c.Shortcut(ui.Cmd, ui.KeyK), "window Cmd+K")
+		note(c.Shortcut(0, ui.KeyEscape), "window Escape")
+		ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+			list := ui.Column(c).Width(100).Children(func() {
+				ui.TextInput(c, &name).Label("Name")
+			})
+			note(list.Shortcut(0, ui.KeyJ), "list J")
+			reader := ui.Column(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
+				if v != nil {
+					ui.WebView(c, v).Grow(1)
+				}
+			})
+			note(reader.Shortcut(0, ui.KeyK), "reader K")
+		})
+	})
+	v, err := w.NewWebView(WebViewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fv := s.WebViews()[0]
+	frame := func() {
+		w.Invalidate()
+		onMain(func() {})
+		onMain(func() { s.Frame() })
+	}
+	frame()
+	keys := func(press func()) []string {
+		t.Helper()
+		got = nil
+		onMain(press)
+		frame()
+		return got
+	}
+	if pressed := onMainValue(func() *fake.WebView { return s.Press(200, 100) }); pressed != fv {
+		t.Fatal("the press did not reach the page")
+	}
+	if g := keys(func() { fv.UnhandledKey(0, platform.KeyK) }); !slices.Equal(g, []string{"reader K"}) {
+		t.Errorf("K the page left: %q, want the shortcut of the element around the web view", g)
+	}
+	if g := keys(func() { fv.UnhandledKey(platform.Modifiers(ui.Cmd), platform.KeyK) }); !slices.Equal(g, []string{"window Cmd+K"}) {
+		t.Errorf("Cmd+K the page left: %q, want the window's shortcut", g)
+	}
+	if g := keys(func() { fv.UnhandledKey(0, platform.KeyJ) }); len(g) != 0 {
+		t.Errorf("J the page left: %q, want no shortcut of an element beside the web view", g)
+	}
+	if g := keys(func() { fv.UnhandledKey(0, platform.KeyTab) }); len(g) != 0 {
+		t.Errorf("Tab the page left: %q, want it the page's", g)
+	}
+
+	// The page took the keyboard without a press, as WebView.Focus gives
+	// it, while a native text input had the focus: the input takes none
+	// of the page's keys.
+	onMain(func() {
+		s.Press(50, 10)
+		s.Frame()
+	})
+	v.Focus()
+	if g := keys(func() { fv.UnhandledKey(0, platform.KeyBackspace) }); len(g) != 0 || name != "ab" {
+		t.Errorf("Backspace the page left: shortcuts %q, the native input holds %q", g, name)
+	}
+	if g := keys(func() { fv.UnhandledKey(0, platform.KeyEscape) }); !slices.Equal(g, []string{"window Escape"}) {
+		t.Errorf("Escape the page left: %q, want the window's shortcut", g)
+	}
+	// A web view the view no longer shows gives the content no key.
+	v.Destroy()
+	frame()
+	if g := keys(func() { fv.UnhandledKey(platform.Modifiers(ui.Cmd), platform.KeyK) }); len(g) != 0 {
+		t.Errorf("a key of a destroyed web view's page: %q", g)
+	}
+}

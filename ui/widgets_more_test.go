@@ -96,6 +96,13 @@ func TestSplit(t *testing.T) {
 	if size != 70 {
 		t.Errorf("dragged 20 DIPs right from over the first pane, it is %v wide", size)
 	}
+	// The release's own move moves it too.
+	tt.Press(73, y)
+	tt.Move(103, y)
+	tt.Release(133, y)
+	if size != 130 {
+		t.Errorf("let go 60 DIPs right, the first pane is %v wide", size)
+	}
 }
 
 func TestSplitVertical(t *testing.T) {

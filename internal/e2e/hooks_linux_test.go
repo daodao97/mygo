@@ -91,6 +91,7 @@ func webViewAttached(*mygo.Window) (bool, bool) { return false, false }
 func collectionBehavior(*mygo.Window) (uint, bool)               { return 0, false }
 func deactivateApp() bool                                        { return false }
 func material(*mygo.Window) (string, int, float64, bool, bool)   { return "", 0, 0, false, false }
+func materialState(*mygo.Window) (int, bool)                     { return 0, false }
 func roundedBacking(*mygo.Window) (bool, float64, float64, bool) { return false, 0, 0, false }
 func appActive() (bool, bool)                                    { return false, false }
 
@@ -421,3 +422,13 @@ func dismissPageMenu() { mygo.RunOnMain(linux.TestDismissPageMenu) }
 
 // Only Windows' tests start a process that takes the foreground.
 func takeForeground(*mygo.Window) {}
+
+// pressLetter presses the key of an uppercase letter, with Ctrl held when
+// cmd is set, like a keyboard.
+func pressLetter(_ *mygo.Window, letter byte, cmd bool) bool {
+	key := string(rune(letter - 'A' + 'a'))
+	if cmd {
+		return pressKeys("Control_L", key)
+	}
+	return pressKeys(key)
+}

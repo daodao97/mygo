@@ -178,4 +178,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/tomoru.jpg",
   },
+  {
+    name: "Quaver Astra",
+    description:
+      "A lightweight, native-feeling QQ Music client. Team Quaver rebuilt their Electron app, Quaver Music, on MyGo, keeping its Go backend and playback engine.",
+    url: "https://quaver.0w0.red",
+    author: "Ne0W0r1d x Team Quaver",
+    mode: "native",
+    image: "/showcase/quaver-astra.webp",
+  },
 ]

@@ -146,10 +146,16 @@ func TestTransitionMatchesElements(t *testing.T) {
 	if p := tt.Image().RGBAAt(30, 35); p.R < 200 || p.B > 50 {
 		t.Errorf("appearing, the hero is %v, not the thumbnail's red", p)
 	}
+	if c := keyed(tt, "hero").bg; c != RGB(255, 0, 0) {
+		t.Errorf("appearing, the hero's background is %v, not the thumbnail's red", c)
+	}
 	*now = now.Add(50 * time.Millisecond)
 	tt.Frame()
 	if b := keyed(tt, "hero").Bounds(); !nearRect(b, Rect{60, 65, 120, 60}) {
 		t.Errorf("halfway, the hero shows at %v", b)
+	}
+	if c := keyed(tt, "hero").bg; c.R < 100 || c.B < 100 {
+		t.Errorf("halfway, the hero's background is %v, not between red and blue", c)
 	}
 	if keyed(tt, "hero").st.world.Set {
 		t.Error("halfway, the hero is scaled rather than laid out at its size")

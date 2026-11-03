@@ -229,6 +229,9 @@ func (w *window) setUp(controller uintptr) {
 	w.applyWebViewBackground()
 
 	w.addUserScripts()
+	if w.host != nil {
+		forwardKeys(w)
+	}
 
 	// The add methods write a registration token. Its address is taken in
 	// each call (go:uintptrescapes), as a uintptr saved earlier goes stale
@@ -629,7 +632,7 @@ func (w *window) acceleratorKeyPressed(_, args uintptr) {
 // pageAccelerator returns the menu command a key pressed in a page runs,
 // if any. A page keeps the keys of the edit roles, as in a browser and in
 // native UI: WebView2 cuts, copies and pastes with the page's own events
-// and every format of the clipboard, where editRole pastes text alone.
+// and every format of the clipboard.
 func (w *window) pageAccelerator(key accelKey) (uint16, bool) {
 	cmd, ok := w.accels[key]
 	if !ok {
@@ -667,7 +670,7 @@ func (w *window) LoadURL(raw string) {
 func (w *window) LoadHTML(html, baseURL string) {
 	w.withWebView(func() {
 		w.programmatic = true
-		if baseURL == "" {
+		if !servedAtBase(baseURL) {
 			comCall(w.webview, wvNavigateToString, uintptr(unsafe.Pointer(u16(html))))
 			return
 		}
@@ -681,6 +684,15 @@ func (w *window) LoadHTML(html, baseURL string) {
 		}
 		comCall(w.webview, wvNavigate, uintptr(unsafe.Pointer(u16(target))))
 	})
+}
+
+// servedAtBase reports whether LoadHTML serves its document at baseURL,
+// answering the navigation's request for it. WebView2 requests no about:
+// URL, about:blank among them, so their documents, as those without a base
+// URL, go through NavigateToString, which shows them at about:blank.
+func servedAtBase(baseURL string) bool {
+	scheme, _, _ := strings.Cut(baseURL, ":")
+	return baseURL != "" && !strings.EqualFold(scheme, "about")
 }
 
 func (w *window) LoadFile(path, _ string) {

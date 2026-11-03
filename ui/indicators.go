@@ -332,8 +332,9 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 	st := e.st
 	// Right to left, lo is at the right, as a Slider's.
 	rtl := e.rtl()
-	at := func() float64 {
-		x, _ := st.local(c.rt.pointerX, c.rt.pointerY)
+	// at is the value under the pointer pressing p: the slider or a knob.
+	at := func(p *state) float64 {
+		x, _ := st.local(p.pointer(c.rt))
 		f := (x + st.x - st.cx) / max(st.cw, 1)
 		if rtl {
 			f = 1 - f
@@ -378,8 +379,14 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 		}
 	})
 	e.afterInput(func() {
-		if (st.pressed || knobs[0].st.pressed || knobs[1].st.pressed) && !e.disabled() {
-			x := at()
+		p := st
+		for _, knob := range knobs {
+			if knob.st.pressed {
+				p = knob.st
+			}
+		}
+		if p.pressed && !e.disabled() {
+			x := at(p)
 			if *dragging < 0 {
 				// The nearest knob, the high one when they meet past it.
 				*dragging = 0

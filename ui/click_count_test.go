@@ -271,6 +271,52 @@ func TestReleaseDuringPress(t *testing.T) {
 	}
 }
 
+// A release that comes with moves no frame read, and the window losing the
+// focus before the next frame, click the element once: the release ended
+// the press, and the blur ends no other.
+func TestBlurAfterReleaseOfDrag(t *testing.T) {
+	held, clicks := false, 0
+	tt := NewTester(func(c *Context) {
+		b := Box(c).Size(100, 100)
+		_, _, held = b.Dragged()
+		if b.Clicked() {
+			clicks++
+		}
+	}, 100, 100)
+	tt.Press(20, 50)
+	tt.Move(30, 50)
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerUp, X: 40, Y: 50})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
+	tt.Frame()
+	if held || clicks != 1 {
+		t.Errorf("let go, then the window lost the focus: still pressed %v, %d clicks, want 1", held, clicks)
+	}
+}
+
+// Enter on an element whose release still waits for its pass clicks it
+// after that release: the element sees both clicks, the last without the
+// release's Shift.
+func TestEnterAfterReleaseOfDrag(t *testing.T) {
+	clicks, mods := 0, Modifiers(0)
+	tt := NewTester(func(c *Context) {
+		b := Box(c).Size(100, 100).Focusable()
+		if n := b.Clicks(); n > 0 {
+			clicks += n
+			mods = b.ClickModifiers()
+		}
+	}, 100, 100)
+	shift := platform.Modifiers(Shift)
+	tt.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: 20, Y: 50, Mods: shift})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerMove, X: 30, Y: 50, Mods: shift})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerUp, X: 30, Y: 50, Mods: shift})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: platform.Key(KeyEnter)})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: platform.Key(KeyEnter)})
+	tt.Frame()
+	if clicks != 2 || mods != 0 {
+		t.Errorf("Shift-clicked, then Enter before a frame: %d clicks, the last with %v, want 2 and none", clicks, mods)
+	}
+}
+
 // A press that moves the element taking it into another container, as a
 // Command-click on a link in a terminal opening a side panel beside it,
 // gets its release, though the element pressed is gone: one built over by

@@ -173,6 +173,18 @@ rather keep them dark sets both:
 t.Inverse, t.InverseText = ui.Hex("#3f3f46"), ui.Hex("#fafafa")
 ```
 
+In a window that is not the one the user's input goes to, the widgets
+fade their accent to gray, as AppKit fades an inactive window's (see
+[Active and inactive windows](windows.md#active-and-inactive-windows)):
+selected rows, checked controls, sliders and progress bars are filled
+with `InactiveAccent`, which left zero is a gray `AccentText` stands out
+on, and primary buttons look as the others. A theme that keeps its accent
+in every window sets it to the accent:
+
+```go
+t.InactiveAccent = t.Accent
+```
+
 ## A theme for part of the window
 
 `SetTheme` themes the whole window: the root, its background and its text,

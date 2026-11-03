@@ -37,6 +37,24 @@ typed.
 - `Layout` shows the old text on the left and the new on the right, their
   lines aligned (`DiffSplit`), the two scrolling together; or the new
   text, with the lines deleted above where they were (`DiffUnified`).
+- `SplitPercent` is the percentage of a split view's width the old side
+  takes, half when 0. The user drags the line between the sides to change
+  it, or moves it with the arrows once Tab gave it the focus, as a
+  [split view](split.md)'s divider; each side keeps its gutter and 12
+  columns of text, and a view too narrow for both shows halves, keeping
+  the share for when it is wide again. Keep it in the app's settings to
+  show the sides as the user left them:
+
+  ```go
+  app.diff.SplitPercent = app.settings.DiffSplit // 0 the first time: halves
+  editor.DiffView(c, app.diff).Grow(1).FillWidth()
+  app.settings.DiffSplit = app.diff.SplitPercent
+  ```
+
+  The sides keep scrolling together and their lines aligned: sideways
+  each scrolls as far as its own lines run past it, and with `Wrap` the
+  side wrapping a line in fewer rows leaves the room of the others under
+  it.
 - `Inline` highlights what changed within changed lines: words, joining
   those one character apart so that a phrase reads as one change
   (`DiffInlineWordAlt`, the default), each word, from the first word to
@@ -228,6 +246,11 @@ and `diff -u` print them, with renames, modes and new and deleted files;
 `FilePatch.Apply` applies one to the old file's text. `SetPatch` shows a
 file's patch without the files, as a pull request's diff arrives: its
 hunks' lines, numbered as in the files, each hunk under its header.
+Each hunk is highlighted on its own, from the start of its first line,
+as `git diff` colors it, so a comment or a string that the hunk before
+ends in doesn't go on into it. A language's own `Highlighter`
+([Highlighters](code-editor.md#highlighters)) sees the hunks' lines as
+one text.
 
 ```go
 files, err := editor.ParsePatch(output) // of git diff
@@ -244,7 +267,9 @@ for _, f := range files {
 ## Accessibility
 
 Assistive technology sees each side as a text field, "Old text" and "New
-text", the old one read only, with its text and selection. A separator is
+text", the old one read only, with its text and selection, and the line
+between the sides of a split view as a splitter named "Divider", whose
+value is the old side's width, which the arrows move. A separator is
 a group named by the lines it collapses, with buttons expanding them up,
 down or all; Revert and Keep are buttons, "Revert change" and "Keep
 change". These names, and what the viewer writes ("4 unmodified lines"),

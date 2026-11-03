@@ -198,6 +198,7 @@ var pangoLib struct {
 	cairoSetScaledFont        func(cr, font uintptr)
 	cairoSetSourceRGBA        func(cr uintptr, r, g, b, a float64)
 	cairoShowGlyphs           func(cr uintptr, glyphs *cairoGlyph, n int32)
+	cairoVersion              func() int32
 	fcConfigGetCurrent        func() uintptr
 	fcConfigAppFontAddFile    func(config uintptr, file string) int32
 	fcConfigGetFonts          func(config uintptr, set int32) *fcFontSet
@@ -328,6 +329,7 @@ func loadPango() error {
 	bind(cairo, &l.cairoSetScaledFont, "cairo_set_scaled_font")
 	bind(cairo, &l.cairoSetSourceRGBA, "cairo_set_source_rgba")
 	bind(cairo, &l.cairoShowGlyphs, "cairo_show_glyphs")
+	bind(cairo, &l.cairoVersion, "cairo_version")
 	if len(missing) > 0 {
 		return fmt.Errorf("Pango or cairo lacks %s", strings.Join(missing, ", "))
 	}
@@ -461,11 +463,34 @@ func newPango() (*pangoEngine, error) {
 		return nil, errors.New("pango_cairo_font_map_new failed")
 	}
 	e.context = l.fontMapCreateContext(e.fontMap)
+	pinLCDFilter()
 	// Until the app has the desktop's settings, GDK's defaults on X11
 	// without a settings daemon: grayscale antialiasing, medium hinting.
 	e.antialias, e.hintStyle = cairoAntialiasGray, cairoHintStyleMedium
 	e.applyOptions()
 	return e, nil
+}
+
+// lcdFilterRule gives fonts whose fontconfig settings name no LCD filter
+// FreeType's (FIR5), which cairo 1.17 and later use for those by default.
+// A filter fontconfig names is kept: a test of every value of an element
+// holds where the element is missing, and no filter is above 3.
+const lcdFilterRule = `<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><match target="font">` +
+	`<test qual="all" name="lcdfilter" compare="more"><int>3</int></test>` +
+	`<edit name="lcdfilter" mode="assign"><const>lcddefault</const></edit></match></fontconfig>`
+
+// pinLCDFilter has subpixel glyphs drawn with FreeType's LCD filter on
+// cairo before 1.17 (as on Ubuntu 18.04) where fontconfig names none
+// (#1025). Font options there have no public setter for the filter, and
+// their default is FreeType's legacy filter, which leaves thin strokes
+// pale with colored fringes; cairo takes the filter of a font's pattern
+// over that default.
+func pinLCDFilter() {
+	l := &pangoLib
+	if l.cairoVersion() >= 11700 || l.fcConfigGetCurrent == nil || l.fcConfigParseFromMemory == nil {
+		return
+	}
+	l.fcConfigParseFromMemory(l.fcConfigGetCurrent(), lcdFilterRule, int32(gTrue))
 }
 
 // pangoFamily returns the family list of a style for Pango, where

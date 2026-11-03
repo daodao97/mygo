@@ -129,6 +129,12 @@ func material(w *mygo.Window) (class string, style int, radius float64, active b
 	return class, style, radius, active, true
 }
 
+// materialState returns the NSVisualEffectState of the window's material.
+func materialState(w *mygo.Window) (state int, supported bool) {
+	mygo.RunOnMain(func() { state = darwin.TestMaterialState(w.NativeHandle()) })
+	return state, true
+}
+
 func roundedBacking(w *mygo.Window) (opaque bool, alpha, red float64, supported bool) {
 	mygo.RunOnMain(func() { opaque, alpha, red = darwin.TestRoundedBacking(w.NativeHandle()) })
 	return opaque, alpha, red, true
@@ -403,3 +409,22 @@ func dismissPageMenu() { mygo.RunOnMain(darwin.TestDismissPageMenu) }
 
 // Only Windows' tests start a process that takes the foreground.
 func takeForeground(*mygo.Window) {}
+
+// pressLetter presses the key of an uppercase letter, with Command held
+// when cmd is set, as the keyboard does in a window of native UI: in the
+// content, or in the page of a web view that has the keyboard.
+func pressLetter(w *mygo.Window, letter byte, cmd bool) (ok bool) {
+	code, known := map[byte]uint16{'J': 0x26, 'K': 0x28, 'L': 0x25}[letter]
+	if !known {
+		return false
+	}
+	chars := string(rune(letter - 'A' + 'a'))
+	mygo.RunOnMain(func() {
+		if cmd {
+			ok = darwin.TestKeyCmd(w.NativeHandle(), code, chars)
+		} else {
+			ok = darwin.TestKey(w.NativeHandle(), code, chars)
+		}
+	})
+	return ok
+}

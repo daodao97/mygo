@@ -361,9 +361,66 @@ func webViewMethods() []objc.MethodDef {
 	}
 }
 
+// unhandledKey gives the content a key that the page of the web view in
+// the clip view clip left unhandled, and reports whether it did. WebKit
+// sends such a key on up the responder chain, to the clip view: the
+// surface, a sibling of the clip view, would never get it. Tab stays out
+// of it, as WebKit moves the keyboard with it.
+func unhandledKey(clip, ev id) bool {
+	w := clipWebView(clip)
+	if w == nil {
+		return false
+	}
+	k := eventKey(ev)
+	if k == platform.KeyTab {
+		return false
+	}
+	w.host.surface.send(platform.SurfaceEvent{Kind: platform.WebViewKey, Key: k, PhysicalKey: physicalKey(ev), Mods: eventMods(ev), Repeat: sendBool(ev, "isARepeat"), WebView: w})
+	return true
+}
+
+// unhandledCommand gives the content the key k of a command the page of
+// the web view in the clip view clip left, and reports whether it did.
+func unhandledCommand(clip id, k platform.Key) bool {
+	w := clipWebView(clip)
+	if w == nil {
+		return false
+	}
+	w.host.surface.send(platform.SurfaceEvent{Kind: platform.WebViewKey, Key: k, WebView: w})
+	return true
+}
+
+// clipWebView returns the web view in the clip view clip, while its
+// window shows native UI.
+func clipWebView(clip id) *window {
+	for _, v := range theBackend.byWebView {
+		if v.clip == clip {
+			if v.host == nil || v.host.closed || v.host.surface == nil {
+				return nil
+			}
+			return v
+		}
+	}
+	return nil
+}
+
 func registerClipViewClass() {
 	classDef("MyGoClipView", "NSView", nil, []objc.MethodDef{
 		method("isFlipped", func(self id, _ objc.SEL) bool { return true }),
+		method("keyDown:", func(self id, cmd objc.SEL, ev id) {
+			if !unhandledKey(self, ev) {
+				sendSuper(self, "MyGoClipView", cmd, uintptr(ev))
+			}
+		}),
+		// An Escape (or Cmd+.) the page left comes as the command it stands
+		// for: WebKit sends the commands its web process does not know up
+		// the responder chain first, and resends the key only if no
+		// responder took the command, which a panel, as a flyout's, does.
+		method("cancelOperation:", func(self id, cmd objc.SEL, sender id) {
+			if !unhandledCommand(self, platform.KeyEscape) {
+				sendSuper(self, "MyGoClipView", cmd, uintptr(sender))
+			}
+		}),
 		// Assistive technology finds the page in the element of the
 		// content showing it, not beside the content.
 		method("accessibilityChildren", func(self id, _ objc.SEL) id { return nsArray() }),

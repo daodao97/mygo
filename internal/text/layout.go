@@ -393,6 +393,12 @@ type System struct {
 	// padding: area alone does not tell whether a long, thin mask fits.
 	wantSize [2]image.Point
 	failed   int
+	// outGlyphs, outRuns and outMasks are what the atlases left out since they
+	// last could have room: a glyph a frame draws a thousand times counts
+	// once in want, which sizes the atlas, and is rasterized once.
+	outGlyphs map[glyphKey]struct{}
+	outRuns   map[runKey]struct{}
+	outMasks  map[uint64]struct{}
 	// subpixel tells that the system's settings ask for subpixel
 	// antialiasing (TextParams).
 	subpixel bool
@@ -699,23 +705,46 @@ func (s *System) EndFrame() {
 
 // Layout shapes and wraps p.Text. The result is shared and must not be
 // modified.
-func (s *System) Layout(p Params) *Layout {
+func (s *System) Layout(p Params) *Layout { return s.LayoutFrom(nil, p) }
+
+// LayoutFrom lays out p as Layout does, from l, if not nil, a layout of the
+// same text at another width, as a box growing or shrinking lays its text
+// out at each width: where l wraps none of its lines and fits p's width, p
+// lays out alike, its lines aligned anew, rather than shaped again; at the
+// left of their box, it shares them. So does the text's layout without a
+// width, once made.
+func (s *System) LayoutFrom(l *Layout, p Params) *Layout {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if c, ok := s.layouts[p]; ok {
 		s.useLayout(c)
 		return &c.layout
 	}
-	// A short label may be a slice of a large document. Cache owned strings
-	// so the memory estimate reflects what those parameters keep alive.
-	p.Text = strings.Clone(p.Text)
-	p.Spans = strings.Clone(p.Spans)
-	p.Ellipsis = strings.Clone(p.Ellipsis)
-	p.Style.Family = strings.Clone(p.Style.Family)
-	p.Style.Features = strings.Clone(p.Style.Features)
-	p.Style.Lang = strings.Clone(p.Style.Lang)
-	c := s.layout(p)
-	c.bytes = layoutBytes(c)
+	if l == nil || !alike(l, p) {
+		l = nil
+		if u, ok := s.layouts[unwrappedParams(p)]; ok && p.Width > 0 && alike(&u.layout, p) {
+			s.useLayout(u)
+			l = &u.layout
+		}
+	}
+	var c *cached
+	if l != nil {
+		c = &cached{layout: *l, bytes: int(unsafe.Sizeof(cached{}))}
+		c.layout.Params.Width, c.layout.Params.Justify = p.Width, p.Justify
+		c.bytes += realign(&c.layout, l)
+	} else {
+		// A short label may be a slice of a large document. Cache owned
+		// strings so the memory estimate reflects what those parameters
+		// keep alive.
+		p.Text = strings.Clone(p.Text)
+		p.Spans = strings.Clone(p.Spans)
+		p.Ellipsis = strings.Clone(p.Ellipsis)
+		p.Style.Family = strings.Clone(p.Style.Family)
+		p.Style.Features = strings.Clone(p.Style.Features)
+		p.Style.Lang = strings.Clone(p.Style.Lang)
+		c = s.layout(p)
+		c.bytes = layoutBytes(c)
+	}
 	// A large paragraph is kept only where it fits next to the layouts
 	// recent frames used: evicting those for it would have the ordinary
 	// labels and lines of other windows laid out again. Otherwise it still
@@ -724,11 +753,100 @@ func (s *System) Layout(p Params) *Layout {
 		for s.oldest != nil && (s.overLayoutBudget(c.bytes) || len(s.layouts) >= maxLayouts) {
 			s.removeLayout(s.oldest)
 		}
-		s.layouts[p] = c
+		s.layouts[c.layout.Params] = c
 		s.layoutBytes += c.bytes
 		s.useLayout(c)
 	}
 	return &c.layout
+}
+
+// alike reports whether p lays out as l, of the same text, but for where
+// its alignment puts its lines (realign): l wraps none of them, MaxLines
+// cuts none, and they fit p's width, or p does not wrap them.
+func alike(l *Layout, p Params) bool {
+	q := l.Params
+	if q.MaxLines > 0 || unwrappedParams(q) != unwrappedParams(p) || !p.NoWrap && p.Width > 0 && l.Width > p.Width {
+		return false
+	}
+	for _, line := range l.Lines {
+		if line.End < len(l.Runes) && l.Runes[line.End] != '\n' {
+			return false // wrapped
+		}
+	}
+	return true
+}
+
+// realign moves the lines of n, a copy of l laid out at another width, as
+// their alignment puts them in their box at that width, copying those it
+// moves, and returns how many bytes it copied.
+func realign(n, l *Layout) int {
+	box := func(p Params) float32 {
+		if p.Width > 0 {
+			return p.Width
+		}
+		return l.Width
+	}
+	from, to := box(l.Params), box(n.Params)
+	if from == to {
+		return 0
+	}
+	bytes := 0
+	for i := range l.Lines {
+		d := alignedAt(l, i, n.Params, to) - alignedAt(l, i, l.Params, from)
+		if d == 0 {
+			continue
+		}
+		if bytes == 0 {
+			n.Lines = slices.Clone(l.Lines)
+			bytes = len(n.Lines) * int(unsafe.Sizeof(Line{}))
+		}
+		line := &n.Lines[i]
+		line.X += d
+		line.Glyphs = slices.Clone(line.Glyphs)
+		for j := range line.Glyphs {
+			line.Glyphs[j].X += d
+		}
+		// Its carets and stops, laid out where it was, are found anew.
+		line.carets, line.stops, line.upstream = nil, nil, nil
+		bytes += len(line.Glyphs) * int(unsafe.Sizeof(Glyph{}))
+	}
+	return bytes
+}
+
+// alignedAt returns how far right of its box's left line i of l is, laid
+// out with p in a box as wide as box, as layout aligns it.
+func alignedAt(l *Layout, i int, p Params, box float32) float32 {
+	line := &l.Lines[i]
+	lo, hi := float32(0), box
+	if indent := max(p.Indent, 0); i == 0 {
+		if line.RTL {
+			hi -= indent
+		} else {
+			lo += indent
+		}
+	}
+	align := p.Align
+	if line.RTL {
+		switch align {
+		case Start:
+			align = End
+		case End:
+			align = Start
+		}
+	}
+	switch align {
+	case Center:
+		return lo + (hi-lo-line.Width)/2
+	case End, Right:
+		return hi - line.Width
+	}
+	return lo
+}
+
+// unwrappedParams returns p without a width.
+func unwrappedParams(p Params) Params {
+	p.Width, p.Justify = 0, false
+	return p
 }
 
 // The memory estimate includes text, shaped glyphs and room for lazy caret

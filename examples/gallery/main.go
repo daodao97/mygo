@@ -1517,11 +1517,29 @@ var itemMotion = ui.ElementTransition{
 var flingStyles = []ui.Animation{ui.Smooth, ui.Snappy, ui.Bouncy}
 
 // tileMatch is the identity a tile of the Motion page shares with its
-// detail view.
-type tileMatch struct{ i int }
+// detail view, and tileTitle the identity its title shares with the
+// view's heading.
+type (
+	tileMatch struct{ i int }
+	tileTitle struct{ i int }
+)
 
-// tileMotion moves the tiles into their detail view and back.
-var tileMotion = ui.ElementTransition{Animation: &ui.Animation{Spring: ui.SpringOptions{Duration: 450 * time.Millisecond, Bounce: 0.12}}}
+// tileSpring moves the tiles into their detail view and back: tileFlight
+// flies what the views share, and tileMorph the characters of their
+// titles, while tileFade fades the rest in and out.
+var (
+	tileSpring = ui.Animation{Spring: ui.SpringOptions{Duration: 450 * time.Millisecond, Bounce: 0.12}}
+	tileFlight = ui.ElementTransition{Animation: &tileSpring, Fly: true}
+	tileFade   = ui.ElementTransition{Animation: &tileSpring, Enter: &ui.Motion{}, Exit: &ui.Motion{}}
+	tileMorph  = ui.ContentTransition{Morph: true, Animation: &tileSpring}
+)
+
+// tileNames are the titles of the tiles, and tileHeadings those of their
+// detail views.
+var (
+	tileNames    = []string{"Ocean", "Forest", "Desert"}
+	tileHeadings = []string{"Ocean at dusk", "Forest in the rain", "Desert at noon"}
+)
 
 func (g *gallery) motion(c *ui.Context) {
 	t := c.Theme()
@@ -1593,15 +1611,27 @@ func (g *gallery) motion(c *ui.Context) {
 				})
 			})
 		})
-		card(c, "Shared elements", func() {
-			ui.Text(c, "A tile opens into its detail view from where it was, and goes back to its place.").FontSize(12).TextColor(t.TextMuted)
-			ui.Box(c).Key("tile-stage").Height(190).Radius(10).Border(1, t.Border).Clip().Padding(12).Children(func() {
+		card(c, "Magic Move", func() {
+			ui.Text(c, "A tile flies into its detail view from where it was, its title morphing into the heading, as the rest fades.").FontSize(12).TextColor(t.TextMuted)
+			ui.Box(c).Key("tile-stage").Height(190).Radius(10).Border(1, t.Border).Clip().Children(func() {
+				// What the views share flies (Match, Fly), the titles
+				// morphing, as the rest fades.
+				shared := func(i int) (tile, title ui.ElementTransition) {
+					tile, title = tileFlight, tileFlight
+					tile.Match, title.Match = tileMatch{i}, tileTitle{i}
+					return tile, title
+				}
 				if g.tileOpen == 0 {
-					ui.Row(c).Gap(12).Children(func() {
+					ui.Row(c.Key("tiles")).Absolute().Fill().Padding(12).Gap(12).Transition(tileFade).Children(func() {
 						for i, col := range motionColors[:3] {
-							tr := tileMotion
-							tr.Match = tileMatch{i}
-							if ui.Box(c.Key(i)).Size(64, 64).Radius(12).Background(col).Cursor(ui.CursorPointer).Transition(tr).Clicked() {
+							tile, title := shared(i)
+							box := ui.Column(c.Key(i)).Size(80, 80).Padding(8).Justify(ui.End).Radius(12).Background(col).
+								Cursor(ui.CursorPointer).Transition(tile)
+							box.Children(func() {
+								ui.Text(c, tileNames[i]).FontSize(12).Bold().TextColor(ui.RGB(255, 255, 255)).
+									Transition(title).ContentTransition(tileMorph)
+							})
+							if box.Clicked() {
 								g.tileOpen = i + 1
 							}
 						}
@@ -1609,12 +1639,11 @@ func (g *gallery) motion(c *ui.Context) {
 					return
 				}
 				i := g.tileOpen - 1
-				ui.Column(c).Gap(10).Children(func() {
-					tr := tileMotion
-					tr.Match = tileMatch{i}
-					ui.Box(c.Key("hero")).Size(240, 120).Radius(16).Background(motionColors[i]).Transition(tr)
+				tile, title := shared(i)
+				ui.Column(c.Key("detail")).Absolute().Fill().Padding(12).Gap(10).Transition(tileFade).Children(func() {
+					ui.Box(c.Key("hero")).Height(110).Radius(16).Background(motionColors[i]).Transition(tile)
 					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, fmt.Sprintf("Tile %d", i+1)).Bold().Grow(1)
+						ui.Text(c, tileHeadings[i]).FontSize(18).Bold().Grow(1).Transition(title).ContentTransition(tileMorph)
 						if ui.Button(c, "Back").Clicked() {
 							g.tileOpen = 0
 						}

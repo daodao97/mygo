@@ -145,6 +145,18 @@ func TestTableReorder(t *testing.T) {
 	if got := s.Columns.Order; got[0] != "Name" {
 		t.Errorf("moved past a fixed column: %q", got)
 	}
+	// The release's own move moves the column too, and is no click.
+	x = float32(header(t, tt, "Kind").X + 20)
+	tt.Press(x, y)
+	tt.Move(x-5, y)
+	tt.Move(x-20, y)
+	tt.Release(x-60, y)
+	if got := s.Columns.Order; got[1] != "Kind" || got[2] != "Size" {
+		t.Errorf("Kind let go past the middle of Size: %q", got)
+	}
+	if sort.Column != "" {
+		t.Errorf("dragging the header sorted by %q", sort.Column)
+	}
 }
 
 // A column dragged past several others stays the one dragged: its header

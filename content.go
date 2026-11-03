@@ -84,6 +84,7 @@ func (w *Window) attachContent() {
 			}
 			return w.native.SafeArea()
 		},
+		Active: func() bool { return w.active },
 		OpenURL: func(url string, done func(error)) {
 			// The system may take a while, as Windows' shell does: not
 			// in the frame.

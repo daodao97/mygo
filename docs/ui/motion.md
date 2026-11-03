@@ -228,6 +228,10 @@ if dx, _, ok := dial.Dragged(); ok {
 dial.Transform(ui.Rotation(turn))
 ```
 
+The last moves of a drag come while `Dragged` still reports the press, and
+`DragEnded` in the build after: the dial turns as far as the pointer went
+before it springs to a notch.
+
 `DragVelocity` is the pointer's velocity while it presses, in DIPs per
 second along the element's axes, zero once it rests a moment. `Velocity(key)`
 is the velocity of an animated value. A click, which does not move, ends no
@@ -433,6 +437,18 @@ down, as SwiftUI's numericText:
 ui.Text(c, strconv.Itoa(app.count)).FontSize(32).Bold().
 	ContentTransition(ui.ContentTransition{Numeric: true, Down: app.decreased})
 ui.Icon(c, playOrPause).ContentTransition(ui.ContentTransition{})
+```
+
+`Morph` moves the characters the old and the new text share from where
+they were to where they are, those of the old text alone fading out and
+those of the new fading in, as Keynote's Magic Move by characters: words
+reflowing, a title rewritten, letters rearranged. Rich text morphs too,
+its characters going to the colors of their spans. A text flying with a
+[`Match`](transitions.md#text-that-morphs) morphs from the text of the
+element of its `Match`.
+
+```go
+ui.Text(c, app.title).ContentTransition(ui.ContentTransition{Morph: true})
 ```
 
 Content transitions run in frames that only paint. While the desktop asks

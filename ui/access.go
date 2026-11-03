@@ -541,8 +541,7 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 			break
 		}
 		if s.flags&flagClickable != 0 {
-			s.clicks++
-			s.clickMods = 0
+			s.click(0)
 		} else {
 			rt.focusOn(s)
 		}
@@ -553,8 +552,7 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 		if s.flags&flagChoosable != 0 {
 			// A row of a list choosing rows: its list takes the focus for
 			// it, choosing it.
-			s.clicks++
-			s.clickMods = 0
+			s.click(0)
 			break
 		}
 		rt.focusOn(s)

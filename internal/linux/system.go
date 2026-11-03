@@ -593,6 +593,11 @@ func (b *Backend) showNotification(n *platform.Notification) error {
 	if n.Silent {
 		hints = append(hints, gVariantNewDictEntry(gVariantNewString(cs("suppress-sound")), gVariantNewVariant(gVariantNewBoolean(true))))
 	}
+	if len(n.Image) > 0 && notificationImageHint != nil {
+		if hint := notificationImageHint(n.Image); hint != 0 {
+			hints = append(hints, hint)
+		}
+	}
 	hintArray := gVariantNewArray(gVariantTypeNew(cs("{sv}")), nil, 0)
 	if len(hints) > 0 {
 		hintArray = gVariantNewArray(0, unsafe.Pointer(&hints[0]), uintptr(len(hints)))

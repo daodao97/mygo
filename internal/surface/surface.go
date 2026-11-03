@@ -56,6 +56,10 @@ type Conn struct {
 	// SafeArea returns the room the device's chrome takes from the content
 	// (a status bar, a notch, a home indicator), zero on a desktop.
 	SafeArea func() platform.SafeArea
+	// Active reports whether the window is drawn as active, as the window
+	// the user's input goes to (see ui.Context.WindowActive), which
+	// ActiveChanged tells changes of; nil is active. It costs nothing.
+	Active func() bool
 	// OpenURL opens a link in the default browser, and gives done, unless
 	// nil, what came of it on the main thread.
 	OpenURL func(url string, done func(error))
@@ -103,6 +107,8 @@ type Conn struct {
 	// TitleBarChanged when TitleBar does.
 	ThemeChanged    func()
 	TitleBarChanged func()
+	// ActiveChanged is called when Active changed.
+	ActiveChanged func()
 	// LocaleChanged is called when Locale or Region changed, for the
 	// content to build its frame anew.
 	LocaleChanged func()

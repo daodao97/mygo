@@ -291,6 +291,36 @@ func TestFlyoutEscape(t *testing.T) {
 	pressEscape(page)
 	eventually(t, "the page's flyout closed", page.IsDestroyed)
 
+	// A flyout of native UI showing a web view whose page has the
+	// keyboard closes on an Escape the page leaves.
+	parent.Focus()
+	eventually(t, "the parent focused", parent.IsFocused)
+	var view *mygo.WebView
+	var shown atomic.Int32
+	reader := mygo.NewFlyout(mygo.FlyoutOptions{Parent: parent, Width: 150, Height: 100, Focusable: true, Content: ui.View(func(c *ui.Context) {
+		if view != nil {
+			ui.WebView(c, view).Fill()
+			shown.Add(1)
+		}
+	})})
+	defer reader.Destroy()
+	v, err := reader.NewWebView(mygo.WebViewOptions{Page: mygo.PageOptions{Untrusted: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader.Update(func() { view = v })
+	v.Page().LoadHTML(`<p>Text to read.</p><script>window.ready = true</script>`, "")
+	waitForPage(t, v.Page(), "window.ready")
+	eventually(t, "two frames showing the web view", func() bool {
+		reader.Invalidate()
+		return shown.Load() >= 2
+	})
+	eventually(t, "the reader focused", reader.IsFocused)
+	v.Focus()
+	waitForPage(t, v.Page(), "document.hasFocus()")
+	pressEscape(reader)
+	eventually(t, "the reader closed", reader.IsDestroyed)
+
 	// A popover of the system's (macOS) closes so too.
 	parent.Focus()
 	eventually(t, "the parent focused", parent.IsFocused)

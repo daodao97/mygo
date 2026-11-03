@@ -37,7 +37,10 @@ from them.
 Elements that take the pointer give it to the innermost under it: a button
 in a clickable row takes its own clicks.
 
-`Pressed` stays true while the pointer is held inside the element. Observing
+`Pressed` stays true while the pointer is held inside the element. A
+release that comes with moves no build has read leaves the element
+pressed for the build that reads them, with the pointer where it let go
+(`PointerPosition`), and released in the build after. Observing
 the start of a press rebuilds the view before painting, so a row chosen by
 `if row.Pressed() || row.Clicked()` shows its new selection and focus colors
 in that frame. Guard the choice against selecting the same item again.

@@ -158,6 +158,8 @@ func (s *surface) NewWebView(o *platform.WindowOptions, h platform.WindowHandler
 		c := *o.BackgroundColor
 		v.bg = &c
 	}
+	// Only apps with web views in native UI link the script of their keys.
+	forwardKeys = (*window).forwardUnhandledKeys
 	v.clipVis, v.webVis = s.layer.visual(), s.layer.visual()
 	comCall(v.clipVis, dcompVisualAddVisual, v.webVis, 1, 0)
 	s.w.webViews = append(s.w.webViews, v)

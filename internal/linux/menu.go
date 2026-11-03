@@ -595,9 +595,17 @@ func (t *tray) SetID(string) {}
 
 func (t *tray) SetTitle(title string) { appIndicatorSetLabel(t.ind, cs(title), cs(title)) }
 
+// SetToolTip sets the hover text. The title is what panels show when they
+// fall back to it, and setting it announces NewTitle alone: a host that
+// caches the ToolTip property, such as quickshell, would go on showing the
+// text it read when the icon appeared. Setting the tooltip as well announces
+// NewToolTip, so both stay in step.
 func (t *tray) SetToolTip(tip string) {
 	if appIndicatorSetTitle != nil {
 		appIndicatorSetTitle(t.ind, cs(tip))
+	}
+	if appIndicatorSetTooltipFull != nil {
+		appIndicatorSetTooltipFull(t.ind, nil, cs(tip), nil)
 	}
 }
 

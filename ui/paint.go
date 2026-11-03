@@ -41,6 +41,10 @@ type Painter struct {
 	// window's scene, and asked that it asked to be painted again (see
 	// paintPart).
 	drawing, asked bool
+	// lifting is the element flying (ElementTransition.Fly) being painted
+	// over the rest of its layer (matches.paint), which elsewhere paints
+	// nothing.
+	lifting *node
 }
 
 // opaqueBox is the box of an element painting an opaque background, and
@@ -234,7 +238,7 @@ func (p *Painter) paintable(e *node) bool {
 }
 
 func (p *Painter) element(e *node) {
-	if e.hidden {
+	if e.hidden || e.lift && p.lifting != e {
 		return
 	}
 	savedTransform, savedInline, savedTheme := p.transform, p.inline, p.theme
@@ -282,8 +286,11 @@ func (p *Painter) element(e *node) {
 	// What the element paints lands on an opaque background when all of
 	// it that shows does.
 	p.opaque = p.covered(intersect(box, p.clip))
-	if e.world.Set {
-		// Transformed glyphs are drawn with grayscale coverage.
+	if e.world.Set && (p.lifting == nil || !translates(e.world)) {
+		// Transformed glyphs are drawn with grayscale coverage; but those
+		// of an element flying, which a translation shows where it is
+		// (matches.pin), as at rest, which renderers make gray while it
+		// moves, so that they are the text at rest once there.
 		p.opaque = false
 	}
 	margin := e.shadowMargin()
@@ -358,18 +365,36 @@ func (p *Painter) element(e *node) {
 				}
 			}
 		}
+		// Elements flying go over their layer: the window's content, under
+		// its overlays, or their overlay, under those after it.
+		m := p.rt.matches
+		layers := m != nil && e == e.c.overlay
 		for c := e.first; c != nil; c = c.next {
 			if c.flags&flagAbsolute == 0 && p.paintable(c) {
 				p.element(c)
+				if layers {
+					m.paint(p, c)
+				}
 			}
 		}
 		if e.flags&flagDividers != 0 && !e.grid {
 			p.dividers(e)
 		}
+		content := m != nil && e.parent == nil
 		for c := e.first; c != nil; c = c.next {
+			if content && c == e.c.overlay {
+				m.paint(p, nil)
+				content = false
+			}
 			if c.flags&flagAbsolute != 0 && c.leaving == 0 && p.paintable(c) {
 				p.element(c)
+				if layers {
+					m.paint(p, c)
+				}
 			}
+		}
+		if content {
+			m.paint(p, nil)
 		}
 	}
 	if clips {
@@ -393,6 +418,12 @@ func (p *Painter) element(e *node) {
 	}
 	p.opacity = saved
 	p.opaque, p.under = savedOpaque, p.under[:under]
+}
+
+// translates reports whether m only moves what it transforms.
+func translates(m scene.Affine) bool {
+	_, _, ok := m.Translation()
+	return ok
 }
 
 // covered reports whether an opaque background around the element painting

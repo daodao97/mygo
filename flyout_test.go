@@ -157,6 +157,42 @@ func TestFlyoutEscape(t *testing.T) {
 	}
 }
 
+// TestFlyoutWebViewEscape checks that an Escape the page of a web view in
+// a flyout of native UI leaves closes the flyout, as one in the native UI.
+func TestFlyoutWebViewEscape(t *testing.T) {
+	parent, _ := testWindow(t, WindowOptions{})
+	var v *WebView
+	fl, fw := testFlyout(t, FlyoutOptions{Parent: parent, Width: 150, Height: 100, Focusable: true, Content: ui.View(func(c *ui.Context) {
+		if v != nil {
+			ui.WebView(c, v).Fill()
+		}
+	})})
+	s := fw.FakeSurface()
+	v, err := fl.NewWebView(WebViewOptions{Page: PageOptions{Untrusted: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fv := s.WebViews()[0]
+	frame := func() {
+		fl.Invalidate()
+		onMain(func() {})
+		onMain(func() { s.Frame() })
+	}
+	frame()
+	v.Focus()
+	onMain(func() { fv.UnhandledKey(0, platform.KeyJ) })
+	frame()
+	if fl.IsDestroyed() {
+		t.Fatal("J the page left closed the flyout")
+	}
+	onMain(func() { fv.UnhandledKey(0, platform.KeyEscape) })
+	frame()
+	onMain(func() {}) // the close posted after the key
+	if !fl.IsDestroyed() {
+		t.Error("Escape the page left did not close the flyout")
+	}
+}
+
 func TestTrayFlyout(t *testing.T) {
 	tray, err := NewTray(TrayOptions{})
 	if err != nil {

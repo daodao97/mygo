@@ -519,10 +519,12 @@ type node struct {
 	laid uint64
 	// leaving marks a copy of an element gone, which its exit transition
 	// animates (1 if it was in its parent's flow, 2 if absolute), and
-	// ghosts an element holding such copies. attach is where Attach puts
-	// the element, 0 for nowhere.
+	// ghosts an element holding such copies; lift one flying with a
+	// Match, which paints over the rest of its layer (matches.lifted).
+	// attach is where Attach puts the element, 0 for nowhere.
 	leaving uint8
 	ghosts  bool
+	lift    bool
 	attach  attachment
 	// serial is the order the pass made the element in: of overlays, the
 	// one made last shows on top.

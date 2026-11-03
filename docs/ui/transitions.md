@@ -154,6 +154,101 @@ out at each size on the way, as `Size` lays it out, so nothing in it
 stretches, its rounded corners included. Give one element a `Match` at a
 time; the one gone goes as its own `Exit` says, if it has one.
 
+### Flying
+
+`Fly` flies the element appearing from the other, as Keynote's Magic Move
+and Flutter's Hero do:
+
+```go
+tr := ui.ElementTransition{Animation: &ui.Snappy, Match: photoMatch{p.ID}, Fly: true}
+```
+
+On its way, the element appearing:
+
+- goes from the other's box to its own, its content laid out at each size
+  (or scaled, with `ScaleContent`, below);
+- goes from the other's look to its own: its background and border
+  colors, its rounded corners, its opacity, the color of its text, and its
+  transform, turning the short way round, in 3D and in perspective too,
+  as CSS interpolates transforms, and from the transforms of the
+  elements around the other, as a container scaled, to those around it;
+- paints over the rest of the window, or of the overlay it is in, as a
+  dialog, under the overlays after it, and takes the pointer where it
+  paints: out of the clips of the scroll views and containers around it,
+  over the elements after it, as opaque as it is itself, whatever the
+  opacity of the elements around it, and in the theme of the `Themed`
+  around it;
+- moves its content as one, smoothly, rather than each line of its text a
+  pixel at a time, as text at rest once there;
+- fades in over the element it came from, if that one has `Fly` too,
+  which goes with it, laid out at each box too, fading out: the one coming
+  is opaque by half the way, and the other fades over the second half, as
+  Motion crossfades. Gone from the view, that element goes as a copy of
+  itself, rather than as its own `Exit` says; still built, as in a page
+  going away, it goes itself.
+
+Removed on its way with the elements around it, as its view closes with
+an `Exit`, the element flies on in their copy: from where it shows to
+where that copy has it, fading as it fades.
+
+### Everything else
+
+Keynote's Magic Move fades what the slides do not share as what they share
+moves. Do it between two views by giving each a key, in a parent that
+stays, with an `Enter` and an `Exit` that fade: what the views share flies
+from one to the other, and the rest fades out and in. The copy of the view
+going away shows nothing of the elements that fly with the other's.
+
+```go
+fade := ui.ElementTransition{Animation: &ui.Snappy, Enter: &ui.Motion{}, Exit: &ui.Motion{}}
+ui.Box(c.Key("stage")).Grow(1).Children(func() {
+	if app.open == nil {
+		ui.Column(c.Key("grid")).Absolute().Fill().Transition(fade).Children(app.grid)
+	} else {
+		ui.Column(c.Key("detail")).Absolute().Fill().Transition(fade).Children(app.detail)
+	}
+})
+```
+
+A [`Router`](navigation.md#transitions) does it for its pages with
+`TransitionMatch`.
+
+### Scaled content
+
+`ScaleContent` shows the element's size changing by scaling it from its
+own size, laid out once, rather than laying out its content at each size:
+its text keeps its lines, growing or shrinking with it, as a title into a
+heading, and a picture stretches with its box. It scales the element of a
+`Match` on its way, and changes of `Size`.
+
+### Text that morphs
+
+A text flying with a `Match` and `ContentTransition{Morph: true}` morphs
+from the text of the element of its `Match`: the characters both have
+move from where they were to where they are, growing or shrinking to
+their size and going to their color, the other characters fading out,
+going with the text, and in, as Keynote's Magic Move by characters. Its
+box flies as any element's of a `Match`, and its text, laid out once at
+its own size, moves into it. Taken over before it got there, by the
+element it came from or another of its `Match`, it morphs on from where
+its characters are. Rich text morphs too: its characters go to the colors
+of their spans, and its underlines, strikethroughs and highlights fade
+out and in:
+
+```go
+type titleMatch struct{ id int }
+title := ui.ElementTransition{Animation: &ui.Snappy, Match: titleMatch{p.ID}, Fly: true}
+morph := ui.ContentTransition{Morph: true}
+
+// In the grid.
+ui.Text(c, p.Title).FontSize(12).Transition(title).ContentTransition(morph)
+// In the detail view.
+ui.Text(c, p.Title+" in "+p.Place).FontSize(24).Bold().Transition(title).ContentTransition(morph)
+```
+
+`Morph` morphs a text changing in place too (see
+[Motion](motion.md#content-that-changes)).
+
 ## When nothing moves
 
 Changes that resizing the window makes do not animate. While the desktop

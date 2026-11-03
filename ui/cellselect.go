@@ -282,18 +282,17 @@ func (f *listFrame) revealColumn(k int) {
 }
 
 // dragCells sets the columns of the block a drag over the cells chooses:
-// from the column of the cell pressed to the one under the pointer. Near
-// the table's left or right edge, or past them, it scrolls the table
-// sideways, faster farther out.
-func (f *listFrame) dragCells() {
-	s, rt := f.s, f.c.rt
+// from the column of the cell pressed to the one at the window's point
+// (x, y).
+func (f *listFrame) dragCells(x, y float32) {
+	s := f.s
 	from := s.colIndex(s.dragSel.fromCol)
 	if from < 0 || s.tableCols[from].rowHeader {
 		// None, or a drag from a RowHeader cell, which chooses whole rows
 		// (fromCol is "", which an untitled RowHeader column's ID is too).
 		return
 	}
-	to := f.columnAt(rt.pointerX, rt.pointerY)
+	to := f.columnAt(x, y)
 	if to < 0 {
 		return
 	}

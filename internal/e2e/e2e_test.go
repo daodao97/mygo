@@ -652,7 +652,7 @@ func TestReloadLoadHTML(t *testing.T) {
 		{"Reload", w.Page().Reload},
 		{"location.reload()", func() { w.Page().Eval("setTimeout(() => location.reload())") }},
 	}
-	for _, base := range []string{"", "app://localhost/"} {
+	for _, base := range []string{"", "about:blank", "app://localhost/"} {
 		w.Page().LoadHTML(fmt.Sprintf("<p id=html data-base=%q>html</p>", base), base)
 		shown := fmt.Sprintf("document.getElementById('html')?.dataset.base === %q", base)
 		for _, r := range reloads {
@@ -1477,6 +1477,49 @@ func TestNewWindowBounds(t *testing.T) {
 	}
 	w := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200})
 	steady(w, "centered window", w.Bounds())
+}
+
+// A window created in the work area of a display, or moved there from
+// every display, lands where it was asked to, on that display: on Windows,
+// a position on a display of another scale than the primary's, or than
+// the window's, was turned into pixels at the wrong scale (#1039). The
+// displays never overlap. CI has one display; a computer with displays of
+// different scales checks the rest.
+func TestWindowOnEveryDisplay(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows puts displays of different scales in one space of DIPs")
+	}
+	displays := mygo.Screen.Displays()
+	for i, a := range displays {
+		for j, b := range displays[i+1:] {
+			p, q := a.Bounds, b.Bounds
+			if max(p.X, q.X) < min(p.X+p.Width, q.X+q.Width) && max(p.Y, q.Y) < min(p.Y+p.Height, q.Y+q.Height) {
+				t.Errorf("displays %d %+v and %d %+v overlap", i, a.Bounds, i+1+j, b.Bounds)
+			}
+		}
+	}
+	at := func(d mygo.Display, dx, dy int) mygo.Rectangle {
+		return mygo.Rectangle{X: d.WorkArea.X + dx, Y: d.WorkArea.Y + dy, Width: min(400, d.WorkArea.Width-2*dx), Height: min(300, d.WorkArea.Height-2*dy)}
+	}
+	for i, d := range displays {
+		want := at(d, 40, 30)
+		w := newWindow(t, mygo.WindowOptions{X: want.X, Y: want.Y, Width: want.Width, Height: want.Height})
+		if b := w.Bounds(); b != want {
+			t.Errorf("a window created on display %d (scale %v): bounds %+v, want %+v", i, d.ScaleFactor, b, want)
+		}
+		if on := mygo.Screen.DisplayMatching(w.Bounds()); on.ID != d.ID {
+			t.Errorf("a window created on display %d is on display %+v", i, on)
+		}
+		for j, e := range displays {
+			want := at(e, 60, 50)
+			w.SetBounds(want)
+			var b mygo.Rectangle
+			if !wait.Poll(func() bool { b = w.Bounds(); return b == want }) {
+				t.Errorf("a window moved from display %d (scale %v) to %d (scale %v): bounds %+v, want %+v", i, d.ScaleFactor, j, e.ScaleFactor, b, want)
+			}
+			w.SetBounds(at(d, 40, 30))
+		}
+	}
 }
 
 // Small windows the user cannot resize keep the sizes the app gives them:

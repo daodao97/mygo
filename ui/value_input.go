@@ -201,7 +201,7 @@ func sliderInput(n *node) {
 	}
 	st, rt := n.st, n.c.rt
 	if st.pressed {
-		x, y := st.local(rt.pointerX, rt.pointerY)
+		x, y := st.local(st.pointer(rt))
 		x += st.x
 		y += st.y
 		if settings.vertical && st.ch > 0 {
@@ -363,10 +363,16 @@ func listInput(n *node) {
 		return
 	}
 	f := n.rowsOf
+	if p := f.c.rt.pressEnded; p != nil {
+		// The pass that reads the last moves of a press sees it go on, up
+		// to where the pointer let go, before the keys that came after its
+		// release.
+		f.dragSelect(p)
+	}
 	if f.s.cursor() != nil {
 		f.navigate()
 	}
-	f.dragSelect()
+	f.dragSelect(f.c.rt.pressed)
 	f.reorder()
 }
 

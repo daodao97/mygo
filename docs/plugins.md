@@ -33,6 +33,10 @@ JavaScript package whose functions call them. The app uses the Go half with
   its windows, the elements of their native UI, input, menus, scripts in
   pages and screenshots. It is all Go, opt-in, and left out of release
   builds.
+- [PermissionFlow](plugins/permissionflow.md): the permissions the system
+  keeps for the user to give, such as Accessibility, Screen Recording and
+  the microphone: checked, asked for, and a guide to System Settings with
+  the app to drag into its list, after PermissionFlow. It is all Go.
 
 ## Using plugins
 

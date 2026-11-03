@@ -359,6 +359,71 @@ func TestMakeRoom(t *testing.T) {
 	s.EndFrame()
 }
 
+// What a frame draws many times counts once in the room it needs: an atlas
+// that grew by every use of a glyph took 2048×2048 pixels, 16 MB of memory and
+// as much of the GPU's, for 24 paragraphs that fill 3% of it.
+func TestLeftOutCountsOnce(t *testing.T) {
+	s := newSystem()
+	s.BeginFrame()
+	draws := 0
+	draw := func(int) func() (int, int, []byte) {
+		return func() (int, int, []byte) {
+			draws++
+			return 200, 200, make([]byte, 200*200)
+		}
+	}
+	if !s.Mask(1, draw(1)).OK {
+		t.Fatal("the first mask does not fit")
+	}
+	draws = 0
+	for range 100 {
+		if s.Mask(2, draw(2)).OK {
+			t.Fatal("the second mask fit")
+		}
+	}
+	if draws != 1 {
+		t.Fatalf("a mask left out was drawn %d times", draws)
+	}
+	if want := 201 * 201; s.want[0] != want {
+		t.Fatalf("the frame wants %d pixels, not %d", s.want[0], want)
+	}
+	s.MakeRoom()
+	if s.MaskAtlas.W != 512 {
+		t.Fatalf("the atlas grew to %d for two masks of 200", s.MaskAtlas.W)
+	}
+	if !s.Mask(2, draw(2)).OK {
+		t.Fatal("the mask does not fit after making room")
+	}
+	s.EndFrame()
+
+	// So does a glyph, in a frame after one that left it out too.
+	s = newSystem()
+	l := s.Layout(Params{Text: "Hi", Style: Style{Size: 40}})
+	g := l.Lines[0].Glyphs[0]
+	s.BeginFrame()
+	s.MaskAtlas = scene.NewAtlas(1, 4, 4)
+	s.MaskAtlas.Put(0, 0, 1, 1, []byte{1}, 1)
+	if s.Glyph(g.Font, g.ID, 1, 0, 0, false).OK || !s.Full() {
+		t.Skip("the glyph takes no room in the mask atlas")
+	}
+	want := s.want[0]
+	for range 50 {
+		s.Glyph(g.Font, g.ID, 1, 0, 0, false)
+	}
+	if s.want[0] != want {
+		t.Fatalf("a glyph left out grew the room wanted from %d to %d", want, s.want[0])
+	}
+	s.MakeRoom()
+	if !s.Glyph(g.Font, g.ID, 1, 0, 0, false).OK {
+		t.Fatal("the glyph does not fit after making room")
+	}
+	s.EndFrame()
+	s.BeginFrame()
+	if len(s.outGlyphs) != 0 {
+		t.Fatal("a new frame remembers what was left out")
+	}
+}
+
 // Thin masks can need a much wider or taller atlas without taking much
 // area: one MakeRoom must accommodate them, whatever the starting size.
 func TestMakeRoomForLongMasks(t *testing.T) {
@@ -1002,4 +1067,113 @@ func TestLayoutAtMeasuredWidth(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestLayoutUnwrappedAtWidths checks that a text laid out at widths its
+// lines fit in is shaped once for every width, and lays out as it would at
+// each, its lines where its alignment puts them.
+func TestLayoutUnwrappedAtWidths(t *testing.T) {
+	style := Style{Size: 14}
+	for _, c := range []struct {
+		name   string
+		p      Params
+		shares bool
+	}{
+		{"label", Params{Text: "Forest in the rain", Style: style}, true},
+		{"lines", Params{Text: "Forest\nin the rain\n", Style: style}, true},
+		{"indented", Params{Text: "Forest in the rain", Style: style, Indent: 12}, true},
+		{"spans", Params{Text: "Forest in the rain", Style: style, Spans: EncodeSpans([]Span{{End: 6, Weight: 700}, {End: 18}})}, true},
+		{"right to left", Params{Text: "שלום עולם", Style: style}, true},
+		{"right to left at the end", Params{Text: "שלום עולם", Style: style, Align: End}, true},
+		{"centered", Params{Text: "Forest in the rain", Style: style, Align: Center}, true},
+		{"centered lines", Params{Text: "Forest\nin the rain", Style: style, Align: Center, Indent: 8}, true},
+		{"at the right", Params{Text: "Forest in the rain", Style: style, Align: Right}, true},
+		{"centered, not wrapped", Params{Text: "Forest in the rain, and the sea", Style: style, Align: Center, NoWrap: true}, true},
+		{"no wrap", Params{Text: "Forest in the rain, and the sea", Style: style, NoWrap: true}, true},
+		{"justified", Params{Text: "Forest in the rain", Style: style, Justify: true}, true},
+		{"cut", Params{Text: "Forest in the rain", Style: style, MaxLines: 1}, false},
+		{"wrapping", Params{Text: "Forest in the rain, and the sea at dusk", Style: style}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			// From the layout at the width before, as a box resizing lays
+			// its text out, and from the text's unwrapped layout.
+			for _, unwrapped := range []bool{false, true} {
+				s := newSystem()
+				if unwrapped {
+					s.Layout(unwrappedParams(c.p))
+				}
+				var last *Layout
+				var n uint64
+				for _, w := range []float32{400, 300, 250.5, 200, 180} {
+					p := c.p
+					p.Width = w
+					made := s.LayoutsMade()
+					got := s.LayoutFrom(last, p)
+					if unwrapped {
+						got = s.Layout(p)
+					}
+					n += s.LayoutsMade() - made
+					// Made anew by the same system, whose glyph IDs are the
+					// same, as the browser's engine numbers glyphs as it meets
+					// them.
+					want := &s.layout(p).layout
+					last = got
+					if got.Params != p {
+						t.Fatalf("at %v, the layout's parameters are %+v", w, got.Params)
+					}
+					if !sameLayout(got, want) {
+						t.Fatalf("at %v, the layout differs from one made at that width:\n%+v\n%+v", w, got.Lines, want.Lines)
+					}
+					for i := range len(want.Runes) + 1 {
+						gx, gy, _ := got.CaretAt(CaretPosition{Index: i})
+						wx, wy, _ := want.CaretAt(CaretPosition{Index: i})
+						if gx != wx || gy != wy {
+							t.Fatalf("at %v, the caret at %d is at %v, %v, not %v, %v", w, i, gx, gy, wx, wy)
+						}
+					}
+				}
+				shaped := uint64(1)
+				if unwrapped {
+					shaped = 0
+				}
+				if c.shares && n != shaped {
+					t.Errorf("unwrapped first %v, laid out %d times, not %d", unwrapped, n, shaped)
+				}
+			}
+		})
+	}
+	// A text laid out at a width is shaped once, wrapping or not.
+	s := newSystem()
+	for _, p := range []Params{
+		{Text: "Harbor lights at night", Style: style, Width: 40},
+		{Text: "Lighthouse keepers", Style: style, Width: 400},
+	} {
+		made := s.LayoutsMade()
+		s.Layout(p)
+		if n := s.LayoutsMade() - made; n != 1 {
+			t.Errorf("%q at %v laid out %d times", p.Text, p.Width, n)
+		}
+	}
+}
+
+// sameLayout reports whether a and b place the same glyphs on the same
+// lines.
+func sameLayout(a, b *Layout) bool {
+	if a.Width != b.Width || a.Height != b.Height || a.Truncated != b.Truncated || !slices.Equal(a.Runes, b.Runes) || len(a.Lines) != len(b.Lines) {
+		return false
+	}
+	for i := range a.Lines {
+		x, y := &a.Lines[i], &b.Lines[i]
+		if x.X != y.X || x.Y != y.Y || x.Width != y.Width || x.Height != y.Height || x.Baseline != y.Baseline ||
+			x.Start != y.Start || x.End != y.End || x.RTL != y.RTL || len(x.Glyphs) != len(y.Glyphs) {
+			return false
+		}
+		for j := range x.Glyphs {
+			g, h := x.Glyphs[j], y.Glyphs[j]
+			if g.ID != h.ID || g.X != h.X || g.Y != h.Y || g.Advance != h.Advance || g.Cluster != h.Cluster || g.Size != h.Size {
+				return false
+			}
+		}
+	}
+	return true
 }

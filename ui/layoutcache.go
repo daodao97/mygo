@@ -414,7 +414,8 @@ func (e *node) textLayout(width float32) *text.Layout {
 			return l
 		}
 	}
-	l := textSystem().Layout(p)
+	// From the last, of the same text at another width as its box resizes.
+	l := textSystem().LayoutFrom(t.at[t.next^1], p)
 	t.at[t.next] = l
 	t.next ^= 1
 	return l

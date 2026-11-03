@@ -119,6 +119,26 @@ mygo.NewNotification(mygo.NotificationOptions{
 }).Show()
 ```
 
+`Image` shows an image with the notification, the bytes of a PNG or JPEG,
+such as the cover of the track that started playing. macOS attaches it,
+as a thumbnail that grows as the notification expands; Linux gives the
+desktop's notification service its pixels, scaled down to fit 256 pixels;
+Windows shows it as the balloon's large icon, in place of the app's. An
+image the system cannot decode leaves the notification without one.
+`NewNotification` copies it, so the app can reuse its buffer; MyGo does
+not fetch remote images:
+
+```go
+// One notification for what plays, replaced as the track changes.
+mygo.NewNotification(mygo.NotificationOptions{
+	ID:     "now-playing",
+	Title:  track.Title,
+	Body:   track.Artist + " — " + track.Album,
+	Image:  track.Cover,
+	Silent: true,
+}).Show()
+```
+
 ### Sender avatars on macOS
 
 An incoming direct message can supply a sender to display a prominent
@@ -281,6 +301,14 @@ mygo.Screen.OnDisplaysChanged(func() { /* rearrange windows */ })
 ```
 
 `WorkArea` leaves out the menu bar, the Dock and taskbars.
+
+On Windows, displays can have different scales. Each display's
+coordinates start at its top-left corner in pixels divided by the
+smallest scale of the displays, and go on in its own scale, so that
+displays never overlap: one with a larger scale than another's leaves a
+gap after it. Where every display has the same scale, coordinates are
+the pixels divided by that scale. A window's bounds are in the scale of
+the display it is the most on.
 `DisplayMatching(rect)` returns the display a rectangle overlaps most, the
 one a window is on.
 

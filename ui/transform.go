@@ -313,7 +313,9 @@ func (rt *engine) contains(s *state, r Rect, x, y float32) bool {
 	if !r.Contains(lx, ly) {
 		return false
 	}
-	for p := rt.states[s.parent]; p != nil; p = rt.states[p.parent] {
+	// The clips around an element flying stop at it, as it paints out of
+	// them.
+	for p := rt.states[s.parent]; p != nil && !s.lifted; p = rt.states[p.parent] {
 		if p.clips {
 			m, ok := p.world.Inverse()
 			if !ok {
@@ -324,7 +326,7 @@ func (rt *engine) contains(s *state, r Rect, x, y float32) bool {
 				return false
 			}
 		}
-		if p.parent == 0 {
+		if p.lifted || p.parent == 0 {
 			break
 		}
 	}
