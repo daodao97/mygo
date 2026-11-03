@@ -196,4 +196,22 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/meiro.jpg",
   },
+  {
+    name: "Repo Hopper",
+    description:
+      "Spotlight for your Git repositories. A global shortcut opens a search over every local repo, most recently changed first, and opens the chosen one in your editor, terminal or Finder.",
+    url: "https://github.com/pteich/repo-hopper",
+    author: "pteich",
+    mode: "native",
+    image: "/showcase/repo-hopper.jpg",
+  },
+  {
+    name: "Universal S3 UI",
+    description:
+      "A lightweight storage browser for S3-compatible services, SFTP and FTP/FTPS. One connection manager with credentials in the system keychain, drag-and-drop uploads, temporary share links, and sync between any two connections.",
+    url: "https://github.com/pteich/us3ui",
+    author: "pteich",
+    mode: "native",
+    image: "/showcase/us3ui.jpg",
+  },
 ]
