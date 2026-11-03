@@ -743,7 +743,7 @@ func (f *listFrame) build(i int) *node {
 			// Where the keys moved without choosing.
 			w.DrawOver(func(p *Painter, r Rect) {
 				if owner.FocusVisible() {
-					p.FocusRing(Rect{r.X + 3, r.Y + 3, r.W - 6, r.H - 6}, w.radius)
+					p.focusRingOf(owner, Rect{r.X + 3, r.Y + 3, r.W - 6, r.H - 6}, w.radius)
 				}
 			})
 		}

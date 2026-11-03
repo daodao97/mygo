@@ -14,7 +14,8 @@ func TestBasesHaveNoLook(t *testing.T) {
 	var radio, tab int
 	var value = 50.0
 	var size, text = "M", "hello"
-	open := true
+	open, menu, section := true, true, true
+	mixed := CheckMixed
 	tt := coreNewTester(func(c *context) {
 		th := *c.Theme()
 		th.Background = RGB(255, 255, 255)
@@ -22,6 +23,7 @@ func TestBasesHaveNoLook(t *testing.T) {
 		coreColumn(c).Fill().Padding(10).Gap(10).AlignItems(Start).Children(func() {
 			coreButtonBase(c).Size(60, 20)
 			coreCheckboxBase(c, &check).Size(60, 20)
+			coreCheckboxStateBase(c, &mixed).Size(60, 20)
 			coreSwitchBase(c, &on).Size(60, 20)
 			coreRadioBase(c, &radio, 1).Size(60, 20)
 			coreSliderBase(c, &value, 0, 100).Size(60, 20)
@@ -38,6 +40,20 @@ func TestBasesHaveNoLook(t *testing.T) {
 			})
 			coreTextInputBase(c, &text).Width(60).TextColor(RGB(255, 255, 255))
 			corePopoverBase(c, sel.Trigger, &open, func(panel *node) { coreBox(c).Size(30, 30) })
+			acc := coreAccordionBase(c)
+			acc.Root.Children(func() {
+				item := acc.Item(&section)
+				item.Trigger.Size(60, 20)
+				item.Panel(func() { coreBox(c).Size(60, 20) })
+			})
+			m := coreMenuBase(c, &menu)
+			m.Trigger.Size(60, 20)
+			m.Popup(func(panel *node) {
+				m.Item().Size(60, 20)
+				m.CheckItem(true).Size(60, 20)
+				sub := m.SubmenuItem().Size(60, 20)
+				m.Submenu(sub, func(panel *node) { m.RadioItem(true).Size(60, 20) })
+			})
 		})
 	}, 300, 400)
 	img := tt.Image()

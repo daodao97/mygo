@@ -197,6 +197,18 @@ func (e *node) shadowMargin() float32 {
 	return margin
 }
 
+// ringMargin returns how far beyond its box the focus ring of the
+// element may reach, and a DIP more, for its edge's antialiasing: 4 for
+// the theme's ring by default.
+func (e *node) ringMargin() float32 {
+	t := e.c.window
+	off := t.FocusRingOffset
+	if e.ringSet&ringOffsetSet != 0 {
+		off = e.ringOffset
+	}
+	return max(4, off+t.focusRingWidth()+1)
+}
+
 // setInk sets e's ink from vis, its box in the window, once commit set
 // those of the elements inside it: the union of the areas within which
 // element paints its own content (visible, from its box grown by its
@@ -211,7 +223,7 @@ func (e *node) shadowMargin() float32 {
 // across a container; the debug overlay, over margins; exit transitions'
 // copies; and color transitions, which note the frames they paint in.
 func (e *node) setInk(vis Rect) {
-	m := e.shadowMargin() + 4
+	m := e.shadowMargin() + e.ringMargin()
 	ink := [4]float32{vis.X - m, vis.Y - m, vis.X + vis.W + m, vis.Y + vis.H + m}
 	no := e.isInline() || e.kind == kindText && e.first != nil || e.effect != nil || e.blur > 0 ||
 		e.flags&(flagDividers|flagDebug) != 0 || e.ghosts || e.leaving != 0 || e.st.trec != nil
@@ -413,7 +425,7 @@ func (p *Painter) element(e *node) {
 		p.debug(e)
 	}
 	if own && e.kind != kindInput && e.ringShown() {
-		p.FocusRing(box, e.radius)
+		p.focusRingOf(e, box, e.radius)
 	}
 	p.opacity = saved
 	p.opaque, p.under = savedOpaque, p.under[:under]
@@ -1439,14 +1451,41 @@ func (p *Painter) ImageRegion(b *Bitmap, src, dst Rect, o ImageOptions) {
 		Pixelated: b.pixelated && shrink <= 1})
 }
 
-// FocusRing draws the ring that shows the keyboard focus around r.
+// FocusRing draws the ring that shows the keyboard focus around r, whose
+// corners are rounded by radius, as the theme draws it: FocusRingWidth
+// wide, FocusRingOffset outside r, in Focus.
 func (p *Painter) FocusRing(r Rect, radius [4]float32) {
-	const w = 2
-	o := Rect{r.X - w - 1, r.Y - w - 1, r.W + 2*w + 2, r.H + 2*w + 2}
-	for i := range radius {
-		radius[i] += w + 1
+	t := p.Theme()
+	p.ring(r, radius, t.FocusRingOffset, t.focusRingWidth(), t.Focus)
+}
+
+// focusRingOf draws the focus ring of e around r, a part of e or its box,
+// with the offset and the color e sets (FocusRingOffset, FocusRingColor),
+// else the theme's.
+func (p *Painter) focusRingOf(e *node, r Rect, radius [4]float32) {
+	t := p.Theme()
+	off, color := t.FocusRingOffset, t.Focus
+	if e.ringSet&ringOffsetSet != 0 {
+		off = e.ringOffset
 	}
-	p.fill(o, radius, Color{}, w, p.Theme().Focus)
+	if e.ringSet&ringColorSet != 0 {
+		color = e.ringColor
+	}
+	p.ring(r, radius, off, t.focusRingWidth(), color)
+}
+
+// ring draws a ring w wide whose inner edge is off outside r, inside for a
+// negative off, its corners following radius as CSS's outline does.
+func (p *Painter) ring(r Rect, radius [4]float32, off, w float32, color Color) {
+	d := off + w
+	o := Rect{r.X - d, r.Y - d, r.W + 2*d, r.H + 2*d}
+	if o.W <= 0 || o.H <= 0 {
+		return
+	}
+	for i := range radius {
+		radius[i] = max(0, radius[i]+d)
+	}
+	p.fill(o, radius, Color{}, w, color)
 }
 
 // Clip restricts what fn draws to r.

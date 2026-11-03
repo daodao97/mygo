@@ -131,3 +131,32 @@ lists only the system's menus.
 button](menu-button.md#drawn-in-the-window) so, below the button, and takes
 the same function: a row's right-click and its ⋯ button can share one
 menu, drawn alike.
+
+## Without a look
+
+`ui.ContextMenuBase` gives an element a context menu without a look,
+shown while a `*bool` is true: it opens as `PopoverMenu`'s does, where
+the element is right-clicked or below it for the menu key, and has its
+keys, and its `Popup` builds the menu as
+[`MenuBase`](menu-button.md#without-a-look)'s does, with items of your
+own layout:
+
+```go
+m := ui.ContextMenuBase(c, row, &app.rowMenu)
+m.Popup(func(panel ui.Element) {
+	panel.Padding(4).Radius(10).Background(t.Background).Border(1, t.Border)
+	for _, label := range app.labels {
+		item := m.CheckItem(note.has(label)).Gap(8).Padding(6, 10).Radius(6)
+		if item.Highlighted() {
+			item.Background(t.SurfaceHover)
+		}
+		item.Children(func() {
+			ui.Box(c).Size(10, 10).Radius(5).Background(label.Color)
+			ui.Text(c, label.Name)
+		})
+		if item.Clicked() {
+			note.toggle(label)
+		}
+	}
+})
+```

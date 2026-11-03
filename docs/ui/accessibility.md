@@ -40,7 +40,9 @@ section, ranked with `Level`, and `ui.RoleMenu`, `ui.RoleMenuBar`,
 make menus drawn in the window, as a drop-down menu or a menu bar of your
 own (an element's menu drawn in the window,
 [`PopoverMenu`](context-menu.md#drawn-in-the-window) or
-[`PopoverMenuButton`](menu-button.md#drawn-in-the-window), has them):
+[`PopoverMenuButton`](menu-button.md#drawn-in-the-window), has them, as
+do [`MenuBase`](menu-button.md#without-a-look) and `ContextMenuBase`,
+menus without a look that keep their keys and focus):
 
 ```go
 ui.Text(c, "Appearance").Bold().Role(ui.RoleHeading).Level(2)
@@ -68,6 +70,10 @@ if app.some {
 
 date := ui.ButtonBase(c).Role(ui.RolePopUpButton).Label("Due").Value(app.due.Format("Jan 2")).Expanded(app.picking)
 ```
+
+A check box that is mixed as often as not is better built on
+[`CheckboxStateBase`](checkbox.md#without-a-look), which tells it itself
+from its `ui.CheckState`, and checks it as it is pressed.
 
 ## Descriptions and errors
 

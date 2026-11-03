@@ -191,6 +191,33 @@ in every window sets it to the accent:
 t.InactiveAccent = t.Accent
 ```
 
+## The focus ring
+
+The element with the keyboard focus from the keyboard shows a ring, which
+the theme draws: `FocusRingWidth` DIPs wide (2 by default), its inner edge
+`FocusRingOffset` DIPs outside the element's edge (1 in the light and dark
+themes; 0 puts it on the edge, and a negative offset inside it), in
+`Focus`. Its corners follow the element's, as CSS's outline does. A theme
+of a thicker ring, further out:
+
+```go
+t.FocusRingWidth, t.FocusRingOffset = 3, 2
+```
+
+An element sets its own offset with `FocusRingOffset`, and its color with
+`FocusRingColor`, as a control whose ring must sit inside it because an
+element around it clips what goes past its edges, as a header in an
+accordion's box does:
+
+```go
+header.FocusRingOffset(-4) // inside, its outer edge 2 DIPs in
+```
+
+Widgets that ring a part of themselves, as a check box its box, take the
+same settings. `FocusRing(false)` turns the ring off for a widget that
+draws its own with `Painter.FocusRing`, the theme's ring around any
+rectangle, while `FocusVisible`.
+
 ## A theme for part of the window
 
 `SetTheme` themes the whole window: the root, its background and its text,

@@ -44,8 +44,15 @@ type Theme struct {
 	Success Color
 	// Selection highlights selected text.
 	Selection Color
-	// Focus is the ring around the control with the keyboard focus.
-	Focus Color
+	// Focus is the ring around the control with the keyboard focus,
+	// FocusRingWidth DIPs wide (2 by default; 0 is 2) and FocusRingOffset
+	// DIPs outside its edge (1 in LightTheme and DarkTheme): 0 puts the
+	// ring on the edge, and a negative offset inside it.
+	// Element.FocusRingOffset and Element.FocusRingColor change them for
+	// one element.
+	Focus           Color
+	FocusRingWidth  float32
+	FocusRingOffset float32
 	// Inverse fills tooltips and toasts, the theme turned over so that
 	// they stand out from what they are over: dark in a light theme, light
 	// in a dark one. InverseText is text on it. Left zero, they are Text
@@ -111,6 +118,14 @@ func (t *Theme) inverse() (fill, text Color) {
 	return fill, text
 }
 
+// focusRingWidth returns how wide the focus ring is (FocusRingWidth).
+func (t *Theme) focusRingWidth() float32 {
+	if t.FocusRingWidth <= 0 {
+		return 2
+	}
+	return t.FocusRingWidth
+}
+
 func (t *Theme) scrollbarWidth() float32 {
 	if t.ScrollbarWidth <= 0 {
 		return 6
@@ -151,52 +166,56 @@ func defaultFontSize() float32 {
 // LightTheme returns the theme for a light appearance.
 func LightTheme() *Theme {
 	return &Theme{
-		Background:     Hex("#ffffff"),
-		Surface:        Hex("#f4f4f5"),
-		SurfaceHover:   Hex("#e9e9ec"),
-		SurfacePressed: Hex("#dddde1"),
-		Border:         Hex("#d9d9de"),
-		Text:           Hex("#18181b"),
-		TextMuted:      Hex("#71717a"),
-		Accent:         Hex("#2563eb"),
-		AccentHover:    Hex("#1d4ed8"),
-		AccentPressed:  Hex("#1e40af"),
-		AccentText:     Hex("#ffffff"),
-		Danger:         Hex("#dc2626"),
-		Warning:        Hex("#d97706"),
-		Success:        Hex("#16a34a"),
-		Selection:      RGBA(37, 99, 235, 0.25),
-		Focus:          RGBA(37, 99, 235, 0.55),
-		Scrollbar:      RGBA(0, 0, 0, 0.32),
-		Radius:         6,
-		Spacing:        4,
-		FontSize:       defaultFontSize(),
+		Background:      Hex("#ffffff"),
+		Surface:         Hex("#f4f4f5"),
+		SurfaceHover:    Hex("#e9e9ec"),
+		SurfacePressed:  Hex("#dddde1"),
+		Border:          Hex("#d9d9de"),
+		Text:            Hex("#18181b"),
+		TextMuted:       Hex("#71717a"),
+		Accent:          Hex("#2563eb"),
+		AccentHover:     Hex("#1d4ed8"),
+		AccentPressed:   Hex("#1e40af"),
+		AccentText:      Hex("#ffffff"),
+		Danger:          Hex("#dc2626"),
+		Warning:         Hex("#d97706"),
+		Success:         Hex("#16a34a"),
+		Selection:       RGBA(37, 99, 235, 0.25),
+		Focus:           RGBA(37, 99, 235, 0.55),
+		FocusRingWidth:  2,
+		FocusRingOffset: 1,
+		Scrollbar:       RGBA(0, 0, 0, 0.32),
+		Radius:          6,
+		Spacing:         4,
+		FontSize:        defaultFontSize(),
 	}
 }
 
 // DarkTheme returns the theme for a dark appearance.
 func DarkTheme() *Theme {
 	return &Theme{
-		Dark:           true,
-		Background:     Hex("#18181b"),
-		Surface:        Hex("#27272a"),
-		SurfaceHover:   Hex("#323236"),
-		SurfacePressed: Hex("#3c3c41"),
-		Border:         Hex("#3f3f46"),
-		Text:           Hex("#f4f4f5"),
-		TextMuted:      Hex("#a1a1aa"),
-		Accent:         Hex("#3b82f6"),
-		AccentHover:    Hex("#60a5fa"),
-		AccentPressed:  Hex("#2563eb"),
-		AccentText:     Hex("#ffffff"),
-		Danger:         Hex("#ef4444"),
-		Warning:        Hex("#f59e0b"),
-		Success:        Hex("#22c55e"),
-		Selection:      RGBA(59, 130, 246, 0.4),
-		Focus:          RGBA(96, 165, 250, 0.6),
-		Scrollbar:      RGBA(255, 255, 255, 0.35),
-		Radius:         6,
-		Spacing:        4,
-		FontSize:       defaultFontSize(),
+		Dark:            true,
+		Background:      Hex("#18181b"),
+		Surface:         Hex("#27272a"),
+		SurfaceHover:    Hex("#323236"),
+		SurfacePressed:  Hex("#3c3c41"),
+		Border:          Hex("#3f3f46"),
+		Text:            Hex("#f4f4f5"),
+		TextMuted:       Hex("#a1a1aa"),
+		Accent:          Hex("#3b82f6"),
+		AccentHover:     Hex("#60a5fa"),
+		AccentPressed:   Hex("#2563eb"),
+		AccentText:      Hex("#ffffff"),
+		Danger:          Hex("#ef4444"),
+		Warning:         Hex("#f59e0b"),
+		Success:         Hex("#22c55e"),
+		Selection:       RGBA(59, 130, 246, 0.4),
+		Focus:           RGBA(96, 165, 250, 0.6),
+		FocusRingWidth:  2,
+		FocusRingOffset: 1,
+		Scrollbar:       RGBA(255, 255, 255, 0.35),
+		Radius:          6,
+		Spacing:         4,
+		FontSize:        defaultFontSize(),
 	}
 }

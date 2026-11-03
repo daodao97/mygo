@@ -222,32 +222,33 @@ func checkPath(r Rect) *Path {
 func coreCheckbox(c *context, checked *bool, label string) *node {
 	t := c.theme
 	row := coreCheckboxBase(c, checked).Gap(t.Space(2)).FocusRing(false)
-	on := *checked
+	checkboxFace(c, row, 1+int8(b2f(*checked)), label)
+	return row
+}
+
+// CheckboxState creates a check box that can be mixed, with a label: a
+// click, or Space while it has the focus, checks it, or unchecks it when
+// it is checked, setting *state, and Changed reports a click. It shows a
+// dash while mixed, and assistive technology sees it mixed. CheckboxGroup
+// is one over the check boxes it holds.
+func coreCheckboxState(c *context, state *CheckState, label string) *node {
+	t := c.theme
+	row := coreCheckboxStateBase(c, state).Gap(t.Space(2)).FocusRing(false)
+	checkboxFace(c, row, checkedOf(*state), label)
+	return row
+}
+
+// checkboxFace builds the box of check box row, off (1), on (2) or mixed
+// (3), and its label.
+func checkboxFace(c *context, row *node, state int8, label string) {
+	t := c.theme
 	row.Children(func() {
 		box := coreBox(c).Size(t.Space(4), t.Space(4)).Radius(t.Space(1)).Shrink(0)
-		if on {
-			box.Background(c.accent(t))
-		} else {
-			box.Background(t.Background).Border(1, t.Border.Mix(t.Text, 0.25))
-		}
-		box.DrawOver(func(p *Painter, r Rect) {
-			if on {
-				p.StrokePath(checkPath(r), t.Space(0.5), t.AccentText)
-			}
-			if row.FocusVisible() {
-				p.FocusRing(r, box.radius)
-			}
-		})
-		box.styleFn = func(box *node) {
-			if !on && row.Hovered() {
-				box.borderC = t.Accent
-			}
-		}
+		paintCheckbox(c, row, box, state)
 		if label != "" {
 			coreText(c, label)
 		}
 	})
-	return row
 }
 
 // Radio creates a radio button that selects value into *selected, with a
@@ -269,7 +270,7 @@ func coreRadio[T comparable](c *context, selected *T, value T, label string) *no
 				p.Fill(Rect{r.X + (r.W-d)/2, r.Y + (r.H-d)/2, d, d}, t.AccentText, d/2)
 			}
 			if row.FocusVisible() {
-				p.FocusRing(r, dot.radius)
+				p.focusRingOf(row, r, dot.radius)
 			}
 		})
 		dot.styleFn = func(dot *node) {

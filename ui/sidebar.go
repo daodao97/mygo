@@ -203,7 +203,7 @@ func coreSidebarItem(c *context, id string, icon *SVG, label string) *node {
 		e := sb.e
 		item.DrawOver(func(p *Painter, r Rect) {
 			if e.FocusVisible() {
-				p.FocusRing(r, item.radius)
+				p.focusRingOf(e, r, item.radius)
 			}
 		})
 	}

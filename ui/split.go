@@ -177,7 +177,7 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 			})
 			handle.Draw(func(p *Painter, r Rect) {
 				if div.FocusVisible() {
-					p.FocusRing(r, [4]float32{})
+					p.focusRingOf(div, r, [4]float32{})
 				}
 			})
 		})

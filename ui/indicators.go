@@ -162,7 +162,7 @@ func coreRating(c *context, value *int, max int) *node {
 		// Around the stars, which a row stretched leaves at its start.
 		if first, last := e.first, e.last; e.FocusVisible() && first != nil {
 			stars := union(Rect{first.x, first.y, first.w, first.h}, Rect{last.x, last.y, last.w, last.h})
-			p.FocusRing(stars, [4]float32{t.Radius, t.Radius, t.Radius, t.Radius})
+			p.focusRingOf(e, stars, [4]float32{t.Radius, t.Radius, t.Radius, t.Radius})
 		}
 	})
 	e.flags |= flagOwnRing
@@ -283,7 +283,7 @@ func coreStepper(c *context, value *float64, lo, hi, step float64) *node {
 	})
 	e.DrawOver(func(p *Painter, r Rect) {
 		if e.FocusVisible() {
-			p.FocusRing(r, e.radius)
+			p.focusRingOf(e, r, e.radius)
 		}
 	})
 	return e

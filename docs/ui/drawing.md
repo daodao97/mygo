@@ -43,7 +43,8 @@ Draw functions only paint: MyGo may call them more than once a frame.
 `Painter.Icon` and `Painter.Image` draw SVGs and bitmaps,
 `Painter.ImageRegion` parts of bitmaps (see [Parts of
 bitmaps](#parts-of-bitmaps)), and
-`Painter.FocusRing` the ring of the keyboard focus, for widgets that draw
+`Painter.FocusRing` the ring of the keyboard focus, as the theme draws it
+(see [the focus ring](styling.md#the-focus-ring)), for widgets that draw
 their own.
 
 `Path.Trim(from, to)` keeps the part of a path's length from `from` to

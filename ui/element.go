@@ -384,6 +384,11 @@ type node struct {
 	maximizeButton bool
 	fit            Fit
 	gray           bool
+	// ringOffset and ringColor are the offset and the color of the
+	// element's focus ring, where ringSet says it sets them.
+	ringOffset float32
+	ringColor  Color
+	ringSet    uint8
 	// dismissed: Escape or a click outside closed the dialog or popover
 	// whose panel this is, in this frame (Dismissed).
 	dismissed bool
@@ -1563,6 +1568,34 @@ func (e *node) FocusRing(show bool) *node {
 	}
 	return e
 }
+
+// FocusRingOffset sets how far outside the element's edge its focus ring
+// goes, in DIPs, in place of the theme's FocusRingOffset: 0 puts it on
+// the edge, and a negative offset inside it, as for an element whose
+// ancestor clips what goes past it, as a header in an accordion's box.
+// Its corners follow the element's, as CSS's outline does. The widgets
+// that ring a part of themselves, as a check box its box, ring it so.
+func (e *node) FocusRingOffset(d float32) *node {
+	e.ringOffset = d
+	e.ringSet |= ringOffsetSet
+	return e
+}
+
+// FocusRingColor sets the color of the element's focus ring, in place of
+// the theme's Focus, as for an element on a background the theme's ring
+// does not stand out on.
+func (e *node) FocusRingColor(color Color) *node {
+	e.ringColor = color
+	e.ringSet |= ringColorSet
+	return e
+}
+
+// What an element sets of its focus ring (FocusRingOffset,
+// FocusRingColor).
+const (
+	ringOffsetSet uint8 = 1 << iota
+	ringColorSet
+)
 
 // Draw paints on the element with p after its background, before its
 // children; r is its box. fn only paints: it may run more than once a

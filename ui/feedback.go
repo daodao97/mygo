@@ -24,20 +24,19 @@ func coreCheckboxGroup(c *context, label string, fn func()) *node {
 	t := c.theme
 	g := coreColumn(c).Gap(t.Space(2)).Shrink(0)
 	g.widget = "CheckboxGroup"
-	var head *node
-	var group *checkGroup
 	g.Children(func() {
-		head = coreRow(c).Focusable().Shrink(0).Gap(t.Space(2)).FocusRing(false).Role(RoleCheckBox)
-		head.flags |= flagClickable | flagHover | flagToggle
+		// What the boxes below show, once they are built: the box over
+		// them takes its click as the group's constructor returns.
+		state := new(CheckState)
+		head := coreCheckboxStateBase(c, state).Gap(t.Space(2)).FocusRing(false)
 		head.widget = "CheckboxGroup"
-		head.flags |= flagClickable
 		var box *node
 		head.Children(func() {
 			box = coreBox(c).Size(t.Space(4), t.Space(4)).Radius(t.Space(1)).Shrink(0)
 			coreText(c, label)
 		})
 		saved := c.checks
-		group = &checkGroup{}
+		group := &checkGroup{}
 		c.checks = group
 		boxes := coreColumn(c).Gap(t.Space(2)).PaddingStart(t.Space(6)).Role(RoleGroup).Label(label)
 		boxes.Children(fn)
@@ -48,25 +47,23 @@ func coreCheckboxGroup(c *context, label string, fn func()) *node {
 				on++
 			}
 		}
-		all := on == len(group.boxes) && on > 0
+		switch {
+		case on == len(group.boxes) && on > 0:
+			*state = CheckOn
+		case on > 0:
+			*state = CheckMixed
+		}
 		head.afterInput(func() {
-			if head.Clicked() {
+			if head.Changed() {
 				for _, b := range group.boxes {
-					*b = !all
+					*b = *state == CheckOn
 				}
 				g.st.markChanged()
 				c.rt.consumed = true
 			}
 		})
-		state := int8(1)
-		switch {
-		case all:
-			state = 2
-		case on > 0:
-			state = 3
-		}
-		head.checked = state
-		paintCheckbox(c, head, box, state)
+		head.checked = checkedOf(*state)
+		paintCheckbox(c, head, box, head.checked)
 	})
 	return g
 }
@@ -88,7 +85,7 @@ func paintCheckbox(c *context, row, box *node, state int8) {
 			p.Fill(Rect{r.X + r.W*0.25, r.Y + r.H/2 - 1, r.W * 0.5, 2}, t.AccentText, 1)
 		}
 		if row.FocusVisible() {
-			p.FocusRing(r, box.radius)
+			p.focusRingOf(row, r, box.radius)
 		}
 	})
 	box.styleFn = func(box *node) {

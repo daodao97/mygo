@@ -87,7 +87,7 @@ func (e *node) buildMenu(button, drawn bool, build func(m *Menu)) {
 		if e.disabled() {
 			break
 		}
-		if d := mr.drawn; drawn && mr.below && d != nil && d.id == e.id && d.below {
+		if d := mr.drawn; drawn && mr.below && d != nil && d.id == e.id && d.menu.below {
 			// The button pressed again while its menu shows.
 			mr.drawn = nil
 			break

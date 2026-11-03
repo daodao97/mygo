@@ -40,6 +40,71 @@ func coreCheckboxBase(c *context, checked *bool) *node {
 	return toggle(c, checked, RoleCheckBox, "Checkbox")
 }
 
+// CheckState is what a check box that can be mixed shows
+// (CheckboxStateBase): unchecked, checked, or mixed, as one checking a
+// group whose boxes differ.
+type CheckState uint8
+
+const (
+	CheckOff CheckState = iota
+	CheckOn
+	CheckMixed
+)
+
+// CheckboxStateBase creates a check box without a look that can be mixed,
+// as a "select all" box in a table's header, checked when every row is
+// and mixed when some are: a row that sets *state to CheckOn when
+// clicked, or with Space while it has the focus, or to CheckOff when it
+// is CheckOn, which Changed reports, and that assistive technology sees
+// as a check box, checked, unchecked or mixed. Draw its box from *state;
+// CheckboxState is CheckboxStateBase with the theme's look.
+//
+//	all := ui.CheckOff
+//	switch n := app.selectedCount(); {
+//	case n == len(app.rows):
+//		all = ui.CheckOn
+//	case n > 0:
+//		all = ui.CheckMixed
+//	}
+//	cb := ui.CheckboxStateBase(c, &all).Label("Select all")
+//	cb.Children(func() { app.box(c, all) }) // a dash while mixed
+//	if cb.Changed() {
+//		app.selectAll(all == ui.CheckOn)
+//	}
+func coreCheckboxStateBase(c *context, state *CheckState) *node {
+	e := coreRow(c).Focusable().Shrink(0)
+	e.flags |= flagClickable | flagHover | flagToggle
+	e.widget, e.role = "Checkbox", RoleCheckBox
+	*valueBinding[*CheckState](e) = state
+	e.onValueInput(checkStateInput)
+	e.checked = checkedOf(*state)
+	return e
+}
+
+// checkedOf returns what assistive technology sees of a check box in
+// state s: off (1), on (2) or mixed (3), as node.checked holds.
+func checkedOf(s CheckState) int8 {
+	switch s {
+	case CheckOn:
+		return 2
+	case CheckMixed:
+		return 3
+	}
+	return 1
+}
+
+func checkStateInput(n *node) {
+	if n.Clicked() {
+		p := *valueBinding[*CheckState](n)
+		if *p == CheckOn {
+			*p = CheckOff
+		} else {
+			*p = CheckOn
+		}
+		n.st.markChanged()
+	}
+}
+
 // SwitchBase creates a switch without a look: CheckboxBase, which
 // assistive technology sees as a switch. Switch is SwitchBase with the
 // theme's look.
@@ -410,8 +475,8 @@ func (s *selectParts[T]) Item(value T) *node {
 	return item
 }
 
-// Highlighted reports whether an option of a select is the one the pointer
-// or the arrows are on.
+// Highlighted reports whether an option of a select, or an item of a menu
+// (MenuBase), is the one the pointer or the arrows are on.
 func (e *node) Highlighted() bool { return e.highlighted }
 
 // PopoverBase shows a panel without a look below anchor while *open is

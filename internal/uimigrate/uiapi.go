@@ -6,6 +6,7 @@ package uimigrate
 // custom parts value to that result's type. Other calls make neither.
 var uiResults = map[string]string{
 	"Accordion":            "Element",
+	"AccordionBase":        "AccordionParts",
 	"AccordionItem":        "Element",
 	"Autocomplete":         "Element",
 	"Avatar":               "Element",
@@ -19,6 +20,8 @@ var uiResults = map[string]string{
 	"Checkbox":             "Element",
 	"CheckboxBase":         "Element",
 	"CheckboxGroup":        "Element",
+	"CheckboxState":        "Element",
+	"CheckboxStateBase":    "Element",
 	"Collapsible":          "Element",
 	"CollapsibleBase":      "CollapsibleParts",
 	"ColorPicker":          "Element",
@@ -26,6 +29,7 @@ var uiResults = map[string]string{
 	"Column":               "Element",
 	"Combobox":             "Element",
 	"ComboboxBase":         "ComboboxParts",
+	"ContextMenuBase":      "MenuParts",
 	"DateInput":            "Element",
 	"DecimalInput":         "Element",
 	"DialogBase":           "Element",
@@ -42,6 +46,7 @@ var uiResults = map[string]string{
 	"Image":                "Element",
 	"Link":                 "Element",
 	"List":                 "Element",
+	"MenuBase":             "MenuParts",
 	"MenuButton":           "Element",
 	"Meter":                "Element",
 	"Modal":                "Element",
@@ -194,6 +199,8 @@ var elementChains = map[string]bool{
 	"FocusBind":            true,
 	"FocusGroup":           true,
 	"FocusRing":            true,
+	"FocusRingColor":       true,
+	"FocusRingOffset":      true,
 	"Focusable":            true,
 	"Font":                 true,
 	"FontFeatures":         true,
@@ -339,8 +346,10 @@ var elementChains = map[string]bool{
 
 // uiParts lists package ui's custom parts types.
 var uiParts = map[string]bool{
+	"AccordionParts":   true,
 	"CollapsibleParts": true,
 	"ComboboxParts":    true,
+	"MenuParts":        true,
 	"SegmentedParts":   true,
 	"SelectParts":      true,
 	"TabsParts":        true,

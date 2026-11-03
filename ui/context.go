@@ -44,7 +44,7 @@ type context struct {
 	// form and accordion are the Form and the Accordion being built, for
 	// their fields and sections.
 	form      *formBuild
-	accordion *accordionBuild
+	accordion *accordionParts
 	// checks is the CheckboxGroup being built.
 	checks *checkGroup
 	// row is the row of a List or a Table being built, and sidebar the

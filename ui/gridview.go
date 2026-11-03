@@ -304,7 +304,7 @@ func (s *GridState) cell(c *context, grid *node, i, n int, height float32, item 
 			// Where the keys moved without choosing.
 			cell.DrawOver(func(p *Painter, r Rect) {
 				if grid.FocusVisible() {
-					p.FocusRing(Rect{r.X + 3, r.Y + 3, r.W - 6, r.H - 6}, cell.radius)
+					p.focusRingOf(grid, Rect{r.X + 3, r.Y + 3, r.W - 6, r.H - 6}, cell.radius)
 				}
 			})
 		}
