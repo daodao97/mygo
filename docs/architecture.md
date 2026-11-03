@@ -3880,10 +3880,19 @@ either.
   4095 pixels a side, draws as tiles of it (`pathTiles`), each a mask of
   the whole path clipped to the tile: only the tiles that show and that
   its edges reach, and, inside a fill, tiles covered whole, which share
-  one mask. A stroke's mask is the outline of its center line, each edge
-  drawn once (`strokeInto`): one side, turning at corners and ends as the
-  path's joins and caps say (`Path.Join`, `Path.Cap`), and back along the
-  other. Its dashes (`Path.Dash`) are cut from the center line as the mask
+  one mask. So does a path larger than a tile (511 pixels a side) when
+  the atlas has lately had no room for a path's mask
+  (`pathCrowdedPaints`): such a mask takes a shelf of the atlas of its
+  own, mostly empty for a long thin stroke, and a few of them, as wires
+  redrawn every frame, leave no room for the frame's other paths, which
+  would not show. A path whose mask finds no room draws as tiles at once,
+  and the runtime's repaint (`System.MakeRoom`) draws the frame's large
+  paths as tiles, which pack eight to a row of the largest atlas. On the
+  pixel grid tiles show the pixels of one mask; under a transform off
+  it, a faint line where they meet. A stroke's mask is the outline of
+  its center line, each edge drawn once (`strokeInto`): one side,
+  turning at corners and ends as the path's joins and caps say
+  (`Path.Join`, `Path.Cap`), and back along the other. Its dashes (`Path.Dash`) are cut from the center line as the mask
   is drawn, from where each polyline starts in their pattern, so that a
   trimmed path's dashes stay where they are, and its key holds that place,
   in quarters of a pixel within one pattern, with the caps, joins and

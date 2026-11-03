@@ -405,6 +405,10 @@ type paths struct {
 	// reach, and where its edges cross a row of tiles.
 	reached []bool
 	cross   []pathCrossing
+	// crowded is the last paint (engine.paints) that draws as tiles the
+	// paths larger than a tile whose masks the atlas would hold: it
+	// could not hold a path's mask lately (pathCrowdedPaints).
+	crowded uint64
 }
 
 // pathJob is the mask drawPath asks the text system for, which draws it
@@ -430,6 +434,17 @@ var (
 	pathMaskMax = scene.MaxAtlasSize - 1
 	pathTile    = 511
 )
+
+// pathCrowdedPaints is how many paints draw paths larger than a tile as
+// tiles after the atlas could not hold a path's mask. A mask that large
+// takes a shelf of the atlas of its own, mostly empty for a long thin
+// stroke, and a few of them, as wires redrawn every frame, can leave no
+// room for the rest of the frame's paths. Tiles pack eight to a row of
+// the largest atlas and skip what the path does not reach, so the frame
+// painted again holds them; on the pixel grid they draw the same pixels.
+// After those paints, paths try one mask again, which draws faster and
+// shows no line between tiles under a transform.
+const pathCrowdedPaints = 120
 
 // pathSpanMax is the largest width and height of a path's mask, in device
 // pixels: beyond it, float32 no longer holds the quarters of a pixel that
@@ -536,10 +551,19 @@ func (p *Painter) drawPathPaint(f *flatPath, width float32, c Color, g *LinearGr
 	start := int32(len(p.s.Glyphs))
 	c = c.Alpha(p.opacity)
 	tint := scene.Glyph{Color: c.scene(), Wide: p.glyphWide(c)}
-	if w <= pathMaskMax && h <= pathMaskMax {
-		p.pathMask(hs.Sum64(), f, hw, x0, y0, w, h, false, tint)
-	} else {
-		p.pathTiles(hs.Sum64(), f, hw, x0, y0, w, h, tint)
+	sum, large := hs.Sum64(), w > pathTile || h > pathTile
+	tiled := w > pathMaskMax || h > pathMaskMax || large && p.rt.paths.crowded >= p.rt.paints
+	if !tiled && !p.pathMask(sum, f, hw, x0, y0, w, h, false, tint) {
+		// The atlas is full: the runtime makes room and paints the frame
+		// again, in which paths larger than a tile draw as tiles. Try
+		// them now too, in what room is left, rather than show nothing
+		// if room is not made in time.
+		p.rt.paths.crowded = p.rt.paints + pathCrowdedPaints
+		tiled = large
+	}
+	if tiled && !p.pathTiles(sum, f, hw, x0, y0, w, h, tint) && w <= pathMaskMax && h <= pathMaskMax {
+		// Too many tiles of it show to hold, which one mask may not be.
+		p.pathMask(sum, f, hw, x0, y0, w, h, false, tint)
 	}
 	if int32(len(p.s.Glyphs)) == start {
 		return
@@ -564,7 +588,8 @@ func (p *Painter) drawPathPaint(f *flatPath, width float32, c Color, g *LinearGr
 // pathMask adds the glyph of the w×h mask of the path f at (x0, y0), in
 // device pixels, cached under key, with tint's color: of all of the path,
 // or of a tile, the whole path clipped to it, or, if full, covered whole.
-func (p *Painter) pathMask(key uint64, f *flatPath, hw, x0, y0 float32, w, h int, full bool, tint scene.Glyph) {
+// It reports false when the atlas has no room for the mask.
+func (p *Painter) pathMask(key uint64, f *flatPath, hw, x0, y0 float32, w, h int, full bool, tint scene.Glyph) bool {
 	j := &p.rt.paths.job
 	if j.rasterize == nil {
 		j.rasterize = p.rt.rasterizePath
@@ -573,11 +598,12 @@ func (p *Painter) pathMask(key uint64, f *flatPath, hw, x0, y0 float32, w, h int
 	gi := p.rt.text.Mask(key, j.rasterize)
 	j.f = nil
 	if !gi.OK {
-		return
+		return false
 	}
 	g := tint
 	g.X, g.Y, g.W, g.H, g.U, g.V, g.UW, g.VH = x0, y0, float32(gi.W), float32(gi.H), gi.X, gi.Y, gi.W, gi.H
 	p.s.Glyphs = append(p.s.Glyphs, g)
+	return true
 }
 
 // pathTiles draws the w×h mask of the path f at (x0, y0), too large for
@@ -588,8 +614,9 @@ func (p *Painter) pathMask(key uint64, f *flatPath, hw, x0, y0 float32, w, h int
 // within a pixel of its edges, and those inside a filled path, covered
 // whole, which share one mask of their size. Under a transform off the
 // pixel grid, renderers smooth each mask's edges, so a faint line shows
-// where tiles meet.
-func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h int, tint scene.Glyph) {
+// where tiles meet. It reports false, drawing nothing, when the atlas
+// could not hold the tiles that show.
+func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h int, tint scene.Glyph) bool {
 	t := pathTile
 	// The columns and rows of tiles that show.
 	v, s := p.Visible(), float64(p.scale)
@@ -601,8 +628,11 @@ func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h in
 	c0, c1 := span(v.X, v.X+v.W, x0, (w+t-1)/t)
 	r0, r1 := span(v.Y, v.Y+v.H, y0, (h+t-1)/t)
 	cols, rows := c1-c0, r1-r0
-	if cols <= 0 || rows <= 0 || cols*rows > pathTilesMax {
-		return
+	if cols <= 0 || rows <= 0 {
+		return true
+	}
+	if cols*rows > pathTilesMax {
+		return false
 	}
 	reached := p.rt.paths.reached
 	if cap(reached) < cols*rows {
@@ -661,7 +691,7 @@ func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h in
 		}
 	}
 	if room > scene.MaxAtlasSize*scene.MaxAtlasSize/2 {
-		return
+		return false
 	}
 	for r := r0; r < r1; r++ {
 		ty, th := r*t, min(t, h-r*t)
@@ -701,6 +731,7 @@ func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h in
 			}
 		}
 	}
+	return true
 }
 
 // pathTilesMax is how many tiles that show pathTiles looks at, at most:
