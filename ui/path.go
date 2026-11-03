@@ -409,6 +409,11 @@ type paths struct {
 	// paths larger than a tile whose masks the atlas would hold: it
 	// could not hold a path's mask lately (pathCrowdedPaints).
 	crowded uint64
+	// large holds the keys of the masks of paths larger than a tile that
+	// paint largePaint drew, which its repaint draws as tiles if the
+	// atlas fills.
+	large      []uint64
+	largePaint uint64
 }
 
 // pathJob is the mask drawPath asks the text system for, which draws it
@@ -553,13 +558,27 @@ func (p *Painter) drawPathPaint(f *flatPath, width float32, c Color, g *LinearGr
 	tint := scene.Glyph{Color: c.scene(), Wide: p.glyphWide(c)}
 	sum, large := hs.Sum64(), w > pathTile || h > pathTile
 	tiled := w > pathMaskMax || h > pathMaskMax || large && p.rt.paths.crowded >= p.rt.paints
-	if !tiled && !p.pathMask(sum, f, hw, x0, y0, w, h, false, tint) {
-		// The atlas is full: the runtime makes room and paints the frame
-		// again, in which paths larger than a tile draw as tiles. Try
-		// them now too, in what room is left, rather than show nothing
-		// if room is not made in time.
-		p.rt.paths.crowded = p.rt.paints + pathCrowdedPaints
-		tiled = large
+	ps := &p.rt.paths
+	if ps.largePaint != p.rt.paints {
+		ps.large, ps.largePaint = ps.large[:0], p.rt.paints
+	}
+	if !tiled {
+		if p.pathMask(sum, f, hw, x0, y0, w, h, false, tint) {
+			if large {
+				ps.large = append(ps.large, sum)
+			}
+		} else {
+			// The atlas is full: the runtime makes room and paints the
+			// frame again, in which paths larger than a tile draw as
+			// tiles. Try them now too, in what room is left, rather than
+			// show nothing if room is not made in time. The masks of
+			// those this paint drew before go as room is made: kept, as
+			// the frame drew them, they could leave the tiles no room,
+			// and the frame would show none of them.
+			ps.crowded = p.rt.paints + pathCrowdedPaints
+			p.rt.text.Unkeep(ps.large)
+			tiled = large
+		}
 	}
 	if tiled && !p.pathTiles(sum, f, hw, x0, y0, w, h, tint) && w <= pathMaskMax && h <= pathMaskMax {
 		// Too many tiles of it show to hold, which one mask may not be.

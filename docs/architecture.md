@@ -3927,7 +3927,10 @@ either.
   redrawn every frame, leave no room for the frame's other paths, which
   would not show. A path whose mask finds no room draws as tiles at once,
   and the runtime's repaint (`System.MakeRoom`) draws the frame's large
-  paths as tiles, which pack eight to a row of the largest atlas. On the
+  paths as tiles, which pack eight to a row of the largest atlas: the
+  room made lets go of the masks of those the paint drew before
+  (`System.Unkeep`), which it would keep as the frame drew them, and
+  which would leave the tiles no room. On the
   pixel grid tiles show the pixels of one mask; under a transform off
   it, a faint line where they meet. A stroke's mask is the outline of
   its center line, each edge drawn once (`strokeInto`): one side,

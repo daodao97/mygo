@@ -359,6 +359,35 @@ func TestMakeRoom(t *testing.T) {
 	s.EndFrame()
 }
 
+// Masks a frame drew and let go of (Unkeep) are not kept as it makes room,
+// unless it draws them again before.
+func TestUnkeep(t *testing.T) {
+	s := newSystem()
+	s.MaskAtlas = scene.NewAtlas(1, 1024, 1024)
+	var calls int
+	for range 2 { // the second frame makes them last
+		s.BeginFrame()
+		for key := range uint64(3) {
+			s.Mask(key+1, square(200, byte(key+1), &calls))
+		}
+		s.EndFrame()
+	}
+	s.BeginFrame()
+	for key := range uint64(3) {
+		s.Mask(key+1, square(200, byte(key+1), &calls))
+	}
+	s.Unkeep([]uint64{1, 2, 9})
+	s.Mask(2, square(200, 2, &calls))
+	s.leftOut(false, 900, 900)
+	s.MakeRoom()
+	for key, want := range map[uint64]bool{1: false, 2: true, 3: true} {
+		if _, ok := s.masks[key]; ok != want {
+			t.Errorf("mask %d kept: %v", key, ok)
+		}
+	}
+	s.EndFrame()
+}
+
 // What a frame draws many times counts once in the room it needs: an atlas
 // that grew by every use of a glyph took 2048×2048 pixels, 16 MB of memory and
 // as much of the GPU's, for 24 paragraphs that fill 3% of it.

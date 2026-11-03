@@ -441,3 +441,17 @@ func (s *System) Mask(key uint64, draw func() (w, h int, pix []byte)) GlyphImage
 	}
 	return g
 }
+
+// Unkeep lets the masks cached under keys go as the atlas makes room for
+// the frame being painted (MakeRoom), unless it draws them again first:
+// masks it drew that the frame painted again draws otherwise, which the
+// room made would keep but no paint draws.
+func (s *System) Unkeep(keys []uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, k := range keys {
+		if e, ok := s.masks[k]; ok && e.used == s.frame {
+			e.used = s.frame - 1
+		}
+	}
+}

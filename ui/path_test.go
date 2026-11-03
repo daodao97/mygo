@@ -285,6 +285,93 @@ func TestCrowdedPathsDrawAsTilesForAWhile(t *testing.T) {
 	}
 }
 
+// TestWiresDrawInTheFrameTheAtlasFills strokes nine long wires that stay
+// as they are, 3545×405 pixels across, which the largest atlas keeps in
+// one mask each, filling it, then has a tenth as long, which changes shape
+// every frame, as a wire to a node dragged across a canvas: its mask finds
+// no room, and in that frame and those after, every wire draws, as tiles,
+// though the first paint of the frame drew the others' masks, which the
+// atlas making room for it would keep, as the frame drew them, leaving
+// the tiles no room.
+func TestWiresDrawInTheFrameTheAtlasFills(t *testing.T) {
+	const n = 9
+	frame, long := 0, false
+	wire := func(i int) (p Path, at func(t float32) (float32, float32)) {
+		x0, y0, x1, y1 := float32(10), float32(10+i*12), float32(1780), float32(10+i*12+200)
+		if i == n {
+			// Dragged: short until it is long, and moving.
+			x0, y0, x1, y1 = 10+float32(frame)*0.37, float32(10+i*12), 200, float32(10+i*12+20)
+			if long {
+				x1, y1 = 1780, y0+200
+			}
+		}
+		k := float32(i) * 3.1
+		pts := [4][2]float32{{x0, y0}, {(x0+x1)/2 - k, y0}, {(x0+x1)/2 + k, y1}, {x1, y1}}
+		p.MoveTo(pts[0][0], pts[0][1]).CubeTo(pts[1][0], pts[1][1], pts[2][0], pts[2][1], pts[3][0], pts[3][1])
+		return p, func(t float32) (float32, float32) {
+			u := 1 - t
+			w := [4]float32{u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t}
+			var x, y float32
+			for j, pt := range pts {
+				x, y = x+w[j]*pt[0], y+w[j]*pt[1]
+			}
+			return x, y
+		}
+	}
+	empty := true
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Fill().Background(RGB(255, 255, 255)).Draw(func(p *Painter, r Rect) {
+			if empty {
+				// A line whose mask, 4093 pixels tall, only an empty atlas
+				// of the largest holds: the atlas grows to it, and lets go
+				// of what earlier tests drew.
+				var line Path
+				line.MoveTo(2, 1).LineTo(2, 2045)
+				p.StrokePath(&line, 2, RGB(20, 60, 230))
+				return
+			}
+			for i := range n + 1 {
+				path, _ := wire(i)
+				p.StrokePath(&path, 2, RGB(20, 60, 230))
+			}
+		})
+	}, 1800, 360)
+	// At twice the pixels, the line tries one mask, not tiles, though the
+	// first frame's did not fit the atlas then.
+	tt.rt.paths.crowded = 0
+	tt.SetScale(2)
+	empty, tt.rt.paths.crowded = false, 0
+	// Until the wires that stay draw from one mask each, which the atlas
+	// keeps.
+	for frame = 1; frame <= 3; frame++ {
+		tt.Frame()
+	}
+	if g := len(tt.rt.scene.Glyphs); g != n+1 {
+		t.Fatalf("with room, %d wires draw from %d masks", n+1, g)
+	}
+	long = true
+	for end := frame + 3; frame < end; frame++ {
+		tt.Frame()
+		img := tt.Image()
+		for i := range n + 1 {
+			_, at := wire(i)
+			for _, along := range []float32{0.1, 0.3, 0.5, 0.7, 0.9} {
+				x, y := at(along)
+				found := false
+				for dy := -2; dy <= 2 && !found; dy++ {
+					for dx := -2; dx <= 2 && !found; dx++ {
+						c := img.RGBAAt(int(2*x)+dx, int(2*y)+dy)
+						found = c.B > 150 && c.R < 120
+					}
+				}
+				if !found {
+					t.Errorf("frame %d: wire %d is missing %v of the way along, at (%.0f, %.0f) pixels", frame, i, along, 2*x, 2*y)
+				}
+			}
+		}
+	}
+}
+
 // TestStrokeStylesMatchSVG strokes paths with butt and square caps, miter
 // and bevel joins, a miter limit and dashes, and MyGo's SVG renderer
 // strokes them with the same stroke-linecap, stroke-linejoin,
