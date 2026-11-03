@@ -4,6 +4,7 @@ package darwin
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -147,6 +148,10 @@ type window struct {
 	// cache off as its page left with a video in picture in picture
 	// (leavingPage).
 	pageCacheOff bool
+	// restoredScroll is the scroll position of the page RestoreSessionState
+	// brought back before its window showed on screen, until the page
+	// loaded (keepRestoredScroll).
+	restoredScroll NSPoint
 	// pipActive tells that the page's document has a video in picture in
 	// picture, as its pipScript last said.
 	pipActive bool
@@ -1866,9 +1871,64 @@ func (w *window) RestoreSessionState(state []byte) bool {
 	var ok bool
 	withPool(func() {
 		send(w.web, "setInteractionState:", uintptr(nsData(state)))
-		ok = send(send(w.web, "backForwardList"), "currentItem") != 0
+		item := send(send(w.web, "backForwardList"), "currentItem")
+		ok = item != 0
+		if ok && !occlusionVisible(w.win) && respondsTo(item, "_scrollPosition") {
+			w.restoredScroll = msgPoint(item, sel("_scrollPosition"))
+		}
 	})
 	return ok
+}
+
+// keepRestoredScroll keeps the scroll position WebKit restored as the
+// page RestoreSessionState brought back loaded, which WebKit puts back at
+// the top when the page's window first shows on screen after that (macOS
+// 26): in a window made hidden, and in one shown as it opens when the
+// page loads before the window server puts the window on screen. A
+// script in a world of its own puts the page back at its position when
+// the page next scrolls, to the top, before the user did anything; any
+// other scroll, the user's included, ends it. The position is the
+// private -[WKBackForwardListItem _scrollPosition] of the current item
+// RestoreSessionState left, looked up with respondsToSelector:; a page
+// whose history.scrollRestoration is "manual" keeps where it is.
+func (w *window) keepRestoredScroll() {
+	p := w.restoredScroll
+	w.restoredScroll = NSPoint{}
+	if p == (NSPoint{}) || w.closed {
+		return
+	}
+	js := fmt.Sprintf(keepScrollScript, int(p.X), int(p.Y))
+	withPool(func() {
+		send(w.web, "evaluateJavaScript:inFrame:inContentWorld:completionHandler:",
+			uintptr(nsString(js)), 0, uintptr(send(class("WKContentWorld"), "defaultClientWorld")), 0)
+	})
+}
+
+// keepScrollScript is keepRestoredScroll's, of the position x, y.
+const keepScrollScript = `(() => {
+	const x = %d, y = %d, inputs = ["keydown", "pointerdown", "wheel", "touchstart"];
+	if (history.scrollRestoration !== "auto") return;
+	const back = () => scrollX === 0 && scrollY === 0 && scrollTo(x, y);
+	const done = () => {
+		removeEventListener("scroll", scrolled);
+		for (const t of inputs) removeEventListener(t, done, true);
+	};
+	const scrolled = () => {
+		if (scrollX !== x || scrollY !== y) {
+			back();
+			done();
+		}
+	};
+	back();
+	addEventListener("scroll", scrolled);
+	for (const t of inputs) addEventListener(t, done, true);
+})()`
+
+// occlusionVisible tells that some of a window shows on screen, as the
+// window server last said.
+func occlusionVisible(win id) bool {
+	const occlusionStateVisible = 1 << 1
+	return sendInt(win, "occlusionState")&occlusionStateVisible != 0
 }
 
 func (w *window) inspector() id {
@@ -2451,16 +2511,19 @@ func registerWindowClasses() {
 			}),
 			method("webView:didFinishNavigation:", func(self id, _ objc.SEL, web, nav id) {
 				if w := b().windowFor(self); w != nil {
+					w.keepRestoredScroll()
 					w.h.LoadFinished()
 				}
 			}),
 			method("webView:didFailProvisionalNavigation:withError:", func(self id, _ objc.SEL, web, nav, err id) {
 				if w := b().windowFor(self); w != nil {
+					w.restoredScroll = NSPoint{}
 					w.loadFailed(err, w.provisionalURL)
 				}
 			}),
 			method("webView:didFailNavigation:withError:", func(self id, _ objc.SEL, web, nav, err id) {
 				if w := b().windowFor(self); w != nil {
+					w.restoredScroll = NSPoint{}
 					w.loadFailed(err, w.URL())
 				}
 			}),
