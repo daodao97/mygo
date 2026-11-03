@@ -146,9 +146,12 @@ type engine struct {
 	measured     [8]measuredSpans
 	nextMeasured int
 	paths        paths
-	svgs         svgs
-	flex         flexScratch
-	grid         gridScratch
+	// pathClips are the masks of the paths clips were cut to lately, by
+	// their shapes (clipMask).
+	pathClips map[uint64]*pathClip
+	svgs      svgs
+	flex      flexScratch
+	grid      gridScratch
 	// under is the painter's stack of opaque backgrounds, and holes the
 	// holes it painted, kept from one frame to the next.
 	under []opaqueBox
@@ -1220,6 +1223,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	if s.clips {
 		s.clipRect, s.clipRadii = e.clipRect()
 	}
+	s.selfClip, s.selfRadius, s.selfClips = e.selfClip()
 	if len(rt.liftHits) > 0 && (e == e.c.overlay || e.parent != nil && e.parent == e.c.overlay) {
 		// The elements flying in the layer before, the window's content
 		// or an overlay, go over it, under this one.
@@ -1337,6 +1341,9 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	if e.flags&(flagClipX|flagClipY|flagScrollX|flagScrollY) != 0 {
 		r, _ := e.clipRect()
 		clip = intersect(clip, e.visualRect(r))
+	}
+	if s.selfClips {
+		clip = intersect(clip, e.visualRect(s.selfClip))
 	}
 	// Children in flow first, absolute ones above them: the paint order.
 	for ch := e.first; ch != nil; ch = ch.next {

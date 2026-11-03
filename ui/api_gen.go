@@ -3319,6 +3319,23 @@ func (_handle Element) Background(c Color) Element {
 	return wrapElement(_node.Background(c))
 }
 
+// Balance wraps the element's text in lines of about the same length, as
+// CSS's text-wrap: balance does: a heading or a short callout that takes
+// two lines takes two of half its length each, rather than a full line
+// and a word alone on the next. The text takes as many lines as it would
+// without it, at the width layout gives it, and keeps its alignment
+// within that width. Each paragraph is balanced on its own, once a
+// layout, as the text system keeps it.
+func (_handle Element) Balance() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Balance())
+}
+
 // Basis sets the size along the parent's main axis before growing or
 // shrinking.
 func (_handle Element) Basis(v float32) Element {
@@ -3682,6 +3699,44 @@ func (_handle Element) Clip() Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Clip())
+}
+
+// ClipInset clips the element and what is inside it, its background,
+// shadows, border and children, to its box inset by top, right, bottom and
+// left DIPs, with corners rounded by radius, as CSS's clip-path: inset()
+// does. A negative inset reaches beyond the box on that side, as a clip
+// along one axis that leaves a shadow whole along the other. The insets
+// may change every frame, as values an element animates do:
+//
+//	hidden := float32(100)
+//	if app.open {
+//		hidden = 0
+//	}
+//	card.ClipInsetPercent(0, card.AnimateTo("wipe", hidden, ui.Smooth), 0, 0, 0)
+//
+// What the clip hides takes no clicks.
+func (_handle Element) ClipInset(top float32, right float32, bottom float32, left float32, radius float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ClipInset(top, right, bottom, left, radius))
+}
+
+// ClipInsetPercent is ClipInset with insets in percent of the box: top
+// and bottom of its height, right and left of its width, as CSS's inset()
+// takes percentages. An inset going from 100 to 0 wipes the element in
+// from the other side.
+func (_handle Element) ClipInsetPercent(top float32, right float32, bottom float32, left float32, radius float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ClipInsetPercent(top, right, bottom, left, radius))
 }
 
 // ClipX hides what the children draw left and right of the element, and
@@ -5190,6 +5245,55 @@ func (_handle Element) MarginY(v float32) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.MarginY(v))
+}
+
+// MaskConicGradient masks the element and what is inside it by a conic
+// gradient, as MaskLinearGradient does by a linear one: a ring revealed
+// as its stops turn.
+func (_handle Element) MaskConicGradient(g ConicGradient) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.MaskConicGradient(g))
+}
+
+// MaskLinearGradient masks the element and what is inside it by a linear
+// gradient across its box, as CSS's mask-image: linear-gradient() does:
+// each point shows as much as the gradient's alpha there, whatever its
+// colors, and nothing shows outside the box (or the inset of ClipInset).
+// A list whose rows fade out at its top and bottom edges:
+//
+//	black := ui.RGB(0, 0, 0)
+//	fade := []ui.GradientStop{{ui.Transparent, 0}, {black, 0.1}, {black, 0.9}, {ui.Transparent, 1}}
+//	list.MaskLinearGradient(ui.LinearGradient{Angle: 180, Stops: fade})
+//
+// Each thing drawn is masked on its own, as Opacity fades each, rather
+// than the element drawn into a layer first: where the mask lets a part
+// through, a row's background shows what is under it too.
+func (_handle Element) MaskLinearGradient(g LinearGradient) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.MaskLinearGradient(g))
+}
+
+// MaskRadialGradient masks the element and what is inside it by a radial
+// gradient, as MaskLinearGradient does by a linear one: a vignette, or a
+// spotlight.
+func (_handle Element) MaskRadialGradient(g RadialGradient) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.MaskRadialGradient(g))
 }
 
 func (_handle Element) MaxHeight(v float32) Element {

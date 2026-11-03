@@ -243,6 +243,7 @@ type layoutStyle struct {
 	maxLines int
 	single   bool
 	noWrap   bool
+	balance  bool
 	ellipsis string
 }
 
@@ -338,7 +339,10 @@ type node struct {
 	// grads holds a conic or radial fill and a border's gradient, which
 	// few elements have; blur is the standard deviation of the element's
 	// blur, in DIPs.
-	grads      *gradients
+	grads *gradients
+	// clipping is how the element clips and masks all it paints
+	// (ClipInset, MaskLinearGradient), which few elements do.
+	clipping   *clipping
 	blur       float32
 	opacity    float32
 	opacitySet bool
@@ -1489,6 +1493,15 @@ func (e *node) SingleLine() *node { e.single = true; e.maxLines = 1; return e }
 // NoWrap keeps each line of the element's text whole, breaking it only at
 // newlines, even where it overflows the element.
 func (e *node) NoWrap() *node { e.noWrap = true; return e }
+
+// Balance wraps the element's text in lines of about the same length, as
+// CSS's text-wrap: balance does: a heading or a short callout that takes
+// two lines takes two of half its length each, rather than a full line
+// and a word alone on the next. The text takes as many lines as it would
+// without it, at the width layout gives it, and keeps its alignment
+// within that width. Each paragraph is balanced on its own, once a
+// layout, as the text system keeps it.
+func (e *node) Balance() *node { e.balance = true; return e }
 
 // Ellipsis sets what ends text that MaxLines or SingleLine cuts, "…" by
 // default.

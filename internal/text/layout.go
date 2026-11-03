@@ -108,6 +108,13 @@ type Params struct {
 	// justify text, once System.UseJustify was called. Align places the
 	// last line of each paragraph, and a line with nothing to widen.
 	Justify bool
+	// Balance wraps each paragraph that Width wraps in lines of about the
+	// same length, as CSS's text-wrap: balance does: in as many lines as
+	// it takes, wrapped at the narrowest width that keeps them as many,
+	// rather than full lines and a short last one. The lines are aligned
+	// within Width all the same. A paragraph that MaxLines cuts wraps as
+	// it would without it.
+	Balance bool
 	// Spans styles runs of the text apart from Style, as EncodeSpans
 	// writes them.
 	Spans string
@@ -730,7 +737,7 @@ func (s *System) LayoutFrom(l *Layout, p Params) *Layout {
 	var c *cached
 	if l != nil {
 		c = &cached{layout: *l, bytes: int(unsafe.Sizeof(cached{}))}
-		c.layout.Params.Width, c.layout.Params.Justify = p.Width, p.Justify
+		c.layout.Params.Width, c.layout.Params.Justify, c.layout.Params.Balance = p.Width, p.Justify, p.Balance
 		c.bytes += realign(&c.layout, l)
 	} else {
 		// A short label may be a slice of a large document. Cache owned
@@ -845,7 +852,7 @@ func alignedAt(l *Layout, i int, p Params, box float32) float32 {
 
 // unwrappedParams returns p without a width.
 func unwrappedParams(p Params) Params {
-	p.Width, p.Justify = 0, false
+	p.Width, p.Justify, p.Balance = 0, false, false
 	return p
 }
 
@@ -1147,6 +1154,9 @@ func (s *System) paragraph(out []Line, p Params, spans []Span, runes []rune, sta
 			width = 0
 		}
 		shaped = s.breakLines(text, p.Style, spans, width, indent, rtl, p.NoBreakWords, hy)
+		if p.Balance && width > 0 && len(shaped) > 1 && !(maxLines > 0 && len(shaped) > maxLines) {
+			shaped = s.balance(text, p, spans, width, indent, rtl, hy, shaped)
+		}
 	}
 	if len(shaped) == 0 {
 		shaped = []shapedLine{{end: len(text)}}
@@ -1193,6 +1203,39 @@ func (s *System) paragraph(out []Line, p Params, spans []Span, runes []rune, sta
 		lines[len(lines)-1].End = end
 	}
 	return out, truncated
+}
+
+// balanceStep is how close to the narrowest width keeping a paragraph's
+// lines as many balance finds it, in DIPs.
+const balanceStep = 0.25
+
+// balance returns the lines of text, which shaped holds wrapped at width,
+// wrapped at the narrowest width that keeps them as many, found by
+// bisection: about ten layouts of the paragraph, once, as its layout is
+// kept (Params.Balance).
+func (s *System) balance(text []rune, p Params, spans []Span, width, indent float32, rtl bool, hy *hyphens, shaped []shapedLine) []shapedLine {
+	n := len(shaped)
+	// The lines hold all the glyphs, whose advances, but for those of
+	// the whitespace ending lines, take no more room than n lines do.
+	total := float32(0)
+	for _, sl := range shaped {
+		for _, run := range sl.runs {
+			for _, g := range run.glyphs {
+				total += g.Advance
+			}
+		}
+	}
+	lo, hi := min(total/float32(n)/2, width), width
+	for hi-lo > balanceStep {
+		mid := (lo + hi) / 2
+		lines := s.breakLines(text, p.Style, spans, mid, indent, rtl, p.NoBreakWords, hy)
+		if len(lines) <= n {
+			hi, shaped = mid, lines
+		} else {
+			lo = mid
+		}
+	}
+	return shaped
 }
 
 // glyphCount returns how many glyphs a shaped line has.

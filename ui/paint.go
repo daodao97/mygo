@@ -272,6 +272,17 @@ func (p *Painter) element(e *node) {
 		p.paintInline(e)
 		return
 	}
+	if e.clipping != nil && !e.effecting {
+		// Around its effect's or its blur's layer too, as CSS's clip-path
+		// and mask go after its filter.
+		savedClip := p.clip
+		p.clipSelf(e)
+		defer func() { p.popClip(); p.clip = savedClip }()
+		if p.clip.W <= 0 || p.clip.H <= 0 {
+			// Nothing of it shows, as an inset wiping it in starts.
+			return
+		}
+	}
 	if p.paintEffect(e) {
 		return
 	}

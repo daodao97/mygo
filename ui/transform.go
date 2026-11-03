@@ -333,19 +333,20 @@ func (rt *engine) contains(s *state, r Rect, x, y float32) bool {
 		return false
 	}
 	lx, ly := m.Point(x, y)
-	if !r.Contains(lx, ly) {
+	if !r.Contains(lx, ly) || s.selfClips && !roundedContains(s.selfClip, uniformRadii(s.selfRadius), lx, ly) {
 		return false
 	}
 	// The clips around an element flying stop at it, as it paints out of
 	// them.
 	for p := rt.states[s.parent]; p != nil && !s.lifted; p = rt.states[p.parent] {
-		if p.clips {
+		if p.clips || p.selfClips {
 			m, ok := p.world.Inverse()
 			if !ok {
 				return false
 			}
 			px, py := m.Point(x, y)
-			if !roundedContains(p.clipRect, p.clipRadii, px, py) {
+			if p.clips && !roundedContains(p.clipRect, p.clipRadii, px, py) ||
+				p.selfClips && !roundedContains(p.selfClip, uniformRadii(p.selfRadius), px, py) {
 				return false
 			}
 		}
@@ -356,6 +357,8 @@ func (rt *engine) contains(s *state, r Rect, x, y float32) bool {
 	w, h, _ := rt.size()
 	return x >= 0 && y >= 0 && x < w && y < h
 }
+
+func uniformRadii(r float32) [4]float32 { return [4]float32{r, r, r, r} }
 
 func roundedContains(r Rect, radii [4]float32, x, y float32) bool {
 	if !r.Contains(x, y) {

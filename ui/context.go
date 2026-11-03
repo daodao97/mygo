@@ -619,10 +619,15 @@ type state struct {
 	rtl       bool
 	clipRect  Rect
 	clipRadii [4]float32
-	id        uint64
-	seen      uint64
-	pass      int    // the pass of the frame that built it last
-	born      uint64 // the frame that first built the element
+	// selfClips tells that the element clips itself and what is inside it
+	// to selfClip, rounded by selfRadius (ClipInset).
+	selfClips  bool
+	selfClip   Rect
+	selfRadius float32
+	id         uint64
+	seen       uint64
+	pass       int    // the pass of the frame that built it last
+	born       uint64 // the frame that first built the element
 	// lookedSeen and lookedPass are seen and pass before the last
 	// lookup (lookState), 0 for a state it created.
 	lookedSeen uint64

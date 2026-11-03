@@ -4,7 +4,7 @@
 children, with a `*ui.Painter` in DIPs of the window: rectangles with
 `Fill`, `FillGradient`, `FillConicGradient` and `FillRadialGradient`,
 `Stroke` and `StrokeDashed`, `Shadow`, `Line` (horizontal or vertical),
-`Image`, `Clip`, paths of lines and curves with `FillPath` and
+`Image`, `Clip` and `ClipPath`, paths of lines and curves with `FillPath` and
 `StrokePath`, or in a gradient with `FillPathGradient` and
 `StrokePathGradient`, and text with `Text`, or `RichText` in spans of any
 style, which `MeasureText` measures first, to center or align it:
@@ -77,6 +77,57 @@ box.Draw(func(p *ui.Painter, r ui.Rect) {
 	p.StrokePath(edge.Cap(ui.ButtCap).Dash(0, 6, 4), 1.5, c.Theme().TextMuted)
 })
 ```
+
+## Paths from SVG data
+
+`ui.ParsePath(d)` reads the path data of an SVG `<path d="…">` (all of
+its commands, absolute and relative, arcs too) into a `*ui.Path`, so an
+icon's outline copied from an SVG can be filled, stroked, trimmed or
+clipped to like any path. It returns an error that gives the offset of
+the first thing it can't read; `ui.MustParsePath` panics instead, for
+data written into the program:
+
+```go
+var heart = ui.MustParsePath("M12 21 L10.6 19.7 C5.4 15 2 11.9 2 8.1 C2 5 4.4 2.6 7.5 2.6 " +
+	"C9.2 2.6 10.9 3.4 12 4.7 C13.1 3.4 14.8 2.6 16.5 2.6 C19.6 2.6 22 5 22 8.1 " +
+	"C22 11.9 18.6 15 13.4 19.7 Z")
+
+box.Draw(func(p *ui.Painter, r ui.Rect) {
+	p.Transform(ui.Scaling(r.W/24, r.H/24).Then(ui.Translation(r.X, r.Y)), 0, 0, func() {
+		p.StrokePath(heart.Trim(0, drawn), 1.5, c.Theme().Accent)
+	})
+})
+```
+
+The path is in the data's own units; a transform scales it to the box.
+
+## Clipping to a path
+
+`Painter.Clip(r, radius, fn)` clips what `fn` draws to a rounded
+rectangle. `Painter.ClipPath(path, fn)` clips it to the inside of any
+path (non-zero winding), with smooth edges, as SVG's and CSS's
+`clip-path`: a chart drawn into a polygon, or a picture cut to a star.
+
+```go
+star := ui.MustParsePath("M50 0 L61 35 L98 35 L68 57 L79 91 L50 70 L21 91 L32 57 L2 35 L39 35 Z")
+ui.Box(c).Size(100, 100).Draw(func(p *ui.Painter, r ui.Rect) {
+	p.Transform(ui.Translation(r.X, r.Y), 0, 0, func() {
+		p.ClipPath(star, func() {
+			p.FillGradient(ui.Rect{W: 100, H: 100}, ui.LinearGradient{From: gold, To: orange, Angle: 135}, 0)
+		})
+	})
+})
+```
+
+Path clips nest with each other and with `Clip`, and turn with a
+transform. The clip is a mask of the path's coverage that every
+renderer samples, made once for each shape and size it is drawn at and
+kept while frames draw it, so a still path costs nothing to clip to
+again. A moving or changing one makes a new mask every frame, sized to
+the path in device pixels (at most 8192 each way).
+
+To clip an element and its children rather than a drawing, see
+`ClipInset` and the gradient masks in [styling](styling.md).
 
 ## Parts of bitmaps
 

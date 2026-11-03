@@ -77,6 +77,44 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
   		Radius(16).Border(l.width, ui.Color{}).BorderConicGradient(glow).Blur(l.blur)
   }
   ```
+- **Clipping to an inset.** `ClipInset(top, right, bottom, left, radius)`
+  clips the element and everything inside it (background, shadows,
+  border, children) to its box inset by those DIPs, as CSS's
+  `clip-path: inset()`. `ClipInsetPercent` takes percent of the box
+  instead. A negative inset reaches beyond the box on that side, so
+  `ClipInset(0, -40, 0, -40, 0)` clips top and bottom while a shadow
+  still shows left and right. The insets are drawn as a clip of the
+  scene, not a layer, so they can change every frame. Animating one
+  wipes the element in:
+
+  ```go
+  hidden := float32(100)
+  if app.open {
+  	hidden = 0
+  }
+  card.ClipInsetPercent(0, card.AnimateTo("wipe", hidden, ui.Smooth), 0, 0, 12)
+  ```
+
+  What the inset hides takes no clicks.
+- **Gradient masks.** `MaskLinearGradient`, `MaskRadialGradient` and
+  `MaskConicGradient` mask the element and what is inside it by a
+  gradient across its box, as CSS's `mask-image`. Each point shows as
+  much as the gradient's alpha there; the colors don't matter. Nothing
+  shows outside the box (or outside the inset, with `ClipInset`). A
+  scrolling list whose rows fade out at its edges:
+
+  ```go
+  black := ui.RGB(0, 0, 0)
+  fade := []ui.GradientStop{{ui.Transparent, 0}, {black, 0.08}, {black, 0.92}, {ui.Transparent, 1}}
+  list.MaskLinearGradient(ui.LinearGradient{Angle: 180, Stops: fade})
+  ```
+
+  The end of clamped text fades the same way, along its width:
+  `MaskLinearGradient(ui.LinearGradient{Angle: 90, Stops: …})`.
+  Like `Opacity`, the mask applies to each thing drawn on its own; the
+  element isn't drawn into a layer first. So where a row's background
+  is faded, what is under the row shows through it too. Clicks are not
+  masked.
 - **Caching.** `Cache()` keeps what the element and its children paint in
   a bitmap of the GPU, as Flutter's `RepaintBoundary` and SwiftUI's
   `drawingGroup()` do, drawn again only when what they paint changes:

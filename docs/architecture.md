@@ -2689,6 +2689,20 @@ either.
   there, including resting changes to transformed content.
   Metal retains wide colors under transforms. See
   [Transforms](ui/transforms.md#rendering) for rendering details.
+- **Masked clips** (`ui/mask.go`, `scene.ClipShapeOf`). A clip
+  (`OpPushClip`) may carry a gradient paint, whose alpha masks it
+  (`MaskLinearGradient` and the others, around the element's inset
+  rectangle from `ClipInset`), or an image, whose alpha masks it over its
+  rectangle (`Painter.ClipPath`: the path's coverage, rasterized by
+  `internal/vec` once for each shape and kept by the engine while paints
+  use it). The GPU builders draw such clips into the cached clip-mask
+  textures, as transformed or rounded clips do (`raster.ClipMask`), and
+  never evaluate them in the shaders, so no shader changed for them. The
+  CPU renderer multiplies the clip's coverage by the mask
+  (`raster.clipMasking`). Each op under a mask is masked on its own, as
+  `Opacity` fades each, rather than through a group layer. A clip moved
+  by a translation moves its gradient with it (`scene.MovedClipOp`), and
+  damage compares the version of its image.
 - **Motion** (`ui/motion.go`): every animated value of an element
   (`AnimateTo`, `Animate`, `AnimateWith`, `Spring`, `Jump`) is a `channel`
   by key, with a value, a velocity and the time they hold for, moving
@@ -3988,6 +4002,10 @@ either.
   breaking allows (else the hyphen overflows, as a long word does), and
   the rest anew (`breakLines`). A paragraph without an indent or a soft
   hyphen is shaped once.
+  `Params.Balance` (`Element.Balance`) breaks a paragraph that wraps at
+  narrower widths, bisecting to a quarter of a DIP, for the narrowest
+  that keeps its count of lines (`System.balance`). The layout cache
+  keys it with the other params, so a build lays it out once.
   Text elements built inside a text (`ui/inline.go`) are inline: the
   paragraph takes their text when its `Children` returns, and their
   styles as spans over its own when it lays out. At commit, each gets the
