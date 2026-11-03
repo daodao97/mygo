@@ -384,7 +384,11 @@ it); on Windows, the same placement flips above an icon of a taskbar at
 the bottom of the screen. On macOS, which shows a menu bar item on each
 display, it goes under the copy of the icon the user clicked. A press on
 the icon does not dismiss a focusable flyout, so the icon's click can
-toggle it. Keep the app running as the flyout, its only window, closes:
+toggle it; with `Popover`, the click closes it, as AppKit's popovers
+close on their anchor, and does not reach `OnClick`. Either way, a click
+on the icon closes the open flyout with the code below, and does not
+open it again. Keep the app running as the flyout, its only window,
+closes:
 
 ```go
 mygo.App.OnWindowAllClosed(func() {})

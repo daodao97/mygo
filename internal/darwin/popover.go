@@ -17,7 +17,7 @@ import (
 // keyboard, focusable or not, while its parent stays the key window, which
 // the popover's window says it is too. A focusable flyout's popover is
 // transient: it asks the delegate (popoverShouldClose:) before it closes on
-// a click elsewhere, as WindowHandler.ShouldClose decides.
+// a click elsewhere or on its anchor, as WindowHandler.ShouldClose decides.
 
 const (
 	popoverBehaviorApplicationDefined = 0
@@ -163,18 +163,17 @@ func (w *window) cleanupPopover() {
 func popoverDelegateMethods() []objc.MethodDef {
 	b := func() *Backend { return theBackend }
 	return []objc.MethodDef{
-		// The user clicked elsewhere, in a transient popover. A press on
-		// its own tray icon leaves it to the icon's click, which toggles
-		// it, rather than closing it for the click to open it again.
+		// The user clicked elsewhere, in a transient popover, or on its
+		// tray icon, the positioning view, whose click AppKit eats: the
+		// icon's action never comes, so the click only closes it. AppKit
+		// asks on the release (macOS 26) or on the press, and keeping it
+		// open on a press on the icon kept it open for good, as it then no
+		// longer closed on clicks elsewhere either (#1050).
 		method("popoverShouldClose:", func(self id, _ objc.SEL, popover id) bool {
-			w := b().windowFor(self)
-			if w == nil {
-				return true
+			if w := b().windowFor(self); w != nil {
+				return w.h.ShouldClose()
 			}
-			if t, ok := w.flyout.Tray.(*tray); ok && t.pressed() {
-				return false
-			}
-			return w.h.ShouldClose()
+			return true
 		}),
 		method("popoverDidClose:", func(self id, _ objc.SEL, n id) {
 			w := b().windowFor(self)

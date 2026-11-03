@@ -334,35 +334,14 @@ func TestFlyoutEscape(t *testing.T) {
 // TestTrayFlyout places a flyout next to a tray icon, below the macOS menu
 // bar's or above an icon of a taskbar at the bottom, and in the middle of
 // the primary display's work area where the icon has no bounds. (Clicks
-// on the icon, which toggle it, are checked by hand: synthesized ones do
-// not reach a status item.)
+// on the icon, which toggle it, are TestTrayPopoverToggle's on macOS.)
 func TestTrayFlyout(t *testing.T) {
 	tray, err := mygo.NewTray(mygo.TrayOptions{Icon: squarePNG(), ToolTip: "flyout"})
 	if err != nil {
 		t.Skip("no tray: ", err)
 	}
 	defer tray.Destroy()
-	// The menu bar lays the icon out after it was made, off the screen
-	// until then: wait for it, as a click on it would find it.
-	onScreen := func() bool {
-		r := tray.Bounds()
-		for _, d := range mygo.Screen.Displays() {
-			b := d.Bounds
-			if r.Width > 0 && r.Height > 0 && r.X >= b.X && r.X+r.Width <= b.X+b.Width && r.Y >= b.Y-2 && r.Y+r.Height <= b.Y+b.Height {
-				return true
-			}
-		}
-		return false
-	}
-	last, still := tray.Bounds(), 0
-	for deadline := time.Now().Add(3 * time.Second); still < 10 && time.Now().Before(deadline); {
-		time.Sleep(30 * time.Millisecond)
-		if b := tray.Bounds(); b == last && onScreen() {
-			still++
-		} else {
-			last, still = b, 0
-		}
-	}
+	waitTrayLaidOut(tray)
 	for _, popover := range []bool{false, true} {
 		fl := mygo.NewFlyout(mygo.FlyoutOptions{Tray: tray, Placement: mygo.PlacementBottom, Gap: 4, Width: 200, Height: 120, Focusable: true, Popover: popover,
 			Content: ui.View(func(c *ui.Context) {})})
@@ -384,6 +363,31 @@ func TestTrayFlyout(t *testing.T) {
 			eventuallyAt(t, "the flyout in the middle of the work area", fl, func() mygo.Rectangle { return want })
 		}
 		fl.Destroy()
+	}
+}
+
+// waitTrayLaidOut waits for the menu bar to lay a tray icon out, which it
+// does after the icon was made, off the screen until then, as a click on
+// it would find it.
+func waitTrayLaidOut(tray *mygo.Tray) {
+	onScreen := func() bool {
+		r := tray.Bounds()
+		for _, d := range mygo.Screen.Displays() {
+			b := d.Bounds
+			if r.Width > 0 && r.Height > 0 && r.X >= b.X && r.X+r.Width <= b.X+b.Width && r.Y >= b.Y-2 && r.Y+r.Height <= b.Y+b.Height {
+				return true
+			}
+		}
+		return false
+	}
+	last, still := tray.Bounds(), 0
+	for deadline := time.Now().Add(3 * time.Second); still < 10 && time.Now().Before(deadline); {
+		time.Sleep(30 * time.Millisecond)
+		if b := tray.Bounds(); b == last && onScreen() {
+			still++
+		} else {
+			last, still = b, 0
+		}
 	}
 }
 

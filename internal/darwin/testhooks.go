@@ -148,6 +148,78 @@ func TestAppPress(handle uintptr, x, y float64, down bool) {
 	testMouse(handle, x, y, true, typ)
 }
 
+// TestPostMouse presses (down) or releases the primary button at (x, y)
+// on screen, in MyGo's coordinates (top-left origin), as the user's mouse
+// does: through the window server, to whatever shows there, the menu
+// bar's items too. It reports false where the process may not post events
+// (Accessibility).
+func TestPostMouse(x, y float64, down bool) bool {
+	testPostOnce.Do(func() {
+		purego.RegisterLibFunc(&cgPreflightPostEventAccess, libCG, "CGPreflightPostEventAccess")
+		purego.RegisterLibFunc(&cgEventCreateMouseEvent, libCG, "CGEventCreateMouseEvent")
+		purego.RegisterLibFunc(&cgEventPost, libCG, "CGEventPost")
+	})
+	if !cgPreflightPostEventAccess() {
+		return false
+	}
+	typ := uint32(2) // kCGEventLeftMouseUp
+	if down {
+		typ = 1 // kCGEventLeftMouseDown
+	}
+	ev := cgEventCreateMouseEvent(0, typ, NSPoint{x, y}, 0) // kCGMouseButtonLeft
+	if ev == 0 {
+		return false
+	}
+	cgEventPost(0, ev) // kCGHIDEventTap
+	cfRelease(ev)
+	return true
+}
+
+var (
+	testPostOnce               sync.Once
+	cgPreflightPostEventAccess func() bool
+	cgEventCreateMouseEvent    func(source uintptr, typ uint32, at NSPoint, button uint32) uintptr
+	cgEventPost                func(tap uint32, ev uintptr)
+)
+
+// TestMouseButtons returns how many presses and releases of the primary
+// button the application took from the window server since the first
+// call, which starts counting them: a test that posts them with
+// TestPostMouse waits for them so.
+func TestMouseButtons() (downs, ups int) {
+	if testButtons == 0 {
+		blk := newBlock(func(_ objc.Block, ev id) id {
+			if sendInt(ev, "type") == 1 { // NSEventTypeLeftMouseDown
+				testDowns++
+			} else {
+				testUps++
+			}
+			return ev
+		})
+		testButtons = retain(send(class("NSEvent"), "addLocalMonitorForEventsMatchingMask:handler:", 1<<1|1<<2, uintptr(blk)))
+	}
+	return testDowns, testUps
+}
+
+// testButtons is TestMouseButtons's monitor, counting into testDowns and
+// testUps. Main thread only.
+var (
+	testButtons        id
+	testDowns, testUps int
+)
+
+// TestClosePopover asks a flyout's popover to close as AppKit asks a
+// transient one as the user presses outside it (performClose:), and
+// reports whether it has one.
+func TestClosePopover(handle uintptr) bool {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil || w.popover == 0 {
+		return false
+	}
+	send(w.popover, "performClose:", 0)
+	return true
+}
+
 func testClick(handle uintptr, x, y float64, viaApp bool) {
 	testMouse(handle, x, y, viaApp, 1, 2) // NSEventTypeLeftMouseDown, LeftMouseUp
 }

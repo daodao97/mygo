@@ -1820,9 +1820,14 @@ as in Tauri:
   (Windows), and on Linux, whose AppIndicator tells no bounds, an
   undecorated utility toplevel in the middle of the work area, which a
   focusable one closes as it loses the keyboard. A press on the icon
-  does not dismiss its flyout (`tray.pressed` in `popoverShouldClose:`
-  and on resigning key, the cursor over `Shell_NotifyIconGetRect` on
-  Windows), so its click toggles it. A global monitor of mouse downs
+  does not dismiss its flyout (`tray.pressed` on resigning key, the
+  cursor over `Shell_NotifyIconGetRect` on Windows), so its click
+  toggles it, but a popover's: AppKit eats a click on a transient
+  popover's positioning view, the status item's button, whatever
+  `popoverShouldClose:` answers, so the button sends no action, and the
+  click closes the popover (AppKit asks on the release on macOS 26, on
+  the press elsewhere: one kept open there stayed open for good, #1050).
+  A global monitor of mouse downs
   closes macOS's focusable panels on clicks outside the app, which a
   panel taking the keyboard of an app that was not activated never
   hears as the key window changing. The design follows GPUI's
