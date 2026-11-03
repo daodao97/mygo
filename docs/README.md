@@ -158,7 +158,8 @@ components, from buttons to tables.
   native UI.
 - [Automation](plugins/automation.md): drive a running app from another
   process, as end-to-end test runners and agents do: its windows,
-  elements, input, menus and screenshots.
+  elements, input, menus and screenshots, and `mygo-automation`, its
+  command line client for agents.
 - [PermissionFlow](plugins/permissionflow.md): the system's permissions,
   such as Accessibility and Screen Recording, checked and asked for, and a
   guide to System Settings with the app to drag into its list.
