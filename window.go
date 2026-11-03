@@ -555,14 +555,12 @@ func newWindow(opts WindowOptions, bg *background, native uintptr, flyout *flyou
 
 	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), stateKey: opts.StateKey, background: bg, content: opts.Content, panel: opts.Panel && flyout == nil, active: true}
 	w.pg = &Page{w}
-	if opts.Content == nil {
-		if flyout != nil {
-			w.fit = flyout.fit
-		} else if opts.FitContent {
-			w.fit = &fitContent{
-				min: platform.Size{Width: opts.MinWidth, Height: opts.MinHeight},
-				max: platform.Size{Width: opts.MaxWidth, Height: opts.MaxHeight},
-			}
+	if flyout != nil {
+		w.fit = flyout.fit
+	} else if opts.Content == nil && opts.FitContent {
+		w.fit = &fitContent{
+			min: platform.Size{Width: opts.MinWidth, Height: opts.MinHeight},
+			max: platform.Size{Width: opts.MaxWidth, Height: opts.MaxHeight},
 		}
 	}
 	w.hiddenTitleBar = !opts.Frameless && (opts.TitleBarStyle == TitleBarHidden || opts.TitleBarStyle == TitleBarHiddenInset)
@@ -899,6 +897,9 @@ func (w *Window) show() {
 		return
 	}
 	visible := w.native.IsVisible()
+	if w.fitShow(visible); w.native == nil {
+		return // the frame it laid out closed it
+	}
 	w.native.Show()
 	w.shown = true
 	if !visible {
@@ -914,6 +915,9 @@ func (w *Window) ShowInactive() {
 			return
 		}
 		visible := w.native.IsVisible()
+		if w.fitShow(visible); w.native == nil {
+			return // the frame it laid out closed it
+		}
 		w.native.ShowInactive()
 		w.shown = true
 		if !w.focusKnown {
@@ -924,6 +928,15 @@ func (w *Window) ShowInactive() {
 			fire(&w.onShow)
 		}
 	})
+}
+
+// fitShow sizes a hidden flyout of native UI that takes its content's
+// size to that content before it shows (fitContent.show). Main thread
+// only.
+func (w *Window) fitShow(visible bool) {
+	if f := w.fit; f != nil && f.show != nil && !visible {
+		f.show(w)
+	}
 }
 
 // Hide hides the window. Called right after NewWindow, it keeps a window

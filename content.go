@@ -99,6 +99,9 @@ func (w *Window) attachContent() {
 			})
 		},
 	}
+	if f := w.fit; f != nil && f.native != nil && w.flyout != nil {
+		f.native(w, w.conn)
+	}
 	w.content.AttachContent(w.conn)
 }
 

@@ -82,6 +82,22 @@ type Conn struct {
 	// PlaceWebViews shows the window's web views where the content's last
 	// frame shows them (Surface.PlaceWebViews).
 	PlaceWebViews func(views []platform.WebViewPlacement)
+	// ContentSize, set by a window that takes its content's size
+	// (mygo.FlyoutOptions.FitContent), nil in others, hears the size
+	// the content takes, in DIPs, as a frame laid out at the window's
+	// size measures it and when it changed: its max-content width within
+	// the bounds FitWidth returns (0 for none), and its height at that
+	// width. It is called while the frame builds: the window resizes
+	// after it, and the frame that follows lays the content out at the
+	// size it took.
+	ContentSize func(width, height float64)
+	FitWidth    func() (min, max float64)
+	// Fit, set by the content where ContentSize is, builds and lays out
+	// at once the frame the content waits to draw, if one waits, as in a
+	// hidden window, which tells ContentSize the size it takes if that
+	// changed, and reports whether it did build one. The window calls
+	// it before it shows, to show at that size.
+	Fit func() bool
 
 	// Event receives the surface's events, and Focus and Blur of the
 	// window. It reports whether the content takes dragged files, as

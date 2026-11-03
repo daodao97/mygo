@@ -37,7 +37,7 @@ func (w *Window) bridgeScript() string {
 // page's (FitContent), in the CSS pixels of its page, or nil. Main thread
 // only.
 func (w *Window) fitLimits() *bridge.FitContent {
-	if w.fit == nil {
+	if w.fit == nil || w.content != nil {
 		return nil
 	}
 	l := bridge.NewFitContent(w.fit.min, w.fit.max, w.fit.zoom)

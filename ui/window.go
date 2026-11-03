@@ -92,6 +92,10 @@ func (v *Content) AttachContent(conn *surface.Conn) {
 	}
 	conn.Capture = h.capture
 	conn.Detach = h.detach
+	if conn.ContentSize != nil && conn.FitWidth != nil {
+		rt.fit = newFitter(conn.FitWidth, conn.ContentSize)
+		conn.Fit = h.fit
+	}
 	rt.insp.enabled = conn.DevTools
 	conn.ToggleDevTools = func() {
 		if rt.insp.enabled {
@@ -680,6 +684,20 @@ func (h *windowHost) capture() (int, int, []byte) {
 	img.Resize(s.Width, s.Height)
 	raster.Render(&img, s)
 	return img.W, img.H, img.RGBA()
+}
+
+// fit builds the frame that waits for the window to show, if one does,
+// for a window that takes its content's size to measure what it shows
+// now before it shows (surface.Conn.Fit), as capture does; the surface's
+// next frame draws it. It builds none within a frame, nor before the
+// first: the view runs as the window first draws, not within NewWindow.
+func (h *windowHost) fit() bool {
+	rt := h.rt
+	if h.detached || rt.inFrame || h.last == nil || !h.frameAsked && !rt.held {
+		return false
+	}
+	rt.runFrame()
+	return true
 }
 
 func (h *windowHost) detach() {

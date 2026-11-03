@@ -158,6 +158,18 @@ the window drawn as active, with a private AppKit call that a later macOS may
 drop, the window then drawn as any other: apps for the Mac App Store
 should leave it off.
 
+## Flyouts that fit their content
+
+A flyout with `FitContent` takes the size its native UI measures and
+follows it as it changes, within `MinWidth`, `MinHeight`, `MaxWidth`,
+`MaxHeight` and the work area: the root's content at its max-content
+width and its height at that width, as a tray panel whose list or error
+line comes and goes. A frame that measures another size resizes the
+flyout, and the next lays the content out at that size. A hidden flyout
+lays out content that changed while it was hidden as it shows, and shows
+at the size that content takes. See
+[Size a flyout to its content](../windows.md#size-a-flyout-to-its-content).
+
 ## Active and inactive windows
 
 Native apps draw the window the user's input goes to apart from the

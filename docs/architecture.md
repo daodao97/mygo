@@ -908,7 +908,32 @@ document start into the main frame. It installs:
   within its display's work area; a size equal to the last it took does
   nothing, so a user's resize holds. The same in every engine: WebKit's
   private `-[WKWebView _setSizeToContentAutoSizeMaximumSize:]` is not
-  used.
+  used. A flyout of native UI fits without the bridge: its
+  `surface.Conn` gets `FitWidth` (the width's limits and the work area's
+  width, from the display the flyout is on) and `ContentSize`, through
+  `fitContent.native`, which `NewFlyout` sets so that apps without such a
+  flyout link none of the core's side, and
+  `ui/fit.go` measures the root as each frame lays out, right after
+  `layoutTree`: `contentWidth(root, true)` within those widths, and
+  `contentHeight` at that width, the non-committing layout flex columns
+  measure their items with, so percentages and `Grow` measure as their
+  content, as `height: auto`; absolutely placed elements and the
+  inspector take none of it. It tells a size only when it differs from
+  the last it told, and the core clamps it as a page's (`fitNative`),
+  then resizes and places the flyout after the frame (`postMain`, as the
+  backends' resizes may send the surface events at once): the surface's
+  `SurfaceResize` brings the frame laid out at the new size. A frame laid
+  out at a new size that measures the size told before the last one
+  holds, so that a view building its content after `Context.Size` does
+  not resize the flyout back and forth. A hidden window draws no frames,
+  so `Show` and `ShowInactive` of a hidden flyout first call
+  `fitContent.show` (`fitBeforeShow`), which `NewFlyout` sets with
+  `native`: where the content waits to draw a frame, `surface.Conn.Fit`
+  builds and lays it out at once, as a capture does, and the flyout
+  takes the size it measured before the platform shows it; the
+  surface's next frame draws it at that size. `Fit` builds nothing
+  within the content's frame or before its first, so the view never
+  runs within `NewFlyout`.
 - Find in page (`find.ts`, `Page.FindInPage`): the bridge walks the
   visible text nodes, marks matches with the CSS Custom Highlight API (a
   constructed style sheet, which a Content Security Policy allows) and
@@ -5132,7 +5157,7 @@ which npm allows only for packages that exist: the first release uses an
 | downloads | `shouldPerformDownload`, non-displayable or attachment responses → `WKDownload` delegate | `download-started` / `decide-destination` on the web context; response policy for attachments | `DownloadStarting` (`ICoreWebView2_4`), replacing WebView2's download UI |
 | Cookies | the session's `WKWebsiteDataStore`'s `WKHTTPCookieStore`, URLs matched in Go (`platform.CookieMatchesURL`), `Set` through `NSHTTPCookie`'s parser with a stand-in name and value; `Clear` with `removeDataOfTypes:` | the session's web context's `WebKitCookieManager` (2.42+; `get_cookies` for a URL), kept in `cookies.sqlite` of the user data directory, or of a persistent session's directory (`set_persistent_storage`, as WebKitGTK keeps them in memory otherwise); libsoup 3 or 2.4 to match WebKitGTK 4.1 or 4.0; `Clear` with `webkit_website_data_manager_clear` | `ICoreWebView2CookieManager` (`ICoreWebView2_2`) of a window's web view of the session's profile, or before one shows a page of a hidden web view of the profile in the app window, closed once one does, or once an ephemeral session's store closes; a window's first navigation waits for the calls under way; `ClearBrowsingData` goes the same way; changes are polled with `GetCookies` until they show, failing after 2 s; `GetCookies(uri)`, `DeleteAllCookies`; `put_Expires` called with `comCallFloat` |
 | content rules | the default `WKContentRuleListStore`, which keeps compiled lists under an identifier of the id and a hash of the rules (looked up first, the id's others removed), on each window's `WKUserContentController`; the store's reason for a failure is in `NSHelpAnchorErrorKey` | a `WebKitUserContentFilterStore` in `content-rules` of the user data directory (2.24+), on each window's `WebKitUserContentManager` | matched in Go (`internal/contentrules`, indexed by the domains of `url-filter`s and four bytes of their literals) from `WebResourceRequested` with a `*` filter, blocked pages answered with an empty 403 and other blocked requests with a redirect to `data:`, which Chromium fails as a network error; WebSocket handshakes never reach it; `css-display-none` rules as a style sheet a document-creation script adopts, kept when the page sets `adoptedStyleSheets`; parsed on a goroutine, nothing kept |
-| `FitContent` | the bridge, as elsewhere; WebKit's private `_setSizeToContentAutoSizeMaximumSize:` is not used | the bridge | the bridge |
+| `FitContent` | the bridge, as elsewhere; WebKit's private `_setSizeToContentAutoSizeMaximumSize:` is not used; native UI measures itself (`ui/fit.go`) | the bridge; native UI measures itself | the bridge; native UI measures itself |
 | `Page.ThemeColor` | the bridge, as elsewhere; WKWebView's `themeColor` (macOS 12+) is not used | the bridge | the bridge |
 | `Page.ProcessID` | the web content process, `-[WKWebView _webProcessIdentifier]` (private, looked up with `respondsToSelector:`) | 0: WebKitGTK has no API for it | the browser process the app's web views share, `ICoreWebView2::get_BrowserProcessId` |
 | a page's sound (`IsAudible`, `SetAudioMuted`) | private `-[WKWebView _isPlayingAudio]`, key-value observed, and `_mediaMutedState` / `_setPageMuted:` with the `_WKMediaAudioMuted` bit, the capture bits kept; looked up with `respondsToSelector:`, not audible and not muted where WebKit doesn't answer | `webkit_web_view_is_playing_audio` and `notify::is-playing-audio`; `webkit_web_view_set_is_muted` / `get_is_muted` (2.30+, bound when present) | `ICoreWebView2_8`'s `IsDocumentPlayingAudio`, `IsDocumentPlayingAudioChanged` and `IsMuted`, queried for each call; a mute set before the web view is made is put in `setUp`, before its first navigation |

@@ -125,6 +125,10 @@ type engine struct {
 	painter         Painter
 	glyphRun        glyphRun
 
+	// fit sizes a window that takes its content's size (fit.go), nil
+	// for others.
+	fit *fitter
+
 	// contentZoom is the content's zoom (Context.SetZoom), 0 for none;
 	// zoomChanged tells that it changed since the frame's size was read.
 	contentZoom float32
@@ -668,6 +672,7 @@ func (rt *engine) runFrame() {
 	rt.insp.lap(0)
 	root := rt.c.root
 	layoutTree(root, appW, h)
+	rt.measureFit(root)
 	rt.commit(root, w, h)
 	// Scrolling can put a new native drop target under a stationary
 	// pointer. Resolve it against this frame's geometry, then rebuild if

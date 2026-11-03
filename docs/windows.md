@@ -502,8 +502,48 @@ included, beyond `MaxHeight` the page scrolls, and the room its
 scrollbar takes then is part of the size. A page that gives `html` a size of its own,
 as `height: 100%`, keeps the flyout at that size: let the root and the
 body take their content's. The size is the page's CSS pixels times its
-zoom, in DIPs, and a size that changes nothing resizes nothing. Native
-UI (`Content`) does not fit.
+zoom, in DIPs, and a size that changes nothing resizes nothing.
+
+A flyout of native UI (`Content`) fits the same way, a tray panel whose
+list of nodes, form or error line changes as the app runs, with no size
+to guess and no `SetSize` to call:
+
+```go
+fl := mygo.NewFlyout(mygo.FlyoutOptions{
+	Tray:       tray,
+	Placement:  mygo.PlacementBottom,
+	FitContent: true,
+	MinWidth:   260,
+	MaxHeight:  480,
+	Content: ui.View(func(c *ui.Context) {
+		ui.Column(c).Fill().Padding(12).Gap(8).Children(func() {
+			ui.Text(c, "Nodes")
+			ui.Scroll(c).Grow(1).Children(func() { app.nodes(c) })
+			if app.err != nil {
+				ui.Text(c, app.err.Error())
+			}
+		})
+	}),
+})
+```
+
+Each frame measures its root's content as it lays it out, as CSS sizes
+`width: fit-content; height: auto`: its widest line of children
+(max-content), within `MinWidth` and `MaxWidth` and the work area, and
+its height at that width, within `MinHeight` and `MaxHeight`, beyond
+which a `Scroll` in it scrolls: `Fill` and `Grow` take the flyout's size
+as it lays out, and measure as their content. Elements placed `Absolute`, as menus and
+toasts, take none of it. A frame that measures another size resizes the
+flyout, placed again against its anchor (flipping where the work area
+has no room), and the next frame lays the content out at that size: the
+first frame after a change shows it at the size the flyout had. A
+hidden flyout draws no frames: content changed while it was hidden
+(with `Update` or `Invalidate`) lays out as `Show` or `ShowInactive`
+shows it, and the flyout shows at the size that content takes. A frame
+that measures what the last did resizes nothing, so a size `SetSize`
+gives holds until the content's changes. A view that builds its content
+after the window's size (`Context.Size`) settles at the size it took
+rather than resize back and forth.
 
 `WindowOptions.FitContent` does the same for the page area of a window,
 a [panel](#panels) for one, within its `MinWidth`, `MinHeight`,
