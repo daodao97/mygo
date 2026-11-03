@@ -124,7 +124,9 @@ is an ordinary color. Don't assign `R`, `G` or `B` of such a color, as the
 real value would no longer match: make a new one.
 
 Colors come from `ui.RGB`, `ui.RGBA` and `ui.Hex("#2563eb")`; `Mix` blends
-two, and `Alpha` makes one translucent.
+two, `MixOklab` blends them in Oklab, as a gradient's `Oklab` does (yellow
+and blue meet in a blue rather than in sRGB's gray), and `Alpha` makes one
+translucent.
 
 ## State, not selectors
 

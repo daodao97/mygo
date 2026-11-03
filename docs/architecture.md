@@ -2666,7 +2666,10 @@ either.
   into its parent's plane as CSS's flat transform-style does, composes
   with its ancestors after layout as a projective map
   (`scene.Affine`, with G and H in perspective); boxes keep their original
-  layout space. Painting stores the composed transform on scene
+  layout space. `TranslatePercent` stays apart from the transform
+  (`translatePct`): `transformAt` resolves it from the box as laid out,
+  after the transform and before the pose, as a pose's percents
+  (`showPose`) and a `Motion`'s (`tbox.moved`) are. Painting stores the composed transform on scene
   operations and clips, and committing keeps it on the state for
   inverse-mapped pointer input, carets, accessibility bounds, and overlays
   attached to visual bounds. The CPU renderer inverse maps pixels for
@@ -2725,9 +2728,12 @@ either.
   which then moves itself). Moving with a parent or a scroll offset is no
   change; resizing the window animates nothing, and reduced motion only
   fades and colors. Each moving component (position, size, opacity, and a
-  `Motion`'s scale and rotation) is a motion `channel`, so a spring keeps
-  its velocity through changes and a delay holds them. Colors move as
-  elements paint, after their `styleFn`. A `Match` moves an element
+  `Motion`'s scale, rotation and blur) is a motion `channel`, so a spring keeps
+  its velocity through changes and a delay holds them. A blur goes with
+  the opacity, as it moves nothing, and adds to the element's `Blur` as
+  Gaussians compose, which `paintEffect` draws on every renderer. Colors move as
+  elements paint, after their `styleFn`, mixed premultiplied in sRGB, or
+  in Oklab (`mixLab`) with the `Oklab` of their `Animation`. A `Match` moves an element
   appearing where another of the same identity showed the frame before
   (`ui/match.go`, `matchRec`, in window coordinates) after `place`
   (`matches.move`), laying it out anew at each box on the way, or scaling
@@ -2792,7 +2798,12 @@ either.
   elements with an `Exit` leave their arena to the next frame, which
   builds in the other (`Context.spare`), so that the next one copies those
   gone (`ghostOf`), with states of their own and nothing referring to the
-  app's state. Siblings are not laid out around a size moving; they move
+  app's state. The parent's `ChildExit` in the frame it goes
+  (`context.childExits`) takes the place of its `Exit`. An element
+  appearing with `AfterExits` waits unseen (`transition.held`,
+  `flagInvisible`) while copies leave under its parent (`ghosts`, which
+  `animateExits` sets after the elements built have moved), and comes in
+  with its `Enter` in the frame they are gone. Siblings are not laid out around a size moving; they move
   with their own transitions, in step when they share it.
 - **The inspector** (`ui/inspector.go`, `inspector_details.go`,
   `inspector_panel.go`, `inspector_overlay.go`), as Chrome's developer

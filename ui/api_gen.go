@@ -2861,8 +2861,8 @@ func (_handle Element) Animate(key any, target float32, d time.Duration) float32
 
 // AnimateColor returns a color that goes to target as a says, mixed with
 // premultiplied alpha as transitions mix colors, so that a color fading
-// from transparent keeps its hue; key tells apart the element's animated
-// colors. It starts at the first target. As changing colors moves
+// from transparent keeps its hue, in sRGB or, with a's Oklab, in Oklab;
+// key tells apart the element's animated colors. It starts at the first target. As changing colors moves
 // nothing, colors still change smoothly while the desktop asks for less
 // motion; DisableAnimations shows them at once.
 func (_handle Element) AnimateColor(key any, target Color, a Animation) Color {
@@ -3335,6 +3335,32 @@ func (_handle Element) Checked(on bool) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Checked(on))
+}
+
+// ChildExit says where the children of the element that leave in this
+// frame go, in place of the Exit of their Transitions: those whose
+// Transition has an Exit, which are copied as they go. It suits an exit
+// decided as they leave, as a calendar, a wizard or a carousel stepping
+// forward or back, whose page going goes the way of the step that sent
+// it, even when the step turned around in the frame it went:
+//
+//	dir := float32(app.dir) // 1 forward, -1 back
+//	ui.Box(c).Fill().ChildExit(ui.Motion{X: -40 * dir}).Children(func() {
+//		ui.Column(c.Key(app.page)).Absolute().Fill().Transition(ui.ElementTransition{
+//			Enter: &ui.Motion{X: 40 * dir},
+//			Exit:  &ui.Motion{X: -40 * dir},
+//		})
+//	})
+//
+// Copies already on their way go on as they went.
+func (_handle Element) ChildExit(m Motion) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ChildExit(m))
 }
 
 // ClickModifiers returns the modifier keys held as the element was last
@@ -6167,8 +6193,9 @@ func (_handle Element) TrackScroll(s *ScrollState) Element {
 	return wrapElement(_node.TrackScroll(s))
 }
 
-// Transform sets the element's visual transform. Its origin is the center
-// of its border box unless TransformOrigin changes it.
+// Transform sets the element's visual transform, in place of the one it
+// had, TranslatePercent's included. Its origin is the center of its
+// border box unless TransformOrigin changes it.
 func (_handle Element) Transform(t Transform) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -6206,8 +6233,8 @@ func (_handle Element) TransformOrigin(x float32, y float32) Element {
 //
 // Changes made by resizing the window do not animate. While the desktop
 // asks for less motion (Preferences.ReduceMotion), nothing moves: colors
-// still change smoothly, and an Enter or Exit that fades without
-// collapsing fades in place.
+// still change smoothly, and an Enter or Exit that fades or blurs without
+// collapsing fades and blurs in place.
 func (_handle Element) Transition(t ElementTransition) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -6240,6 +6267,25 @@ func (_handle Element) Translate(x float32, y float32) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Translate(x, y))
+}
+
+// TranslatePercent moves the element by x and y percent of its own width
+// and height, as CSS's translate(-50%, -50%) does: of its border box as
+// the frame lays it out, so that it is in place from its first frame and
+// follows its size as it changes. It acts after the element's other
+// transforms, wherever it is called among them, and before its pose
+// (AnimatePose), and adds to a TranslatePercent before it. A callout
+// centered above a point:
+//
+//	ui.Box(c).Absolute().Left(p.X).Top(p.Y).TranslatePercent(-50, -100)
+func (_handle Element) TranslatePercent(x float32, y float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.TranslatePercent(x, y))
 }
 
 // Underline underlines text.

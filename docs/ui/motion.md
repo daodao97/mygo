@@ -64,6 +64,17 @@ hue:
 row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))
 ```
 
+Colors mix in sRGB, unless the `Animation` has `Oklab`: then in Oklab, as a
+gradient's `Oklab` mixes, whose way between two saturated colors keeps
+their lightness and saturation rather than going through a dull, darker
+middle (yellow to blue through blues, not gray). It mixes the colors of
+a [transition](transitions.md#what-moves) with it too, and those of a
+`ContentTransition`'s morph, and `Color.MixOklab` mixes two colors so:
+
+```go
+badge.Background(badge.AnimateColor("bg", level, ui.Animation{Spring: ui.SpringOptions{Duration: 300 * time.Millisecond}, Oklab: true}))
+```
+
 ## Poses that only paint
 
 The values above are read by the view, so every frame that moves runs it.
@@ -81,8 +92,11 @@ if card.Hovered() {
 card.AnimatePose(lift, ui.Snappy)
 ```
 
-A `Pose` moves by `X` and `Y`, scales by `Scale` (0 keeps the size),
-turns by `Rotate` degrees, and fades by `Fade`, from 0, opaque, to 1, gone.
+A `Pose` moves by `X` and `Y`, and by `XPercent` and `YPercent` percent of
+the element's own width and height (as [`TranslatePercent`](transforms.md)
+moves it, following its size as it changes), scales by `Scale` (0 keeps
+the size), turns by `Rotate` degrees, and fades by `Fade`, from 0, opaque,
+to 1, gone.
 The pointer, carets and overlays follow the element as it moves, and
 `Transitioning()` reports whether its pose was moving.
 

@@ -32,7 +32,23 @@ ui.Box(c).Transform(pose).TransformOrigin(0, 0)
 ```
 
 The zero `Transform` is identity. Setting `Transform` replaces the element's
-previous transform; the convenience methods append to it. Set transforms
+previous transform, `TranslatePercent`'s too; the convenience methods
+append to it.
+
+`TranslatePercent(x, y)` moves an element by percents of its own width and
+height, as CSS's `translate(-50%, -50%)`: of its border box as the frame
+lays it out, so that it is in place from its first frame, without waiting
+for its `Bounds`, and follows its size in the frame it changes. It acts
+after the element's other transforms, wherever it is called among them,
+as CSS's `translate` property does, and before its pose; calls add up. A
+callout centered above the point it points at, whatever its size:
+
+```go
+ui.Box(c).Absolute().Left(at.X).Top(at.Y - 8).TranslatePercent(-50, -100).Children(callout)
+```
+
+A transition's `Motion` and a `Pose` move by percents of the element's
+size too (`XPercent`, `YPercent`). Set transforms
 in the view, before the frame is laid out. `Rotate` on an icon keeps its
 existing behavior of rotating the SVG artwork around its center. To rotate
 an icon's whole border box, use `Transform(ui.Rotation(degrees))`.

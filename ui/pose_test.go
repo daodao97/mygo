@@ -143,3 +143,28 @@ func TestPoseEntersAfterASecondBuild(t *testing.T) {
 		}
 	}
 }
+
+// A pose by percent of the element's size follows the size at once, in
+// the frame it changes, and moves along its curve when the pose changes.
+func TestPosePercent(t *testing.T) {
+	w, pct := float32(40), float32(50)
+	var card *node
+	tt, now := clockTester(func(c *context) {
+		card = coreBox(c).Size(w, 20).AnimatePose(Pose{X: 5, XPercent: pct, YPercent: -100}, Animation{Duration: 100 * time.Millisecond, Ease: Linear})
+	}, 200, 200)
+	if m := card.st.world; m.X != 25 || m.Y != -20 {
+		t.Fatalf("posed by percent, the card shows at %v, %v", m.X, m.Y)
+	}
+	w = 80
+	tt.Frame()
+	if m := card.st.world; m.X != 45 || card.Transitioning() {
+		t.Errorf("resized, the card shows at %v", m.X)
+	}
+	pct = 0
+	tt.Frame()
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	if m := card.st.world; m.X < 24.9 || m.X > 25.1 {
+		t.Errorf("halfway, the card shows at %v", m.X)
+	}
+}

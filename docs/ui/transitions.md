@@ -45,7 +45,10 @@ an element sent elsewhere on its way turns smoothly, keeping its velocity
 - **Size**: its width and height. The content lays out at each size on the
   way, as a panel opening wraps its text anew.
 - **Colors**: its background and border colors, as a hover fades in and
-  out.
+  out. They mix in sRGB, or in Oklab with the `Oklab` of its `Animation`,
+  whose midpoints keep the colors' lightness and saturation rather than
+  going through a dull, darker middle between two saturated ones:
+  `Animation: &ui.Animation{Duration: 200 * time.Millisecond, Oklab: true}`.
 
 All three animate unless `Position`, `Size` or `Colors` choose some:
 
@@ -93,10 +96,12 @@ in the frame before.
 
 `Enter` is where an element comes from as it appears, and `Exit` where it
 goes as it leaves, from its place in the layout: a `Motion` moved by `X`
-and `Y`, at an `Opacity` (0, transparent, when not set), scaled by `Scale`
+and `Y` DIPs and by `XPercent` and `YPercent` percent of its own width and
+height, at an `Opacity` (0, transparent, when not set), scaled by `Scale`
 (0 keeps it at its size) and turned by `Rotate` degrees around its
-`TransformOrigin`, and with `Collapse`, without height in a column or width
-in a row, its content clipped.
+`TransformOrigin`, blurred by `Blur` DIPs, as [`Blur`](styling.md) blurs,
+and with `Collapse`, without height in a column or width in a row, its
+content clipped.
 
 ```go
 toast := ui.ElementTransition{
@@ -107,6 +112,17 @@ popup := ui.ElementTransition{
 	Animation: &ui.Snappy,
 	Enter:     &ui.Motion{Scale: 0.95},
 	Exit:      &ui.Motion{Scale: 0.95},
+}
+// Text or an icon crossing over to another through a short blur, and a
+// sheet sliding in by its own height, however tall it is.
+swap := ui.ElementTransition{
+	Enter: &ui.Motion{Y: 4, Blur: 4},
+	Exit:  &ui.Motion{Y: -4, Blur: 4},
+}
+sheet := ui.ElementTransition{
+	Animation: &ui.Snappy,
+	Enter:     &ui.Motion{Opacity: 1, YPercent: 100},
+	Exit:      &ui.Motion{Opacity: 1, YPercent: 100},
 }
 ```
 
@@ -123,6 +139,52 @@ neither the pointer nor the focus, nor reads to assistive technology, as an
 element with both `IgnoreInput` and
 [`AccessHidden`](accessibility.md#out-of-assistive-technologys-way). Built
 again before its exit ends, the element comes back from where its copy was.
+
+### Exits decided as they go
+
+The copy goes as the `Exit` of the element's last build says. Where the
+way out is only known as the element goes, as a calendar, a wizard or a
+carousel stepping forward or back, whose page going goes the way of the
+step that sent it away, the parent's `ChildExit` says where the children
+leaving in this frame go instead: those with an `Exit`, which are copied
+as they go. Copies already on their way go on as they went.
+
+```go
+dir := float32(app.dir) // 1 forward, -1 back, set as the step changes
+page := ui.ElementTransition{
+	Animation: &ui.Snappy,
+	Enter:     &ui.Motion{X: 40 * dir},
+	Exit:      &ui.Motion{X: -40 * dir},
+}
+ui.Box(c).Grow(1).ChildExit(ui.Motion{X: -40 * dir}).Children(func() {
+	ui.Column(c.Key(app.step)).Absolute().Fill().Transition(page).Children(app.stepView)
+})
+```
+
+Without it, the page that goes in the frame the step turns around, built
+going forward, would leave forward too.
+
+### One at a time
+
+Both the element leaving and the one taking its place show at once, the
+one crossing the other. `AfterExits` holds an element appearing while
+copies of its siblings leave: it takes its place in the layout unseen,
+and comes in with its `Enter` once they are gone, so that its parent
+shows one at a time, as a panel finishing leaving before the next one
+appears:
+
+```go
+panel := ui.ElementTransition{
+	Enter:      &ui.Motion{Y: 8},
+	Exit:       &ui.Motion{Y: -8},
+	AfterExits: true,
+}
+ui.Box(c).Grow(1).Children(func() {
+	ui.Column(c.Key(app.tab)).Absolute().Fill().Transition(panel).Children(app.tabView)
+})
+```
+
+Gone before it showed, an element held leaves nothing behind.
 
 ## Shared elements
 
@@ -257,8 +319,9 @@ Changes that resizing the window makes do not animate. While the desktop
 asks for less motion (`c.Preferences().ReduceMotion`), nothing moves:
 elements show where the layout puts them at once, and shared elements do
 not fly. Colors still change smoothly, and an `Enter` or `Exit` that fades
-without collapsing fades in place, as Apple's guidelines suggest; one that
-collapses, which moves its siblings, is at once. Frames are drawn only
+or blurs without collapsing fades and blurs in place, as Apple's
+guidelines suggest; one that collapses, which moves its siblings, is at
+once. Frames are drawn only
 while something moves.
 
 Rows of a [`List`](list.md) are placed by the list, which builds only

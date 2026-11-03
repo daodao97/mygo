@@ -281,6 +281,7 @@ type node struct {
 
 	// Visual geometry, composed after layout.
 	transform        Transform
+	translatePct     [2]float32 // TranslatePercent's
 	originX, originY float32
 	originSet        bool
 	world            scene.Affine

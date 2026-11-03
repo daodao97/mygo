@@ -472,6 +472,28 @@ func TestAnimateColor(t *testing.T) {
 	}
 }
 
+func TestAnimateColorInOklab(t *testing.T) {
+	target := RGB(255, 255, 0)
+	var lab, srgb Color
+	tt, now := motionTester(func(c *context) {
+		e := coreBox(c)
+		a := Animation{Duration: 100 * time.Millisecond, Ease: Linear}
+		srgb = e.AnimateColor("srgb", target, a)
+		a.Oklab = true
+		lab = e.AnimateColor("lab", target, a)
+	})
+	target = RGB(0, 0, 255)
+	tt.Frame()
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	if want := RGB(255, 255, 0).MixOklab(target, 0.5); lab != want {
+		t.Errorf("halfway in Oklab, the color is %+v, want %+v", lab, want)
+	}
+	if want := RGB(255, 255, 0).Mix(target, 0.5); srgb != want {
+		t.Errorf("halfway in sRGB, the color is %+v, want %+v", srgb, want)
+	}
+}
+
 func TestRubberbandAndProject(t *testing.T) {
 	if v := Rubberband(50, 0, 100, 200); v != 50 {
 		t.Errorf("within, %v", v)

@@ -140,13 +140,31 @@ func (t Transform) Then(next Transform) Transform {
 	return in3D(p)
 }
 
-// Transform sets the element's visual transform. Its origin is the center
-// of its border box unless TransformOrigin changes it.
-func (e *node) Transform(t Transform) *node { e.transform = t; return e }
+// Transform sets the element's visual transform, in place of the one it
+// had, TranslatePercent's included. Its origin is the center of its
+// border box unless TransformOrigin changes it.
+func (e *node) Transform(t Transform) *node { e.transform, e.translatePct = t, [2]float32{}; return e }
 
 // Translate moves the element after its existing transform.
 func (e *node) Translate(x, y float32) *node {
 	e.transform = e.transform.Then(Translation(x, y))
+	return e
+}
+
+// TranslatePercent moves the element by x and y percent of its own width
+// and height, as CSS's translate(-50%, -50%) does: of its border box as
+// the frame lays it out, so that it is in place from its first frame and
+// follows its size as it changes. It acts after the element's other
+// transforms, wherever it is called among them, and before its pose
+// (AnimatePose), and adds to a TranslatePercent before it. A callout
+// centered above a point:
+//
+//	ui.Box(c).Absolute().Left(p.X).Top(p.Y).TranslatePercent(-50, -100)
+func (e *node) TranslatePercent(x, y float32) *node {
+	finiteTransform(x, y)
+	scene.FoldTranslations() // renderers draw them as untransformed content
+	e.translatePct[0] += x
+	e.translatePct[1] += y
 	return e
 }
 
@@ -232,8 +250,13 @@ func finiteTransform(v ...float32) {
 }
 
 func (e *node) transformAt(x, y float32) scene.Affine {
-	// Its pose (AnimatePose) acts after its own transform.
-	m := e.poseM.Mul(e.transform.flat())
+	// Its pose (AnimatePose) acts after its own transform, which ends
+	// with its TranslatePercent.
+	m := e.transform.flat()
+	if p := e.translatePct; p != [2]float32{} {
+		m = scene.Translation(p[0]/100*e.w, p[1]/100*e.h).Mul(m)
+	}
+	m = e.poseM.Mul(m)
 	if !m.Set {
 		return scene.Affine{}
 	}
@@ -379,7 +402,7 @@ func (p *Painter) inlineTransforms() bool {
 	var walk func(*node) bool
 	walk = func(e *node) bool {
 		for ch := e.first; ch != nil; ch = ch.next {
-			if ch.transform.set() || walk(ch) {
+			if ch.transform.set() || ch.translatePct != [2]float32{} || walk(ch) {
 				return true
 			}
 		}

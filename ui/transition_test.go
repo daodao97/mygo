@@ -228,6 +228,24 @@ func TestTransitionFadesColors(t *testing.T) {
 	}
 }
 
+func TestTransitionFadesColorsInOklab(t *testing.T) {
+	bg := RGB(255, 255, 0)
+	tt, now := clockTester(func(c *context) {
+		coreBox(c).Size(50, 50).Background(bg).Transition(ElementTransition{Colors: true,
+			Animation: &Animation{Duration: 200 * time.Millisecond, Ease: Linear, Oklab: true}})
+	}, 100, 100)
+	bg = RGB(0, 0, 255)
+	tt.Frame()
+	*now = now.Add(100 * time.Millisecond)
+	tt.Frame()
+	// Blue, as Oklab mixes them, not sRGB's gray.
+	want := RGB(255, 255, 0).MixOklab(bg, 0.5)
+	d := func(a, b uint8) int { return max(int(a)-int(b), int(b)-int(a)) }
+	if p := tt.Image().RGBAAt(25, 25); d(p.R, want.R) > 1 || d(p.G, want.G) > 1 || d(p.B, want.B) > 1 {
+		t.Errorf("halfway, the box is %v, want %+v", p, want)
+	}
+}
+
 func TestTransitionWithoutMotion(t *testing.T) {
 	x := float32(0)
 	tt, now := clockTester(func(c *context) {

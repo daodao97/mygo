@@ -68,6 +68,8 @@ type morphPairs struct {
 	boxX, boxY float32
 	toX, toY   float32
 	toFrame    uint64
+	// lab mixes the glyphs' colors in Oklab (Animation.Oklab).
+	lab bool
 }
 
 // morphGlyph is a glyph a text morphs from, as it shows: the runes of its
@@ -327,7 +329,7 @@ func (pr *morphPairs) each(r *contentRec, bx, by, x, y, tx, ty float32, color Co
 			if k < 0.5 {
 				sh = text.ShadeOf(a.color.R, a.color.G, a.color.B)
 			}
-			show(g, runes, gx+tx, gy+ty, gx+dx*(1-k), gy+dy*(1-k), size, mixPremultiplied(a.color, color, k), sh, lerp(a.alpha, 1, k))
+			show(g, runes, gx+tx, gy+ty, gx+dx*(1-k), gy+dy*(1-k), size, mixPremultiplied(a.color, color, k, pr.lab), sh, lerp(a.alpha, 1, k))
 		}
 	}
 }
@@ -348,6 +350,7 @@ func (p *Painter) morph(e *node, r *contentRec, x, y float32, ts textStyle, span
 		r.morph = pr
 	}
 	pr.prepare(r, e.x, e.y, sp)
+	pr.lab = e.content.Animation != nil && e.content.Animation.Oklab
 	color := ts.color
 	// What its spans and its style paint besides glyphs, highlights under
 	// them and lines over them, fades: the old text's out, going with the
