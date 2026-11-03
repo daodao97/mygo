@@ -119,7 +119,8 @@ This writes `icon/Assets.car`, for `macos: { icon: "icon/Assets.car" }`.
 
 Files the app reads at run time, such as a database seed, a helper binary
 or the images of a tray icon, ship with it. Everything in the `resources`
-directory of the project is copied into the app, as are the files and
+directory of the project is copied into the app, but Go sources and what
+[`resourcesExclude`](#leaving-files-out) leaves out, as are the files and
 directories listed in `resources` in the configuration, under their base names:
 
 ```ts
@@ -139,6 +140,31 @@ seed := filepath.Join(dir, "seed.db")
 
 `mygo dev` copies them into the development app too, and rebuilds it when
 they change. Hidden files are left out.
+
+### Leaving files out
+
+Go source files in `resources` are left out of the apps: builds read
+them, such as a package that embeds the images beside it with
+`//go:embed`, and apps never do. Other files that only the project needs,
+such as design files, are left out with `resourcesExclude`, patterns of
+their paths in `resources`:
+
+```ts
+export default defineConfig({
+  resourcesExclude: ["**/*.psd", "design"],
+});
+```
+
+Each segment of a pattern, between slashes, matches as in Go's
+`path.Match` (`*`, `?`, `[a-z]`), and `**` matches any number of
+directories, none included: `**/*.psd` leaves out every `.psd` file,
+`*.psd` only those at the top of `resources`. A directory that matches is
+left out with what it holds, so `design` and `design/**` both leave out
+`resources/design`. Paths in [platform directories](#platform-resources)
+start with the directory's name, as in `linux-amd64/bin/server.pdb`, which
+`**/*.pdb` matches too. Builds and `mygo dev` leave out the same files.
+The files and directories listed in `resources` ship whole, Go sources
+included.
 
 ### Platform resources
 

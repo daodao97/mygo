@@ -71,6 +71,7 @@ New projects set `out` to `build`, apart from Vite's `dist`.
 | Field | |
 |---|---|
 | `resources` | files and directories copied into the app of every platform, next to the contents of the `resources` directory, under their base names; see [resources](distribution.md#resources), and [platform resources](distribution.md#platform-resources) for the files of one platform |
+| `resourcesExclude` | files of the `resources` directory left out of the apps: patterns of their paths there, such as `["**/*.psd", "design"]`, where `**` matches any number of directories; Go source files are always left out. See [leaving files out](distribution.md#leaving-files-out) |
 | `urlSchemes` | the URL schemes the app opens, such as `myapp` for `myapp://…`, which reach `App.OnOpenURL`; see [deep links](app.md#deep-links) |
 | `fileAssociations` | the file types the app opens, which reach `App.OnOpenFile`; see [file associations](app.md#file-associations) |
 

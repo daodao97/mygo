@@ -4528,11 +4528,18 @@ renderer's (`gputest.Compare`).
   `darwin-arm64` and `darwin-amd64` are walked as pairs whose names must
   match: identical files and links ship once, an arm64 and an x86_64
   Mach-O file become a universal binary (`writeUniversal`) when copied,
-  anything else fails. Names starting with a dot are skipped; the entries
-  of these directories and listed paths are followed when they are links,
-  links inside them are copied as links, permissions are kept. Installed
-  paths must be unique ignoring case (listed resources never merge), and
-  top-level names must not replace the packaging's own files
+  anything else fails. Names starting with a dot are skipped, and so is
+  what `resourceFilter` excludes from `resources/` (but not from listed
+  paths): Go source files, which only builds read, and the paths there
+  that match `resourcesExclude` (`path.Match` segments, `**` for any
+  number of them), with what a matching directory holds; the merger's
+  listings and `resource.walk`, which copies and fingerprints, apply it,
+  while `mygo dev`'s watcher still sees those files, which a package may
+  embed. The entries of these directories and listed paths are followed
+  when they are links, links inside them are copied as links,
+  permissions are kept. Installed paths must be unique ignoring case
+  (listed resources never merge), and top-level names must not replace
+  the packaging's own files
   (`AppIcon.icns`, `Assets.car`, the executable, the `.desktop` entry). Code
   among them is signed before the app (`signNestedCode`), since
   `codesign --deep` only covers code directories and notarization rejects
@@ -4684,7 +4691,7 @@ Native library and shader generation commands are listed in [AGENTS.md](../AGENT
 |---|---|---|
 | core | `go test .` | lifecycle, quit, documents, IPC, channels, events, Eval, protocol, frontend URLs and serving, menus, trust, single instance, dev ready signal (fake backend); `go test -run '^$' -bench .` measures the Go side of IPC and custom schemes |
 | generator | `go test ./internal/tsgen` | TS output, json/v2 rules, source lookup; type-checks the output with `tsc` when `bun install` was run |
-| CLI | `go test ./cmd/mygo` | config, Info.plist, icons, universal binaries, template, dev launch/ready/stop (the test binary plays the app), watcher and `go list` inputs, the console's output (replayed as a terminal shows it), resources (platform directories, universal pairs, staging, conflicts, dev placement; builds for every OS), frontend embedding (compiles an app with the overlay), `.DS_Store` against a dmgbuild golden file, a real DMG (`hdiutil`); builds and tools are skipped with `-short` |
+| CLI | `go test ./cmd/mygo` | config, Info.plist, icons, universal binaries, template, dev launch/ready/stop (the test binary plays the app), watcher and `go list` inputs, the console's output (replayed as a terminal shows it), resources (platform directories, universal pairs, exclusions, staging, conflicts, dev placement; builds for every OS), frontend embedding (compiles an app with the overlay), `.DS_Store` against a dmgbuild golden file, a real DMG (`hdiutil`); builds and tools are skipped with `-short` |
 | runtime | `bun run test` | the injected runtime, `mygo-runtime` and the plugins' packages (against a fake Go side on the real runtime, `plugins/fake-go.ts`) |
 | plugins | `go test ./plugins/...` | the fetch plugin against `httptest` servers, the WebSocket client against a test server (ordering, fragments, pings, closing handshakes); the terminal's binding of libghostty-vt (layouts, rendering, encoders, selections), its pseudo-terminals, and its view through `Tester` with real shells: typing, keys as programs ask, input methods, mouse reports, selecting and copying, pasting, scrollback, exits (the library is downloaded, or named by `MYGO_GHOSTTY_VT`; `-short` skips them); the automation plugin's protocol (requests, errors, elements as JSON, input events) against a fake app, and its socket (mode, stale and taken paths) |
 | native UI | `go test ./ui ./internal/text ./internal/scene ./internal/raster ./internal/svg ./internal/gpu/...` | the GPU renderers against the CPU renderer (Direct3D on Windows, Metal on macOS, OpenGL on Linux); views through `Tester`: input, focus, editing, lists, overlays, frames that fill the glyph atlas; text layout and caret geometry; atlas zones and repacking; the CPU renderer against its formulas; SVG parsing and drawing, with `FuzzParse`; `go test -run '^$' -bench . ./ui` times a frame |

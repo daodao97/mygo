@@ -109,6 +109,14 @@ export interface Config {
    * `resources/linux-amd64`, hold the files of one platform.
    */
   resources?: string[];
+  /**
+   * Files of the project's resources directory left out of the apps:
+   * patterns of their paths there, with slashes, where `*` matches within a
+   * name and `**` any number of directories, as in `design/**`. A directory
+   * that matches is left out with what it holds. Go source files are always
+   * left out; listed `resources` ship whole.
+   */
+  resourcesExclude?: string[];
   /** The URL schemes the app opens, such as `myapp` for `myapp://…`, which reach `App.OnOpenURL`. */
   urlSchemes?: string[];
   /** The types of files the app opens, which reach `App.OnOpenFile`. */

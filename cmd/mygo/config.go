@@ -82,6 +82,14 @@ type Config struct {
 	// directories named after a platform, such as resources/linux-amd64,
 	// hold the files of one platform.
 	Resources []string `json:"resources"`
+	// ResourcesExclude leaves files of the project's resources directory
+	// out of the apps: patterns of their paths there, with slashes, whose
+	// segments match as path.Match matches them, but **, which matches any
+	// number of directories, as in "**/*.psd". A directory that matches is
+	// left out with what it holds. Go source files are always left out:
+	// builds read them, such as a package that embeds the files beside it,
+	// and apps never do. Listed Resources ship whole.
+	ResourcesExclude []string `json:"resourcesExclude"`
 
 	// URLSchemes are the custom URL schemes (deep links) of the app, e.g.
 	// "myapp" for myapp://…, whose URLs reach mygo.App.OnOpenURL. macOS
@@ -315,6 +323,11 @@ func (c *Config) validate() error {
 	if c.Updates != nil {
 		if err := c.Updates.validate(); err != nil {
 			return err
+		}
+	}
+	for _, p := range c.ResourcesExclude {
+		if !validPattern(p) {
+			return fmt.Errorf("resourcesExclude: %q is not a pattern of paths in the resources directory (path.Match patterns or **, between single slashes)", p)
 		}
 	}
 	for _, scheme := range c.URLSchemes {
