@@ -121,7 +121,7 @@ func (rt *engine) overlayShortcut(e *node, mods Modifiers, key Key) bool {
 	for i, d := range rt.delivered {
 		if d.id == id && d.mods == mods && d.key == key {
 			rt.delivered = append(rt.delivered[:i], rt.delivered[i+1:]...)
-			rt.consumed = true
+			rt.consumed, rt.shortcutRepeat = true, d.repeat
 			return true
 		}
 	}

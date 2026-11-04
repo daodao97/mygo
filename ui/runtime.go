@@ -235,6 +235,9 @@ type engine struct {
 	regs      []shortcutReg
 	nextRegs  []shortcutReg
 	delivered []shortcutReg
+	// shortcutRepeat tells that the last key a shortcut took this frame
+	// came as the auto-repeat of a key held down (ShortcutRepeated).
+	shortcutRepeat bool
 
 	// trans are the transitions of the elements given one, by ID
 	// (transition.go): exitsBuilt tells that the last frame built elements
@@ -542,11 +545,16 @@ type shortcutReg struct {
 	// retried marks a key delivered, or left unrouted, in the frame after
 	// the one it came to (settleKeys): it is not retried again.
 	retried bool
+	// repeat marks a key delivered that came as the auto-repeat of a key
+	// held down.
+	repeat bool
 }
 
 type keyEvent struct {
 	mods Modifiers
 	key  Key
+	// repeat marks the auto-repeat of a key held down.
+	repeat bool
 }
 
 func newRuntime(view func(*context), h host) *engine {

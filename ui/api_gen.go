@@ -536,6 +536,26 @@ func (_handle *Context) Shortcut(mods Modifiers, key Key) bool {
 	return _ctx.Shortcut(mods, key)
 }
 
+// ShortcutRepeated reports whether the key that the last Shortcut to
+// report one took came as the auto-repeat of a key held down, as the web's
+// KeyboardEvent.repeat: Context's, an Element's, a list's or an overlay's,
+// and those that run OnShortcut's actions, which can ask it as they run.
+// An action that steps while the key is held takes every key; a toggle
+// takes the press alone, and lets the repeats go by:
+//
+//	if c.Shortcut(0, ui.KeyT) && !c.ShortcutRepeated() {
+//		app.panel = !app.panel
+//	}
+//
+// It is false in a frame no shortcut took a key in yet.
+func (_handle *Context) ShortcutRepeated() bool {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return false
+	}
+	return _ctx.ShortcutRepeated()
+}
+
 // Size returns the size of the window's content in DIPs.
 func (_handle *Context) Size() (float32, float32) {
 	_ctx := _handle.build()

@@ -194,6 +194,27 @@ if c.Shortcut(ui.Cmd, ui.KeyS) {
 }
 ```
 
+A key held down repeats, and each repeat comes as a press again, so an
+action that steps runs while the key is held. `c.ShortcutRepeated()` tells
+whether the key that the last shortcut to report one took came as such a
+repeat, as the web's `KeyboardEvent.repeat`, whichever shortcut that was
+(the window's, an element's, a list's or an overlay's), and an
+`OnShortcut` action can ask it as it runs. A toggle takes the press alone:
+
+```go
+if c.Shortcut(0, ui.KeyUp) {
+	app.count++ // and again while Up is held
+}
+if c.Shortcut(0, ui.KeyT) && !c.ShortcutRepeated() {
+	app.panel = !app.panel // once a press
+}
+```
+
+A repeat the action leaves is still taken: it goes to no other shortcut.
+GTK flags no repeat, so on Linux a press of a key held already, with no
+release between, is one, as X11 (with detectable auto-repeat, which GDK
+turns on) and Wayland send them.
+
 `ui.Cmd` is Command on macOS and Ctrl elsewhere. `ui.KeyBack` and
 `ui.KeyForward` are the back and forward buttons of a mouse and the keys of
 keyboards that have them, which a [router](navigation.md) takes. Shortcuts
@@ -230,6 +251,18 @@ enabled control for that handle. Hidden controls take no command.
 `c.OnShortcut` declares an action in the current parent scope; the root
 Context handles keys left by the focused control and active overlays.
 Use `Element.OnShortcut` for an action inside an element's focus subtree.
+`c.OnWindowShortcut` declares the window's action wherever `c` is, as
+`c.Shortcut` reports it: a component built deep in the view, as a hint
+that shows its key and runs it, hears it while the focus is anywhere else,
+or nowhere. Built inside a dialog, it runs while the dialog shows; built
+behind one, it waits.
+
+```go
+func shortcutHint(c *ui.Context, key ui.Key, label string, run func()) {
+	c.OnWindowShortcut(ui.Cmd, key, run)
+	ui.Text(c, label) // "⌘K"
+}
+```
 
 ## Input methods
 

@@ -97,7 +97,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.TextComposition:
 		taken = rt.editEvent(rt.replaced(editEvent{kind: editCompose, text: ev.Text, caret: ev.Caret}, ev))
 	case platform.SurfaceCommand:
-		rt.editEvent(editEvent{kind: editCommand, text: ev.Text})
+		rt.editEvent(editEvent{kind: editCommand, text: ev.Text, repeat: ev.Repeat})
 	case platform.SurfaceFocus:
 		rt.windowFocused = true
 		rt.blinkStart = rt.now()
@@ -801,7 +801,7 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, repeat bool
 	if rt.inspectKey(mods, key) {
 		return true
 	}
-	k := keyEvent{mods, key}
+	k := keyEvent{mods, key, repeat}
 	if key == KeyEscape && mods == 0 && rt.dragCancel() {
 		return true
 	}
@@ -977,12 +977,13 @@ func (rt *engine) moveFocus(back bool) {
 // Enter choosing the item the Down highlighted.
 func (rt *engine) routeKeys() {
 	rt.unrouted = rt.unrouted[:0]
+	rt.shortcutRepeat = false
 	if len(rt.keys) == 0 && len(rt.retried) == 0 {
 		return
 	}
 	chain := rt.focusChain()
 	route := func(k keyEvent, retried bool) bool {
-		r := shortcutReg{mods: k.mods, key: k.key, retried: retried}
+		r := shortcutReg{mods: k.mods, key: k.key, retried: retried, repeat: k.repeat}
 		if target, found := routeKey(rt.regs, chain, k); found {
 			if slices.ContainsFunc(rt.delivered, func(d shortcutReg) bool { return d.id == target }) {
 				return false
@@ -1055,10 +1056,10 @@ func (rt *engine) settleKeys() {
 	}
 	chain := rt.focusChain()
 	for _, r := range rt.unrouted {
-		k := keyEvent{r.mods, r.key}
+		k := keyEvent{r.mods, r.key, r.repeat}
 		if _, found := routeKey(rt.nextRegs, chain, k); found && !r.retried {
 			rt.retried = append(rt.retried, k) // runFrame asks for the frame
-		} else if !found && k == (keyEvent{0, KeyEscape}) {
+		} else if !found && k.mods == 0 && k.key == KeyEscape {
 			rt.host.escape()
 		}
 	}
@@ -1072,7 +1073,7 @@ func (rt *engine) shortcut(id uint64, mods Modifiers, key Key) bool {
 	for i, d := range rt.delivered {
 		if d.id == id && d.mods == mods && d.key == key {
 			rt.delivered = append(rt.delivered[:i], rt.delivered[i+1:]...)
-			rt.consumed = true
+			rt.consumed, rt.shortcutRepeat = true, d.repeat
 			return true
 		}
 	}
@@ -1137,8 +1138,8 @@ func (rt *engine) editEvent(ev editEvent) bool {
 
 // commandKeys are the keys of the Edit menu's commands.
 var commandKeys = map[string]keyEvent{
-	"copy": {Cmd, KeyC}, "cut": {Cmd, KeyX}, "paste": {Cmd, KeyV}, "selectAll": {Cmd, KeyA},
-	"undo": {Cmd, KeyZ}, "redo": {Cmd | Shift, KeyZ},
+	"copy": {mods: Cmd, key: KeyC}, "cut": {mods: Cmd, key: KeyX}, "paste": {mods: Cmd, key: KeyV}, "selectAll": {mods: Cmd, key: KeyA},
+	"undo": {mods: Cmd, key: KeyZ}, "redo": {mods: Cmd | Shift, key: KeyZ},
 }
 
 // commandKey has an edit command that the focus, or ed, doesn't take go to
@@ -1151,6 +1152,7 @@ func (rt *engine) commandKey(ev editEvent, ed *editor) bool {
 	if runtime.GOOS != "darwin" || ev.kind != editCommand || !ok || ed != nil && ed.wants(k) {
 		return false
 	}
+	k.repeat = ev.repeat
 	rt.keys = append(rt.keys, k)
 	rt.requestFrame()
 	return true

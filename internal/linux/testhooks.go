@@ -273,6 +273,20 @@ func TestPressKeys(names ...string) bool {
 	return true
 }
 
+// TestHoldKey presses the key of X keysym name and holds it, or releases
+// it, through the XTEST extension: held, the X server's auto-repeat
+// presses it again until it is released. It reports false without an X
+// server.
+func TestHoldKey(name string, press bool) bool {
+	dpy := loadXTest()
+	if dpy == 0 {
+		return false
+	}
+	xtest.key(dpy, uint32(x11.keysymToKeycode(dpy, x11.stringToKeysym(cs(name)))), press, 0)
+	sent(dpy)
+	return true
+}
+
 // TestMovePointer moves the pointer to a point of the screen through the
 // XTEST extension like a mouse would. It reports false without an X server.
 func TestMovePointer(x, y int) bool {

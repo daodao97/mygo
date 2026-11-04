@@ -808,6 +808,12 @@ func (t *Tester) KeyDown(key Key) {
 	t.send(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: platform.Key(key)})
 }
 
+// KeyRepeat presses a key with modifiers as its auto-repeat does while
+// it is held down (InputEvent.Repeat, Context.ShortcutRepeated).
+func (t *Tester) KeyRepeat(mods Modifiers, key Key) {
+	t.send(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: platform.Key(key), Mods: platform.Modifiers(mods), Repeat: true})
+}
+
 // KeyUp releases a key KeyDown held.
 func (t *Tester) KeyUp(key Key) {
 	t.send(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: platform.Key(key)})

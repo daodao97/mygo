@@ -952,7 +952,11 @@ func registerSurfaceClass() {
 	command := func(name string) objc.MethodDef {
 		return method(name+":", func(self id, _ objc.SEL, sender id) {
 			if s := b().surfaceOf(self); s != nil {
-				s.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: name})
+				// The Edit menu's key, as Command+V, repeats while held:
+				// shortcuts that take the command tell (ShortcutRepeated).
+				ev := send(s.w.b.app, "currentEvent")
+				repeat := ev != 0 && sendInt(ev, "type") == 10 && sendBool(ev, "isARepeat") // NSEventTypeKeyDown
+				s.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: name, Repeat: repeat})
 			}
 		})
 	}

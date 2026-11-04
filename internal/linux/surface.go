@@ -185,7 +185,9 @@ type surface struct {
 	lastKey ptr
 	// pressing is the key press being handled, which the Tab moving the
 	// focus to a web view passes on to it (TabInto).
-	pressing     ptr
+	pressing ptr
+	// down are the keys held, which tell a press's auto-repeat.
+	down         keysDown
 	lastPointer  ptr
 	clicks       platform.ClickCounter
 	dragContext  ptr
@@ -1081,9 +1083,14 @@ func initSurfaceCallbacks() {
 			return false
 		}
 		kind := platform.KeyPressed
+		repeat := false
 		if field[int32](event, 0) == 9 { // GDK_KEY_RELEASE
 			kind = platform.KeyReleased
+			s.down.release(field[uint16](event, 48))
 		} else {
+			// Before the input method sees it, which may take the press
+			// or the release.
+			repeat = s.down.press(field[uint16](event, 48))
 			s.clientComposition.Reset()
 			if s.lastKey != 0 {
 				gdkEventFree(s.lastKey)
@@ -1129,7 +1136,7 @@ func initSurfaceCallbacks() {
 			s.pressing = event
 			defer func() { s.pressing = 0 }()
 		}
-		s.send(platform.SurfaceEvent{Kind: kind, Key: k, PhysicalKey: physical, Mods: mods})
+		s.send(platform.SurfaceEvent{Kind: kind, Key: k, PhysicalKey: physical, Mods: mods, Repeat: repeat})
 		return true
 	})
 	cbSurfaceFocusIn = purego.NewCallback(func(widget, event, data ptr) bool {
@@ -1144,6 +1151,7 @@ func initSurfaceCallbacks() {
 	cbSurfaceFocusOut = purego.NewCallback(func(widget, event, data ptr) bool {
 		if s := b().surfaceOf(data); s != nil {
 			gtkIMContextFocusOut(s.im)
+			s.down.clear()
 			s.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
 		}
 		return false

@@ -23,6 +23,8 @@ type editEvent struct {
 	key   Key
 	text  string
 	caret int
+	// repeat marks a command whose key, held down, repeats (commandKey).
+	repeat bool
 	// replace makes an insertion or a composition take the runes from to
 	// to instead of the selection, as an input method asked.
 	replace  bool

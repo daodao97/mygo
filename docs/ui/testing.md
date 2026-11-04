@@ -40,7 +40,8 @@ panics where the second key was given, as apps only log it.
   a right-button drag, `tt.Scroll`, which scrolls at
   once as a touchpad does, and `tt.Wheel`, a notch of a mouse wheel, which
   glides there as the clock advances (`tt.Advance`).
-- **Keyboard.** `tt.Key(ui.Cmd, ui.KeyS)` presses a key, `tt.TypeKey` a key
+- **Keyboard.** `tt.Key(ui.Cmd, ui.KeyS)` presses a key, `tt.KeyRepeat` presses
+  it again as its auto-repeat does while it is held, `tt.TypeKey` a key
   with the text it types, and `tt.Type` types text into the focused
   element. `tt.Compose` shows the composition of an input method,
   `tt.Command` performs an edit command of the menus, such as `"copy"`, and

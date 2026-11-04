@@ -2429,6 +2429,16 @@ either.
   `XF86Forward` on Linux, and `WM_XBUTTONUP` (taken, so that
   DefWindowProc sends no `WM_APPCOMMAND` as well), `VK_BROWSER_BACK` and
   `VK_BROWSER_FORWARD`, and `WM_APPCOMMAND`'s browser commands on Windows.
+  A key held down repeats as `KeyPressed` with `Repeat`, which the
+  shortcut that takes it tells (`shortcutReg.repeat`,
+  `Context.ShortcutRepeated`): `isARepeat` on macOS (and the current
+  event's, for the Edit menu's commands that reach shortcuts), bit 30 of
+  `WM_KEYDOWN`'s lParam on Windows, `KeyboardEvent.repeat` in browsers.
+  GdkEventKey flags none, so the Linux surface notes the hardware
+  keycodes held (`keysDown`, before the input method sees the key): a
+  press of one held already, with no release between, is a repeat, as X11
+  with detectable auto-repeat (which GDK turns on) and GTK's own repeat on
+  Wayland send them.
   A key typed while the input method composes is the input method's
   alone, as Enter choosing a candidate: on macOS `keyDown:` sends no
   `KeyPressed` while there is marked text, as GTK's input method filters
