@@ -567,6 +567,16 @@ func goIOSGesture(id C.uint64_t, kind, phase *C.char, x, y, scale, rotation C.do
 	return false
 }
 
+// goIOSGestureDelta reports a two-finger pan with its cumulative translation.
+//
+//export goIOSGestureDelta
+func goIOSGestureDelta(id C.uint64_t, kind, phase *C.char, x, y, dx, dy C.double) C.bool {
+	if w := find(uint64(id)); w != nil {
+		return C.bool(w.h.SurfaceEvent(platform.SurfaceEvent{Kind: platform.SurfaceGesture, Gesture: C.GoString(kind), Phase: C.GoString(phase), X: float64(x), Y: float64(y), DX: float64(dx), DY: float64(dy), Scale: 1}))
+	}
+	return false
+}
+
 //export goIOSDismissKeyboard
 func goIOSDismissKeyboard(id C.uint64_t) {
 	if w := find(uint64(id)); w != nil {

@@ -6,15 +6,19 @@ import (
 )
 
 // GestureEvent is a multi-touch update. Scale is multiplicative (1 means no
-// change); Rotation is a delta in radians. X/Y are local to the element.
-// Phase is begin, change, end or cancel; Kind is pinch or rotate.
+// change); Rotation is a delta in radians; DX/DY are a pan's movement in DIPs
+// since the previous update. X/Y are local to the element. Phase is begin,
+// change, end or cancel. Kind is pinch, rotate, pan (two fingers moving
+// together) or tap (two fingers tapped at once, a begin then an end).
 type GestureEvent struct {
 	Kind, Phase           string
 	X, Y, Scale, Rotation float32
+	DX, DY                float32
 }
 type gestureCapture struct {
 	id              uint64
 	scale, rotation float64
+	dx, dy          float64
 }
 
 // Gestures opts an element into pinch/rotation input and returns updates since
@@ -40,10 +44,13 @@ func (rt *engine) gestureAt(x, y float32) uint64 {
 	return 0
 }
 func (rt *engine) gestureEvent(ev platform.SurfaceEvent) bool {
-	if ev.Gesture != "pinch" && ev.Gesture != "rotate" {
+	switch ev.Gesture {
+	case "pinch", "rotate", "pan", "tap":
+	default:
 		return false
 	}
-	if math.IsNaN(ev.Scale) || math.IsInf(ev.Scale, 0) || ev.Scale <= 0 || math.IsNaN(ev.Rotation) || math.IsInf(ev.Rotation, 0) {
+	finite := func(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
+	if !finite(ev.Scale) || ev.Scale <= 0 || !finite(ev.Rotation) || !finite(ev.DX) || !finite(ev.DY) {
 		return false
 	}
 	if ev.Phase == "probe" {
@@ -54,7 +61,7 @@ func (rt *engine) gestureEvent(ev platform.SurfaceEvent) bool {
 	}
 	capture := rt.gestures[ev.Gesture]
 	if ev.Phase == "begin" {
-		capture = gestureCapture{id: rt.gestureAt(float32(ev.X), float32(ev.Y)), scale: ev.Scale, rotation: ev.Rotation}
+		capture = gestureCapture{id: rt.gestureAt(float32(ev.X), float32(ev.Y)), scale: ev.Scale, rotation: ev.Rotation, dx: ev.DX, dy: ev.DY}
 		if capture.id == 0 {
 			return false
 		}
@@ -72,9 +79,9 @@ func (rt *engine) gestureEvent(ev platform.SurfaceEvent) bool {
 	default:
 		return false
 	}
-	update := GestureEvent{Kind: ev.Gesture, Phase: ev.Phase, X: float32(ev.X) - s.x, Y: float32(ev.Y) - s.y, Scale: float32(ev.Scale / capture.scale), Rotation: float32(ev.Rotation - capture.rotation)}
+	update := GestureEvent{Kind: ev.Gesture, Phase: ev.Phase, X: float32(ev.X) - s.x, Y: float32(ev.Y) - s.y, Scale: float32(ev.Scale / capture.scale), Rotation: float32(ev.Rotation - capture.rotation), DX: float32(ev.DX - capture.dx), DY: float32(ev.DY - capture.dy)}
 	s.gestures = append(s.gestures, update)
-	capture.scale, capture.rotation = ev.Scale, ev.Rotation
+	capture.scale, capture.rotation, capture.dx, capture.dy = ev.Scale, ev.Rotation, ev.DX, ev.DY
 	rt.gestures[ev.Gesture] = capture
 	if ev.Phase == "end" || ev.Phase == "cancel" {
 		delete(rt.gestures, ev.Gesture)

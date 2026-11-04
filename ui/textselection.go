@@ -22,6 +22,8 @@ type textSelection struct {
 	dragging      bool
 	desiredX      float32
 	hasDesired    bool
+	// pressX/pressY is where the drag began, in content DIPs.
+	pressX, pressY float32
 }
 
 // prepareSelectable waits until inline children have finished their text,
@@ -251,10 +253,15 @@ func (rt *engine) scrollTextSelection() {
 		}
 		var dy float32
 		_, y := s.local(rt.pointerX, rt.pointerY)
+		// A press that starts in the edge band, such as a long press on
+		// the last line above a composer, must not scroll by itself: only
+		// a drag toward an edge scrolls past it.
+		const arm = 8
+		_, py := s.local(rt.selection.pressX, rt.selection.pressY)
 		switch top, bottom := y, s.h-y; {
-		case top < edge:
+		case top < edge && py-y > arm:
 			dy = -min(edge-top, edge) / 2
-		case bottom < edge:
+		case bottom < edge && y-py > arm:
 			dy = min(edge-bottom, edge) / 2
 		}
 		if dy != 0 && scrollBy(s, 0, dy) {
@@ -302,6 +309,7 @@ func (rt *engine) pressTextSelection(s *state, x, y float32, mods Modifiers, cli
 		*t = textSelection{scope: scope, anchor: p, caret: p}
 	}
 	t.caret, t.unit, t.dragging, t.hasDesired = p, min(clicks, 3), true, false
+	t.pressX, t.pressY = x, y
 	if t.unit > 1 {
 		a, b := textUnit(rt.states[p.id], p.at, t.unit)
 		t.anchor, t.caret = textPoint{p.id, a}, textPoint{p.id, b}

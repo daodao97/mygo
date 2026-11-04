@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/internal/platform"
 )
@@ -1297,6 +1298,44 @@ func (rt *engine) commandShortcut(name string) bool {
 // imeContext is how many runes around the selection input methods see.
 const imeContext = 512
 
+// imeWindow returns the runes [base, end) of ed that the native proxy sees
+// around the selection a..z.
+func (rt *engine) imeWindow(ed *editor, a, z int) (base, end int) {
+	n := ed.buf.n
+	// UIKit keeps its proxy unchanged while marked text exists. Pin the
+	// committed context to that proxy, even as a long composition accepts
+	// candidates past the usual surrounding-text boundary.
+	if rt.ime.compositionID == rt.focused {
+		base = min(rt.ime.base, n)
+		return base, min(n, base+rt.ime.compositionLength)
+	}
+	// Read-only text has no composition. Its whole text keeps the proxy's
+	// indices fixed while a selection handle drags across a long paragraph.
+	if ed.readOnly {
+		return 0, n
+	}
+	base, end = max(0, a-imeContext), min(n, z+imeContext)
+	// A window that follows every selection change re-indexes the proxy
+	// under a dragged handle or caret, so UIKit's fixed end lands on other
+	// text. Keep each edge of the previous window while the selection stays
+	// inside it, neither too near (input methods need context) nor too far
+	// (the window stays bounded); an edge at the buffer's end stays there.
+	if p := rt.ime.state; p.Active && p.ID == rt.focused && !p.ReadOnly && !p.Password && p.Client == nil {
+		const near, far = imeContext / 4, 2 * imeContext
+		pb := rt.ime.base
+		pe := pb + utf8.RuneCountInString(p.Text)
+		if inside := pb <= a && z <= pe && pe <= n; inside {
+			if d := a - pb; base > 0 && d >= near && d <= far {
+				base = pb
+			}
+			if d := pe - z; end < n && d >= near && d <= far {
+				end = pe
+			}
+		}
+	}
+	return base, end
+}
+
 // updateTextInput tells the host where text input goes, and the text
 // around the caret.
 func (rt *engine) updateTextInput() {
@@ -1344,15 +1383,8 @@ func (rt *engine) updateTextInput() {
 		t.Options = ed.inputOptions
 		if !ed.password && t.Client == nil {
 			a, z := ed.selection()
-			base = max(0, a-imeContext)
-			end := min(ed.buf.n, z+imeContext)
-			// UIKit keeps its proxy unchanged while marked text exists. Pin
-			// the committed context to that proxy, even as a long composition
-			// accepts candidates past the usual surrounding-text boundary.
-			if rt.ime.compositionID == rt.focused {
-				base = min(rt.ime.base, ed.buf.n)
-				end = min(ed.buf.n, base+rt.ime.compositionLength)
-			}
+			var end int
+			base, end = rt.imeWindow(ed, a, z)
 			t.Text, t.Start, t.End = ed.buf.slice(base, end), a-base, z-base
 		}
 	}
@@ -1366,12 +1398,8 @@ func (rt *engine) updateTextInput() {
 			t.Options = ed.inputOptions
 			if !ed.password && t.Client == nil {
 				a, z := ed.selection()
-				base = max(0, a-imeContext)
-				end := min(ed.buf.n, z+imeContext)
-				if rt.ime.compositionID == rt.focused {
-					base = min(rt.ime.base, ed.buf.n)
-					end = min(ed.buf.n, base+rt.ime.compositionLength)
-				}
+				var end int
+				base, end = rt.imeWindow(ed, a, z)
 				t.Text, t.Start, t.End = ed.buf.slice(base, end), a-base, z-base
 			}
 			t.ID = rt.focused

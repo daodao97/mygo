@@ -85,6 +85,12 @@ type Options struct {
 	// to a UTF-8 locale when no locale is set, as when the app starts from
 	// the Finder.
 	Env []string
+	// ShellIntegration marks a local zsh's prompt so resizing can clear its
+	// old layout before zsh redraws it, including right and multiline prompts.
+	// User startup files are sourced normally and are never modified. Other
+	// local shells are unchanged. With Conn, the source must supply OSC 133
+	// prompt markers and redraw its prompt on resize.
+	ShellIntegration bool
 	// Conn connects the terminal to something other than a program, such
 	// as a remote shell: what the terminal reads from it shows, and what
 	// is typed is written to it. Command, Dir and Env are then ignored. A
@@ -554,6 +560,10 @@ type Terminal struct {
 	// mu guards the emulator, which the reader changes and frames read.
 	mu   sync.Mutex
 	term *vt.Terminal
+	// prompt is read under mu; shellDir is immutable after New and removed
+	// once the program exits, including a terminal closed before it starts.
+	prompt   promptTracker
+	shellDir string
 
 	search            *vt.Search
 	searchMoves       int
@@ -692,6 +702,9 @@ func New(opts Options) (*Terminal, error) {
 		return nil, err
 	}
 	t.term.SetTerminfoName("xterm-256color")
+	if opts.ShellIntegration {
+		t.term.Write([]byte(promptRedraw))
+	}
 	switch {
 	case opts.ImageLimit == 0:
 		t.term.SetImageLimit(320 << 20)
@@ -735,6 +748,14 @@ func New(opts Options) (*Terminal, error) {
 		dir, _ = os.UserHomeDir()
 	}
 	t.launch = &pty.Options{Path: path, Args: args, Dir: dir, Env: environment(opts.Env)}
+	if opts.ShellIntegration && filepath.Base(path) == "zsh" {
+		t.launch.Env, t.shellDir, err = zshEnvironment(t.launch.Env)
+		if err != nil {
+			t.rs.Free()
+			t.term.Free()
+			return nil, err
+		}
+	}
 	if runtime.GOOS == "windows" {
 		// ConPTY keeps a screen of its own, which a resize pulling rows
 		// back from the scrollback would disagree with.
@@ -909,6 +930,9 @@ func (t *Terminal) write(p []byte) {
 	var ev events
 	var title string
 	if t.term != nil {
+		if t.opts.ShellIntegration {
+			t.prompt.feed(p)
+		}
 		t.term.Write(p)
 
 		if t.held && len(p) != 0 {
@@ -976,6 +1000,9 @@ func (t *Terminal) ended() {
 // finish closes Done and calls OnExit, once.
 func (t *Terminal) finish() {
 	t.doneOnce.Do(func() {
+		if t.shellDir != "" {
+			os.RemoveAll(t.shellDir)
+		}
 		close(t.done)
 		t.in.close()
 		if t.opts.OnExit != nil {
@@ -1485,6 +1512,12 @@ func (t *Terminal) resize(s gridSize) {
 	}
 	if s == t.size {
 		return
+	}
+	// zsh redraws its prompt on SIGWINCH. Clear it at the old width first:
+	// reflowing right-prompt padding would otherwise create extra prompt rows
+	// that zsh's cursor movements cannot erase. Command output still reflows.
+	if t.opts.ShellIntegration && t.prompt.atPrompt && !t.term.AltScreen() && s.cols != t.size.cols {
+		t.term.Resize(t.size.cols, s.rows+1, s.cellW, s.cellH)
 	}
 	t.size = s
 	t.term.Resize(s.cols, s.rows, s.cellW, s.cellH)

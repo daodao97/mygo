@@ -462,6 +462,12 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 }
 - (void)installSelectionHandleGestures {
   if (@available(iOS 17.0, *)) {
+    // UITextView's own range-adjustment recognizer otherwise takes every
+    // touch on the handles. It maps the finger through the hidden proxy's
+    // TextKit layout, whose font is not Go's drawn text, so the selection
+    // leaps far ahead of the finger. Our handle pans map through Go.
+    for (UIGestureRecognizer *gesture in self.gestureRecognizers)
+      if (gesture.enabled && [NSStringFromClass(gesture.class) containsString:@"RangeAdjustment"]) gesture.enabled=NO;
     NSUInteger index=0;
     for (UIView<UITextSelectionHandleView> *handle in self.selectionDisplay.handleViews) {
       MyGoSelectionHandlePan *pan=nil;
@@ -489,11 +495,25 @@ static const NSUInteger MyGoAccessoryColumns = 6;
     [self dismissEditMenu];
     pan.ownerID=self.fieldID;
     self.selectionGestureField=self.fieldID;
-    pan.fixedIndex=pan.leading ? NSMaxRange(self.selectedRange) : self.selectedRange.location;
-    pan.movingIndex=pan.leading ? self.selectedRange.location : NSMaxRange(self.selectedRange);
-    UITextPosition *position=[self positionFromPosition:self.beginningOfDocument offset:pan.movingIndex];
-    CGRect caret=[self caretRectForPosition:position];
     CGPoint finger=[pan locationInView:self], translation=[pan translationInView:self];
+    // Decide which end moves from where the finger went down, not from the
+    // handle's direction metadata or handleViews order: when those do not
+    // match the start and end, the dragged knob stays put and the other end
+    // follows the finger, often the opposite way. The start knob sits above
+    // its caret and the end knob below its caret.
+    BOOL leading=pan.leading;
+    CGRect startCaret=[self caretRectForPosition:[self positionFromPosition:self.beginningOfDocument offset:self.selectedRange.location]];
+    CGRect endCaret=[self caretRectForPosition:[self positionFromPosition:self.beginningOfDocument offset:NSMaxRange(self.selectedRange)]];
+    if (startCaret.size.height>0 && endCaret.size.height>0) {
+      CGPoint down=CGPointMake(finger.x-translation.x,finger.y-translation.y);
+      CGFloat sx=down.x-CGRectGetMidX(startCaret), sy=down.y-CGRectGetMinY(startCaret);
+      CGFloat ex=down.x-CGRectGetMidX(endCaret), ey=down.y-CGRectGetMaxY(endCaret);
+      leading=sx*sx+sy*sy<=ex*ex+ey*ey;
+    }
+    pan.leading=leading;
+    pan.fixedIndex=leading ? NSMaxRange(self.selectedRange) : self.selectedRange.location;
+    pan.movingIndex=leading ? self.selectedRange.location : NSMaxRange(self.selectedRange);
+    CGRect caret=leading ? startCaret : endCaret;
     // Preserve the offset between the finger on the lollipop and the caret,
     // rather than jumping to a different line when the drag starts.
     pan.caretOffset=CGPointMake(CGRectGetMidX(caret)-finger.x+translation.x,
@@ -812,6 +832,10 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 @property(nonatomic) CGPoint velocity;
 @property(nonatomic) NSTimeInterval previousTime;
 @property(nonatomic) BOOL scrolling;
+// Opt-in two-finger recognizers; touches reach them only over an element
+// that takes Gestures(), so ordinary taps are never delayed.
+@property(nonatomic, assign) UIPanGestureRecognizer *twoFingerPan;
+@property(nonatomic, assign) UITapGestureRecognizer *twoFingerTap;
 @property(nonatomic) BOOL textPanHorizontal;
 @property(nonatomic) uint64_t caretPressField;
 @property(nonatomic) CGPoint caretPressOrigin;
@@ -910,6 +934,8 @@ static const NSUInteger MyGoAccessoryColumns = 6;
     [self addGestureRecognizer:scroll];
  UIPinchGestureRecognizer *pinch=[[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(multiGesture:)];pinch.delegate=self;[self addGestureRecognizer:pinch];
  UIRotationGestureRecognizer *rotate=[[UIRotationGestureRecognizer alloc] initWithTarget:self action:@selector(multiGesture:)];rotate.delegate=self;[self addGestureRecognizer:rotate];
+ UIPanGestureRecognizer *pan2=[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingerPanned:)];pan2.minimumNumberOfTouches=2;pan2.maximumNumberOfTouches=2;pan2.delegate=self;[self addGestureRecognizer:pan2];self.twoFingerPan=pan2;
+ UITapGestureRecognizer *tap2=[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingerTapped:)];tap2.numberOfTouchesRequired=2;tap2.delegate=self;[self addGestureRecognizer:tap2];self.twoFingerTap=tap2;
   }
   return self;
 }
@@ -1013,6 +1039,22 @@ static const NSUInteger MyGoAccessoryColumns = 6;
  goIOSGesture(self.windowID,(char *)(pinch?"pinch":"rotate"),(char *)phase,p.x,p.y,
  pinch?[(UIPinchGestureRecognizer *)gesture scale]:1,pinch?0:[(UIRotationGestureRecognizer *)gesture rotation]);
 }
+- (void)twoFingerPanned:(UIPanGestureRecognizer *)gesture {
+ CGPoint p=[gesture locationInView:self],t=[gesture translationInView:self];
+ const char *phase=gesture.state==UIGestureRecognizerStateBegan?"begin":gesture.state==UIGestureRecognizerStateChanged?"change":gesture.state==UIGestureRecognizerStateEnded?"end":"cancel";
+ self.velocity=CGPointZero;
+ goIOSGestureDelta(self.windowID,(char *)"pan",(char *)phase,p.x,p.y,t.x,t.y);
+}
+- (void)twoFingerTapped:(UITapGestureRecognizer *)gesture {
+ if (gesture.state!=UIGestureRecognizerStateRecognized) return;
+ CGPoint p=[gesture locationInView:self];
+ if (goIOSGesture(self.windowID,(char *)"tap",(char *)"begin",p.x,p.y,1,0)) goIOSGesture(self.windowID,(char *)"tap",(char *)"end",p.x,p.y,1,0);
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
+ if (gesture.view!=self || (gesture!=self.twoFingerPan && gesture!=self.twoFingerTap)) return YES;
+ CGPoint p=[touch locationInView:self];
+ return goIOSGesture(self.windowID,(char *)(gesture==self.twoFingerPan?"pan":"tap"),(char *)"probe",p.x,p.y,1,0);
+}
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture {
  // UIView also consults the hit view for recognizers attached to ancestors.
  // Restrict our editor-scroll decision to this surface's own recognizers.
@@ -1021,6 +1063,10 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   CGPoint p=[gesture locationInView:self];
   // Never let a surface hold compete with a selection handle drag.
   if ([self.editor selectionHandleAtPoint:[self convertPoint:p toView:self.editor]]) return NO;
+ }
+ if (gesture==self.twoFingerPan || gesture==self.twoFingerTap) {
+  CGPoint p=[gesture locationInView:self];
+  return goIOSGesture(self.windowID,(char *)(gesture==self.twoFingerPan?"pan":"tap"),(char *)"probe",p.x,p.y,1,0);
  }
  if ([gesture isKindOfClass:UIPinchGestureRecognizer.class] || [gesture isKindOfClass:UIRotationGestureRecognizer.class]) {
  CGPoint p=[gesture locationInView:self];
@@ -1040,8 +1086,9 @@ static const NSUInteger MyGoAccessoryColumns = 6;
       (!self.editor.editable || fabs(v.y) > fabs(v.x));
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
-  if (([gesture isKindOfClass:UIPinchGestureRecognizer.class] || [gesture isKindOfClass:UIRotationGestureRecognizer.class]) &&
-      ([other isKindOfClass:UIPinchGestureRecognizer.class] || [other isKindOfClass:UIRotationGestureRecognizer.class])) return YES;
+  // Pinch, rotate and the two-finger pan run together; the element decides.
+  BOOL (^multi)(UIGestureRecognizer *)=^BOOL(UIGestureRecognizer *g){return [g isKindOfClass:UIPinchGestureRecognizer.class]||[g isKindOfClass:UIRotationGestureRecognizer.class]||g==self.twoFingerPan;};
+  if (multi(gesture) && multi(other)) return YES;
   return [gesture isKindOfClass:UILongPressGestureRecognizer.class] ||
       [other isKindOfClass:UILongPressGestureRecognizer.class];
 }
@@ -1827,12 +1874,23 @@ void mygo_ios_input(uintptr_t view, bool active, bool readonly, bool password, b
       ? UIColor.systemBlueColor : UIColor.clearColor;
   if (!s.sending && !e.markedTextRange) {
     NSString *t = str(text);
-    if (![e.text isEqual:t])
+    BOOL sameText = [e.text isEqual:t];
+    if (!sameText)
       e.text = t;
     s.synchronizedText = t;
-    NSUInteger a = units(t, start), z = units(t, end);
-    ((MyGoEditor *)e).contextCaret = a;
-    e.selectedRange = NSMakeRange(a, z - a);
+    // While a finger drags the caret (long press) or a selection handle,
+    // UIKit moves the selection first and Go echoes it a frame later. That
+    // echo is already stale under a moving finger; applying it snaps the
+    // caret back and the next touch jumps it forward again. Keep UIKit's
+    // selection until the gesture ends, which commits it once more.
+    uint64_t field = ((MyGoEditor *)e).fieldID;
+    BOOL gesturing = sameText && field &&
+        (s.caretPressField == field || [(MyGoEditor *)e isDraggingSelectionHandle]);
+    if (!gesturing) {
+      NSUInteger a = units(t, start), z = units(t, end);
+      ((MyGoEditor *)e).contextCaret = a;
+      e.selectedRange = NSMakeRange(a, z - a);
+    }
     s.contextLength = runes(t);
   }
   s.contextLength = runes(str(text));

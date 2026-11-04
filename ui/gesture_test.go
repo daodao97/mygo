@@ -107,3 +107,41 @@ func TestInteractiveKeyboardKeepsFocusUntilNativeDismissal(t *testing.T) {
 		t.Fatal("ordinary tap did not dismiss keyboard")
 	}
 }
+
+func TestGesturePanDeltasAndTwoFingerTap(t *testing.T) {
+	var updates []GestureEvent
+	tt := NewTester(func(c *Context) {
+		pad := Box(c).Label("pad").Size(200, 200)
+		updates = append(updates, pad.Gestures()...)
+	}, 320, 240)
+	pan := func(phase string, x, dx, dy float64) {
+		tt.send(platform.SurfaceEvent{Kind: platform.SurfaceGesture, Gesture: "pan", Phase: phase, X: x, Y: 50, DX: dx, DY: dy, Scale: 1})
+	}
+	pan("begin", 50, 0, 0)
+	pan("change", 60, 10, 4)
+	pan("change", 280, 25, 4) // outside pad: retain capture
+	pan("end", 280, 25, 9)
+	if len(updates) != 4 || updates[0].DX != 0 || updates[1].DX != 10 || updates[1].DY != 4 || updates[2].DX != 15 || updates[2].DY != 0 || updates[3].DY != 5 {
+		t.Fatalf("pan deltas %+v", updates)
+	}
+	for _, u := range updates {
+		if u.Kind != "pan" || u.Scale != 1 || u.Rotation != 0 {
+			t.Fatalf("pan changed scale or rotation %+v", u)
+		}
+	}
+	updates = nil
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceGesture, Gesture: "tap", Phase: "begin", X: 40, Y: 40, Scale: 1})
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceGesture, Gesture: "tap", Phase: "end", X: 40, Y: 40, Scale: 1})
+	if len(updates) != 2 || updates[0].Kind != "tap" || updates[1].Phase != "end" {
+		t.Fatalf("tap %+v", updates)
+	}
+	if tt.rt.gestureEvent(platform.SurfaceEvent{Gesture: "pan", Phase: "change", X: 40, Y: 40, DX: math.NaN(), Scale: 1}) {
+		t.Fatal("non-finite pan accepted")
+	}
+	plain := NewTester(func(c *Context) { Button(c, "plain").Size(200, 150) }, 320, 240)
+	for _, kind := range []string{"pan", "tap"} {
+		if plain.rt.gestureEvent(platform.SurfaceEvent{Gesture: kind, Phase: "probe", X: 50, Y: 50, Scale: 1}) {
+			t.Fatal("unregistered widget took a two-finger", kind)
+		}
+	}
+}

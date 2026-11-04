@@ -319,3 +319,49 @@ func TestNativeHandleRangesExpandShrinkAndCross(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeSelectionReadOnlyParagraphSendsWholeText(t *testing.T) {
+	text := strings.Repeat("字", 3000)
+	tt := snapshotTester(func(c *Context) { Text(c, text).Selectable().Label("long") }, 320, 300)
+	tt.rt.host = &selectionTestHost{tt.h}
+	tt.Click("long")
+	if !tt.h.ime.Active || tt.h.ime.Text != text || tt.rt.ime.base != 0 {
+		t.Fatalf("read-only paragraph was windowed: active=%v base=%d len=%d", tt.h.ime.Active, tt.rt.ime.base, utf8.RuneCountInString(tt.h.ime.Text))
+	}
+	// A leading handle dragged across the paragraph keeps its offsets: the
+	// proxy's text never shifts under UIKit's fixed trailing end.
+	for _, from := range []int{2000, 1500, 900, 100} {
+		tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: from, To: 2500})
+		tt.Frame()
+		if tt.rt.ime.base != 0 || tt.h.ime.Text != text || tt.h.ime.Start != from || tt.h.ime.End != 2500 {
+			t.Fatalf("selection from %d re-indexed the proxy: base=%d start=%d end=%d", from, tt.rt.ime.base, tt.h.ime.Start, tt.h.ime.End)
+		}
+	}
+}
+
+func TestNativeEditorWindowStaysPutWhileSelectionMoves(t *testing.T) {
+	value := strings.Repeat("字", 3000)
+	tt := snapshotTester(func(c *Context) { TextArea(c, &value).Width(300).AutoFocus() }, 320, 240)
+	pick := func(a, z int) {
+		base := tt.rt.ime.base
+		tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: a - base, To: z - base})
+		tt.Frame()
+	}
+	pick(1500, 1510)
+	base := tt.rt.ime.base
+	if base == 0 || tt.h.ime.Start != 1500-base {
+		t.Fatalf("test did not reach a bounded window: base=%d start=%d", base, tt.h.ime.Start)
+	}
+	// Drag the leading handle 300 runes back: the window must not follow it.
+	for k := 10; k <= 300; k += 10 {
+		pick(1500-k, 1510)
+		if tt.rt.ime.base != base || tt.h.ime.Start != 1500-k-base || tt.h.ime.End != 1510-base {
+			t.Fatalf("window moved under the handle at %d: base=%d want %d", 1500-k, tt.rt.ime.base, base)
+		}
+	}
+	// Leaving the window still re-centers it, keeping it bounded.
+	tt.Key(Ctrl, KeyEnd)
+	if tt.rt.ime.base <= base || utf8.RuneCountInString(tt.h.ime.Text) > 2*imeContext {
+		t.Fatalf("window did not follow a jump: base=%d len=%d", tt.rt.ime.base, utf8.RuneCountInString(tt.h.ime.Text))
+	}
+}
