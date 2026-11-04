@@ -383,15 +383,17 @@ func (p *Painter) element(e *node) {
 		p.pushClip(inner, rad)
 	}
 	if !clips || p.clip.W > 0 && p.clip.H > 0 {
-		if e.ghosts {
-			// Elements leaving go under their siblings.
+		zOrder := e.zOrder && e != e.c.overlay && zPaint != nil
+		if e.ghosts && !zOrder {
+			// Elements leaving go under their siblings; by z-index, under
+			// those of the same one (paintByZ).
 			for c := e.first; c != nil; c = c.next {
 				if c.leaving != 0 {
 					p.element(c)
 				}
 			}
 		}
-		if e.zOrder && e != e.c.overlay && zPaint != nil {
+		if zOrder {
 			zPaint(p, e)
 		} else {
 			// Elements flying go over their layer: the window's content, under

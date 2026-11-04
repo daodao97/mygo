@@ -13,7 +13,9 @@ import (
 // without one: those in the flow in the order they were built, then the
 // absolute and sticky ones in theirs. The default is 0; a negative value
 // paints the element under its siblings, still above its parent's
-// background.
+// background. The copy of an element leaving with its Exit
+// (ElementTransition) keeps the z-index the element had, under its
+// siblings of the same one: a dialog fading out stays above the page.
 //
 // It moves the element with all that is inside it, as one, among its
 // siblings alone: it does not reach past its parent, which still clips it
@@ -77,10 +79,11 @@ type zScratch struct {
 }
 
 // zSeg is what a child committed: rt.hits[hit0:hit1] and
-// rt.webPlaces[web0:web1]; the rest is where it paints: rank 0 for a copy
-// leaving, which paints first, 2 for a child pinned last (zPinned), 1 for
-// the others, then its z-index, phase 1 for a child painting above the
-// flow (absolute or sticky), and index, its place among its siblings.
+// rt.webPlaces[web0:web1]; the rest is where it paints: rank 1, or 2 for a
+// child pinned last (zPinned), then its z-index, phase 0 for a copy
+// leaving, which paints first, 1 for a child in the flow, 2 for one
+// painting above it (absolute or sticky), and index, its place among its
+// siblings.
 type zSeg struct {
 	rank, phase uint8
 	z           int32
@@ -106,8 +109,9 @@ func (e *node) aboveFlow() bool { return e.flags&flagAbsolute != 0 || e.sticky }
 // paintOrder appends the children of e, which has some with a z-index
 // (zOrder), to buf in the order they paint: by z-index, and those with the
 // same in the flow first, then the absolute and sticky ones, each in tree
-// order, as without one. The pinned ones (zPinned) stay last, and those
-// leaving (ghosts), which paint first, are left out.
+// order, as without one. Those leaving (ghosts) go first, keeping their
+// z-index, under the others of the same one, and the pinned ones
+// (zPinned) stay last.
 func (e *node) paintOrder(buf []*node) []*node {
 	pinned := e.zPinned()
 	phases := func(buf []*node, from, to *node) []*node {
@@ -124,6 +128,14 @@ func (e *node) paintOrder(buf []*node) []*node {
 		return buf
 	}
 	base := len(buf)
+	if e.ghosts {
+		// Copies leaving, added last, are never pinned.
+		for c := e.first; c != nil; c = c.next {
+			if c.leaving != 0 {
+				buf = append(buf, c)
+			}
+		}
+	}
 	buf = phases(buf, e.first, pinned)
 	slices.SortStableFunc(buf[base:], func(a, b *node) int { return cmp.Compare(a.zIndex, b.zIndex) })
 	if pinned != nil {
@@ -148,7 +160,7 @@ func (p *Painter) paintByZ(e *node) {
 	for i := base; i < end; i++ {
 		// Read again each time: painting c may grow the slice.
 		c := z.order[i]
-		if dividers && (c.zIndex > 0 || c.zIndex == 0 && c.aboveFlow()) {
+		if dividers && (c.zIndex > 0 || c.zIndex == 0 && c.aboveFlow() && c.leaving == 0) {
 			p.dividers(e)
 			dividers = false
 		}
@@ -182,15 +194,15 @@ func (rt *engine) commitByZ(e *node, clip Rect, invisible bool) {
 	pinned := e.zPinned()
 	commit := func(ch *node, index int, pin bool) {
 		k := len(z.segs)
-		z.segs = append(z.segs, zSeg{rank: 1, z: ch.zIndex, index: index, hit0: len(rt.hits), web0: len(rt.webPlaces)})
+		z.segs = append(z.segs, zSeg{rank: 1, z: ch.zIndex, phase: 1, index: index, hit0: len(rt.hits), web0: len(rt.webPlaces)})
 		switch {
 		case ch.leaving != 0:
-			z.segs[k].rank = 0
+			z.segs[k].phase = 0
 		case pin:
 			z.segs[k].rank, z.segs[k].z = 2, 0
 		}
-		if ch.aboveFlow() {
-			z.segs[k].phase = 1
+		if ch.aboveFlow() && ch.leaving == 0 {
+			z.segs[k].phase = 2
 		}
 		rt.commitElement(ch, clip, invisible)
 		// Committing ch used and gave back the segments after k.

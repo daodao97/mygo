@@ -2923,7 +2923,7 @@ either.
   its `Enter` only in a parent the frame before had; the overlay layer,
   built only while it holds something, counts as the root there. One no longer built,
   whose parent still is, goes with its `Exit` as an inert copy, laid out
-  and painted under its siblings without taking room; the frames after
+  and painted under its siblings of its z-index without taking room; the frames after
   one in the overlay layer, or its copy, build the layer, empty but for
   the copies, which lets the pointer and the focus through
   (`engine.overlayExits`). Frames that built
@@ -3089,7 +3089,8 @@ either.
   paints and commits them through `zPaint` and `zCommit`, which `ZIndex`
   sets, so that an app never calling it links none of this. It paints
   them in `paintOrder`: the two passes' order sorted stably by
-  z-index, so that equal values keep it, the copies leaving still first,
+  z-index, so that equal values keep it, the copies leaving, which keep
+  the z-index their elements had, first among those of theirs,
   and, of the root, the overlay layer and what follows it last
   (`zPinned`), so that overlays stay above the content and keep their
   order (the overlay layer's own children are never sorted). Commit

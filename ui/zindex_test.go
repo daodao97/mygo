@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/internal/platform"
 )
@@ -355,5 +356,58 @@ func TestZIndexWebView(t *testing.T) {
 	}
 	if tt.WebViewAt(20, 20) != page || tt.WebViewAt(70, 70) != page {
 		t.Error("the pointer misses the web view raised over the badge and the corner")
+	}
+}
+
+// The copy of an element leaving with its Exit keeps the z-index the
+// element had, as a dialog raised over the page fading out over it, and
+// goes under its siblings of the same z-index alone.
+func TestZIndexExit(t *testing.T) {
+	cases := []struct {
+		name     string
+		z, blueZ int
+		flow     bool // the element was in its parent's flow
+		over     bool // the copy fades over blue, rather than under it
+	}{
+		{"raised over its sibling", 1, 0, false, true},
+		{"raised over its sibling, from the flow", 1, 0, true, true},
+		{"raised over a sibling lowered", 1, -1, false, true},
+		{"at 0 over a sibling lowered", 0, -1, false, true},
+		{"under its sibling of the same z-index", 2, 2, false, false},
+		{"under its sibling raised higher", 1, 2, false, false},
+		{"lowered under its sibling", -1, 0, false, false},
+		{"at 0 under its sibling", 0, 0, true, false},
+	}
+	for _, tc := range cases {
+		show := true
+		tt := coreNewTester(func(c *context) {
+			coreBox(c).Size(100, 100).Background(RGB(255, 255, 255)).Children(func() {
+				coreBox(c).Absolute().Left(0).Top(0).Size(50, 100).Background(zBlue).ZIndex(tc.blueZ)
+				if show {
+					red := coreBox(c).Key("red").Size(100, 100).Background(zRed).ZIndex(tc.z).
+						Transition(ElementTransition{Duration: time.Second, Ease: func(x float32) float32 { return x },
+							Exit: &Motion{Opacity: 0}})
+					if !tc.flow {
+						red.Absolute().Left(0).Top(0)
+					}
+				}
+			})
+		}, 100, 100)
+		tt.Frame()
+		show = false
+		tt.Frame()
+		tt.Advance(500 * time.Millisecond)
+		tt.Frame()
+		img := tt.Image()
+		if c := img.RGBAAt(75, 50); c.R != 255 || c.G < 100 || c.G > 155 {
+			t.Errorf("%s: the copy, half faded over white, paints %v", tc.name, c)
+		}
+		c := img.RGBAAt(25, 50)
+		if over := c.R > 100 && c.R < 155 && c.B > 100 && c.B < 155; over != tc.over {
+			t.Errorf("%s: over blue, the copy half faded paints %v, want it over blue: %v", tc.name, c, tc.over)
+		}
+		if !tc.over && !isColor(c, zBlue) {
+			t.Errorf("%s: blue over the copy paints %v", tc.name, c)
+		}
 	}
 }

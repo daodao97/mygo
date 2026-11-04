@@ -56,8 +56,8 @@ type ElementTransition struct {
 	Enter *Motion
 	// Exit, if set, is where the element goes once it is no longer built,
 	// while its parent still is: a copy of it, as the last frame showed
-	// it, goes there under its siblings, taking neither room, the pointer
-	// nor the focus, and is then gone. The parent's ChildExit, in the
+	// it, goes there under its siblings of the same z-index (ZIndex),
+	// taking neither room, the pointer nor the focus, and is then gone. The parent's ChildExit, in the
 	// frame it goes, says where it goes instead.
 	Exit *Motion
 	// AfterExits holds the element appearing while copies of its siblings

@@ -162,7 +162,10 @@ inside it, still clipped by its parent, and is never mixed with the
 elements of other parents, as if each z-index other than 0 made a CSS
 stacking context. Raising a card inside a column does not lift it over the
 next column; raise the column. The window's content stays under its
-[overlays](overlays.md), and overlays keep the order they open in.
+[overlays](overlays.md), and overlays keep the order they open in. The copy
+of an element leaving with its [`Exit`](transitions.md) keeps the z-index
+the element had, under its siblings of the same one: a toast raised over the
+page fades out over it.
 
 ## Clipping and visibility
 

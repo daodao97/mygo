@@ -7430,7 +7430,9 @@ func (_handle Element) WrapReverse() Element {
 // without one: those in the flow in the order they were built, then the
 // absolute and sticky ones in theirs. The default is 0; a negative value
 // paints the element under its siblings, still above its parent's
-// background.
+// background. The copy of an element leaving with its Exit
+// (ElementTransition) keeps the z-index the element had, under its
+// siblings of the same one: a dialog fading out stays above the page.
 //
 // It moves the element with all that is inside it, as one, among its
 // siblings alone: it does not reach past its parent, which still clips it

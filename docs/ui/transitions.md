@@ -175,8 +175,11 @@ showed it, goes to its `Exit` under its siblings: it takes no room, so the
 siblings move into its place at once, smoothly if they have transitions,
 and it takes neither the pointer nor the focus, nor reads to assistive
 technology, as an element with both `IgnoreInput` and
-[`AccessHidden`](accessibility.md#out-of-assistive-technologys-way). Built
-again before its exit ends, the element comes back from where its copy was.
+[`AccessHidden`](accessibility.md#out-of-assistive-technologys-way). The
+copy keeps the element's [z-index](layout.md#paint-order), and goes under
+its siblings of the same one alone: a dialog raised with `ZIndex` fades out
+over the page, not under it. Built again before its exit ends, the element
+comes back from where its copy was.
 
 ### Exits decided as they go
 
