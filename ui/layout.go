@@ -146,6 +146,10 @@ func place(e *node, x, y float32) {
 			s.beginMove(e.c.rt.frame)
 			s.scrollTo(sx, sy)
 		}
+		if e.snap != SnapNone || s.snap != nil {
+			// Where it rests, if it snaps (ScrollSnap).
+			placeSnapper(e)
+		}
 		if t := e.track; t != nil {
 			t.MaxX, t.MaxY = float32(mx), float32(my)
 		}

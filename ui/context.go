@@ -719,6 +719,9 @@ type state struct {
 	// wheel is the notches of a mouse wheel on their way through the
 	// content (wheelScroll).
 	wheel *wheelGlide
+	// snap is where a container that snaps comes to rest (ScrollSnap),
+	// which its layout sets.
+	snap snapper
 	// startX and startY are the offset before frame moveFrame moved it.
 	moveFrame      uint64
 	startX, startY float64

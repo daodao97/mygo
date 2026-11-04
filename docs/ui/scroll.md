@@ -80,6 +80,55 @@ scrolls its caret into view, where `BoundsForRange` places it, rather than
 its whole box: a code editor as high as its lines shows the line being
 edited as it takes the focus, not its first.
 
+## Snapping
+
+`ScrollSnap` makes a container come to rest at the places the elements in
+it mark with `SnapAlign`, as CSS's `scroll-snap-type` and
+`scroll-snap-align` do, on the axes it scrolls: a strip of cards that
+always rests showing a card from its start, a carousel's pages, or the
+sections of a long page.
+
+```go
+ui.ScrollHorizontal(c).ScrollSnap(ui.SnapMandatory).Padding(16).Gap(12).Children(func() {
+	for _, card := range app.cards {
+		cardView(c, card).Width(240).Shrink(0).SnapAlign(ui.Start)
+	}
+})
+```
+
+`SnapAlign(ui.Start)`, `ui.Center` or `ui.End` lines the element's start,
+center or end up with the container's content box, inside its padding, so
+the first card of the strip rests where it starts; right to left, the
+start is at the right. `SnapAlignX` and `SnapAlignY` mark one axis only, as
+a `ScrollBoth` that snaps its columns and scrolls freely down them. The
+elements are any inside the container, not only its children, short of
+another scroll container, whose own they are; a `List`'s rows mark theirs
+as they are built.
+
+The container snaps as the user's scrolling settles, as browsers snap:
+
+- a touchpad, the momentum of a fling after it, a finger on a touchscreen,
+  and a scroll bar's thumb once it is let go glide on to the nearest place;
+- a notch of a mouse wheel, the arrow keys, Page Up and Page Down, Home and
+  End and a press on a scroll bar's track go to the next place that way,
+  past where it was: the nearest to where they would have scrolled. At the
+  last place, the wheel scrolls the container around it.
+
+`ui.SnapMandatory` always rests at a place: it lines one up as it first
+shows, and the wheel and the keys go from place to place.
+`ui.SnapProximity` rests at one only where the scrolling stops within a
+third of the view of it, and wherever it stops in between. An element
+larger than the view, as a tall section, rests anywhere it fills the
+view, so the wheel scrolls through it before going on to the next.
+
+Resting at an element, the container stays at it as the layout moves it,
+as when the window resizes or rows above change height, and an element
+that comes into view (`ScrollIntoView`, or the focus moving) lines up
+the place of the element marked around it. Where the app scrolls the
+container, with its `ScrollState`, `ScrollTo` or a `ListState`, it stays
+where the app puts it. While the desktop asks for less motion, it goes to
+rest at once.
+
 ## Scroll bars
 
 A scroll container whose content overflows it shows the thumbs of its

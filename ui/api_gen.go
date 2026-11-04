@@ -6282,6 +6282,41 @@ func (_handle Element) ScrollIntoView() Element {
 	return wrapElement(_node.ScrollIntoView())
 }
 
+// ScrollSnap makes the scroll container (Scroll, ScrollHorizontal,
+// ScrollBoth, List) come to rest at the places the elements in it mark
+// with SnapAlign, as CSS's scroll-snap-type does, on the axes it scrolls:
+//
+//   - a touchpad, its momentum after a fling, and a finger on a
+//     touchscreen glide on to the nearest once they have settled, and so
+//     does a thumb of a scroll bar once it is let go;
+//   - a notch of a wheel, the arrow keys, Page Up and Page Down, Home and
+//     End and a press on a scroll bar's track go to the next place that
+//     way, past where it was, as far as they scroll.
+//
+// A place lines an element up with the container's content box, inside
+// its padding, so that the first of a strip of cards rests where it
+// starts. An element larger than the view rests anywhere it fills the
+// view. Resting at an element, the container stays at it as the layout
+// moves it, as when the window resizes, and an element of one coming into
+// view (ScrollIntoView, the focus) lines it up. Where the app scrolls the
+// container, with its ScrollState, ScrollTo or a List's ListState, it
+// stays. While the desktop asks for less motion, it rests at once.
+//
+//	ui.ScrollHorizontal(c).ScrollSnap(ui.SnapMandatory).Padding(16).Gap(12).Children(func() {
+//		for _, card := range app.cards {
+//			cardView(c, card).SnapAlign(ui.Start)
+//		}
+//	})
+func (_handle Element) ScrollSnap(s Snap) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ScrollSnap(s))
+}
+
 // ScrollWith moves the element's content sideways as far as scroller, a
 // scroll container, scrolls its own, as a table's header goes with its
 // rows. Clip the element, so that what goes out of it does not show.
@@ -6501,6 +6536,45 @@ func (_handle Element) Skew(x float32, y float32) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Skew(x, y))
+}
+
+// SnapAlign marks a place where the nearest scroll container around the
+// element rests, if it snaps (ScrollSnap): where the element's start,
+// center or end, as a is Start, Center or End, lines up with the
+// container's, on both axes, as CSS's scroll-snap-align. Start is the left
+// of what scrolls sideways, its right right to left (Direction), and the
+// top of what scrolls vertically.
+func (_handle Element) SnapAlign(a Align) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.SnapAlign(a))
+}
+
+// SnapAlignX marks a place as SnapAlign does, sideways only: a container
+// that scrolls both ways rests anywhere vertically.
+func (_handle Element) SnapAlignX(a Align) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.SnapAlignX(a))
+}
+
+// SnapAlignY marks a place as SnapAlign does, vertically only.
+func (_handle Element) SnapAlignY(a Align) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.SnapAlignY(a))
 }
 
 // Spring returns a value following target with a spring, as AnimateTo

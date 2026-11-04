@@ -509,6 +509,12 @@ type node struct {
 	barsFrom       *node
 	rowIndex       int
 	rowsOf         *listFrame
+	// snap is how the element, a scroll container, snaps (ScrollSnap), and
+	// snapAlign how the element lines up with the container around it
+	// that does (SnapAlign): Start, Center or End plus one, horizontally
+	// in its low four bits and vertically in its high four, 0 for none.
+	snap      Snap
+	snapAlign uint8
 	// focusGroup makes the element a focus group (FocusGroup), whose
 	// arrows click the element they move to with groupSelects.
 	focusGroup   Orientation

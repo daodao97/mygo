@@ -492,6 +492,10 @@ type engine struct {
 	// wheeling are the elements of the scroll containers that the notches
 	// of a mouse wheel scroll smoothly (glideWheels).
 	wheeling []uint64
+	// snapping are the elements of the scroll containers that snap that
+	// are on their way to rest, or wait for the user's scrolling to settle
+	// (glideSnaps).
+	snapping []uint64
 	// lastPress is the element of the press (id) and of the one before
 	// (prev), and how many of the backend's count of clicks were before
 	// the first on it.
@@ -613,6 +617,7 @@ func (rt *engine) runFrame() {
 	rt.repaintRate, rt.repaintFull, rt.untracked = 0, false, false
 	rt.routeKeys()
 	rt.glideWheels(now)
+	rt.glideSnaps(now)
 	if rt.drag != nil {
 		// The source's element is this frame's, if it builds one.
 		rt.drag.elem = nil
