@@ -201,10 +201,7 @@ func buildWeb(c *Config, opts buildOptions) ([]string, error) {
 		}
 	}
 	dir := filepath.Join(out, "web")
-	if err := os.RemoveAll(dir); err != nil {
-		return nil, err
-	}
-	if err := os.Rename(stage, dir); err != nil {
+	if err := replacePath(stage, dir); err != nil {
 		return nil, err
 	}
 	artifacts := []string{filepath.Join(dir, "index.html"), filepath.Join(dir, name), filepath.Join(dir, "wasm_exec.js")}

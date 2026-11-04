@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -151,4 +152,53 @@ func TestBuildWeb(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(web, "wasm_exec.js")); err != nil {
 		t.Error(err)
 	}
+
+	t.Run("replace read-only files", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("directory permissions are not enforced by chmod on Windows")
+		}
+		// A previous build may contain files that cannot be deleted.
+		// Replacing it must not remove the rest of the site first.
+		locked := filepath.Join(web, "old-assets")
+		if err := os.Mkdir(locked, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(locked, "old.txt"), []byte("old asset"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		oldDir, err := os.Open(locked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The old directory can move during the build. Its open handle
+		// lets cleanup restore its permissions wherever it ends up.
+		t.Cleanup(func() {
+			if err := oldDir.Chmod(0o755); err != nil {
+				t.Error(err)
+			}
+			oldDir.Close()
+		})
+		if err := oldDir.Chmod(0o555); err != nil {
+			t.Fatal(err)
+		}
+		probe, err := os.Create(filepath.Join(locked, "probe"))
+		if err == nil {
+			probe.Close()
+			t.Skip("directory permissions do not prevent writes for this user")
+		}
+		if !os.IsPermission(err) {
+			t.Fatal(err)
+		}
+		if err := runBuild([]string{"-platform", "js/wasm", dir}); err != nil {
+			t.Error(err)
+		}
+		for _, name := range []string{"index.html", string(m[1]), "wasm_exec.js"} {
+			if _, err := os.Stat(filepath.Join(web, name)); err != nil {
+				t.Error(err)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(web, "old-assets")); !os.IsNotExist(err) {
+			t.Errorf("old assets remain in the new build: %v", err)
+		}
+	})
 }
