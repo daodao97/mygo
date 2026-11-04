@@ -173,6 +173,11 @@ leaves a field out. JavaScript numbers are exact up to 2⁵³, so encode
 larger IDs as strings with the `string` option, `json:"id,string"`, which
 makes them `string` in TypeScript.
 
+An embedded `map[string]T` or `jsontext.Value` (`json:",embed"`) adds
+top-level members instead of a nested field. Its generated object allows
+additional keys with `[key: string]: unknown`, while declared fields keep
+their types.
+
 Named string types with constants become unions:
 
 ```go

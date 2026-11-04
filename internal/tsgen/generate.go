@@ -423,6 +423,10 @@ func (g *generator) inlineObject(t reflect.Type) string {
 	}
 	parts := make([]string, 0, len(fields))
 	for _, f := range fields {
+		if f.fallback {
+			parts = append(parts, "[key: string]: unknown")
+			continue
+		}
 		typ, opt := g.fieldType(f)
 		parts = append(parts, propertyName(f.name)+opt+": "+typ)
 	}
@@ -450,6 +454,10 @@ func (g *generator) object(t reflect.Type, indent string) string {
 	var b bytes.Buffer
 	b.WriteString("{\n")
 	for _, f := range fields {
+		if f.fallback {
+			fmt.Fprintf(&b, "%s  [key: string]: unknown;\n", indent)
+			continue
+		}
 		typ, opt := g.fieldType(f)
 		writeDoc(&b, indent+"  ", g.src.fieldDoc(f.owner, f.goName))
 		fmt.Fprintf(&b, "%s  %s%s: %s;\n", indent, propertyName(f.name), opt, typ)
