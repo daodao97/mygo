@@ -392,7 +392,7 @@ func treeJSON(window int, t *platform.AccessTree, keys map[uint64]any) treeResul
 	for _, n := range t.Nodes {
 		j := nodeJSON{
 			ID: nodeID(n.ID), Role: roleName(n.Role), Label: n.Label, Value: n.Value,
-			Placeholder: n.Placeholder, Description: n.Description,
+			Placeholder: n.Placeholder, Description: n.Description, KeyShortcuts: n.KeyShortcuts,
 			Bounds:  rect{n.Bounds.X, n.Bounds.Y, n.Bounds.W, n.Bounds.H},
 			States:  names(uint64(n.States), stateNames[:]),
 			Actions: names(uint64(n.Actions), actionNames[:]),
@@ -445,6 +445,10 @@ type nodeJSON struct {
 	Max  *float64 `json:"max,omitempty"`
 	Now  *float64 `json:"now,omitempty"`
 	Step *float64 `json:"step,omitempty"`
+	// KeyShortcuts are the keys that press or focus the element, as
+	// ARIA's aria-keyshortcuts, as the platform's menus write them
+	// ("⌘K" on macOS, "Ctrl+K" elsewhere), separated by spaces.
+	KeyShortcuts string `json:"keyShortcuts,omitempty"`
 	// Selection is a text field's, in runes.
 	Selection *[2]int `json:"selection,omitempty"`
 	Level     int     `json:"level,omitempty"`

@@ -54,6 +54,10 @@ type AccessInfo struct {
 	// Current is the item the element is the current one of
 	// (aria-current), CurrentNone for none.
 	Current Current
+	// KeyShortcuts are the keys that press or focus the element
+	// (aria-keyshortcuts), as the platform's menus write them and
+	// separated by spaces: "⌘K" for Cmd+K on macOS, "Ctrl+K" elsewhere.
+	KeyShortcuts string
 	// Level is the rank of a heading, or how deep an item of a tree is,
 	// from 1; 0 for other elements.
 	Level int
@@ -165,6 +169,7 @@ func accessInfoOf(r Role, n *platform.AccessNode, focus uint64) AccessInfo {
 		Segment:         s&platform.AccessSegment != 0,
 		Offscreen:       s&platform.AccessOffscreen != 0,
 		Current:         Current(n.Current),
+		KeyShortcuts:    n.KeyShortcuts,
 		Level:           n.Level,
 		PosInSet:        n.PosInSet,
 		SetSize:         n.SetSize,

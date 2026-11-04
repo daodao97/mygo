@@ -492,6 +492,9 @@ type node struct {
 	accFill func(n *platform.AccessNode)
 	// accStep is how far the keys move the value of a range.
 	accStep float64
+	// keyShortcuts are the keys that press or focus the element, as the
+	// platform writes them (KeyShortcuts).
+	keyShortcuts string
 
 	// Layout results, in DIPs relative to the window.
 	x, y, w, h float32

@@ -193,6 +193,31 @@ func (e *node) Level(n int) *node {
 	return e
 }
 
+// KeyShortcuts tells assistive technology a key, with exactly the
+// modifiers mods, that presses or focuses the element, as ARIA's
+// aria-keyshortcuts: the window's shortcut that runs a toolbar button's
+// command, or opens a command palette, which screen readers read with the
+// element's name. It is written as the platform's menus write it ("⌘K"
+// for Cmd+K on macOS, "Ctrl+K" elsewhere). It only tells the key: handle
+// it with Shortcut on the context, or OnWindowShortcut. Call it once for
+// each key that does.
+func (e *node) KeyShortcuts(mods Modifiers, key Key) *node {
+	s := shortcutText(accelerator(mods, key))
+	if s == "" {
+		return e
+	}
+	for k := range strings.FieldsSeq(e.keyShortcuts) {
+		if k == s {
+			return e
+		}
+	}
+	if e.keyShortcuts != "" {
+		s = e.keyShortcuts + " " + s
+	}
+	e.keyShortcuts = s
+	return e
+}
+
 // ActiveDescendant tells assistive technology that d has the keyboard
 // focus while the element does: the option the arrows are on in a list or
 // a menu that keeps the focus itself, as a combobox's input does. Call it
@@ -495,6 +520,7 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	n.Current = platform.AccessCurrent(e.current)
 	n.Level = e.level
 	n.Value = e.accValue
+	n.KeyShortcuts = e.keyShortcuts
 	if e.hasRange {
 		n.Min, n.Max, n.Now, n.Step = e.accRange[0], e.accRange[1], e.accRange[2], e.accStep
 	}

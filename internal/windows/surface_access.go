@@ -109,6 +109,7 @@ const (
 	uiaControlTypeProperty      = 30003
 	uiaLocalizedControlProperty = 30004
 	uiaNameProperty             = 30005
+	uiaAcceleratorKeyProperty   = 30006
 	uiaHasKeyboardFocusProperty = 30008
 	uiaIsFocusableProperty      = 30009
 	uiaIsEnabledProperty        = 30010
@@ -1147,6 +1148,10 @@ func (e *uiaElement) property(id int, v *variant) {
 		}
 	case uiaFullDescriptionProperty:
 		str(n.Description)
+	case uiaAcceleratorKeyProperty:
+		// The keys that press or focus it (aria-keyshortcuts), as
+		// Chromium's.
+		str(n.KeyShortcuts)
 	case uiaItemStatusProperty:
 		// The order of the column a table is sorted by, as Chromium says.
 		switch {

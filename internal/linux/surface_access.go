@@ -941,6 +941,11 @@ func initAccessCallbacks() {
 		if an.n.Placeholder != "" {
 			add("placeholder-text", an.n.Placeholder)
 		}
+		// The keys that press or focus it (aria-keyshortcuts), as
+		// Chromium says.
+		if an.n.KeyShortcuts != "" {
+			add("keyshortcuts", an.n.KeyShortcuts)
+		}
 		if an.n.PosInSet > 0 {
 			add("posinset", strconv.Itoa(an.n.PosInSet))
 		}

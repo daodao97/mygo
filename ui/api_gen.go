@@ -5314,6 +5314,24 @@ func (_handle Element) KeepScrollbars(keep bool) Element {
 	return wrapElement(_node.KeepScrollbars(keep))
 }
 
+// KeyShortcuts tells assistive technology a key, with exactly the
+// modifiers mods, that presses or focuses the element, as ARIA's
+// aria-keyshortcuts: the window's shortcut that runs a toolbar button's
+// command, or opens a command palette, which screen readers read with the
+// element's name. It is written as the platform's menus write it ("⌘K"
+// for Cmd+K on macOS, "Ctrl+K" elsewhere). It only tells the key: handle
+// it with Shortcut on the context, or OnWindowShortcut. Call it once for
+// each key that does.
+func (_handle Element) KeyShortcuts(mods Modifiers, key Key) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.KeyShortcuts(mods, key))
+}
+
 // Keyframes plays a sequence, holding its last value when done. It starts
 // on the first call, with the first frame's value. Keep the element and
 // key stable, and change Run when changing the sequence. Only active

@@ -133,7 +133,7 @@ func TestWindowsRequest(t *testing.T) {
 func testTree() (*platform.AccessTree, map[uint64]any) {
 	t := &platform.AccessTree{Focus: 1 << 60, Nodes: []platform.AccessNode{
 		{ID: 7, Parent: -1, Role: platform.RoleGroup},
-		{ID: 1 << 60, Parent: 0, Role: platform.RoleButton, Label: "Add",
+		{ID: 1 << 60, Parent: 0, Role: platform.RoleButton, Label: "Add", KeyShortcuts: "Ctrl+N",
 			States: platform.AccessFocusable, Actions: platform.ActionPress | platform.ActionFocus,
 			Bounds: platform.RectF{X: 1, Y: 2, W: 30, H: 20}},
 		{ID: 9, Parent: 0, Role: platform.RoleTextField, Value: "hey", SelStart: 3, SelEnd: 3},
@@ -155,7 +155,7 @@ func TestTreeRequest(t *testing.T) {
 		t.Errorf("group: %v", group)
 	}
 	// IDs go as strings, which JavaScript's numbers would round.
-	if button["id"] != "1152921504606846976" || button["parent"] != "7" || button["role"] != "button" || button["key"] != "add" || button["label"] != "Add" {
+	if button["id"] != "1152921504606846976" || button["parent"] != "7" || button["role"] != "button" || button["key"] != "add" || button["label"] != "Add" || button["keyShortcuts"] != "Ctrl+N" {
 		t.Errorf("button: %v", button)
 	}
 	if !slices.Equal(button["states"].([]any), []any{"focusable"}) || !slices.Equal(button["actions"].([]any), []any{"press", "focus"}) {
@@ -169,6 +169,9 @@ func TestTreeRequest(t *testing.T) {
 	}
 	if slider["max"] != 10.0 || slider["now"] != 4.0 || slider["min"] != 0.0 {
 		t.Errorf("slider: %v", slider)
+	}
+	if _, ok := field["keyShortcuts"]; ok {
+		t.Errorf("a text field with key shortcuts: %v", field)
 	}
 	if _, ok := button["min"]; ok {
 		t.Errorf("a button with a range: %v", button)

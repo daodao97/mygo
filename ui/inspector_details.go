@@ -543,6 +543,9 @@ func properties(rt *engine, e *node) []inspSection {
 	if e.description != "" {
 		acc.rows = append(acc.rows, inspDecl{name: "description", value: strconv.Quote(e.description)})
 	}
+	if e.keyShortcuts != "" {
+		acc.rows = append(acc.rows, inspDecl{name: "keyshortcuts", value: strconv.Quote(e.keyShortcuts)})
+	}
 	if e.busy {
 		acc.rows = append(acc.rows, inspDecl{name: "busy", value: "true"})
 	}

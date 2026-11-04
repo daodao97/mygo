@@ -241,6 +241,7 @@ var elementChains = map[string]bool{
 	"KeepOpen":             true,
 	"KeepScrollbars":       true,
 	"Key":                  true,
+	"KeyShortcuts":         true,
 	"Label":                true,
 	"Lang":                 true,
 	"Left":                 true,

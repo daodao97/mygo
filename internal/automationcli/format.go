@@ -15,10 +15,10 @@ import (
 const maxText = 120
 
 // line describes an element on a line, without its ref: its role, its
-// label, value and key, and its states, leaving out what it lacks. full
-// adds what agents seldom need: placeholders under a label, descriptions,
-// ranges, selections, levels, actions, bounds and the element's ID, and
-// writes long text whole.
+// label, value, key and key shortcuts, and its states, leaving out what
+// it lacks. full adds what agents seldom need: placeholders under a
+// label, descriptions, ranges, selections, levels, actions, bounds and
+// the element's ID, and writes long text whole.
 func line(n *node, focus string, full bool) string {
 	var b strings.Builder
 	b.WriteString("[" + n.Role + "]")
@@ -35,6 +35,9 @@ func line(n *node, focus string, full bool) string {
 	}
 	if len(n.Key) > 0 {
 		b.WriteString(" key=" + keyText(n.Key))
+	}
+	if n.Shortcuts != "" {
+		b.WriteString(" keyshortcuts=" + quote(n.Shortcuts, true))
 	}
 	for _, s := range n.States {
 		// Every control can take the focus: saying so is noise.

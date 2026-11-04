@@ -126,6 +126,36 @@ from its `ui.CheckState`, and checks it as it is pressed.
 message read with it; a [field](form.md) gives its control the texts below
 it.
 
+## Keyboard shortcuts
+
+`KeyShortcuts(mods, key)` tells screen readers a key that presses or
+focuses the element, as ARIA's `aria-keyshortcuts`: a toolbar button
+whose command the window's shortcut runs, or the button opening a command
+palette, is read with its key after its name. It only tells the key,
+which the view handles itself, as with
+[`c.Shortcut`](input.md#shortcuts); call it once for each key that does:
+
+```go
+if c.Shortcut(ui.Cmd, ui.KeyK) {
+	app.palette = true
+}
+ui.Toolbar(c, func() {
+	if ui.Button(c, "Search").KeyShortcuts(ui.Cmd, ui.KeyK).Clicked() {
+		app.palette = true
+	}
+	ui.Button(c, "Redo").KeyShortcuts(ui.Cmd|ui.Shift, ui.KeyZ).KeyShortcuts(ui.Cmd, ui.KeyY)
+})
+```
+
+The keys are written as the platform's menus write them, separated by
+spaces: `⌘K` and `⇧⌘Z ⌘Y` on macOS, in AppKit's `AXKeyShortcutsValue` as
+WebKit gives it; `Ctrl+K` and `Ctrl+Shift+Z Ctrl+Y` on Linux, in ATK's
+`keyshortcuts` object attribute, and on Windows, in UI Automation's
+`AcceleratorKey`, where Super is `Win`. A
+[test](testing.md#what-assistive-technology-sees) reads them in the
+`KeyShortcuts` of `Tester.AccessByRole`'s answer, and the
+[automation plugin](../plugins/automation.md) in a node's `keyShortcuts`.
+
 ## Formats of text
 
 The [rich text editor](rich-text-editor.md) tells screen readers the formats

@@ -638,6 +638,11 @@ func registerAccessClass() {
 			if valueText(el.node) {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXValueDescription")))
 			}
+			// The keys that press or focus it, as WebKit's elements say
+			// aria-keyshortcuts.
+			if el.node.KeyShortcuts != "" {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXKeyShortcutsValue")))
+			}
 			return names
 		}),
 		method("accessibilityAttributeValue:", func(self id, cmd objc.SEL, attr id) id {
@@ -663,6 +668,10 @@ func registerAccessClass() {
 				case "AXValueDescription":
 					if valueText(el.node) {
 						return nsString(el.node.Value)
+					}
+				case "AXKeyShortcutsValue":
+					if el.node.KeyShortcuts != "" {
+						return nsString(el.node.KeyShortcuts)
 					}
 				}
 			}

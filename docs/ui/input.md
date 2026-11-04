@@ -234,6 +234,10 @@ if c.Shortcut(ui.Cmd, ui.KeyS) {
 }
 ```
 
+A button doing what a shortcut does tells screen readers its key with
+[`KeyShortcuts`](accessibility.md#keyboard-shortcuts), as
+`ui.Button(c, "Save").KeyShortcuts(ui.Cmd, ui.KeyS)`.
+
 A key held down repeats, and each repeat comes as a press again, so an
 action that steps runs while the key is held. `c.ShortcutRepeated()` tells
 whether the key that the last shortcut to report one took came as such a

@@ -119,6 +119,7 @@ type node struct {
 	Value       string          `json:"value,omitempty"`
 	Placeholder string          `json:"placeholder,omitempty"`
 	Description string          `json:"description,omitempty"`
+	Shortcuts   string          `json:"keyShortcuts,omitempty"`
 	Bounds      rect            `json:"bounds"`
 	States      []string        `json:"states,omitempty"`
 	Actions     []string        `json:"actions,omitempty"`

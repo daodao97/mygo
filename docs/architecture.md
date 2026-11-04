@@ -2535,6 +2535,13 @@ either.
   `isAccessibilitySelectorAllowed:` says, so elements answer the older
   `accessibilityIsAttributeSettable:` themselves, as AppKit would but for
   that value: `NSAccessibilityElement` has no implementation to call.
+  The keys that press or focus an element (`KeyShortcuts`, ARIA's
+  aria-keyshortcuts) are formatted as `ui` writes a menu's shortcuts
+  (`shortcutText`) as the view builds, so that an app not giving any
+  links no formatting, and reach the backends as one string
+  (`AccessNode.KeyShortcuts`): WebKit's `AXKeyShortcutsValue`, answered
+  through `accessibilityAttributeValue:`, ATK's `keyshortcuts` object
+  attribute and UI Automation's `AcceleratorKey`, as Chromium's.
   The rows of a `List` (list items) and a `Table` (rows) are named by
   their content and say which of all the rows they are (`PosInSet`,
   `SetSize`, the list giving its total), as only those in view are built;

@@ -40,6 +40,10 @@ type AccessNode struct {
 	// text read after it: a field's description and its error, or a
 	// tooltip.
 	Description string
+	// KeyShortcuts are the keys that press or focus the element, as
+	// ARIA's aria-keyshortcuts, written as the platform's menus write
+	// them ("⌘K" on macOS, "Ctrl+K" elsewhere), separated by spaces.
+	KeyShortcuts string
 	// Level is how deep an item of a tree is, or the rank of a heading,
 	// from 1; 0 for other nodes.
 	Level int
