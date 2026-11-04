@@ -339,6 +339,9 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 		if p&propColors != 0 {
 			what = append(what, "colors")
 		}
+		if p&propShadows != 0 {
+			what = append(what, "shadows")
+		}
 		add("transition", strings.Join(what, " ")+" "+strconv.Itoa(int(r.duration().Milliseconds()))+"ms")
 	}
 	ds = append(ds, textStyles(&e.ts, e.ts.set)...)

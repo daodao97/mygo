@@ -93,8 +93,8 @@ UI as they read other apps (see [Accessibility](accessibility.md)).
   and values that ease to their targets.
 - [Shaders](shaders.md): pixels computed on the GPU by shaders written in
   Go's syntax, with values and images the app passes them.
-- [Transitions](transitions.md): elements that move, resize and recolor
-  smoothly as the layout changes, and come and go.
+- [Transitions](transitions.md): elements that move, resize, recolor and
+  shade smoothly as the layout changes, and come and go.
 - [Motion](motion.md): springs that keep their velocity, curves, delays,
   values thrown by the pointer, keyframes, timelines that play several
   tweens on one playhead, and knowing when they are done.

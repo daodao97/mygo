@@ -74,6 +74,36 @@ menus, are built from what those are made of:
   vertically is no taller than the room on the target's larger side, and
   scrolls. Its margins keep it apart from the target. It is the target's popover: its elements follow
   the target as Tab moves.
+- `AttachedAnchors` returns the anchors it ended on, as Floating UI's
+  placement: `ui.AnchorTop, ui.AnchorBottom` for a panel asked below its
+  button that went above it. The view reads the last frame's, and a
+  `Draw` this frame's; in the frame the panel first shows, the view, built
+  before the layout, reads the anchors asked. What its first frame shows
+  follows the side it goes to from the layout itself: `AttachedOrigin`
+  puts its transform origin on its own anchor, on whichever side it went,
+  so that it scales in from the edge nearest its target, and the `Flip`
+  of an `Enter` or `Exit` [motion](transitions.md#coming-and-going)
+  mirrors its offsets, so that a menu sliding down below its button
+  slides up above it:
+
+  ```go
+  tip := ui.Column(c).AttachTo(b, ui.AnchorBottom, ui.AnchorTop).Margin(6, 0, 0, 0).
+  	AttachedOrigin().Transition(ui.ElementTransition{
+  		Duration: 150 * time.Millisecond, ExitDuration: 100 * time.Millisecond,
+  		Enter: &ui.Motion{Scale: 0.96, Y: -4, Flip: true},
+  		Exit:  &ui.Motion{Scale: 0.96, Y: -4, Flip: true},
+  	})
+  _, self := tip.AttachedAnchors()
+  tip.AlignItems(ui.Center).Children(func() {
+  	if self == ui.AnchorTop { // below the button, as asked
+  		ui.Text(c, "▲")
+  	}
+  	ui.Text(c, "Copied")
+  	if self == ui.AnchorBottom { // above it, without room below
+  		ui.Text(c, "▼")
+  	}
+  })
+  ```
 - `PressedOutside` reports a press outside an element, its target and the
   popovers of what is inside it, as a popover closes for. A press before
   the element showed is not outside it: an overlay that a right-click

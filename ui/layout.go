@@ -1311,10 +1311,31 @@ func reattach(ov *node) {
 
 // attachedAt returns where c, w×h and a child of e whose padding box is
 // pw×ph, goes relative to e, attached to t, the box of its target.
+// It notes the anchors it puts together (AttachedAnchors), and puts the
+// transform origin on the element's (AttachedOrigin).
 func attachedAt(c, e *node, t Rect, pw, ph, w, h float32) (x, y float32) {
 	ax, ay, sx, sy := c.attachFractions()
-	x = alongTarget(t.X, t.W, ax, sx, w, c.m(3)-c.m(1), c.c.w)
-	y = alongTarget(t.Y, t.H, ay, sy, h, c.m(0)-c.m(2), c.c.h)
+	x, fx := alongTarget(t.X, t.W, ax, sx, w, c.m(3)-c.m(1), c.c.w)
+	y, fy := alongTarget(t.Y, t.H, ay, sy, h, c.m(0)-c.m(2), c.c.h)
+	c.placed, c.flips = c.attach.flipped(fx, fy), 0
+	if fx {
+		c.flips |= flipAcross
+	}
+	if fy {
+		c.flips |= flipDown
+	}
+	if c.hasState() {
+		c.st.placed, c.st.asked = c.placed, c.attach
+	}
+	if c.originAttached {
+		if fx {
+			sx = 1 - sx
+		}
+		if fy {
+			sy = 1 - sy
+		}
+		c.originX, c.originY, c.originSet = sx, sy, true
+	}
 	dx, dy := c.relative(pw, ph)
 	ox, oy := laidOutOrigin(e)
 	return x + dx - ox, y + dy - oy
@@ -1352,23 +1373,23 @@ func beside(at, self float32) bool { return at == 1 && self == 0 || at == 0 && s
 // alongTarget returns where an element size long goes along an axis of the
 // window, limit long, with its point at fraction self on target's point at
 // fraction at, moved by off: on the other side of target, or the other way
-// along it, where that overflows the window less, then moved into the
-// window along target.
-func alongTarget(t0, tsize, at, self, size, off, limit float32) float32 {
+// along it, where that overflows the window less (flipped), then moved
+// into the window along target.
+func alongTarget(t0, tsize, at, self, size, off, limit float32) (p float32, flipped bool) {
 	pos := func(at, self, off float32) float32 { return t0 + at*tsize - self*size + off }
 	over := func(p float32) float32 {
 		return max(0, windowMargin-p) + max(0, p+size-(limit-windowMargin))
 	}
-	p := pos(at, self, off)
+	p = pos(at, self, off)
 	if over(p) > 0 {
 		if q := pos(1-at, 1-self, -off); over(q) < over(p) {
-			p = q
+			p, flipped = q, true
 		}
 	}
 	if !beside(at, self) && over(p) > 0 {
 		p = max(windowMargin, min(p, limit-windowMargin-size))
 	}
-	return p
+	return p, flipped
 }
 
 // laidOutOrigin returns where place will put the box of an element laid

@@ -632,7 +632,11 @@ type state struct {
 	// rtl tells that the element was laid out right to left: a scroll
 	// container's horizontal offset counts from the right, and its
 	// vertical scroll bar is on the left.
-	rtl       bool
+	rtl bool
+	// placed is where AttachTo put the element in the last frame
+	// (AttachedAnchors), asked where it was asked to.
+	placed, asked attachment
+
 	clipRect  Rect
 	clipRadii [4]float32
 	// selfClips tells that the element clips itself and what is inside it

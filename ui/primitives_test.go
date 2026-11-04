@@ -314,6 +314,70 @@ func TestAttachTo(t *testing.T) {
 	}
 }
 
+func TestAttachedAnchors(t *testing.T) {
+	var viewAt, viewSelf, drawAt, drawSelf Anchor
+	var panel *node
+	left, top := float32(100), float32(100)
+	tt := coreNewTester(func(c *context) {
+		b := coreButtonBase(c).Size(40, 20).Label("anchor").Absolute().Left(left).Top(top)
+		coreOverlay(c, func() {
+			p := coreBox(c).Size(60, 30).Label("panel").AttachTo(b, AnchorBottomStart, AnchorTopStart).AttachedOrigin()
+			viewAt, viewSelf = p.AttachedAnchors()
+			p.Draw(func(*Painter, Rect) { drawAt, drawSelf = p.AttachedAnchors() })
+			panel = p
+		})
+	}, 400, 300)
+	check := func(what string, at, self, wantAt, wantSelf Anchor) {
+		t.Helper()
+		if at != wantAt || self != wantSelf {
+			t.Errorf("%s: %v %v, want %v %v", what, at, self, wantAt, wantSelf)
+		}
+	}
+	origin := func(x, y float32) {
+		t.Helper()
+		if panel.originX != x || panel.originY != y {
+			t.Errorf("origin %v %v, want %v %v", panel.originX, panel.originY, x, y)
+		}
+	}
+	check("below, in the view", viewAt, viewSelf, AnchorBottomStart, AnchorTopStart)
+	check("below, drawn", drawAt, drawSelf, AnchorBottomStart, AnchorTopStart)
+	origin(0, 0)
+
+	// Without room below, it goes above: drawn and its origin in this
+	// frame, read by the view in the next.
+	top = 260
+	tt.Frame()
+	check("above, in the view of the frame it moved", viewAt, viewSelf, AnchorBottomStart, AnchorTopStart)
+	check("above, drawn", drawAt, drawSelf, AnchorTopStart, AnchorBottomStart)
+	origin(0, 1)
+	tt.Frame()
+	check("above, in the view", viewAt, viewSelf, AnchorTopStart, AnchorBottomStart)
+
+	// Near the right edge too, it aligns its end with the anchor's.
+	left = 350
+	tt.Frame()
+	tt.Frame()
+	check("above, near the right edge", viewAt, viewSelf, AnchorTopEnd, AnchorBottomEnd)
+	origin(1, 1)
+}
+
+func TestAnchorsFlipped(t *testing.T) {
+	for a := AnchorTopLeft; a <= AnchorBottomEnd; a++ {
+		if a.acrossFlipped().acrossFlipped() != a || a.downFlipped().downFlipped() != a {
+			t.Errorf("%v flipped twice is not itself", a)
+		}
+		for _, rtl := range []bool{false, true} {
+			fx, fy := a.physical(rtl).fractions()
+			if x, y := a.acrossFlipped().physical(rtl).fractions(); x != 1-fx || y != fy {
+				t.Errorf("%v across, rtl %v: %v %v from %v %v", a, rtl, x, y, fx, fy)
+			}
+			if x, y := a.downFlipped().physical(rtl).fractions(); x != fx || y != 1-fy {
+				t.Errorf("%v down, rtl %v: %v %v from %v %v", a, rtl, x, y, fx, fy)
+			}
+		}
+	}
+}
+
 func TestModalOverlayOfYourOwn(t *testing.T) {
 	open := false
 	tt := coreNewTester(func(c *context) {
