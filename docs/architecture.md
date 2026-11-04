@@ -4254,7 +4254,10 @@ either.
   styles as spans over its own when it lays out. At commit, each gets the
   boxes of its runes in the paragraph's layout (`Selection`), one hit
   each, so the pointer, the focus order, tooltips and menus work as for
-  any element; they paint only their focus ring, and assistive
+  any element; they paint only their focus ring (their `Opacity`,
+  `Invisible` and dimming fade the colors of their spans, `Span.faded`,
+  and a color faded to nothing stays the span's own, `colorSet`, so the
+  paragraph skips their glyphs but keeps their advance), and assistive
   technology sees those that are more than text, such as links, as nodes
   inside the paragraph's.
   Fontconfig knows no desktop's interface font, so on Linux `system-ui`

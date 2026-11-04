@@ -213,6 +213,20 @@ Only text elements (`Text`, `Link`, `RichText`) go inside a text; their
 sizes, padding, borders and corners do not apply, and a `Background`
 highlights their text.
 
+`Opacity` fades an element's words within the sentence, with the colors
+of the elements inside it, a transparent `TextColor` paints none of them,
+and `Invisible` hides them as CSS's `visibility: hidden` does: their room
+in the line stays, so a word streamed into a reply can fade in, or a
+placeholder hide, without moving the text around it:
+
+```go
+ui.Text(c, "").Children(func() {
+	for i, word := range reply.words {
+		ui.Text(c, word).Opacity(reply.fadeIn(i)) // 0 to 1 as each arrives
+	}
+})
+```
+
 ## Fonts
 
 Text is laid out and drawn by the system's own text engine (DirectWrite on

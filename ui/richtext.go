@@ -74,6 +74,19 @@ type Span struct {
 	// offsetSet marks an UnderlineOffset set, zero included, by the
 	// style of an inline element.
 	offsetSet bool
+	// colorSet and decoColorSet mark a Color and a DecorationColor
+	// set though transparent, by the style of an inline element: its
+	// TextColor, or its Opacity or Invisible, which fade its text.
+	colorSet, decoColorSet bool
+}
+
+// color returns the span's Color, and whether it sets one.
+func (s *Span) color() (Color, bool) { return s.Color, s.colorSet || s.Color.A > 0 }
+
+// decorationColor returns the span's DecorationColor, and whether it sets
+// one.
+func (s *Span) decorationColor() (Color, bool) {
+	return s.DecorationColor, s.decoColorSet || s.DecorationColor.A > 0
 }
 
 // underlineOffset returns the span's UnderlineOffset, and whether it sets
@@ -193,7 +206,7 @@ func (sc *spanCache) update(spans []Span) {
 	paints := false
 	for i, s := range spans {
 		end += utf8.RuneCountInString(s.Text)
-		paints = paints || s.Color.A > 0 || s.Underline || s.WavyUnderline || s.DottedUnderline || s.Strikethrough || s.Background.A > 0
+		paints = paints || s.Color.A > 0 || s.colorSet || s.Underline || s.WavyUnderline || s.DottedUnderline || s.Strikethrough || s.Background.A > 0
 		same = same && sc.styles[i] == spanStyle(s, end)
 	}
 	sc.paints = paints
@@ -343,8 +356,10 @@ func (sp *spanPaint) at(r int) int {
 
 // color returns the color of span i, or c.
 func (sp *spanPaint) color(i int, c Color) Color {
-	if i >= 0 && sp.spans[i].Color.A > 0 {
-		return sp.spans[i].Color
+	if i >= 0 {
+		if sc, ok := sp.spans[i].color(); ok {
+			return sc
+		}
 	}
 	return c
 }
@@ -405,8 +420,8 @@ func (sp *spanPaint) lines(p *Painter, l *text.Layout, li int, x, y float32, col
 		if !d.underline && !d.strike {
 			return
 		}
-		if span.DecorationColor.A > 0 {
-			d.color = span.DecorationColor
+		if c, ok := span.decorationColor(); ok {
+			d.color = c
 		}
 		if span.DecorationThickness > 0 {
 			d.thick = span.DecorationThickness
@@ -414,9 +429,13 @@ func (sp *spanPaint) lines(p *Painter, l *text.Layout, li int, x, y float32, col
 		if v, ok := span.underlineOffset(); ok {
 			d.offset, d.hasOffset = v, true
 		}
+		c := sp.color(k, color)
+		if d.color.A == 0 && (span.decoColorSet || c.A == 0) {
+			return // transparent, or faded out
+		}
 		saved := p.transform
 		p.transform = saved.Mul(p.inlineTransform(l.Lines[li].Glyphs[i].Cluster))
-		p.decorationRun(l, li, i, j, x, y, d, sp.color(k, color))
+		p.decorationRun(l, li, i, j, x, y, d, c)
 		p.transform = saved
 	})
 }

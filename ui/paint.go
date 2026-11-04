@@ -945,6 +945,9 @@ func (p *Painter) textForeground(l *text.Layout, x, y float32, color Color, ts t
 			glyphColor, glyphShade := color, shade
 			if sp != nil {
 				if glyphColor = sp.color(sp.at(g.Cluster), color); glyphColor != color {
+					if glyphColor.A == 0 {
+						continue // faded out, or hidden: its advance stays
+					}
 					glyphShade = text.ShadeOf(glyphColor.R, glyphColor.G, glyphColor.B)
 				}
 			}
