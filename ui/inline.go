@@ -156,6 +156,9 @@ func (e *node) spanStyle() (Span, float32) {
 	if t.set&setDecoOffset != 0 {
 		s.UnderlineOffset, s.offsetSet = t.decoOffset, true
 	}
+	if t.set&setStroke != 0 {
+		s.strokeWidth, s.strokeColor, s.strokeSet = t.strokeWidth, t.strokeColor, true
+	}
 	switch {
 	case t.set&setBackground != 0:
 		s.Background = t.background
@@ -182,6 +185,9 @@ func (e *node) spanStyle() (Span, float32) {
 		if r.set&setDecoColor != 0 {
 			s.DecorationColor, s.decoColorSet = r.decoColor, r.decoColor.A == 0
 		}
+		if r.set&setStroke != 0 {
+			s.strokeWidth, s.strokeColor, s.strokeSet = r.strokeWidth, r.strokeColor, true
+		}
 		s = s.faded(alpha)
 	}
 	return s, alpha
@@ -198,6 +204,9 @@ func (s Span) faded(alpha float32) Span {
 	if c, ok := s.decorationColor(); ok {
 		s.DecorationColor = c.Alpha(alpha)
 		s.decoColorSet = s.DecorationColor.A == 0
+	}
+	if s.strokeSet {
+		s.strokeColor = s.strokeColor.Alpha(alpha)
 	}
 	// A background faded to nothing shows that of the text around it, as
 	// it would on the web.
@@ -230,6 +239,9 @@ func over(s, base Span) Span {
 	}
 	if s.Background.A == 0 {
 		s.Background = base.Background
+	}
+	if !s.strokeSet {
+		s.strokeWidth, s.strokeColor, s.strokeSet = base.strokeWidth, base.strokeColor, base.strokeSet
 	}
 	if _, ok := s.letterSpacing(); !ok {
 		s.LetterSpacing, s.NoLetterSpacing = base.LetterSpacing, base.NoLetterSpacing

@@ -922,10 +922,19 @@ func (p *Painter) textForeground(l *text.Layout, x, y float32, color Color, ts t
 	deco := decoration{underline: ts.underline, wavy: ts.wavy, dotted: ts.dotted, strike: ts.strike, solid: ts.solid, color: ts.decoColor, thick: ts.decoThick,
 		offset: ts.decoOffset, hasOffset: ts.set&setDecoOffset != 0}
 	shade := text.ShadeOf(color.R, color.G, color.B)
-	start := int32(len(p.s.Glyphs))
 	// Inline transforms do not change while the text paints; look for them once.
 	moves := p.inlineTransforms()
 	clips := !p.transform.Set && !moves
+	if paintStrokes != nil && (ts.strokeWidth > 0 && ts.strokeColor.A > 0 || sp != nil && sp.strokes()) {
+		// The spans by value, as a call through a variable would move a
+		// pointer to the caller's to the heap.
+		var spans spanPaint
+		if sp != nil {
+			spans = *sp
+		}
+		paintStrokes(p, l, x, y, color, ts, spans, moves, clips)
+	}
+	start := int32(len(p.s.Glyphs))
 	var run *glyphRun
 	if sys.JoinsGlyphs() && !moves {
 		// The engine's, whose buffers each text reuses.
@@ -978,6 +987,75 @@ func (p *Painter) textForeground(l *text.Layout, x, y float32, color Color, ts t
 		}
 		if deco.underline || deco.strike {
 			p.decorations(l, li, 0, len(line.Glyphs), x, y, deco, color)
+		}
+	}
+	if end := int32(len(p.s.Glyphs)); end > start {
+		p.add(scene.Op{Kind: scene.OpGlyphs, Start: start, End: end})
+	}
+}
+
+// paintStrokes is textStrokes, and strokeGlyph the text system's
+// StrokeGlyph, once TextStroke is called, so that apps that never stroke
+// text do not link them.
+var (
+	paintStrokes func(p *Painter, l *text.Layout, x, y float32, color Color, ts textStyle, sp spanPaint, moves, clips bool)
+	strokeGlyph  func(s *text.System, f *text.Font, id uint32, scale, x float32, shade text.Shade, opaque bool, width float32) text.GlyphImage
+)
+
+func linkStrokes() {
+	if paintStrokes == nil {
+		paintStrokes, strokeGlyph = (*Painter).textStrokes, (*text.System).StrokeGlyph
+	}
+}
+
+// textStrokes paints the strokes of the glyphs of l, laid out from (x, y),
+// under them (TextStroke): those of ts, or of spans where it has any, in
+// their colors, along the glyphs of color, as textForeground draws them.
+// moves tells that inline transforms move glyphs, and clips that glyphs
+// outside the clip are left out.
+func (p *Painter) textStrokes(l *text.Layout, x, y float32, color Color, ts textStyle, spans spanPaint, moves, clips bool) {
+	var sp *spanPaint
+	if spans.spans != nil {
+		sp = &spans
+	}
+	sys := p.rt.text
+	s := p.scale
+	shade := text.ShadeOf(color.R, color.G, color.B)
+	start := int32(len(p.s.Glyphs))
+	for li := range l.Lines {
+		line := &l.Lines[li]
+		if clips && (y+line.Y > p.clip.Y+p.clip.H || y+line.Y+line.Height < p.clip.Y) {
+			continue
+		}
+		baseline := sys.Baseline((y + line.Baseline) * s)
+		for _, g := range line.Glyphs {
+			pen := (x + g.X) * s
+			width, stroke := ts.strokeWidth, ts.strokeColor
+			if g.Object || clips && (pen > (p.clip.X+p.clip.W+width)*s || pen+(g.Advance+g.Size+width)*s < p.clip.X*s) {
+				continue
+			}
+			glyphShade := shade
+			if sp != nil {
+				k := sp.at(g.Cluster)
+				if c := sp.color(k, color); c != color {
+					glyphShade = text.ShadeOf(c.R, c.G, c.B)
+				}
+				width, stroke = sp.stroke(k, width, stroke)
+			}
+			if width <= 0 || stroke.A == 0 {
+				continue
+			}
+			gi := strokeGlyph(sys, g.Font, g.ID, s, pen, glyphShade, p.opaque && !moves, width*s)
+			if !gi.OK {
+				continue
+			}
+			stroke = stroke.Alpha(p.opacity)
+			p.s.Glyphs = append(p.s.Glyphs, scene.Glyph{
+				X: float32(math.Floor(float64(pen))) + gi.Left, Y: baseline + gi.Top, W: float32(gi.W), H: float32(gi.H),
+				U: gi.X, V: gi.Y, UW: gi.W, VH: gi.H,
+				Transform: p.inlineTransform(g.Cluster).Pixels(s),
+				Color:     stroke.scene(), Wide: p.glyphWide(stroke),
+			})
 		}
 	}
 	if end := int32(len(p.s.Glyphs)); end > start {

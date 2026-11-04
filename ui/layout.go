@@ -207,7 +207,7 @@ func (e *node) textParams(width float32) text.Params {
 	ts := e.resolvedText()
 	style := text.Style{
 		Family: ts.family, Size: ts.size, Weight: ts.weight, Italic: ts.italic, LineHeight: ts.lineHeight,
-		LetterSpacing: ts.spacing, Features: ts.features, Lang: ts.lang,
+		LetterSpacing: ts.spacing, Features: ts.features, Lang: ts.lang, TabSize: ts.tabSize,
 	}
 	if ts.fixedLine && ts.lineHeight > 0 {
 		style.LineHeight = ts.lineHeight / style.FontSize()
@@ -290,6 +290,12 @@ func (e *node) resolvedText() textStyle {
 		}
 		if take&setSelection != 0 {
 			out.selection = t.selection
+		}
+		if take&setStroke != 0 {
+			out.strokeWidth, out.strokeColor = t.strokeWidth, t.strokeColor
+		}
+		if take&setTabSize != 0 {
+			out.tabSize = t.tabSize
 		}
 		out.set |= take
 	}

@@ -74,6 +74,11 @@ type Span struct {
 	// offsetSet marks an UnderlineOffset set, zero included, by the
 	// style of an inline element.
 	offsetSet bool
+	// strokeWidth and strokeColor are the stroke of the text of an inline
+	// element (TextStroke), if strokeSet.
+	strokeWidth float32
+	strokeColor Color
+	strokeSet   bool
 	// colorSet and decoColorSet mark a Color and a DecorationColor
 	// set though transparent, by the style of an inline element: its
 	// TextColor, or its Opacity or Invisible, which fade its text.
@@ -206,7 +211,7 @@ func (sc *spanCache) update(spans []Span) {
 	paints := false
 	for i, s := range spans {
 		end += utf8.RuneCountInString(s.Text)
-		paints = paints || s.Color.A > 0 || s.colorSet || s.Underline || s.WavyUnderline || s.DottedUnderline || s.Strikethrough || s.Background.A > 0
+		paints = paints || s.Color.A > 0 || s.colorSet || s.Underline || s.WavyUnderline || s.DottedUnderline || s.Strikethrough || s.Background.A > 0 || s.strokeSet
 		same = same && sc.styles[i] == spanStyle(s, end)
 	}
 	sc.paints = paints
@@ -362,6 +367,24 @@ func (sp *spanPaint) color(i int, c Color) Color {
 		}
 	}
 	return c
+}
+
+// stroke returns the width and color of the stroke of span i, or w and c.
+func (sp *spanPaint) stroke(i int, w float32, c Color) (float32, Color) {
+	if i >= 0 && sp.spans[i].strokeSet {
+		return sp.spans[i].strokeWidth, sp.spans[i].strokeColor
+	}
+	return w, c
+}
+
+// strokes reports whether a span strokes its glyphs.
+func (sp *spanPaint) strokes() bool {
+	for i := range sp.spans {
+		if s := &sp.spans[i]; s.strokeSet && s.strokeWidth > 0 && s.strokeColor.A > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // runs calls fn with each run of the glyphs of a line in one span: the

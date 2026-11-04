@@ -38,6 +38,15 @@ type Style struct {
 	// and falls back to fonts for it. "" is the language of the System
 	// (SetLanguage).
 	Lang string
+	// TabSize puts tab stops every TabSize spaces of the style's font,
+	// letter spacing included, from the start of each line, as CSS's
+	// tab-size, once System.UseTabSize was called; 0 leaves them where
+	// the system's text stack puts them.
+	TabSize float32
+
+	// tabStop is the distance between tab stops in DIPs that TabSize
+	// makes, which the System sets for engines as it shapes.
+	tabStop float32
 }
 
 func (s Style) weight() int {
@@ -451,12 +460,17 @@ type System struct {
 	// justify is justifyLine once UseJustify was called, so that apps
 	// that never justify text do not link it.
 	justify func(line *Line, runes []rune, width float32) (left float32, ok bool)
+	// tabs is tabStop once UseTabSize was called, so that apps that never
+	// set a tab size do not link it.
+	tabs func(s *System, style Style) float32
 }
 
 type markKey struct {
 	style Style
 	mark  string // Params.Ellipsis
 	rtl   bool
+	// space keys the advance of a space of the style instead (tabStop).
+	space bool
 }
 
 // cached is a layout, with room for one line, as most layouts have, and
@@ -609,6 +623,14 @@ func (s *System) UseJustify() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.justify = justifyLine
+}
+
+// UseTabSize lets layouts set their tab stops (Style.TabSize), which
+// package ui calls as the first element sets a tab size.
+func (s *System) UseTabSize() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tabs = (*System).tabStop
 }
 
 // RegisterFont adds a TrueType or OpenType font (or collection) to the
@@ -1066,6 +1088,9 @@ func (s *System) layout(p Params) *cached {
 	if p.Style.Lang == "" {
 		p.Style.Lang = s.lang
 	}
+	if p.Style.TabSize > 0 && s.tabs != nil && strings.ContainsRune(p.Text, '\t') {
+		p.Style.tabStop = s.tabs(s, p.Style)
+	}
 	l.Lines = c.line[:0]
 	y := float32(0)
 	for start := 0; start <= len(runes); {
@@ -1155,6 +1180,28 @@ func (s *System) layout(p Params) *cached {
 		}
 	}
 	return c
+}
+
+// tabStop returns the distance between the tab stops of a style, TabSize
+// spaces of its font.
+func (s *System) tabStop(style Style) float32 {
+	n := style.TabSize
+	style.TabSize, style.tabStop = 0, 0
+	key := markKey{style: style, space: true}
+	space, ok := s.marks[key]
+	if !ok {
+		for _, l := range s.engine().shape([]rune{' '}, style, nil, 0, false, false) {
+			space += advance(l)
+		}
+		if len(s.marks) >= 256 {
+			clear(s.marks)
+		}
+		s.marks[key] = space
+	}
+	if space <= 0 {
+		space = style.FontSize() / 4
+	}
+	return space * n
 }
 
 // paragraph lays out runes[start:end], a paragraph without newlines, in at
@@ -1415,7 +1462,7 @@ func (s *System) ellipsize(text []rune, spans []Span, start int, p Params, width
 	}
 	cut := len(rest)
 	if width > 0 {
-		key := markKey{p.Style, p.Ellipsis, rtl}
+		key := markKey{style: p.Style, mark: p.Ellipsis, rtl: rtl}
 		ellipsis, ok := s.marks[key]
 		if !ok {
 			for _, l := range e.shape(mark, p.Style, nil, 0, rtl, false) {

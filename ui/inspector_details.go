@@ -432,6 +432,12 @@ func textStyles(ts *textStyle, set uint32) []inspDecl {
 	if set&setSelection != 0 {
 		ds = append(ds, inspDecl{name: "selection-color", value: colorText(ts.selection), color: ts.selection, swatch: true})
 	}
+	if set&setStroke != 0 {
+		ds = append(ds, inspDecl{name: "-webkit-text-stroke", value: pxText(ts.strokeWidth) + " " + colorText(ts.strokeColor), color: ts.strokeColor, swatch: true})
+	}
+	if set&setTabSize != 0 {
+		add("tab-size", num(ts.tabSize))
+	}
 	return ds
 }
 

@@ -30,6 +30,27 @@ descenders, as `underline-offset-4` does on the web:
 ui.Link(c, "Read the docs", url).Underline().DecorationThickness(1).UnderlineOffset(4)
 ```
 
+`TextStroke(width, color)` strokes the outlines of the glyphs under their
+fill, as CSS's `-webkit-text-stroke` with `paint-order: stroke fill`: half
+the stroke shows around each glyph, a halo that keeps a label readable
+over whatever is behind it. All the strokes of a text paint under all its
+glyphs, so a stroke never covers the glyph beside it; the text of an
+inline element strokes with its own. A chart's labels over its bars,
+outlined in the background's color:
+
+```go
+ui.Text(c, "42%").TextColor(t.Text).TextStroke(3, t.Background)
+```
+
+`TabSize(n)` puts tab stops every `n` spaces of the font from the start of
+each line, as CSS's `tab-size`, so a code block's tabs indent 2 or 4
+columns; without it, tabs stop where the system's text stack puts them,
+which differs between systems:
+
+```go
+ui.Text(c, source).Font("monospace").TabSize(4)
+```
+
 Text in Arabic, Hebrew and the other scripts written so reads right to
 left, mixed with text reading left to right as Unicode's bidirectional
 algorithm says: a paragraph reads in the direction of its first strongly

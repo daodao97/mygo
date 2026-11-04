@@ -4140,6 +4140,24 @@ either.
     a pixel. There, on Linux, package ui has the text system join them
     (`System.GlyphRun`): their coverage added and clamped, cached as one
     bitmap.
+  - *Strokes.* `TextStroke` draws each glyph's stroke as a mask of its
+    own (`System.StrokeGlyph`), made in Go from the glyph's coverage for
+    every engine: the coverage dilated by half the width less the
+    coverage eroded by it, each edge pixel's coverage placing the edge
+    within it, so the stroke is centered on the outline, round at its
+    corners and as smooth as the glyph; color glyphs stroke their alpha.
+    Cached with the glyphs, under a key with the width, and drawn by
+    every renderer as any mask glyph, all of a text's before its glyphs
+    (`paint-order: stroke fill`). `TextStroke` links it, so that apps that
+    stroke no text do not.
+  - *Tabs.* `Style.TabSize` sets tab stops every that many spaces of the
+    style's font, letter spacing included, from the start of each line,
+    which each engine takes natively: Core Text's paragraph style (no
+    tab stops but a `DefaultTabInterval`), DirectWrite's
+    `SetIncrementalTabStop`, a Pango tab array of one stop, which it
+    repeats, and the canvas engine's own lines, which otherwise measure a
+    tab as the canvas does, as a space. The first `TabSize` links it
+    (`System.UseTabSize`), as `Justify` does `UseJustify`.
   Paths drawn with
   `Painter` are masks in the coverage atlas, rasterized by `internal/vec`,
   cached by their shape relative to the pixel grid in quarters of a pixel,

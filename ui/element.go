@@ -3,6 +3,7 @@ package ui
 import (
 	"math"
 	"strings"
+	"sync"
 
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/scene"
@@ -229,6 +230,12 @@ type textStyle struct {
 	background Color
 	// selection is the highlight of selected text, the theme's when unset.
 	selection Color
+	// strokeWidth and strokeColor stroke the outlines of the glyphs
+	// under their fill (TextStroke).
+	strokeWidth float32
+	strokeColor Color
+	// tabSize puts tab stops every tabSize spaces (TabSize).
+	tabSize float32
 }
 
 const (
@@ -249,9 +256,11 @@ const (
 	setSelection
 	setLang
 	setDecoOffset
+	setStroke
+	setTabSize
 
 	// setAll has every bit of textStyle.set.
-	setAll = setDecoOffset<<1 - 1
+	setAll = setTabSize<<1 - 1
 )
 
 // layoutStyle is what lays an element out, of what the view sets on it:
@@ -1621,6 +1630,41 @@ func (e *node) TextBackground(c Color) *node {
 	e.ts.set |= setBackground
 	return e
 }
+
+// TextStroke strokes the outlines of the glyphs of text width DIPs wide
+// in c, under their fill, as CSS's -webkit-text-stroke with paint-order:
+// stroke fill: the half of the stroke outside the glyphs shows around
+// them, a halo of c, as a chart's labels over its bars take one of the
+// background's color to stand out. A text's strokes all go under all
+// its glyphs, so that one glyph's stroke never covers its neighbor; the
+// stroke goes around the edge of the pixels of color glyphs, as emoji.
+// Underlines and strikethroughs are not stroked. A width of 0 strokes
+// nothing, where the elements around it stroke their text.
+func (e *node) TextStroke(width float32, c Color) *node {
+	linkStrokes()
+	e.ts.strokeWidth, e.ts.strokeColor = max(width, 0), c
+	e.ts.set |= setStroke
+	return e
+}
+
+// TabSize puts the tab stops of the element's text every n spaces of its
+// font from the start of each line, as CSS's tab-size: a tab advances
+// to the next of them, as a code block indents with tabs of 2 or 4
+// columns. A space is as wide as the font's, letter spacing included.
+// Without it, or with n at 0, tabs advance as the system's text stack
+// sets them, which differs between systems.
+func (e *node) TabSize(n float32) *node {
+	if n > 0 {
+		linkTabs.Do(text.Shared().UseTabSize)
+	}
+	e.ts.tabSize = max(n, 0)
+	e.ts.set |= setTabSize
+	return e
+}
+
+// linkTabs lets the text system set tab stops once an element sets a tab
+// size, so that apps that never do not link it.
+var linkTabs sync.Once
 
 // Strikethrough strikes text through.
 func (e *node) Strikethrough() *node { e.ts.strike = true; e.ts.set |= setStrike; return e }
