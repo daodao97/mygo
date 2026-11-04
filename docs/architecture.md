@@ -2828,9 +2828,13 @@ either.
   from the arena kept, rather than each frame noting them. The engine has
   its `matcher` only once a `Transition` has a `Match` or `ScaleContent`,
   so that apps without them link none of it. An element appears with
-  its `Enter` only in a parent the frame before had. One no longer built,
+  its `Enter` only in a parent the frame before had; the overlay layer,
+  built only while it holds something, counts as the root there. One no longer built,
   whose parent still is, goes with its `Exit` as an inert copy, laid out
-  and painted under its siblings without taking room: frames that built
+  and painted under its siblings without taking room; the frames after
+  one in the overlay layer, or its copy, build the layer, empty but for
+  the copies, which lets the pointer and the focus through
+  (`engine.overlayExits`). Frames that built
   elements with an `Exit` leave their arena to the next frame, which
   builds in the other (`Context.spare`), so that the next one copies those
   gone (`ghostOf`), with states of their own and nothing referring to the

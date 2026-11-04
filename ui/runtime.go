@@ -231,7 +231,9 @@ type engine struct {
 	// with an Exit or flying with a Match, whose arena the next frame
 	// keeps to copy those that go, laidW and laidH are the size the last
 	// frame was laid out at, and byID maps a frame's elements, for the
-	// copies going.
+	// copies going. overlayExits tells that the last frame had elements
+	// with an Exit in the overlay layer, or copies leaving it: the next
+	// builds the layer, though nothing else does, for them to leave in.
 	trans map[uint64]*transition
 	// matches moves the elements of a Transition's Match, once one has
 	// one (match.go).
@@ -245,6 +247,7 @@ type engine struct {
 	// (AnimatePose), parents first.
 	posed        []*node
 	exitsBuilt   bool
+	overlayExits bool
 	laidW, laidH float32
 	byID         map[uint64]*node
 	// going are animateExits' copies going, in order, and holding the
@@ -637,6 +640,12 @@ func (rt *engine) runFrame() {
 			return
 		}
 		rt.buildToasts(&rt.c)
+		if rt.overlayExits {
+			// Copies of the elements gone from the layer leave in it
+			// (animateExits), empty as it is otherwise: it lets the
+			// pointer through, and holds nothing to focus.
+			rt.c.overlayRoot()
+		}
 		if ov := rt.c.overlay; ov != nil {
 			rt.c.root.add(ov)
 		}

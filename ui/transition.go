@@ -471,7 +471,7 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 	resized := w != rt.laidW || h != rt.laidH || rt.instant()
 	rt.laidW, rt.laidH = w, h
 	uses := c.transitions
-	rt.exitsBuilt = false
+	rt.exitsBuilt, rt.overlayExits = false, false
 	if len(uses) == 0 && len(rt.trans) == 0 {
 		return
 	}
@@ -520,6 +520,9 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 			// The next frame copies it if it goes: to go as its Exit
 			// says, or to fly with the element taking its Match.
 			rt.exitsBuilt = true
+			if u.t.Exit != nil && e.parent == c.overlay {
+				rt.overlayExits = true
+			}
 		}
 		u.r = r
 		uses[n] = u
@@ -531,7 +534,13 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 		next := r.next
 		// An element appearing in a parent that was there comes in;
 		// whole new parts of the interface, as a page, appear at once.
-		appears := r.fresh && !resized && e.st.born == rt.frame && e.parent.st.born != rt.frame
+		// The overlay layer is the window's, though built only while it
+		// holds something: what appears in it comes in as in the root.
+		parent := e.parent
+		if parent == c.overlay {
+			parent = root
+		}
+		appears := r.fresh && !resized && e.st.born == rt.frame && parent.st.born != rt.frame
 		if r.held || appears && r.t.AfterExits {
 			// Unseen until the copies of its siblings are gone, which
 			// animateExits makes: then it comes in.
@@ -791,6 +800,9 @@ func (rt *engine) animateExits(root *node, now time.Time, still, instant bool) {
 		g.next = nil
 		p.add(g)
 		p.ghosts = true
+		if p == rt.c.overlay {
+			rt.overlayExits = true
+		}
 		layoutBox(g, r.gone.w, r.gone.h)
 		if s.w != r.gone.w || s.h != r.gone.h {
 			g.w, g.h = max(s.w, 0), max(s.h, 0)
