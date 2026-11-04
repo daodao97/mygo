@@ -373,6 +373,21 @@ func TestMixOklab(t *testing.T) {
 	if m := red.Alpha(0).MixOklab(red, 0.5); m.A != 128 {
 		t.Errorf("alpha halfway = %v", m.A)
 	}
+	// Premultiplied, as CSS's color-mix(in oklab, red 50%, transparent):
+	// rgb(255 0 0 / 0.5), not darkened by Transparent's black.
+	if m := red.MixOklab(Transparent, 0.5); m != (Color{R: 255, A: 128}) {
+		t.Errorf("red and transparent = %+v, want 255 0 0 / 128", m)
+	}
+	if m := Transparent.MixOklab(blue, 0.25); m != (Color{B: 255, A: 64}) {
+		t.Errorf("transparent and blue = %+v, want 0 0 255 / 64", m)
+	}
+	if m := Transparent.MixOklab(Transparent, 0.5); m != Transparent {
+		t.Errorf("transparent and transparent = %+v", m)
+	}
+	// Between translucent colors, the one more opaque weighs more.
+	if m := red.Alpha(0.25).MixOklab(blue, 0.5); m.A != 160 || m.B <= m.R {
+		t.Errorf("translucent red and blue = %+v", m)
+	}
 	if m := wideGreen.MixOklab(wideGreen, 0.3); m != wideGreen {
 		t.Errorf("a wide color mixed with itself = %+v", m)
 	}
