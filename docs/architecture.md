@@ -2095,6 +2095,23 @@ their gains (a 2×2 matrix of volume and pan) over 5 ms on every change,
 pause and resume. Looping happens in the source, so a loop has no gap; the
 voice counts frames past it modulo the length for `Position`.
 
+A player that preserves pitch (`SetPreservesPitch`) gets a stretcher
+(`audio/stretch.go`) between its source and its resampler, which then
+resamples at the rate alone. It is WSOLA: hops of about 16 ms, each a
+Hann crossfade from the natural continuation of the last segment into a
+new one, which the speed puts a hop times the speed further on and a
+search within about 10 ms moves to where the waveforms match best
+(normalized cross-correlation in mono, every frame of about 16 kHz, then
+each frame around the best; the natural continuation itself when in reach,
+so at 1× it passes the source through). Its buffers are allocated once,
+the first time; it reads ahead what a step needs, skipping what fast speeds
+leave out, reads silence past the source's end and fades out once the
+speed puts the next segment there, and tags each
+frame it gives with the source frame the speed puts it at, which the voice
+keeps beside its four frames of history for `Position`. Turned off, it
+passes the source through from the natural continuation, and a voice keeps
+it, so that voices that never preserved pitch pay one nil check.
+
 `Position` is where a voice is heard, not mixed. The mixer counts the
 frames it mixed and, of the latest, those the device holds: as many as it
 was written, up to its latency, from when it opened (`setHeld`). Each
