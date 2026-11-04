@@ -524,14 +524,13 @@ var (
 	cairoSurfaceWriteToPNGStream func(surface ptr, write ptr, closure ptr) int32
 	cairoSurfaceDestroy          func(s ptr)
 
-	appIndicatorNew              func(id, icon *byte, category int32) ptr
-	appIndicatorSetStatus        func(ind ptr, status int32)
-	appIndicatorSetMenu          func(ind, menu ptr)
-	appIndicatorSetIconFull      func(ind ptr, icon, desc *byte)
-	appIndicatorSetIconThemePath func(ind ptr, path *byte)
-	appIndicatorSetTitle         func(ind ptr, title *byte)
-	appIndicatorSetLabel         func(ind ptr, label, guide *byte)
-	appIndicatorSetTooltipFull   func(ind ptr, icon, title, body *byte)
+	appIndicatorNew            func(id, icon *byte, category int32) ptr
+	appIndicatorSetStatus      func(ind ptr, status int32)
+	appIndicatorSetMenu        func(ind, menu ptr)
+	appIndicatorSetIconFull    func(ind ptr, icon, desc *byte)
+	appIndicatorSetTitle       func(ind ptr, title *byte)
+	appIndicatorSetLabel       func(ind ptr, label, guide *byte)
+	appIndicatorSetTooltipFull func(ind ptr, icon, title, body *byte)
 )
 
 var webkitVersion string
@@ -851,7 +850,6 @@ func load() error {
 		bind(libIndicator, &appIndicatorSetStatus, "app_indicator_set_status")
 		bind(libIndicator, &appIndicatorSetMenu, "app_indicator_set_menu")
 		bind(libIndicator, &appIndicatorSetIconFull, "app_indicator_set_icon_full")
-		bind(libIndicator, &appIndicatorSetIconThemePath, "app_indicator_set_icon_theme_path")
 		bind(libIndicator, &appIndicatorSetTitle, "app_indicator_set_title")
 		bind(libIndicator, &appIndicatorSetLabel, "app_indicator_set_label")
 		bind(libIndicator, &appIndicatorSetTooltipFull, "app_indicator_set_tooltip_full")

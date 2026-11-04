@@ -574,14 +574,16 @@ func (t *tray) SetImage(png []byte, template bool) error {
 		}
 		t.iconDir = dir
 	}
-	// A new file name makes the indicator host reload the icon.
+	// A new file name makes the indicator host reload the icon. The icon
+	// goes by its absolute path, not by a name in IconThemePath: KDE looks
+	// a name up in the icon theme first, falling back from "icon-1" to
+	// "icon", and showed a theme's icon in place of the app's.
 	t.icons++
-	name := fmt.Sprintf("icon-%d", t.icons)
-	if err := os.WriteFile(filepath.Join(t.iconDir, name+".png"), png, 0o644); err != nil {
+	file := filepath.Join(t.iconDir, fmt.Sprintf("icon-%d.png", t.icons))
+	if err := os.WriteFile(file, png, 0o644); err != nil {
 		return err
 	}
-	appIndicatorSetIconThemePath(t.ind, cs(t.iconDir))
-	appIndicatorSetIconFull(t.ind, cs(name), cs(""))
+	appIndicatorSetIconFull(t.ind, cs(file), cs(""))
 	return nil
 }
 

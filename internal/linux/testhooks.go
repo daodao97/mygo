@@ -690,6 +690,22 @@ func TestActivateTray() bool {
 	return true
 }
 
+// TestTrayIcon returns the icon the tray icon made last gives the panel
+// (app_indicator_get_icon), "" for none.
+func TestTrayIcon() string {
+	var last *tray
+	for _, t := range theBackend.trays {
+		if last == nil || t.id > last.id {
+			last = t
+		}
+	}
+	var get func(ind ptr) ptr
+	if last == nil || !bind(libIndicator, &get, "app_indicator_get_icon") {
+		return ""
+	}
+	return goStr(get(last.ind))
+}
+
 // Decorations are what TestDecorations reports.
 type Decorations struct {
 	// CSD tells that GTK decorates the window itself (useCSD).
