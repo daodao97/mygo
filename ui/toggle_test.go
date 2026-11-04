@@ -137,6 +137,30 @@ func TestRadioGroupArrowsChoose(t *testing.T) {
 	}
 }
 
+func TestRadioGroupEntersAtTheOneChosen(t *testing.T) {
+	value := ""
+	labels := []string{"a", "b", "c", "After"}
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Padding(10).Gap(8).Children(func() {
+			coreRadioGroup(c, func() {
+				for _, v := range []string{"a", "b", "c"} {
+					coreRadioBase(c, &value, v).Children(func() { coreText(c, v) })
+				}
+			}).Label("Letters")
+			coreButton(c, "After")
+		})
+	}, 400, 300)
+	tt.Click("a")
+	if got := tabs(tt, 0, 1, labels...); value != "a" || got[0] != "After" {
+		t.Fatalf("chose %q, then Tab went to %q", value, got[0])
+	}
+	value = "c" // as another control would
+	tt.Frame()
+	if got := tabs(tt, Shift, 1, labels...); got[0] != "c" {
+		t.Errorf("Shift+Tab back into the group went to %q, not to the one chosen", got[0])
+	}
+}
+
 func TestToggle(t *testing.T) {
 	bold, changes := false, 0
 	tt := coreNewTester(func(c *context) {
@@ -193,6 +217,11 @@ func TestTabsAreOneTabStop(t *testing.T) {
 	}, 400, 200)
 	if got := tabs(tt, 0, 3, labels...); !slices.Equal(got, []string{"Before", "Two", "After"}) {
 		t.Errorf("Tab went %q", got)
+	}
+	tab = 2 // as another control would
+	tt.Frame()
+	if got := tabs(tt, Shift, 1, labels...); got[0] != "Three" {
+		t.Errorf("Shift+Tab back into the tabs went to %q, not to the one chosen", got[0])
 	}
 }
 
@@ -289,5 +318,28 @@ func TestToolbarEntersAtItsFirst(t *testing.T) {
 	tt.Key(0, KeyTab)
 	if !tt.Focused("Cut") {
 		t.Error("Tab went to the toggle that is on, not to the first control")
+	}
+}
+
+func TestToolbarEntersWhereItWasLeft(t *testing.T) {
+	view := 0
+	labels := []string{"Cut", "List", "Grid", "After"}
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Gap(8).Children(func() {
+			coreToolbar(c, func() {
+				coreButton(c, "Cut")
+				coreSegmented(c, &view, "List", "Grid").Label("View")
+			})
+			coreButton(c, "After")
+		})
+	}, 400, 200)
+	tt.Click("Cut")
+	tabs(tt, 0, 1, labels...)
+	view = 1
+	tt.Frame()
+	// A radio group inside a toolbar is part of it: the toolbar keeps
+	// where it was left.
+	if got := tabs(tt, Shift, 1, labels...); got[0] != "Cut" {
+		t.Errorf("Shift+Tab back into the toolbar went to %q", got[0])
 	}
 }

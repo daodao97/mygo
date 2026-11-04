@@ -38,7 +38,10 @@ func (rt *engine) enterScope(e *node) focusScope {
 	if e.focusGroup != 0 && rt.commitScope.group == 0 {
 		// The outermost group: those inside it are part of it.
 		rt.commitScope.group = e.id
-		rt.groups[e.id] = groupInfo{orient: e.focusGroup, selects: e.groupSelects, rtl: e.rtl()}
+		rt.groups[e.id] = groupInfo{
+			orient: e.focusGroup, selects: e.groupSelects, rtl: e.rtl(),
+			chooses: e.role == RoleRadioGroup || e.role == RoleTabList,
+		}
 	}
 	e.st.scope = rt.commitScope.modal
 	return saved
