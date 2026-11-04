@@ -75,6 +75,7 @@ func TestGenerate(t *testing.T) {
 		"  meta?: Record<string, unknown>;\n",
 		"  parent?: Task;\n",
 		"  count: string;\n",
+		"  countPtr: string | null;\n",
 		"  raw: unknown;\n",
 		"  data: string;\n",
 		"  scores: Record<number, number>;\n",
@@ -140,7 +141,7 @@ import { Tasks, events, type Task, type Status } from "./client";
 const s: Status = "todo";
 const page = await Tasks.list(s, 10);
 const first: Task | undefined = page.items[0];
-await Tasks.add({ id: 1, title: "x", status: "done", priority: 2, tags: [], due: null, count: "1", raw: null, data: "", scores: {}, matrix: [], children: [], extra: { A: true }, NoTag: "", createdAt: "" });
+await Tasks.add({ id: 1, title: "x", status: "done", priority: 2, tags: [], due: null, count: "1", countPtr: "9007199254740993", raw: null, data: "", scores: {}, matrix: [], children: [], extra: { A: true }, NoTag: "", createdAt: "" });
 const off = events.taskAdded.on((t) => t.title.toUpperCase());
 off();
 runtime().window.minimize();

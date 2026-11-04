@@ -447,8 +447,17 @@ func (g *generator) inlineObject(t reflect.Type) string {
 
 func (g *generator) fieldType(f field) (typ, opt string) {
 	typ = g.ts(f.typ)
-	if f.quoted && isNumber(f.typ.Kind()) {
-		typ = "string"
+	if f.quoted {
+		t := f.typ
+		for t.Kind() == reflect.Pointer {
+			t = t.Elem()
+		}
+		if isNumber(t.Kind()) && !implements(t, jsonMarshaler) && !implements(t, jsonMarshalerTo) {
+			typ = "string"
+			if f.typ.Kind() == reflect.Pointer {
+				typ += " | null"
+			}
+		}
 	}
 	if f.optional {
 		// Omitted rather than null.
