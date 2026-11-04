@@ -137,6 +137,9 @@ export const Notes = {
 Methods become lower camel case (`GetUserByID` → `getUserByID`, `URLFor` →
 `urlFor`), parameters keep their Go names, and Go doc comments become
 TSDoc. The client imports `mygo-runtime`, which the frontend depends on.
+Generation fails if two methods of the same service, or two events, map
+to the same client property name. The error names both declarations so
+you can rename one without silently hiding the other.
 
 To generate the client, mygo generate builds the app and runs it with
 `MYGO_GENERATE` set: `App.Run` then writes the client and returns without

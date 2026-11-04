@@ -118,8 +118,14 @@ func Generate(m Model) ([]byte, error) {
 		}
 		writeDoc(&services, "", g.src.typeDoc(base))
 		fmt.Fprintf(&services, "export const %s = {\n", s.Name)
+		methodNames := map[string]string{}
 		for i := range s.Methods {
 			meth := &s.Methods[i]
+			name := camel(meth.Name)
+			if previous, ok := methodNames[name]; ok {
+				return nil, fmt.Errorf("service %s: methods %s and %s both generate TypeScript name %q", s.Name, previous, meth.Name, name)
+			}
+			methodNames[name] = meth.Name
 			loc := locs[meth]
 			fd := g.src.funcDecl(loc.file, loc.line, meth.Name)
 			var names []string
@@ -168,7 +174,7 @@ func Generate(m Model) ([]byte, error) {
 				call += ", " + strings.Join(args, ", ")
 			}
 			fmt.Fprintf(&services, "  %s(%s): Promise<%s> {\n    return call(%s);\n  },\n",
-				camel(meth.Name), strings.Join(params, ", "), result, call)
+				name, strings.Join(params, ", "), result, call)
 		}
 		services.WriteString("} as const;\n\n")
 	}
@@ -177,9 +183,15 @@ func Generate(m Model) ([]byte, error) {
 	if len(m.Events) > 0 {
 		events.WriteString("/** Events sent by the Go side. Subscribe with `events.name.on(listener)`. */\n")
 		events.WriteString("export const events = {\n")
+		eventNames := map[string]string{}
 		for _, e := range m.Events {
+			name := eventKey(e.Name)
+			if previous, ok := eventNames[name]; ok {
+				return nil, fmt.Errorf("events %q and %q both generate TypeScript name %s", previous, e.Name, name)
+			}
+			eventNames[name] = e.Name
 			writeDoc(&events, "  ", g.src.valueDoc(e.File, e.Line))
-			fmt.Fprintf(&events, "  %s: event<%s>(%s),\n", eventKey(e.Name), g.ts(e.Type), quote(e.Name))
+			fmt.Fprintf(&events, "  %s: event<%s>(%s),\n", name, g.ts(e.Type), quote(e.Name))
 		}
 		events.WriteString("} as const;\n")
 	}

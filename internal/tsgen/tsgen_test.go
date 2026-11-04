@@ -187,6 +187,45 @@ func TestNames(t *testing.T) {
 	}
 }
 
+func TestMethodNameCollision(t *testing.T) {
+	service := Service{Name: "Links", Type: reflect.TypeFor[struct{}](), Methods: []Method{{Name: "URL"}, {Name: "Url"}}}
+	out, err := Generate(Model{Services: []Service{service}})
+	if err == nil || !strings.Contains(err.Error(), "URL") || !strings.Contains(err.Error(), "Url") || !strings.Contains(err.Error(), "url") {
+		t.Fatalf("Generate = %s, %v; want an error identifying the colliding methods", out, err)
+	}
+	if len(out) != 0 {
+		t.Error("a collision returned a partial client")
+	}
+}
+
+func TestEventNameCollision(t *testing.T) {
+	out, err := Generate(Model{Events: []Event{
+		{Name: "file-changed", Type: reflect.TypeFor[string]()},
+		{Name: "file_changed", Type: reflect.TypeFor[string]()},
+	}})
+	if err == nil || !strings.Contains(err.Error(), "file-changed") || !strings.Contains(err.Error(), "file_changed") || !strings.Contains(err.Error(), "fileChanged") {
+		t.Fatalf("Generate = %s, %v; want an error identifying the colliding events", out, err)
+	}
+	if len(out) != 0 {
+		t.Error("a collision returned a partial client")
+	}
+}
+
+func TestMethodNamesAreScopedToServices(t *testing.T) {
+	out, err := Generate(Model{Services: []Service{
+		{Name: "First", Type: reflect.TypeFor[struct{}](), Methods: []Method{{Name: "URL"}}},
+		{Name: "Second", Type: reflect.TypeFor[struct{}](), Methods: []Method{{Name: "Url"}}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`call("First.URL")`, `call("Second.Url")`} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("client lacks %s", want)
+		}
+	}
+}
+
 func TestValidate(t *testing.T) {
 	type bad struct {
 		F func()
