@@ -2629,11 +2629,13 @@ either.
   focus and shortcuts without retaining an element in app state. Scroll
   offsets move in the layout too
   (`ui/scroll.go`): elements that asked to `ScrollIntoView`, and the focus,
-  come into view before the boxes are placed, and placing keeps each offset
-  within its content; a `ScrollState` mirrors an offset both ways, and a
-  frame that moved one builds another for what read the old one. A
-  container that snaps (`ScrollSnap`, `ui/snap.go`) finds the places its
-  elements mark as it is placed, from their boxes relative to it, and
+  come into view before the boxes are placed, lined up as its options say
+  (or glide there as a wheel's notches do, by what they went each frame,
+  `glideScroll`), and placing keeps each offset within its content; a
+  `ScrollState` mirrors an offset both ways, and a frame that moved one
+  builds another for what read the old one. A container that snaps
+  (`ScrollSnap`, `ui/snap.go`) finds the places its elements mark as it
+  is placed, from their boxes relative to it, and
   keeps the offset at the one it rests at; a notch or a key heads for the
   next place at once, a touchpad's scrolling once it has been still for a
   moment (not every platform tells when the fingers lift or a fling's

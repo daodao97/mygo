@@ -6569,14 +6569,22 @@ func (_handle Element) Scale(x float32, y float32) Element {
 // comes into view with it. Call it in the frame it should come into view,
 // as when it is added or chosen: in every frame, it would keep the user
 // from scrolling it away.
-func (_handle Element) ScrollIntoView() Element {
+//
+// Its options line the element up elsewhere in the containers, or glide
+// there, as the web's scrollIntoView options do: the current match of a
+// search, centered smoothly.
+//
+//	if app.matchMoved {
+//		hit.ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollCenter, Animation: &ui.Smooth})
+//	}
+func (_handle Element) ScrollIntoView(options ...ScrollIntoViewOptions) Element {
 	_node := _handle.node()
 	if _node == nil {
 		return Element{}
 	}
 	_ctx := _node.c
 	_ = _ctx
-	return wrapElement(_node.ScrollIntoView())
+	return wrapElement(_node.ScrollIntoView(options...))
 }
 
 // ScrollSnap makes the scroll container (Scroll, ScrollHorizontal,

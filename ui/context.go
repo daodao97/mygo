@@ -52,7 +52,7 @@ type context struct {
 	row     *rowBuild
 	sidebar *sidebarBuild
 	// reveal lists the elements to scroll into view (ScrollIntoView).
-	reveal []*node
+	reveal []nodeReveal
 	// router is the Router whose page is being built, for Links; routers
 	// counts the Routers built, the first of which takes the window's
 	// keys for going back and forward. inert is set while a page going

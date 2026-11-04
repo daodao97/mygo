@@ -443,8 +443,8 @@ type engine struct {
 	// late is set when lists built elements while laying out.
 	late bool
 	// revealIDs are the elements to scroll into view once the frame is
-	// laid out.
-	revealIDs []uint64
+	// laid out, and how.
+	revealIDs []revealAsk
 	wakeMu    sync.Mutex
 	wakeAt    time.Time
 	cursor    Cursor
@@ -1037,10 +1037,8 @@ func (rt *engine) endPass() {
 	rt.downs = rt.downs[:0]
 	rt.passFocus()
 	// The next pass may not ask again, as when the view cleared what asked.
-	for _, e := range rt.c.reveal {
-		if !slices.Contains(rt.revealIDs, e.id) {
-			rt.revealIDs = append(rt.revealIDs, e.id)
-		}
+	for _, r := range rt.c.reveal {
+		rt.askReveal(r.e.id, r.o)
 	}
 }
 

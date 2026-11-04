@@ -2,7 +2,6 @@ package ui
 
 import (
 	"math"
-	"slices"
 
 	"github.com/egoist/mygo/internal/text"
 )
@@ -74,10 +73,8 @@ func layoutTree(root *node, w, h float32) {
 	rt.beginLayout(root)
 	layoutBox(root, w, h)
 	// Lists build rows as they lay out, which may ask to come into view.
-	for _, e := range root.c.reveal {
-		if !slices.Contains(rt.revealIDs, e.id) {
-			rt.revealIDs = append(rt.revealIDs, e.id)
-		}
+	for _, r := range root.c.reveal {
+		rt.askReveal(r.e.id, r.o)
 	}
 	if len(rt.revealIDs) > 0 {
 		revealAll(root, rt.revealIDs)

@@ -131,6 +131,26 @@ if app.added {
 }
 ```
 
+`ScrollIntoViewOptions`, as the web's `scrollIntoView` options, line the
+element up elsewhere, or glide there. `Block` lines it up down the
+containers and `Inline` across them: `ui.ScrollNearest`, the default,
+scrolls as little as shows it, and `ui.ScrollStart`, `ui.ScrollCenter` and
+`ui.ScrollEnd` line its start, center or end up with each container's,
+inside its border; [right to left](right-to-left.md), the inline start is
+at the right. `Animation`, when set, glides every container around it
+there as the animation says, as the web's `behavior: "smooth"`, rather
+than at once: the user scrolling, or the app, stops it, and where the
+desktop asks for less motion it scrolls at once. The current match of a
+search, centered:
+
+```go
+if app.matchMoved {
+	hit.ScrollIntoView(ui.ScrollIntoViewOptions{Block: ui.ScrollCenter, Animation: &ui.Smooth})
+}
+```
+
+The zero options are those of `ScrollIntoView()` without them.
+
 The keyboard focus scrolls into view as it moves. An element with a
 `TextInputClient` of the app's ([text input clients](text-input-client.md))
 scrolls its caret into view, where `BoundsForRange` places it, rather than

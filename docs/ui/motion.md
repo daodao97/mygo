@@ -479,8 +479,9 @@ is `InView()`. A `List` or `GridView` builds only the rows near its edges,
 two beyond each, so in one the margin reaches no further than the rows it
 builds.
 
-`ScrollState.ScrollTo(x, y, animation)` scrolls a container smoothly (see
-[Scrolling](scroll.md)).
+`ScrollState.ScrollTo(x, y, animation)` scrolls a container smoothly, and
+`ScrollIntoView` with an `Animation` in its options the containers around
+an element (see [Scrolling](scroll.md)).
 
 ## Content that changes
 
