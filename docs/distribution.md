@@ -581,6 +581,11 @@ command, `/usr/bin/my-app` from the package and `~/.local/bin/my-app` from
 which adds a short name; without it, neither adds a command, which leaves
 the name to a command-line tool of the same name, such as the app's own.
 
+The desktop entry names the window class of the app, `StartupWMClass`,
+as the executable of `command`: an X11 session groups the window with the
+entry and shows its icon in the taskbar, where Wayland matches the same
+name as the app id.
+
 Keep the slug of a released app. Its Linux files are named after it, and
 an update replaces the files of the same names: one to a version with
 another slug leaves the old executable in place, which the desktop entry
