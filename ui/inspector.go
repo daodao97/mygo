@@ -115,6 +115,14 @@ type inspector struct {
 	statesOpen bool
 	// openable notes whether the file of the element's source can open.
 	openable openableSource
+	// layoutOn holds the containers whose layout shows over the content,
+	// tracks what their grids noted as they laid out, and overlays what
+	// the walk of this frame's elements found of them. uncached tells that
+	// they turned the layout cache off, which cacheWasOff says it was.
+	layoutOn              map[uint64]bool
+	tracks                map[uint64]inspTracks
+	overlays              []inspOverlay
+	uncached, cacheWasOff bool
 	// Scroll offsets of the breadcrumbs, the sidebar and the issues.
 	crumbs       ScrollState
 	sideScroll   ScrollState
@@ -146,6 +154,7 @@ type inspNode struct {
 	parent   int32
 	kids     bool
 	name     string
+	layout   uint8 // what its badge shows
 	keyText  string
 	label    string
 	text     string
@@ -218,6 +227,8 @@ func (rt *engine) toggleInspector() {
 		// What the Styles tab changed goes with the panel: the window shows
 		// what the view builds again.
 		in.edits, in.editing, in.sources, in.forced = nil, inspEditing{}, nil, nil
+		in.layoutOn, in.tracks, in.overlays = nil, nil, nil
+		in.keepLaidOut(rt, false)
 	} else if in.keys == nil {
 		in.keys = map[uint64]any{}
 	}
@@ -355,12 +366,14 @@ func (in *inspector) choose(id uint64) {
 func (in *inspector) snapshot(rt *engine, root *node) {
 	in.nodes = in.nodes[:0]
 	in.selElem, in.hoverElem = nil, nil
+	in.overlays = in.overlays[:0]
 	if in.seen == nil {
 		in.seen = map[uint64]bool{}
 	}
 	clear(in.seen)
 	var sum uint64
 	in.walk(rt, root, 0, -1, &sum)
+	in.measureLayouts()
 	in.elements = len(in.nodes)
 	in.sel = inspDetails{}
 	if e := in.selElem; e != nil {
@@ -391,7 +404,7 @@ func (in *inspector) walk(rt *engine, e *node, depth, parent int32, sum *uint64)
 	}
 	in.seen[key] = true
 	n := inspNode{id: e.id, key: key, depth: depth, parent: parent, name: elementName(e), label: e.label,
-		w: e.w, h: e.h, leaving: e.leaving != 0}
+		w: e.w, h: e.h, leaving: e.leaving != 0, layout: layoutKind(e)}
 	if k, ok := in.keys[e.id]; ok {
 		n.keyText = fmt.Sprint(k)
 	}
@@ -402,7 +415,7 @@ func (in *inspector) walk(rt *engine, e *node, depth, parent int32, sum *uint64)
 		n.hasTrans = true
 	}
 	in.nodes = append(in.nodes, n)
-	*sum = mix(*sum, e.id^uint64(depth)<<56)
+	*sum = mix(*sum, e.id^uint64(depth)<<56^uint64(n.layout)<<48)
 	*sum = mix(*sum, uint64(math.Float32bits(e.x))<<32|uint64(math.Float32bits(e.y)))
 	*sum = mix(*sum, uint64(math.Float32bits(e.w))<<32|uint64(math.Float32bits(e.h)))
 	if n.text != "" || n.label != "" || n.keyText != "" {
@@ -413,6 +426,9 @@ func (in *inspector) walk(rt *engine, e *node, depth, parent int32, sum *uint64)
 	}
 	if e.id == in.hovered {
 		in.hoverElem = e
+	}
+	if n.layout != inspNoLayout && !e.hidden && in.layoutOn[e.id] {
+		in.overlays = append(in.overlays, inspOverlay{e: e})
 	}
 	for c := e.first; c != nil; c = c.next {
 		in.walk(rt, c, depth+1, int32(i), sum)

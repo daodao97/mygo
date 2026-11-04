@@ -576,6 +576,9 @@ func gridLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 	for k, p := 0, y0; k < nr; k++ {
 		rowAt[k], p = p, p+rows[k]+e.gapY+betweenY
 	}
+	if inspectorBuilt {
+		noteGridTracks(e, colAt, cols, rowAt, rows, cw, usedW, rtl)
+	}
 	for i := range items {
 		it := &items[i]
 		c := it.e

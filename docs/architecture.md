@@ -2905,6 +2905,13 @@ either.
   `:hov` forces states by element (`inspector.forced`): `Hovered`, `Pressed`,
   `Focused`, `FocusVisible`, `FocusWithin` and `ringShown` ask `isForced`,
   which the stub of `mygo_noinspector` answers with false.
+  The tree's `flex` and `grid` badges show layouts over the content
+  (`inspector_layout.go`). A grid's tracks exist only as it lays out, so
+  `gridLayout` gives them to `noteGridTracks`, behind the constant
+  `inspectorBuilt` since an empty stub would still grow its frame and code,
+  with the layout cache off while a badge is on for it to run.
+  Laying a grid out again after `place` would move its baseline items, which
+  are in window coordinates by then.
   `main.go:42` opens in the developer's editor (`inspector_editor.go`):
   `MYGO_EDITOR`, `VISUAL` or `EDITOR` names the command, started in a session
   of its own so that it outlasts `mygo dev` restarting the app, and failures

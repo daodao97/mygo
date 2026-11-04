@@ -188,6 +188,29 @@ func (in *inspector) iconButton(c *context, icon *SVG, on bool, label string) *n
 	return b
 }
 
+// layoutBadge builds the badge of a container, which shows its layout over
+// the content.
+func (in *inspector) layoutBadge(c *context, n *inspNode) {
+	pal := &in.pal
+	name, tip := "flex", "Show the room between its children"
+	if n.layout == inspGrid {
+		name, tip = "grid", "Show its tracks and gaps"
+	}
+	on := in.layoutOn[n.id]
+	b := coreText(c, name).Font("monospace").FontSize(10).Padding(0, 4).Margin(0, 0, 0, 6).Radius(3).Shrink(0).SingleLine().
+		Role(RoleToggleButton).Cursor(CursorPointer).Tooltip(tip)
+	b.checked = 1
+	if on {
+		b.checked = 2
+		b.TextColor(pal.bg).Background(pal.accent)
+	} else {
+		b.TextColor(pal.muted).Border(1, pal.border)
+	}
+	if b.Clicked() {
+		in.toggleLayout(c.rt, n.id)
+	}
+}
+
 // tab0 builds a tab of a bar height high, underlined in the accent color
 // while selected.
 func (in *inspector) tab0(c *context, label string, selected bool, height float32) *node {
@@ -371,6 +394,9 @@ func (in *inspector) treeRow(c *context, r inspRow, n *inspNode) {
 	if names := in.forcedNames(n.id); !r.close && names != "" {
 		coreText(c, names).Font("monospace").FontSize(10).TextColor(pal.accent).Padding(0, 4).Margin(0, 0, 0, 6).
 			Radius(3).Border(1, pal.accent).Shrink(0).SingleLine()
+	}
+	if !r.close && n.layout != inspNoLayout {
+		in.layoutBadge(c, n)
 	}
 	if !r.close && n.hasTrans {
 		coreText(c, "transition").Font("monospace").FontSize(10).TextColor(pal.muted).Padding(0, 4).Margin(0, 0, 0, 6).

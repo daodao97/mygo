@@ -113,6 +113,20 @@ the view asks: if a row asks whether it is hovered to color a text inside, force
 the state on the row, not the text. The real focus and pointer stay where they
 are, and the forced states go when the inspector closes.
 
+## Showing layouts
+
+Containers have a badge in the tree. Click it to keep their layout over the
+content until you click it again or the inspector closes:
+
+- **`grid`** shows the lines of the tracks, numbered as `ColumnStart` and
+  `RowStart` count them, with the gaps hatched.
+- **`flex`** shows the room the children leave, hatched: the gaps, the free
+  space, and between wrapped lines. Every box lays out as flexbox, so only those
+  with two children or more have the badge.
+
+The layout cache is off while a badge is on, so the Performance tab's layout
+times aren't those of the app.
+
 ## Opening the source
 
 The link beside the element in the Styles tab, such as `main.go:42`, opens that
