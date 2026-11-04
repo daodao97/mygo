@@ -2042,10 +2042,11 @@ func Select(c *Context, selected *string, options []string) Element {
 
 // SelectBase creates a select without a look: a trigger that opens a
 // popup of options, which choose *selected. With the focus on the
-// trigger, the arrows open the popup and move among its options, Enter
-// and Space choose one, and Escape closes it; the trigger's Changed
-// reports a new choice. Give the trigger children showing the choice, and
-// build the options in Popup with Item:
+// trigger, the arrows open the popup and move among its options, past
+// those disabled, as do Home and End; Enter and Space choose one, and
+// Escape closes it; the trigger's Changed reports a new choice. Give the
+// trigger children showing the choice, and build the options in Popup
+// with Item:
 //
 //	sel := ui.SelectBase(c, &app.size)
 //	sel.Trigger.Padding(6, 10).Border(1, gray).Children(func() {
@@ -6840,8 +6841,8 @@ func (_handle SegmentedParts) Segment(i int) Element {
 }
 
 // Highlight moves the highlight to the option of value while the popup
-// shows, as a select of your own may do as the user types the option's
-// first letters; Enter then chooses it.
+// shows, unless it is disabled, as a select of your own may do as the
+// user types the option's first letters; Enter then chooses it.
 func (_handle SelectParts[T]) Highlight(value T) {
 	_parts := _handle.resolve()
 	if _parts == nil {
@@ -6854,8 +6855,9 @@ func (_handle SelectParts[T]) Highlight(value T) {
 
 // Item creates an option choosing value: a row that is Highlighted when
 // the pointer or the arrows are on it, and chooses value and closes the
-// popup when clicked. The option the highlight moves to scrolls into view,
-// once, so that the wheel scrolls on past it.
+// popup when clicked. Disabled leaves it out of the keys' way and of the
+// pointer's. The option the highlight moves to scrolls into view, once,
+// so that the wheel scrolls on past it.
 func (_handle SelectParts[T]) Item(value T) Element {
 	_parts := _handle.resolve()
 	if _parts == nil {
