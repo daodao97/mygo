@@ -123,7 +123,9 @@ A node has its `id`, the `parent`'s ID unless it is at the top, its
 `role`, and those of `key`, `label`, `value`, `placeholder`,
 `description`, `bounds`, `states`, `actions`, `min`, `max`, `now` and
 `step` (of sliders, progress bars, meters and steppers), `selection` (of
-text fields, in runes), `level`, `posInSet` and `setSize` that it has.
+text fields, in runes), `level`, `posInSet`, `setSize` and `current`
+(what it is the current one of, as ARIA's `aria-current`: `true`,
+`page`, `step`, `location`, `date` or `time`) that it has.
 IDs are strings of digits: they are 64-bit, which JavaScript's numbers
 would round.
 
@@ -149,11 +151,11 @@ a column that lays others out has no node, keyed or not. Roles are
 `listItem`, `menuButton`, `toolbar`, `radioGroup`, `toggleButton`,
 `comboBox`, `disclosure`, `meter`, `stepper`, `colorWell`,
 `alertDialog`, `menu`, `menuBar`, `menuItem`, `menuItemCheckBox`,
-`menuItemRadio` and `heading`. States are `focusable`, `disabled`,
+`menuItemRadio`, `heading` and `navigation`. States are `focusable`, `disabled`,
 `checked`, `mixed`, `selected`, `expanded`, `multiline`, `password`,
 `readOnly`, `selectable`, `offscreen`, `multiselectable`, `segment`,
-`search`, `invalid`, `sortAscending`, `sortDescending`, `expandable` and
-`vertical`.
+`search`, `invalid`, `sortAscending`, `sortDescending`, `expandable`,
+`vertical` and `busy`.
 
 A web view in native UI shows as a node marked `webView`, without the
 elements of its page. A window showing a web page has no tree: `tree`

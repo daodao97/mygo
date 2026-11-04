@@ -87,7 +87,9 @@ announced "Saved"
 
 A line is the element's ref, `[role]`, its label in quotes, then what
 it has of `value=`, `placeholder=` (when it has no label), `key=` (the
-app's own name for it), its states and `focused`. Empty fields are left
+app's own name for it), its states, `current=` (what it is the current
+one of, as the last crumb of a breadcrumb trail is the `page`) and
+`focused`. Empty fields are left
 out, and so is `focusable`, which every control is. `webview` marks a web
 view inside native UI: its page has no elements here. `announced` lines
 are what the app announced to screen readers. Labels and values longer
@@ -112,10 +114,12 @@ Roles are `group`, `text`, `heading`, `button`, `link`, `checkBox`,
 `tree`, `treeItem`, `tabList`, `tab`, `scroll`, `dialog`, `alertDialog`,
 `popup`, `tooltip`, `splitter`, `status`, `toolbar`, `radioGroup`,
 `disclosure`, `colorWell`, `menu`, `menuBar`, `menuItem`,
-`menuItemCheckBox` and `menuItemRadio`. States are `disabled`, `checked`,
+`menuItemCheckBox`, `menuItemRadio` and `navigation`. States are `disabled`, `checked`,
 `mixed`, `selected`, `expanded`, `expandable`, `multiline`, `password`,
 `readOnly`, `selectable`, `multiselectable`, `offscreen`, `segment`,
-`search`, `invalid`, `sortAscending`, `sortDescending` and `vertical`.
+`search`, `invalid`, `sortAscending`, `sortDescending`, `vertical` and
+`busy`. `current=` is `true`, `page`, `step`, `location`, `date` or
+`time`.
 Only what assistive technology reads is there: rows and columns that
 only lay out others have no line.
 

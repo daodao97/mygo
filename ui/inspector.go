@@ -593,6 +593,8 @@ func roleName(r Role) string {
 		return "MenuItemRadio"
 	case RoleHeading:
 		return "Heading"
+	case RoleNavigation:
+		return "Navigation"
 	}
 	return ""
 }

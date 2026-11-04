@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/egoist/mygo/internal/platform"
 )
 
 // inspDetails describes the element chosen in the inspector, for the
@@ -522,6 +524,12 @@ func properties(rt *engine, e *node) []inspSection {
 	}}
 	if e.description != "" {
 		acc.rows = append(acc.rows, inspDecl{name: "description", value: strconv.Quote(e.description)})
+	}
+	if e.busy {
+		acc.rows = append(acc.rows, inspDecl{name: "busy", value: "true"})
+	}
+	if e.current != CurrentNone {
+		acc.rows = append(acc.rows, inspDecl{name: "current", value: platform.AccessCurrent(e.current).String()})
 	}
 	return []inspSection{el, state, acc}
 }

@@ -315,10 +315,10 @@ func TestMenuCaptureEvalIdle(t *testing.T) {
 }
 
 func TestNames(t *testing.T) {
-	if len(roleNames) != int(platform.RoleHeading)+1 {
-		t.Errorf("%d role names for %d roles", len(roleNames), platform.RoleHeading+1)
+	if len(roleNames) != int(platform.RoleNavigation)+1 {
+		t.Errorf("%d role names for %d roles", len(roleNames), platform.RoleNavigation+1)
 	}
-	if platform.AccessStates(1)<<(len(stateNames)-1) != platform.AccessVertical {
+	if platform.AccessStates(1)<<(len(stateNames)-1) != platform.AccessBusy {
 		t.Errorf("%d state names", len(stateNames))
 	}
 	if platform.AccessActions(1)<<(len(actionNames)-1) != platform.ActionExpand {

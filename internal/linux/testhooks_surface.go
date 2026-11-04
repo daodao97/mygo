@@ -33,6 +33,8 @@ var (
 	atkValueSetValue              func(obj ptr, value float64)
 	atkEditableTextSetTextContent func(obj ptr, text *byte)
 	atkComponentGrabFocus         func(obj ptr) bool
+	atkObjectGetAttributes        func(obj ptr) ptr
+	atkAttributeSetFree           func(set ptr)
 )
 
 func surfaceByHandle(handle uintptr) *surface {
@@ -151,7 +153,11 @@ func TestDataDragResources() int { return len(gtkDataSources) }
 // it through ATK: the name of its role, its name, and its value.
 type TestAccessNode struct {
 	Role, Label, Value string
-	obj                ptr
+	// Busy and Active are its ATK states of those names, and Attributes
+	// its object attributes.
+	Busy, Active bool
+	Attributes   map[string]string
+	obj          ptr
 }
 
 func loadAccessTests() {
@@ -171,6 +177,8 @@ func loadAccessTests() {
 	mustBind(a, &atkValueSetValue, "atk_value_set_value")
 	mustBind(a, &atkEditableTextSetTextContent, "atk_editable_text_set_text_contents")
 	mustBind(a, &atkComponentGrabFocus, "atk_component_grab_focus")
+	mustBind(a, &atkObjectGetAttributes, "atk_object_get_attributes")
+	mustBind(a, &atkAttributeSetFree, "atk_attribute_set_free")
 }
 
 // TestAccessibility reads the elements of a window showing native UI as
@@ -207,7 +215,18 @@ func TestAccessibility(handle uintptr) ([]TestAccessNode, bool) {
 					n.Value = "1"
 				}
 			}
+			n.Busy = atkStateSetContainsState(states, atkStates.busy)
+			n.Active = atkStateSetContainsState(states, atkStates.active)
 			gObjectUnref(states)
+			if set := atkObjectGetAttributes(child); set != 0 {
+				// A GSList of AtkAttribute: name and value.
+				n.Attributes = map[string]string{}
+				for l := set; l != 0; l = *slot(l, 8) {
+					attr := *slot(l, 0)
+					n.Attributes[goStr(*slot(attr, 0))] = goStr(*slot(attr, 8))
+				}
+				atkAttributeSetFree(set)
+			}
 			nodes = append(nodes, n)
 			walk(child)
 			gObjectUnref(child) // the tree holds the node

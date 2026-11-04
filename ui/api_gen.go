@@ -845,7 +845,8 @@ func Box(c *Context) Element {
 // path control, separated by chevrons: the items but the last are links,
 // which a click chooses, as Enter does, setting *chosen to its index, which
 // Changed reports. Long items shorten with an ellipsis as room runs short.
-// Assistive technology sees links in a group; name it with Label.
+// Assistive technology sees links in a navigation landmark, which Label
+// names, and the last item as the current page.
 //
 //	path := []string{"Macintosh HD", "Users", "ada", "Documents"}
 //	if ui.Breadcrumbs(c, path, &app.chosen).Label("Path").Changed() {
@@ -3638,6 +3639,21 @@ func (_handle Element) Browse() Element {
 	return wrapElement(_node.Browse())
 }
 
+// Busy tells assistive technology whether the element's content is about
+// to change, as a region loading, or one updated in several steps:
+// screen readers wait until it is no longer busy to read what changed in
+// it. A placeholder standing in for the content, as a skeleton or a
+// spinner, says what is happening (a RoleStatus labelled "Loading").
+func (_handle Element) Busy(on bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Busy(on))
+}
+
 // Cache keeps what the element paints, with its children, in a bitmap of
 // the GPU that frames draw as one image, as Flutter's RepaintBoundary and
 // SwiftUI's drawingGroup do: for a still subtree that costs much to draw,
@@ -4022,6 +4038,20 @@ func (_handle Element) CopyData(fn func(parts []SelectedText) transfer.Data) Ele
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.CopyData(fn))
+}
+
+// Current tells assistive technology that the element is the current one
+// of the items around it, as the page the user is on in a breadcrumb
+// trail or a navigation bar, which screen readers read with it ("current
+// page"). CurrentNone takes it back.
+func (_handle Element) Current(kind Current) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Current(kind))
 }
 
 // Cursor sets the pointer's shape over the element.
@@ -6840,6 +6870,21 @@ func (_handle Element) Underline() Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Underline())
+}
+
+// UnderlineOffset puts underlines v DIPs below the baseline, measured to
+// their top, or above it when negative, as CSS's text-underline-offset:
+// a link's underline a few pixels lower than the font puts it, clear of
+// the descenders. Underlines skipping the ink of descenders skip it where
+// they then are. The font places them otherwise.
+func (_handle Element) UnderlineOffset(v float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.UnderlineOffset(v))
 }
 
 // Unselectable excludes a paragraph or container subtree from a surrounding

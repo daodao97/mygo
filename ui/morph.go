@@ -422,7 +422,8 @@ func (p *Painter) morph(e *node, r *contentRec, x, y float32, ts textStyle, span
 // textLines paints the lines over the text of l, laid out from (x, y), in
 // color: those of its style, ts, and those of its spans, sp if not nil.
 func (p *Painter) textLines(l *text.Layout, x, y float32, color Color, ts textStyle, sp *spanPaint) {
-	deco := decoration{underline: ts.underline, wavy: ts.wavy, strike: ts.strike, solid: ts.solid, color: ts.decoColor, thick: ts.decoThick}
+	deco := decoration{underline: ts.underline, wavy: ts.wavy, strike: ts.strike, solid: ts.solid, color: ts.decoColor, thick: ts.decoThick,
+		offset: ts.decoOffset, hasOffset: ts.set&setDecoOffset != 0}
 	if !deco.underline && !deco.strike && sp == nil {
 		return
 	}

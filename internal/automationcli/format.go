@@ -42,6 +42,9 @@ func line(n *node, focus string, full bool) string {
 			b.WriteString(" " + s)
 		}
 	}
+	if n.Current != "" {
+		b.WriteString(" current=" + n.Current)
+	}
 	if n.ID == focus {
 		b.WriteString(" focused")
 	}

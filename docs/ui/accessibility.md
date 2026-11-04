@@ -35,7 +35,10 @@ toggle := ui.Box(c).Size(36, 20).Focusable().Role(ui.RoleSwitch).Label("Wi-Fi")
 ```
 
 Besides the roles of MyGo's widgets, `ui.RoleHeading` is the title of a
-section, ranked with `Level`, and `ui.RoleMenu`, `ui.RoleMenuBar`,
+section, ranked with `Level`, `ui.RoleNavigation` a landmark of links
+that move around the app or a document, as a breadcrumb trail or a
+navigation bar, which screen readers list and jump to (as
+[`Breadcrumbs`](breadcrumbs.md) is), and `ui.RoleMenu`, `ui.RoleMenuBar`,
 `ui.RoleMenuItem`, `ui.RoleMenuItemCheckBox` and `ui.RoleMenuItemRadio`
 make menus drawn in the window, as a drop-down menu or a menu bar of your
 own (an element's menu drawn in the window,
@@ -46,6 +49,7 @@ menus without a look that keep their keys and focus):
 
 ```go
 ui.Text(c, "Appearance").Bold().Role(ui.RoleHeading).Level(2)
+ui.Row(c).Role(ui.RoleNavigation).Label("Sections").Children(sectionLinks)
 ```
 
 ## States
@@ -61,6 +65,8 @@ your own tells it with these, as ARIA's states do on the web:
 | `Range(lo, hi, value)`, `Step(step)` | the range and value of a slider, progress bar, meter or stepper, and how far the keys move it |
 | `Level(n)` | the rank of a heading, or how deep an item of a tree is |
 | `ActiveDescendant(e)` | the option that has the focus while the element keeps it, as the one the arrows are on in a menu or a list |
+| `Busy(on)` | that the element's content is about to change, as a region loading: screen readers wait for it before reading it |
+| `Current(kind)` | that the element is the current one of the items around it: `ui.CurrentPage` (the page the user is on), `CurrentStep`, `CurrentLocation`, `CurrentDate`, `CurrentTime` or `CurrentItem` |
 
 ```go
 all := ui.CheckboxBase(c, &app.all).Label("Select all")
@@ -70,6 +76,35 @@ if app.some {
 
 date := ui.ButtonBase(c).Role(ui.RolePopUpButton).Label("Due").Value(app.due.Format("Jan 2")).Expanded(app.picking)
 ```
+
+A region loading says so while a placeholder stands in for it, and the
+link to the page shown in a navigation bar says it is the current page:
+
+```go
+ui.Column(c).Label("Messages").Busy(app.loading).Children(func() {
+	if app.loading {
+		ui.Spinner(c).Label("Loading")
+		return
+	}
+	messageList(c, app.messages)
+})
+
+ui.Row(c).Role(ui.RoleNavigation).Label("Main").Children(func() {
+	for _, p := range pages {
+		l := ui.Link(c, p.Title, p.Path)
+		if p.Path == app.path {
+			l.Current(ui.CurrentPage)
+		}
+	}
+})
+```
+
+An element with no role of its own and no `Label` is still seen once
+`Busy` or `Current` marks it, as a group, as ARIA's states make a
+generic element seen on the web. `Busy` is AppKit's `AXElementBusy`,
+ATK's busy state and UI Automation's `AriaProperties` (`busy=true`);
+`Current` is AppKit's `AXARIACurrent`, ATK's `current` attribute with the
+active state, and `AriaProperties` (`current=page`).
 
 A check box that is mixed as often as not is better built on
 [`CheckboxStateBase`](checkbox.md#without-a-look), which tells it itself

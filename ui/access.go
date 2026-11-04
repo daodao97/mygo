@@ -88,6 +88,11 @@ const (
 	// RoleHeading is the title of a section, named by its text, its rank
 	// set with Level.
 	RoleHeading
+	// RoleNavigation is a landmark holding links that move around the
+	// app or a document, as a breadcrumb trail (Breadcrumbs) or a
+	// navigation bar: screen readers list it among the window's
+	// landmarks, and jump to it.
+	RoleNavigation
 )
 
 // Role sets what the element is to assistive technology, for an element
@@ -120,6 +125,48 @@ func (e *node) Mixed() *node {
 // shows, as the popup of a button or the section below a header.
 func (e *node) Expanded(open bool) *node {
 	e.expanded = open
+	return e
+}
+
+// Busy tells assistive technology whether the element's content is about
+// to change, as a region loading, or one updated in several steps:
+// screen readers wait until it is no longer busy to read what changed in
+// it. A placeholder standing in for the content, as a skeleton or a
+// spinner, says what is happening (a RoleStatus labelled "Loading").
+func (e *node) Busy(on bool) *node {
+	e.busy = on
+	return e
+}
+
+// Current is the item an element is the current one of, among those
+// around it (Element.Current), as ARIA's aria-current says.
+type Current uint8
+
+const (
+	// CurrentNone is not current.
+	CurrentNone Current = iota
+	// CurrentItem is the current item of a set, aria-current="true".
+	CurrentItem
+	// CurrentPage is the page the user is on: the last crumb of a
+	// breadcrumb trail, or the link of a navigation bar to the page shown.
+	CurrentPage
+	// CurrentStep is the step of a process the user is at, as in a
+	// wizard's steps.
+	CurrentStep
+	// CurrentLocation is the place shown, as in a flow chart or a map.
+	CurrentLocation
+	// CurrentDate is today in a calendar, and CurrentTime now in a
+	// timetable.
+	CurrentDate
+	CurrentTime
+)
+
+// Current tells assistive technology that the element is the current one
+// of the items around it, as the page the user is on in a breadcrumb
+// trail or a navigation bar, which screen readers read with it ("current
+// page"). CurrentNone takes it back.
+func (e *node) Current(kind Current) *node {
+	e.current = kind
 	return e
 }
 
@@ -175,7 +222,9 @@ func (e *node) accessRole() (platform.AccessRole, bool) {
 		return platform.RoleButton, true
 	case e.flags&(flagScrollX|flagScrollY) != 0:
 		return platform.RoleScroll, true
-	case e.label != "" || e.flags&flagFocusable != 0:
+	case e.label != "" || e.flags&flagFocusable != 0 || e.busy || e.current != CurrentNone:
+		// A state of its own shows the element too, as ARIA's global
+		// states do a generic element.
 		return platform.RoleGroup, true
 	}
 	return 0, false
@@ -187,7 +236,7 @@ func leafRole(r platform.AccessRole) bool {
 	switch r {
 	case platform.RoleGroup, platform.RoleList, platform.RoleScroll, platform.RoleDialog, platform.RoleAlertDialog, platform.RolePopup, platform.RoleStatus,
 		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleTree, platform.RoleListItem,
-		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar:
+		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleNavigation:
 		return false
 	}
 	return true
@@ -439,6 +488,10 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.expandable {
 		n.States |= platform.AccessExpandable
 	}
+	if e.busy {
+		n.States |= platform.AccessBusy
+	}
+	n.Current = platform.AccessCurrent(e.current)
 	n.Level = e.level
 	n.Value = e.accValue
 	if e.hasRange {

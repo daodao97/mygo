@@ -2474,7 +2474,19 @@ either.
   Statuses, as toasts, are polite live regions too (`LiveSetting`).
   Widgets of an app's own set what the bases set with element methods
   (`Checked`, `Mixed`, `Expanded`, `Value`, `Range`, `Level`,
-  `ActiveDescendant`). Menus drawn in the window are AppKit's `AXMenu`,
+  `ActiveDescendant`, `Busy`, `Current`). `Busy` (`AccessBusy`, ARIA's
+  aria-busy) is WebKit's `AXElementBusy`, with `AXElementBusyChanged`, on
+  macOS, ATK's busy state, and `busy=true` in UI Automation's
+  AriaProperties; `Current` (`AccessNode.Current`, aria-current's
+  kinds) is WebKit's `AXARIACurrent`, ATK's `current` attribute with the
+  active state, as Chromium's, and `current=page` in AriaProperties. Both
+  bring a generic element into the tree as a group, as ARIA's global
+  states do. `RoleNavigation`, a landmark (`Breadcrumbs`), is
+  `AXGroup` with the subrole `AXLandmarkNavigation`, ATK's landmark with
+  `xml-roles:navigation`, and UI Automation's Group with the navigation
+  LandmarkType and AriaRole. Native UI in browsers has no accessibility
+  tree yet (`UpdateAccessibility` is empty in `internal/web`), so there
+  is no ARIA to map them to. Menus drawn in the window are AppKit's `AXMenu`,
   `AXMenuBar` and `AXMenuItem`, whose choice shows as
   `AXMenuItemMarkChar` (answered through `accessibilityAttributeValue:`,
   as `AXInvalid` is), ATK's menu, menu bar, menu item, check menu item and
@@ -3979,6 +3991,12 @@ either.
     laid out, with edges where its eight samples across and down a pixel
     put them; GTK's, at Pango's metrics in whole pixels, the underline
     along a run's ink and advances, the strikethrough along its ink.
+    `LineStyle` overrides the font: a thickness (`DecorationThickness`)
+    around the line's middle, and an underline's offset
+    (`UnderlineOffset`, CSS's `text-underline-offset`), its top that many
+    DIPs from the baseline the engine draws on, in whole pixels, for every
+    engine, the browsers' canvas included; Core Text skips the ink where
+    the offset puts the underline.
   - *Joined glyphs.* Renderers blend each glyph in turn, as Core Graphics
     and Direct2D do, but cairo adds the coverage of a run's glyphs before
     blending it, which differs where antialiased edges of neighbors share

@@ -907,7 +907,8 @@ func (p *Painter) textForeground(l *text.Layout, x, y float32, color Color, ts t
 	}
 	sys := p.rt.text
 	s := p.scale
-	deco := decoration{underline: ts.underline, wavy: ts.wavy, dotted: ts.dotted, strike: ts.strike, solid: ts.solid, color: ts.decoColor, thick: ts.decoThick}
+	deco := decoration{underline: ts.underline, wavy: ts.wavy, dotted: ts.dotted, strike: ts.strike, solid: ts.solid, color: ts.decoColor, thick: ts.decoThick,
+		offset: ts.decoOffset, hasOffset: ts.set&setDecoOffset != 0}
 	shade := text.ShadeOf(color.R, color.G, color.B)
 	start := int32(len(p.s.Glyphs))
 	// Inline transforms do not change while the text paints; look for them once.
@@ -1021,9 +1022,18 @@ type decoration struct {
 	underline, wavy, dotted, strike bool
 	// solid draws the underline through descenders.
 	solid bool
-	// color, if set, is the lines', and thick their thickness in DIPs.
-	color Color
-	thick float32
+	// color, if set, is the lines', and thick their thickness in DIPs;
+	// offset, if hasOffset, is how far below the baseline the top of the
+	// underline is, in DIPs.
+	color     Color
+	thick     float32
+	offset    float32
+	hasOffset bool
+}
+
+// lineStyle returns how text's engine draws the lines of d.
+func (d decoration) lineStyle() text.LineStyle {
+	return text.LineStyle{Thick: d.thick, Offset: d.offset, HasOffset: d.hasOffset}
 }
 
 // decorations draws the lines of d along glyphs [i, j) of line li of l,
@@ -1062,7 +1072,7 @@ func (p *Painter) decorationRun(l *text.Layout, li, i, j int, x, y float32, d de
 		if k == text.Underline && d.solid {
 			kind = text.SolidUnderline
 		}
-		for _, st := range p.rt.text.Decorate(l, li, i, j, x, y, p.scale, kind, d.thick) {
+		for _, st := range p.rt.text.Decorate(l, li, i, j, x, y, p.scale, kind, d.lineStyle()) {
 			if st.X1 <= st.X0 || st.Bottom <= st.Top {
 				continue
 			}

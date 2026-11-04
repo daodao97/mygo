@@ -397,7 +397,7 @@ func treeJSON(window int, t *platform.AccessTree, keys map[uint64]any) treeResul
 			States:  names(uint64(n.States), stateNames[:]),
 			Actions: names(uint64(n.Actions), actionNames[:]),
 			Level:   n.Level, PosInSet: n.PosInSet, SetSize: n.SetSize,
-			WebView: n.WebView != nil,
+			Current: n.Current.String(), WebView: n.WebView != nil,
 		}
 		if n.Parent >= 0 && n.Parent < len(t.Nodes) {
 			j.Parent = nodeID(t.Nodes[n.Parent].ID)
@@ -450,6 +450,9 @@ type nodeJSON struct {
 	Level     int     `json:"level,omitempty"`
 	PosInSet  int     `json:"posInSet,omitempty"`
 	SetSize   int     `json:"setSize,omitempty"`
+	// Current is the item the element is the current one of, as ARIA's
+	// aria-current: true, page, step, location, date or time.
+	Current string `json:"current,omitempty"`
 	// WebView marks the node of a web view's page, whose elements the
 	// tree leaves out.
 	WebView bool `json:"webView,omitempty"`

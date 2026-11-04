@@ -1005,8 +1005,8 @@ func TestPlacement(t *testing.T) {
 func TestDecorate(t *testing.T) {
 	s := newSystem()
 	l := s.Layout(Params{Text: "Hello", Style: Style{Size: 13}})
-	under := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 1, Underline, 0)
-	strike := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 1, Strikethrough, 0)
+	under := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 1, Underline, LineStyle{})
+	strike := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 1, Strikethrough, LineStyle{})
 	if len(under) != 1 || len(strike) != 1 {
 		t.Fatalf("%d underlines, %d strikethroughs", len(under), len(strike))
 	}
@@ -1019,7 +1019,7 @@ func TestDecorate(t *testing.T) {
 	// text is.
 	for _, scale := range []float32{1, 1.5} {
 		for _, d := range []Decoration{Underline, Strikethrough} {
-			for _, st := range s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0.3, scale, d, 3) {
+			for _, st := range s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0.3, scale, d, LineStyle{Thick: 3}) {
 				if st.Bottom-st.Top != float32(math.Round(float64(3*scale))) || st.Top != float32(math.Floor(float64(st.Top))) {
 					t.Errorf("a line 3 DIPs thick at scale %v: %+v", scale, st)
 				}
@@ -1031,17 +1031,76 @@ func TestDecorate(t *testing.T) {
 			t.Errorf("underline %+v, strikethrough %+v from baseline %v", u, st, base)
 		}
 		l = s.Layout(Params{Text: "gypsy", Style: Style{Size: 24}})
-		if n := len(s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 2, Underline, 0)); n < 3 {
+		if n := len(s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 2, Underline, LineStyle{})); n < 3 {
 			t.Errorf("an underline of gypsy in %d pieces", n)
 		}
 	}
 	// A solid underline stays whole through descenders, where the
 	// underline is, on every system.
 	l = s.Layout(Params{Text: "gypsy/url", Style: Style{Size: 24}})
-	solid := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 2, SolidUnderline, 0)
-	plain := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 2, Underline, 0)
+	solid := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 2, SolidUnderline, LineStyle{})
+	plain := s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 2, Underline, LineStyle{})
 	if len(solid) != 1 || len(plain) == 0 || solid[0].Top != plain[0].Top || solid[0].Bottom != plain[0].Bottom {
 		t.Errorf("solid underline %+v, underline %+v", solid, plain)
+	}
+}
+
+// TestUnderlineOffset checks text-underline-offset: the top of the
+// underline that many DIPs below the baseline, on a whole pixel, as thick
+// as without it, a strikethrough where it was, and an underline low
+// enough to clear the descenders skipping none of them.
+func TestUnderlineOffset(t *testing.T) {
+	s := newSystem()
+	l := s.Layout(Params{Text: "Hello", Style: Style{Size: 13}})
+	n := len(l.Lines[0].Glyphs)
+	// Solid underlines, which Core Text does not cut where they cross the
+	// ink of the glyphs at their offset: where they are is the same.
+	for _, scale := range []float32{1, 1.5, 2} {
+		for _, y := range []float32{0, 0.3} {
+			base := s.Baseline((y + l.Lines[0].Baseline) * scale)
+			plain := s.Decorate(l, 0, 0, n, 0, y, scale, SolidUnderline, LineStyle{})
+			for _, off := range []float32{0, 4, -3} {
+				under := s.Decorate(l, 0, 0, n, 0, y, scale, SolidUnderline, LineStyle{Offset: off, HasOffset: true})
+				if len(under) != len(plain) || len(under) == 0 {
+					t.Fatalf("scale %v, offset %v: %d strokes, %d without", scale, off, len(under), len(plain))
+				}
+				want := base + float32(math.Round(float64(off*scale)))
+				for k, st := range under {
+					if st.Top != want || st.Bottom-st.Top != plain[k].Bottom-plain[k].Top || st.X0 != plain[k].X0 || st.X1 != plain[k].X1 {
+						t.Errorf("scale %v, y %v, offset %v: %+v, want top %v as thick as %+v", scale, y, off, st, want, plain[k])
+					}
+				}
+				thick := s.Decorate(l, 0, 0, n, 0, y, scale, SolidUnderline, LineStyle{Thick: 2, Offset: off, HasOffset: true})
+				if thick[0].Top != want || thick[0].Bottom != want+float32(math.Round(float64(2*scale))) {
+					t.Errorf("scale %v, offset %v, 2 thick: %+v, want top %v", scale, off, thick[0], want)
+				}
+			}
+			strike := s.Decorate(l, 0, 0, n, 0, y, scale, Strikethrough, LineStyle{})
+			moved := s.Decorate(l, 0, 0, n, 0, y, scale, Strikethrough, LineStyle{Offset: 4, HasOffset: true})
+			if len(strike) != len(moved) || len(strike) > 0 && strike[0] != moved[0] {
+				t.Errorf("an offset moved a strikethrough: %+v, was %+v", moved, strike)
+			}
+		}
+	}
+	if runtime.GOOS == "darwin" {
+		// An underline skipping ink skips the glyphs where its offset puts
+		// it: through the letters, it is cut.
+		ls := LineStyle{Offset: -3, HasOffset: true}
+		var cut, whole float32
+		for _, st := range s.Decorate(l, 0, 0, n, 0, 0, 2, Underline, ls) {
+			cut += st.X1 - st.X0
+		}
+		for _, st := range s.Decorate(l, 0, 0, n, 0, 0, 2, SolidUnderline, ls) {
+			whole += st.X1 - st.X0
+		}
+		if cut >= whole {
+			t.Errorf("an underline through Hello is %v wide, as wide as a solid one, %v", cut, whole)
+		}
+		// Below the descenders, an underline skipping ink is whole.
+		l = s.Layout(Params{Text: "gypsy", Style: Style{Size: 24}})
+		if n := len(s.Decorate(l, 0, 0, len(l.Lines[0].Glyphs), 0, 0, 2, Underline, LineStyle{Offset: 10, HasOffset: true})); n != 1 {
+			t.Errorf("an underline of gypsy 10 points down in %d pieces", n)
+		}
 	}
 }
 

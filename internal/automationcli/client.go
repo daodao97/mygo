@@ -130,6 +130,7 @@ type node struct {
 	Level       int             `json:"level,omitempty"`
 	PosInSet    int             `json:"posInSet,omitempty"`
 	SetSize     int             `json:"setSize,omitempty"`
+	Current     string          `json:"current,omitempty"`
 	WebView     bool            `json:"webView,omitempty"`
 }
 

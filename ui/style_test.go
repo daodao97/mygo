@@ -455,6 +455,91 @@ func TestTextDecorations(t *testing.T) {
 	}
 }
 
+// TestUnderlineOffset checks text-underline-offset: the top of the
+// underline that many DIPs below the baseline, set on the text or above
+// it, of an inline element and of a span, as thick as without it.
+func TestUnderlineOffset(t *testing.T) {
+	red := RGB(255, 0, 0)
+	// rows returns the rows of red pixels, from the baseline of the first
+	// line of the text view returns.
+	rows := func(view func(c *context) *node) []int {
+		t.Helper()
+		var text *node
+		tt := coreNewTester(func(c *context) {
+			coreColumn(c).Padding(10).AlignItems(Start).Children(func() { text = view(c) })
+		}, 300, 80)
+		if text == nil || text.tl == nil {
+			t.Fatal("no text laid out")
+		}
+		base := int(math.Round(float64(text.y + text.contentY() + text.tl.Lines[0].Baseline)))
+		img := tt.Image()
+		var out []int
+		for y := 0; y < img.Bounds().Dy(); y++ {
+			for x := 0; x < img.Bounds().Dx(); x++ {
+				if c := img.RGBAAt(x, y); c.R > 200 && c.G < 60 && c.B < 60 {
+					out = append(out, y-base)
+					break
+				}
+			}
+		}
+		return out
+	}
+	plain := rows(func(c *context) *node { return coreText(c, "Hello").Underline().DecorationColor(red) })
+	if len(plain) == 0 {
+		t.Fatal("no underline")
+	}
+	for _, off := range []float32{0, 3, 6, -2} {
+		// Above the baseline, an underline skipping ink (macOS) skips all of
+		// Hello; quotes have no ink there.
+		word := "Hello"
+		if off < 0 {
+			word = `""`
+		}
+		for _, v := range []struct {
+			name string
+			view func(c *context) *node
+		}{
+			{"text", func(c *context) *node {
+				return coreText(c, word).Underline().DecorationColor(red).UnderlineOffset(off)
+			}},
+			{"inherited", func(c *context) *node {
+				var e *node
+				coreBox(c).UnderlineOffset(off).Children(func() { e = coreText(c, word).Underline().DecorationColor(red) })
+				return e
+			}},
+			{"inline", func(c *context) *node {
+				return coreText(c, "").Children(func() {
+					coreText(c, word).Underline().DecorationColor(red).UnderlineOffset(off)
+				})
+			}},
+		} {
+			if got := rows(v.view); len(got) != len(plain) || got[0] != int(off) {
+				t.Errorf("%s, offset %v: red rows %v from the baseline, %v without an offset", v.name, off, got, plain)
+			}
+		}
+	}
+	// A span's offset, and that of the text around it.
+	for _, v := range []struct {
+		name string
+		view func(c *context) *node
+		want int
+	}{
+		{"span", func(c *context) *node {
+			return coreRichText(c, Span{Text: "Hello", Underline: true, DecorationColor: red, UnderlineOffset: 5})
+		}, 5},
+		{"around a span", func(c *context) *node {
+			return coreRichText(c, Span{Text: "Hello", Underline: true, DecorationColor: red}).UnderlineOffset(4)
+		}, 4},
+		{"span over the text's", func(c *context) *node {
+			return coreRichText(c, Span{Text: "Hello", Underline: true, DecorationColor: red, UnderlineOffset: 2}).UnderlineOffset(6)
+		}, 2},
+	} {
+		if got := rows(v.view); len(got) != len(plain) || got[0] != v.want {
+			t.Errorf("%s: red rows %v from the baseline, want from %d", v.name, got, v.want)
+		}
+	}
+}
+
 func TestTextOptions(t *testing.T) {
 	b := boxes(t, func(c *context) {
 		coreColumn(c).Width(60).AlignItems(Start).Children(func() {

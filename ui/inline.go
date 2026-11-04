@@ -113,6 +113,9 @@ func (e *node) spanStyle() Span {
 	if t.set&setDecoThick != 0 {
 		s.DecorationThickness = t.decoThick
 	}
+	if t.set&setDecoOffset != 0 {
+		s.UnderlineOffset, s.offsetSet = t.decoOffset, true
+	}
 	switch {
 	case t.set&setBackground != 0:
 		s.Background = t.background
@@ -153,6 +156,9 @@ func over(s, base Span) Span {
 	}
 	if s.DecorationThickness == 0 {
 		s.DecorationThickness = base.DecorationThickness
+	}
+	if _, ok := s.underlineOffset(); !ok {
+		s.UnderlineOffset, s.offsetSet = base.UnderlineOffset, base.offsetSet
 	}
 	if s.Background.A == 0 {
 		s.Background = base.Background

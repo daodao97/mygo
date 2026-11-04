@@ -268,6 +268,9 @@ func (e *node) resolvedText() textStyle {
 		if take&setDecoThick != 0 {
 			out.decoThick = t.decoThick
 		}
+		if take&setDecoOffset != 0 {
+			out.decoOffset = t.decoOffset
+		}
 		if take&setBackground != 0 {
 			out.background = t.background
 		}

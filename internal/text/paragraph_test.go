@@ -383,7 +383,7 @@ func TestBaselineShift(t *testing.T) {
 	}
 	// Decorations follow the span.
 	under := func(l *Layout, i int) float32 {
-		st := s.Decorate(l, 0, i, i+1, 0, 0, 1, Underline, 0)
+		st := s.Decorate(l, 0, i, i+1, 0, 0, 1, Underline, LineStyle{})
 		if len(st) == 0 {
 			t.Fatalf("no underline of glyph %d", i)
 		}

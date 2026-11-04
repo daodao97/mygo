@@ -1275,6 +1275,7 @@ func (g *gallery) styling(c *ui.Context) {
 			ui.RichText(c, ui.Span{Text: "Search results "}, ui.Span{Text: "stand out", Background: ui.RGBA(250, 204, 21, 0.45)},
 				ui.Span{Text: " with a background."})
 			ui.Text(c, "Underlines of their own color and thickness").Underline().DecorationColor(t.Accent).DecorationThickness(2)
+			ui.Text(c, "An underline dropped below the descenders: typography").Underline().UnderlineOffset(5)
 			ui.Text(c, "A highlight behind every line").TextBackground(t.Selection)
 			ui.Text(c, strings.Repeat("A line cut with an ellipsis of its own. ", 3)).SingleLine().Ellipsis(" →")
 		})

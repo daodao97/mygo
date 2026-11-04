@@ -27,6 +27,10 @@ type Span struct {
 	// underline and strikethrough, as for Element.DecorationColor.
 	DecorationColor     Color
 	DecorationThickness float32
+	// UnderlineOffset puts the span's underline that many DIPs below the
+	// baseline, or above it when negative, as for Element.UnderlineOffset;
+	// zero leaves it where the text around it has it.
+	UnderlineOffset float32
 	// Background highlights the span, as search results are.
 	Background Color
 	// Radius rounds the corners of the Background, which then hugs the
@@ -54,6 +58,15 @@ type Span struct {
 
 	// solid draws Underline through descenders, as a link's hover.
 	solid bool
+	// offsetSet marks an UnderlineOffset set, zero included, by the
+	// style of an inline element.
+	offsetSet bool
+}
+
+// underlineOffset returns the span's UnderlineOffset, and whether it sets
+// one.
+func (s *Span) underlineOffset() (float32, bool) {
+	return s.UnderlineOffset, s.offsetSet || s.UnderlineOffset != 0
 }
 
 // RichText creates a text whose spans differ in style, over the style of
@@ -365,7 +378,8 @@ func (sp *spanPaint) lines(p *Painter, l *text.Layout, li int, x, y float32, col
 			return
 		}
 		span := &sp.spans[k]
-		d := decoration{underline: span.Underline || span.WavyUnderline || span.DottedUnderline, wavy: span.WavyUnderline, dotted: span.DottedUnderline, strike: span.Strikethrough, solid: span.solid, color: base.color, thick: base.thick}
+		d := decoration{underline: span.Underline || span.WavyUnderline || span.DottedUnderline, wavy: span.WavyUnderline, dotted: span.DottedUnderline, strike: span.Strikethrough, solid: span.solid, color: base.color, thick: base.thick,
+			offset: base.offset, hasOffset: base.hasOffset}
 		if !d.underline && !d.strike {
 			return
 		}
@@ -374,6 +388,9 @@ func (sp *spanPaint) lines(p *Painter, l *text.Layout, li int, x, y float32, col
 		}
 		if span.DecorationThickness > 0 {
 			d.thick = span.DecorationThickness
+		}
+		if v, ok := span.underlineOffset(); ok {
+			d.offset, d.hasOffset = v, true
 		}
 		saved := p.transform
 		p.transform = saved.Mul(p.inlineTransform(l.Lines[li].Glyphs[i].Cluster))

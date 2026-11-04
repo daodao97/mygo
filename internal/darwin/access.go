@@ -122,8 +122,9 @@ var accessRoles = map[platform.AccessRole][2]string{
 	platform.RoleMenuItem:         {"AXMenuItem", ""},
 	platform.RoleMenuItemCheckBox: {"AXMenuItem", ""},
 	platform.RoleMenuItemRadio:    {"AXMenuItem", ""},
-	// WebKit's headings, whose value is their level.
-	platform.RoleHeading: {"AXHeading", ""},
+	// WebKit's headings, whose value is their level, and landmarks.
+	platform.RoleHeading:    {"AXHeading", ""},
+	platform.RoleNavigation: {"AXGroup", "AXLandmarkNavigation"},
 }
 
 // menuItem reports whether nodes of a role are items of a menu.
@@ -352,7 +353,7 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 		}
 		changed := false
 		objs := make([]id, len(tree.Nodes))
-		var valueChanged []id
+		var valueChanged, busyChanged []id
 		fresh := map[uint64]bool{}
 		for i, n := range tree.Nodes {
 			el := s.elements[n.ID]
@@ -363,8 +364,14 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				s.w.b.byAccess[el.obj] = el
 				el.apply(n, true)
 				changed = true
-			} else if el.apply(n, false) {
-				valueChanged = append(valueChanged, el.obj)
+			} else {
+				wasBusy := el.node.States & platform.AccessBusy
+				if el.apply(n, false) {
+					valueChanged = append(valueChanged, el.obj)
+				}
+				if n.States&platform.AccessBusy != wasBusy {
+					busyChanged = append(busyChanged, el.obj)
+				}
 			}
 			objs[i] = el.obj
 		}
@@ -481,6 +488,9 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 		for _, el := range selectionChanged {
 			postNote(el.obj, "AXSelectedRowsChanged")
 		}
+		for _, obj := range busyChanged {
+			postNote(obj, "AXElementBusyChanged")
+		}
 		if tree.Focus != s.access.Focus {
 			if el := s.elements[tree.Focus]; el != nil {
 				postNote(el.obj, "AXFocusedUIElementChanged")
@@ -583,8 +593,11 @@ func registerAccessClass() {
 			return el != nil && el.s.access.Focus == el.node.ID
 		}),
 		// AXInvalid, which the newer API lacks, says a value is not valid,
-		// as WebKit's fields do, and AXMenuItemMarkChar what an item of a
-		// menu shows of its choice.
+		// as WebKit's fields do, AXMenuItemMarkChar what an item of a
+		// menu shows of its choice, AXElementBusy that the content is
+		// about to change, and AXARIACurrent which item of those around it
+		// the element is the current one of, as WebKit's say aria-busy and
+		// aria-current.
 		method("accessibilityAttributeNames", func(self id, cmd objc.SEL) id {
 			names := sendSuper(self, "MyGoAccessibilityElement", cmd)
 			el := b().accessElementOf(self)
@@ -596,6 +609,10 @@ func registerAccessClass() {
 			}
 			if menuItem(el.node.Role) {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXMenuItemMarkChar")))
+			}
+			names = send(names, "arrayByAddingObject:", uintptr(nsString("AXElementBusy")))
+			if el.node.Current != platform.CurrentNone {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXARIACurrent")))
 			}
 			return names
 		}),
@@ -612,6 +629,12 @@ func registerAccessClass() {
 					}
 					if menuItem(el.node.Role) {
 						return 0
+					}
+				case "AXElementBusy":
+					return nsBool(el.node.States&platform.AccessBusy != 0)
+				case "AXARIACurrent":
+					if c := el.node.Current; c != platform.CurrentNone {
+						return nsString(c.String())
 					}
 				}
 			}

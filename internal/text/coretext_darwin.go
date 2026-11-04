@@ -1207,6 +1207,10 @@ func (e *coreText) decorate(r decoRange) []Stroke {
 			p, t := ctUnderline(f)
 			center, thick = max(center, p), max(thick, t)
 		})
+		if r.hasOffset {
+			// Where the offset puts it, which the ink it skips is at.
+			center = r.offset + thick/2
+		}
 	}
 	pieces := [][2]float32{{x0, x1}}
 	if r.d == Underline && !r.solid {

@@ -61,6 +61,58 @@ func TestAccessStatesOfYourOwn(t *testing.T) {
 	}
 }
 
+// TestBusyAndCurrent checks aria-busy and aria-current: a region marked
+// busy, seen without a role or a Label of its own, until it is no longer,
+// and the current items of a navigation landmark.
+func TestBusyAndCurrent(t *testing.T) {
+	loading := true
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).AlignItems(Start).Children(func() {
+			coreColumn(c).Busy(loading).Children(func() {
+				coreText(c, "Inbox")
+			})
+			coreRow(c).Role(RoleNavigation).Label("Steps").Children(func() {
+				coreText(c, "Cart")
+				coreText(c, "Payment").Current(CurrentStep)
+				coreText(c, "Today").Current(CurrentDate)
+			})
+		})
+	}, 400, 300)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tree := tt.h.access
+	inbox := accessNode(t, tree, platform.RoleText, "Inbox")
+	if inbox.Parent < 0 || tree.Nodes[inbox.Parent].Role != platform.RoleGroup || tree.Nodes[inbox.Parent].States&platform.AccessBusy == 0 {
+		t.Fatalf("the text is not in a busy group: %+v", inbox)
+	}
+	region := tree.Nodes[inbox.Parent].ID
+	steps := accessNode(t, tree, platform.RoleNavigation, "Steps")
+	for _, c := range []struct {
+		label string
+		want  platform.AccessCurrent
+	}{{"Cart", platform.CurrentNone}, {"Payment", platform.CurrentStep}, {"Today", platform.CurrentDate}} {
+		n := accessNode(t, tree, platform.RoleText, c.label)
+		if n.Current != c.want {
+			t.Errorf("%s: current %v, want %v", c.label, n.Current, c.want)
+		}
+		if n.Parent < 0 || tree.Nodes[n.Parent].ID != steps.ID {
+			t.Errorf("%s is not in the landmark", c.label)
+		}
+	}
+	// Loaded, the region is no longer busy, nor seen: it has nothing of
+	// its own to say.
+	loading = false
+	tt.Frame()
+	tree = tt.h.access
+	for _, n := range tree.Nodes {
+		if n.ID == region || n.States&platform.AccessBusy != 0 {
+			t.Errorf("still busy: %+v", n)
+		}
+	}
+	if inbox := accessNode(t, tree, platform.RoleText, "Inbox"); inbox.Parent >= 0 && tree.Nodes[inbox.Parent].Role == platform.RoleGroup {
+		t.Errorf("the text is still in a group: %+v", tree.Nodes[inbox.Parent])
+	}
+}
+
 func TestReadOnlyInput(t *testing.T) {
 	text, readOnly := "hello", true
 	tt := coreNewTester(func(c *context) {

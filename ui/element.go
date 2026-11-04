@@ -171,10 +171,12 @@ type textStyle struct {
 	features   string
 	// lang is the language of the text, a BCP 47 tag (Lang).
 	lang string
-	// decoColor and decoThick are those of underlines and strikethroughs;
-	// background is behind the text.
+	// decoColor and decoThick are those of underlines and strikethroughs,
+	// decoOffset how far below the baseline underlines are, when set
+	// (setDecoOffset); background is behind the text.
 	decoColor  Color
 	decoThick  float32
+	decoOffset float32
 	background Color
 	// selection is the highlight of selected text, the theme's when unset.
 	selection Color
@@ -197,9 +199,10 @@ const (
 	setBackground
 	setSelection
 	setLang
+	setDecoOffset
 
 	// setAll has every bit of textStyle.set.
-	setAll = setLang<<1 - 1
+	setAll = setDecoOffset<<1 - 1
 )
 
 // layoutStyle is what lays an element out, of what the view sets on it:
@@ -408,6 +411,10 @@ type node struct {
 	role     Role
 	checked  int8
 	expanded bool
+	// busy marks content about to change (Busy), and current the item
+	// the element is the current one of (Current).
+	busy    bool
+	current Current
 	// vertical marks a slider going up (Vertical).
 	vertical bool
 	// tip marks an element with a tooltip (TooltipBase).
@@ -1429,6 +1436,17 @@ func (e *node) DecorationColor(c Color) *node {
 func (e *node) DecorationThickness(v float32) *node {
 	e.ts.decoThick = v
 	e.ts.set |= setDecoThick
+	return e
+}
+
+// UnderlineOffset puts underlines v DIPs below the baseline, measured to
+// their top, or above it when negative, as CSS's text-underline-offset:
+// a link's underline a few pixels lower than the font puts it, clear of
+// the descenders. Underlines skipping the ink of descenders skip it where
+// they then are. The font places them otherwise.
+func (e *node) UnderlineOffset(v float32) *node {
+	e.ts.decoOffset = v
+	e.ts.set |= setDecoOffset
 	return e
 }
 
