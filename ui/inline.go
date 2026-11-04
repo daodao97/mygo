@@ -40,6 +40,42 @@ func (e *node) inlineText() {
 	e.text = b.String()
 }
 
+// accessText returns the text that names a text element for assistive
+// technology: its text without that of the elements inside it hidden from
+// it (AccessHidden), as a hidden node gives nothing to a name. Without
+// one, its text is returned as it is, without a copy.
+func (e *node) accessText() string {
+	cuts := e.accessCuts(nil, 0)
+	if cuts == nil {
+		return e.text
+	}
+	var b strings.Builder
+	at := 0
+	for _, r := range cuts {
+		b.WriteString(e.text[at:runeOffset(e.text, r[0])])
+		at = runeOffset(e.text, r[1])
+	}
+	b.WriteString(e.text[at:])
+	return b.String()
+}
+
+// accessCuts appends to cuts the ranges of runes, in the paragraph's text,
+// of the elements inside e hidden from assistive technology, e's text
+// starting at rune offset of it.
+func (e *node) accessCuts(cuts [][2]int, offset int) [][2]int {
+	for ch := e.first; ch != nil; ch = ch.next {
+		a, b := offset+ch.runes[0], offset+ch.runes[1]
+		switch {
+		case a == b:
+		case ch.accessHidden:
+			cuts = append(cuts, [2]int{a, b})
+		default:
+			cuts = ch.accessCuts(cuts, a)
+		}
+	}
+	return cuts
+}
+
 // inlineSpans returns the spans of a paragraph: its own, then those of the
 // elements inside it, in the styles they set over it.
 func (e *node) inlineSpans() []Span {
@@ -244,7 +280,7 @@ func (e *node) ringShown() bool {
 // parent: the text itself already reads theirs.
 func (rt *engine) accessInline(t *platform.AccessTree, e *node, parent int) {
 	for ch := e.first; ch != nil; ch = ch.next {
-		if ch.flags&flagInvisible != 0 || ch.hidden || len(ch.frags) == 0 {
+		if ch.flags&flagInvisible != 0 || ch.hidden || ch.accessHidden || len(ch.frags) == 0 {
 			continue
 		}
 		role, ok := ch.accessRole()

@@ -280,7 +280,7 @@ func (e *node) innerText() string {
 		return ""
 	}
 	if e.kind == kindText {
-		return e.text // its text holds that of the elements inside it
+		return e.accessText() // its text holds that of the elements inside it
 	}
 	var t innerTexts
 	for ch := e.first; ch != nil; ch = ch.next {
@@ -308,7 +308,7 @@ func (t *innerTexts) walk(e *node) {
 		return
 	}
 	if e.kind == kindText {
-		t.add(e.text)
+		t.add(e.accessText())
 		return // its text holds that of the elements inside it
 	}
 	for ch := e.first; ch != nil; ch = ch.next {
