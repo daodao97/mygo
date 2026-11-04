@@ -224,8 +224,16 @@ func (_handle ComboboxParts) Open() bool {
 }
 
 // Popup shows the popup below the input, at least as wide, while it is
-// open: fn styles the panel and builds the options with Item. It returns
-// the panel, or nil while closed or without options.
+// open: fn styles the panel and builds the options with Item. A popup
+// without options shows only while it holds something else to read, as a
+// row saying that nothing matches, which assistive technology reads out
+// as it appears:
+//
+//	if len(matches) == 0 {
+//		ui.Text(c, "No matches found").Padding(6, 10)
+//	}
+//
+// It returns the panel, or nil while it does not show.
 func (_handle ComboboxParts) Popup(fn func(panel Element)) Element {
 	_parts := _handle.resolve()
 	if _parts == nil {
@@ -2387,8 +2395,8 @@ func Tabs(c *Context, selected *int, labels ...string) Element {
 // TabsBase creates a list of n tabs without a look, of which *selected is
 // the index of the one chosen. A click chooses a tab, as do the arrows,
 // Home and End while one has the keyboard focus, which follows the
-// choice; List's Changed reports a new choice. Build the tabs in List
-// with Tab:
+// choice, past the tabs disabled; List's Changed reports a new choice.
+// Build the tabs in List with Tab:
 //
 //	tabs := ui.TabsBase(c, &app.tab, len(names))
 //	tabs.List.Gap(4).Children(func() {
@@ -6900,7 +6908,9 @@ func (_handle SelectParts[T]) Popup(fn func(panel Element)) Element {
 }
 
 // Tab creates tab i of the list: a row that takes the focus and chooses
-// i when clicked. Style it from whether i is the one chosen.
+// i when clicked. Style it from whether i is the one chosen. Disabled
+// leaves it out of the keys' way and of the pointer's, and assistive
+// technology sees it disabled.
 func (_handle TabsParts) Tab(i int) Element {
 	_parts := _handle.resolve()
 	if _parts == nil {

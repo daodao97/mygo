@@ -230,15 +230,16 @@ type tabsParts struct {
 	selected *int
 	n        int
 	// follow is set when the keys chose a tab, which then takes the
-	// focus.
+	// focus. ids are the tabs' elements, by index, as last built.
 	follow *bool
+	ids    *[]uint64
 }
 
 // TabsBase creates a list of n tabs without a look, of which *selected is
 // the index of the one chosen. A click chooses a tab, as do the arrows,
 // Home and End while one has the keyboard focus, which follows the
-// choice; List's Changed reports a new choice. Build the tabs in List
-// with Tab:
+// choice, past the tabs disabled; List's Changed reports a new choice.
+// Build the tabs in List with Tab:
 //
 //	tabs := ui.TabsBase(c, &app.tab, len(names))
 //	tabs.List.Gap(4).Children(func() {
@@ -258,19 +259,40 @@ func coreTabsBase(c *context, selected *int, n int) tabsParts {
 	if n > 0 {
 		*selected = max(0, min(*selected, n-1))
 	}
-	return tabsParts{List: list, c: c, selected: selected, n: n, follow: coreLocal(list, "follow", func() bool { return false })}
+	return tabsParts{
+		List: list, c: c, selected: selected, n: n,
+		follow: coreLocal(list, "follow", func() bool { return false }),
+		ids:    coreLocal(list, "ids", func() []uint64 { return nil }),
+	}
 }
 
 // Tab creates tab i of the list: a row that takes the focus and chooses
-// i when clicked. Style it from whether i is the one chosen.
+// i when clicked. Style it from whether i is the one chosen. Disabled
+// leaves it out of the keys' way and of the pointer's, and assistive
+// technology sees it disabled.
 func (p tabsParts) Tab(i int) *node {
 	c := p.c
 	tab := coreRow(c).Focusable().Shrink(0).Role(RoleTab)
 	tab.widget = "Tab"
 	tab.flags |= flagClickable | flagHover
+	if len(*p.ids) != p.n {
+		*p.ids = slices.Grow((*p.ids)[:0], p.n)[:p.n]
+	}
+	if i >= 0 && i < p.n {
+		(*p.ids)[i] = tab.id
+	}
 	tab.afterInput(func() {
-		choose := func(i int, keys bool) {
-			i = (i%p.n + p.n) % p.n
+		// choose chooses the first tab from i on, going round by d, that
+		// is not disabled, as the last frame showed them: this one, which
+		// takes input, is not.
+		choose := func(i, d int, keys bool) {
+			for range p.n {
+				i = (i%p.n + p.n) % p.n
+				if s := c.rt.states[(*p.ids)[i]]; s == nil || s == tab.st || s.flags&flagDisabled == 0 {
+					break
+				}
+				i += d
+			}
 			if i != *p.selected {
 				*p.selected = i
 				p.List.st.markChanged()
@@ -279,18 +301,18 @@ func (p tabsParts) Tab(i int) *node {
 			*p.follow = keys
 		}
 		if tab.Clicked() {
-			choose(i, false)
+			choose(i, 1, false)
 		}
 		back, forth := tab.arrows()
 		switch {
 		case tab.Shortcut(0, forth), tab.Shortcut(0, KeyDown):
-			choose(i+1, true)
+			choose(i+1, 1, true)
 		case tab.Shortcut(0, back), tab.Shortcut(0, KeyUp):
-			choose(i-1, true)
+			choose(i-1, -1, true)
 		case tab.Shortcut(0, KeyHome):
-			choose(0, true)
+			choose(0, 1, true)
 		case tab.Shortcut(0, KeyEnd):
-			choose(p.n-1, true)
+			choose(p.n-1, -1, true)
 		}
 	})
 	on := i == *p.selected

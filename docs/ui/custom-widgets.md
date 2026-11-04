@@ -13,12 +13,12 @@ own on them, as headless component libraries do on the web.
 | `CheckboxStateBase` | a check box that can be mixed, setting a `*ui.CheckState` (`CheckOff`, `CheckOn`, `CheckMixed`), which a press checks, or unchecks once checked ([Checkbox](checkbox.md#without-a-look)) |
 | `RadioBase` | a row that selects its value into a `*T` |
 | `SliderBase` | sets a `*float64` from where the pointer is across its content box, inside its padding, or up it (`Vertical`), and with the arrows, Page Up and Down, Home and End, by its `Step` |
-| `TabsBase` | the tab `List`, whose `Tab`s choose a `*int`, with the arrows moving the choice and the focus |
+| `TabsBase` | the tab `List`, whose `Tab`s choose a `*int`, with the arrows moving the choice and the focus past those disabled |
 | `SegmentedBase` | a `Track` of `Segment`s, a radio group choosing a `*int` |
 | `CollapsibleBase` | a `Trigger` that shows and hides what `Panel` builds, growing and shrinking it with `Progress`, which goes from 0 closed to 1 open |
 | `AccordionBase` | a `Root` of sections, each `Item` a `CollapsibleBase` whose triggers the arrows, Home and End move the focus between ([Accordion](accordion.md#without-a-look)) |
 | `SelectBase` | a `Trigger` opening a `Popup` of `Item`s choosing a `*T`, which the arrows highlight (`Highlighted`) and Enter chooses |
-| `ComboboxBase` | an `Input` whose text filters the `Item`s of a `Popup` below it, which the arrows highlight and Enter or a click chooses (`Chosen`) |
+| `ComboboxBase` | an `Input` whose text filters the `Item`s of a `Popup` below it, which the arrows highlight and Enter or a click chooses (`Chosen`), or shows a row of yours when none match ([Combobox](combobox.md#without-a-look)) |
 | `PopoverBase`, `DialogBase` | a panel beside an anchor, or over a backdrop covering the window, that a press outside or Escape closes |
 | `MenuBase`, `ContextMenuBase` | a menu button's `Trigger`, or an element's context menu, opening a `Popup` of `Item`s, `CheckItem`s, `RadioItem`s and `SubmenuItem`s with their `Submenu`s, which the pointer and the keys highlight (`Highlighted`) and choose (`Clicked`) ([Menu button](menu-button.md#without-a-look)) |
 | `TooltipBase` | a tip beside an anchor while the pointer rests on it or the keyboard focus is on it, which a press or Escape hides ([Tooltip](tooltip.md#without-a-look)) |

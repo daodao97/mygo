@@ -168,6 +168,91 @@ func TestTabsBase(t *testing.T) {
 	}
 }
 
+// TestTabsBaseDisabledTabs checks that a disabled tab is out of the keys'
+// way and of the pointer's, as Radix's disabled tab triggers, and that
+// assistive technology sees it disabled.
+func TestTabsBaseDisabledTabs(t *testing.T) {
+	tab, changes := 0, 0
+	off := map[int]bool{1: true, 3: true}
+	names := []string{"One", "Two", "Three", "Four"}
+	tt := coreNewTester(func(c *context) {
+		tabs := coreTabsBase(c, &tab, len(names))
+		tabs.List.Children(func() {
+			for i, name := range names {
+				tabs.Tab(i).Padding(4).Disabled(off[i]).Children(func() { coreText(c, name) })
+			}
+		})
+		if tabs.List.Changed() {
+			changes++
+		}
+	}, 300, 100)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tt.Click("One")
+	tt.Key(0, KeyRight)
+	if tab != 2 || !tt.Focused("Three") {
+		t.Errorf("Right from One chooses %d, not Three past the disabled Two", tab)
+	}
+	tt.Key(0, KeyRight)
+	if tab != 0 || !tt.Focused("One") {
+		t.Errorf("Right from Three chooses %d, not One round past the disabled Four", tab)
+	}
+	tt.Key(0, KeyLeft)
+	if tab != 2 || !tt.Focused("Three") {
+		t.Errorf("Left from One chooses %d, not Three round past the disabled Four", tab)
+	}
+	tt.Key(0, KeyEnd)
+	if tab != 2 {
+		t.Errorf("End chooses %d, not Three before the disabled Four", tab)
+	}
+	tt.Key(0, KeyHome)
+	if tab != 0 || !tt.Focused("One") {
+		t.Errorf("Home chooses %d", tab)
+	}
+	tt.Click("Two")
+	if tab != 0 || changes != 4 {
+		t.Errorf("a click on the disabled Two chooses %d, %d changes", tab, changes)
+	}
+	if n := accessNode(t, tt.h.access, platform.RoleTab, "Two"); n.States&platform.AccessDisabled == 0 {
+		t.Errorf("the disabled tab: %+v", n)
+	}
+	if n := accessNode(t, tt.h.access, platform.RoleTab, "One"); n.States&platform.AccessDisabled != 0 || n.States&platform.AccessChecked == 0 {
+		t.Errorf("the tab chosen: %+v", n)
+	}
+	// With the others disabled, the keys stay on the tab chosen.
+	off = map[int]bool{1: true, 2: true, 3: true}
+	tt.Click("One")
+	tt.Key(0, KeyRight)
+	tt.Key(0, KeyEnd)
+	if tab != 0 || !tt.Focused("One") {
+		t.Errorf("with the others disabled, the keys choose %d", tab)
+	}
+}
+
+// TestTabsBaseDisabledTabPublic is the same through the public API, the
+// tabs disabled after their constructor returned.
+func TestTabsBaseDisabledTabPublic(t *testing.T) {
+	tab := 0
+	tt := NewTester(func(c *Context) {
+		tabs := TabsBase(c, &tab, 3)
+		tabs.List.Children(func() {
+			for i, name := range []string{"One", "Two", "Three"} {
+				tb := tabs.Tab(i).Padding(4)
+				if i == 1 {
+					tb.Disabled(true)
+				}
+				tb.Children(func() { Text(c, name) })
+			}
+		})
+	}, 300, 100)
+	if err := tt.Click("One"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(0, KeyRight)
+	if tab != 2 {
+		t.Errorf("Right from One chooses %d, not Three past the disabled Two", tab)
+	}
+}
+
 func TestSelectBase(t *testing.T) {
 	size := "M"
 	sizes := []string{"S", "M", "L", "XL"}
