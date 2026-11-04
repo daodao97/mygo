@@ -214,6 +214,8 @@ settled: a window it opened comes as `+` lines.
 - `wait` waits for the window to settle (`--timeout`, as above).
 - `wait <sel>` waits until the window shows the element; `wait --text
   <s>` until an element's label or value contains `s` (case sensitive).
+  These check the condition while the window keeps drawing; `--settle`
+  waits for it to settle after the condition is met.
 - `--gone` waits until it no longer shows it, as a dialog closing.
 - It prints `ok`, or with `--settle` the diff. After `--timeout` it fails
   with `timeout`. Never sleep: wait for what you expect.
