@@ -245,8 +245,49 @@ func (h *hyphens) place(l shapedLine, text []rune, broken, rtl bool) shapedLine 
 			}
 		}
 		l.runs[ri].glyphs = slices.Concat(l.runs[ri].glyphs, h.glyphsAt(c, x, rtl))
+		placed = true
+	}
+	if placed {
+		inVisualOrder(&l, l.end-1)
 	}
 	return l
+}
+
+// inVisualOrder moves the glyphs of cluster c, a hyphen the line shows
+// where the engine left its soft hyphen, among the glyphs of the line to
+// where it shows, keeping them in visual order: in a right-to-left run
+// or line, the hyphen, which ends it, is at its left, and the engine may
+// have given its soft hyphen a run, or a place in one, of its own.
+func inVisualOrder(l *shapedLine, c int) {
+	var hy []Glyph
+	for ri := range l.runs {
+		l.runs[ri].glyphs = slices.DeleteFunc(l.runs[ri].glyphs, func(g Glyph) bool {
+			if g.Cluster == c {
+				hy = append(hy, g)
+				return true
+			}
+			return false
+		})
+	}
+	if len(hy) == 0 {
+		return
+	}
+	x := hy[0].X
+	for _, g := range hy {
+		x = min(x, g.X)
+	}
+	// Before the first glyph right of it.
+	for ri := range l.runs {
+		gs := l.runs[ri].glyphs
+		for j, g := range gs {
+			if g.X > x {
+				l.runs[ri].glyphs = slices.Concat(gs[:j], hy, gs[j:])
+				return
+			}
+		}
+	}
+	last := len(l.runs) - 1
+	l.runs[last].glyphs = append(l.runs[last].glyphs, hy...)
 }
 
 // glyphsAt returns the glyphs of the hyphen of rune i, standing for it,

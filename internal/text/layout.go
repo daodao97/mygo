@@ -321,7 +321,11 @@ type Line struct {
 	// included.
 	Start, End int
 	// RTL reports a right-to-left paragraph.
-	RTL    bool
+	RTL bool
+	// Glyphs are in visual order, from the left, on every engine: X
+	// ascends but for shaping offsets, and Cluster descends through a
+	// right-to-left run (Glyph.RTL). The glyphs of a cluster are next to
+	// each other.
 	Glyphs []Glyph
 
 	carets   []float32
@@ -342,7 +346,9 @@ type Glyph struct {
 	// Cluster is the first rune of the glyph's cluster, Runes how many
 	// runes the cluster holds; glyphs of the ellipsis have Runes 0.
 	Cluster, Runes int
-	RTL            bool
+	// RTL marks a glyph of a right-to-left run, whose cluster's first
+	// rune is on its right.
+	RTL bool
 	// Object marks the box of an inline object (Span.ObjectWidth), which
 	// draws no glyph: what shows there is the caller's.
 	Object bool

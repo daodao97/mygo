@@ -129,7 +129,9 @@ func glyphsOf(l *text.Layout, x, y float32, color Color, sp *spanPaint, gs []mor
 				c = sp.color(sp.at(g.Cluster), color)
 			}
 			mg := morphGlyph{font: g.Font, id: g.ID, fontSize: g.Size, size: g.Size, x: x + g.X, y: y + line.Baseline, color: c, alpha: 1}
-			if g.Runes > 0 && g.Cluster > seen && g.Cluster < len(l.Runes) {
+			// The glyphs of a cluster are next to each other, in visual
+			// order: clusters descend through right-to-left text.
+			if g.Runes > 0 && g.Cluster != seen && g.Cluster >= 0 && g.Cluster < len(l.Runes) {
 				mg.runes, seen = l.Runes[g.Cluster:min(g.Cluster+g.Runes, len(l.Runes))], g.Cluster
 			}
 			gs = append(gs, mg)

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/wait"
@@ -493,6 +494,66 @@ func TestRightToLeft(t *testing.T) {
 	wide := s.Layout(Params{Text: "שלום", Style: Style{Size: 16}, Width: 300})
 	if line := wide.Lines[0]; line.X+line.Width < 299 {
 		t.Errorf("line at %v, %v wide", line.X, line.Width)
+	}
+}
+
+// TestGlyphsInVisualOrder checks that every engine gives the glyphs of a
+// line in visual order: X ascends along the line, and through a
+// right-to-left run the clusters descend, the glyphs marked RTL.
+func TestGlyphsInVisualOrder(t *testing.T) {
+	s := Shared()
+	for _, p := range []Params{
+		{Text: "中文 hello שלום，مرحبا world。", NoWrap: true, KeepSpaces: true},
+		{Text: "שלום abc עולם 123 مرحبا", NoWrap: true},
+		{Text: "hello שלום עולם, مرحبا بالعالم and the rest of it", Width: 120},
+		{Text: "שלום עולם, hello world and مرحبا بالعالم again", Width: 120},
+		// Broken at soft hyphens, which show a hyphen at the left.
+		{Text: "مرح\u00adبا بال\u00adعالم", Width: 30},
+		{Text: "ab مرح\u00adبا بال\u00adعالم", Width: 30},
+	} {
+		p.Style = Style{Size: 17}
+		l := s.Layout(p)
+		rtl := 0
+		for li, line := range l.Lines {
+			// The leftmost glyph of the cluster before: within one, as of
+			// an Arabic letter and its marks, Core Text may place a glyph
+			// left of the one before it.
+			var start, at float32
+			for i, g := range line.Glyphs {
+				if g.Cluster < 0 || g.Cluster >= len(l.Runes) {
+					continue
+				}
+				r := l.Runes[g.Cluster]
+				if strong := unicode.In(r, unicode.Hebrew, unicode.Arabic); strong != g.RTL && (strong || unicode.IsLetter(r)) {
+					t.Errorf("%q: line %d glyph %d of %q has RTL %v", p.Text, li, i, r, g.RTL)
+				}
+				if g.RTL {
+					rtl++
+				}
+				if i == 0 {
+					at = g.X
+					continue
+				}
+				prev := line.Glyphs[i-1]
+				if g.Cluster != prev.Cluster {
+					start, at = at, g.X
+					if g.X < start-0.01 {
+						t.Errorf("%q: line %d glyph %d (cluster %d) at %v, left of the cluster before it (%d) at %v", p.Text, li, i, g.Cluster, g.X, prev.Cluster, start)
+					}
+				} else {
+					at = min(at, g.X)
+				}
+				if g.RTL && prev.RTL && g.Cluster > prev.Cluster {
+					t.Errorf("%q: line %d right to left, cluster %d follows cluster %d", p.Text, li, g.Cluster, prev.Cluster)
+				}
+				if !g.RTL && !prev.RTL && g.Cluster < prev.Cluster && prev.Cluster >= 0 {
+					t.Errorf("%q: line %d left to right, cluster %d follows cluster %d", p.Text, li, g.Cluster, prev.Cluster)
+				}
+			}
+		}
+		if rtl == 0 {
+			t.Errorf("%q: no glyph is right to left", p.Text)
+		}
 	}
 }
 

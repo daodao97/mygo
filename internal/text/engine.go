@@ -32,7 +32,9 @@ type engine interface {
 	// most width DIPs, or into one line when width is 0, and shapes them.
 	// rtl sets the paragraph's direction; wholeWords lets a word longer
 	// than a line overflow it instead of breaking it. spans style runs of
-	// the text apart from style, with their ends relative to it.
+	// the text apart from style, with their ends relative to it. The runs
+	// of a line and the glyphs of a run are in visual order, from the
+	// left, a right-to-left run's too.
 	shape(text []rune, style Style, spans []Span, width float32, rtl, wholeWords bool) []shapedLine
 	// glyph rasterizes glyph id of f at scale pixels per DIP, its origin
 	// dx pixels (0 ≤ dx < 1) right of the left edge of a pixel, for text
@@ -136,7 +138,8 @@ type shapedRun struct {
 	start, end int
 	// glyphs are positioned relative to the start of the line's pen, Y
 	// down from the baseline, with Cluster the paragraph's rune that
-	// starts the glyph's cluster; Runes is set later.
+	// starts the glyph's cluster; Runes is set later. They are in visual
+	// order: a right-to-left run's clusters descend.
 	glyphs []Glyph
 }
 

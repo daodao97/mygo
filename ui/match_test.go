@@ -719,6 +719,9 @@ func TestMorphPairsCharacters(t *testing.T) {
 		{"Daily", "Daily deals", 5},
 		{"", "new", 0},
 		{"same", "same", 4},
+		// Right to left, the glyphs from the left: clusters descend.
+		{"שלום", "שלום", 4},
+		{"abc שלום", "שלום", 4},
 	} {
 		var pr morphPairs
 		pr.from = glyphsOf(layoutOf(tt, c.from, 13), 0, 0, Color{}, nil, nil)

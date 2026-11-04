@@ -216,7 +216,10 @@ moving through a zoomed view glides.
 Text that a widget lays out itself, as in the cells of a grid, is shaped
 once with `ui.Shape`, which returns glyphs placed along a line by the
 system's text engine, with ligatures, kerning and fallback fonts, and the
-runes each comes from. Move their `X` and draw them with `Painter.Glyphs`;
+runes each comes from. The glyphs come in visual order on every platform,
+from the left: through Hebrew or Arabic their `Cluster` descends, and
+`RTL` marks them, so find a range of runes' glyphs by `Cluster` and
+`Runes`. Move their `X` and draw them with `Painter.Glyphs`;
 `Font.Metrics` returns the font's ascent, descent and line gap, and
 `Painter.Scale` the device pixels of a DIP, to line things up with the
 display's pixels. `Shape` caches nothing, unlike the text of elements: keep

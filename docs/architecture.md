@@ -3934,9 +3934,13 @@ either.
   2D context (`canvas_js.go`, see [Browsers](#browsers-internalweb)). They find the fonts, fall
   back to other fonts for what one lacks, shape, run the bidirectional
   algorithm and break lines; font files stay memory mapped and shared with
-  every other process. The package assembles their lines into layouts, with
-  its own whitespace trimming, ellipsis, alignment, carets and selection, so
-  those behave the same everywhere, and caches layouts by their parameters.
+  every other process. Every engine gives a line's glyphs in visual order,
+  from the left, through right-to-left runs too (DirectWrite's runs, whose
+  glyphs come in logical order, are reversed), so that what walks them,
+  and `ui.Shape`'s callers, rely on one order. The package assembles their
+  lines into layouts, with its own whitespace trimming, ellipsis,
+  alignment, carets and selection, so those behave the same everywhere,
+  and caches layouts by their parameters.
   A text that wraps none of its lines lays out alike at any width they
   fit in, but for where its alignment puts its lines: `LayoutFrom` lays
   it out at another width as the layout it is given (`ui` gives an

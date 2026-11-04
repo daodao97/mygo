@@ -824,6 +824,7 @@ func (e *dwrite) shape(text []rune, style Style, spans []Span, width float32, rt
 		ends[i] = pos
 		lines[i].end = index[min(int(pos), len(u16))]
 	}
+	lefts := make([][]float32, len(lines)) // the left of each run of a line
 	for _, r := range runs {
 		li, _ := slices.BinarySearch(ends, r.pos+1)
 		if li >= len(lines) || int(r.pos+r.n) > len(u16) {
@@ -832,7 +833,17 @@ func (e *dwrite) shape(text []rune, style Style, spans []Span, width float32, rt
 		var x, y float32
 		var hit dwHitTestMetrics
 		call(layout, layoutHitTestTextPosition, uintptr(r.pos), 0, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&hit)))
-		lines[li].runs = append(lines[li].runs, e.run(r, x, index))
+		run, left := e.run(r, x, index)
+		// The runs of a line go from left to right, whatever order
+		// DirectWrite draws them in: a line is few runs, nearly in order,
+		// insertion sorted.
+		ls := append(lefts[li], left)
+		rs := append(lines[li].runs, run)
+		for k := len(ls) - 1; k > 0 && ls[k-1] > ls[k]; k-- {
+			ls[k-1], ls[k] = ls[k], ls[k-1]
+			rs[k-1], rs[k] = rs[k], rs[k-1]
+		}
+		lefts[li], lines[li].runs = ls, rs
 	}
 	if len(layoutObjects.objects) > 0 {
 		units := make([]uint32, len(text)+1)
@@ -936,8 +947,10 @@ func (e *dwrite) typography(layout uintptr, list string, r uintptr) {
 }
 
 // run positions the glyphs of a run whose origin, on the right for a
-// right-to-left run, is at x.
-func (e *dwrite) run(r dwRun, x float32, index []int) shapedRun {
+// right-to-left run, is at x, in visual order, and returns them with the
+// left of the run's advances. DirectWrite gives the glyphs of a run in
+// logical order, those of a right-to-left run from the right.
+func (e *dwrite) run(r dwRun, x float32, index []int) (shapedRun, float32) {
 	f := e.fontOf(r.face, r.size)
 	out := shapedRun{font: f, start: index[r.pos], end: index[r.pos+r.n], glyphs: make([]Glyph, len(r.glyphs))}
 	// The code unit starting the cluster of each glyph.
@@ -973,7 +986,15 @@ func (e *dwrite) run(r dwRun, x float32, index []int) shapedRun {
 		}
 		out.glyphs[i] = g
 	}
-	return out
+	if r.rtl {
+		// From the left, as Pango and Core Text give them: the pen
+		// stopped at the run's left.
+		for i, j := 0, len(out.glyphs)-1; i < j; i, j = i+1, j-1 {
+			out.glyphs[i], out.glyphs[j] = out.glyphs[j], out.glyphs[i]
+		}
+		return out, pen
+	}
+	return out, x
 }
 
 // settings reads the system's settings for text once: the rendering
