@@ -175,6 +175,9 @@ func goCalls(name, value string) []string {
 	case "background", "background-color":
 		return []string{call("Background", goColor(e.bg))}
 	case "box-shadow":
+		if len(e.shadows) == 0 {
+			return []string{call("NoShadow")}
+		}
 		var calls []string
 		for _, sh := range e.shadows {
 			method := "Shadow"

@@ -426,6 +426,7 @@ func TestGoCallsAreElementMethods(t *testing.T) {
 		{"background", "transparent", ".Background(ui.Transparent)"},
 		{"box-shadow", "1 2 3 4 #000000", `.Shadow(1, 2, 3, 4, ui.Hex("#000000"))`},
 		{"box-shadow", "inset 1 2 #000000", `.InsetShadow(1, 2, 0, 0, ui.Hex("#000000"))`},
+		{"box-shadow", "none", ".NoShadow()"},
 		{"opacity", "50%", ".Opacity(0.5)"},
 		{"visibility", "hidden", ".Invisible()"},
 		{"display", "none", ".Hidden(true)"},

@@ -5826,6 +5826,19 @@ func (_handle Element) Modal() Element {
 	return wrapElement(_node.Modal())
 }
 
+// NoShadow takes off the outer and inner shadows added so far, as CSS's
+// box-shadow: none, so that the Shadow and InsetShadow calls after it
+// start afresh.
+func (_handle Element) NoShadow() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.NoShadow())
+}
+
 // NoWrap keeps each line of the element's text whole, breaking it only at
 // newlines, even where it overflows the element.
 func (_handle Element) NoWrap() Element {

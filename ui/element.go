@@ -1493,6 +1493,11 @@ func (e *node) InsetShadow(x, y, blur, spread float32, c Color) *node {
 	return e
 }
 
+// NoShadow takes off the outer and inner shadows added so far, as CSS's
+// box-shadow: none, so that the Shadow and InsetShadow calls after it
+// start afresh.
+func (e *node) NoShadow() *node { e.shadows = e.shadows[:0]; return e }
+
 // Opacity makes the element and its children translucent.
 func (e *node) Opacity(o float32) *node {
 	e.opacity, e.opacitySet = max(0, min(o, 1)), true

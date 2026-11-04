@@ -31,7 +31,10 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
   	InsetShadow(0, 0, 1, 0, ui.RGBA(255, 255, 255, 0.2))
   ```
 
-  A [transition](transitions.md#what-moves) fades shadows as they change.
+  `NoShadow()` takes off the shadows added so far, as `box-shadow: none`,
+  to flatten a card a helper returned with one; shadows added after it
+  start afresh. A [transition](transitions.md#what-moves) fades shadows
+  as they change.
 - **Gradients and stripes.** `Gradient(from, to, angle)` fills the box with
   a linear gradient; `LinearGradient` also places its colors along the line
   (`Start`, `End`) and mixes them in Oklab, which keeps their lightness,

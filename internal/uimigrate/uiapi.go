@@ -274,6 +274,7 @@ var elementChains = map[string]bool{
 	"MinWidthPercent":      true,
 	"Mixed":                true,
 	"Modal":                true,
+	"NoShadow":             true,
 	"NoWrap":               true,
 	"ObjectPosition":       true,
 	"ObserveInput":         true,
