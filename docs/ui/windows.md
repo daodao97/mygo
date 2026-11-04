@@ -144,6 +144,16 @@ hud := mygo.NewWindow(mygo.WindowOptions{
 hud.SetActiveAppearance(true) // stays clear over the app in front (macOS)
 ```
 
+`VibrancyTint` colors that glass, by its alpha, as AppKit's
+`NSGlassEffectView` does:
+
+```go
+hud.SetVibrancyTint("light-dark(rgba(0, 122, 255, 0.2), rgba(255, 159, 10, 0.2))")
+```
+
+Other materials and platforms ignore it. `VibrancyTint` in
+`WindowOptions` sets it at creation.
+
 The [glass plugin](../plugins/glass.md) draws Liquid Glass too, on every
 platform, but with what the window itself draws: a toolbar over content
 scrolling under it. The window's glass shows what no window of the app

@@ -854,12 +854,13 @@ func (w *window) SetBackgroundColor(c platform.Color) {
 	}
 }
 
-func (w *window) SetOpacity(v float64)      { gtkWidgetSetOpacity(w.win, v) }
-func (w *window) Opacity() float64          { return gtkWidgetGetOpacity(w.win) }
-func (w *window) SetIgnoreMouseEvents(bool) {}
-func (w *window) SetContentProtection(bool) {}
-func (w *window) SetVibrancy(string)        {}
-func (w *window) SetActiveAppearance(bool)  {}
+func (w *window) SetOpacity(v float64)            { gtkWidgetSetOpacity(w.win, v) }
+func (w *window) Opacity() float64                { return gtkWidgetGetOpacity(w.win) }
+func (w *window) SetIgnoreMouseEvents(bool)       {}
+func (w *window) SetContentProtection(bool)       {}
+func (w *window) SetVibrancy(string)              {}
+func (w *window) SetVibrancyTint(*platform.Color) {}
+func (w *window) SetActiveAppearance(bool)        {}
 
 // SetWindowButtonsTheme does nothing: GTK's title buttons follow the
 // theme, which is the application's.

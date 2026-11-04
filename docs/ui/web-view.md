@@ -376,7 +376,10 @@ The page is the system's web view, which the window composites with the
 native UI; MyGo does not draw it. As with SwiftUI's `WebView`:
 
 - Effects reading what is behind them, as the glass plugin's blur, see
-  none of the page: it is not part of the window's frames.
+  none of the page: it is not part of the window's frames. The glass
+  plugin's `Glass{Native: true}` is the exception: the system's glass view
+  sits between the page and the content, so a toolbar over a web view gets
+  real Liquid Glass, on macOS 26 and later.
 - `Window.CapturePage` of the window shows a hole where the page is;
   `WebView.CapturePage` captures the page.
 

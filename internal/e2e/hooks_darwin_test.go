@@ -100,9 +100,16 @@ func drag(w *mygo.Window, points [][2]float64) bool {
 	return true
 }
 
+// wheel turns the wheel at (x, y) of a window's content, through the
+// window's own hit testing.
 // The wheel over a web view is covered by internal/darwin's
 // TestEmbeddedWebViewScrollReachesSurface, with AppKit's events.
 func wheel(*mygo.Window, float64, float64) bool { return false }
+
+func hitView(w *mygo.Window, x, y float64) (class string) {
+	mygo.RunOnMain(func() { class = darwin.TestHitView(w.NativeHandle(), x, y) })
+	return class
+}
 
 func webViewAttached(w *mygo.Window) (attached bool, supported bool) {
 	mygo.RunOnMain(func() { attached = darwin.TestWebViewAttached(w.NativeHandle()) })
@@ -428,3 +435,25 @@ func pressLetter(w *mygo.Window, letter byte, cmd bool) (ok bool) {
 	})
 	return ok
 }
+
+func glassTint(w *mygo.Window) (red, green, blue, alpha float64, ok bool) {
+	mygo.RunOnMain(func() { red, green, blue, alpha = darwin.TestGlassTint(w.NativeHandle()) })
+	return red, green, blue, alpha, true
+}
+
+func nativeGlassSupported() (ok bool) {
+	mygo.RunOnMain(func() { ok = darwin.TestNativeGlassSupported() })
+	return ok
+}
+
+func nativeGlass(w *mygo.Window) (class string, frame [4]float64, style int, ok bool) {
+	mygo.RunOnMain(func() { class, frame, style, ok = darwin.TestNativeGlass(w.NativeHandle()) })
+	return class, frame, style, ok
+}
+
+func nativeGlassTint(w *mygo.Window) (red, green, blue, alpha float64) {
+	mygo.RunOnMain(func() { red, green, blue, alpha = darwin.TestNativeGlassTint(w.NativeHandle()) })
+	return red, green, blue, alpha
+}
+
+func activateApp() { mygo.RunOnMain(darwin.TestActivate) }

@@ -182,3 +182,17 @@ func dismissPageMenu()                                   {}
 func takeForeground(*mygo.Window) {}
 
 func pressLetter(*mygo.Window, byte, bool) bool { return false }
+
+func glassTint(*mygo.Window) (red, green, blue, alpha float64, ok bool) { return 0, 0, 0, 0, false }
+
+func nativeGlassSupported() bool { return false }
+
+func nativeGlass(*mygo.Window) (class string, frame [4]float64, style int, ok bool) {
+	return "", frame, 0, false
+}
+
+func nativeGlassTint(*mygo.Window) (red, green, blue, alpha float64) { return 0, 0, 0, 0 }
+
+func activateApp() {}
+
+func hitView(*mygo.Window, float64, float64) string { return "" }

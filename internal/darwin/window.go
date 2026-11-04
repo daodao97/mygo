@@ -65,6 +65,8 @@ type window struct {
 	glass  bool
 	// keepActive is SetActiveAppearance's.
 	keepActive bool
+	// tint is the material's tint, which only NSGlassEffectView takes.
+	tint *platform.Color
 	// provisionalURL is the URL of the navigation started last, which a
 	// load failed before it committed is of when its error doesn't tell.
 	provisionalURL string
@@ -406,6 +408,9 @@ func (w *window) fillWindow(content NSRect) {
 	send(w.win, "setContentView:", uintptr(w.view))
 	if o.Vibrancy != "" {
 		w.SetVibrancy(o.Vibrancy)
+	}
+	if o.VibrancyTint != nil {
+		w.SetVibrancyTint(o.VibrancyTint)
 	}
 }
 
@@ -1352,6 +1357,7 @@ func (w *window) SetVibrancy(material string) {
 		}
 		if glass {
 			send(w.effect, "setStyle:", g.style)
+			w.applyTint()
 		} else {
 			send(w.effect, "setMaterial:", m)
 		}
@@ -1391,6 +1397,27 @@ func (w *window) effectState() uintptr {
 // both appearances, and an appearance of the window's own would change its
 // page's too.
 func (w *window) SetWindowButtonsTheme(string) {}
+
+// SetVibrancyTint tints the glass, nil to remove the tint. Other
+// materials take none.
+func (w *window) SetVibrancyTint(c *platform.Color) {
+	w.tint = c
+	if w.effect != 0 && w.glass {
+		withPool(w.applyTint)
+	}
+}
+
+// applyTint sets the glass's tintColor from w.tint. It runs in a pool.
+func (w *window) applyTint() {
+	if w.effect == 0 || !w.glass {
+		return
+	}
+	var color uintptr
+	if w.tint != nil {
+		color = uintptr(nsColor(*w.tint))
+	}
+	send(w.effect, "setTintColor:", color)
+}
 
 // removeEffect takes the material out of the window.
 func (w *window) removeEffect() {

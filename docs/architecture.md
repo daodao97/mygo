@@ -1395,7 +1395,21 @@ build` like mygo-runtime and released with the same version.
   from SwiftUI's `safeAreaBar` over test patterns, its layers dumped).
   Both effects' shaders are compiled ahead of time on macOS
   (`shaders_darwin.go`) and on Windows (`shaders_windows.go`), with
-  `internal/gen`.
+  `internal/gen`. `glass.Group` paints one surface over a row of elements:
+  a shader of package `ui/shader` (Kage, compiled for every renderer and
+  the CPU) takes up to 8 rectangles and radii, unions them with a smooth
+  minimum (so panes that nearly touch bridge), and draws the glass once
+  around the union's bezel. `Glass{Native: true}` asks the window's
+  surface for the system's glass: `ui.NativeGlassMaterial`, noted when the
+  frame commits (`ui/nativeglass.go`), tells the surface where the glass
+  is (`platform.GlassSurface.PlaceGlass`). On macOS the surface puts an
+  `NSGlassEffectView` under the content and above the web views, and the
+  material leaves a hole where it shows, so the glass samples a web view's
+  page or the window's material, never the frame's own pixels; elsewhere,
+  and with Reduce Transparency, the shader draws it. The materials read
+  `ui.Painter.Preferences`: Reduce Transparency draws opaque surfaces,
+  Increase Contrast lights the rim. Window-level glass takes a tint
+  through `NSGlassEffectView`'s `tintColor`.
 - **loading** is loading.dev's 29 indicators (`loading-dev`, React and
   CSS) for native UI, on ui's public API only. Each is a box of
   `RoleProgress` whose draw function asks for the next frame
@@ -5310,7 +5324,7 @@ which npm allows only for packages that exist: the first release uses an
 | a web view scaled and rounded with native UI (`WebViewPlacement`) | the pane's bounds scale it, its layer's corners cut it | WebKitGTK zooms the page to its view's size, which `resize`s it at the same width; `draw` clipped to the corners on whole pixels | the visual's transform scales it, a rectangle clip cuts it |
 | WebViewAvailable (any goroutine, before `Run` too) | `WKWebView` is there, which macOS always has | WebKitGTK 4.1 (or 4.0), JavaScriptCore and libsoup load, as `webKit` loads them for a window showing a page | `internal/webview2` finds a runtime, or a `WebView2Loader.dll` next to the executable exports what `createEnvironment` calls; once an environment was made, whether that worked. A runtime whose files are there but whose browser is not passes, and fails later, making the web view |
 | secrets | Security.framework generic passwords in the login keychain (`SecItem*`), service and account as keytar | libsecret's `org.freedesktop.Secret.Generic` schema (attributes `service`, `account`), loaded on first use, libsecret 0.19 or later; no libsecret, no session bus (`g_bus_get_sync`) or no Secret Service on it (`G_DBUS_ERROR_SERVICE_UNKNOWN`, `NAME_HAS_NO_OWNER`, `NO_SERVER`) is `ErrUnsupported` | Credential Manager generic credentials (`CredWriteW`), target `service/account` |
-| vibrancy | all materials, behind pages and native UI; Liquid Glass (`NSGlassEffectView`) from macOS 26, the popover and HUD materials before; frameless windows cut to `CornerRadius`; `SetActiveAppearance` through AppKit's private `_setForceMainAppearance:` | ignored | Windows 11 22H2 Mica, Acrylic, Tabbed, behind pages and native UI, in windows created with a material, which have no menu bar; Liquid Glass as Acrylic; frameless windows given a `CornerRadius` rounded by DWM |
+| vibrancy | all materials, behind pages and native UI; Liquid Glass (`NSGlassEffectView`) from macOS 26, the popover and HUD materials before, with a `tintColor` and the native UI's `Glass{Native}` placed over web views; frameless windows cut to `CornerRadius`; `SetActiveAppearance` through AppKit's private `_setForceMainAppearance:` | ignored | Windows 11 22H2 Mica, Acrylic, Tabbed, behind pages and native UI, in windows created with a material, which have no menu bar; Liquid Glass as Acrylic; frameless windows given a `CornerRadius` rounded by DWM |
 | active windows | the core's state, from key windows; materials follow AppKit's (`NSVisualEffectStateFollowsWindowActiveState`), but panels', flyouts' and kept ones' (`NSVisualEffectStateActive`) | the core's state, from GDK's focus; GTK's own title bar goes `:backdrop` as a focusable flyout takes the keyboard | the core's state, from `WM_ACTIVATE`; DWM's Mica and Acrylic follow the frame, kept active while the window's focusable flyout is (`WM_NCACTIVATE`) |
 | accent color and accessibility preferences | `NSColor.controlAccentColor` (10.14+), `accessibilityDisplayShouldReduceMotion` (10.12+), `accessibilityDisplayShouldReduceTransparency` and `accessibilityDisplayShouldIncreaseContrast` (10.10+), with `NSSystemColorsDidChangeNotification` and `NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification`; no text scale | GTK's `gtk-enable-animations` and theme name, and the settings portal's accent, contrast and GNOME's `text-scaling-factor` (`ReadAll`, `SettingChanged`); no reduced transparency | DWM's `AccentColor`, `SPI_GETCLIENTAREAANIMATION`, Personalize's `EnableTransparency`, `SPI_GETHIGHCONTRAST` and Accessibility's `TextScaleFactor`, with `WM_SETTINGCHANGE` |
 | preferred languages | the global `AppleLanguages` (`CFPreferencesCopyValue`), not the app's | `LANGUAGE`, then `LC_ALL`, `LC_MESSAGES`, `LANG`; read when asked, no changes reported | `GetUserPreferredUILanguages`, `WM_SETTINGCHANGE` "intl" |

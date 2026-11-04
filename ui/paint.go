@@ -1295,6 +1295,12 @@ func (p *Painter) Fill(r Rect, c Color, radius float32) {
 	p.fill(r, [4]float32{radius, radius, radius, radius}, c, 0, Color{})
 }
 
+// FillRadii paints a rounded rectangle whose corners have radii of their
+// own, clockwise from the top left, as Element.Radius does.
+func (p *Painter) FillRadii(r Rect, radii [4]float32, c Color) {
+	p.fill(r, radii, c, 0, Color{})
+}
+
 // FillGradient paints a rounded rectangle with a gradient.
 func (p *Painter) FillGradient(r Rect, g LinearGradient, radius float32) {
 	op := scene.Op{Kind: scene.OpFill, Rect: p.snap(r), Radii: p.radii([4]float32{radius, radius, radius, radius}), Continuous: continuousCorners, Opacity: p.opacity}

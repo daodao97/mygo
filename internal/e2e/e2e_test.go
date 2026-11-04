@@ -34,6 +34,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/internal/wait"
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -767,6 +768,21 @@ func TestGlass(t *testing.T) {
 	if !glass && class != "NSVisualEffectView" || glass && style != 1 || radius != 16 {
 		t.Errorf("material %s, style %d, corners %v; want the clear glass, or the HUD material before macOS 26, cut to 16", class, style, radius)
 	}
+	if glass {
+		if err := w.SetVibrancyTint("rgba(255, 0, 0, 0.5)"); err != nil {
+			t.Fatalf("tint: %v", err)
+		}
+		r, g, b, a, _ := glassTint(w)
+		if math.Abs(r-1) > 0.02 || math.Abs(g) > 0.02 || math.Abs(b) > 0.02 || math.Abs(a-0.5) > 0.02 {
+			t.Errorf("tint is %v, %v, %v, %v; want red at half alpha", r, g, b, a)
+		}
+		if err := w.SetVibrancyTint(""); err != nil {
+			t.Fatalf("clear tint: %v", err)
+		}
+		if _, _, _, a, _ := glassTint(w); a != 0 {
+			t.Errorf("tint alpha is %v after clearing it", a)
+		}
+	}
 	// Without SetActiveAppearance, a window draws as inactive once the app is.
 	// Focusing other activates the app, done once other is key: it is waited
 	// for so that the activation does not land after the Finder's and bring
@@ -798,6 +814,88 @@ func TestGlass(t *testing.T) {
 	if class, _, _, _, _ := material(w); class != "" {
 		t.Errorf("no material: %s", class)
 	}
+}
+
+// TestNativeGlassOverWebView puts a toolbar of the system's glass over a
+// web view: NSGlassEffectView sits under the content and above the web
+// view, with the toolbar's frame, where it samples the page.
+func TestNativeGlassOverWebView(t *testing.T) {
+	if !nativeGlassSupported() {
+		t.Skip("the system has no Liquid Glass, or reduces transparency")
+	}
+	var view *mygo.WebView
+	var clicks atomic.Int32
+	var show atomic.Bool
+	show.Store(true)
+	w := newWindow(t, mygo.WindowOptions{Width: 400, Height: 300, Content: ui.View(func(c *ui.Context) {
+		c.Root().Background(ui.Transparent)
+		ui.Box(c).Fill().Children(func() {
+			if view != nil {
+				ui.WebView(c, view).Fill()
+			}
+			if show.Load() {
+				ui.Row(c).Absolute().Top(0).Left(0).Right(0).Height(60).Radius(18).Padding(0, 16).AlignItems(ui.Center).Material(glass.Glass{Native: true, Tint: ui.RGBA(255, 0, 0, 0.5)}).Children(func() {
+					if ui.Button(c, "On glass").Width(100).Clicked() {
+						clicks.Add(1)
+					}
+				})
+			}
+		})
+	})})
+	v, err := w.NewWebView(mygo.WebViewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Update(func() { view = v })
+	v.Page().LoadHTML(`<body style="margin:0;height:3000px;background:#ff0000"><script>requestAnimationFrame(() => requestAnimationFrame(() => { window.ready = true }))</script></body>`, "")
+	waitForPage(t, v.Page(), "window.ready")
+	eventually(t, "the system's glass", func() bool { class, _, _, _ := nativeGlass(w); return class != "" })
+	class, frame, style, ok := nativeGlass(w)
+	if !ok || class != "NSGlassEffectView" {
+		t.Fatalf("the system's glass is %q, not NSGlassEffectView", class)
+	}
+	if style != 0 {
+		t.Errorf("glass style is %d, not regular", style)
+	}
+	if r, g, b, a := nativeGlassTint(w); math.Abs(r-1) > 0.02 || math.Abs(g) > 0.02 || math.Abs(b) > 0.02 || math.Abs(a-0.5) > 0.02 {
+		t.Errorf("glass tint is %v, %v, %v, %v; want red at half alpha", r, g, b, a)
+	}
+	// The toolbar is 60 DIPs at the top of the content, whose height the
+	// title bar leaves.
+	h := float64(w.ContentBounds().Height)
+	want := [4]float64{0, h - 60, 400, 60}
+	for i := range want {
+		if math.Abs(frame[i]-want[i]) > 1 {
+			t.Errorf("glass frame is %v, want %v", frame, want)
+			break
+		}
+	}
+	// The glass is under the content, which takes the pointer: its button
+	// works through it. TestGlass may have left another app in front.
+	activateApp()
+	w.Show()
+	if _, ok := appActive(); ok {
+		eventually(t, "the app in front", func() bool { active, _ := appActive(); return active })
+	}
+	w.Focus()
+	eventually(t, "the glass window focused", w.IsFocused)
+	if !click(w, 66, 30) {
+		t.Skip("click automation not available")
+	}
+	// The first click after another app was in front may only activate the
+	// app; the next one is the button's.
+	if clicks.Load() == 0 {
+		click(w, 66, 30)
+	}
+	eventually(t, "the click on the glass", func() bool { return clicks.Load() == 1 })
+	// The page is under the glass, and the glass is under the content: the
+	// web view takes the pointer where the page shows.
+	if class := hitView(w, 200, 250); !strings.Contains(class, "WebView") {
+		t.Errorf("the view at the page is %q, not the web view", class)
+	}
+	// The glass of an element that goes away is removed, not only hidden.
+	w.Update(func() { show.Store(false) })
+	eventually(t, "the glass removed", func() bool { class, _, _, ok := nativeGlass(w); return !ok || class == "" })
 }
 
 // TestRoundedOpaqueWindow rounds a frameless window that is not

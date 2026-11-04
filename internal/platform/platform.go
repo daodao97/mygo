@@ -396,6 +396,9 @@ type WindowOptions struct {
 	HideWindowButtons    bool
 	TrafficLightPosition *Point
 	Vibrancy             string
+	// VibrancyTint tints the material, where the platform's material takes
+	// one (macOS 26's Liquid Glass): nil for none.
+	VibrancyTint *Color
 	// CornerRadius rounds a frameless window's corners, in DIPs: its
 	// content and material are cut to them (macOS), or the system rounds
 	// it with its own corners (Windows 11).
@@ -581,6 +584,10 @@ type Window interface {
 	SetIgnoreMouseEvents(v bool)
 	SetContentProtection(v bool)
 	SetVibrancy(material string)
+	// SetVibrancyTint tints the window's material, where it takes one
+	// (macOS 26's Liquid Glass); nil removes the tint. Other materials and
+	// platforms ignore it.
+	SetVibrancyTint(c *Color)
 	// SetActiveAppearance keeps the window drawn as active, as the key
 	// window of the app in front, while it is not (macOS).
 	SetActiveAppearance(v bool)

@@ -113,6 +113,9 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 			}
 		}
 		s.stackWebViews(shown)
+		if len(s.glassShown) > 0 {
+			s.stackGlass(s.glassShown, true)
+		}
 	})
 }
 

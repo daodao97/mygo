@@ -54,6 +54,7 @@ on the screen. Sizes and positions are in device-independent pixels.
 | `TitleBarHeight` | the height of the title bar the page draws under the window buttons (Linux, Windows) |
 | `HideWindowButtons` | hides the window buttons of a hidden title bar, which keeps its resizing top edge, shadow and corners: the page draws its own and calls `Minimize`, `Maximize`, `Unmaximize` and `Close` |
 | `Transparent`, `Vibrancy` | a transparent window, and the material behind a transparent page or [native UI](ui/windows.md) (macOS, Windows 11 22H2): `VibrancyGlass` and `VibrancyGlassClear` are macOS 26's Liquid Glass. On Windows, a transparent window of native UI shows what is behind it where it draws nothing, and a window with a material has no menu bar: Alt and F10 open its menus in a popup |
+| `VibrancyTint` | tints Liquid Glass, in CSS syntax such as `"rgba(0, 122, 255, 0.3)"` or `"light-dark(...)"`; other materials and platforms ignore it (macOS 26). `SetVibrancyTint` changes it later |
 | `CornerRadius` | rounds a frameless window's corners: its content and material are cut to them on macOS, and Windows 11 gives it its own rounded corners |
 | `BackgroundColor` | fills the window until the page paints, in CSS syntax such as `"#1e1e1e"`, or `"light-dark(#f5f5f7, #1e1e1e)"` to follow the appearance |
 | `Opacity` | between 0 and 1 |

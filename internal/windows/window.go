@@ -1392,6 +1392,9 @@ func (w *window) SetVibrancy(material string) {
 	procInvalidateRect(w.hwnd)
 }
 
+// SetVibrancyTint does nothing: Windows' backdrops take no tint.
+func (w *window) SetVibrancyTint(*platform.Color) {}
+
 // extendGlass extends the frame where the material shows, behind the
 // page: over the whole client area, or nowhere without a material. With
 // always it extends the frame even when its extension has not changed.

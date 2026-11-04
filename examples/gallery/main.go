@@ -1424,6 +1424,16 @@ func (g *gallery) glassPage(c *ui.Context) {
 		ui.Segmented(c, &g.glassStyle, "Regular", "Clear").Label("Glass")
 		ui.Segmented(c, &g.glassEdge, "Glass bar", "Soft edge", "Hard edge", "Progressive blur").Label("Under the toolbar")
 	})
+	// Panes that nearly touch merge into one surface, as AppKit's
+	// NSGlassEffectContainerView's do.
+	ui.Text(c, "Panes that nearly touch merge into one surface.").TextColor(t.TextMuted)
+	group := glass.NewGroup(c)
+	group.Radius = 22
+	group.Gap(6).Children(func() {
+		for _, label := range []string{"Cut", "Copy", "Paste"} {
+			group.Pane(ui.Box(c).Size(76, 44).Center().Children(func() { ui.Text(c, label) }))
+		}
+	})
 	style := glass.Regular
 	if g.glassStyle == 1 {
 		style = glass.Clear
