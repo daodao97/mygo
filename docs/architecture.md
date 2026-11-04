@@ -2665,7 +2665,8 @@ either.
   more to hash than to compare, and one laid out at another width asks
   for it from the last (`text.System.LayoutFrom`). A grid measures the
   widths of only the items its columns read (`contributes`): none for Fr
-  columns with room known, as CSS's minmax(0, 1fr). Transforms and scroll
+  columns with room known, as CSS's minmax(0, 1fr), unless they are
+  `MinContent`; a minimum (`Track.Min`) measures nothing. Transforms and scroll
   offsets of other containers apply after layout and change nothing
   there. Elements that lay
   out by more than they are built with are never reused, nor anything

@@ -134,6 +134,116 @@ func TestGrid(t *testing.T) {
 	})
 }
 
+// Tracks with a minimum, as CSS's minmax(120px, 1fr) and minmax(auto, 1fr)
+// (#1240): an Fr track whose share would be less than its minimum keeps
+// its minimum, the other Fr tracks share the rest, and the grid overflows.
+func TestGridTrackMinimums(t *testing.T) {
+	check := func(t *testing.T, b, want map[string]Rect) {
+		t.Helper()
+		for k, w := range want {
+			if !nearRect(b[k], w) {
+				t.Errorf("%s at %v, want %v", k, b[k], w)
+			}
+		}
+	}
+	t.Run("a floor on an fr", func(t *testing.T) {
+		b := boxes(t, func(c *context) {
+			coreGrid(c).ColumnTracks(Fr(1).Min(120), Fixed(150)).Width(200).Label("g").Children(func() {
+				coreBox(c).Height(10).Label("a")
+				coreBox(c).Height(10).Label("b")
+			})
+			coreGrid(c).ColumnTracks(Fr(1).Min(120), Fixed(150)).Width(400).Children(func() {
+				coreBox(c).Height(10).Label("c")
+				coreBox(c).Height(10).Label("d")
+			})
+		}, 500, 100, "g", "a", "b", "c", "d")
+		// The grid keeps its width, and its tracks overflow it.
+		check(t, b, map[string]Rect{"g": {0, 0, 200, 10}, "a": {0, 0, 120, 10}, "b": {120, 0, 150, 10}, "c": {0, 10, 250, 10}, "d": {250, 10, 150, 10}})
+	})
+	t.Run("the rest redistributed", func(t *testing.T) {
+		b := boxes(t, func(c *context) {
+			coreGrid(c).ColumnTracks(Fr(1).Min(150), Fr(1), Fr(2)).Width(300).Children(func() {
+				coreBox(c).Height(10).Label("a")
+				coreBox(c).Height(10).Label("b")
+				coreBox(c).Height(10).Label("c")
+			})
+			// 80 each, then 70 once the first is set aside, which sets
+			// the second aside too: 60 for the last.
+			coreGrid(c).ColumnTracks(Fr(1).Min(100), Fr(1).Min(80), Fr(1)).Width(240).Children(func() {
+				coreBox(c).Height(10).Label("d")
+				coreBox(c).Height(10).Label("e")
+				coreBox(c).Height(10).Label("f")
+			})
+		}, 500, 100, "a", "b", "c", "d", "e", "f")
+		check(t, b, map[string]Rect{
+			"a": {0, 0, 150, 10}, "b": {150, 0, 50, 10}, "c": {200, 0, 100, 10},
+			"d": {0, 10, 100, 10}, "e": {100, 10, 80, 10}, "f": {180, 10, 60, 10},
+		})
+	})
+	t.Run("the automatic minimum", func(t *testing.T) {
+		b := boxes(t, func(c *context) {
+			coreGrid(c).ColumnTracks(Fr(1).MinContent(), Fr(1).MinContent()).Width(200).Children(func() {
+				coreBox(c).MinWidth(160).Height(10).Label("a")
+				coreBox(c).Height(10).Label("b")
+			})
+			// Fr keeps its minimum of 0.
+			coreGrid(c).ColumnTracks(Fr(1), Fr(1)).Width(200).Children(func() {
+				coreBox(c).MinWidth(160).Height(10).Label("c")
+				coreBox(c).Height(10).Label("d")
+			})
+		}, 500, 100, "a", "b", "c", "d")
+		check(t, b, map[string]Rect{"a": {0, 0, 160, 10}, "b": {160, 0, 40, 10}, "c": {0, 10, 160, 10}, "d": {100, 10, 100, 10}})
+	})
+	t.Run("items spanning tracks", func(t *testing.T) {
+		b := boxes(t, func(c *context) {
+			coreGrid(c).ColumnTracks(Fr(1).MinContent(), Fr(3).MinContent()).GapX(20).Width(100).Children(func() {
+				coreBox(c).MinWidth(220).Height(10).ColumnSpan(2)
+				coreBox(c).Height(10).Label("a")
+				coreBox(c).Height(10).Label("b")
+			})
+		}, 500, 100, "a", "b")
+		// 200 beside the gap, shared 1 to 3.
+		check(t, b, map[string]Rect{"a": {0, 10, 50, 10}, "b": {70, 10, 150, 10}})
+	})
+	t.Run("rows", func(t *testing.T) {
+		b := boxes(t, func(c *context) {
+			coreRow(c).AlignItems(Start).Children(func() {
+				coreGrid(c).Columns(1).RowTracks(Fr(1).Min(70), Fr(1)).Height(100).Width(50).Children(func() {
+					coreBox(c).Label("a")
+					coreBox(c).Label("b")
+				})
+				coreGrid(c).Columns(1).RowTracks(Fr(1).MinContent(), Fr(1).MinContent()).Height(100).Width(50).AlignItems(Start).Children(func() {
+					coreBox(c).Height(80).Label("c")
+					coreBox(c).Height(10).Label("d")
+				})
+			})
+		}, 500, 200, "a", "b", "c", "d")
+		check(t, b, map[string]Rect{"a": {0, 0, 50, 70}, "b": {0, 70, 50, 30}, "c": {50, 0, 50, 80}, "d": {50, 80, 50, 10}})
+	})
+	t.Run("as large as the content asks", func(t *testing.T) {
+		b := boxes(t, func(c *context) {
+			coreRow(c).Children(func() {
+				// An fr is at least the floor of a track over its factor.
+				coreGrid(c).ColumnTracks(Fr(1).Min(100), Fr(1)).Label("g").Children(func() {
+					coreBox(c).Size(30, 10)
+					coreBox(c).Size(30, 10)
+				})
+			})
+			// Too narrow for its content, a grid shrinks to its
+			// min-content width, its floors.
+			coreRow(c).Width(100).Children(func() {
+				coreGrid(c).ColumnTracks(Fr(1).Min(120), Fr(1)).Label("h").Children(func() {
+					coreBox(c).Size(30, 10)
+					coreBox(c).Size(30, 10)
+				})
+			})
+		}, 500, 100, "g", "h")
+		if !near(b["g"].W, 200) || !near(b["h"].W, 120) {
+			t.Errorf("grid sized by its content %v, want 200 wide; in a narrow row %v, want 120 wide", b["g"], b["h"])
+		}
+	})
+}
+
 // Percentages of a grid's children are of their cells, and count as
 // automatic sizes while the tracks are sized (#906).
 func TestGridPercentages(t *testing.T) {
