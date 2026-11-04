@@ -263,6 +263,7 @@ var elementChains = map[string]bool{
 	"Material":             true,
 	"MaxHeight":            true,
 	"MaxHeightPercent":     true,
+	"MaxLength":            true,
 	"MaxLines":             true,
 	"MaxWidth":             true,
 	"MaxWidthPercent":      true,
