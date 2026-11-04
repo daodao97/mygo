@@ -9,6 +9,7 @@ import (
 	"os"
 	"sync"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/ebitengine/purego"
 
@@ -22,8 +23,9 @@ import (
 // and GTK shows them. Without OpenGL, frames drawn in memory are painted
 // with cairo in the draw signal, as on a GtkDrawingArea, which the surface
 // is with MYGO_GPU=0 and where OpenGL would not draw on a GPU (gpuGL).
-// GTK's frame clock paces both; keys go through a GtkIMContext while a
-// text input has the focus.
+// GTK's frame clock paces both, at the refresh rate of the monitor showing
+// the window (paceFrameClock); keys go through a GtkIMContext while a text
+// input has the focus.
 //
 // Frames drawn in memory are drawn in the frame clock's update phase, by a
 // tick callback, before GTK paints: the area then asks GTK to repaint what
@@ -76,6 +78,9 @@ var (
 	gdkWindowGetUserData        func(w ptr, data *ptr)
 	gdkEventGetSourceDevice     func(e ptr) ptr
 	gdkDeviceGetSource          func(d ptr) int32
+	gtkWidgetGetFrameClock      func(w ptr) ptr
+	gdkFrameClockCurrentTimings func(clock ptr) ptr
+	gdkFrameTimingsRefresh      func(t ptr) int64
 
 	cbSurfaceDraw, cbSurfaceSize, cbSurfaceRealize, cbSurfaceButton ptr
 	cbSurfaceMotion, cbSurfaceLeave, cbSurfaceScroll, cbSurfaceKey  ptr
@@ -120,6 +125,9 @@ func loadSurface() {
 		mustBind(d, &gdkWindowGetUserData, "gdk_window_get_user_data")
 		mustBind(d, &gdkEventGetSourceDevice, "gdk_event_get_source_device")
 		mustBind(d, &gdkDeviceGetSource, "gdk_device_get_source")
+		mustBind(t, &gtkWidgetGetFrameClock, "gtk_widget_get_frame_clock")
+		mustBind(d, &gdkFrameClockCurrentTimings, "gdk_frame_clock_get_current_timings")
+		mustBind(d, &gdkFrameTimingsRefresh, "gdk_frame_timings_get_refresh_interval")
 		// GtkGLArea came in GTK 3.16.
 		if !bind(t, &gtkGLAreaNew, "gtk_gl_area_new") || !bind(t, &gtkGLAreaSetRequiredVersion, "gtk_gl_area_set_required_version") ||
 			!bind(t, &gtkGLAreaSetHasAlpha, "gtk_gl_area_set_has_alpha") || !bind(t, &gtkGLAreaGetError, "gtk_gl_area_get_error") ||
@@ -544,9 +552,13 @@ func (s *surface) Idle() {
 	}
 }
 
-// RefreshRate returns the refresh rate of the monitor showing the area,
-// which GDK knows in millihertz.
-func (s *surface) RefreshRate() float64 {
+// RefreshRate returns the refresh rate of the monitor showing the area.
+func (s *surface) RefreshRate() float64 { return float64(s.refreshMilliHz()) / 1000 }
+
+// refreshMilliHz returns the refresh rate of the monitor showing the area,
+// in millihertz as GDK knows it, 0 when unknown: on Wayland the output the
+// window last entered, on X11 the monitor with most of it.
+func (s *surface) refreshMilliHz() int32 {
 	win := gtkWidgetGetWindow(s.area)
 	if s.w.closed || win == 0 {
 		return 0
@@ -555,7 +567,84 @@ func (s *surface) RefreshRate() float64 {
 	if m == 0 {
 		return 0
 	}
-	return float64(gdkMonitorGetRefreshRate(m)) / 1000
+	return max(gdkMonitorGetRefreshRate(m), 0)
+}
+
+// paceFrameClock tells GTK's frame clock how often the monitor showing the
+// area refreshes, in the timings of the frame being drawn: the clock waits
+// that long after a frame before the next (gdk/gdkframeclockidle.c), and
+// 1/60 s while no frame's timings tell it. GDK tells it only from the
+// compositor: on Wayland in the frame callback of a paint it commits
+// itself, which it never asks for when it composites the window with
+// OpenGL, as eglSwapBuffers commits, and on X11 from a compositor sending
+// _NET_WM_FRAME_TIMINGS. Without, the GtkGLArea drew 60 frames a second
+// on a 165 Hz display under Niri, as on X11 without a compositor
+// (#1219). Each frame asks the monitor again, which follows the window to
+// another; one whose rate is unknown keeps the clock's 60 Hz, and a
+// compositor's rate arriving later replaces this one.
+func (s *surface) paceFrameClock() {
+	clock := gtkWidgetGetFrameClock(s.area)
+	if clock == 0 {
+		return
+	}
+	t := gdkFrameClockCurrentTimings(clock)
+	if t == 0 || gdkFrameTimingsRefresh(t) != 0 {
+		return
+	}
+	if us := refreshInterval(s.refreshMilliHz()); us > 0 {
+		setRefreshInterval(t, us, gdkFrameTimingsRefresh)
+	}
+}
+
+// refreshInterval returns the time between refreshes of a display of mhz
+// millihertz in microseconds, as GDK computes it from a Wayland output's
+// rate, 0 for an unknown rate.
+func refreshInterval(mhz int32) int64 {
+	if mhz <= 0 {
+		return 0
+	}
+	return 1_000_000_000 / int64(mhz)
+}
+
+// refreshIntervalOffsets are where GdkFrameTimings, which GDK keeps
+// private, may hold refresh_interval: after smoothed_frame_time, which
+// GTK 3.24.24 added, else in its place.
+var refreshIntervalOffsets = [...]uintptr{56, 48}
+
+// refreshIntervalAt is the offset of the timings' refresh_interval, once
+// a write there read back through its getter; -1 once none did.
+var refreshIntervalAt int
+
+// setRefreshInterval sets the refresh interval of frame timings t, which
+// get (gdk_frame_timings_get_refresh_interval) reads as 0, to us, reporting
+// whether it did: at the first offset whose write get reads back. A field
+// holding a value is not the interval, and one that held 0 gets 0 back
+// when get did not see the write.
+func setRefreshInterval(t ptr, us int64, get func(t ptr) int64) bool {
+	offsets := refreshIntervalOffsets[:]
+	switch {
+	case refreshIntervalAt < 0:
+		return false
+	case refreshIntervalAt > 0:
+		offsets = []uintptr{uintptr(refreshIntervalAt)}
+	}
+	base := *(*unsafe.Pointer)(unsafe.Pointer(&t))
+	for _, off := range offsets {
+		f := (*int64)(unsafe.Add(base, off))
+		if *f != 0 {
+			continue
+		}
+		*f = us
+		if get(t) == us {
+			refreshIntervalAt = int(off)
+			return true
+		}
+		*f = 0
+	}
+	if refreshIntervalAt == 0 {
+		refreshIntervalAt = -1
+	}
+	return false
 }
 
 func (s *surface) PresentPixels(pix []byte, stride, width, height int) {
@@ -846,6 +935,7 @@ func initSurfaceCallbacks() {
 		if s.drawsGL() {
 			return false
 		}
+		s.paceFrameClock()
 		s.cr = cr
 		// The frame the tick callback drew, unless GTK resized the area
 		// since; else GTK asked for this draw by itself, and the content
@@ -876,6 +966,7 @@ func initSurfaceCallbacks() {
 			return false
 		}
 		s.again, s.ticking, s.staged.pix = false, true, nil
+		s.paceFrameClock()
 		s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
 		s.ticking = false
 		if !s.again {
@@ -920,6 +1011,7 @@ func initSurfaceCallbacks() {
 			return false
 		}
 		s.rendering, s.rendered, s.inMemory = true, true, false
+		s.paceFrameClock()
 		s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
 		s.rendering = false
 		if s.renderAgain {

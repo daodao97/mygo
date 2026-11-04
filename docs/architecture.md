@@ -4645,6 +4645,24 @@ either.
   `SurfaceRenew`, so that the first in its `render` signal makes the GPU
   renderer, which the hidden one could not.
 
+  GTK's frame clock waits, after each frame, the refresh interval of that
+  frame's timings, and 1/60 s while none has one. GDK fills it in only
+  from the compositor: on Wayland in the frame callback of a paint it
+  commits itself, which it never asks for when it composites the window
+  with OpenGL (`eglSwapBuffers` commits, with a swap interval of 0), and
+  on X11 from a compositor sending `_NET_WM_FRAME_TIMINGS`. A GtkGLArea
+  drew 60 frames a second on a 165 Hz display under Niri (#1219). The
+  surface writes the interval of the monitor showing the window
+  (`gdk_monitor_get_refresh_rate`, asked again each frame, so it follows
+  the window to another monitor) into the timings of each frame it draws
+  (`paceFrameClock`), unless they have one. `GdkFrameTimings` is private,
+  and GTK 3.24.24 moved its `refresh_interval`: the offset is the one
+  `gdk_frame_timings_get_refresh_interval` reads the write back from. A
+  monitor of unknown rate, as Xvfb's, keeps 60 Hz, and a compositor's
+  interval arriving later replaces the surface's. The clock still runs
+  only while frames are asked for. On Wayland these frames follow a timer
+  at the display's rate, not its refreshes.
+
   On Windows, `RequestFrame` invalidates the surface's window, whose
   `WM_PAINT` comes as soon as the message queue is empty, and frames drawn
   in memory show at once, through GDI or DirectComposition: nothing held
