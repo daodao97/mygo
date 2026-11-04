@@ -1372,6 +1372,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	// the focus, and has no text to find; so does what is inert, which
 	// shows, and what is Hidden, which has no box.
 	invisible := e.flags&(flagInvisible|flagInert) != 0 || hidden || e.hidden || e.backface && e.transform.facesAway()
+	s.invisible = invisible
 	if invisible {
 		s.vw, s.vh = 0, 0
 	}

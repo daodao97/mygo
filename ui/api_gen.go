@@ -5163,6 +5163,24 @@ func (_handle Element) InView() bool {
 	return _node.InView()
 }
 
+// InViewMargin reports whether some of the element showed in the frame
+// before, as InView does, with the window and the scroll containers
+// around it grown by margin, in DIPs, CSS style as Padding: all sides,
+// vertical and horizontal, or top, right, bottom and left. As
+// IntersectionObserver's rootMargin and scrollMargin, a margin of 200
+// has the element in view once it is within 200 DIPs of showing, to load
+// what it shows before it scrolls in, and a negative one only once it is
+// that far inside; other clips around it clip it as they do.
+func (_handle Element) InViewMargin(margin ...float32) bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.InViewMargin(margin...)
+}
+
 // InputMethod sets whether the system's input methods compose text for the
 // element while it has the keyboard focus, as they do by default for one
 // that takes text (HandleTextInput, TextCaret). Turned off, keys type the

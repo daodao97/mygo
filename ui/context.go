@@ -652,6 +652,9 @@ type state struct {
 	// takes the pointer where it paints: over the rest of its layer, out
 	// of its ancestors' clips (matches.lifted).
 	lifted bool
+	// invisible tells that the element showed nothing in the last frame,
+	// wherever it was: invisible, inert or hidden (InViewMargin).
+	invisible bool
 	// rtl tells that the element was laid out right to left: a scroll
 	// container's horizontal offset counts from the right, and its
 	// vertical scroll bar is on the left.
