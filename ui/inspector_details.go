@@ -336,8 +336,13 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 		if p&propPosition != 0 {
 			what = append(what, "position")
 		}
-		if p&propSize != 0 {
+		switch p & propSize {
+		case propSize:
 			what = append(what, "size")
+		case propWidth:
+			what = append(what, "width")
+		case propHeight:
+			what = append(what, "height")
 		}
 		if p&propColors != 0 {
 			what = append(what, "colors")

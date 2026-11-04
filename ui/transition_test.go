@@ -152,6 +152,115 @@ func TestTransitionResizesAndLaysOutContent(t *testing.T) {
 	}
 }
 
+func TestTransitionAnimatesOneAxis(t *testing.T) {
+	var tr ElementTransition
+	var paneW, panelH float32 = 100, 40
+	var panel *node
+	tt, now := clockTester(func(c *context) {
+		coreColumn(c).Children(func() {
+			coreColumn(c).Width(paneW).Children(func() {
+				panel = coreColumn(c).Key("details").Width(paneW).Height(panelH).Transition(tr)
+			})
+		})
+	}, 400, 400)
+	size := func() (float32, float32) { return panel.w, panel.h }
+	// start shows the panel at rest at 100×40, with tr.
+	start := func(with ElementTransition) {
+		tr, paneW, panelH = with, 100, 40
+		tt.Frame()
+		*now = now.Add(10 * time.Second)
+		tt.Frame()
+		if w, h := size(); w != 100 || h != 40 {
+			t.Fatalf("%+v: the panel rests at %v×%v", with, w, h)
+		}
+	}
+	// Both axes change: the chosen ones animate, the others jump.
+	for _, tc := range []struct {
+		name         string
+		tr           ElementTransition
+		halfW, halfH float32
+	}{
+		{"Height", ElementTransition{Height: true, Ease: Linear}, 300, 80},
+		{"Width", ElementTransition{Width: true, Ease: Linear}, 200, 120},
+		{"Size", ElementTransition{Size: true, Ease: Linear}, 200, 80},
+		{"Width and Height", ElementTransition{Width: true, Height: true, Ease: Linear}, 200, 80},
+		{"Size with Height", ElementTransition{Size: true, Height: true, Ease: Linear}, 200, 80},
+		{"none chosen", ElementTransition{Ease: Linear}, 200, 80},
+		{"Colors alone", ElementTransition{Colors: true, Ease: Linear}, 300, 120},
+	} {
+		start(tc.tr)
+		paneW, panelH = 300, 120
+		tt.Frame()
+		*now = now.Add(100 * time.Millisecond)
+		tt.Frame()
+		if w, h := size(); w != tc.halfW || h != tc.halfH {
+			t.Errorf("%s: halfway, the panel is %v×%v, want %v×%v", tc.name, w, h, tc.halfW, tc.halfH)
+		}
+		*now = now.Add(time.Second)
+		tt.Frame()
+		if w, h := size(); w != 300 || h != 120 {
+			t.Errorf("%s: once over, the panel is %v×%v", tc.name, w, h)
+		}
+		if panel.st.trec.moving != 0 {
+			t.Errorf("%s: the transition still moves once over", tc.name)
+		}
+	}
+	// The width follows a drag 1:1 while the height opens: every frame of
+	// the drag shows the pane's width, and the height goes on as it went.
+	start(ElementTransition{Height: true, Ease: Linear})
+	panelH = 120
+	tt.Frame()
+	for i := 1; i <= 4; i++ {
+		paneW = 100 + float32(i)*30
+		*now = now.Add(25 * time.Millisecond)
+		tt.Frame()
+		want := 40 + float32(i)*10
+		if w, h := size(); w != paneW || h < want-0.01 || h > want+0.01 {
+			t.Errorf("dragged for %d frames, the panel is %v×%v, want %v×%v", i, w, h, paneW, want)
+		}
+	}
+	// A drag alone, the height at rest, animates nothing.
+	*now = now.Add(time.Second)
+	tt.Frame()
+	paneW = 150
+	tt.Frame()
+	if w, h := size(); w != 150 || h != 120 || panel.st.trec.moving != 0 || panel.Transitioning() {
+		t.Errorf("dragged at rest, the panel is %v×%v, moving %b", w, h, panel.st.trec.moving)
+	}
+}
+
+// The issue's panel: a column whose height follows its content, in a pane
+// the user drags wider.
+func TestTransitionHeightFollowsContentWhileWidthFollowsPane(t *testing.T) {
+	paneW, open := float32(200), false
+	var panel *node
+	tt, now := clockTester(func(c *context) {
+		coreRow(c).Width(paneW).Children(func() {
+			panel = coreColumn(c).Key("details").Grow(1).Transition(ElementTransition{Height: true, Ease: Linear}).Children(func() {
+				coreText(c, "Details").Height(20)
+				if open {
+					coreText(c, "Body").Height(60)
+				}
+			})
+		})
+	}, 600, 400)
+	if panel.w != 200 || panel.h != 20 {
+		t.Fatalf("the closed panel is %v×%v", panel.w, panel.h)
+	}
+	open, paneW = true, 300
+	tt.Frame()
+	*now = now.Add(100 * time.Millisecond)
+	tt.Frame()
+	if panel.w != 300 || panel.h != 50 {
+		t.Errorf("halfway open while dragged, the panel is %v×%v, want 300×50", panel.w, panel.h)
+	}
+	*now = now.Add(time.Second)
+	tt.Frame()
+	if panel.w != 300 || panel.h != 80 {
+		t.Errorf("open, the panel is %v×%v", panel.w, panel.h)
+	}
+}
+
 func TestTransitionEntersAndExits(t *testing.T) {
 	items := []string{"One", "Two"}
 	motion := ElementTransition{Ease: Linear, Enter: &Motion{Collapse: true}, Exit: &Motion{Collapse: true}}

@@ -351,6 +351,35 @@ func TestInspectorInsetShadow(t *testing.T) {
 	}
 }
 
+func TestInspectorTransition(t *testing.T) {
+	var tr ElementTransition
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Key("box").Size(40, 40).Transition(tr)
+	}, 100, 100)
+	for _, tc := range []struct {
+		tr   ElementTransition
+		want string
+	}{
+		{ElementTransition{}, "position size colors shadows 200ms"},
+		{ElementTransition{Size: true}, "size 200ms"},
+		{ElementTransition{Width: true, Height: true}, "size 200ms"},
+		{ElementTransition{Position: true, Height: true}, "position height 200ms"},
+		{ElementTransition{Width: true, Colors: true}, "width colors 200ms"},
+	} {
+		tr = tc.tr
+		tt.Frame()
+		got := ""
+		for _, d := range ownStyles(tt.rt, tt.rt.c.root.first) {
+			if d.name == "transition" {
+				got = d.value
+			}
+		}
+		if got != tc.want {
+			t.Errorf("%+v: transition %q, want %q", tc.tr, got, tc.want)
+		}
+	}
+}
+
 func TestInspectorColorText(t *testing.T) {
 	for _, tc := range []struct {
 		c    Color

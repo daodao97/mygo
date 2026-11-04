@@ -44,7 +44,9 @@ an element sent elsewhere on its way turns smoothly, keeping its velocity
 - **Position**: where the element is in its parent. Moving with its parent,
   as when a scroll view scrolls, is not a change.
 - **Size**: its width and height. The content lays out at each size on the
-  way, as a panel opening wraps its text anew.
+  way, as a panel opening wraps its text anew. `Width` or `Height`, in its
+  place, animates one of them alone, as CSS's `transition-property: height`
+  does: the other follows the layout at once.
 - **Colors**: its background and border colors, as a hover fades in and
   out. They mix in sRGB, or in Oklab with the `Oklab` of its `Animation`,
   whose midpoints keep the colors' lightness and saturation rather than
@@ -56,8 +58,8 @@ an element sent elsewhere on its way turns smoothly, keeping its velocity
   offset, and one removed to it. Where an inner shadow takes the place of
   an outer one, the shadows change at once.
 
-All four animate unless `Position`, `Size`, `Colors` or `Shadows` choose
-some:
+All four animate unless `Position`, `Size` (or `Width`, `Height`), `Colors`
+or `Shadows` choose some:
 
 ```go
 tile := ui.Box(c).Size(64, 48).Radius(8).Background(t.Surface)
@@ -90,6 +92,23 @@ if open {
 ui.Row(c).Fill().Children(func() {
 	ui.Column(c).Width(w).ClipX().Transition(ui.ElementTransition{Size: true})
 	ui.Column(c).Grow(1).Transition(ui.ElementTransition{})
+})
+```
+
+A panel whose height follows its content, as a details section, in a pane
+the user drags wider or narrower, animates its height alone: it springs
+open, while its width keeps up with the drag frame by frame.
+
+```go
+ui.Row(c).Width(app.paneWidth).Children(func() { // follows a drag handle
+	ui.Column(c).Key("details").Grow(1).
+		Transition(ui.ElementTransition{Height: true, Animation: &ui.Snappy}).
+		Children(func() {
+			ui.Text(c, "Details")
+			if app.open {
+				ui.Text(c, app.body)
+			}
+		})
 })
 ```
 
@@ -149,13 +168,13 @@ An element appears with its `Enter` only in a parent that was there in the
 frame before, so that a page or a dialog showing all at once does not
 animate every element in it. While it comes in, the layout moving it, as
 rows landing above it, moves it at once where its transition does not
-animate (`Position`, `Size`), and resizing it resizes its `Collapse` in
-proportion: only its `Enter` plays. When an element is no longer built
-while its parent still is, a copy of it, as the last frame showed it, goes
-to its `Exit` under its siblings: it takes no room, so the siblings move
-into its place at once, smoothly if they have transitions, and it takes
-neither the pointer nor the focus, nor reads to assistive technology, as an
-element with both `IgnoreInput` and
+animate (`Position`, `Size`, `Width`, `Height`), and resizing it resizes
+its `Collapse` in proportion: only its `Enter` plays. When an element is no
+longer built while its parent still is, a copy of it, as the last frame
+showed it, goes to its `Exit` under its siblings: it takes no room, so the
+siblings move into its place at once, smoothly if they have transitions,
+and it takes neither the pointer nor the focus, nor reads to assistive
+technology, as an element with both `IgnoreInput` and
 [`AccessHidden`](accessibility.md#out-of-assistive-technologys-way). Built
 again before its exit ends, the element comes back from where its copy was.
 

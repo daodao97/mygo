@@ -45,6 +45,11 @@ type ElementTransition struct {
 	// shadows (Shadow, InsetShadow), as a resting shadow fading on hover.
 	// None set animates them all.
 	Position, Size, Colors, Shadows bool
+	// Width and Height, in place of Size, animate the element's width or
+	// its height alone, as CSS's transition-property lists one of them:
+	// the other follows the layout at once, as a panel springing open
+	// while the split view holding it is dragged wider.
+	Width, Height bool
 	// Enter, if set, is where the element comes from as it appears in a
 	// parent that the last frame showed: it starts there, and goes to its
 	// place.
@@ -249,15 +254,17 @@ func boxOf(v [8]float32) tbox { return tbox{v[0], v[1], v[2], v[3], v[4], v[5], 
 // What a transition moves now.
 const (
 	movePos uint8 = 1 << iota
-	moveSize
+	moveWidth
+	moveHeight
 	moveAlpha
 	moveTurn
-	moveAll = movePos | moveSize | moveAlpha | moveTurn
+	moveSize = moveWidth | moveHeight
+	moveAll  = movePos | moveSize | moveAlpha | moveTurn
 )
 
 // groupOf is what moves each channel of a transition: a blur goes with
 // the opacity, as it moves nothing.
-var groupOf = [8]uint8{movePos, movePos, moveSize, moveSize, moveAlpha, moveTurn, moveTurn, moveAlpha}
+var groupOf = [8]uint8{movePos, movePos, moveWidth, moveHeight, moveAlpha, moveTurn, moveTurn, moveAlpha}
 
 // The axes a Motion collapses an element along.
 const (
@@ -431,19 +438,12 @@ func headFor(ch *channel, to float64, a Animation, now time.Time) {
 	}
 }
 
-// follow shifts what moves that the Transition does not animate, as an
-// Enter's place, by as much as the layout moved it since the frame before:
-// that follows the layout at once, as it would without the Enter. A size
-// scales instead, so that one collapsed opens on in proportion, never
-// below nothing as the layout makes it smaller.
-func (r *transition) follow(next tbox, props uint8) {
-	var own uint8
-	if props&propPosition != 0 {
-		own |= movePos
-	}
-	if props&propSize != 0 {
-		own |= moveSize
-	}
+// follow shifts what moves that the Transition does not animate (own
+// does not hold), as an Enter's place, by as much as the layout moved it
+// since the frame before: that follows the layout at once, as it would
+// without the Enter. A size scales instead, so that one collapsed opens
+// on in proportion, never below nothing as the layout makes it smaller.
+func (r *transition) follow(next tbox, own uint8) {
 	was, to := r.target.vals(), next.vals()
 	for i := range r.ch {
 		g := groupOf[i]
@@ -452,7 +452,7 @@ func (r *transition) follow(next tbox, props uint8) {
 		}
 		switch d := to[i] - was[i]; {
 		case d == 0:
-		case g == moveSize && was[i] > 0:
+		case g&moveSize != 0 && was[i] > 0:
 			r.ch[i].scale(float64(was[i]), float64(to[i]))
 		default:
 			r.ch[i].shift(float64(d))
@@ -498,14 +498,16 @@ func (r *transition) sample(target tbox, now time.Time) tbox {
 // What a transition animates.
 const (
 	propPosition uint8 = 1 << iota
-	propSize
+	propWidth
+	propHeight
 	propColors
 	propShadows
+	propSize = propWidth | propHeight
 )
 
 func (r *transition) properties() uint8 {
 	t := &r.t
-	if !t.Position && !t.Size && !t.Colors && !t.Shadows {
+	if !t.Position && !t.Size && !t.Colors && !t.Shadows && !t.Width && !t.Height {
 		return propPosition | propSize | propColors | propShadows
 	}
 	var p uint8
@@ -514,6 +516,12 @@ func (r *transition) properties() uint8 {
 	}
 	if t.Size {
 		p |= propSize
+	}
+	if t.Width {
+		p |= propWidth
+	}
+	if t.Height {
+		p |= propHeight
 	}
 	if t.Colors {
 		p |= propColors
@@ -664,19 +672,31 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 			r.rest(next, now)
 		default:
 			props := r.properties()
-			var changed uint8
-			if props&propPosition != 0 && (next.x != r.target.x || next.y != r.target.y) {
-				changed |= movePos
+			// The groups of channels the Transition animates: an axis of
+			// the size it does not choose follows the layout at once.
+			var own, changed uint8
+			if props&propPosition != 0 {
+				own |= movePos
+				if next.x != r.target.x || next.y != r.target.y {
+					changed |= movePos
+				}
 			}
-			if props&propSize != 0 && (next.w != r.target.w || next.h != r.target.h) {
-				changed |= moveSize
+			if props&propWidth != 0 {
+				own |= moveWidth
+			}
+			if props&propHeight != 0 {
+				own |= moveHeight
+			}
+			if own&moveWidth != 0 && next.w != r.target.w || own&moveHeight != 0 && next.h != r.target.h {
+				// Both axes chosen (Size), either changing heads both.
+				changed |= own & moveSize
 			}
 			if still {
 				changed = 0
 			}
 			if r.laid+1 == rt.frame {
 				// Not back as its copy went: that heads for next already.
-				r.follow(next, props)
+				r.follow(next, own)
 			}
 			if changed != 0 {
 				r.head(next, changed, now)
