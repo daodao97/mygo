@@ -107,6 +107,7 @@ type engine struct {
 	arena           *elementOwner
 	handleChecks    bool
 	afterInputs     []inputAction
+	afterBuild      []func() // run once the view is built (onBuilt)
 	inputs          []valueInput
 	inputAt         int
 	afterInputAt    int
@@ -659,6 +660,7 @@ func (rt *engine) runFrame() {
 			rt.buildInspector(&rt.c, appW, w, h)
 		}
 		rt.applyAllInputs()
+		rt.runAfterBuild()
 		rt.finishInputs()
 		// Commit derived values while callbacks still hold this pass's
 		// bindings. Delivered callbacks do not repeat in the next pass.
@@ -1159,6 +1161,8 @@ func (rt *engine) close() {
 	rt.notices = nil
 	clear(rt.afterInputs)
 	rt.afterInputs = nil
+	clear(rt.afterBuild)
+	rt.afterBuild = nil
 	clear(rt.inputs)
 	rt.inputs = nil
 	rt.arena.rt = nil

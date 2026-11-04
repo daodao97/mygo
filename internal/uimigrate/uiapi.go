@@ -112,6 +112,7 @@ var uiResults = map[string]string{
 	"Toolbar":              "Element",
 	"TooltipBase":          "Element",
 	"Tree":                 "Element",
+	"TreeBase":             "TreeParts",
 	"TreeItem":             "Element",
 	"Video":                "Element",
 	"WebView":              "Element",
@@ -361,4 +362,6 @@ var uiParts = map[string]bool{
 	"SelectParts":      true,
 	"TabsParts":        true,
 	"ToastParts":       true,
+	"TreeItemParts":    true,
+	"TreeParts":        true,
 }

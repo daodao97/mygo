@@ -3394,7 +3394,20 @@ either.
   an `AXOutline` with `AXDisclosureLevel` and `AXDisclosing`, which keeps
   its rows as a table does; on Linux, the `level` attribute and the
   expandable state; on Windows, Level, and ExpandCollapse with LeafNode
-  for items without children.
+  for items without children. `OutlineState.Prefix` builds the start of
+  the rows in place of the indentation and the arrow (`prefix`), with
+  `OutlineRow.Arrow` the arrow's click and Option-click.
+- **Trees** (`ui/tree.go`). `TreeBase` builds every item that shows, in
+  the order the app builds them, each `Group` a column keyed by its item
+  so the items inside keep their IDs as items above open and close; the
+  `Tree` widget is `TreeBase` with its look. The tree is a `FocusGroup`,
+  one stop of Tab, with the items taking the focus themselves. An item's
+  keys open and close it as it is built; those moving the focus, and the
+  first letters typed (`flagTypeSelect`, carried over to the item they
+  move to), apply once the view is built (`treeBuild.finish`, from
+  `context.onBuilt`), against this pass's items in order, which also
+  says to assistive technology which of how many each is, as an
+  outline's rows.
 - **Drag and drop within a window** (`ui/dragdrop.go`). An element
   dragging a value notes it in its state (`Drag`), or a function giving it
   as a drag starts, as a list's rows chosen. The engine starts the drag

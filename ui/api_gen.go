@@ -2789,9 +2789,10 @@ func TooltipBase(c *Context, anchor Element, fn func(tip Element)) Element {
 }
 
 // Tree creates a tree, whose items TreeItem builds in fn. While an item
-// has the keyboard focus, Up and Down move it to the items around, Right
-// opens the item or moves to its first child, and Left closes it or moves
-// to its parent.
+// has the keyboard focus, Up and Down move it to the items around, Home
+// and End to the first and the last, Right opens the item or moves to its
+// first child, Left closes it or moves to its parent, and typing the first
+// letters of an item moves to it. The tree is one stop of Tab.
 //
 //	ui.Tree(c, func() {
 //		ui.TreeItem(c, "src", &app.srcOpen, func() {
@@ -2799,6 +2800,8 @@ func TooltipBase(c *Context, anchor Element, fn func(tip Element)) Element {
 //		})
 //		ui.TreeItem(c, "go.mod", nil, nil)
 //	})
+//
+// Tree is TreeBase with the theme's look.
 func Tree(c *Context, fn func()) Element {
 	_ctx := c.build()
 	if _ctx == nil {
@@ -2808,6 +2811,58 @@ func Tree(c *Context, fn func()) Element {
 	_e := coreTree(_ctx, fn)
 	_ctx.rt.endBuild()
 	return wrapElement(_e)
+}
+
+// TreeBase creates a tree without a look, as the web's role="tree": a
+// column of items that Item makes, each a row the caller styles and fills,
+// built inside the item it belongs to with Group. The tree is one stop of
+// Tab, which goes to the item that had the focus last, or the one
+// Selected; while an item has the focus, Up and Down move it to the items
+// around, Home and End to the first and the last, Right opens the item or
+// moves to its first child, Left closes it or moves to its parent (the
+// other way round right to left), and typing the first letters of an
+// item moves to it. Build the items in Root:
+//
+//	tree := ui.TreeBase(c)
+//	tree.Root.Gap(2).Children(func() {
+//		var node func(n *Node)
+//		node = func(n *Node) {
+//			c.Key(n.path) // the focus follows it as items above open
+//			item := tree.Item(n.open) // nil for a leaf
+//			item.Row.Gap(4).Padding(4, 8).PaddingStart(8 + 16*float32(item.Depth())).Radius(6)
+//			if item.Row.FocusVisible() {
+//				item.Row.Background(gray)
+//			}
+//			item.Row.Children(func() {
+//				arrow := ui.Box(c).Size(16, 16)
+//				if n.open != nil && arrow.Clicked() {
+//					*n.open = !*n.open
+//				}
+//				ui.Text(c, n.name)
+//			})
+//			item.Group(func() {
+//				for _, k := range n.children {
+//					node(k)
+//				}
+//			})
+//		}
+//		for _, n := range app.roots {
+//			node(n)
+//		}
+//	})
+//
+// Tree is TreeBase with the theme's look. TreeBase builds every item
+// that shows; for trees of thousands of items, use Outline, which builds
+// only the rows in view, with a Prefix of your own.
+func TreeBase(c *Context) TreeParts {
+	_ctx := c.build()
+	if _ctx == nil {
+		return TreeParts{}
+	}
+	_ctx.rt.beginBuild()
+	_p := coreTreeBase(_ctx)
+	_ctx.rt.endBuild()
+	return wrapTreeParts(_p)
 }
 
 // TreeItem creates an item of a Tree showing label, inside the item it is
@@ -7042,6 +7097,54 @@ func (_handle ToastParts) Left() time.Duration {
 	return _parts.Left()
 }
 
+// Depth returns how deep the item is: 0 at the top, 1 inside an item at
+// the top, and so on, to indent its row by.
+func (_handle TreeItemParts) Depth() int {
+	_parts := _handle.resolve()
+	if _parts == nil {
+		return 0
+	}
+	_ctx := _parts.c
+	_ = _ctx
+	return _parts.Depth()
+}
+
+// Group builds the items inside the item, which fn makes with the tree's
+// Item, while it is open, in a column below the item's row. It returns the
+// column, to style, as with a line along it, and nil while the item is
+// closed or a leaf.
+func (_handle TreeItemParts) Group(fn func()) Element {
+	_parts := _handle.resolve()
+	if _parts == nil {
+		return Element{}
+	}
+	_ctx := _parts.c
+	_ = _ctx
+	_ctx.rt.beginBuild()
+	_e := _parts.Group(fn)
+	_ctx.rt.endBuild()
+	return wrapElement(_e)
+}
+
+// Item creates an item of the tree, at the top or, inside Group, in the
+// item that Group is of. With a nil open it is a leaf; otherwise the items
+// Group builds inside it show while *open is true, which Right and Left
+// set, as does assistive technology. A key given with Context.Key just
+// before keeps its focus on it, and on the items inside it, as items
+// above open and close.
+func (_handle TreeParts) Item(open *bool) TreeItemParts {
+	_parts := _handle.resolve()
+	if _parts == nil {
+		return TreeItemParts{}
+	}
+	_ctx := _parts.c
+	_ = _ctx
+	_ctx.rt.beginBuild()
+	_p := _parts.Item(open)
+	_ctx.rt.endBuild()
+	return wrapTreeItemParts(_p)
+}
+
 // AccordionParts contains checked handles for the parts of a custom widget.
 type AccordionParts struct {
 	Root Element
@@ -7249,4 +7352,54 @@ func (p ToastParts) resolve() *toastParts {
 		return nil
 	}
 	return n.c.rt.parts[p.part].(*toastParts)
+}
+
+// TreeItemParts contains checked handles for the parts of a custom widget.
+type TreeItemParts struct {
+	Row  Element
+	part uint32
+}
+
+func wrapTreeItemParts(p treeItemParts) TreeItemParts {
+	c := p.c
+	if c == nil {
+		return TreeItemParts{}
+	}
+	_slot := c.rt.keepPart(&p)
+	return TreeItemParts{part: _slot, Row: wrapElement(p.Row)}
+}
+func (p TreeItemParts) resolve() *treeItemParts {
+	n := p.Row.node()
+	if n == nil {
+		return nil
+	}
+	if int(p.part) >= len(n.c.rt.parts) {
+		return nil
+	}
+	return n.c.rt.parts[p.part].(*treeItemParts)
+}
+
+// TreeParts contains checked handles for the parts of a custom widget.
+type TreeParts struct {
+	Root Element
+	part uint32
+}
+
+func wrapTreeParts(p treeParts) TreeParts {
+	c := p.c
+	if c == nil {
+		return TreeParts{}
+	}
+	_slot := c.rt.keepPart(&p)
+	return TreeParts{part: _slot, Root: wrapElement(p.Root)}
+}
+func (p TreeParts) resolve() *treeParts {
+	n := p.Root.node()
+	if n == nil {
+		return nil
+	}
+	if int(p.part) >= len(n.c.rt.parts) {
+		return nil
+	}
+	return n.c.rt.parts[p.part].(*treeParts)
 }
