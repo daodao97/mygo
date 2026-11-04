@@ -27,6 +27,8 @@ const (
 	RoleGroup
 	RoleText
 	RoleButton
+	// RoleLink is a link: focused, it takes Enter but not Space, which
+	// scrolls, as in a web page.
 	RoleLink
 	RoleCheckBox
 	RoleRadio

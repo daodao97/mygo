@@ -670,3 +670,66 @@ func TestEnterWithWindowShortcut(t *testing.T) {
 		t.Fatalf("Space on a focused check box: window %d, checked %v", window, checked)
 	}
 }
+
+// A focused link takes Enter alone, as in a web page (WAI-ARIA's link
+// pattern): Space scrolls the container around it, as elsewhere, and a
+// button still takes both.
+func TestLinkTakesEnterAlone(t *testing.T) {
+	links, roleLinks, buttons := 0, 0, 0
+	var scroll ScrollState
+	tt := coreNewTester(func(c *context) {
+		coreScroll(c).Size(300, 100).TrackScroll(&scroll).Children(func() {
+			if coreLink(c, "Docs", "").AutoFocus().Clicked() {
+				links++
+			}
+			b := coreText(c, "Next").Focusable().Role(RoleLink)
+			b.flags |= flagClickable
+			if b.Clicked() {
+				roleLinks++
+			}
+			if coreButton(c, "Save").Clicked() {
+				buttons++
+			}
+			coreBox(c).Size(300, 1000)
+		})
+	}, 300, 100)
+	tt.Frame()
+	if !tt.Focused("Docs") {
+		t.Fatal("the link is not focused")
+	}
+	tt.Key(0, KeySpace)
+	tt.Frame()
+	tt.Frame()
+	if links != 0 {
+		t.Fatalf("Space on a focused link made %d clicks", links)
+	}
+	if scroll.Y == 0 {
+		t.Error("Space on a focused link does not scroll its container")
+	}
+	tt.Key(0, KeyEnter)
+	tt.Frame()
+	if links != 1 {
+		t.Fatalf("Enter on a focused link made %d clicks, want 1", links)
+	}
+
+	// The same for an element with the role of a link.
+	tt.Key(0, KeyTab)
+	if !tt.Focused("Next") {
+		t.Fatal("Tab does not focus the element with the role of a link")
+	}
+	tt.Key(0, KeySpace)
+	tt.Key(0, KeyEnter)
+	if roleLinks != 1 {
+		t.Fatalf("Space and Enter on a focused element with the role of a link made %d clicks, want 1", roleLinks)
+	}
+
+	tt.Key(0, KeyTab)
+	if !tt.Focused("Save") {
+		t.Fatal("Tab does not focus the button")
+	}
+	tt.Key(0, KeySpace)
+	tt.Key(0, KeyEnter)
+	if buttons != 2 {
+		t.Fatalf("Space and Enter on a focused button made %d clicks, want 2", buttons)
+	}
+}

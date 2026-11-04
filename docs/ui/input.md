@@ -113,8 +113,9 @@ move it between them, with a focus ring when it moves by keyboard.
 `AutoFocus` gives an element the focus when it appears, such as the first
 field of a dialog, and `Focus` keeps it there while you call it; `Focused`,
 `FocusVisible` and `FocusWithin` report it. Enter and Space press a focused
-button or link, and Space toggles a focused check box, switch, toggle or
-radio button.
+button, and Space toggles a focused check box, switch, toggle or radio
+button. A focused link, or an element with `Role(ui.RoleLink)`, takes Enter
+alone, as in a web page: Space scrolls the container around it.
 
 `FocusLeft` reports that the focus left an element since the last frame:
 it was on the element or inside it, and is now outside it, or nowhere, as
@@ -224,7 +225,7 @@ ui.Row(c).Gap(4).FocusGroup(ui.Horizontal).Children(func() {
 `c.Shortcut(ui.Cmd, ui.KeyS)` reports a key pressed with exactly those
 modifiers anywhere in the window, and `Element.Shortcut` only while the
 element or one inside it has the focus, which comes first. A focused button
-or link keeps Enter and Space, and a toggle Space, so
+keeps Enter and Space, a link Enter, and a toggle Space, so
 `c.Shortcut(0, ui.KeyEnter)` presses a dialog's default button wherever
 else the focus is.
 
