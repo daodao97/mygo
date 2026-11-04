@@ -1054,7 +1054,7 @@ func boxBaseline(e *node) (float32, bool) {
 	}
 	var first *node
 	for ch := e.first; ch != nil; ch = ch.next {
-		if ch.flags&(flagAbsolute|flagInvisible) != 0 || ch.hidden {
+		if ch.flags&flagAbsolute != 0 || ch.hidden {
 			continue
 		}
 		if first == nil {
