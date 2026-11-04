@@ -52,6 +52,21 @@ ui.Text(c, "Appearance").Bold().Role(ui.RoleHeading).Level(2)
 ui.Row(c).Role(ui.RoleNavigation).Label("Sections").Children(sectionLinks)
 ```
 
+A table of your own builds its rows with `ui.RoleRow`, its cells with
+`ui.RoleCell` and the headers of its columns with `ui.RoleColumnHeader`.
+A header is named by the text inside it, and keeps the elements inside it
+in the tree, as ARIA's `columnheader` does: a sort button and a column's
+menu button in it are reached and pressed as any other button.
+
+```go
+ui.Row(c).Role(ui.RoleColumnHeader).Children(func() { // named "Sort Options"
+	if ui.Button(c, "Sort").Clicked() {
+		app.sortBy("name")
+	}
+	ui.Button(c, "Options")
+})
+```
+
 ## States
 
 The bases tell assistive technology what their widgets show. A widget of

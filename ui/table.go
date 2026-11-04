@@ -265,7 +265,9 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 		head.Children(func() {
 			heads := cells(RoleColumnHeader, func(j int) {
 				col := &columns[j]
-				coreText(c, col.Title).SingleLine().FontWeight(600).TextColor(t.TextMuted)
+				// The header is named by its title, which needs no node
+				// of its own beside it.
+				coreText(c, col.Title).SingleLine().FontWeight(600).TextColor(t.TextMuted).Role(RoleNone)
 				if at, descending := s.sortPlace(col); at >= 0 {
 					place := 0
 					if s.SortBy != nil && len(*s.SortBy) > 1 {
