@@ -5846,6 +5846,40 @@ func (_handle Element) ObjectPosition(x float32, y float32) Element {
 	return wrapElement(_node.ObjectPosition(x, y))
 }
 
+// ObserveInput has fn see the input that comes to the element or to an
+// element inside it, without taking it, as an ancestor listening to the
+// keydown events that bubble up to it from the focus: keys pressed and
+// released (with Repeat), text typed and composed, and the edit commands
+// of the menus while the element or one of its descendants has the
+// keyboard focus, and the pointer pressed and released over it. fn runs on
+// the main thread before the element the input goes to gets it (the
+// capture phase of UI Events), the outermost of the elements observing
+// first, with X and Y relative to its own box; the input then goes on as
+// it would without fn, to HandleInput, the text inputs, shortcuts, Tab and
+// the rest, which may move the focus. A frame follows the input fn sees.
+//
+// fn sees what HandleInput would see at the focus, whatever takes it,
+// keys a Shortcut takes and Tab among them, but not the keys the system or
+// the menus take before the window gets them (an edit command of the menus
+// comes instead, InputCommand), the keys a web view takes while it has the
+// focus, nor the input of the popovers, menus and dialogs the element
+// opens, which are not inside it. A key that moved the focus, as Tab,
+// comes up where the focus went, as with UI Events. A disabled element
+// observes nothing.
+//
+// It is for a region that reacts to any input in it, such as a demo that
+// stops playing at the first key pressed in it, or a panel that closes a
+// hint as soon as one of its fields is typed in.
+func (_handle Element) ObserveInput(fn func(ev InputEvent)) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ObserveInput(fn))
+}
+
 // OnPaste has fn see a paste into a text input, by Cmd+V, Ctrl+V or a
 // Paste menu item, before it is inserted, on the main thread as the paste
 // comes: text is the clipboard's text, empty when it holds none, as with

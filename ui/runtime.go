@@ -248,6 +248,11 @@ type engine struct {
 	// shortcutRepeat tells that the last key a shortcut took this frame
 	// came as the auto-repeat of a key held down (ShortcutRepeated).
 	shortcutRepeat bool
+	// observers counts the elements the last commit found observing the
+	// input in them (ObserveInput), and observeBuf is the chain observe
+	// walks, kept between events.
+	observers  int
+	observeBuf []uint64
 
 	// trans are the transitions of the elements given one, by ID
 	// (transition.go): exitsBuilt tells that the last frame built elements
@@ -1239,6 +1244,7 @@ func (rt *engine) commit(root *node, w, h float32) {
 	rt.maxButton = Rect{}
 	rt.focusOrder, rt.focusScopes = rt.focusOrder[:0], rt.focusScopes[:0]
 	rt.modal, rt.modalLayer, rt.commitScope, rt.commitPage = 0, 0, focusScope{}, 0
+	rt.observers = 0
 	if rt.groups == nil {
 		rt.groups = map[uint64]groupInfo{}
 	}
@@ -1319,6 +1325,9 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	s.webView = e.webView
 	s.role = e.role
 	s.input, s.caret, s.takesText, s.noIME = e.inputFn, e.caret, e.takesText, e.noIME
+	if s.observe = e.observeFn; s.observe != nil {
+		rt.observers++
+	}
 	s.copyData = e.copyData
 	if s.textClient != e.textClient {
 		if s.textAdapter != nil {

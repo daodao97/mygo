@@ -427,6 +427,40 @@ c.OpenURLThen(url, func(err error) {
 })
 ```
 
+## Input inside a region
+
+`ObserveInput` has a container see the input that comes to the elements
+inside it, as an ancestor listening to the `keydown` events that bubble up
+to it, without taking it: the keys pressed and released (with `Repeat`),
+the text typed and composed and the menus' edit commands while the focus
+is the container or inside it, and the pointer pressed and released over
+it. A demo that stops playing at the first key pressed in it, or a panel
+that closes its hint once one of its fields is typed in, use it:
+
+```go
+panel := ui.Column(c).Gap(8).ObserveInput(func(ev ui.InputEvent) {
+	if ev.Kind == ui.InputKeyDown || ev.Kind == ui.InputText {
+		app.hint = false
+	}
+})
+panel.Children(func() {
+	if app.hint {
+		ui.Text(c, "Type a name and an email")
+	}
+	ui.TextInput(c, &app.name).Label("Name")
+	ui.TextInput(c, &app.email).Label("Email")
+})
+```
+
+The function runs before the focused element gets the input, as UI Events'
+capture phase, the outermost container first, and a frame follows. The
+input then goes on as it would: to the focused element's `HandleInput`,
+the text input, the shortcuts and Tab, so the function sees the keys a
+`Shortcut` takes too. It does not see the keys the system or the menus
+take before the window does (an edit command comes instead), nor the input
+of popovers, menus and dialogs the container opens, which are not inside
+it. A key that moved the focus, as Tab, comes up where the focus went.
+
 ## See also
 
 - [Context menus](context-menu.md) and [menu buttons](menu-button.md).

@@ -799,6 +799,7 @@ type state struct {
 	// input, caret and takesText are those of the last frame's element
 	// (HandleInput, TextCaret).
 	input       func(InputEvent) bool
+	observe     func(InputEvent) // ObserveInput
 	textClient  TextInputClient
 	textAdapter *textInputAdapter
 	caret       Rect

@@ -111,6 +111,35 @@ func (e *node) HandleInput(fn func(ev InputEvent) bool) *node {
 	return e
 }
 
+// ObserveInput has fn see the input that comes to the element or to an
+// element inside it, without taking it, as an ancestor listening to the
+// keydown events that bubble up to it from the focus: keys pressed and
+// released (with Repeat), text typed and composed, and the edit commands
+// of the menus while the element or one of its descendants has the
+// keyboard focus, and the pointer pressed and released over it. fn runs on
+// the main thread before the element the input goes to gets it (the
+// capture phase of UI Events), the outermost of the elements observing
+// first, with X and Y relative to its own box; the input then goes on as
+// it would without fn, to HandleInput, the text inputs, shortcuts, Tab and
+// the rest, which may move the focus. A frame follows the input fn sees.
+//
+// fn sees what HandleInput would see at the focus, whatever takes it,
+// keys a Shortcut takes and Tab among them, but not the keys the system or
+// the menus take before the window gets them (an edit command of the menus
+// comes instead, InputCommand), the keys a web view takes while it has the
+// focus, nor the input of the popovers, menus and dialogs the element
+// opens, which are not inside it. A key that moved the focus, as Tab,
+// comes up where the focus went, as with UI Events. A disabled element
+// observes nothing.
+//
+// It is for a region that reacts to any input in it, such as a demo that
+// stops playing at the first key pressed in it, or a panel that closes a
+// hint as soon as one of its fields is typed in.
+func (e *node) ObserveInput(fn func(ev InputEvent)) *node {
+	e.observeFn = fn
+	return e
+}
+
 // TextCaret has the element take text from the system's input methods
 // while it has the keyboard focus, with their composition at r, the caret,
 // relative to the element's box: candidate windows show there. Its
@@ -160,6 +189,50 @@ func (rt *engine) deliver(s *state, ev InputEvent) bool {
 	}
 	rt.requestFrame()
 	return true
+}
+
+// observeFocus shows ev to the elements around the focus that observe
+// their input (ObserveInput).
+func (rt *engine) observeFocus(ev InputEvent) {
+	if rt.observers == 0 || rt.focused == 0 || !rt.windowFocus() {
+		return
+	}
+	chain := rt.appendFocusChain(rt.observeBuf[:0])
+	rt.observe(chain, ev)
+}
+
+// observePointer shows ev to the elements under the pointer that observe
+// their input.
+func (rt *engine) observePointer(ev InputEvent) {
+	if rt.observers == 0 {
+		return
+	}
+	chain := rt.appendHitChain(rt.observeBuf[:0], rt.pointerX, rt.pointerY)
+	rt.observe(chain, ev)
+}
+
+// observe shows ev to the elements of chain, an element and its
+// ancestors innermost first, that observe their input: the outermost
+// first, as UI Events capture, with the pointer's position relative to
+// each one's box. chain is rt.observeBuf's, which it holds meanwhile, as
+// fn may run a nested main loop that brings another event.
+func (rt *engine) observe(chain []uint64, ev InputEvent) {
+	rt.observeBuf = nil
+	defer func() { rt.observeBuf = chain[:0] }()
+	ev.Time = rt.now()
+	seen := false
+	for i := len(chain) - 1; i >= 0; i-- {
+		s := rt.states[chain[i]]
+		if s == nil || s.observe == nil || s.flags&flagDisabled != 0 {
+			continue
+		}
+		ev.X, ev.Y = s.local(rt.pointerX, rt.pointerY)
+		s.observe(ev)
+		seen = true
+	}
+	if seen {
+		rt.requestFrame()
+	}
 }
 
 // focusHandler returns the state of the focused element when it handles

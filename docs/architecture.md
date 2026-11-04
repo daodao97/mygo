@@ -3027,6 +3027,13 @@ either.
   input method gives up on macOS. `ui.Shape` lays out text without the
   cache of layouts, for widgets that keep their glyphs, and
   `Painter.Glyphs` draws them where they placed them.
+  `ObserveInput` has an element see, without taking it, what comes to
+  the focus while the focus is it or inside it (keys up and down, text,
+  compositions, edit commands), and the presses and releases over it:
+  `observeFocus` and `observePointer` (`ui/handler.go`) walk the focus or
+  hit chain, outermost first, before anything handles the event, and do
+  nothing while the last commit found no element observing
+  (`engine.observers`).
   A text input's `OnTextKey` gets the keys that type no text as they
   come too, after `HandleInput`, but first applies the input queued for
   the editor (`widgetTextInput.prepare`, as the platform's queries do),

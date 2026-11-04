@@ -1002,7 +1002,7 @@ func ghostOf(e *node) *node {
 	g.activeDescendant, g.nameFrom, g.focusTo, g.field, g.form = nil, nil, nil, nil, nil
 	g.followX, g.colFit, g.gridFit = nil, nil, nil
 	// It no longer flies (Fly), if it did: it goes as its parent's copy.
-	g.inputFn, g.ghosts, g.lift = nil, false, false
+	g.inputFn, g.observeFn, g.ghosts, g.lift = nil, nil, false, false
 	if g.themed != nil {
 		// The app may change its theme while the copy leaves.
 		t := *g.themed
