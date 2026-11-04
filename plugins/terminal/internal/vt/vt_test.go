@@ -318,6 +318,24 @@ func TestKeyboardModes(t *testing.T) {
 	if f := term.KittyKeyboardFlags(); f != 5 {
 		t.Errorf("kitty keyboard flags %d, want 5", f)
 	}
+	// A sequence split across writes sets it, with the Kitty protocol on
+	// as well; a reset of the key formats, and of the terminal, clears it.
+	term.Write([]byte("\x1b[>4"))
+	term.Write([]byte(";2m"))
+	if !term.ModifyOtherKeys() {
+		t.Error("modifyOtherKeys off after a split CSI > 4 ; 2 m")
+	}
+	for _, reset := range []string{"\x1b[>m", "\x1b[>4n", "\x1bc"} {
+		term.Write([]byte("\x1b[>4;2m" + reset))
+		if term.ModifyOtherKeys() {
+			t.Errorf("modifyOtherKeys on after %q", reset)
+		}
+	}
+	term.Write([]byte("\x1b[>4;2m"))
+	term.Reset()
+	if term.ModifyOtherKeys() {
+		t.Error("modifyOtherKeys on after Reset")
+	}
 }
 
 // A search finds text in the scrollback and on the screen, ignoring the
