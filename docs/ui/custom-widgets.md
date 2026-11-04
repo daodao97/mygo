@@ -116,6 +116,65 @@ func Spoiler(c *ui.Context, text string) {
 }
 ```
 
+### Stopping what a widget started
+
+What `Local`'s `init` makes is the element's. When a frame no longer
+builds the element, its state goes, and a value that is an `io.Closer`
+(`T` or `*T` has `Close() error`) is closed, as the web aborts an
+`AbortController` when an element is removed. A widget that starts work
+in the background, a streaming request, a ticker or a subscription,
+stops it in `Close`:
+
+```go
+type stream struct{ cancel context.CancelFunc }
+
+func (s *stream) Close() error { s.cancel(); return nil }
+
+// Feed shows the lines read from url while it is in the view.
+func Feed(c *ui.Context, win *mygo.Window, app *App, url string) {
+	e := ui.Column(c)
+	ui.Local(e, "stream", func() *stream {
+		ctx, cancel := context.WithCancel(context.Background())
+		go read(ctx, url, func(line string) {
+			win.Update(func() { app.lines = append(app.lines, line) })
+		})
+		return &stream{cancel}
+	})
+	e.Children(func() {
+		for _, line := range app.lines {
+			ui.Text(c, line)
+		}
+	})
+}
+```
+
+- `Close` runs once, on the main thread, after the frame that no longer
+  built the element; an element's last `Local` made closes first, as
+  deferred calls run. The window waits for it: cancel the work and return,
+  rather than wait for the work to stop.
+- `Close` may change the app's state, on the main thread; ask for the
+  frame that shows it with `Window.Invalidate`, or `Invalidate` of the
+  `c.Services()` the widget kept.
+- An element leaving with an exit
+  [transition](transitions.md#coming-and-going) closes its values, and its
+  children's, once the exit ended, as its copy is gone: the copy paints
+  what the element had until then. Built again before that, the element
+  starts anew, with `init`, and the values of the copy close.
+- A [list](list.md) builds only the rows in view: a row scrolled out of
+  view closes its values, and makes them anew with `init` as it comes
+  back. Keep what outlives a row in the app's state, by its item.
+- The pages a [router](navigation.md#pages-keep-their-state) keeps in
+  its history keep their elements' values, which close as it lets the
+  pages go.
+- Every element's values close as its window closes, and so as the app
+  quits.
+- A `Close` that panics panics out of the frame, as the view would; the
+  values left close after the next frame.
+- A nil value is not closed, as a `*stream` that `init` left nil to start
+  later, and `Close`'s error is ignored.
+- A value the element must not close, as one the app shares, belongs in
+  the app's state rather than in a `Local`.
+
 A widget whose input changes what it edits reports it with `SetChanged`
 on its element, as it builds: `Changed` then returns true for it, as for
 the widgets' own. The [rich text editor](rich-text-editor.md) does so.

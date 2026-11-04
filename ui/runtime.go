@@ -514,6 +514,11 @@ type engine struct {
 	// are on their way to rest, or wait for the user's scrolling to settle
 	// (glideSnaps).
 	snapping []uint64
+	// dropped closes the Locals of the states the frame dropped, after it
+	// (closeDropped), and exits holds those of states whose elements'
+	// copies are leaving with exit transitions, until they are gone.
+	dropped []func() error
+	exits   []exitCloses
 	// lastPress is the element of the press (id) and of the one before
 	// (prev), and how many of the backend's count of clicks were before
 	// the first on it.
@@ -1089,11 +1094,17 @@ func (rt *engine) prune() {
 		}
 	}
 	rt.pressLost = nil
+	if len(rt.exits) > 0 {
+		rt.exitsEnded()
+	}
 	for id, s := range rt.states {
 		if s.seen != rt.frame || s.pass != rt.pass {
 			if !rt.keptAlive(s) {
 				if s.textAdapter != nil {
 					s.textAdapter.release()
+				}
+				if s.closes != nil {
+					rt.dropCloses(s)
 				}
 				delete(rt.states, id)
 				if rt.scrollDrag.st == s {
@@ -1220,6 +1231,9 @@ func (rt *engine) close() {
 	}
 	rt.host.afterTimer(time.Time{})
 	rt.host.repaintTimer(time.Time{})
+	// Last, with the engine closed: a Close that asks for a frame, or reads
+	// the window, finds it closed rather than half so.
+	rt.closeLocals()
 }
 
 // endFrame ends a frame, and closes the engine when its window closed
@@ -1227,7 +1241,9 @@ func (rt *engine) close() {
 func (rt *engine) endFrame() {
 	rt.inFrame = false
 	if rt.closing {
-		rt.close()
+		rt.close() // which closes the Locals the frame dropped too
+	} else if len(rt.dropped) > 0 {
+		rt.closeDropped()
 	}
 }
 

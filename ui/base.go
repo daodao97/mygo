@@ -396,6 +396,13 @@ func coreSelectBaseOpen[T comparable](c *context, selected *T, open *bool) *sele
 	return selectBase(c, selected, open)
 }
 
+// shownValue is the select's copy of the value its trigger shows, one of
+// the app's, which the select does not close as it goes (keepLocal).
+func shownValue[T comparable](b *node) *T {
+	v, _ := keepLocal(b.st, "shown", func() T { var zero T; return zero })
+	return v
+}
+
 // selectBase is SelectBase, open while *open, or while a local of its own
 // is when open is nil.
 func selectBase[T comparable](c *context, selected *T, open *bool) *selectParts[T] {
@@ -410,7 +417,7 @@ func selectBase[T comparable](c *context, selected *T, open *bool) *selectParts[
 		values:    coreLocal(b, "values", func() []T { return nil }),
 		off:       coreLocal(b, "off", func() []bool { return nil }),
 		pointer:   coreLocal(b, "pointer", func() [2]float32 { return [2]float32{} }),
-		shown:     coreLocal(b, "shown", func() T { var zero T; return zero }),
+		shown:     shownValue[T](b),
 		shows:     coreLocal(b, "shows", func() bool { return false }),
 		opened:    coreLocal(b, "opened", func() bool { return false }),
 	}

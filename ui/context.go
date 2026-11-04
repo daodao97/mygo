@@ -595,20 +595,43 @@ func (c *context) ShortcutRepeated() bool { return c.rt.shortcutRepeat }
 // Local returns state of type T that element e keeps from frame to frame,
 // keyed by key among its states; init creates it the first time. Custom
 // widgets keep what they need with it, on the element they create.
+//
+// The element owns what init made. When a frame no longer builds it, a
+// value that is an io.Closer (T or *T has Close() error) is closed once,
+// on the main thread, after that frame, as the web aborts an
+// AbortController as an element is removed: a component cancels in Close
+// the work it started, as a streaming request, a ticker or a subscription:
+//
+//	s := ui.Local(e, "stream", func() *stream { return startStream(url) })
+//
+// An element leaving with an exit transition closes them once its exit
+// ended, and every element as its window closes. A nil value is not
+// closed, and Close's error is ignored. Keep a value the element must not
+// close, as one the app shares, in the app's state.
 func coreLocal[T any](e *node, key any, init func() T) *T {
-	st := e.st
+	v, made := keepLocal(e.st, key, init)
+	if made {
+		closeWithState(e.st, v)
+	}
+	return v
+}
+
+// keepLocal is Local without the element owning what init made, for
+// values of the app the toolkit keeps a copy of (a select's value shown),
+// which it must not close. made tells that init made it.
+func keepLocal[T any](st *state, key any, init func() T) (v *T, made bool) {
 	if st.locals == nil {
 		st.locals = map[any]any{}
 	}
 	if v, ok := st.locals[key]; ok {
 		if p, ok := v.(*T); ok {
-			return p
+			return p, false
 		}
 	}
-	v := new(T)
+	v = new(T)
 	*v = init()
 	st.locals[key] = v
-	return v
+	return v, true
 }
 
 // state is what the runtime keeps about an element from frame to frame.
@@ -816,6 +839,9 @@ type state struct {
 	// trec is what the element's Transition keeps, by the engine's
 	// transitions, when it has one.
 	trec *transition
+	// closes closes the values of locals that are io.Closers (Local), in
+	// the order they were made; nil when none can be.
+	closes []func() error
 }
 
 type shortcut struct {
@@ -868,6 +894,9 @@ func (rt *engine) unlook(s *state) {
 		return
 	}
 	delete(rt.states, s.id)
+	// Locals made on the element's place before Key gave it another
+	// identity are the element's no more.
+	rt.dropped = append(rt.dropped, s.closes...)
 	*s = state{text: s.text.emptied()}
 	if len(rt.free) < maxFree {
 		rt.free = append(rt.free, s)
