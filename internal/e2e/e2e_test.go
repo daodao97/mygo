@@ -3617,6 +3617,35 @@ func TestContentWindowObserved(t *testing.T) {
 	}
 }
 
+// TestContentWindowValueText reads the text a slider gives for its value
+// (aria-valuetext) beside the number, as VoiceOver does.
+func TestContentWindowValueText(t *testing.T) {
+	var frames atomic.Int32
+	volume, steps := 30.0, 3.0
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		ui.Column(c).Fill().Padding(20).Gap(10).Children(func() {
+			ui.Slider(c, &volume, 0, 100).Label("Volume").Value("30 percent")
+			ui.Slider(c, &steps, 0, 10).Label("Steps")
+		})
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Value text", Width: 400, Height: 200, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	eventually(t, "the sliders", func() bool {
+		nodes, _ := accessibility(w)
+		return slices.ContainsFunc(nodes, func(n accessNode) bool { return n.role == roleSlider && n.label == "Steps" })
+	})
+	if _, _, _, ok := axAttribute(w, "Volume", "AXValue"); !ok {
+		t.Skip("only macOS reads attributes")
+	}
+	if v, _, named, _ := axAttribute(w, "Volume", "AXValueDescription"); v != "30 percent" || !named {
+		t.Errorf("the slider's value text is %q, named %v, want %q", v, named, "30 percent")
+	}
+	if v, _, named, _ := axAttribute(w, "Steps", "AXValueDescription"); named {
+		t.Errorf("a slider without a value text names AXValueDescription, %q", v)
+	}
+}
+
 // TestContentWindowListAccessibility reads the rows of a List as assistive
 // technology does, and chooses one by pressing it.
 func TestContentWindowListAccessibility(t *testing.T) {

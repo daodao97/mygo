@@ -171,7 +171,8 @@ func (e *node) Current(kind Current) *node {
 }
 
 // Value sets what assistive technology reads as the element's value, as
-// the choice a button opening a popup shows.
+// the choice a button opening a popup shows, or the text of a range's
+// value beside its number (aria-valuetext), as "3 of 10 steps".
 func (e *node) Value(s string) *node {
 	e.accValue = s
 	return e

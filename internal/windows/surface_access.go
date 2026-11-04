@@ -301,8 +301,10 @@ func (e *uiaElement) supports(i int) bool {
 	case ifaceRangeValue:
 		return n.Role.Ranged()
 	case ifaceValue:
+		// A range with a text for its value (aria-valuetext) gives it
+		// as the Value pattern's beside RangeValue, as Core-AAM maps it.
 		return n.Role == platform.RoleTextField || n.Role == platform.RolePopUpButton || n.Role == platform.RoleComboBox ||
-			n.Role == platform.RoleColorWell
+			n.Role == platform.RoleColorWell || n.Role.Ranged() && n.Value != ""
 	case ifaceText:
 		// Text fields' text, by characters, formats, words and lines,
 		// with the formats of a rich text's runs; a password's is not.

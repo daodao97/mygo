@@ -7222,7 +7222,8 @@ func (_handle Element) Unselectable() Element {
 }
 
 // Value sets what assistive technology reads as the element's value, as
-// the choice a button opening a popup shows.
+// the choice a button opening a popup shows, or the text of a range's
+// value beside its number (aria-valuetext), as "3 of 10 steps".
 func (_handle Element) Value(s string) Element {
 	_node := _handle.node()
 	if _node == nil {

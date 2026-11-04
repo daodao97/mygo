@@ -1101,7 +1101,11 @@ func initAccessCallbacks() {
 			*(*float64)(unsafe.Pointer(slot(value, 0))) = max(an.n.Now, an.n.Min)
 		}
 		if text != 0 {
+			// The text of the value (aria-valuetext), the caller's to free.
 			*slot(text, 0) = 0
+			if an := node(obj); an != nil && an.n.Value != "" {
+				*slot(text, 0) = cString(an.n.Value)
+			}
 		}
 	})
 	valueRange := purego.NewCallback(func(obj ptr) ptr {
