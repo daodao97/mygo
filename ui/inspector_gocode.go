@@ -235,6 +235,8 @@ func goCalls(name, value string) []string {
 		return []string{call("SelectionColor", goColor(e.ts.selection))}
 	case "line-clamp":
 		return []string{call("MaxLines", strconv.Itoa(e.maxLines))}
+	case "z-index":
+		return []string{call("ZIndex", strconv.Itoa(int(e.zIndex)))}
 	case "white-space":
 		if lower == "nowrap" {
 			return []string{call("NoWrap")}

@@ -604,6 +604,12 @@ type node struct {
 	attach  attachment
 	placed  attachment
 	flips   uint8
+	// zIndex orders the element's painting and its hits among its
+	// siblings (ZIndex); zOrder is set on an element with a child having
+	// one, which paints and commits its children in that order alone
+	// (zindex.go).
+	zIndex int32
+	zOrder bool
 	// serial is the order the pass made the element in: of overlays, the
 	// one made last shows on top.
 	serial int32
@@ -1832,6 +1838,9 @@ func (e *node) add(child *node) {
 	e.forgetIntrinsic()
 	child.parent = e
 	child.depth = e.depth + 1
+	if child.zIndex != 0 {
+		e.zOrder = true // set before it was added, as on a copy leaving (ghostOf)
+	}
 	if e.last == nil {
 		e.first = child
 	} else {

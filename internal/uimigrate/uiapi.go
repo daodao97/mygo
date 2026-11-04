@@ -363,6 +363,7 @@ var elementChains = map[string]bool{
 	"WidthPercent":         true,
 	"Wrap":                 true,
 	"WrapReverse":          true,
+	"ZIndex":               true,
 }
 
 // uiParts lists package ui's custom parts types.

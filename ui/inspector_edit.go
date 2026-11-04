@@ -269,7 +269,7 @@ func styleKnown(name string) bool {
 		"aspect-ratio", "flex-grow", "flex-shrink", "flex-basis", "padding", "margin", "border", "border-width", "border-color", "border-style",
 		"border-radius", "filter", "background", "background-color", "box-shadow", "opacity", "visibility", "display",
 		"color", "font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing", "text-align",
-		"text-decoration", "font-feature-settings", "selection-color", "line-clamp", "white-space":
+		"text-decoration", "font-feature-settings", "selection-color", "line-clamp", "white-space", "z-index":
 		return true
 	}
 	return false
@@ -556,6 +556,15 @@ func setStyle(e *node, name, value string) bool {
 			e.maxLines = n
 			return true
 		}
+	case "z-index":
+		if lower == "auto" {
+			e.ZIndex(0)
+			return true
+		}
+		if n, err := strconv.Atoi(lower); err == nil {
+			e.ZIndex(n)
+			return true
+		}
 	case "white-space":
 		switch lower {
 		case "nowrap":
@@ -681,6 +690,8 @@ func unsetStyle(e *node, name string) {
 		e.ts.set &^= setSelection
 	case "line-clamp":
 		e.maxLines = 0
+	case "z-index":
+		e.zIndex = 0
 	case "white-space":
 		e.noWrap = false
 		if e.single {

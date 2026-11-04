@@ -127,6 +127,43 @@ ui.Box(c).Fill().Children(func() {
 })
 ```
 
+## Paint order
+
+Siblings paint in the order they are built, those in the flow first and
+the absolute and sticky ones over them, and a later one takes the pointer
+where they overlap. `ZIndex` changes that order without moving the element
+in the tree, as CSS's `z-index`: siblings with a higher value paint over
+those with a lower one and take the pointer first, those with the same
+value keep the order above, and the default is 0. A negative value puts an
+element under its siblings, over its parent's background. The layout, the
+order `Tab` moves the focus in and what assistive technology reads still
+follow the tree, which is why reordering the children is no substitute.
+
+```go
+// Overlapping avatars, the first on top.
+ui.Row(c).Children(func() {
+	for i, u := range users {
+		a := ui.Avatar(c, u.Name, u.Photo).ZIndex(len(users) - i)
+		if i > 0 {
+			a.Margin(0, 0, 0, -8)
+		}
+	}
+})
+
+// A cell growing over its neighbours while the pointer is over it.
+cell := ui.Box(c).Size(80, 80)
+if cell.Hovered() {
+	cell.Scale(1.2, 1.2).ZIndex(1)
+}
+```
+
+The order is among siblings alone: the element moves with all that is
+inside it, still clipped by its parent, and is never mixed with the
+elements of other parents, as if each z-index other than 0 made a CSS
+stacking context. Raising a card inside a column does not lift it over the
+next column; raise the column. The window's content stays under its
+[overlays](overlays.md), and overlays keep the order they open in.
+
 ## Clipping and visibility
 
 - `Clip` cuts its children to its rounded box, inside its border, which it

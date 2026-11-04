@@ -391,38 +391,42 @@ func (p *Painter) element(e *node) {
 				}
 			}
 		}
-		// Elements flying go over their layer: the window's content, under
-		// its overlays, or their overlay, under those after it.
-		m := p.rt.matches
-		layers := m != nil && e == e.c.overlay
-		for c := e.first; c != nil; c = c.next {
-			if c.flags&flagAbsolute == 0 && !c.sticky && p.paintable(c) {
-				p.element(c)
-				if layers {
-					m.paint(p, c)
+		if e.zOrder && e != e.c.overlay && zPaint != nil {
+			zPaint(p, e)
+		} else {
+			// Elements flying go over their layer: the window's content, under
+			// its overlays, or their overlay, under those after it.
+			m := p.rt.matches
+			layers := m != nil && e == e.c.overlay
+			for c := e.first; c != nil; c = c.next {
+				if c.flags&flagAbsolute == 0 && !c.sticky && p.paintable(c) {
+					p.element(c)
+					if layers {
+						m.paint(p, c)
+					}
 				}
 			}
-		}
-		if e.flags&flagDividers != 0 && !e.grid {
-			p.dividers(e)
-		}
-		content := m != nil && e.parent == nil
-		for c := e.first; c != nil; c = c.next {
-			if content && c == e.c.overlay {
+			if e.flags&flagDividers != 0 && !e.grid {
+				p.dividers(e)
+			}
+			content := m != nil && e.parent == nil
+			for c := e.first; c != nil; c = c.next {
+				if content && c == e.c.overlay {
+					m.paint(p, nil)
+					content = false
+				}
+				// Sticky children paint above the flow too, in their order
+				// among the absolute ones, as CSS's positioned elements do.
+				if (c.flags&flagAbsolute != 0 && c.leaving == 0 || c.flags&flagAbsolute == 0 && c.sticky) && p.paintable(c) {
+					p.element(c)
+					if layers {
+						m.paint(p, c)
+					}
+				}
+			}
+			if content {
 				m.paint(p, nil)
-				content = false
 			}
-			// Sticky children paint above the flow too, in their order
-			// among the absolute ones, as CSS's positioned elements do.
-			if (c.flags&flagAbsolute != 0 && c.leaving == 0 || c.flags&flagAbsolute == 0 && c.sticky) && p.paintable(c) {
-				p.element(c)
-				if layers {
-					m.paint(p, c)
-				}
-			}
-		}
-		if content {
-			m.paint(p, nil)
 		}
 	}
 	if clips {

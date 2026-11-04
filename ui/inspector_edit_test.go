@@ -261,6 +261,7 @@ func TestSetStyleRoundTripsOwnStyles(t *testing.T) {
 		{"font-weight", "600"},
 		{"line-height", "18px"},
 		{"text-decoration", "underline line-through"},
+		{"z-index", "-2"},
 	} {
 		var decls []inspDecl
 		understood := false
@@ -284,7 +285,7 @@ func TestSetStyleRoundTripsOwnStyles(t *testing.T) {
 	}
 	for _, tc := range []struct{ name, value string }{
 		{"width", "wide"}, {"padding", "1 2 3 4 5"}, {"opacity", "much"}, {"color", "#12"},
-		{"nonsense", "1"}, {"box-shadow", "1px"}, {"font-size", "-1"},
+		{"nonsense", "1"}, {"box-shadow", "1px"}, {"font-size", "-1"}, {"z-index", "1.5"},
 	} {
 		if setStyle(&node{}, tc.name, tc.value) {
 			t.Errorf("setStyle understood %s: %s", tc.name, tc.value)
@@ -443,6 +444,8 @@ func TestGoCallsAreElementMethods(t *testing.T) {
 		{"selection-color", "#000", `.SelectionColor(ui.Hex("#000000"))`},
 		{"line-clamp", "2", ".MaxLines(2)"},
 		{"white-space", "nowrap", ".NoWrap()"},
+		{"z-index", "3", ".ZIndex(3)"},
+		{"z-index", "auto", ".ZIndex(0)"},
 	} {
 		code := strings.Join(goCalls(tc.name, tc.value), "")
 		if tc.want != "" && code != tc.want {

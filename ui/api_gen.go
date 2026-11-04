@@ -7328,6 +7328,54 @@ func (_handle Element) WrapReverse() Element {
 	return wrapElement(_node.WrapReverse())
 }
 
+// ZIndex orders the element's painting among its siblings, as CSS's
+// z-index does: those with a higher value paint later, above those with a
+// lower one, whatever their order in the tree, and take the pointer first
+// where they overlap. Siblings with the same value paint as they would
+// without one: those in the flow in the order they were built, then the
+// absolute and sticky ones in theirs. The default is 0; a negative value
+// paints the element under its siblings, still above its parent's
+// background.
+//
+// It moves the element with all that is inside it, as one, among its
+// siblings alone: it does not reach past its parent, which still clips it
+// where it clips, nor mix the elements inside it with those of other
+// parents, as if each element with a value other than 0 made a stacking
+// context, as in CSS. Nothing else changes: the layout, the order Tab
+// moves the focus in and what assistive technology reads follow the tree.
+//
+// A stack of overlapping avatars, the first on top:
+//
+//	ui.Row(c).Children(func() {
+//		for i, u := range users {
+//			a := ui.Avatar(c, u.Name, u.Photo).ZIndex(len(users) - i)
+//			if i > 0 {
+//				a.Margin(0, 0, 0, -8)
+//			}
+//		}
+//	})
+//
+// A cell of a grid growing as the pointer is over it, above the cells
+// after it:
+//
+//	cell := ui.Box(c).Size(80, 80)
+//	if cell.Hovered() {
+//		cell.Scale(1.2, 1.2).ZIndex(1)
+//	}
+//
+// The window's content stays under its overlays (Overlay) whatever its
+// z-index, and overlays keep the order they open in; an element inside a
+// text (inline) paints with its text.
+func (_handle Element) ZIndex(z int) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ZIndex(z))
+}
+
 // Segment creates segment i: a radio button choosing i. Style it from
 // whether i is the one chosen, and give it children.
 func (_handle SegmentedParts) Segment(i int) Element {

@@ -3041,6 +3041,28 @@ either.
   its parent's second pass, among the absolute children, and commit moves
   its hits there (`stickyHits`), while it commits in the flow, so that
   Tab and assistive technology keep its place among its siblings.
+- **Paint order** (`ui/zindex.go`). `ZIndex` sets `node.zIndex` and, on
+  the parent, `zOrder`, which `add` sets too for a child added with one
+  (a copy leaving); a parent without it paints and commits its children
+  as before, in two passes, with no sorting nor allocation. One with it
+  paints and commits them through `zPaint` and `zCommit`, which `ZIndex`
+  sets, so that an app never calling it links none of this. It paints
+  them in `paintOrder`: the two passes' order sorted stably by
+  z-index, so that equal values keep it, the copies leaving still first,
+  and, of the root, the overlay layer and what follows it last
+  (`zPinned`), so that overlays stay above the content and keep their
+  order (the overlay layer's own children are never sorted). Commit
+  (`commitByZ`) commits them in the usual order, which the focus order
+  and the labels follow, noting each child's hits and web views, and
+  then moves them, child by child, to the same order (sorting pointers to
+  the notes, whose code all slices of pointers share), the web views'
+  indexes into the hits with them, so that the pointer and what covers a
+  web view agree with the paint. The order is among siblings alone: a
+  child with a z-index moves with its subtree, inside its parent's clips,
+  and makes no stacking context that would mix it with its parent's
+  siblings. The engine's `zScratch` holds the buffers, as a stack for the
+  paint's nesting; the scene's order changing makes a `Cache` layer draw
+  again, as its `scene.Differ` sees.
 - **Right to left** (`ui/direction.go`). Each element has a direction
   (`node.dir`): built, it takes its parent's, and the root the window's,
   which `surface.Conn.RightToLeft` gives (package `mygo` from the app's
