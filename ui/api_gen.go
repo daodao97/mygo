@@ -352,6 +352,28 @@ func (_handle *Context) DisableAnimations() {
 	_ctx.DisableAnimations()
 }
 
+// FocusTakesText reports whether the element with the keyboard focus takes
+// text, typed or composed: a text input or text area, or an editor of
+// rich text or code, that is not read only, or an element that takes text
+// itself (HandleTextInput, TextCaret). It is the web's guard of
+// single-key shortcuts (isContentEditable, an input or a textarea, the
+// role textbox): a command palette's letters step aside while a field
+// takes them as text.
+//
+//	if !c.FocusTakesText() && c.Shortcut(0, ui.KeyK) {
+//		app.palette = true
+//	}
+//
+// It is false while the window does not have the keyboard, as the
+// window tells the system's input methods then.
+func (_handle *Context) FocusTakesText() bool {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return false
+	}
+	return _ctx.FocusTakesText()
+}
+
 // Instant reports whether this frame shows animated values at once
 // (DisableAnimations). Views read it to render a change settled in the same
 // frames where its animations are disabled.
@@ -4695,6 +4717,33 @@ func (_handle Element) FocusGroup(o Orientation) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.FocusGroup(o))
+}
+
+// FocusLeft reports whether the keyboard focus left the element since the
+// last frame: it was on the element or inside it, and is now outside it,
+// or nowhere, as the window lost the keyboard. That is the web's focusout
+// whose relatedTarget the element does not contain. The overlays attached
+// to the element and to those inside it (AttachTo), as a combobox's list
+// or a button's popover, count as inside it, as does the element it is
+// attached to, as PressedOutside has them: a combobox closes as the focus
+// leaves its field, but not as it moves into its list.
+//
+//	field := ui.TextInput(c, &app.query)
+//	if field.FocusLeft() {
+//		app.open = false
+//	}
+//
+// Where the focus went is what the elements tell as they are built
+// (Focused, FocusWithin), and a Handle's FocusWithin before its control
+// is.
+func (_handle Element) FocusLeft() bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.FocusLeft()
 }
 
 // FocusRing sets whether MyGo rings the element when it has the keyboard

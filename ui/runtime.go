@@ -227,6 +227,12 @@ type engine struct {
 	groups     map[uint64]groupInfo
 	memberOf   map[uint64]uint64
 	groupLast  map[uint64]uint64
+	// focusFrom is the element that had the keyboard focus as the last
+	// pass ended, 0 for none or while the window did not have the keyboard
+	// (FocusLeft); leftRead tells that this pass read FocusLeft, which saw
+	// the focus on leftSaw.
+	focusFrom, leftSaw uint64
+	leftRead           bool
 	// openers are the elements that had the focus as overlays opened, by
 	// overlay; downs the elements the pointer went down on since the last
 	// pass (0 for none), for PressedOutside.
@@ -1015,6 +1021,7 @@ func (rt *engine) endPass() {
 	rt.unrouted = append(rt.unrouted, rt.delivered...)
 	rt.delivered = rt.delivered[:0]
 	rt.downs = rt.downs[:0]
+	rt.passFocus()
 	// The next pass may not ask again, as when the view cleared what asked.
 	for _, e := range rt.c.reveal {
 		if !slices.Contains(rt.revealIDs, e.id) {

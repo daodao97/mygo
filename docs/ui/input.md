@@ -116,6 +116,46 @@ field of a dialog, and `Focus` keeps it there while you call it; `Focused`,
 button or link, and Space toggles a focused check box, switch, toggle or
 radio button.
 
+`FocusLeft` reports that the focus left an element since the last frame:
+it was on the element or inside it, and is now outside it, or nowhere, as
+the window lost the keyboard. That is the web's `focusout` whose
+`relatedTarget` the element does not contain. The overlays attached to the
+element and to those inside it (`AttachTo`), as a combobox's list or a
+button's popover, are inside it, as for `PressedOutside`, so a popup field
+closes as the focus leaves it but not as it moves into its own list:
+
+```go
+var field ui.Element
+combo := ui.Column(c).Children(func() {
+	field = ui.TextInput(c, &app.query)
+})
+if combo.FocusLeft() {
+	app.open = false
+}
+if app.open {
+	ui.Overlay(c, func() {
+		ui.Column(c).AttachTo(field, ui.AnchorBottomLeft, ui.AnchorTopLeft).Children(app.options)
+	})
+}
+```
+
+Where the focus went is what the elements report as they are built
+(`Focused`, `FocusWithin`), and a [handle](#persistent-focus)'s
+`FocusWithin(c)` before its control is built.
+
+`c.FocusTakesText()` reports whether the focus takes text, typed or
+composed: a text input or text area, or an editor of rich text or code,
+that is not read only, or an element that takes text itself
+(`HandleTextInput`, `TextCaret`). It is the web's guard of single-key
+shortcuts (`isContentEditable`, an `input` or a `textarea`): a command
+palette's letters step aside while a field types them.
+
+```go
+if !c.FocusTakesText() && c.Shortcut(0, ui.KeyK) {
+	app.palette = true
+}
+```
+
 ## Persistent focus
 
 Bind an app-owned handle to a control on each build:
