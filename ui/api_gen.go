@@ -1526,7 +1526,7 @@ func Local[T any](e Element, key any, init func() T) *T {
 
 // MenuBase creates a menu button without a look, whose menu shows while
 // *open is true: a button that takes the focus and opens the menu as the
-// pointer goes down on it, or for Enter, Space or Down while it has the
+// pointer goes down on it, or for Enter, Space, Up or Down while it has the
 // focus, and closes it when pressed again. Give the trigger children, and
 // build the menu in Popup with Item, CheckItem, RadioItem and
 // SubmenuItem, and the submenus with Submenu; an item's Clicked reports
@@ -5934,7 +5934,7 @@ func (_handle Element) PopoverMenu(build func(m *Menu)) Element {
 // menu MyGo draws in the window with the theme's look, as PopoverMenu
 // draws a context menu, rather than the system showing one of its own. It
 // opens below the element, or above it where the window has no room, as
-// the pointer goes down on it, and for Enter, Space or Down while it has
+// the pointer goes down on it, and for Enter, Space, Up or Down while it has
 // the focus, which it takes. build fills it with the items Menu's
 // function takes, and the item chosen reports Chosen as there:
 //

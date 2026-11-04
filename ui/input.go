@@ -856,9 +856,13 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, repeat bool
 		return false
 	}
 	if s := rt.states[rt.focused]; s != nil && s.flags&flagMenuButton != 0 && s.flags&flagDisabled == 0 && !rt.claimedBy(k, false) &&
-		(mods == 0 && (key == KeyEnter || key == KeySpace || key == KeyDown) || mods == Alt && key == KeyDown) {
+		(mods == 0 && (key == KeyEnter || key == KeySpace || key == KeyDown || key == KeyUp) || mods == Alt && key == KeyDown) {
 		rt.focusVisible = true
-		rt.openMenuButton(s, true)
+		if key == KeyUp {
+			rt.openMenuButtonOnLast(s)
+		} else {
+			rt.openMenuButton(s, true)
+		}
 		return false
 	}
 	if (key == KeyEnter || key == KeySpace) && mods == 0 {
