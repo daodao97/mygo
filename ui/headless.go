@@ -712,16 +712,24 @@ func (t *Tester) ChooseMenuItem(path ...string) error {
 func (t *Tester) CloseMenu() { t.h.menu, t.h.chosen = nil, nil }
 
 // Press presses (x, y) without releasing; Release releases it.
-func (t *Tester) Press(x, y float32) {
-	if t.webViewPress(x, y, 0, 0) {
-		return
-	}
-	t.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: float64(x), Y: float64(y)})
-}
+func (t *Tester) Press(x, y float32) { t.PressButton(0, x, y) }
 
 // Release releases the pointer at (x, y).
-func (t *Tester) Release(x, y float32) {
-	t.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: float64(x), Y: float64(y)})
+func (t *Tester) Release(x, y float32) { t.ReleaseButton(0, x, y) }
+
+// PressButton presses (x, y) with the pointer's button, 0 the primary, 1
+// the secondary and 2 the middle, without releasing, as a right-button
+// drag begins; ReleaseButton releases it.
+func (t *Tester) PressButton(button int, x, y float32) {
+	if t.webViewPress(x, y, button, 0) {
+		return
+	}
+	t.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: float64(x), Y: float64(y), Button: button})
+}
+
+// ReleaseButton releases the pointer's button at (x, y).
+func (t *Tester) ReleaseButton(button int, x, y float32) {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: float64(x), Y: float64(y), Button: button})
 }
 
 // WebViewAt returns the web view (WebView) that takes the pointer at

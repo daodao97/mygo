@@ -344,7 +344,7 @@ func slider(c *context, value *float64, lo, hi, step float64) *node {
 	if rtl {
 		frac = 1 - frac
 	}
-	held := s.Animate("held", b2f(s.st.pressed), 150*time.Millisecond)
+	held := s.Animate("held", b2f(s.st.pressedPrimary()), 150*time.Millisecond)
 	fill := c.accent(t)
 	s.Draw(func(p *Painter, r Rect) {
 		// As thick as Progress; above the ticks.

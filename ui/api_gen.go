@@ -4162,10 +4162,11 @@ func (_handle Element) DragDataFrom(data func() transfer.Data, options ...transf
 	return wrapElement(_node.DragDataFrom(data, options...))
 }
 
-// DragEnded reports whether the pointer pressing the element, and moving,
-// let go since the last frame, with how fast it moved then, as
-// DragVelocity: a spring taking over (SpringOptions.Velocity) keeps the
-// fling going. A click, which does not move, ends no drag.
+// DragEnded reports whether the pointer pressing the element with the
+// primary button, and moving, let go since the last frame, with how fast
+// it moved then, as DragVelocity: a spring taking over
+// (SpringOptions.Velocity) keeps the fling going. A click, which does not
+// move, ends no drag, nor does a drag with another button.
 func (_handle Element) DragEnded() (float32, float32, bool) {
 	_node := _handle.node()
 	if _node == nil {
@@ -4194,7 +4195,8 @@ func (_handle Element) DragOffset() Point {
 
 // DragVelocity returns how fast, in DIPs per second along the element's
 // local axes, the pointer pressing the element moves now: zero once it
-// stops for a moment, or while nothing presses the element.
+// stops for a moment, or while nothing presses the element with the
+// primary button (Dragged).
 func (_handle Element) DragVelocity() (float32, float32) {
 	_node := _handle.node()
 	if _node == nil {
@@ -4249,9 +4251,10 @@ func (_handle Element) Draggable(offset *Point, o DraggableOptions) Element {
 }
 
 // Dragged reports how far the pointer moved in the element's local axes
-// since the last frame while pressing it. The moves just before the
-// pointer let go come while the element is still pressed, and the press
-// ends in the build after.
+// since the last frame while pressing it with the primary button, as
+// Pressed: a drag with another button moves nothing (PressedButton). The
+// moves just before the pointer let go come while the element is still
+// pressed, and the press ends in the build after.
 func (_handle Element) Dragged() (float32, float32, bool) {
 	_node := _handle.node()
 	if _node == nil {
@@ -5839,8 +5842,10 @@ func (_handle Element) PopoverMenuButton(build func(m *Menu)) Element {
 	return wrapElement(_node.PopoverMenuButton(build))
 }
 
-// Pressed reports whether the element is being pressed with the pointer,
-// unless it is disabled.
+// Pressed reports whether the element is being pressed with the pointer's
+// primary button, unless it is disabled. A press of another button, as a
+// right-click's, is no press here, as CSS's :active and drags on the web
+// have it: PressedButton tells which button presses the element.
 func (_handle Element) Pressed() bool {
 	_node := _handle.node()
 	if _node == nil {
@@ -5849,6 +5854,23 @@ func (_handle Element) Pressed() bool {
 	_ctx := _node.c
 	_ = _ctx
 	return _node.Pressed()
+}
+
+// PressedButton returns the button of the pointer pressing the element, 0
+// for the primary, 1 the secondary and 2 the middle, while the press
+// lasts, wherever the pointer goes, as Dragged; ok is false while nothing
+// presses it, or it is disabled. Pressed, Dragged, DragVelocity and
+// DragEnded follow the primary button alone; an element that pans with
+// the middle button, as a canvas, reads the button here and where the
+// pointer goes with PointerPosition.
+func (_handle Element) PressedButton() (int, bool) {
+	_node := _handle.node()
+	if _node == nil {
+		return 0, false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.PressedButton()
 }
 
 // PressedOutside reports whether the pointer went down since the last

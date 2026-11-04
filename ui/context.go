@@ -672,6 +672,9 @@ type state struct {
 	pressX, pressY float32
 	dragX, dragY   float32
 	pressed        bool
+	// pressButton is the button pressing the element: 0 the primary, 1
+	// the secondary, 2 the middle (pressedPrimary).
+	pressButton int
 	// drag follows the press's moves; released tells that it ended since
 	// the last frame, going at releaseVX and releaseVY in the element's
 	// axes, releaseWX and releaseWY in the window's.

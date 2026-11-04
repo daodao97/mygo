@@ -140,12 +140,34 @@ func (s *surface) listen() {
 		})
 	}
 
+	// The pointer is the primary one of its kind (isPrimary): the mouse,
+	// or the first finger or pen down. The others, as a second finger on
+	// a touchscreen, neither press nor move it, as on Windows and Linux,
+	// where a second finger presses nothing either: it would take the
+	// press of the first, and end it as it lifts.
 	s.on(c, "pointermove", true, func(e js.Value) {
+		if !primary(e) {
+			return
+		}
 		x, y := s.point(e)
 		s.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: x, Y: y, Mods: s.mods(e)})
+		// A button pressed or released while another is held comes as a
+		// move, which pointerdown and pointerup leave out; the desktop's
+		// windows hear each button.
+		if kind, b, ok := chord(e.Get("button").Int(), e.Get("buttons").Int()); ok {
+			ev := platform.SurfaceEvent{Kind: kind, X: x, Y: y, Button: b, Mods: s.mods(e)}
+			if kind == platform.PointerDown {
+				s.downX, s.downY = x, y
+				ev.Clicks = s.clicks.Press(b, x, y, uint32(e.Get("timeStamp").Float()), platform.DefaultDoubleClick)
+			}
+			s.send(ev)
+		}
 	})
 	s.on(c, "pointerdown", false, func(e js.Value) {
 		e.Call("preventDefault")
+		if !primary(e) {
+			return
+		}
 		s.focus()
 		x, y := s.point(e)
 		button := e.Get("button").Int()
@@ -166,6 +188,9 @@ func (s *surface) listen() {
 		s.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: x, Y: y, Button: b, Clicks: clicks, Mods: s.mods(e)})
 	})
 	s.on(c, "pointerup", true, func(e js.Value) {
+		if !primary(e) {
+			return
+		}
 		button := e.Get("button").Int()
 		if button == 3 || button == 4 {
 			return
@@ -174,10 +199,16 @@ func (s *surface) listen() {
 		s.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: x, Y: y, Button: buttonOf(button), Mods: s.mods(e)})
 	})
 	s.on(c, "pointercancel", true, func(e js.Value) {
+		if !primary(e) {
+			return
+		}
 		x, y := s.point(e)
 		s.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: x, Y: y, Button: buttonOf(e.Get("button").Int()), Mods: s.mods(e)})
 	})
-	s.on(c, "pointerleave", true, func(js.Value) {
+	s.on(c, "pointerleave", true, func(e js.Value) {
+		if !primary(e) {
+			return
+		}
 		s.send(platform.SurfaceEvent{Kind: platform.PointerLeave})
 	})
 	// iOS sends a tap's mouse events even though its pointerdown was
@@ -410,6 +441,30 @@ func buttonOf(b int) int {
 		return 1
 	}
 	return 0
+}
+
+// primary reports whether a pointer event is the primary pointer's, as
+// the mouse is; browsers without isPrimary have the mouse alone.
+func primary(e js.Value) bool {
+	p := e.Get("isPrimary")
+	return p.Type() != js.TypeBoolean || p.Bool()
+}
+
+// chord returns the press or release of button, a DOM pointermove's, with
+// buttons the DOM's buttons held after it: a button going down or up while
+// another is held. ok is false for a move that changed no button (button
+// -1), or changed a side button's.
+func chord(button, buttons int) (kind platform.SurfaceEventKind, b int, ok bool) {
+	if button < 0 || button > 2 {
+		return 0, 0, false
+	}
+	b = buttonOf(button)
+	// buttons has a bit per button: 1 the primary, 2 the secondary, 4 the
+	// middle, as MyGo numbers them.
+	if buttons&(1<<b) != 0 {
+		return platform.PointerDown, b, true
+	}
+	return platform.PointerUp, b, true
 }
 
 // point returns where a pointer event happened in the canvas, in DIPs.

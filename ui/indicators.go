@@ -334,7 +334,7 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 		}
 		return lo + float64(max(0, min(1, f)))*(hi-lo)
 	}
-	if !st.pressed {
+	if !st.pressedPrimary() {
 		*dragging = -1
 	}
 	var knobs [2]*node
@@ -365,7 +365,7 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 				}
 
 			})
-			if knob.st.pressed {
+			if knob.st.pressedPrimary() {
 				*dragging = k
 			}
 			knobs[k] = knob
@@ -374,11 +374,11 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 	e.afterInput(func() {
 		p := st
 		for _, knob := range knobs {
-			if knob.st.pressed {
+			if knob.st.pressedPrimary() {
 				p = knob.st
 			}
 		}
-		if p.pressed && !e.disabled() {
+		if p.pressedPrimary() && !e.disabled() {
 			x := at(p)
 			if *dragging < 0 {
 				// The nearest knob, the high one when they meet past it.

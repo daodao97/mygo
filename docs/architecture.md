@@ -809,7 +809,11 @@ gained one field, `SurfaceNative.Canvas`.
   wider or narrower than a page's in the same font.
 - **Input.** Pointer events (captured on press) are the pointer, with
   clicks counted from presses close in time and place, buttons 3 and 4
-  the back and forward keys; `wheel` events scroll, lines and pages
+  the back and forward keys. Those of a pointer that is not the primary
+  one (`isPrimary`), as a second finger, are left out, as no second finger
+  presses on the desktops; a button going down or up while another is
+  held, which comes as a `pointermove` with its `button`, is a
+  `PointerDown` or `PointerUp` as on the desktops (`chord`). `wheel` events scroll, lines and pages
   turned into DIPs, notches of 120 not `Precise`. The textarea, out of
   sight at the caret (`SetTextInput`), has the keyboard: `keydown` and
   `keyup` are keys, by what they type (`key`) and else by where they are
@@ -2736,7 +2740,11 @@ either.
   while the old path goes on. `Jump` sets values and derives a velocity
   from successive ones; presses keep their last moves (`dragTrack`), in
   the element's axes and the window's, for `DragVelocity` and
-  `DragEnded`. Keyframe sequences keep one sequence per
+  `DragEnded`, and their button (`state.pressButton`, `PressedButton`):
+  `Pressed`, `Dragged` and the controls that follow the pointer (sliders,
+  `Draggable`, value drags) take the primary button's alone
+  (`pressedPrimary`), a right or middle press only clicking or opening a
+  menu. Keyframe sequences keep one sequence per
   key with an explicit replay token. All ask for frames only while moving,
   and end at their targets under reduced motion. Poses (`ui/pose.go`,
   `AnimatePose`) are channels sampled as frames commit, into a transform

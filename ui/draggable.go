@@ -131,9 +131,9 @@ func (e *node) Draggable(offset *Point, o DraggableOptions) *node {
 		}
 	}
 
-	held := st.pressed && rt.pressButton == 0 && !e.disabled()
+	held := st.pressedPrimary() && !e.disabled()
 	// A press that began and ended since the last frame.
-	ended := !st.pressed && st.released && rt.pressButton == 0
+	ended := !st.pressed && st.released
 	if !r.pressing && (held || ended) {
 		// The press holds the element where it shows.
 		r.pressing, r.caught, r.from = true, r.moving(), shown

@@ -49,6 +49,34 @@ in that frame. Guard the choice against selecting the same item again.
 `Clicked` reports activation on release inside the element, or through the
 keyboard or assistive technology; buttons use that activation.
 
+`Pressed`, `Clicked`, `Dragged`, `DragVelocity` and `DragEnded` follow the
+primary button alone, as CSS's `:active` and the web's drag gestures do
+(`event.button === 0`): a right or middle drag moves no card, slider or
+split, and only the right-click (`RightClicked`) or [context
+menu](context-menu.md) it opens comes of it. `PressedButton` returns the
+button pressing the element, whichever it is (0 the primary, 1 the
+secondary, 2 the middle), while the press lasts; with `PointerPosition`,
+it builds a gesture of another button, as a canvas panning with the
+middle button:
+
+```go
+x, y, _ := canvas.PointerPosition()
+if b, ok := canvas.PressedButton(); ok && b == 2 {
+	if app.panning {
+		app.pan.X += x - app.last.X
+		app.pan.Y += y - app.last.Y
+	}
+	app.panning, app.last = true, ui.Point{X: x, Y: y}
+} else {
+	app.panning = false
+}
+```
+
+Every press comes from the primary pointer: the mouse, or the first finger
+on a touchscreen; a second finger presses nothing, in browsers too
+(`isPrimary`). [`HandleInput`](#every-key-as-it-comes) hears every
+button go down and up, with `InputEvent.Button`.
+
 While the pointer presses an element, the elements it was over as the
 press began, as the row around a button, stay `Hovered` as long as it is
 over them, as in CSS, and the others hover no more: dragging over other
