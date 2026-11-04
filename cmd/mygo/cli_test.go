@@ -540,8 +540,8 @@ func TestSignWindowsResources(t *testing.T) {
 			t.Errorf("%s signed: %v, want %v", name, got, want)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "bin", ".hidden.dll")); err == nil {
-		t.Error("a hidden file was copied")
+	if b, err := os.ReadFile(filepath.Join(dir, "bin", ".hidden.dll")); err != nil || !bytes.HasSuffix(b, []byte("signed")) {
+		t.Errorf("a dotfile resource was not copied and signed: %q, %v", b, err)
 	}
 	c.Windows.SignCommand = "false %1"
 	if err := signWindowsResources(c, dir, res); err == nil {

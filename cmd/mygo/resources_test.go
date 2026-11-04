@@ -23,14 +23,16 @@ func resourceProject(t *testing.T, json string) *Config {
 	t.Helper()
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{
-		"mygo.json":                  json,
-		"resources/icon.png":         string(defaultIcon()),
-		"resources/data/words.txt":   "hello",
-		"resources/data/.DS_Store":   "junk",
-		"resources/.gitkeep":         "",
-		"legal/NOTICE.txt":           "notice",
-		"vendor/models/tiny.bin":     "model",
-		"vendor/models/sub/more.bin": "more",
+		"mygo.json":                     json,
+		"resources/icon.png":            string(defaultIcon()),
+		"resources/data/words.txt":      "hello",
+		"resources/data/.DS_Store":      "junk",
+		"resources/data/.manifest.json": "{}",
+		"resources/data/.cache/keep":    "",
+		"resources/.gitkeep":            "",
+		"legal/NOTICE.txt":              "notice",
+		"vendor/models/tiny.bin":        "model",
+		"vendor/models/sub/more.bin":    "more",
 	})
 	tool := filepath.Join(dir, "resources", "bin", "tool")
 	writeFiles(t, dir, map[string]string{"resources/bin/tool": "#!/bin/sh\n"})
@@ -88,10 +90,20 @@ func TestResources(t *testing.T) {
 			t.Errorf("%s = %q, %v", name, got, err)
 		}
 	}
-	for _, hidden := range []string{".gitkeep", "data/.DS_Store"} {
-		if _, err := os.Lstat(filepath.Join(dst, filepath.FromSlash(hidden))); err == nil {
-			t.Errorf("%s was copied", hidden)
-		}
+	// A dotfile in a resource is data the app may read by name — dsh's
+	// provider catalog is dist/providers/data/.manifest.json — so it ships;
+	// a hidden directory is still junk.
+	if _, err := os.Lstat(filepath.Join(dst, "data", ".manifest.json")); err != nil {
+		t.Errorf("a dotfile inside a resource was not copied: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dst, "data", ".DS_Store")); err == nil {
+		t.Error("a file manager's droppings were copied")
+	}
+	if _, err := os.Lstat(filepath.Join(dst, ".gitkeep")); err == nil {
+		t.Error("a hidden entry of resources/ was copied")
+	}
+	if _, err := os.Lstat(filepath.Join(dst, "data", ".cache")); err == nil {
+		t.Error("a hidden directory was copied")
 	}
 	if runtime.GOOS != "windows" {
 		if info, err := os.Stat(filepath.Join(dst, "bin", "tool")); err != nil || info.Mode().Perm()&0o111 == 0 {
@@ -105,7 +117,7 @@ func TestResources(t *testing.T) {
 		}
 	}
 
-	// Changes show in the hash, hidden files do not.
+	// Changes show in the hash, dotfiles included.
 	hash := func() []byte {
 		var b bytes.Buffer
 		if err := hashResources(&b, list); err != nil {
@@ -114,9 +126,9 @@ func TestResources(t *testing.T) {
 		return b.Bytes()
 	}
 	before := hash()
-	writeFiles(t, c.root, map[string]string{"resources/data/.DS_Store": "more junk"})
-	if !bytes.Equal(before, hash()) {
-		t.Error("a hidden file changed the hash")
+	writeFiles(t, c.root, map[string]string{"resources/data/.manifest.json": `{"more":true}`})
+	if bytes.Equal(before, hash()) {
+		t.Error("an edited dotfile did not change the hash")
 	}
 	writeFiles(t, c.root, map[string]string{"vendor/models/sub/more.bin": "changed"})
 	if bytes.Equal(before, hash()) {

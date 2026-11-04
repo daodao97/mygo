@@ -220,6 +220,9 @@ func (c *Config) resourcesWith(goos, goarch string, natives []source, reserved .
 	}
 	for _, e := range entries {
 		name, path := e.Name(), filepath.Join(dir, e.Name())
+		// The sweep of resources/ takes the top level as it is: a hidden
+		// entry there is the repository's, not the app's (dotfiles inside a
+		// resource directory ship; see walk).
 		if hiddenName(name) || m.filter.excludes(path, isDir(path)) {
 			continue
 		}
@@ -649,6 +652,18 @@ func reservedNames(c *Config, goos string) []string {
 
 func hiddenName(name string) bool { return strings.HasPrefix(name, ".") }
 
+// junkName reports the names desktops and editors leave behind inside a
+// directory. Only a hidden directory is skipped whole; a hidden file is data
+// an app may read by name — dsh's provider catalog is
+// dist/providers/data/.manifest.json — so it ships.
+func junkName(name string) bool {
+	switch name {
+	case ".DS_Store", "Thumbs.db", "desktop.ini":
+		return true
+	}
+	return false
+}
+
 // copyResources copies list into dir.
 func copyResources(list []resource, dir string) error {
 	for _, r := range list {
@@ -740,12 +755,14 @@ func (r resource) walk(fn func(path string, info fs.FileInfo) error) error {
 			return err
 		}
 		for _, e := range entries {
-			if hiddenName(e.Name()) {
-				continue
-			}
 			child, err := e.Info() // links are not followed
 			if err != nil {
 				return err
+			}
+			// See junkName: dotfiles ship, hidden directories and the
+			// droppings of a file manager do not.
+			if junkName(e.Name()) || (hiddenName(e.Name()) && child.IsDir()) {
+				continue
 			}
 			if r.filter.excludes(filepath.Join(path, e.Name()), child.IsDir()) {
 				continue

@@ -4856,11 +4856,15 @@ renderer's (`gputest.Compare`).
   `darwin-arm64` and `darwin-amd64` are walked as pairs whose names must
   match: identical files and links ship once, an arm64 and an x86_64
   Mach-O file become a universal binary (`writeUniversal`) when copied,
-  anything else fails. Names starting with a dot are skipped, and so is
-  what `resourceFilter` excludes from `resources/` (but not from listed
-  paths): Go source files, which only builds read, and the paths there
-  that match `resourcesExclude` (`path.Match` segments, `**` for any
-  number of them), with what a matching directory holds; the merger's
+  anything else fails. A name starting with a dot is skipped when it is a
+  directory or a file manager's dropping (`.DS_Store`, `Thumbs.db`,
+  `desktop.ini`), and at the top level of `resources/` whatever it is; a
+  dotfile inside a resource directory ships (`junkName`, `hiddenName`),
+  since packages read such names. So is what `resourceFilter` excludes
+  from `resources/` (but not from listed paths): Go source files, which
+  only builds read, and the paths there that match `resourcesExclude`
+  (`path.Match` segments, `**` for any number of them), with what a
+  matching directory holds; the merger's
   listings and `resource.walk`, which copies and fingerprints, apply it,
   while `mygo dev`'s watcher still sees those files, which a package may
   embed. The entries of these directories and listed paths are followed
