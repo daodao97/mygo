@@ -96,9 +96,8 @@ func layoutTree(root *node, w, h float32) {
 		}
 	}
 	rt.animateLayout(root, w, h)
-	// Reattach overlays to the geometry shown by this frame, after transitions.
 	if ov := root.c.overlay; ov != nil {
-		layoutAbsolute(ov)
+		reattach(ov)
 	}
 	if rt.late {
 		// Lists resized by their transitions built rows as they laid out
@@ -1272,19 +1271,46 @@ func attachTo(c, e *node, pw, ph float32) {
 		h = heightAt(c, w, ph)
 	}
 	t := laidOutVisualBox(c.popover)
-	at, self := c.attach.anchors()
-	at, self = at.physical(c.rtl()), self.physical(c.rtl())
-	ax, ay := at.fractions()
-	sx, sy := self.fractions()
 	if c.flags&flagScrollY != 0 {
+		_, ay, _, sy := c.attachFractions()
 		h = min(h, roomAlong(t.Y, t.H, beside(ay, sy), c.m(0)+c.m(2), c.c.h))
 	}
-	x := alongTarget(t.X, t.W, ax, sx, w, c.m(3)-c.m(1), c.c.w)
-	y := alongTarget(t.Y, t.H, ay, sy, h, c.m(0)-c.m(2), c.c.h)
+	c.x, c.y = attachedAt(c, e, t, pw, ph, w, h)
+	layoutBox(c, w, h)
+}
+
+// reattach moves the elements of the overlay ov attached to others
+// (AttachTo) to where those show in this frame, after transitions. It
+// keeps their size and what is inside them, which transitions moved too.
+func reattach(ov *node) {
+	pw, ph := ov.w-ov.border[1]-ov.border[3], ov.h-ov.border[0]-ov.border[2]
+	for c := ov.first; c != nil; c = c.next {
+		if c.popover == nil || c.attach == 0 || c.flags&flagAbsolute == 0 || c.leaving != 0 || c.hidden {
+			continue
+		}
+		c.x, c.y = attachedAt(c, ov, laidOutVisualBox(c.popover), pw, ph, c.w, c.h)
+	}
+}
+
+// attachedAt returns where c, w×h and a child of e whose padding box is
+// pw×ph, goes relative to e, attached to t, the box of its target.
+func attachedAt(c, e *node, t Rect, pw, ph, w, h float32) (x, y float32) {
+	ax, ay, sx, sy := c.attachFractions()
+	x = alongTarget(t.X, t.W, ax, sx, w, c.m(3)-c.m(1), c.c.w)
+	y = alongTarget(t.Y, t.H, ay, sy, h, c.m(0)-c.m(2), c.c.h)
 	dx, dy := c.relative(pw, ph)
 	ox, oy := laidOutOrigin(e)
-	c.x, c.y = x+dx-ox, y+dy-oy
-	layoutBox(c, w, h)
+	return x + dx - ox, y + dy - oy
+}
+
+// attachFractions returns the points of its target's box and of its own
+// that AttachTo puts together, as fractions of the boxes' sizes.
+func (c *node) attachFractions() (ax, ay, sx, sy float32) {
+	at, self := c.attach.anchors()
+	at, self = at.physical(c.rtl()), self.physical(c.rtl())
+	ax, ay = at.fractions()
+	sx, sy = self.fractions()
+	return ax, ay, sx, sy
 }
 
 // windowMargin keeps what overlays place apart from the window's edges.
