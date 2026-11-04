@@ -168,6 +168,27 @@ app.md.OnLink = func(url string) {
 }
 ```
 
+`LinkIcon` puts an icon at the start of a link's text, from its
+destination and the size of the text around it: a box as `InlineMath`
+makes, which clicks as the link and stays on the line of its first
+word. It copies as nothing, as text, HTML and Markdown. When it returns
+false, the link has none; a link still streaming in has none yet. Links
+take their color from `Theme.Link`:
+
+```go
+app.md.LinkIcon = func(dest string, size float32) (markdown.InlineObject, bool) {
+	if !strings.HasPrefix(dest, "http") {
+		return markdown.InlineObject{}, false
+	}
+	return markdown.InlineObject{
+		Width: size * 1.2, Height: size * 0.86, Depth: size * 0.14,
+		Draw: func(p *ui.Painter, r ui.Rect) {
+			p.Icon(globe, ui.Rect{X: r.X, Y: r.Y, W: size, H: size}, app.md.Theme.Link)
+		},
+	}, true
+}
+```
+
 Images show their description until `LoadImage` loads them, on a
 goroutine of their own; without it, they stay descriptions, as a view
 loads nothing from the network by itself. `FileImages(dir)` loads the

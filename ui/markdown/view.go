@@ -35,6 +35,13 @@ type Options struct {
 	// router around the view, a link to #a-heading scrolls to that
 	// heading, and links of other schemes do nothing.
 	OnLink func(url string)
+	// LinkIcon, when set, makes an object at the start of a link's text,
+	// from its destination and the size of the text around it in DIPs:
+	// one on the baseline, inside the link, which stays on the line of
+	// the link's first word and copies as nothing. When it returns false,
+	// the link has none; a link still being written has none yet. It is
+	// asked again whenever the paragraph changes: keep what it makes.
+	LinkIcon func(dest string, size float32) (InlineObject, bool)
 	// Anchor scrolls to the heading of this slug, with or without its "#",
 	// when the document first shows, when another document replaces it,
 	// and when Anchor changes: a docs reader opens guide.md#install at
@@ -85,8 +92,8 @@ type Options struct {
 	images sync.Map // url → *imageEntry
 }
 
-// InlineObject is math within text, as Options.InlineMath makes it: a
-// box Width wide, Height above the baseline and Depth below it, in DIPs,
+// InlineObject is math within text, as Options.InlineMath makes it, or a
+// link's icon, as Options.LinkIcon does: a box Width wide, Height above the baseline and Depth below it, in DIPs,
 // which Draw paints in r, its box in the window. Draw only paints: it
 // may run more than once a frame.
 type InlineObject struct {
@@ -416,6 +423,7 @@ func (st *viewState) para(i int, base spanStyle) *para {
 	sb.fade = st.fade
 	sb.notes = st.noteNumber
 	sb.math = st.o.InlineMath
+	sb.linkIcon = st.o.LinkIcon
 	sb.build(&pc.p, base)
 	return &pc.p
 }
