@@ -241,15 +241,21 @@ func contrasted(fg, bg ui.Color, ratio float32) ui.Color {
 // luminance returns the relative luminance of an sRGB color, from 0 for
 // black to 1 for white.
 func luminance(c ui.Color) float32 {
-	lin := func(v uint8) float64 {
+	return float32(0.2126*linear[c.R] + 0.7152*linear[c.G] + 0.0722*linear[c.B])
+}
+
+// linear holds each sRGB component value in linear light, from 0 to 1.
+var linear = func() (t [256]float64) {
+	for v := range t {
 		f := float64(v) / 255
 		if f <= 0.04045 {
-			return f / 12.92
+			t[v] = f / 12.92
+		} else {
+			t[v] = math.Pow((f+0.055)/1.055, 2.4)
 		}
-		return math.Pow((f+0.055)/1.055, 2.4)
 	}
-	return float32(0.2126*lin(c.R) + 0.7152*lin(c.G) + 0.0722*lin(c.B))
-}
+	return t
+}()
 
 // contrast returns the contrast ratio of two luminances, from 1 to 21.
 func contrast(a, b float32) float32 {
