@@ -514,6 +514,20 @@ func TestKeepSpaces(t *testing.T) {
 	}
 }
 
+// A no-break space ending a line keeps its room, as in CSS, where the
+// other whitespace hangs.
+func TestNoBreakSpaceKept(t *testing.T) {
+	s := Shared()
+	width := func(text string) float32 { return s.Layout(Params{Text: text, Style: Style{Size: 16}}).Width }
+	x := width("x")
+	if w := width("x "); math.Abs(float64(w-x)) > 0.05 {
+		t.Errorf("x and a space are %v wide, x %v", w, x)
+	}
+	if w := width("x\u00a0"); w <= x {
+		t.Errorf("x and a no-break space are %v wide, x %v", w, x)
+	}
+}
+
 func TestNoBreakWords(t *testing.T) {
 	s := Shared()
 	p := Params{Text: "Supercalifragilistic word", Style: Style{Size: 16}, Width: 40}

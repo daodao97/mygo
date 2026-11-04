@@ -270,7 +270,7 @@ func (h *hyphens) glyphsAt(i int, x float32, rtl bool) []Glyph {
 // or is that wide already.
 func justifyLine(line *Line, runes []rune, width float32) (left float32, ok bool) {
 	end := line.End
-	for end > line.Start && unicode.IsSpace(runes[end-1]) {
+	for end > line.Start && hangs(runes[end-1]) {
 		end--
 	}
 	// The extent of each cluster of what stretches, by its first rune,

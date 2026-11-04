@@ -1238,6 +1238,10 @@ func (s *System) balance(text []rune, p Params, spans []Span, width, indent floa
 	return shaped
 }
 
+// hangs reports whether r, ending a line, takes no room in it: any
+// whitespace but a no-break space, which CSS neither collapses nor hangs.
+func hangs(r rune) bool { return unicode.IsSpace(r) && r != '\u00a0' }
+
 // glyphCount returns how many glyphs a shaped line has.
 func glyphCount(sl shapedLine) int {
 	n := 0
@@ -1258,7 +1262,7 @@ func line(p Params, text []rune, sl shapedLine, offset int, rtl bool, m lineMetr
 	// Whitespace ending a line takes no room, unless kept.
 	trim := sl.end
 	if !p.KeepSpaces {
-		for trim > sl.start && unicode.IsSpace(text[trim-1]) {
+		for trim > sl.start && hangs(text[trim-1]) {
 			trim--
 		}
 	}
