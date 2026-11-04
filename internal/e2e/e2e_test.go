@@ -1180,6 +1180,12 @@ func TestRestoreMaximizedCaptionless(t *testing.T) {
 				b.X+b.Width <= d.Bounds.X+d.Bounds.Width && b.Y+b.Height <= d.Bounds.Y+d.Bounds.Height
 		})
 		want := w.ContentBounds()
+		// Restore undoes minimizing alone: a window not minimized stays
+		// maximized.
+		w.Restore()
+		if !w.IsMaximized() {
+			t.Errorf("display %d: Restore took a visible window out of maximized", i)
+		}
 		w.Minimize()
 		eventually(t, "a minimized window", w.IsMinimized)
 		w.Restore()

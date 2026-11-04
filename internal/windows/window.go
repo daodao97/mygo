@@ -1169,7 +1169,14 @@ func (w *window) IsMaximized() bool {
 	return r != 0
 }
 
-func (w *window) Restore() { procShowWindow.Call(w.hwnd, swRestore) }
+// Restore brings a minimized window back, maximized again if it was.
+// SW_RESTORE would also take a visible window out of maximized, which
+// Restore leaves alone, as on macOS and Linux.
+func (w *window) Restore() {
+	if w.IsMinimized() {
+		procShowWindow.Call(w.hwnd, swRestore)
+	}
+}
 
 // SetFullScreen takes the window's frame and menu bar away, or gives them
 // back. Each step sizes the window again: it is laid out once, at the end.
