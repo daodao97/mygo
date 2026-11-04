@@ -441,7 +441,7 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 }
 
 // inspectorTag leaves the inspector of native UI out of a build (package
-// ui's inspector_off.go), some 370 KB of a binary: production builds have
+// ui's inspector_off.go), some 400 KB of a binary: production builds have
 // their developer tools off.
 const inspectorTag = "mygo_noinspector"
 

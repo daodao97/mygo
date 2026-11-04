@@ -94,7 +94,7 @@ func (in *inspector) changes() int {
 
 // resetEdits drops every edit: the elements are what the view builds again.
 func (in *inspector) resetEdits() {
-	in.edits = nil
+	in.edits, in.sources = nil, nil
 	in.editing = inspEditing{}
 	in.changed = true
 }

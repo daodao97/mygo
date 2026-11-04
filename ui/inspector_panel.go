@@ -509,12 +509,18 @@ func (in *inspector) stylesPane(c *context) {
 				what = fmt.Sprintf("%d changes", n)
 			}
 			coreText(c, what+", until the inspector closes").FontSize(11).TextColor(pal.muted).Grow(1).MinWidth(0)
-			reset := coreBox(c).PaddingX(6).PaddingY(1).Radius(3).Border(1, pal.border).Role(RoleButton).Label("Reset")
-			if reset.Hovered() {
-				reset.Background(pal.hover)
+			button := func(label string) *node {
+				b := coreBox(c).PaddingX(6).PaddingY(1).Radius(3).Border(1, pal.border).Role(RoleButton).Label(label)
+				if b.Hovered() {
+					b.Background(pal.hover)
+				}
+				b.Children(func() { coreText(c, label).FontSize(11).SingleLine() })
+				return b
 			}
-			reset.Children(func() { coreText(c, "Reset").FontSize(11).SingleLine() })
-			if reset.Clicked() {
+			if button("Copy as Go").Clicked() {
+				c.WriteClipboard(in.changesAsGo())
+			}
+			if button("Reset").Clicked() {
 				in.resetEdits()
 			}
 		})

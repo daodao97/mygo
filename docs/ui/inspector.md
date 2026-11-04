@@ -23,7 +23,7 @@ The content gives the panel the right of the window: the view gets a
 narrower window, as `c.Size()` tells.
 
 Production builds of `mygo build` leave the inspector out, as their
-developer tools are off: it takes some 370 KB of a binary. `mygo build
+developer tools are off: it takes some 400 KB of a binary. `mygo build
 -debug` keeps it, as `MYGO_INSPECTOR=1 mygo build` does in a production
 build, for a window with `DevToolsEnabled` to open it there. Apps built
 with `go build` keep it unless `-tags mygo_noinspector` leaves it out. Drag the panel's left edge to resize
@@ -92,8 +92,15 @@ the tab cannot change, such as `overflow` or `transition`, have no checkbox.
 
 The changes apply over what the view builds, whatever it builds, so they
 outlast its state changing, and last until **Reset** or the inspector closes.
-They change neither the code nor the view's state: copy what works into the
-view.
+They change neither the code nor the view's state. **Copy as Go** puts what
+you changed on the clipboard as calls to paste into the view, by element,
+with where it is built when you chose it, and what to remove:
+
+```go
+// Column#box, main.go:42
+// Remove border-radius: 10px
+.Padding(26).Background(ui.Hex("#fde68a"))
+```
 
 ## Performance and issues
 

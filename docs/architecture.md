@@ -2888,6 +2888,8 @@ either.
   what the elements can't show: values as typed, declarations turned off or
   not understood (`overlayEdits`). Rules are keyed by their element, as the
   bar of changes comes above them. Closing the inspector drops the edits.
+  `changesAsGo` (`inspector_gocode.go`) writes them as calls of package ui,
+  whose methods a test looks up on `Element`, from what `setStyle` parsed.
   Production builds of `mygo build` leave the inspector out with the build
   tag `mygo_noinspector` (`inspector_off.go` stands in for it, never
   open), added to the tags of `GOFLAGS`, unless `-debug` or

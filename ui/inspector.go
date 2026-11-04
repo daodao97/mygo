@@ -106,6 +106,9 @@ type inspector struct {
 	// typed.
 	edits   map[uint64][]inspEdit
 	editing inspEditing
+	// sources are where the app builds the elements chosen that have
+	// edits, as changesAsGo tells.
+	sources map[uint64]string
 	// Scroll offsets of the breadcrumbs, the sidebar and the issues.
 	crumbs       ScrollState
 	sideScroll   ScrollState
@@ -208,7 +211,7 @@ func (rt *engine) toggleInspector() {
 		in.nodes, in.rows, in.sel = nil, nil, inspDetails{}
 		// What the Styles tab changed goes with the panel: the window shows
 		// what the view builds again.
-		in.edits, in.editing = nil, inspEditing{}
+		in.edits, in.editing, in.sources = nil, inspEditing{}, nil
 	} else if in.keys == nil {
 		in.keys = map[uint64]any{}
 	}
@@ -316,6 +319,12 @@ func (in *inspector) snapshot(rt *engine, root *node) {
 	in.sel = inspDetails{}
 	if e := in.selElem; e != nil {
 		in.sel = describe(rt, e)
+		if in.source != "" && len(in.edits[e.id]) > 0 {
+			if in.sources == nil {
+				in.sources = map[uint64]string{}
+			}
+			in.sources[e.id] = in.source
+		}
 	}
 	sum = mix(sum, in.sel.hash())
 	sum = mix(sum, uint64(len(rt.warnings)))
