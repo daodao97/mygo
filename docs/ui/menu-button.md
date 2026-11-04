@@ -154,6 +154,34 @@ each submenu named by its item. Separators and headings are elements of
 your own between the items. See [custom widgets](custom-widgets.md), and
 [`ContextMenuBase`](context-menu.md#without-a-look) for a context menu.
 
+An item that `KeepOpen` leaves the menu open as it is chosen, by the
+pointer, Enter or Space: its `Clicked` reports the choice, and it stays
+highlighted, as Radix's menus do when `onSelect` prevents the default.
+`Group` makes a row of items that the keys take as one: Up and Down stop
+at it once, on its item checked, else its first, and Left and Right move
+among its items, round, the other way round right to left. A theme
+switcher in an account menu is such a row of radio items:
+
+```go
+m.Group(func(row ui.Element) {
+	row.Gap(2).Padding(4).Label("Theme")
+	for _, th := range []string{"Light", "Dark", "System"} {
+		item := m.RadioItem(app.theme == th).KeepOpen().Grow(1).Padding(4, 8).Radius(6)
+		if item.Highlighted() {
+			item.Background(t.SurfaceHover)
+		}
+		item.Children(func() { ui.Text(c, th) })
+		if item.Clicked() {
+			app.theme = th
+		}
+	}
+})
+```
+
+Assistive technology sees a group, named by its `Label`, holding radio
+items counted on their own (the items outside groups are counted
+together).
+
 ## Accessibility
 
 Assistive technology sees a menu button: `AXMenuButton` on macOS, a push

@@ -2920,11 +2920,47 @@ func (_handle MenuParts) CheckItem(checked bool) Element {
 	return wrapElement(_e)
 }
 
+// Group creates a group of the items that fn builds in the menu being
+// built, a row that fn styles: the keys take it as one item, Up and Down
+// moving onto it at its item checked, else its first, and Left and Right
+// move among its items, round from the last to the first, the other way
+// round right to left (Direction), instead of opening and closing
+// submenus. Its items show, are highlighted by the pointer and are chosen
+// as the others are; a row of radio items that KeepOpen, as a theme's
+// Light, Dark and System, switches without closing the menu:
+//
+//	m.Group(func(row ui.Element) {
+//		row.Gap(4).Label("Theme")
+//		for _, th := range []string{"Light", "Dark", "System"} {
+//			item := m.RadioItem(app.theme == th).KeepOpen().Padding(4, 8)
+//			item.Children(func() { ui.Text(c, th) })
+//			if item.Clicked() {
+//				app.theme = th
+//			}
+//		}
+//	})
+//
+// Assistive technology sees a group, named by its Label, of the items in
+// it, which it counts on their own. It returns the group.
+func (_handle MenuParts) Group(fn func(group Element)) Element {
+	_parts := _handle.resolve()
+	if _parts == nil {
+		return Element{}
+	}
+	_ctx := _parts.c
+	_ = _ctx
+	_ctx.rt.beginBuild()
+	_e := _parts.Group(func(group *node) { fn(wrapElement(group)) })
+	_ctx.rt.endBuild()
+	return wrapElement(_e)
+}
+
 // Item creates an item of the menu being built in Popup or Submenu: a row
 // that is Highlighted while the pointer or the keys are on it, and whose
 // Clicked reports its choice, by the pointer, Enter or Space, which closes
-// the menu. Give it children; Disabled leaves it out of the keys' way and
-// of the pointer's. Assistive technology sees a menu item.
+// the menu, unless KeepOpen. Give it children; Disabled leaves it out of
+// the keys' way and of the pointer's. Assistive technology sees a menu
+// item.
 func (_handle MenuParts) Item() Element {
 	_parts := _handle.resolve()
 	if _parts == nil {
@@ -5011,6 +5047,21 @@ func (_handle Element) KeepFocus() Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.KeepFocus())
+}
+
+// KeepOpen keeps a menu open as its item is chosen (MenuBase,
+// ContextMenuBase): by the pointer, Enter or Space, the item reports
+// Clicked and stays highlighted, as a check box item flipping a setting
+// one may flip again, or a radio item of a Group switching the theme
+// while the menu shows it.
+func (_handle Element) KeepOpen() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.KeepOpen())
 }
 
 // KeepScrollbars keeps this scroll container's scroll bars showing while its

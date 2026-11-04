@@ -413,8 +413,10 @@ type node struct {
 	// tip marks an element with a tooltip (TooltipBase).
 	tip bool
 	// highlighted is set on the option of a select the pointer or the
-	// arrows are on.
+	// arrows are on, and keepOpen on an item of a menu that leaves the
+	// menu open as it is chosen (KeepOpen).
 	highlighted bool
+	keepOpen    bool
 	accValue    string
 	accRange    [3]float64
 	hasRange    bool

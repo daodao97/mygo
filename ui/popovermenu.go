@@ -100,19 +100,27 @@ type menuParts struct {
 	button bool
 	// level is the menu being built, 0 for the menu and 1 for a submenu
 	// of it, and -1 outside them; built is what this pass built of each.
-	level int
-	built []menuBuilt
+	// grouping is set while a Group builds its items.
+	level    int
+	built    []menuBuilt
+	grouping bool
 	// moved is set while the pointer moved since it last highlighted an
 	// item; closed once the menu closes in this pass.
 	moved, closed bool
 }
 
 // menuBuilt is a menu, or a submenu, built in a pass: its panel, its items
-// in order, and the submenus of those opening one (Submenu).
+// in order, the submenus of those opening one (Submenu), and the groups of
+// them (Group), each the place of its first item and of the one after its
+// last. chosen is the item clicked, and first is set once the pass
+// highlighted the first item that can be chosen (menuLevel.first).
 type menuBuilt struct {
-	panel *node
-	items []*node
-	subs  []submenu
+	panel  *node
+	items  []*node
+	subs   []submenu
+	groups [][2]int
+	chosen *node
+	first  bool
 }
 
 // submenu is the submenu of item, which fn builds.
@@ -342,8 +350,9 @@ func (m *menuParts) panel(level int, anchor *node, fn func(panel *node)) *node {
 // Item creates an item of the menu being built in Popup or Submenu: a row
 // that is Highlighted while the pointer or the keys are on it, and whose
 // Clicked reports its choice, by the pointer, Enter or Space, which closes
-// the menu. Give it children; Disabled leaves it out of the keys' way and
-// of the pointer's. Assistive technology sees a menu item.
+// the menu, unless KeepOpen. Give it children; Disabled leaves it out of
+// the keys' way and of the pointer's. Assistive technology sees a menu
+// item.
 func (m *menuParts) Item() *node { return m.item(RoleMenuItem, false) }
 
 // CheckItem creates an item, as Item does, that assistive technology sees
@@ -365,6 +374,56 @@ func (m *menuParts) RadioItem(selected bool) *node {
 // Submenu. Assistive technology sees a menu item that expands, expanded
 // while its submenu shows.
 func (m *menuParts) SubmenuItem() *node { return m.item(RoleMenuItem, true) }
+
+// Group creates a group of the items that fn builds in the menu being
+// built, a row that fn styles: the keys take it as one item, Up and Down
+// moving onto it at its item checked, else its first, and Left and Right
+// move among its items, round from the last to the first, the other way
+// round right to left (Direction), instead of opening and closing
+// submenus. Its items show, are highlighted by the pointer and are chosen
+// as the others are; a row of radio items that KeepOpen, as a theme's
+// Light, Dark and System, switches without closing the menu:
+//
+//	m.Group(func(row ui.Element) {
+//		row.Gap(4).Label("Theme")
+//		for _, th := range []string{"Light", "Dark", "System"} {
+//			item := m.RadioItem(app.theme == th).KeepOpen().Padding(4, 8)
+//			item.Children(func() { ui.Text(c, th) })
+//			if item.Clicked() {
+//				app.theme = th
+//			}
+//		}
+//	})
+//
+// Assistive technology sees a group, named by its Label, of the items in
+// it, which it counts on their own. It returns the group.
+func (m *menuParts) Group(fn func(group *node)) *node {
+	g := coreRow(m.c).Role(RoleGroup)
+	g.widget = "MenuGroup"
+	if m.level < 0 || m.grouping {
+		// Outside a menu, or inside a group, whose items it takes.
+		g.Children(func() { fn(g) })
+		return g
+	}
+	level, start := m.level, len(m.built[m.level].items)
+	m.grouping = true
+	g.Children(func() { fn(g) })
+	m.grouping = false
+	if b := &m.built[level]; len(b.items) > start {
+		b.groups = append(b.groups, [2]int{start, len(b.items)})
+	}
+	return g
+}
+
+// KeepOpen keeps a menu open as its item is chosen (MenuBase,
+// ContextMenuBase): by the pointer, Enter or Space, the item reports
+// Clicked and stays highlighted, as a check box item flipping a setting
+// one may flip again, or a radio item of a Group switching the theme
+// while the menu shows it.
+func (e *node) KeepOpen() *node {
+	e.keepOpen = true
+	return e
+}
 
 // Submenu builds the submenu of item, a SubmenuItem of the menu being
 // built, while it shows: fn styles its panel, after the item and lined up
@@ -391,7 +450,7 @@ func (m *menuParts) item(role Role, sub bool) *node {
 	b.items = append(b.items, row)
 	lv := &s.levels[level]
 	if lv.first && !row.disabled() {
-		lv.hi, lv.first = row.id, false
+		lv.hi, lv.first, b.first = row.id, false, true
 	}
 	open := sub && level+1 < len(s.levels) && s.levels[level+1].sub == row.id
 	if sub {
@@ -420,7 +479,9 @@ func (m *menuParts) item(role Role, sub bool) *node {
 			m.highlight(level, row.id)
 			m.openSubmenu(level, row.id, false)
 		} else {
-			m.closed = true
+			// The menu closes once its items are built (finish), unless
+			// the item keeps it open (KeepOpen), which comes after.
+			b.chosen = row
 			rt.consumed = true
 		}
 	}
@@ -433,25 +494,53 @@ func (m *menuParts) finish(level int) {
 	rt, s := m.c.rt, m.s
 	b := &m.built[level]
 	panel, lv := b.panel, &s.levels[level]
+	if b.chosen != nil && !b.chosen.keepOpen {
+		m.closed = true
+	}
+	// Each item's group, -1 for none, and its place among the items of
+	// its group, or among those of none.
+	group := make([]int, len(b.items))
+	loose := len(b.items)
+	for i := range group {
+		group[i] = -1
+	}
+	for g, r := range b.groups {
+		for i := r[0]; i < r[1]; i++ {
+			group[i] = g
+			b.items[i].setPos, b.items[i].setSize = i-r[0]+1, r[1]-r[0]
+		}
+		loose -= r[1] - r[0]
+	}
 	var choices []*node // those the keys move among
+	var groups []int    // the group of each
 	var hi *node
+	pos := 0
 	for i, it := range b.items {
-		it.setPos, it.setSize = i+1, len(b.items)
+		if group[i] < 0 {
+			pos++
+			it.setPos, it.setSize = pos, loose
+		}
 		if !it.IsDisabled() {
 			choices = append(choices, it)
+			groups = append(groups, group[i])
 		}
 		if it.id == lv.hi {
 			hi = it
 		}
 	}
-	if hi != nil && hi.IsDisabled() || lv.first {
+	stops := menuStops(choices, groups)
+	if hi != nil && hi.IsDisabled() || lv.first || b.first {
 		// The first item to be chosen, which an item disabled after it was
-		// built is not.
+		// built is not, and of a group its item checked; the items build
+		// again unless it is the one highlighted as they were built.
 		hi, lv.hi, lv.first = nil, 0, false
-		if len(choices) > 0 {
-			hi, lv.hi = choices[0], choices[0].id
+		if len(stops) > 0 {
+			hi = choices[stops[0]]
+			lv.hi = hi.id
 		}
-		rt.consumed = true
+		if hi == nil || !hi.highlighted {
+			rt.consumed = true
+		}
 	}
 	if hi != nil {
 		panel.activeDescendant = hi
@@ -461,7 +550,7 @@ func (m *menuParts) finish(level int) {
 	}
 	lv.reveal = false
 	if !m.closed {
-		m.keys(level, panel, choices)
+		m.keys(level, panel, choices, groups, stops)
 	}
 	if level == 0 && s.opened != rt.frame && panel.PressedOutside() {
 		m.closed = true
@@ -505,10 +594,27 @@ func (m *menuParts) closeLevel(level int) {
 	m.c.rt.consumed = true
 }
 
+// menuStops returns the stops of the keys among choices, whose groups
+// (Group) are in groups, -1 for none: the place in choices of each item
+// in no group, and of each group's item checked, else its first.
+func menuStops(choices []*node, groups []int) []int {
+	var stops []int
+	for i, it := range choices {
+		switch g := groups[i]; {
+		case g < 0 || i == 0 || groups[i-1] != g:
+			stops = append(stops, i)
+		case it.checked == 2 && choices[stops[len(stops)-1]].checked != 2:
+			stops[len(stops)-1] = i
+		}
+	}
+	return stops
+}
+
 // keys moves the highlight among choices, the items of the menu at level
 // that can be chosen, opens and closes submenus and chooses items, for the
-// keys pressed while the panel has the focus.
-func (m *menuParts) keys(level int, panel *node, choices []*node) {
+// keys pressed while the panel has the focus. groups are the groups of
+// choices, and stops the places of those Up and Down stop at (menuStops).
+func (m *menuParts) keys(level int, panel *node, choices []*node, groups, stops []int) {
 	rt, s := m.c.rt, m.s
 	n := len(choices)
 	at := slices.IndexFunc(choices, func(it *node) bool { return it.id == s.levels[level].hi })
@@ -518,22 +624,50 @@ func (m *menuParts) keys(level int, panel *node, choices []*node) {
 			s.levels[level].reveal = true
 		}
 	}
+	// The stop of the item highlighted: its own, or its group's.
+	stop := -1
+	if at >= 0 {
+		stop = slices.IndexFunc(stops, func(i int) bool { return i == at || groups[i] >= 0 && groups[i] == groups[at] })
+	}
+	ns := len(stops)
+	moveStop := func(i int) {
+		if ns > 0 {
+			move(stops[(i%ns+ns)%ns])
+		}
+	}
+	// Within the group of the item highlighted, by d, round.
+	grouped := at >= 0 && groups[at] >= 0
+	within := func(d int) {
+		lo, hi := at, at+1
+		for lo > 0 && groups[lo-1] == groups[at] {
+			lo--
+		}
+		for hi < n && groups[hi] == groups[at] {
+			hi++
+		}
+		k := hi - lo
+		move(lo + ((at-lo+d)%k+k)%k)
+	}
 	into, out := KeyRight, KeyLeft
 	if panel.rtl() {
 		into, out = out, into
 	}
 	switch {
 	case panel.Shortcut(0, KeyDown):
-		move(at + 1) // from none, the first
+		moveStop(stop + 1) // from none, the first
 	case panel.Shortcut(0, KeyUp):
-		if at < 0 {
-			at = 0
+		if stop < 0 {
+			stop = 0
 		}
-		move(at - 1)
+		moveStop(stop - 1)
 	case panel.Shortcut(0, KeyHome):
-		move(0)
+		moveStop(0)
 	case panel.Shortcut(0, KeyEnd):
-		move(n - 1)
+		moveStop(ns - 1)
+	case grouped && panel.Shortcut(0, into):
+		within(1)
+	case grouped && panel.Shortcut(0, out):
+		within(-1)
 	case panel.Shortcut(0, into):
 		if at >= 0 && choices[at].expandable {
 			m.openSubmenu(level, choices[at].id, true)

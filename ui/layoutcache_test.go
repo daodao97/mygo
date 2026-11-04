@@ -454,7 +454,7 @@ func TestLayoutInputs(t *testing.T) {
 		"pose poseAnim poseSet poseM poseFade reposed ink noCull backface bg fill grad stripes borderC borderStyle radius " +
 		"shadows material effect effecting cache grads blur opacity opacitySet cursor paintFn objectFn styleFn paintAfterFn " +
 		"inputFn textClient caret takesText noIME copyData webView maximizeButton fit gray dismissed rotate label widget role " +
-		"checked expanded vertical tip highlighted accValue accRange hasRange accFill accStep barInset scrollBase hideScrollbars keepScrollbars barsFrom " +
+		"checked expanded vertical tip highlighted keepOpen accValue accRange hasRange accFill accStep barInset scrollBase hideScrollbars keepScrollbars barsFrom " +
 		"listRow rowIndex rowsOf focusGroup groupSelects segment activeDescendant nameFrom nameJoin focusTo " +
 		"setPos setSize choosesItems search description invalid followX sort level expandable " +
 		"chooseMany serial ignoreInput accessHidden themed lift ringOffset ringColor ringSet clipping"

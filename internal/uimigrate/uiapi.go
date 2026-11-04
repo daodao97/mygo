@@ -232,6 +232,7 @@ var elementChains = map[string]bool{
 	"JustifyItems":         true,
 	"JustifySelf":          true,
 	"KeepFocus":            true,
+	"KeepOpen":             true,
 	"KeepScrollbars":       true,
 	"Key":                  true,
 	"Label":                true,

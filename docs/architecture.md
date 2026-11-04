@@ -3709,8 +3709,13 @@ either.
   the keys and the pointer highlight (`ActiveDescendant`), by their
   element IDs; the keys are read once the panel's items are built, which
   they move among, and Enter clicks the item highlighted for the next
-  pass (`clickLater`), which reports it as `Clicked`. The menu closes for
-  presses outside it but in the frame it opened, whose press opened it.
+  pass (`clickLater`), which reports it as `Clicked`; an item clicked
+  closes the menu once its panel is built (`finish`), unless the view
+  marked it `KeepOpen` after making it. A `Group`'s items are a range of
+  its panel's, which the keys take as one stop (`menuStops`: the item
+  checked, else the first), Left and Right moving within it. The menu
+  closes for presses outside it but in the frame it opened, whose press
+  opened it.
   An item chosen runs the function again at once, as the choice from a
   menu of the system's does in the next frame, or does its editing
   command; the overlay going gives the focus back to the element that

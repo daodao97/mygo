@@ -270,6 +270,177 @@ func TestMenuBaseAccessibility(t *testing.T) {
 	}
 }
 
+// themeMenuApp is a view with a menu on MenuBase holding a row of radio
+// items, a theme's, that the keys take as one stop and that switch it
+// without closing the menu, between items that close it, the first left
+// out when noProfile is set.
+type themeMenuApp struct {
+	open        bool
+	noProfile   bool
+	theme       string
+	chosen      []string
+	highlighted []string
+}
+
+func (a *themeMenuApp) view(c *context) {
+	a.highlighted = a.highlighted[:0]
+	coreColumn(c).Fill().Padding(20).AlignItems(Start).Children(func() {
+		m := coreMenuBase(c, &a.open)
+		m.Trigger.Label("Account").Padding(4).Children(func() { coreText(c, "Account") })
+		m.Popup(func(panel *node) {
+			panel.Padding(4)
+			item := func(e *node, name string) *node {
+				e.Padding(4).Children(func() { coreText(c, name) })
+				if e.Highlighted() {
+					a.highlighted = append(a.highlighted, name)
+				}
+				if e.Clicked() {
+					a.chosen = append(a.chosen, name)
+				}
+				return e
+			}
+			if !a.noProfile {
+				item(m.Item(), "Profile")
+			}
+			m.Group(func(row *node) {
+				row.Gap(4).Label("Theme")
+				for _, th := range []string{"Light", "Dark", "System"} {
+					if item(m.RadioItem(a.theme == th).KeepOpen(), th).Clicked() {
+						a.theme = th
+					}
+				}
+			})
+			item(m.Item(), "Sign out")
+		})
+	})
+}
+
+func TestMenuBaseGroupKeys(t *testing.T) {
+	a := &themeMenuApp{theme: "Dark"}
+	tt := coreNewTester(a.view, 400, 400)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tt.Key(0, KeyTab)
+	tt.Key(0, KeyEnter)
+	wantFocus(t, tt, "Profile")
+	steps := []struct {
+		key  Key
+		want string
+	}{
+		{KeyDown, "Dark"}, // the group, at its item checked
+		{KeyDown, "Sign out"},
+		{KeyUp, "Dark"},
+		{KeyRight, "System"},
+		{KeyRight, "Light"}, // round
+		{KeyLeft, "System"},
+		{KeyEnter, "System"}, // chosen, and the menu stays
+		{KeyDown, "Sign out"},
+		{KeyUp, "System"}, // the group's item checked now
+		{KeyLeft, "Dark"},
+		{KeyLeft, "Light"},
+		{KeySpace, "Light"},
+		{KeyHome, "Profile"},
+		{KeyEnd, "Sign out"},
+		{KeyDown, "Profile"},
+		{KeyUp, "Sign out"},
+	}
+	for i, s := range steps {
+		tt.Key(0, s.key)
+		if !a.open {
+			t.Fatalf("step %d: the menu closed", i)
+		}
+		wantFocus(t, tt, s.want)
+		if !slices.Equal(a.highlighted, []string{s.want}) {
+			t.Fatalf("step %d: %q highlighted, not %q", i, a.highlighted, s.want)
+		}
+	}
+	if a.theme != "Light" || !slices.Equal(a.chosen, []string{"System", "Light"}) {
+		t.Errorf("theme %q, chose %q", a.theme, a.chosen)
+	}
+	// An item that does not keep the menu open closes it.
+	tt.Key(0, KeyEnter)
+	if a.open || !tt.Focused("Account") || !slices.Equal(a.chosen, []string{"System", "Light", "Sign out"}) {
+		t.Errorf("Enter on Sign out: open %v, chose %q", a.open, a.chosen)
+	}
+	// Opened by the keyboard on a group, it starts at its item checked.
+	a.theme, a.chosen = "System", nil
+	tt.Key(0, KeyDown)
+	tt.Key(0, KeyDown)
+	wantFocus(t, tt, "System")
+
+	// Right to left, Left moves on and Right back.
+	tt.Key(0, KeyEscape)
+	tt.SetDirection(RightToLeft)
+	tt.Key(0, KeyDown)
+	tt.Key(0, KeyDown)
+	wantFocus(t, tt, "System")
+	tt.Key(0, KeyLeft)
+	wantFocus(t, tt, "Light")
+	tt.Key(0, KeyRight)
+	tt.Key(0, KeyRight)
+	wantFocus(t, tt, "Dark")
+	if !a.open || len(a.chosen) != 0 {
+		t.Errorf("moving in the group: open %v, chose %q", a.open, a.chosen)
+	}
+
+	// A menu starting with the group opens on its item checked.
+	tt.Key(0, KeyEscape)
+	a.noProfile = true
+	tt.Key(0, KeyEnter)
+	wantFocus(t, tt, "System")
+	if !slices.Equal(a.highlighted, []string{"System"}) {
+		t.Errorf("opened on the group: %q highlighted", a.highlighted)
+	}
+}
+
+func TestMenuBaseKeepOpenPointer(t *testing.T) {
+	a := &themeMenuApp{theme: "Light"}
+	tt := coreNewTester(a.view, 400, 400)
+	tt.Click("Account")
+	tt.Click("Dark")
+	if a.theme != "Dark" || !a.open || !tt.HasText("Profile") {
+		t.Fatalf("clicking Dark: theme %q, open %v", a.theme, a.open)
+	}
+	if !slices.Equal(a.highlighted, []string{"Dark"}) {
+		t.Errorf("after the click, %q highlighted", a.highlighted)
+	}
+	// The keys go on from the item clicked.
+	tt.Key(0, KeyRight)
+	tt.Key(0, KeyEnter)
+	if a.theme != "System" || !a.open {
+		t.Errorf("Right and Enter after the click: theme %q, open %v", a.theme, a.open)
+	}
+	tt.Click("Profile")
+	if a.open || tt.HasText("Profile") || !slices.Equal(a.chosen, []string{"Dark", "System", "Profile"}) {
+		t.Errorf("clicking Profile: open %v, chose %q", a.open, a.chosen)
+	}
+}
+
+func TestMenuBaseGroupAccessibility(t *testing.T) {
+	a := &themeMenuApp{theme: "Dark", open: true}
+	tt := coreNewTester(a.view, 400, 400)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tree := tt.h.access
+	menu := accessNode(t, tree, platform.RoleMenu, "")
+	group := accessNode(t, tree, platform.RoleGroup, "Theme")
+	if tree.Nodes[group.Parent].ID != menu.ID {
+		t.Errorf("the group is not in the menu: %+v", group)
+	}
+	for i, th := range []string{"Light", "Dark", "System"} {
+		n := accessNode(t, tree, platform.RoleMenuItemRadio, th)
+		if tree.Nodes[n.Parent].ID != group.ID || n.PosInSet != i+1 || n.SetSize != 3 {
+			t.Errorf("%s: %+v", th, n)
+		}
+		if checked := n.States&platform.AccessChecked != 0; checked != (th == "Dark") {
+			t.Errorf("%s: checked %v", th, checked)
+		}
+	}
+	for i, name := range []string{"Profile", "Sign out"} {
+		if n := accessNode(t, tree, platform.RoleMenuItem, name); n.PosInSet != i+1 || n.SetSize != 2 {
+			t.Errorf("%s: %+v", name, n)
+		}
+	}
+}
+
 func TestAccordionBase(t *testing.T) {
 	open := []bool{true, false, false}
 	names := []string{"General", "Privacy", "Advanced"}
