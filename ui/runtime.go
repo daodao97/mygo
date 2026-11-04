@@ -332,6 +332,11 @@ type engine struct {
 	// drawn as active (windowActive), so that a change of it draws a
 	// frame.
 	activeRead bool
+	// withinRead tells that the frame read FocusWithin, which follows the
+	// parents its last layout committed: the focus moving as it builds, to
+	// an element it builds for the first time or after the read, draws
+	// another frame.
+	withinRead bool
 	// toasts are the toasts the window holds, oldest first, and
 	// toastList those showing, as ToastViewportBase gives them; their time
 	// stops while toastsPaused, as the user holds them, and, but for those
@@ -581,7 +586,7 @@ func (rt *engine) runFrame() {
 
 	rt.frame++
 	rt.input = false
-	rt.focusRead, rt.activeRead = false, false
+	rt.focusRead, rt.activeRead, rt.withinRead = false, false, false
 	rt.stats.begin(rt)
 	now := rt.frameTime()
 	rt.zoomChanged = false
@@ -616,6 +621,7 @@ func (rt *engine) runFrame() {
 		rt.c.used = rt.c.dirty
 	}
 
+	focused := rt.focused
 	// An event handled while building (a click, an edit) may change what
 	// was built before it: build again, so the frame shows the outcome.
 	for pass := 0; pass < 3; pass++ {
@@ -678,6 +684,9 @@ func (rt *engine) runFrame() {
 		rt.c.titleBar = rt.titleBar()
 		rt.painted = [3]float32{w, h, scale}
 		rt.host.requestFrame()
+	}
+	if rt.withinRead && rt.focused != focused {
+		rt.animating = true
 	}
 	if rt.stats != nil {
 		rt.stats.passes = rt.pass + 1

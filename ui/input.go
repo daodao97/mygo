@@ -1367,6 +1367,7 @@ func (e *node) FocusWithin() bool {
 		return false
 	}
 	rt := e.c.rt
+	rt.withinRead = true
 	for s := rt.states[rt.focused]; s != nil; s = rt.states[s.parent] {
 		if s.id == e.id {
 			return true
