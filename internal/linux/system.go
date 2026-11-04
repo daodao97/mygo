@@ -435,6 +435,9 @@ var (
 	// lightTheme is true while SetSource("light") has put the light
 	// variant in place of the desktop's dark theme.
 	lightTheme bool
+	// preferDarkSet is true while MyGo has put its own value in
+	// gtk-application-prefer-dark-theme in place of the desktop's.
+	preferDarkSet bool
 )
 
 func (t theme) SetSource(source string) {
@@ -453,12 +456,48 @@ func (t theme) SetSource(source string) {
 		lightTheme = true
 		gObjectSetStr(settings, cs("gtk-theme-name"), cs(name[:len(name)-5]), 0)
 	}
-	dark := source == "dark"
-	if source == "system" {
-		scheme, _ := portalColorScheme()
-		dark = scheme == 1
+	if source == "light" || source == "dark" {
+		setPreferDark(settings, source == "dark")
+	} else {
+		followSystemScheme(settings)
 	}
+}
+
+// followsSystem reports whether the app has not chosen an appearance, and
+// so follows the desktop's.
+func followsSystem() bool { return themeSource == "" || themeSource == "system" }
+
+// followSystemScheme brings the desktop's color scheme to GTK: GTK 3 does
+// not read the settings portal's, where GNOME and KDE keep their dark
+// style, but gtk-application-prefer-dark-theme, from which WebKitGTK takes
+// pages' prefers-color-scheme too (#1120). Where the portal prefers dark,
+// so does GTK; elsewhere GTK keeps the desktop's own settings, which may
+// prefer dark or name a dark theme, as without the portal. It reports
+// whether it changed GTK's setting, which then tells ThemeChanged.
+func followSystemScheme(settings ptr) bool {
+	if scheme, ok := portalColorScheme(); ok && scheme == 1 {
+		return setPreferDark(settings, true)
+	}
+	if !preferDarkSet {
+		return false
+	}
+	preferDarkSet = false
+	gtkSettingsResetProperty(settings, cs("gtk-application-prefer-dark-theme"))
+	return true
+}
+
+// setPreferDark sets gtk-application-prefer-dark-theme, only when it
+// changes: GTK tells ThemeChanged at every write, and apps may set the
+// source again from Theme.OnUpdated. It reports whether it wrote.
+func setPreferDark(settings ptr, dark bool) bool {
+	var prefer int32
+	gObjectGetPtr(settings, cs("gtk-application-prefer-dark-theme"), unsafe.Pointer(&prefer), 0)
+	if (prefer != 0) == dark {
+		return false
+	}
+	preferDarkSet = true
 	gObjectSetBool(settings, cs("gtk-application-prefer-dark-theme"), dark, 0)
+	return true
 }
 
 // gtkThemeName returns the name of GTK's theme.

@@ -105,7 +105,7 @@ func coreTreeItem(c *context, label string, open *bool, children func()) *node {
 	}
 	item.DrawOver(func(p *Painter, r Rect) {
 		if item.FocusVisible() {
-			p.FocusRing(r, [4]float32{t.Radius, t.Radius, t.Radius, t.Radius})
+			p.focusRingOf(item, r, [4]float32{t.Radius, t.Radius, t.Radius, t.Radius})
 		}
 	})
 	item.Radius(t.Radius)

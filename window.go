@@ -1,6 +1,7 @@
 package mygo
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -177,9 +178,15 @@ type WindowOptions struct {
 	// as its parent moves. On macOS it is ordered above its parent
 	// whenever the parent comes in front, stays above a parent that is
 	// AlwaysOnTop, goes with it into full screen, and hides while the
-	// parent is minimized or hidden.
+	// parent is minimized or hidden. The Parent may be a flyout, a tray's
+	// included: without X and Y, the window is centered over it, in the
+	// work area of its display, and stays above it.
 	Parent *Window
-	// Modal makes a child window modal to its Parent.
+	// Modal makes a child window modal to its Parent, which takes no
+	// input until it closes: a sheet of the parent on macOS, unless the
+	// parent is a flyout. A flyout stays open while a window is modal to
+	// it, wherever the keyboard goes, and closing the flyout closes the
+	// window: a confirmation a tray's flyout asks for, wider than it.
 	Modal bool
 
 	// Panel makes the window a panel, as the windows of launchers and
@@ -208,6 +215,20 @@ type WindowOptions struct {
 	// on the GPU where it can, instead of a web page: create it with
 	// package ui. The window then has no page (Window.Page is nil): URL
 	// and Page are ignored.
+	//
+	// The view first runs once NewWindow returned, so that it can use the
+	// window NewWindow returns, kept in a variable:
+	//
+	//	a.win = mygo.NewWindow(mygo.WindowOptions{Content: ui.View(func(c *ui.Context) {
+	//		ui.Text(c, a.win.Title())
+	//	})})
+	//
+	// Called on the main thread, as in App.WhenReady or an event handler,
+	// NewWindow leaves showing the window to the main loop's next turn, or
+	// to the first method that acts on it, such as IsVisible or Maximize,
+	// which finds it shown. Called from another goroutine, NewWindow shows
+	// the window and returns while the main thread goes on drawing it:
+	// guard the variable there, or set it with Window.Update.
 	Content Content
 }
 
@@ -316,6 +337,10 @@ type Window struct {
 	destroyed atomic.Bool
 	shown     bool
 	readyShow bool
+	// showLater tells that NewWindow left showing the window of native UI
+	// to the main loop's next turn (settleShow), and framing that its
+	// content draws a frame. Main thread only.
+	showLater, framing bool
 	// background is the BackgroundColor, if any. Main thread only.
 	background        *background
 	contentBackground *platform.Color // Last automatic mobile root fill; UI thread only.
@@ -472,16 +497,26 @@ func NewWindow(opts WindowOptions) *Window {
 // createWindow creates a window, or a flyout, once the application is
 // ready.
 func createWindow(caller string, opts WindowOptions, bg *background, flyout *flyoutOptions) *Window {
-	if !isMainThread() {
+	main := isMainThread()
+	if !main {
 		App.waitReady()
 	} else if !App.IsReady() {
 		panic("mygo: " + caller + " called before the application is ready; create windows in App.WhenReady")
 	}
 	var w *Window
-	onMain(func() { w = newWindow(opts, bg, 0, flyout) })
+	onMain(func() {
+		w = newWindow(opts, bg, 0, flyout)
+		if !main {
+			// Called from another goroutine, NewWindow returns while the
+			// main thread goes on drawing: the window of native UI shows
+			// before it does, as one of a page.
+			w.settleShow()
+		}
+	})
 	if w == nil {
 		// The event loop has already stopped.
 		w = &Window{}
+		w.pg = &Page{w}
 		w.destroyed.Store(true)
 	}
 	return w
@@ -529,14 +564,12 @@ func newWindow(opts WindowOptions, bg *background, native uintptr, flyout *flyou
 
 	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), stateKey: opts.StateKey, background: bg, content: opts.Content, panel: opts.Panel && flyout == nil, active: true}
 	w.pg = &Page{w}
-	if opts.Content == nil {
-		if flyout != nil {
-			w.fit = flyout.fit
-		} else if opts.FitContent {
-			w.fit = &fitContent{
-				min: platform.Size{Width: opts.MinWidth, Height: opts.MinHeight},
-				max: platform.Size{Width: opts.MaxWidth, Height: opts.MaxHeight},
-			}
+	if flyout != nil {
+		w.fit = flyout.fit
+	} else if opts.Content == nil && opts.FitContent {
+		w.fit = &fitContent{
+			min: platform.Size{Width: opts.MinWidth, Height: opts.MinHeight},
+			max: platform.Size{Width: opts.MaxWidth, Height: opts.MaxHeight},
 		}
 	}
 	w.hiddenTitleBar = !opts.Frameless && (opts.TitleBarStyle == TitleBarHidden || opts.TitleBarStyle == TitleBarHiddenInset)
@@ -598,7 +631,20 @@ func newWindow(opts WindowOptions, bg *background, native uintptr, flyout *flyou
 	if w.content == nil {
 		w.loadPage(opts.Page.SessionState, opts.URL)
 	}
-	if !opts.Hidden {
+	switch {
+	case opts.Hidden:
+	case w.content != nil:
+		// The window of native UI shows, and its view runs for the first
+		// frame, once NewWindow returned on the main thread, so that the
+		// view can use what NewWindow returns (#1053): shown now, the
+		// window would draw its first frame at once on some systems, as
+		// AppKit may display a window it orders in and Windows a window
+		// maximized as it shows. The frame the content asked for draws on
+		// that turn as well, while the window is still hidden, as a
+		// window made Hidden draws its first, or as it shows.
+		w.showLater = true
+		postMain(w.settleShow)
+	default:
 		w.Show()
 	}
 	return w
@@ -677,6 +723,10 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	}
 	if o.Parent != nil && o.Parent.native != nil {
 		p.Parent = o.Parent.native
+		if o.Parent.flyout != nil && p.Center {
+			p.Center = false
+			p.X, p.Y = overFlyout(o.Parent.native.Bounds(), platform.Size{Width: p.Width, Height: p.Height})
+		}
 	}
 	w.preload, w.preloadAllFrames = po.PreloadScript, po.PreloadAllFrames
 	if w.fit != nil {
@@ -687,6 +737,19 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	// pagesLocaleChanged).
 	w.userScripts = p.UserScripts
 	return p
+}
+
+// overFlyout returns where a window of size goes over a flyout at
+// bounds: centered on it, and moved into the work area of its display,
+// which a dialog wider than a flyout at the edge of the screen, as a
+// tray's, would cross.
+func overFlyout(bounds platform.Rect, size platform.Size) (x, y int) {
+	r := platform.Rect{X: bounds.X + (bounds.Width-size.Width)/2, Y: bounds.Y + (bounds.Height-size.Height)/2, Width: size.Width, Height: size.Height}
+	if wa := platform.WorkAreaFor(bounds, backend().Screen().Displays()); wa.Width > 0 && wa.Height > 0 {
+		r.X = max(min(r.X, wa.X+wa.Width-r.Width), wa.X)
+		r.Y = max(min(r.Y, wa.Y+wa.Height-r.Height), wa.Y)
+	}
+	return r.X, r.Y
 }
 
 func jsPlatform() string {
@@ -744,6 +807,7 @@ func (w *Window) Parent() *Window { return w.parent }
 // has been destroyed.
 func (w *Window) do(fn func(n platform.Window)) {
 	onMain(func() {
+		w.settleShow()
 		if w.native != nil {
 			fn(w.native)
 		}
@@ -753,12 +817,26 @@ func (w *Window) do(fn func(n platform.Window)) {
 // get is do for functions returning a value.
 func get[T any](w *Window, fn func(n platform.Window) T) T {
 	return onMainValue(func() T {
+		w.settleShow()
 		if w.native == nil {
 			var zero T
 			return zero
 		}
 		return fn(w.native)
 	})
+}
+
+// settleShow shows the window that NewWindow left to show on the main
+// loop's next turn, unless Show, ShowInactive or Hide came first: the
+// methods acting on the native window show it first, so that they find it
+// shown, as NewWindow returned it. Not from the first frame, drawn while
+// the window is hidden, whose view may call them (Title): the system may
+// draw a frame as the window shows, which would run within that one. Main
+// thread only.
+func (w *Window) settleShow() {
+	if w.showLater && !w.framing {
+		w.show()
+	}
 }
 
 // Close closes the window as if the user clicked its close button, so
@@ -843,27 +921,35 @@ func (w *Window) destroy() {
 }
 
 // Show shows and focuses the window.
-func (w *Window) Show() {
-	onMain(func() {
-		if w.native == nil {
-			return
-		}
-		visible := w.native.IsVisible()
-		w.native.Show()
-		w.shown = true
-		if !visible {
-			fire(&w.onShow)
-		}
-	})
+func (w *Window) Show() { onMain(w.show) }
+
+func (w *Window) show() {
+	w.showLater = false
+	if w.native == nil {
+		return
+	}
+	visible := w.native.IsVisible()
+	if w.fitShow(visible); w.native == nil {
+		return // the frame it laid out closed it
+	}
+	w.native.Show()
+	w.shown = true
+	if !visible {
+		fire(&w.onShow)
+	}
 }
 
 // ShowInactive shows the window without focusing it.
 func (w *Window) ShowInactive() {
 	onMain(func() {
+		w.showLater = false
 		if w.native == nil {
 			return
 		}
 		visible := w.native.IsVisible()
+		if w.fitShow(visible); w.native == nil {
+			return // the frame it laid out closed it
+		}
 		w.native.ShowInactive()
 		w.shown = true
 		if !w.focusKnown {
@@ -876,9 +962,20 @@ func (w *Window) ShowInactive() {
 	})
 }
 
-// Hide hides the window.
+// fitShow sizes a hidden flyout of native UI that takes its content's
+// size to that content before it shows (fitContent.show). Main thread
+// only.
+func (w *Window) fitShow(visible bool) {
+	if f := w.fit; f != nil && f.show != nil && !visible {
+		f.show(w)
+	}
+}
+
+// Hide hides the window. Called right after NewWindow, it keeps a window
+// of native UI from showing at all.
 func (w *Window) Hide() {
 	onMain(func() {
+		w.showLater = false
 		if w.native == nil || !w.native.IsVisible() {
 			return
 		}
@@ -1052,7 +1149,14 @@ func (w *Window) Size() (width, height int) {
 	return b.Width, b.Height
 }
 
-// SetContentSize resizes the window so the page area has the given size.
+// SetContentSize resizes the window so the page area has the given size,
+// in the window's DIPs. A zoom does not change them: a page zoomed by z
+// (Page.SetZoomFactor), or native UI (ui's Context.SetZoom), lays out in
+// width/z × height/z of its own. Multiply a size the view needs by the
+// zoom:
+//
+//	z := c.Zoom() // in native UI; Page.ZoomFactor for a page
+//	win.SetContentSize(int(math.Ceil(float64(320*z))), int(math.Ceil(float64(400*z))))
 func (w *Window) SetContentSize(width, height int) {
 	w.do(func(n platform.Window) {
 		if w.setFlyoutSize(width, height) {
@@ -1064,7 +1168,8 @@ func (w *Window) SetContentSize(width, height int) {
 	})
 }
 
-// ContentSize returns the size of the page area.
+// ContentSize returns the size of the page area, in the window's DIPs:
+// a view zoomed by z sees it divided by z, as ui's Context.Size returns it.
 func (w *Window) ContentSize() (width, height int) {
 	b := w.ContentBounds()
 	return b.Width, b.Height
@@ -1562,7 +1667,8 @@ var errNoPage = errors.New("mygo: the window shows Content, not a web page")
 //
 //	n, err := win.Page().Eval("const items = document.querySelectorAll('li'); return items.length")
 //
-// Eval is not subject to the page's Content Security Policy.
+// Eval is not subject to the page's Content Security Policy. It returns an
+// error when the window closes or the app quits before the page answers.
 func (p *Page) Eval(code string) (any, error) {
 	return p.EvalContext(context.Background(), code)
 }
@@ -2108,8 +2214,9 @@ func (w *Window) filesDropped(paths []string, x, y int) {
 		return
 	}
 	if n, ok := w.native.(*webViewNative); ok {
-		// Where the web view shows in its window.
-		x, y = x+int(n.frame.X), y+int(n.frame.Y)
+		// Where the web view shows in its window, scaled as it shows.
+		sx, sy := cmp.Or(n.scaleX, 1), cmp.Or(n.scaleY, 1)
+		x, y = int(n.frame.X+float64(x)*sx), int(n.frame.Y+float64(y)*sy)
 	}
 	fire1(&w.top().onFileDrop, &FileDropEvent{Paths: paths, X: x, Y: y})
 	// Local paths are none of other pages' business.

@@ -106,9 +106,16 @@ func TestStartupCrossfadeAndInput(t *testing.T) {
 	if p.R < 70 || p.R > 190 || p.B < 15 || p.B > 190 {
 		t.Fatalf("crossfade did not blend both views at half duration: %v", p)
 	}
-	if err := tt.Click("Go"); err != nil {
-		t.Fatal(err)
+	// Named clicks reject a covered or inert target. Still send the raw
+	// pointer input to verify that the startup layer keeps it from content.
+	if err := tt.Click("Go"); err == nil {
+		t.Fatal("named click accepted inert content during fade")
 	}
+	r, ok := tt.Find("Go")
+	if !ok {
+		t.Fatal("content button was not built during fade")
+	}
+	tt.ClickAt(center(r))
 	tt.Key(Ctrl, KeyG)
 	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
 	// Inert content may be omitted entirely from the accessibility tree.

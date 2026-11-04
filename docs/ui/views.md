@@ -165,6 +165,21 @@ value printed. `Element.Key` can
 key a container before its children or local state are built. Use
 `Context.Key` for stateful controls and custom base widgets.
 
+`Context.Key` sets one pending key for the next control; calling it again
+replaces that key. `c.Key("account").Key("secret")` uses only `"secret"`.
+Create a keyed parent to give its children a separate identity scope:
+
+```go
+ui.Column(c.Key(app.accountID)).Children(func() {
+	ui.TextInput(c.Key("secret"), &app.secret).Password()
+})
+```
+
+Changing the account ID gives the input a new identity, even though its
+own key stays `"secret"`. Within the same account, that input keeps its
+state from build to build. The new editor starts with `app.secret`; clear
+or load that model value separately when switching accounts.
+
 ## Change the state from other goroutines
 
 The view reads your state on the main thread. Change it from other
@@ -182,6 +197,23 @@ go func() {
 `Window.Invalidate` only draws a new frame, for state you guard yourself.
 Within the view, `c.Invalidate()` asks for another frame and `c.After(d)` for
 one after a delay, such as a clock's next second.
+
+`Update` builds the view again after every call, whether the function
+changed the state or not. A goroutine that polls data that rarely
+changes, as a connection count or a status, compares it on the main thread
+with `mygo.RunOnMain`, which draws nothing, and calls `Invalidate` only
+when it changed:
+
+```go
+for n := range counts {
+	mygo.RunOnMain(func() {
+		if n != app.connections {
+			app.connections = n
+			win.Invalidate()
+		}
+	})
+}
+```
 
 ## State of an element
 

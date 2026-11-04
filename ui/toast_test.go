@@ -164,6 +164,85 @@ func TestToastManager(t *testing.T) {
 	}
 }
 
+// TestToastRunInBackground checks that the time of a toast that runs in
+// the background runs while the window is, as a tray app's hidden window,
+// and that it closes on the first frame after its time without showing,
+// while the pointer resting on it and the keyboard focus in it still stop
+// it.
+func TestToastRunInBackground(t *testing.T) {
+	var c *context
+	var closed []string
+	tt, now := clockTester(func(ctx *context) { c = ctx }, 400, 300)
+	tick := ticker(tt, now)
+	age := func(title string) time.Duration {
+		for i := range tt.rt.toasts {
+			if ts := &tt.rt.toasts[i]; ts.Title == title {
+				return tt.rt.toastAge(ts, *now)
+			}
+		}
+		t.Fatalf("no toast %q", title)
+		return 0
+	}
+	tt.SetFocused(false)
+	c.AddToast(Toast{Title: "Downloaded", RunInBackground: true, OnClose: func() { closed = append(closed, "Downloaded") }})
+	c.AddToast(Toast{Title: "Saved"})
+	tt.Frame()
+	tick(time.Second)
+	if a, b := age("Downloaded"), age("Saved"); a != time.Second || b != 0 {
+		t.Fatalf("a second in the background: Downloaded shown for %v, Saved for %v", a, b)
+	}
+	// Hidden, the window builds no frame until it shows again, past the
+	// toast's time: that frame closes it, never showing it.
+	*now = now.Add(time.Minute)
+	tt.SetFocused(true)
+	if tt.HasText("Downloaded") || !slices.Equal(closed, []string{"Downloaded"}) {
+		t.Fatalf("shown again after its time: texts %q, closed %v", tt.Texts(), closed)
+	}
+	if !tt.HasText("Saved") || age("Saved") != 0 {
+		t.Fatalf("a toast that stops in the background: texts %q, shown for %v", tt.Texts(), age("Saved"))
+	}
+	c.CloseToast("")
+	tt.Frame()
+	// The pointer resting on it stops it in the background.
+	tt.SetFocused(false)
+	c.AddToast(Toast{Title: "Restarted", RunInBackground: true})
+	tt.Frame()
+	r, _ := tt.Find("Restarted")
+	tt.Move(r.X+r.W/2, r.Y+r.H/2)
+	tick(time.Minute)
+	if !tt.HasText("Restarted") {
+		t.Fatal("the pointer on the toast did not stop its time in the background")
+	}
+	tt.Move(399, 1)
+	tick(toastTime)
+	if tt.HasText("Restarted") {
+		t.Fatalf("the toast stays after its time: %q", tt.Texts())
+	}
+	// The keyboard focus in it stops it while the window has the focus,
+	// and not once the window is in the background.
+	tt.SetFocused(true)
+	c.AddToast(Toast{Title: "Updated", Action: "Restart", RunInBackground: true})
+	tt.Frame()
+	for range 4 {
+		if tt.Focused("Restart") {
+			break
+		}
+		tt.Key(0, KeyTab)
+	}
+	if !tt.Focused("Restart") {
+		t.Fatal("Tab does not reach the toast")
+	}
+	tick(time.Minute)
+	if !tt.HasText("Updated") {
+		t.Fatal("the keyboard focus in the toast did not stop its time")
+	}
+	tt.SetFocused(false)
+	tick(toastTime)
+	if tt.HasText("Updated") {
+		t.Fatalf("the keyboard focus held the toast in the background: %q", tt.Texts())
+	}
+}
+
 // TestToastAfterDialog shows a toast as an alert dialog the pointer
 // clicked closes, at once and frames later: its time runs out, though the
 // pointer rests where the dialog was, on none of the toast.

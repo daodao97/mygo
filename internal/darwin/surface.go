@@ -150,14 +150,16 @@ type surface struct {
 	due         bool
 	// deferred tells that the content left the last paced frame to draw
 	// later (FrameNow): the link keeps running meanwhile. soon tells that
-	// a frame waits for the backend's queue (drawSoon), and drawn that the
-	// content's first frame reached the surface (FirstFrame).
+	// a frame waits for the backend's queue (drawSoon), asked for after
+	// the frame that began at soonAfter, and drawn that the content's
+	// first frame reached the surface (FirstFrame).
 	deferred  bool
 	timing    bool
 	soon      bool
 	drawn     bool
 	resized   bool
 	lastFrame time.Time
+	soonAfter time.Time
 	framePass uint64
 	cursor    platform.Cursor
 	inside    bool
@@ -316,16 +318,23 @@ var _ platform.FirstFrameSurface = (*surface)(nil)
 // shows, and runModal gives up, or the sheet never ends (#883). Only
 // frames AppKit asks for, as a resize's, which must draw with the
 // window's change, draw there (updateLayer).
+//
+// A frame drawn while one waits, as AppKit's display of the view draws
+// the first frame of a window ordered in, drew what that one would, which
+// then draws nothing; one asked for after it, as once the window shows
+// (SurfaceShown), still draws: the frame waiting draws it, rather than
+// none, which would stop what moves for good.
 func (s *surface) drawSoon() {
+	s.soonAfter = s.lastFrame
 	if s.soon {
 		return
 	}
 	s.soon = true
-	last := s.lastFrame
 	s.w.b.post(func() {
 		s.soon = false
-		// A frame drawn since, as a resize's, drew what this one would.
-		if s.w.b.surfaceOf(s.view) != s || s.lastFrame != last {
+		// A frame drawn since the last ask, as a resize's, drew what
+		// this one would.
+		if s.w.b.surfaceOf(s.view) != s || s.lastFrame != s.soonAfter {
 			return
 		}
 		s.frameNow(false)

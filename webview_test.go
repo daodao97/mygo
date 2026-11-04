@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -363,6 +364,51 @@ func TestWebViewPress(t *testing.T) {
 	})
 	if pressed != fv || !fv.Focused || open {
 		t.Errorf("a press on the page: web view %v, focused %v, popover open %v", pressed, fv.Focused, open)
+	}
+}
+
+// A rounded web view in a panel scaling as one surface, as a peek zooming
+// in: the backend gets the page's corners and the size it lays out at,
+// which the scale leaves as it is, and the page takes no press where its
+// corners cut it off.
+func TestWebViewRoundedScaled(t *testing.T) {
+	var v *WebView
+	scale := float32(1)
+	w, _, s := contentWindow(t, func(c *ui.Context) {
+		ui.Box(c).Fill().Children(func() {
+			ui.Box(c).Absolute().Left(30).Top(20).Size(240, 160).Scale(scale, scale).Children(func() {
+				if v != nil {
+					ui.WebView(c, v).Grow(1).Radius(20)
+				}
+			})
+		})
+	})
+	v, err := w.NewWebView(WebViewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fv := s.WebViews()[0]
+	for _, k := range []float32{1, 0.9, 0.75, 0.6} {
+		scale = k
+		w.Invalidate()
+		onMain(func() {})
+		onMain(func() { s.Frame() })
+		p := fv.Placement
+		if !fv.Shown || p.Width != 240 || p.Height != 160 || p.Radii != [4]float64{20, 20, 20, 20} {
+			t.Fatalf("scaled %v: placed %+v: want the page 240 by 160, its corners 20", k, p)
+		}
+		if sx, sy := p.Scale(); math.Abs(sx-float64(k)) > 1e-3 || math.Abs(sy-float64(k)) > 1e-3 {
+			t.Errorf("scaled %v: the backend scales the page by %v, %v", k, sx, sy)
+		}
+		f := p.Frame
+		if s.WebViewAt(150, 100) != fv || s.WebViewAt(f.X+2, f.Y+2) != nil || s.WebViewAt(f.X+f.W-2, f.Y+f.H-2) != nil {
+			t.Errorf("scaled %v: the page takes the pointer outside its corners, or not inside them", k)
+		}
+		var pressed *fake.WebView
+		onMain(func() { pressed = s.Press(f.X+2, f.Y+f.H-2) })
+		if pressed != nil {
+			t.Errorf("scaled %v: a press in a corner cut off went to the page", k)
+		}
 	}
 }
 

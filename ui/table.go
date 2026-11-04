@@ -322,7 +322,7 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 	}
 	table.DrawOver(func(p *Painter, r Rect) {
 		if table.FocusVisible() {
-			p.FocusRing(r, [4]float32{})
+			p.focusRingOf(table, r, [4]float32{})
 		}
 	})
 	return table

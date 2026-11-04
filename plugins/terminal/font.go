@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"runtime"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -23,6 +24,8 @@ type Font struct {
 	// Ghostty's font-feature: "ss01" or "+ss01" turns one on, "calt=0" or
 	// "-calt" off, and "cv05=2" picks an alternate. Coding fonts make
 	// most of their ligatures with calt, and the others with liga.
+	// On macOS, kerning is off unless they name kern: each character
+	// keeps its place in its cells.
 	Features []string
 	// LineHeight is the height of rows, as a multiple of the font's own
 	// line height: 1 when zero, and 1.2 rows 20% taller, as Ghostty's
@@ -48,6 +51,9 @@ type fontKey struct {
 
 func (f *Font) key(scale float32) fontKey {
 	k := fontKey{family: f.Family, size: f.Size, weight: f.Weight, features: featureList(f.Features), lineHeight: f.LineHeight, thicken: f.Thicken, scale: scale}
+	if runtime.GOOS == "darwin" {
+		k.features = unkerned(k.features)
+	}
 	if strings.TrimSpace(k.family) == "" {
 		k.family = "monospace"
 	}
@@ -89,4 +95,24 @@ func featureList(features []string) string {
 		}
 	}
 	return strings.Join(out, ",")
+}
+
+// unkerned adds kern=0 to a list of features that does not name kern.
+// Kerning moves characters within their cells, and Core Text shrinks the
+// CJK punctuation of the system's fonts that ends a run, as a 。 being
+// typed does, to half its width: centered in its two cells, it jumps
+// when text follows. Only macOS needs it: elsewhere, a list of features
+// could cost the font its default ones, as DirectWrite's typography
+// might.
+func unkerned(list string) string {
+	for _, f := range strings.Split(list, ",") {
+		tag, _, _ := strings.Cut(f, "=")
+		if strings.TrimSpace(tag) == "kern" {
+			return list
+		}
+	}
+	if list == "" {
+		return "kern=0"
+	}
+	return "kern=0," + list
 }

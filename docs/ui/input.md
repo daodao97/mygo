@@ -32,7 +32,9 @@ again as they change: a list showing each row's Cmd+1–9 while Cmd is held
 reads it. `PassThrough` lets the
 pointer through the element to what is below; `IgnoreInput` lets the
 pointer through it and those inside it, and keeps the keyboard focus away
-from them.
+from them; with
+[`AccessHidden`](accessibility.md#out-of-assistive-technologys-way), which
+hides them from assistive technology, they are inert.
 
 Elements that take the pointer give it to the innermost under it: a button
 in a clickable row takes its own clicks.

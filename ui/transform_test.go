@@ -433,3 +433,37 @@ func TestSkewAndPerspectiveTransforms(t *testing.T) {
 		}()
 	}
 }
+
+// TranslatePercent moves by fractions of the element's own box as the
+// frame lays it out: in place in its first frame, following its size in
+// the frame it changes, after its other transforms.
+func TestTranslatePercent(t *testing.T) {
+	w := float32(40)
+	var tip *node
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(200, 200).Children(func() {
+			tip = coreBox(c).Absolute().Left(100).Top(100).Size(w, 20).
+				Scale(2, 2).TranslatePercent(-50, -50).TranslatePercent(0, -50).Translate(1, 0)
+		})
+	}, 200, 200)
+	tt.Frame()
+	// Scaled around its center, then moved by its own size: 20 left and
+	// 20 up, whatever the scale, and 1 right.
+	if b := tip.Bounds(); b.X != 100-20-20+1 || b.Y != 100-10-20 || b.W != 80 || b.H != 40 {
+		t.Fatalf("in its first frame, it shows at %+v", b)
+	}
+	w = 80
+	tt.Frame()
+	if b := tip.Bounds(); b.X != 100-40-40+1 || b.W != 160 {
+		t.Errorf("resized, it shows at %+v", b)
+	}
+	// Transform replaces it.
+	var plain *node
+	tt = coreNewTester(func(c *context) {
+		plain = coreBox(c).Size(40, 20).TranslatePercent(-50, 0).Transform(Translation(3, 0))
+	}, 200, 200)
+	tt.Frame()
+	if m := plain.st.world; m.X != 3 {
+		t.Errorf("after Transform, it is moved by %v", m.X)
+	}
+}

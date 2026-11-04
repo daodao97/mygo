@@ -87,7 +87,12 @@ const (
 	// being its right or bottom edge; nothing outside Src shows.
 	OpImage
 	// OpPushClip clips the following ops to Rect with Radii, intersected
-	// with the clip in effect, until the matching OpPopClip.
+	// with the clip in effect, until the matching OpPopClip. Unless
+	// PaintSolid, the alpha of its Paint, a gradient of Color and Color2
+	// or of Stops as an OpFill's, masks what it clips too, as CSS's
+	// mask-image does; so does, with Image, the alpha of Image's Src
+	// drawn over Rect, as OpImage draws it: a coverage mask, as a path's
+	// (ClipShape.Masks).
 	OpPushClip
 	// OpPopClip restores the clip in effect before the matching OpPushClip.
 	OpPopClip

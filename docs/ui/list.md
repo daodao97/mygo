@@ -146,7 +146,7 @@ down, as a spreadsheet does, rather than at the release; a press on a row
 chosen waits for the release, so a drag of the choice keeps it.
 `DragSelecting` reports a drag choosing rows while the pointer holds it, for
 work that follows the choice, as a sum of the rows chosen, to wait until it
-ends. A list cannot both `DragSelect` and `Reorder`.
+ends. A list cannot both `DragSelect` and `Reorder` (or `DragRows`).
 
 `ExtendTo(row)` chooses the rows from the one Shift extends from to `row`,
 as a Shift-click on it does, for keys of your own, as one that extends the
@@ -216,6 +216,28 @@ app.list.Reorder = func(rows []int, to int) {
 Rows that are buttons, which open what they show as they are clicked,
 reorder too: a press on a row's button drags the row once the pointer
 moves, and clicks the button if it does not.
+
+## Dragging rows out
+
+`DragRows` lets the user drag rows out of the list, to drop them elsewhere:
+the rows chosen, when the row dragged is one of them, else that row, drag
+the value `DragRows` returns, which `ui.Drop` and `ui.DragOver` take as
+they take any value dragged. The list itself takes nothing and shows no
+line between its rows, so a target inside it, as a folder in a list of
+files, or one around it, gets the value wherever the pointer is:
+
+```go
+app.files.DragRows = func(rows []int) any {
+	return app.pathsOf(rows) // []string
+}
+// In the row of a folder:
+if paths, ok := ui.Drop[[]string](row); ok {
+	app.move(paths, folder)
+}
+```
+
+Return nil for rows that do not drag. A list cannot both `Reorder` and
+`DragRows`.
 
 See [drag and drop](drag-and-drop.md).
 

@@ -590,6 +590,36 @@ func TestFileAssociations(t *testing.T) {
 	}
 }
 
+// TestDesktopEntryStartupWMClass: an X11 session groups the app's window
+// with its entry through StartupWMClass, which names the program, not the
+// arguments of Exec that a file association adds.
+func TestDesktopEntryStartupWMClass(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		mime  bool
+		want  string
+		notIn string
+	}{
+		{"notes", false, "StartupWMClass=notes\n", ""},
+		{"notes", true, "StartupWMClass=notes\n", "StartupWMClass=notes %U"},
+		// The Debian package and the PKGBUILD run the app from /opt: the
+		// window class is still the basename.
+		{"/opt/notes/notes", false, "StartupWMClass=notes\n", "StartupWMClass=/opt/notes/notes"},
+	} {
+		c := &Config{Name: "Notes", Identifier: "com.example.notes", Version: "1.0.0"}
+		if tc.mime {
+			c.FileAssociations = []FileAssociation{{Ext: []string{"md"}, Name: "Markdown", MimeType: "text/markdown"}}
+		}
+		entry := linuxDesktopEntry(c, tc.name, tc.name)
+		if !strings.Contains(entry, tc.want) {
+			t.Errorf("desktop entry lacks %q:\n%s", tc.want, entry)
+		}
+		if tc.notIn != "" && strings.Contains(entry, tc.notIn) {
+			t.Errorf("desktop entry has %q:\n%s", tc.notIn, entry)
+		}
+	}
+}
+
 func TestInfoPlistExtraKeys(t *testing.T) {
 	c := &Config{Name: "Cam", Identifier: "com.example.cam", Version: "1.0.0", MacOS: MacOS{
 		MinimumSystemVersion: "12.0",

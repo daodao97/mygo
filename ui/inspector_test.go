@@ -368,3 +368,34 @@ func TestInspectorColorText(t *testing.T) {
 		}
 	}
 }
+
+// The Properties tab tells an element inside one hidden from assistive
+// technology as ignored, as it does an element it never reads.
+func TestInspectorAccessHidden(t *testing.T) {
+	hide := false
+	var inner *node
+	tt, _ := inspected(func(c *context) {
+		coreColumn(c).AccessHidden(hide).Children(func() {
+			coreBox(c).Children(func() { inner = coreButton(c, "Open") })
+		})
+	})
+	ignored := func() string {
+		for _, s := range properties(tt.rt, inner) {
+			for _, d := range s.rows {
+				if s.title == "Accessibility" && d.name == "ignored" {
+					return d.value
+				}
+			}
+		}
+		t.Fatal("no ignored row in the Properties tab")
+		return ""
+	}
+	if v := ignored(); v != "false" {
+		t.Errorf("the button shown to assistive technology is ignored: %s", v)
+	}
+	hide = true
+	tt.Frame()
+	if v := ignored(); v != "true" {
+		t.Errorf("the button inside one hidden from assistive technology is ignored: %s", v)
+	}
+}

@@ -193,3 +193,36 @@ func TestInlineOnlyText(t *testing.T) {
 		coreText(c, "Save").Children(func() { coreButton(c, "Now") })
 	}, 100, 100, 1)
 }
+
+// A link's hover underline is solid for the text inside it, as the spans
+// of a RichText in a Link, which Markdown's links are; an underline of
+// one's own is not.
+func TestLinkHoverSolidUnderline(t *testing.T) {
+	var para, link *node
+	tt := coreNewTester(func(c *context) {
+		para = coreRichText(c).Children(func() {
+			coreText(c, "See ")
+			link = coreLink(c, "", "https://example.com/gypsy")
+			link.Children(func() { coreRichText(c, Span{Text: "example.com/gypsy", Weight: 700}) })
+			coreText(c, " or ").Underline()
+		})
+	}, 400, 100)
+	spans := func() map[string]Span {
+		out := map[string]Span{}
+		for _, s := range para.inlineSpans() {
+			out[s.Text] = s
+		}
+		return out
+	}
+	if s := spans()["example.com/gypsy"]; s.Underline || s.solid {
+		t.Errorf("the link's text at rest: %+v", s)
+	}
+	tt.Move(center(link.frags[0]))
+	got := spans()
+	if s := got["example.com/gypsy"]; !s.Underline || !s.solid {
+		t.Errorf("the hovered link's text: %+v", s)
+	}
+	if s := got[" or "]; !s.Underline || s.solid {
+		t.Errorf("an underlined text by the link: %+v", s)
+	}
+}

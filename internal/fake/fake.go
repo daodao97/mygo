@@ -129,6 +129,10 @@ type Backend struct {
 	DockMenu *platform.Menu
 	// Active is what App.IsActive answers; SetActive changes it.
 	Active bool
+	// FramesOnShow makes a window draw the frame its content asked for as
+	// it shows, as AppKit may display a window it orders in. Main thread
+	// only.
+	FramesOnShow bool
 	// ForegroundAllowed counts AllowForeground calls.
 	ForegroundAllowed int
 	// ActivationToken is the token of WithActivationToken while its
@@ -189,6 +193,12 @@ type Backend struct {
 	// NoWebView makes WebViewAvailable report no system webview, as a
 	// machine without one does.
 	NoWebView bool
+	// StyleSheet is the sheet SetStyleSheet loaded last, as GTK styles the
+	// widgets it draws with it. StyleSheetError, when set, is what loading
+	// one fails with, as a sheet that does not parse, which keeps the one
+	// before. Main thread only.
+	StyleSheet      string
+	StyleSheetError error
 	// notifications are the notifications shown and not yet removed, by
 	// id.
 	notifications map[string]*platform.Notification
@@ -752,8 +762,17 @@ func (w *Window) Show() {
 	w.visible = true
 	w.focused = w.focused || w.Opts.Flyout == nil || w.Opts.Flyout.Focusable
 	w.mu.Unlock()
+	w.framesOnShow()
 }
-func (w *Window) ShowInactive()              { w.mu.Lock(); w.visible = true; w.mu.Unlock() }
+func (w *Window) ShowInactive() { w.mu.Lock(); w.visible = true; w.mu.Unlock(); w.framesOnShow() }
+
+// framesOnShow draws the frame the content asked for with FramesOnShow.
+func (w *Window) framesOnShow() {
+	if w.b.FramesOnShow && w.surface != nil {
+		w.surface.Frame()
+	}
+}
+
 func (w *Window) Hide()                      { w.mu.Lock(); w.visible = false; w.mu.Unlock() }
 func (w *Window) IsVisible() bool            { w.mu.Lock(); defer w.mu.Unlock(); return w.visible }
 func (w *Window) Focus()                     { w.H.Focused() }
@@ -1297,6 +1316,16 @@ func (screen) Displays() []platform.Display {
 	}}
 }
 func (screen) CursorPoint() platform.Point { return platform.Point{X: 10, Y: 20} }
+
+// SetStyleSheet loads css in place of the sheet before, as Linux's GTK
+// does (platform.StyleBackend).
+func (b *Backend) SetStyleSheet(css string) error {
+	if b.StyleSheetError != nil {
+		return b.StyleSheetError
+	}
+	b.StyleSheet = css
+	return nil
+}
 
 type theme struct{ b *Backend }
 

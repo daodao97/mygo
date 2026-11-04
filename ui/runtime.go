@@ -134,6 +134,10 @@ type engine struct {
 	painter         Painter
 	glyphRun        glyphRun
 
+	// fit sizes a window that takes its content's size (fit.go), nil
+	// for others.
+	fit *fitter
+
 	// contentZoom is the content's zoom (Context.SetZoom), 0 for none;
 	// zoomChanged tells that it changed since the frame's size was read.
 	contentZoom float32
@@ -151,9 +155,12 @@ type engine struct {
 	measured     [8]measuredSpans
 	nextMeasured int
 	paths        paths
-	svgs         svgs
-	flex         flexScratch
-	grid         gridScratch
+	// pathClips are the masks of the paths clips were cut to lately, by
+	// their shapes (clipMask).
+	pathClips map[uint64]*pathClip
+	svgs      svgs
+	flex      flexScratch
+	grid      gridScratch
 	// under is the painter's stack of opaque backgrounds, and holes the
 	// holes it painted, kept from one frame to the next.
 	under []opaqueBox
@@ -233,7 +240,9 @@ type engine struct {
 	// with an Exit or flying with a Match, whose arena the next frame
 	// keeps to copy those that go, laidW and laidH are the size the last
 	// frame was laid out at, and byID maps a frame's elements, for the
-	// copies going.
+	// copies going. overlayExits tells that the last frame had elements
+	// with an Exit in the overlay layer, or copies leaving it: the next
+	// builds the layer, though nothing else does, for them to leave in.
 	trans map[uint64]*transition
 	// matches moves the elements of a Transition's Match, once one has
 	// one (match.go).
@@ -247,10 +256,13 @@ type engine struct {
 	// (AnimatePose), parents first.
 	posed        []*node
 	exitsBuilt   bool
+	overlayExits bool
 	laidW, laidH float32
 	byID         map[uint64]*node
-	// going are animateExits' copies going, in order.
-	going []exit
+	// going are animateExits' copies going, in order, and holding the
+	// elements appearing that wait for them (AfterExits).
+	going   []exit
+	holding []transitionUse
 	// insp is the inspector (inspector.go); dupKeys are the duplicate keys
 	// reported, and warnings what the inspector lists.
 	insp inspector
@@ -344,16 +356,23 @@ type engine struct {
 	// drawn as active (windowActive), so that a change of it draws a
 	// frame.
 	activeRead bool
+	// withinRead tells that the frame read FocusWithin, which follows the
+	// parents its last layout committed: the focus moving as it builds, to
+	// an element it builds for the first time or after the read, draws
+	// another frame.
+	withinRead bool
 	// toasts are the toasts the window holds, oldest first, and
 	// toastList those showing, as ToastViewportBase gives them; their time
-	// stops while toastsPaused. A viewport of them was built in the pass
-	// toastPass of the frame toastFrame.
-	toasts       []toast
-	nextToast    uint64
-	toastList    []Toast
-	toastsPaused bool
-	toastFrame   uint64
-	toastPass    int
+	// stops while toastsPaused, as the user holds them, and, but for those
+	// that RunInBackground, while toastsBackground. A viewport of them was
+	// built in the pass toastPass of the frame toastFrame.
+	toasts           []toast
+	nextToast        uint64
+	toastList        []Toast
+	toastsPaused     bool
+	toastsBackground bool
+	toastFrame       uint64
+	toastPass        int
 	// mods are the modifiers of the last pointer event.
 	mods Modifiers
 
@@ -616,7 +635,7 @@ func (rt *engine) runFrame() {
 
 	rt.frame++
 	rt.input = false
-	rt.focusRead, rt.activeRead = false, false
+	rt.focusRead, rt.activeRead, rt.withinRead = false, false, false
 	rt.stats.begin(rt)
 	now := rt.frameTime()
 	rt.zoomChanged = false
@@ -658,6 +677,7 @@ func (rt *engine) runFrame() {
 		rt.c.used = rt.c.dirty
 	}
 
+	focused := rt.focused
 	// An event handled while building (a click, an edit) may change what
 	// was built before it: build again, so the frame shows the outcome.
 	for pass := 0; pass < 3; pass++ {
@@ -683,6 +703,12 @@ func (rt *engine) runFrame() {
 			return
 		}
 		rt.buildToasts(&rt.c)
+		if rt.overlayExits {
+			// Copies of the elements gone from the layer leave in it
+			// (animateExits), empty as it is otherwise: it lets the
+			// pointer through, and holds nothing to focus.
+			rt.c.overlayRoot()
+		}
 		if ov := rt.c.overlay; ov != nil {
 			rt.c.root.add(ov)
 		}
@@ -717,13 +743,21 @@ func (rt *engine) runFrame() {
 		rt.painted = [3]float32{w, h, scale}
 		rt.host.requestFrame()
 	}
+	if rt.withinRead && rt.focused != focused {
+		rt.animating = true
+	}
 	if rt.stats != nil {
 		rt.stats.passes = rt.pass + 1
 	}
+	root := rt.c.root
+	if rt.insp.open {
+		// What the inspector's Styles tab changed, over what the view built.
+		rt.insp.applyEdits(root)
+	}
 	rt.stats.lap(phaseBuild)
 	rt.insp.lap(0)
-	root := rt.c.root
 	layoutTree(root, appW, h)
+	rt.measureFit(root)
 	rt.commit(root, w, h)
 	// Scrolling can put a new native drop target under a stationary
 	// pointer. Resolve it against this frame's geometry, then rebuild if
@@ -1294,6 +1328,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	if s.clips {
 		s.clipRect, s.clipRadii = e.clipRect()
 	}
+	s.selfClip, s.selfRadius, s.selfClips = e.selfClip()
 	if len(rt.liftHits) > 0 && (e == e.c.overlay || e.parent != nil && e.parent == e.c.overlay) {
 		// The elements flying in the layer before, the window's content
 		// or an overlay, go over it, under this one.
@@ -1325,6 +1360,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		s.flags |= flagDisabled
 	}
 	s.ignoreInput = e.ignoreInput || e.parent != nil && e.parent.st.ignoreInput
+	s.accessHidden = e.accessHidden || e.flags&flagInert != 0 || e.parent != nil && e.parent.st.accessHidden
 	s.cursor, s.tip = e.cursor, e.tip
 	s.webView = e.webView
 	s.role = e.role
@@ -1424,6 +1460,9 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	if e.flags&(flagClipX|flagClipY|flagScrollX|flagScrollY) != 0 {
 		r, _ := e.clipRect()
 		clip = intersect(clip, e.visualRect(r))
+	}
+	if s.selfClips {
+		clip = intersect(clip, e.visualRect(s.selfClip))
 	}
 	// Children in flow first, absolute ones above them: the paint order.
 	for ch := e.first; ch != nil; ch = ch.next {

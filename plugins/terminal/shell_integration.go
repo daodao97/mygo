@@ -158,7 +158,7 @@ func (p *promptTracker) finish() {
 		return
 	}
 	switch mark[0] {
-	case 'A', 'B', 'P', 'I':
+	case 'A', 'B', 'I', 'N', 'P':
 		p.atPrompt = true
 	case 'C', 'D':
 		p.atPrompt = false

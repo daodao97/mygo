@@ -52,3 +52,35 @@ func TestDamageOfNestedTransformedClip(t *testing.T) {
 		}
 	}
 }
+
+// A masked clip changes all it cuts when its mask changes: the stops of
+// its gradient, or the pixels of its image; and nothing when they are the
+// same, in another frame's scene.
+func TestDamageOfMaskedClip(t *testing.T) {
+	img := NewImageRGBA(4, 4, make([]byte, 64))
+	build := func(alpha uint8) *Scene {
+		return &Scene{Width: 100, Height: 100, Stops: []Stop{{Color: Color{A: alpha}}, {Color: Color{}, At: 1}}, Ops: []Op{
+			{Kind: OpPushClip, Rect: Rect{X: 10, Y: 10, W: 40, H: 40}, Paint: PaintLinearStops, Gradient: [4]float32{10, 10, 50, 10}, Stops: [2]int32{0, 2}},
+			{Kind: OpFill, Rect: Rect{X: 10, Y: 10, W: 40, H: 40}, Color: Color{R: 255, A: 255}},
+			{Kind: OpPopClip},
+			{Kind: OpPushClip, Rect: Rect{X: 60, Y: 60, W: 4, H: 4}, Image: img, Src: Rect{W: 4, H: 4}},
+			{Kind: OpFill, Rect: Rect{X: 60, Y: 60, W: 4, H: 4}, Color: Color{G: 255, A: 255}},
+			{Kind: OpPopClip},
+		}}
+	}
+	d := Differ{Reach: 1}
+	d.Diff(build(255))
+	d.Remember(build(255))
+	if damage, ok := d.Diff(build(255)); !ok || len(damage) != 0 {
+		t.Fatalf("the same masks: damage %v, %v", damage, ok)
+	}
+	d.Remember(build(255))
+	if damage, ok := d.Diff(build(128)); !ok || len(damage) != 1 || !image.Rect(10, 10, 50, 50).In(damage[0]) {
+		t.Errorf("other stops: damage %v, %v", damage, ok)
+	}
+	d.Remember(build(128))
+	img.Changed()
+	if damage, ok := d.Diff(build(128)); !ok || len(damage) != 1 || !image.Rect(60, 60, 64, 64).In(damage[0]) {
+		t.Errorf("the image changed: damage %v, %v", damage, ok)
+	}
+}

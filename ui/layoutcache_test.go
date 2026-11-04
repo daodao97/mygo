@@ -71,9 +71,11 @@ var lcStyles = [][]func(e *node){
 		func(e *node) { e.LetterSpacing(1) }, func(e *node) { e.TextAlign(Center) }, func(e *node) { e.FixedLineHeight(24) }, func(e *node) { e.Italic() }},
 	// What does not lay out.
 	{nil, func(e *node) { e.Translate(5, 7) }, func(e *node) { e.Background(RGB(200, 0, 0)) }, func(e *node) { e.TextColor(RGB(0, 0, 200)) },
-		func(e *node) { e.Opacity(0.5) }, func(e *node) { e.Scale(1.2, 1.2) }, func(e *node) { e.Radius(4).Shadow(0, 2, 4, 0, RGBA(0, 0, 0, 0.3)) }, func(e *node) { e.Underline() }},
+		func(e *node) { e.Opacity(0.5) }, func(e *node) { e.Scale(1.2, 1.2) }, func(e *node) { e.Radius(4).Shadow(0, 2, 4, 0, RGBA(0, 0, 0, 0.3)) }, func(e *node) { e.Underline() },
+		func(e *node) { e.ClipInsetPercent(0, 30, 0, 0, 4) }, func(e *node) { e.MaskLinearGradient(LinearGradient{From: RGB(0, 0, 0), Angle: 90}) }},
 	{nil, func(e *node) { e.Direction(RightToLeft) }, func(e *node) { e.Direction(LeftToRight) }},
-	{nil, func(e *node) { e.MaxLines(1) }, func(e *node) { e.NoWrap() }, func(e *node) { e.SingleLine() }, func(e *node) { e.MaxLines(2).Ellipsis("~") }},
+	{nil, func(e *node) { e.MaxLines(1) }, func(e *node) { e.NoWrap() }, func(e *node) { e.SingleLine() }, func(e *node) { e.MaxLines(2).Ellipsis("~") },
+		func(e *node) { e.Balance() }},
 	{nil, func(e *node) { e.ColumnSpan(2) }, func(e *node) { e.ColumnStart(2) }, func(e *node) { e.RowStart(2).RowSpan(2) }},
 	{nil, func(e *node) { e.BorderWidth(3) }, func(e *node) { e.BorderWidth(1, 0, 6, 2) }},
 	{nil, func(e *node) { e.Top(5) }, func(e *node) { e.Left(-3) }, func(e *node) { e.End(4) }},
@@ -448,15 +450,15 @@ func TestLayoutInputs(t *testing.T) {
 		"first last next nchild parent st c measured tl lay laid x y w h contentW contentH frags runes paragraph " +
 		"ownText merged spansKey collapsed rowMinW field hidden"
 	// Fields the layout never reads.
-	other := "gestureEnabled router routerLevel epoch key valueInput id depth track transform originX originY originSet world content contentSet " +
+	other := "gestureEnabled router routerLevel epoch key valueInput id depth track transform translatePct originX originY originSet world content contentSet " +
 		"pose poseAnim poseSet poseM poseFade reposed ink noCull backface bg fill grad stripes borderC borderStyle radius " +
 		"shadows material effect effecting cache grads blur opacity opacitySet cursor paintFn objectFn styleFn paintAfterFn " +
 		"inputFn textClient caret caretFn textContext takesText touchScroll touchSelection inputOptions " +
 		"inputAccessory inputAction inputModifiers inputConsumed noIME copyData webView maximizeButton fit gray dismissed rotate label widget role " +
-		"checked expanded vertical tip highlighted accValue accRange hasRange accFill accStep barInset scrollBase hideScrollbars keepScrollbars barsFrom " +
+		"checked expanded vertical tip highlighted keepOpen accValue accRange hasRange accFill accStep barInset scrollBase hideScrollbars keepScrollbars barsFrom " +
 		"listRow rowIndex rowsOf focusGroup groupSelects segment activeDescendant nameFrom nameJoin focusTo " +
 		"setPos setSize choosesItems search description invalid followX sort level expandable " +
-		"chooseMany serial ignoreInput themed lift"
+		"chooseMany serial ignoreInput accessHidden themed lift ringOffset ringColor ringSet clipping"
 	known := map[string]bool{}
 	for _, f := range strings.Fields(read + " " + other) {
 		known[f] = true

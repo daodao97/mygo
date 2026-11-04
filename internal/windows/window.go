@@ -82,8 +82,10 @@ type window struct {
 	// host the window whose surface a web view is under, which shows it
 	// through its composition controller comp (comp3 its drag and drop,
 	// on runtimes having it; uia the provider of its page for UI
-	// Automation), in the visual webVis inside clipVis, at frame clipped
-	// to clip while shown. focused tells that it has the keyboard, and
+	// Automation), in the visual webVis inside clipVis, where placement puts
+	// it while shown: scaled by pageScale from pageAt, in the surface's
+	// pixels, and cut to its corners by corners, a rectangle clip of
+	// webVis. focused tells that it has the keyboard, and
 	// cursor is the cursor its page wants. hidden tells that a host is
 	// hidden, which hides its web views too: WebView2 shows their pages
 	// in windows of its own, which hiding the host alone leaves on the
@@ -92,7 +94,10 @@ type window struct {
 	host             *window
 	comp, comp3, uia uintptr
 	clipVis, webVis  uintptr
-	frame, clip      platform.RectF
+	placement        platform.WebViewPlacement
+	pageAt           [2]float32
+	pageScale        [2]float32
+	corners          uintptr
 	shown, focused   bool
 	hidden           bool
 	cursor           uintptr
@@ -183,6 +188,10 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 		if o.HasShadow {
 			class = flyoutShadowClass
 		}
+	}
+	if p := w.parent; p != nil && p.opts.Flyout != nil && p.IsAlwaysOnTop() {
+		// Above a tray's flyout, which is above other apps' windows.
+		ex |= wsExTopmost
 	}
 	initial := initialWindowBounds(o, screenSpace())
 	w.hwnd = createWindow(ex, class, o.Title, style, initial.Left, initial.Top, initial.Right-initial.Left, initial.Bottom-initial.Top, owner)
@@ -850,6 +859,12 @@ func (w *window) destroy() {
 	// Re-enable the owner first, or Windows activates another app.
 	if w.opts.Modal && w.parent != nil && !w.parent.closed {
 		procEnableWindow.Call(w.parent.hwnd, 1)
+		// And give it the activation while w has it, as EndDialog does:
+		// Windows otherwise activates the window under w, another app's
+		// once the user switched to one and back (#1055).
+		if fg, _, _ := procGetForegroundWindow.Call(); fg == w.hwnd && w.parent.IsVisible() && !w.parent.IsMinimized() {
+			w.parent.Focus()
+		}
 	}
 	procDestroyWindow.Call(w.hwnd)
 }

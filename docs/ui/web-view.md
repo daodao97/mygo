@@ -85,15 +85,54 @@ A web view has no size of its own. The element stretches across its
 container (`AlignSelf(Stretch)`) and takes the room along it with `Grow`,
 or a size. The page shows in the element's content box: inside its border
 and padding, which paint around it with the element's background, rounded
-as its `Radius` makes the border's inner edge. Scroll containers and clips
-around it cut it as they cut any element, rounded corners included, and a
-web view scrolled out of view hides. `Opacity` fades the page with the
-element, as a page of a `Router` fading in does: the page blends over what
-is painted under the element.
+as its `Radius` makes the border's inner edge. The page itself is cut to
+those corners, so none of it shows outside them, even with nothing painted
+under the web view, as in a transparent window, and the pointer goes to
+the page only inside them. Scroll containers and clips around it cut it
+as they cut any element, and a web view scrolled out of view hides.
+`Opacity` fades the page with the element, as a page of a `Router` fading
+in does: the page blends over what is painted under the element. With
+nothing painted there, as in a transparent window, the page does not fade:
+the system's web view has no opacity of its own that MyGo sets.
 
 ```go
 ui.WebView(c, app.preview).Height(320).Radius(12).Border(1, t.Border)
 ```
+
+### Scaled with the native UI around it
+
+A transform scaling the web view, its own or one around it, shows the page
+scaled as a picture of it: the page keeps the size it lays out at, the
+element's content box before the transform, so its text does not wrap
+again and `innerWidth` stays as it was while a panel zooms in or out. The
+pointer reaches the page where it shows, at the page's own coordinates,
+and inside its rounded corners alone. A peek panel opening over the
+window, its web view and native controls scaling as one surface over a
+dimmed backdrop:
+
+```go
+func (app *browser) peek(c *ui.Context) {
+	scale := c.Root().AnimateTo("peek", app.peekScale(), ui.Animation{Duration: 250 * time.Millisecond})
+	ui.Box(c).Absolute().Fill().Background(ui.RGBA(0, 0, 0, .4)) // the backdrop, unscaled
+	ui.Column(c).Absolute().Left(80).Top(60).Right(80).Bottom(60).Scale(scale, scale).
+		AlignItems(ui.Stretch).Radius(16).Background(t.Surface).Children(func() {
+		toolbar(c)
+		ui.WebView(c, app.peekPage).Grow(1).Radius(16)
+	})
+}
+```
+
+A transform that turns, skews or sees the web view in perspective shows
+the page upright, laid out across the transformed box's bounds.
+
+- **macOS** and **Windows** show the page scaled by the compositor: as a
+  picture, sharp again once the animation ends at full size.
+- **Linux**: GTK 3 cannot scale a widget. The web view is as large as the
+  page shows, and WebKitGTK zooms the page to fit, which lays it out again
+  at the same width in CSS pixels, sharp at every size: `innerWidth`
+  stays the same, but the page hears a `resize` event as its zoom
+  changes, and it scales by its width alone. Its corners are cut on whole
+  pixels, without antialiasing.
 
 ## What shows over it
 

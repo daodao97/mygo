@@ -67,6 +67,62 @@ func TestTransitionMovesElements(t *testing.T) {
 	}
 }
 
+func TestTransitionMovesElementsInPopovers(t *testing.T) {
+	order := []string{"A", "B", "C"}
+	open := true
+	tt, now := clockTester(func(c *context) {
+		anchor := coreButtonBase(c).Size(40, 20).Label("anchor")
+		corePopoverBase(c, anchor, &open, func(*node) {
+			coreRow(c).Children(func() {
+				for _, s := range order {
+					coreBox(c).Key(s).Size(20, 20).Transition(ElementTransition{Position: true, Duration: time.Second, Ease: Linear}).Children(func() {
+						coreText(c, s)
+					})
+				}
+			})
+		})
+	}, 300, 200)
+	a := at(t, tt, "A").X
+	order = []string{"C", "B", "A"}
+	tt.Frame()
+	*now = now.Add(500 * time.Millisecond)
+	tt.Frame()
+	if x := at(t, tt, "A").X - a; x != 20 {
+		t.Errorf("halfway, A moved %v, not 20", x)
+	}
+	*now = now.Add(time.Second)
+	tt.Frame()
+	if x := at(t, tt, "A").X - a; x != 40 {
+		t.Errorf("once over, A moved %v, not 40", x)
+	}
+}
+
+func TestPopoversFollowMovingAnchors(t *testing.T) {
+	top := float32(0)
+	open := true
+	var anchor *node
+	tt, now := clockTester(func(c *context) {
+		coreColumn(c).Children(func() {
+			coreBox(c).Size(10, top)
+			anchor = coreButtonBase(c).Size(40, 20).Label("anchor").Transition(ElementTransition{Position: true, Duration: time.Second, Ease: Linear})
+			corePopoverBase(c, anchor, &open, func(*node) { coreText(c, "P") })
+		})
+	}, 300, 300)
+	top = 100
+	tt.Frame()
+	for _, d := range []time.Duration{500 * time.Millisecond, time.Second} {
+		*now = now.Add(d)
+		tt.Frame()
+		b := anchor.Bounds()
+		if y := at(t, tt, "P").Y; y != b.Y+b.H {
+			t.Errorf("the panel is at %v, below an anchor at %v", y, b)
+		}
+	}
+	if y := anchor.Bounds().Y; y != 100 {
+		t.Errorf("the anchor ends at %v", y)
+	}
+}
+
 func TestTransitionResizesAndLaysOutContent(t *testing.T) {
 	wide := false
 	tt, now := clockTester(func(c *context) {
@@ -225,6 +281,24 @@ func TestTransitionFadesColors(t *testing.T) {
 	tt.Frame()
 	if p := pixel(); p.R != 255 || p.B != 0 {
 		t.Errorf("once over, the box is %v", p)
+	}
+}
+
+func TestTransitionFadesColorsInOklab(t *testing.T) {
+	bg := RGB(255, 255, 0)
+	tt, now := clockTester(func(c *context) {
+		coreBox(c).Size(50, 50).Background(bg).Transition(ElementTransition{Colors: true,
+			Animation: &Animation{Duration: 200 * time.Millisecond, Ease: Linear, Oklab: true}})
+	}, 100, 100)
+	bg = RGB(0, 0, 255)
+	tt.Frame()
+	*now = now.Add(100 * time.Millisecond)
+	tt.Frame()
+	// Blue, as Oklab mixes them, not sRGB's gray.
+	want := RGB(255, 255, 0).MixOklab(bg, 0.5)
+	d := func(a, b uint8) int { return max(int(a)-int(b), int(b)-int(a)) }
+	if p := tt.Image().RGBAAt(25, 25); d(p.R, want.R) > 1 || d(p.G, want.G) > 1 || d(p.B, want.B) > 1 {
+		t.Errorf("halfway, the box is %v, want %+v", p, want)
 	}
 }
 

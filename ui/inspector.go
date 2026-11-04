@@ -101,6 +101,11 @@ type inspector struct {
 	query   string
 	match   int
 	matches []int32
+	// edits are what the Styles tab changed, by element, until the
+	// inspector closes (inspector_edit.go), and editing the value being
+	// typed.
+	edits   map[uint64][]inspEdit
+	editing inspEditing
 	// Scroll offsets of the breadcrumbs, the sidebar and the issues.
 	crumbs       ScrollState
 	sideScroll   ScrollState
@@ -201,6 +206,9 @@ func (rt *engine) toggleInspector() {
 	in.picking, in.hovered = false, 0
 	if !in.open {
 		in.nodes, in.rows, in.sel = nil, nil, inspDetails{}
+		// What the Styles tab changed goes with the panel: the window shows
+		// what the view builds again.
+		in.edits, in.editing = nil, inspEditing{}
 	} else if in.keys == nil {
 		in.keys = map[uint64]any{}
 	}
@@ -285,6 +293,7 @@ func (in *inspector) pointer(rt *engine, ev platform.SurfaceEvent, x, y float32)
 // choose chooses the element id.
 func (in *inspector) choose(id uint64) {
 	if id != in.selected {
+		in.finishEdit(true)
 		in.selected, in.source = id, ""
 		// The breadcrumbs show the element chosen, at their end.
 		in.crumbs.X = math.MaxFloat32

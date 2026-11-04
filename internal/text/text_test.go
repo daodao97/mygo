@@ -359,6 +359,35 @@ func TestMakeRoom(t *testing.T) {
 	s.EndFrame()
 }
 
+// Masks a frame drew and let go of (Unkeep) are not kept as it makes room,
+// unless it draws them again before.
+func TestUnkeep(t *testing.T) {
+	s := newSystem()
+	s.MaskAtlas = scene.NewAtlas(1, 1024, 1024)
+	var calls int
+	for range 2 { // the second frame makes them last
+		s.BeginFrame()
+		for key := range uint64(3) {
+			s.Mask(key+1, square(200, byte(key+1), &calls))
+		}
+		s.EndFrame()
+	}
+	s.BeginFrame()
+	for key := range uint64(3) {
+		s.Mask(key+1, square(200, byte(key+1), &calls))
+	}
+	s.Unkeep([]uint64{1, 2, 9})
+	s.Mask(2, square(200, 2, &calls))
+	s.leftOut(false, 900, 900)
+	s.MakeRoom()
+	for key, want := range map[uint64]bool{1: false, 2: true, 3: true} {
+		if _, ok := s.masks[key]; ok != want {
+			t.Errorf("mask %d kept: %v", key, ok)
+		}
+	}
+	s.EndFrame()
+}
+
 // What a frame draws many times counts once in the room it needs: an atlas
 // that grew by every use of a glyph took 2048×2048 pixels, 16 MB of memory and
 // as much of the GPU's, for 24 paragraphs that fill 3% of it.
@@ -482,6 +511,20 @@ func TestKeepSpaces(t *testing.T) {
 	}
 	if kept.Lines[0].Width <= trimmed.Lines[0].Width {
 		t.Errorf("with the space %v wide, without %v", kept.Lines[0].Width, trimmed.Lines[0].Width)
+	}
+}
+
+// A no-break space ending a line keeps its room, as in CSS, where the
+// other whitespace hangs.
+func TestNoBreakSpaceKept(t *testing.T) {
+	s := Shared()
+	width := func(text string) float32 { return s.Layout(Params{Text: text, Style: Style{Size: 16}}).Width }
+	x := width("x")
+	if w := width("x "); math.Abs(float64(w-x)) > 0.05 {
+		t.Errorf("x and a space are %v wide, x %v", w, x)
+	}
+	if w := width("x\u00a0"); w <= x {
+		t.Errorf("x and a no-break space are %v wide, x %v", w, x)
 	}
 }
 

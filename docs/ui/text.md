@@ -33,6 +33,18 @@ directional character, as numbers, read right to left too.
 `SingleLine` keeps text on one line, cut with an ellipsis, `MaxLines`
 limits it to a few, and `Ellipsis(" →")` ends what they cut with another
 mark; `NoWrap` keeps its lines whole, breaking them only at newlines.
+`Balance` wraps text into lines of about the same width, as CSS's
+`text-wrap: balance`: a heading that takes two lines splits near its
+middle instead of leaving one word alone on the second. It keeps the
+number of lines that wrapping at the full width takes, and finds the
+narrowest width that still fits in that many, once when the text is laid
+out. It works on `Text` and `RichText`, and is meant for short text:
+headings, captions, labels on cards.
+
+```go
+ui.Text(c, "Everything you need to ship a desktop app").FontSize(28).Bold().Balance()
+```
+
 `Selectable` lets the user select a text with the pointer, Shift and the
 arrows, and copy it, as an error message or an identifier to paste
 elsewhere.

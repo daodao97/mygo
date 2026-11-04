@@ -29,7 +29,7 @@ type runMark struct {
 
 // mathObject is math within a paragraph that Options.InlineMath made an
 // object of: its rune, the source of the math, delimiters included, and
-// how it draws.
+// how it draws. A link's icon (Options.LinkIcon) is one with no source.
 type mathObject struct {
 	rune, src, end int
 	draw           func(p *ui.Painter, r ui.Rect)
@@ -80,6 +80,8 @@ type spanBuilder struct {
 	linkIndex int
 	// math makes math within text objects (Options.InlineMath).
 	math func(tex string, size float32) (InlineObject, bool)
+	// linkIcon makes the objects at the start of links (Options.LinkIcon).
+	linkIcon func(dest string, size float32) (InlineObject, bool)
 }
 
 // build makes the paragraph of block i, of base style s.
@@ -300,6 +302,7 @@ func (sb *spanBuilder) inlines(from, to int, s spanStyle) {
 			cs.color = Color{} // the link's
 			save := sb.linkIndex
 			sb.linkIndex = k
+			sb.addLinkIcon(n, cs, k)
 			sb.inlines(k+1, n.Next, cs)
 			sb.linkIndex = save
 		case parser.Image:
@@ -342,6 +345,42 @@ func (sb *spanBuilder) inlines(from, to int, s spanStyle) {
 			sb.add("["+label+"]", n.Start, n.End, false, cs, -2-k)
 		}
 	}
+}
+
+// linkIconJoiner, a word joiner, keeps a link's icon on the line of its
+// first word: lines break around an object. It copies as nothing, as the
+// icon does.
+const linkIconJoiner = '\u2060'
+
+// addLinkIcon adds the object Options.LinkIcon makes for link n, the
+// inline k of its block, in style s. It comes from no source, so that it
+// copies as nothing.
+func (sb *spanBuilder) addLinkIcon(n *parser.Inline, s spanStyle, k int) {
+	if sb.linkIcon == nil || n.Pending {
+		return
+	}
+	size := sb.th.FontSize
+	if s.size != 0 {
+		size = s.size
+	}
+	if s.sub {
+		size *= 0.75
+	}
+	o, ok := sb.linkIcon(n.Dest, size)
+	if !ok || !(o.Width > 0) {
+		return
+	}
+	p := sb.p
+	p.objects = append(p.objects, mathObject{rune: p.runes, src: n.Start, end: n.Start, draw: o.Draw})
+	sp := ui.Span{Text: "\uFFFC", Size: size, ObjectWidth: o.Width, ObjectHeight: max(o.Height, 0), ObjectDescent: max(o.Depth, 0)}
+	if sb.fade != nil {
+		p.fading = p.fading || sb.fade(n.Start) < 1
+	}
+	pc := sb.piece(k)
+	pc.spans = append(pc.spans, sp)
+	p.marks = append(p.marks, runMark{rune: p.runes, src: n.Start, end: n.Start})
+	p.runes++
+	sb.addSpan(string(linkIconJoiner), n.Start, n.Start, false, s, k, 1)
 }
 
 // mathObject adds math n, within text of style s, as the object

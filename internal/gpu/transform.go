@@ -13,7 +13,9 @@ import (
 // don't use them, up to idleMaskBytes of them, so a transform that comes
 // and goes finds its masks again instead of rasterizing them.
 type clipMaskSlot struct {
+	// shapes are the clips the mask is of, their stops in stops.
 	shapes []scene.ClipShape
+	stops  []scene.Stop
 	area   image.Rectangle
 	image  *scene.Image
 	// frame is the last frame that used the mask, and slot the clip's
@@ -53,7 +55,7 @@ func (b *Builder) prepare(in *Instance, m scene.Affine, c *clip) bool {
 	if !m.Set {
 		dx, dy, shared = c.shape.Transform.Translation()
 	}
-	if c.shape.Radii == [4]float32{} && shared && len(b.stack) > 1 {
+	if c.shape.Radii == [4]float32{} && !c.shape.Masks() && shared && len(b.stack) > 1 {
 		parent := &b.stack[len(b.stack)-2]
 		if parent.masked {
 			b.preparedMask = b.clipTexture(parent, b.clipShapes[:len(b.clipShapes)-1])
@@ -88,7 +90,7 @@ func (b *Builder) clipTexture(c *clip, shapes []scene.ClipShape) uintptr {
 	found, reuse := -1, -1
 	for i := range b.maskSlots {
 		m := &b.maskSlots[i]
-		if m.area == area && slices.Equal(m.shapes, shapes) {
+		if m.area == area && slices.EqualFunc(m.shapes, shapes, func(a, b scene.ClipShape) bool { return a.Same(&b) }) {
 			found = i
 			break
 		}
@@ -105,12 +107,29 @@ func (b *Builder) clipTexture(c *clip, shapes []scene.ClipShape) uintptr {
 		m := &b.maskSlots[found]
 		m.image = raster.ClipMask(m.image, shapes, area)
 		m.area = area
-		m.shapes = append(m.shapes[:0], shapes...)
+		m.keep(shapes)
 	}
 	m := &b.maskSlots[found]
 	m.frame, m.slot = b.frame, c.maskSlot
 	c.maskTexture = b.imageTexture(m.image)
 	return c.maskTexture
+}
+
+// keep keeps shapes as the mask's, with copies of their stops, which
+// the scene's are not from frame to frame.
+func (m *clipMaskSlot) keep(shapes []scene.ClipShape) {
+	m.shapes = append(m.shapes[:0], shapes...)
+	m.stops = m.stops[:0]
+	for _, c := range shapes {
+		m.stops = append(m.stops, c.Stops...)
+	}
+	at := 0
+	for i := range m.shapes {
+		if st := m.shapes[i].Stops; st != nil {
+			m.shapes[i].Stops = m.stops[at : at+len(st) : at+len(st)]
+			at += len(st)
+		}
+	}
 }
 
 // dropIdleMasks drops the least recently used masks this frame didn't use

@@ -21,6 +21,13 @@ Elements are found by their text, or by their `Label` for those without,
 as an icon button: `tt.Click("Close")`, `tt.Find("Volume")`,
 `tt.Focused("Name")`.
 
+`Click`, `ClickWith` and `RightClick` check the first matching element
+before sending input. They return an error if it has no visible area or
+the center of that area would reach another control or nothing. They do
+not scroll it into view or search for another uncovered point. `Find`
+still returns a matching clipped box, which may have zero width or height;
+`ClickAt` sends input at the given coordinates without a named target.
+
 Two elements given the same `Key` under one parent share one state, so
 that a click or the focus meant for one goes to the other: a tester
 panics where the second key was given, as apps only log it.

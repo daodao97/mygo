@@ -27,7 +27,8 @@ Other elements get a role from what they do: one that is clickable and
 takes the focus is a button, a scroll container a scroll area, and one with
 a `Label`, or that takes the focus, a group. `Role` sets it for an element
 drawn as a widget it is not built from, and `ui.RoleNone` leaves an element
-out but not its children:
+out but not its children ([`AccessHidden`](#out-of-assistive-technologys-way)
+leaves them out too):
 
 ```go
 toggle := ui.Box(c).Size(36, 20).Focusable().Role(ui.RoleSwitch).Label("Wi-Fi")
@@ -39,7 +40,9 @@ section, ranked with `Level`, and `ui.RoleMenu`, `ui.RoleMenuBar`,
 make menus drawn in the window, as a drop-down menu or a menu bar of your
 own (an element's menu drawn in the window,
 [`PopoverMenu`](context-menu.md#drawn-in-the-window) or
-[`PopoverMenuButton`](menu-button.md#drawn-in-the-window), has them):
+[`PopoverMenuButton`](menu-button.md#drawn-in-the-window), has them, as
+do [`MenuBase`](menu-button.md#without-a-look) and `ContextMenuBase`,
+menus without a look that keep their keys and focus):
 
 ```go
 ui.Text(c, "Appearance").Bold().Role(ui.RoleHeading).Level(2)
@@ -67,6 +70,10 @@ if app.some {
 
 date := ui.ButtonBase(c).Role(ui.RolePopUpButton).Label("Due").Value(app.due.Format("Jan 2")).Expanded(app.picking)
 ```
+
+A check box that is mixed as often as not is better built on
+[`CheckboxStateBase`](checkbox.md#without-a-look), which tells it itself
+from its `ui.CheckState`, and checks it as it is pressed.
 
 ## Descriptions and errors
 
@@ -125,8 +132,43 @@ row.Children(func() {
 Assistive technology can neither focus it nor move a slider inside it, as
 both go through the keyboard focus; it can set a text input's value.
 Unlike HTML's `inert`, which hides an element from assistive technology
-too, it stays in the tree: `Invisible` and `Hidden` take it out of it, and
-`Disabled` keeps it there without its press.
+too, it stays in the tree: `Invisible` and `Hidden` take it out of it,
+`AccessHidden` too while it still shows, and `Disabled` keeps it there
+without its press.
+
+## Out of assistive technology's way
+
+`AccessHidden(true)` leaves an element, and those inside it, out of what
+assistive technology reads, while they still paint, as HTML's
+`aria-hidden="true"` does: none of them is in its tree, their text does
+not name the element around them, and it can neither press, focus nor edit
+them. It is for what shows but is not there to read, or is read already:
+
+- a page or a panel sliding out beside the one replacing it, while both
+  show;
+- the cards peeking from behind the front one of a stack, the slides
+  beside the current one of a carousel;
+- a copy of a text drawn twice, as a label fading into its next one.
+
+With `IgnoreInput(true)`, it is HTML's `inert`: the pointer goes through
+them, Tab passes them by, they lose the focus and their text cannot be
+selected, as for the copy of an
+[element leaving](transitions.md#coming-and-going) or a
+[page going away](navigation.md#transitions):
+
+```go
+ui.Box(c).Fill().Children(func() {
+	if app.leaving >= 0 { // the tab that was selected, sliding out
+		page(c, app.leaving).Absolute().Translate(-x, 0).IgnoreInput(true).AccessHidden(true)
+	}
+	page(c, app.tab).Translate(width-x, 0)
+})
+```
+
+Alone, it leaves them to the pointer and the keyboard, and their text to
+selection, as `aria-hidden` does: keep the keyboard focus out of them, as
+assistive technology cannot follow it there. `RoleNone` leaves out an
+element alone, which suits a leaf, as a decorative icon.
 
 ## Announcements
 

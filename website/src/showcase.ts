@@ -187,4 +187,75 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/quaver-astra.webp",
   },
+  {
+    name: "Meiro",
+    description:
+      "YouTube Music, without the bloat. A native Material 3 Expressive player that takes about 100 MB, with no ads, synced lyrics, Last.fm scrobbling and colours that match each song.",
+    url: "https://meiro.elianiva.com",
+    author: "elianiva",
+    mode: "native",
+    image: "/showcase/meiro.jpg",
+  },
+  {
+    name: "Repo Hopper",
+    description:
+      "Spotlight for your Git repositories. A global shortcut opens a search over every local repo, most recently changed first, and opens the chosen one in your editor, terminal or Finder.",
+    url: "https://github.com/pteich/repo-hopper",
+    author: "pteich",
+    mode: "native",
+    image: "/showcase/repo-hopper.jpg",
+  },
+  {
+    name: "Universal S3 UI",
+    description:
+      "A lightweight storage browser for S3-compatible services, SFTP and FTP/FTPS. One connection manager with credentials in the system keychain, drag-and-drop uploads, temporary share links, and sync between any two connections.",
+    url: "https://github.com/pteich/us3ui",
+    author: "pteich",
+    mode: "native",
+    image: "/showcase/us3ui.jpg",
+  },
+  {
+    name: "RcloneDrive",
+    description:
+      "An open-source tool that mounts cloud storage as local disks, a RaiDrive alternative. A single Go binary with pure native UI and no frontend toolchain, an embedded rclone engine with 70+ backends, mounted on Windows through WinFsp that installs silently, plus a system tray, launch at login and automatic updates from GitHub Releases.",
+    url: "https://github.com/younland/RcloneDrive",
+    author: "younland",
+    mode: "native",
+    image: "/showcase/rclonedrive.jpg",
+  },
+  {
+    name: "ApiGo",
+    description:
+      "An API debugging tool in the shape of Hoppscotch, written in Go with MyGo native UI. Collections organize requests, REST and WebSocket traffic both send and render responses by type, and OpenAPI / Swagger documents import directly.",
+    url: "https://github.com/younland/apigo",
+    author: "younland",
+    mode: "native",
+    image: "/showcase/apigo.jpg",
+  },
+  {
+    name: "Silverwing",
+    description:
+      "A task-oriented desktop workspace that keeps multiple repositories, branches, reference materials and review context together for each development task. Create tasks from Meegle requirements and prepare workspaces and task branches with Git worktrees, organize several repos in one task with built-in Git review, and carry AGENTS.md context into Codex, Cursor or an IDE. Windows x64 and macOS Apple silicon.",
+    url: "https://github.com/javatoai/silverwing",
+    author: "javatoai",
+    mode: "native",
+  },
+  {
+    name: "Nodra",
+    description:
+      "A responsive state management library for Go desktop apps, built around a concurrency-safe, versioned Store[T]: serialized concurrent updates that roll back on error, undo/redo with nested groups, codecs and storage layered for persistence and encryption, latest-wins async actions, and a read-only DevTools — with MyGo integration that redraws a window only when a subscribed value changes.",
+    url: "https://nodra.yldm.ai",
+    author: "houko",
+    mode: "native",
+    image: "/showcase/nodra.jpg",
+  },
+  {
+    name: "NanoDoll",
+    description:
+      "A minimal desktop container built for web AI. It opens the original ChatGPT, Claude and Gemini pages with your logins imported from the browser, turns any AI web page into a standalone satellite app with its own Dock icon, lays every tab out in an infinitely wide horizontal workspace, and adds a file manager and prompt library.",
+    url: "https://moonvy.com/apps/nano-doll/",
+    author: "yArna",
+    mode: "web",
+    image: "/showcase/nanodoll.jpg",
+  },
 ]

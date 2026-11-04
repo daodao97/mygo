@@ -79,6 +79,14 @@ func TestDrawsAsTheCPURenderer(t *testing.T) {
 				}
 				gputest.Compare(t, "gl-translated"+[]string{"", "-between-pixels"}[i], read(), s.Width*4, s)
 			}
+			s = gputest.MaskedClipScene()
+			// Twice: the second frame finds the clips' masks it made.
+			for range 2 {
+				if err := r.Render(s); err != nil {
+					t.Fatal(err)
+				}
+				gputest.Compare(t, "gl-masked-clips", read(), s.Width*4, s)
+			}
 		})
 	}
 }

@@ -235,7 +235,8 @@ func (d *Differ) same(i int, s *Scene, j int, maskRects, colorRects []image.Rect
 		return false
 	}
 	switch b.Kind {
-	case OpImage:
+	case OpImage, OpPushClip:
+		// A clip's image masks it.
 		if b.Image != nil && b.Image.Version() != d.versions[i] {
 			return false
 		}

@@ -156,7 +156,7 @@ func coreColorPicker(c *context, color *Color) *node {
 			p.Stroke(Rect{cx - d/2, cy - d/2, d, d}, RGB(255, 255, 255), d/2, 2)
 			p.Stroke(Rect{cx - d/2 - 1, cy - d/2 - 1, d + 2, d + 2}, RGBA(0, 0, 0, 0.3), d/2+1, 1)
 			if sq.FocusVisible() {
-				p.FocusRing(r, [4]float32{t.Radius, t.Radius, t.Radius, t.Radius})
+				p.focusRingOf(sq, r, [4]float32{t.Radius, t.Radius, t.Radius, t.Radius})
 			}
 		})
 		// The hue, and the opacity.
@@ -243,7 +243,7 @@ func channelSlider(c *context, v *float64, max float64, name string, track func(
 		p.Shadow(k, k.W/2, 0, 1, 3, 0, RGBA(0, 0, 0, 0.3))
 		p.Fill(k, RGB(255, 255, 255), k.W/2)
 		if s.FocusVisible() {
-			p.FocusRing(k, [4]float32{k.W / 2, k.W / 2, k.W / 2, k.W / 2})
+			p.focusRingOf(s, k, [4]float32{k.W / 2, k.W / 2, k.W / 2, k.W / 2})
 		}
 	})
 	return s

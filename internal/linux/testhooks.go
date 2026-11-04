@@ -830,3 +830,77 @@ func TestMockCaptureDevices(handle uintptr) bool {
 	gObjectSetBool(settings, cs("enable-mock-capture-devices"), true, 0)
 	return true
 }
+
+// TitleBarStyle is how GTK styles a header bar and its title buttons.
+type TitleBarStyle struct {
+	// Button is the size a title button asks for, in DIPs, inside its CSS
+	// margins: its border box.
+	Button [2]int
+	// Background is the header bar's background color.
+	Background [4]float64
+}
+
+var (
+	titleBarStyleOnce                 sync.Once
+	gtkButtonNew                      func() ptr
+	gtkWidgetGetPreferredSize         func(w ptr, minimum, natural *[2]int32)
+	gtkStyleContextGetState           func(c ptr) uint32
+	gtkStyleContextGetMargin          func(c ptr, state uint32, margin *[4]int16)
+	gtkStyleContextGetBackgroundColor func(c ptr, state uint32, color *gdkRGBA)
+)
+
+func loadTitleBarStyle() {
+	titleBarStyleOnce.Do(func() {
+		mustBind(libGTK, &gtkButtonNew, "gtk_button_new")
+		mustBind(libGTK, &gtkWidgetGetPreferredSize, "gtk_widget_get_preferred_size")
+		mustBind(libGTK, &gtkStyleContextGetState, "gtk_style_context_get_state")
+		mustBind(libGTK, &gtkStyleContextGetMargin, "gtk_style_context_get_margin")
+		mustBind(libGTK, &gtkStyleContextGetBackgroundColor, "gtk_style_context_get_background_color")
+	})
+}
+
+// borderBox takes a widget's CSS margins, which GTK 3 counts in its size
+// and its allocation, off a size.
+func borderBox(widget ptr, width, height int32) [2]int {
+	style := gtkWidgetGetStyleContext(widget)
+	var m [4]int16 // GtkBorder: left, right, top, bottom
+	gtkStyleContextGetMargin(style, gtkStyleContextGetState(style), &m)
+	return [2]int{int(width) - int(m[0]) - int(m[1]), int(height) - int(m[2]) - int(m[3])}
+}
+
+// TestTitleBarStyle makes a header bar holding a title button, as GTK's
+// own title bars do, and returns how the style providers style them.
+func TestTitleBarStyle() TitleBarStyle {
+	loadTitleBarStyle()
+	bar := gObjectRefSink(gtkHeaderBarNew())
+	defer gObjectUnref(bar)
+	defer gtkWidgetDestroy(bar)
+	button := gtkButtonNew()
+	gtkStyleContextAddClass(gtkWidgetGetStyleContext(button), cs("titlebutton"))
+	gtkContainerAdd(bar, button)
+	gtkWidgetShow(button) // GTK sizes hidden widgets 0x0
+	var s TitleBarStyle
+	var minimum, natural [2]int32
+	gtkWidgetGetPreferredSize(button, &minimum, &natural)
+	s.Button = borderBox(button, natural[0], natural[1])
+	style := gtkWidgetGetStyleContext(bar)
+	var bg gdkRGBA
+	gtkStyleContextGetBackgroundColor(style, gtkStyleContextGetState(style), &bg)
+	s.Background = [4]float64{bg.R, bg.G, bg.B, bg.A}
+	return s
+}
+
+// TestTitleButtonSizes returns the sizes GTK gave the title buttons over
+// the page of a window with a hidden title bar, in DIPs, inside their CSS
+// margins.
+func TestTitleButtonSizes(handle uintptr) [][2]int {
+	loadTitleBarStyle()
+	_, buttons := titleButtons(windowByHandle(handle))
+	sizes := make([][2]int, len(buttons))
+	for i, b := range buttons {
+		var a gdkRectangle
+		gtkWidgetGetAllocation(b, &a)
+		sizes[i] = borderBox(b, a.Width, a.Height)
+	}
+	return sizes
+}

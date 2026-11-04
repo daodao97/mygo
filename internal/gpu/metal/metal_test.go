@@ -81,6 +81,14 @@ func TestDrawsAsTheCPURenderer(t *testing.T) {
 		}
 		gputest.Compare(t, "metal-translated"+[]string{"", "-between-pixels"}[i], pix, s.Width*4, s)
 	}
+	for range 2 {
+		s = gputest.MaskedClipScene()
+		pix, err := r.renderOffscreen(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gputest.Compare(t, "metal-masked-clips", pix, s.Width*4, s)
+	}
 	s = gputest.ContinuousScene()
 	pix, err := r.renderOffscreen(s)
 	if err != nil {

@@ -436,7 +436,7 @@ func (e *canvasEngine) shape(text []rune, style Style, spans []Span, width float
 }
 
 func isSpace(text []rune, c cluster) bool {
-	return c.end-c.start == 1 && unicode.IsSpace(text[c.start])
+	return c.end-c.start == 1 && hangs(text[c.start])
 }
 
 // measureWord appends the clusters of a word of runes [bounds[0],

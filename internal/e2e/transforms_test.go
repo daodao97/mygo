@@ -129,3 +129,52 @@ func TestContentWindowPerspective(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// TestContentWindowTransitionBlur presents an element entering through a
+// blur (Motion.Blur), placed by a fraction of its own size
+// (TranslatePercent), on the real surface: drawn by the GPU where the
+// window has one.
+func TestContentWindowTransitionBlur(t *testing.T) {
+	var builds atomic.Int32
+	view := func(c *ui.Context) {
+		ui.Box(c).Fill().Background(ui.RGB(250, 250, 250)).Children(func() {
+			// In the second build, in a parent the first showed, it enters,
+			// blurred for as long as the test looks.
+			if builds.Add(1) == 1 {
+				c.Invalidate()
+				return
+			}
+			ui.Box(c).Key("blurred").Absolute().Left(170).Top(120).Size(80, 40).TranslatePercent(-50, -50).
+				Background(ui.RGB(220, 30, 40)).Transition(ui.ElementTransition{Duration: time.Hour, Ease: ui.Linear,
+				Enter: &ui.Motion{Opacity: 1, Blur: 6}})
+		})
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Transition blur", Width: 340, Height: 240, Content: ui.View(view)})
+	scale := deviceScale(w)
+	deadline := time.Now().Add(wait.Guard)
+	for {
+		data, ok := surfaceOnScreen(w)
+		if !ok {
+			t.Skip("surface capture unavailable")
+		}
+		img, err := png.Decode(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := func(x, y float64) (uint32, uint32) {
+			r, g, _, _ := img.At(int(x*scale), int(y*scale)).RGBA()
+			return r >> 8, g >> 8
+		}
+		// Its middle where TranslatePercent centers it, and red spread
+		// 4 DIPs beyond its right edge, at 210.
+		r, g := at(170, 120)
+		or, og := at(214, 120)
+		if r > 180 && g < 70 && or > og+20 && og < 240 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the blurred element was not presented: middle %d %d, beyond its edge %d %d", r, g, or, og)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

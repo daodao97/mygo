@@ -24,6 +24,13 @@ type Animation struct {
 	// changes, before it heads for the new one, as a list's rows do one
 	// after another with Delay: time.Duration(i) * 30 * time.Millisecond.
 	Delay time.Duration
+	// Oklab mixes the colors it moves (AnimateColor, and a Transition's
+	// colors, those of an element of its Match and a ContentTransition's
+	// text morphing) in the Oklab color space, as a gradient's Oklab
+	// does, instead of in sRGB: between two saturated colors, the way
+	// keeps their lightness and saturation rather than going through a
+	// dull, darker middle.
+	Oklab bool
 }
 
 // Springs that settle without bouncing, with a little bounce, and with a
@@ -459,8 +466,8 @@ type colorMotion struct {
 
 // AnimateColor returns a color that goes to target as a says, mixed with
 // premultiplied alpha as transitions mix colors, so that a color fading
-// from transparent keeps its hue; key tells apart the element's animated
-// colors. It starts at the first target. As changing colors moves
+// from transparent keeps its hue, in sRGB or, with a's Oklab, in Oklab;
+// key tells apart the element's animated colors. It starts at the first target. As changing colors moves
 // nothing, colors still change smoothly while the desktop asks for less
 // motion; DisableAnimations shows them at once.
 func (e *node) AnimateColor(key any, target Color, a Animation) Color {
@@ -495,7 +502,7 @@ func (e *node) AnimateColor(key any, target Color, a Animation) Color {
 	}
 	m.to = target
 	if m.k.moving || m.k.pending {
-		m.shown = mixPremultiplied(m.from, target, max(0, min(float32(m.k.value), 1)))
+		m.shown = mixPremultiplied(m.from, target, max(0, min(float32(m.k.value), 1)), a.Oklab)
 		e.c.AnimationFrame()
 	} else {
 		m.shown = target

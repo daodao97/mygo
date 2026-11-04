@@ -64,6 +64,17 @@ hue:
 row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))
 ```
 
+Colors mix in sRGB, unless the `Animation` has `Oklab`: then in Oklab, as a
+gradient's `Oklab` mixes, whose way between two saturated colors keeps
+their lightness and saturation rather than going through a dull, darker
+middle (yellow to blue through blues, not gray). It mixes the colors of
+a [transition](transitions.md#what-moves) with it too, and those of a
+`ContentTransition`'s morph, and `Color.MixOklab` mixes two colors so:
+
+```go
+badge.Background(badge.AnimateColor("bg", level, ui.Animation{Spring: ui.SpringOptions{Duration: 300 * time.Millisecond}, Oklab: true}))
+```
+
 ## Poses that only paint
 
 The values above are read by the view, so every frame that moves runs it.
@@ -81,10 +92,36 @@ if card.Hovered() {
 card.AnimatePose(lift, ui.Snappy)
 ```
 
-A `Pose` moves by `X` and `Y`, scales by `Scale` (0 keeps the size),
-turns by `Rotate` degrees, and fades by `Fade`, from 0, opaque, to 1, gone.
+A `Pose` moves by `X` and `Y`, and by `XPercent` and `YPercent` percent of
+the element's own width and height (as [`TranslatePercent`](transforms.md)
+moves it, following its size as it changes), scales by `Scale` (0 keeps
+the size), turns by `Rotate` degrees, and fades by `Fade`, from 0, opaque,
+to 1, gone.
 The pointer, carets and overlays follow the element as it moves, and
 `Transitioning()` reports whether its pose was moving.
+
+A pose starts where the element is first posed: an element that the
+frame before did not pose, as one built for the first time, shows at its
+pose at once, and moves only when a later frame poses it elsewhere. To
+come in from a pose, as a flyout's panel rising and fading in as it
+shows, pose the element there in one build, ask for another frame with
+`c.Invalidate()`, and pose it at its place in the next:
+
+```go
+panel := ui.Column(c)
+entered := ui.Local(panel, "entered", func() bool { return false })
+p := ui.Pose{}
+if !*entered {
+	p, *entered = ui.Pose{Y: 8, Fade: 1}, true
+	c.Invalidate()
+}
+panel.AnimatePose(p, ui.Snappy)
+```
+
+Without the second build, the element stays where its first pose put
+it. An element appearing in a parent that the frame before showed comes
+in with the `Enter` of its [transition](transitions.md#coming-and-going)
+too, as a row added to a list.
 
 Poses nest: each acts after those of the elements around it, so an
 element inside another adds its own motion, along its own curve. In the

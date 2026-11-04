@@ -21,12 +21,17 @@ func TestShellIntegrationMarkedPromptResize(t *testing.T) {
 	defer term.Close()
 	term.Resize(100, 20)
 	term.Feed([]byte("history\r\n\x1b]133;A\a\r\n\x1b[Aresize-prompt\x1b[90Gclock\r\n> pending-command\x1b]133;B\a"))
-	for _, size := range [][2]int{{80, 20}, {100, 19}, {40, 18}, {120, 24}, {80, 23}} {
+	// The rows stay, shrink by one, grow or shrink by more.
+	for _, size := range [][2]int{{80, 20}, {100, 19}, {40, 18}, {120, 24}, {80, 23}, {60, 23}} {
 		cols, rows := size[0], size[1]
 		term.Resize(cols, rows)
-		term.Feed([]byte("\r\x1b[A\x1b]133;A\aresize-prompt\r\n> pending-command\x1b]133;B\a"))
-		if got := term.Text(); got != "history\nresize-prompt\n> pending-command" {
-			t.Fatalf("at %d columns: %q", cols, got)
+		want := "history\nresize-prompt" + strings.Repeat(" ", cols-18) + "clock\n> pending-command"
+		if got := term.Text(); got != "history" {
+			t.Fatalf("at %dx%d, the prompt was left: %q", cols, rows, got)
+		}
+		term.Feed([]byte(fmt.Sprintf("\r\x1b[A\x1b]133;A\aresize-prompt\x1b[%dGclock\r\n> pending-command\x1b]133;B\a", cols-4)))
+		if got := term.Text(); got != want {
+			t.Fatalf("at %dx%d: %q", cols, rows, got)
 		}
 	}
 	term.Feed([]byte("\x1b]133;C\a\r\n"))
@@ -51,6 +56,28 @@ func TestShellIntegrationPreservesAlternateScreen(t *testing.T) {
 	term.Resize(40, 20)
 	if got := term.Text(); !strings.Contains(got, "alt-program") {
 		t.Fatalf("prompt tracking cleared a full-screen program: %q", got)
+	}
+}
+
+func TestShellIntegrationOtherShells(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("runs sleep")
+	}
+	loadLib(t)
+	term, err := New(Options{Command: []string{"sleep", "60"}, ShellIntegration: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	if term.shellDir != "" {
+		t.Fatal("a program other than zsh was configured")
+	}
+	// Its own marks don't make it redraw its prompt on a resize: the
+	// prompt stays, as without ShellIntegration.
+	term.Feed([]byte("\x1b]133;A\aprompt\x1b]133;B\a"))
+	term.Resize(40, 24)
+	if got := term.Text(); got != "prompt" {
+		t.Fatalf("the prompt of a program other than zsh was cleared: %q", got)
 	}
 }
 
@@ -133,6 +160,10 @@ func TestShellIntegrationPromptTracker(t *testing.T) {
 	if p.atPrompt {
 		t.Fatal("terminal reset retained prompt state")
 	}
+	p.feed([]byte("\x1b]133;N\a"))
+	if !p.atPrompt {
+		t.Fatal("a new command's prompt was missed")
+	}
 }
 
 func TestShellIntegrationZshResize(t *testing.T) {
@@ -150,7 +181,7 @@ func TestShellIntegrationZshResize(t *testing.T) {
 	}
 	files := map[string]string{
 		".zshenv": "export STARTUP_ENV=loaded\nprint -r -- startup-env:$ZDOTDIR:$NO_COLOR\n",
-		".zshrc":  "setopt promptsubst\nPROMPT=$'resize-prompt:${COLUMNS}\\n> '\nRPROMPT=right-prompt\n",
+		".zshrc":  "setopt promptsubst\nPROMPT=$'resize-prompt:${COLUMNS}${(l:COLUMNS-24:)}clock\\n> '\nRPROMPT=right-prompt\n",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(config, name), []byte(content), 0o600); err != nil {

@@ -23,7 +23,9 @@ type comboboxParts struct {
 	// pointer is where the pointer was when it last highlighted an option.
 	// typed is set while the text is what the user typed since the popup
 	// opened, which Filtering reports. shown is the option last scrolled
-	// into view as the highlight moved to it.
+	// into view as the highlight moved to it. empty is set while the
+	// popup shows no options but something else, as a row saying that
+	// nothing matches, which assistive technology was told.
 	highlight *int
 	values    *[]string
 	next      []string
@@ -31,6 +33,7 @@ type comboboxParts struct {
 	pointer   *[2]float32
 	typed     *bool
 	shown     *string
+	empty     *bool
 	chosen    string
 	isChosen  bool
 	// inline is whether Inline built the options, as it did last build
@@ -83,6 +86,7 @@ func comboboxBase(c *context, text *string, first bool) *comboboxParts {
 		typed:     coreLocal(in, "typed", func() bool { return false }),
 		shown:     coreLocal(in, "shown", func() string { return "" }),
 		wasInline: coreLocal(in, "inline", func() bool { return false }),
+		empty:     coreLocal(in, "empty", func() bool { return false }),
 	}
 	p.inline = *p.wasInline
 	in.afterInput(func() {
@@ -195,14 +199,22 @@ func (p *comboboxParts) Inline(fn func(panel *node)) *node {
 }
 
 // Popup shows the popup below the input, at least as wide, while it is
-// open: fn styles the panel and builds the options with Item. It returns
-// the panel, or nil while closed or without options.
+// open: fn styles the panel and builds the options with Item. A popup
+// without options shows only while it holds something else to read, as a
+// row saying that nothing matches, which assistive technology reads out
+// as it appears:
+//
+//	if len(matches) == 0 {
+//		ui.Text(c, "No matches found").Padding(6, 10)
+//	}
+//
+// It returns the panel, or nil while it does not show.
 func (p *comboboxParts) Popup(fn func(panel *node)) *node {
 	c := p.c
 	p.inline, *p.wasInline = false, false
 	p.next, p.items = p.next[:0], p.items[:0]
 	if !*p.open {
-		*p.values, *p.shown = (*p.values)[:0], ""
+		*p.values, *p.shown, *p.empty = (*p.values)[:0], "", false
 		return nil
 	}
 	b := p.anchor.Bounds()
@@ -215,9 +227,20 @@ func (p *comboboxParts) Popup(fn func(panel *node)) *node {
 		panel.Children(func() { fn(panel) })
 	})
 	p.finishOptions()
-	if len(p.next) == 0 {
-		panel.flags |= flagInvisible // nothing to show
+	if len(p.next) > 0 {
+		*p.empty = false
+		return panel
+	}
+	// Keep an empty-state row visible and announce it while focus stays in the input.
+	text := panel.innerText()
+	if text == "" {
+		panel.flags |= flagInvisible
+		p.Input.expanded, *p.empty = false, false
 		return nil
+	}
+	if !*p.empty {
+		*p.empty = true
+		c.Announce(text)
 	}
 	return panel
 }

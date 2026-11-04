@@ -45,7 +45,8 @@ the bundle's Contents/Resources, or next to the executable, and the programs
 among them are signed with the app. Directories of resources named after a
 platform, such as resources/darwin or resources/linux-amd64, only ship with
 that platform's apps; darwin/universal combines darwin-arm64 and
-darwin-amd64. Desktop builds need no cgo and can be cross-compiled;
+darwin-amd64. Go source files in resources, and the paths there that match
+resourcesExclude in mygo.json, such as "**/*.psd", are left out. Desktop builds need no cgo and can be cross-compiled;
 signing and disk images need macOS. ios/arm64 builds a native UI app and
 its Xcode host project, with cgo and the iOS SDK on macOS. Use -ios-team
 for development signing, or -ios-simulator for an Apple Silicon simulator.
@@ -471,7 +472,7 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 }
 
 // inspectorTag leaves the inspector of native UI out of a build (package
-// ui's inspector_off.go), some 250 KB of a binary: production builds have
+// ui's inspector_off.go), some 370 KB of a binary: production builds have
 // their developer tools off.
 const inspectorTag = "mygo_noinspector"
 
@@ -639,6 +640,10 @@ func writeLinuxDesktop(c *Config, dir, name string) ([]string, error) {
 // have them in (mygo.appName, mygo.appDescription), which launchers show
 // for the system's locale.
 func linuxDesktopEntry(c *Config, exec, icon string) string {
+	// The WM_CLASS of the window is the basename of argv[0], which the
+	// .deb and the PKGBUILD name with its path in /opt, before the arguments
+	// of a file or URL land in Exec.
+	wmClass := filepath.Base(exec)
 	categories := c.Linux.Categories
 	if len(categories) == 0 {
 		categories = []string{"Utility"}
@@ -678,6 +683,11 @@ func linuxDesktopEntry(c *Config, exec, icon string) string {
 		exec += " %U"
 	}
 	b.WriteString("Exec=" + exec + "\nIcon=" + icon + "\nCategories=" + strings.Join(categories, ";") + ";\nTerminal=false\n")
+	// The window of a GTK app is its executable's, whose WM_CLASS is the
+	// program name: an X11 session groups a window with the entry that names
+	// it here, and shows its icon in the taskbar. Wayland matches by app id,
+	// which GTK takes from the same name.
+	b.WriteString("StartupWMClass=" + wmClass + "\n")
 	if len(mime) > 0 {
 		b.WriteString("MimeType=" + strings.Join(mime, ";") + ";\n")
 	}

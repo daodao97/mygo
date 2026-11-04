@@ -87,8 +87,8 @@ What every app has, whether its windows show native UI or web pages.
   navigation, downloads, permissions, printing.
 - [The application](app.md): the lifecycle, quitting, a single instance,
   deep links, file associations, recent documents, starting at login,
-  well-known directories, the jump list, browsing data, cookies and
-  sessions.
+  well-known directories, the jump list, drawing web pages on Linux,
+  browsing data, cookies and sessions.
 - [Menus and the tray](menus.md): application, context and Dock menus,
   keyboard shortcuts and tray icons.
 - [Documents](documents.md): document-based apps, a window per file, with
@@ -160,7 +160,8 @@ components, from buttons to tables.
   native UI.
 - [Automation](plugins/automation.md): drive a running app from another
   process, as end-to-end test runners and agents do: its windows,
-  elements, input, menus and screenshots.
+  elements, input, menus and screenshots, and `mygo-automation`, its
+  command line client for agents.
 - [PermissionFlow](plugins/permissionflow.md): the system's permissions,
   such as Accessibility and Screen Recording, checked and asked for, and a
   guide to System Settings with the app to drag into its list.
@@ -192,6 +193,8 @@ Apps run on:
 
 An app whose windows all show native UI needs neither WebKitGTK nor the
 WebView2 Runtime. Tray icons on Linux also need `libayatana-appindicator3`.
+On Linux, MyGo turns WebKitGTK's DMA-BUF renderer off unless the app opts
+in, see [drawing web pages on Linux](app.md#drawing-web-pages-on-linux).
 
 An app that shows web pages can ask whether the machine has a webview with
 `mygo.WebViewAvailable()`, also before `App.Run`, and open a window of native UI where it has

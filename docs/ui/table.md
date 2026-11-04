@@ -29,7 +29,7 @@ if ui.Table(c, &app.files, cols, len(files), func(row, col int) {
 The table takes the same `ListState` as a list, or `nil`, and takes the
 keyboard focus for it: with `Selected`, a click or the keys choose a row,
 with `Selection` several, and `Submitted` reports a double click or Enter;
-`Key`, `Label`, `Reorder` and the rest work as for a list. A row `Header`
+`Key`, `Label`, `Reorder`, `DragRows` and the rest work as for a list. A row `Header`
 names spans every column, which `cell` builds as column 0, and stays at the
 top while its section's rows scroll under it.
 

@@ -713,10 +713,12 @@ func (ip *inlineParser) scanDelims(c byte) (n int, canOpen, canClose bool) {
 	beforeSpace, beforePunct := isUnicodeSpace(before), isPunct(before)
 	left := !afterSpace && (!afterPunct || beforeSpace || beforePunct)
 	right := !beforeSpace && (!beforePunct || afterSpace || afterPunct)
-	// Next to CJK text, punctuation such as 。 or “ doesn't stop * or ~
+	// Next to CJK text, punctuation such as 。 or “ doesn't stop * or ~~
 	// from opening or closing: Chinese writes **结论。**后文 with no
 	// space, which strict CommonMark would leave as literal asterisks.
-	if c != '_' && (isCJK(before) || isCJK(after)) {
+	// A single tilde keeps the rule: it is more often a range, as
+	// 第1章~“附录”, than strikethrough.
+	if (c == '*' || c == '~' && n > 1) && (isCJK(before) || isCJK(after)) {
 		left, right = !afterSpace, !beforeSpace
 	}
 	switch c {

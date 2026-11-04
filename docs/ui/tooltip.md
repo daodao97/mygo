@@ -27,6 +27,26 @@ The tip takes the theme's `Inverse` and `InverseText` colors, its text and
 background turned over unless the theme sets them (see
 [themes](styling.md#themes)).
 
+## The delay
+
+The theme's `TooltipDelay` sets how long the pointer rests on an element
+before its tip shows, for `Tooltip` and `TooltipBase` alike: 0 is 0.6
+seconds, and a negative delay shows the tip at once. The time within which
+the next tip shows at once follows it, two thirds of it (0.4 seconds by
+default). A dense settings page shows its tips sooner, and a toolbar of
+many small buttons, or a page that also shows help inline, later:
+
+```go
+t := *c.Theme()
+t.TooltipDelay = 300 * time.Millisecond
+c.SetTheme(&t)
+```
+
+For a part of the window only, as a toolbar, build it in `ui.Themed`
+with that theme (see [a theme for part of the
+window](styling.md#a-theme-for-part-of-the-window)); each element's tip
+waits as the theme it is built with says.
+
 ## Without a look
 
 `TooltipBase` shows a tip of your own by an element, as Base UI's Tooltip

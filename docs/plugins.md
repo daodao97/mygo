@@ -32,7 +32,7 @@ JavaScript package whose functions call them. The app uses the Go half with
   process, an end-to-end test runner or an agent, drives the running app:
   its windows, the elements of their native UI, input, menus, scripts in
   pages and screenshots. It is all Go, opt-in, and left out of release
-  builds.
+  builds; `mygo-automation` is its command line client for agents.
 - [PermissionFlow](plugins/permissionflow.md): the permissions the system
   keeps for the user to give, such as Accessibility, Screen Recording and
   the microphone: checked, asked for, and a guide to System Settings with

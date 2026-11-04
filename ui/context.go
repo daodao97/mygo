@@ -45,7 +45,7 @@ type context struct {
 	// form and accordion are the Form and the Accordion being built, for
 	// their fields and sections.
 	form      *formBuild
-	accordion *accordionBuild
+	accordion *accordionParts
 	// checks is the CheckboxGroup being built.
 	checks *checkGroup
 	// row is the row of a List or a Table being built, and sidebar the
@@ -70,6 +70,9 @@ type context struct {
 	// and dividers those drawing lines between their children.
 	transitions []transitionUse
 	dividers    []dividers
+	// childExits are the Exits that elements gave their children going
+	// in this frame (ChildExit).
+	childExits []childExit
 	// sortedUses and depthStarts are byDepth's.
 	sortedUses  []transitionUse
 	depthStarts []int
@@ -134,6 +137,8 @@ func (c *context) reset(now time.Time, w, h float32) {
 	c.sortedUses = c.sortedUses[:0]
 	clear(c.dividers)
 	c.dividers = c.dividers[:0]
+	clear(c.childExits)
+	c.childExits = c.childExits[:0]
 	c.router, c.routers, c.inert = nil, 0, false
 	root := c.alloc()
 	root.c = c
@@ -656,10 +661,15 @@ type state struct {
 	rtl       bool
 	clipRect  Rect
 	clipRadii [4]float32
-	id        uint64
-	seen      uint64
-	pass      int    // the pass of the frame that built it last
-	born      uint64 // the frame that first built the element
+	// selfClips tells that the element clips itself and what is inside it
+	// to selfClip, rounded by selfRadius (ClipInset).
+	selfClips  bool
+	selfClip   Rect
+	selfRadius float32
+	id         uint64
+	seen       uint64
+	pass       int    // the pass of the frame that built it last
+	born       uint64 // the frame that first built the element
 	// lookedSeen and lookedPass are seen and pass before the last
 	// lookup (lookState), 0 for a state it created.
 	lookedSeen uint64
@@ -676,11 +686,15 @@ type state struct {
 	routerLevel    int
 	flags          uint64
 	// ignoreInput tells that the element, or one around it, ignores the
-	// pointer and the keyboard (IgnoreInput).
-	ignoreInput bool
-	cursor      Cursor
-	// tip marks an element with a tooltip (TooltipBase).
-	tip bool
+	// pointer and the keyboard (IgnoreInput); accessHidden, that it is
+	// out of what assistive technology reads (AccessHidden, or inert).
+	ignoreInput, accessHidden bool
+	cursor                    Cursor
+	// tip marks an element with a tooltip (TooltipBase), which shows once
+	// the pointer has rested on it for tipDelay, or at once within tipWarm
+	// of another going: its theme's TooltipDelay.
+	tip               bool
+	tipDelay, tipWarm time.Duration
 	// effectLayer is what the element and its children render into for
 	// its Effect, kept from frame to frame.
 	effectLayer *Canvas

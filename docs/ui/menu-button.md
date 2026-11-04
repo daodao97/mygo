@@ -95,6 +95,93 @@ A drawn menu's items are elements: in tests, `tt.Click` on the button
 opens it, `tt.HasText` finds its items and `tt.Click` chooses one, while
 `tt.Menu` lists only the system's menus.
 
+## Without a look
+
+`ui.MenuBase` is a menu button without a look, for a menu whose items
+have a layout of your own, as an avatar and a name, or a swatch: its
+`Trigger` is the button, which takes children, and the menu shows while
+a `*bool` is true. `Popup` builds the menu, as
+[`PopoverBase`](popover.md#without-a-look) builds a panel: style the
+panel, and build in it the items, each a row taking children, that
+`Item`, `CheckItem`, `RadioItem` and `SubmenuItem` make, and the
+submenus with `Submenu`. An item is `Highlighted` while the pointer or the
+keys are on it, and its `Clicked` reports its choice, which closes the
+menu:
+
+```go
+m := ui.MenuBase(c, &app.accountMenu)
+m.Trigger.Gap(6).Padding(4, 8).Radius(999).Children(func() {
+	ui.Avatar(c, app.user.Name, app.user.Photo).Size(24, 24)
+	ui.Icon(c, chevron)
+})
+m.Popup(func(panel ui.Element) {
+	panel.Margin(4, 0, 0, 0).Padding(4).Radius(10).Background(t.Background).Border(1, t.Border)
+	for _, acct := range app.accounts {
+		item := m.RadioItem(acct == app.user).Gap(8).Padding(6, 10).Radius(6)
+		if item.Highlighted() {
+			item.Background(t.SurfaceHover)
+		}
+		item.Children(func() {
+			ui.Avatar(c, acct.Name, acct.Photo).Size(20, 20)
+			ui.Text(c, acct.Name)
+		})
+		if item.Clicked() {
+			app.switchTo(acct)
+		}
+	}
+	more := m.SubmenuItem().Padding(6, 10).Children(func() { ui.Text(c, "Settings") })
+	m.Submenu(more, func(panel ui.Element) {
+		panel.Padding(4).Radius(10).Background(t.Background).Border(1, t.Border)
+		if m.Item().Padding(6, 10).Children(func() { ui.Text(c, "Profile") }).Clicked() {
+			app.openProfile()
+		}
+	})
+})
+```
+
+It has the keys and the focus of `PopoverMenuButton`'s, which is built on
+the same parts with the theme's look: it opens as the pointer goes down
+on the button, and for Enter, Space or Down while the button has the
+focus, on its first item then; Up, Down, Home, End and typing the first
+letters of an item move the highlight, past items `Disabled`; Right and
+Left open and close submenus, the other way round right to left; Enter
+and Space choose, Escape closes the submenu on top, and Tab and presses
+outside close the menu, which gives the focus back to the button. Setting
+the `*bool` opens and closes it too. Assistive technology sees the menu
+button, expanded while its menu shows, a menu of menu items, check box
+items and radio items, checked as `CheckItem` and `RadioItem` say, and
+each submenu named by its item. Separators and headings are elements of
+your own between the items. See [custom widgets](custom-widgets.md), and
+[`ContextMenuBase`](context-menu.md#without-a-look) for a context menu.
+
+An item that `KeepOpen` leaves the menu open as it is chosen, by the
+pointer, Enter or Space: its `Clicked` reports the choice, and it stays
+highlighted, as Radix's menus do when `onSelect` prevents the default.
+`Group` makes a row of items that the keys take as one: Up and Down stop
+at it once, on its item checked, else its first, and Left and Right move
+among its items, round, the other way round right to left. A theme
+switcher in an account menu is such a row of radio items:
+
+```go
+m.Group(func(row ui.Element) {
+	row.Gap(2).Padding(4).Label("Theme")
+	for _, th := range []string{"Light", "Dark", "System"} {
+		item := m.RadioItem(app.theme == th).KeepOpen().Grow(1).Padding(4, 8).Radius(6)
+		if item.Highlighted() {
+			item.Background(t.SurfaceHover)
+		}
+		item.Children(func() { ui.Text(c, th) })
+		if item.Clicked() {
+			app.theme = th
+		}
+	}
+})
+```
+
+Assistive technology sees a group, named by its `Label`, holding radio
+items counted on their own (the items outside groups are counted
+together).
+
 ## Accessibility
 
 Assistive technology sees a menu button: `AXMenuButton` on macOS, a push

@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"math"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/scene"
@@ -303,6 +305,79 @@ func TestPopoverLastPressDecides(t *testing.T) {
 	tt.Frame()
 	if open {
 		t.Error("a press on the anchor then elsewhere left the popover open")
+	}
+}
+
+// A web view in a panel scaling as one surface, as a peek zooming in,
+// keeps its page's layout and shows it scaled: the placement carries the
+// page's size, unchanged throughout the animation, and the corners of its
+// hole, inside which alone the page takes the pointer; what the panel
+// paints over the page covers it where it shows, scaled.
+func TestWebViewScaledRounded(t *testing.T) {
+	page := &testWebView{"page"}
+	small := false
+	tt := coreNewTester(func(c *context) {
+		target := float32(1)
+		if small {
+			target = 0.5
+		}
+		scale := c.Root().AnimateTo("scale", target, Animation{Duration: 400 * time.Millisecond})
+		coreBox(c).Absolute().Left(40).Top(40).Size(320, 200).Scale(scale, scale).Children(func() {
+			coreWebView(c, page).Grow(1).Radius(24).Children(func() {
+				coreBox(c).Absolute().Top(10).Right(10).Size(20, 20) // a button over the page
+			})
+		})
+	}, 400, 280)
+	check := func(scale float64) placedWebView {
+		t.Helper()
+		p, ok := placed(tt, page)
+		if !ok {
+			t.Fatalf("scaled %v: the web view does not show", scale)
+		}
+		if p.size != [2]float64{320, 200} {
+			t.Errorf("scaled %v: the page lays out at %v: want 320 by 200, as unscaled", scale, p.size)
+		}
+		if p.radii != [4]float64{24, 24, 24, 24} {
+			t.Errorf("scaled %v: the page's corners %v: want the hole's, 24", scale, p.radii)
+		}
+		near := func(a, b float64) bool { return math.Abs(a-b) < 1e-3 }
+		want := platform.RectF{X: 200 - 160*scale, Y: 140 - 100*scale, W: 320 * scale, H: 200 * scale}
+		if f := p.frame; !near(f.X, want.X) || !near(f.Y, want.Y) || !near(f.W, want.W) || !near(f.H, want.H) {
+			t.Errorf("scaled %v: the page shows at %+v: want %+v", scale, f, want)
+		}
+		pl := p.placement(nil)
+		if sx, sy := pl.Scale(); !near(sx, scale) || !near(sy, scale) {
+			t.Errorf("scaled %v: the placement scales the page by %v, %v", scale, sx, sy)
+		}
+		return p
+	}
+	at := func(x, y float64) bool { return tt.WebViewAt(float32(x), float32(y)) == page }
+
+	p := check(1)
+	if !at(200, 140) || at(p.frame.X+3, p.frame.Y+3) || at(p.frame.X+p.frame.W-3, p.frame.Y+p.frame.H-3) || !at(p.frame.X+3, 140) {
+		t.Error("unscaled, the page takes the pointer outside its rounded corners, or not inside them")
+	}
+
+	small = true
+	tt.Frame()
+	for range 4 {
+		tt.Advance(100 * time.Millisecond)
+		p, _ := placed(tt, page)
+		check(p.frame.W / 320)
+	}
+	p = check(0.5)
+	if !at(200, 140) || at(p.frame.X+2, p.frame.Y+2) || at(p.frame.X+p.frame.W-2, p.frame.Y+2) || !at(p.frame.X+2, 140) {
+		t.Error("scaled, the page takes the pointer outside its rounded corners, or not inside them")
+	}
+	// The button: 20 by 20, 10 from the top-right corner, scaled by half
+	// around the panel's center.
+	if at(270, 100) || !at(250, 100) {
+		t.Error("the button over the scaled page does not cover it where it shows")
+	}
+	// A press in a corner the page does not show in is the content's.
+	tt.ClickAt(float32(p.frame.X+1), float32(p.frame.Y+1))
+	if tt.WebViewAt(float32(p.frame.X+1), float32(p.frame.Y+1)) != nil {
+		t.Error("a corner cut off takes the pointer to the page")
 	}
 }
 

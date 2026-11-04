@@ -702,9 +702,6 @@ func New(opts Options) (*Terminal, error) {
 		return nil, err
 	}
 	t.term.SetTerminfoName("xterm-256color")
-	if opts.ShellIntegration {
-		t.term.Write([]byte(promptRedraw))
-	}
 	switch {
 	case opts.ImageLimit == 0:
 		t.term.SetImageLimit(320 << 20)
@@ -733,6 +730,9 @@ func New(opts Options) (*Terminal, error) {
 	if opts.Conn != nil {
 		t.src = opts.Conn
 		t.quoting = quotingFor(runtime.GOOS, "")
+		if opts.ShellIntegration {
+			t.term.Write([]byte(promptRedraw))
+		}
 		t.run()
 		return t, nil
 	}
@@ -755,6 +755,10 @@ func New(opts Options) (*Terminal, error) {
 			t.term.Free()
 			return nil, err
 		}
+		t.term.Write([]byte(promptRedraw))
+	} else {
+		// Other shells may not redraw their prompts: theirs stay.
+		t.opts.ShellIntegration = false
 	}
 	if runtime.GOOS == "windows" {
 		// ConPTY keeps a screen of its own, which a resize pulling rows
@@ -1516,8 +1520,14 @@ func (t *Terminal) resize(s gridSize) {
 	// zsh redraws its prompt on SIGWINCH. Clear it at the old width first:
 	// reflowing right-prompt padding would otherwise create extra prompt rows
 	// that zsh's cursor movements cannot erase. Command output still reflows.
+	// Ghostty clears it on a resize, which to the same size does nothing:
+	// the rows change first, or grow by one when they stay.
 	if t.opts.ShellIntegration && t.prompt.atPrompt && !t.term.AltScreen() && s.cols != t.size.cols {
-		t.term.Resize(t.size.cols, s.rows+1, s.cellW, s.cellH)
+		rows := s.rows
+		if rows == t.size.rows {
+			rows++
+		}
+		t.term.Resize(t.size.cols, rows, s.cellW, s.cellH)
 	}
 	t.size = s
 	t.term.Resize(s.cols, s.rows, s.cellW, s.cellH)

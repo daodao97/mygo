@@ -187,6 +187,7 @@ func (w *Window) placeWebViews(views []platform.WebViewPlacement) {
 			for _, p := range views {
 				if p.WebView == n.web {
 					n.frame, n.shown = p.Frame, true
+					n.scaleX, n.scaleY = p.Scale()
 				}
 			}
 		}
@@ -222,6 +223,7 @@ func (w *Window) destroyWebView() {
 	cancel := w.pageCancel
 	w.mu.Unlock()
 	cancel()
+	fire(&w.onClosed)
 }
 
 // destroyWebViews closes the web views of a window that closed. Main
@@ -264,11 +266,12 @@ type webViewNative struct {
 	platform.Window
 	web platform.WebView
 	// frame is where the window's view last showed the web view, while
-	// shown; misplaced is set once a view of another window placed it,
-	// which is logged once.
-	frame     platform.RectF
-	shown     bool
-	misplaced bool
+	// shown, scaled by scaleX and scaleY; misplaced is set once a view of
+	// another window placed it, which is logged once.
+	frame          platform.RectF
+	scaleX, scaleY float64
+	shown          bool
+	misplaced      bool
 }
 
 func (n *webViewNative) Surface() platform.Surface   { return nil }

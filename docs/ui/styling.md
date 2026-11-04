@@ -77,6 +77,44 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
   		Radius(16).Border(l.width, ui.Color{}).BorderConicGradient(glow).Blur(l.blur)
   }
   ```
+- **Clipping to an inset.** `ClipInset(top, right, bottom, left, radius)`
+  clips the element and everything inside it (background, shadows,
+  border, children) to its box inset by those DIPs, as CSS's
+  `clip-path: inset()`. `ClipInsetPercent` takes percent of the box
+  instead. A negative inset reaches beyond the box on that side, so
+  `ClipInset(0, -40, 0, -40, 0)` clips top and bottom while a shadow
+  still shows left and right. The insets are drawn as a clip of the
+  scene, not a layer, so they can change every frame. Animating one
+  wipes the element in:
+
+  ```go
+  hidden := float32(100)
+  if app.open {
+	hidden = 0
+  }
+  card.ClipInsetPercent(0, card.AnimateTo("wipe", hidden, ui.Smooth), 0, 0, 12)
+  ```
+
+  What the inset hides takes no clicks.
+- **Gradient masks.** `MaskLinearGradient`, `MaskRadialGradient` and
+  `MaskConicGradient` mask the element and what is inside it by a
+  gradient across its box, as CSS's `mask-image`. Each point shows as
+  much as the gradient's alpha there; the colors don't matter. Nothing
+  shows outside the box (or outside the inset, with `ClipInset`). A
+  scrolling list whose rows fade out at its edges:
+
+  ```go
+  black := ui.RGB(0, 0, 0)
+  fade := []ui.GradientStop{{ui.Transparent, 0}, {black, 0.08}, {black, 0.92}, {ui.Transparent, 1}}
+  list.MaskLinearGradient(ui.LinearGradient{Angle: 180, Stops: fade})
+  ```
+
+  The end of clamped text fades the same way, along its width:
+  `MaskLinearGradient(ui.LinearGradient{Angle: 90, Stops: …})`.
+  Like `Opacity`, the mask applies to each thing drawn on its own; the
+  element isn't drawn into a layer first. So where a row's background
+  is faded, what is under the row shows through it too. Clicks are not
+  masked.
 - **Caching.** `Cache()` keeps what the element and its children paint in
   a bitmap of the GPU, as Flutter's `RepaintBoundary` and SwiftUI's
   `drawingGroup()` do, drawn again only when what they paint changes:
@@ -124,7 +162,9 @@ is an ordinary color. Don't assign `R`, `G` or `B` of such a color, as the
 real value would no longer match: make a new one.
 
 Colors come from `ui.RGB`, `ui.RGBA` and `ui.Hex("#2563eb")`; `Mix` blends
-two, and `Alpha` makes one translucent.
+two, `MixOklab` blends them in Oklab, as a gradient's `Oklab` does (yellow
+and blue meet in a blue rather than in sRGB's gray), and `Alpha` makes one
+translucent.
 
 ## State, not selectors
 
@@ -173,6 +213,10 @@ rather keep them dark sets both:
 t.Inverse, t.InverseText = ui.Hex("#3f3f46"), ui.Hex("#fafafa")
 ```
 
+`TooltipDelay` is how long the pointer rests on an element before its
+tooltip shows, 0.6 seconds when left zero (see
+[Tooltip](tooltip.md#the-delay)).
+
 In a window that is not the one the user's input goes to, the widgets
 fade their accent to gray, as AppKit fades an inactive window's (see
 [Active and inactive windows](windows.md#active-and-inactive-windows)):
@@ -184,6 +228,33 @@ in every window sets it to the accent:
 ```go
 t.InactiveAccent = t.Accent
 ```
+
+## The focus ring
+
+The element with the keyboard focus from the keyboard shows a ring, which
+the theme draws: `FocusRingWidth` DIPs wide (2 by default), its inner edge
+`FocusRingOffset` DIPs outside the element's edge (1 in the light and dark
+themes; 0 puts it on the edge, and a negative offset inside it), in
+`Focus`. Its corners follow the element's, as CSS's outline does. A theme
+of a thicker ring, further out:
+
+```go
+t.FocusRingWidth, t.FocusRingOffset = 3, 2
+```
+
+An element sets its own offset with `FocusRingOffset`, and its color with
+`FocusRingColor`, as a control whose ring must sit inside it because an
+element around it clips what goes past its edges, as a header in an
+accordion's box does:
+
+```go
+header.FocusRingOffset(-4) // inside, its outer edge 2 DIPs in
+```
+
+Widgets that ring a part of themselves, as a check box its box, take the
+same settings. `FocusRing(false)` turns the ring off for a widget that
+draws its own with `Painter.FocusRing`, the theme's ring around any
+rectangle, while `FocusVisible`.
 
 ## A theme for part of the window
 

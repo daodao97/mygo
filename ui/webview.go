@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"math"
 	"slices"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -46,12 +45,16 @@ func coreWebView(c *context, v NativeWebView) *node {
 	return e
 }
 
-// webPlace is where a frame shows a web view: hit is the index of its
-// element's own hit, inert that it shows but takes no pointer.
+// webPlace is where a frame shows a web view: size is the size its page
+// lays out at, which frame shows scaled, and radii its corners', in its
+// DIPs; hit is the index of its element's own hit, inert that it shows
+// but takes no pointer.
 type webPlace struct {
 	v     NativeWebView
 	frame Rect
 	clip  Rect
+	size  [2]float32
+	radii [4]float32
 	hit   int
 	inert bool
 }
@@ -63,26 +66,93 @@ func (rt *engine) noteWebView(e *node, clip Rect, invisible bool) {
 	if e.flags&flagInvisible != 0 || rt.commitHidden {
 		return
 	}
-	// The hole the painter makes: the content box on whole pixels. Native
-	// web views stay upright, covering a transformed box's bounds.
-	b := e.visualRect(e.contentBox())
-	if s := rt.painted[2]; s > 0 {
-		x0, y0 := float32(math.Round(float64(b.X*s)))/s, float32(math.Round(float64(b.Y*s)))/s
-		x1, y1 := float32(math.Round(float64((b.X+b.W)*s)))/s, float32(math.Round(float64((b.Y+b.H)*s)))/s
-		b = Rect{x0, y0, x1 - x0, y1 - y0}
+	// The hole the painter makes: the content box on whole pixels,
+	// rounded as its border's inner edge.
+	s := rt.painted[2]
+	if s <= 0 {
+		s = 1
+	}
+	box := e.contentBox()
+	sx, sy, upright := scaling(e.world)
+	var b, page Rect
+	if upright && (sx != 1 || sy != 1) {
+		// Scaled, as a panel zooming in: the page keeps its layout and
+		// shows scaled, as the painter scales the hole, on whole pixels
+		// before the transform.
+		page = snapPixels(box, s)
+		page = Rect{page.X / s, page.Y / s, page.W / s, page.H / s}
+		b = Rect{sx*page.X + e.world.X, sy*page.Y + e.world.Y, sx * page.W, sy * page.H}
+	} else {
+		// Turned, skewed or in perspective, a native web view stays
+		// upright, covering the transformed box's bounds, at their size.
+		b = snapPixels(e.visualRect(box), s)
+		b = Rect{b.X / s, b.Y / s, b.W / s, b.H / s}
+		page = b
 	}
 	v := intersect(b, clip)
 	if b.W <= 0 || b.H <= 0 || v.W <= 0 || v.H <= 0 {
 		return
 	}
-	rt.webPlaces = append(rt.webPlaces, webPlace{v: e.webView, frame: b, clip: v, hit: len(rt.hits), inert: invisible})
+	wp := webPlace{v: e.webView, frame: b, clip: v, size: [2]float32{page.W, page.H}, hit: len(rt.hits), inert: invisible}
+	if upright {
+		wp.radii = holeRadii(e, s)
+		for i := range wp.radii {
+			wp.radii[i] /= s
+		}
+	}
+	rt.webPlaces = append(rt.webPlaces, wp)
 }
 
 // placedWebView is where a frame shows a web view, for the host.
 type placedWebView struct {
 	v           NativeWebView
 	frame, clip platform.RectF
-	covers      []platform.RectF
+	// size is the size the page lays out at, and radii its corners', in
+	// its DIPs (platform.WebViewPlacement).
+	size   [2]float64
+	radii  [4]float64
+	covers []platform.RectF
+}
+
+// placement returns v as the platform takes it.
+func (v *placedWebView) placement(n platform.WebView) platform.WebViewPlacement {
+	return platform.WebViewPlacement{WebView: n, Frame: v.frame, Clip: v.clip, Width: v.size[0], Height: v.size[1], Radii: v.radii, Covers: v.covers}
+}
+
+// scaling returns the scale of m, which only moves and scales, by
+// positive factors; ok is false for any other transform.
+func scaling(m scene.Affine) (x, y float32, ok bool) {
+	if !m.Set {
+		return 1, 1, true
+	}
+	if m.B != 0 || m.C != 0 || m.G != 0 || m.H != 0 || m.A <= 0 || m.D <= 0 {
+		return 0, 0, false
+	}
+	return m.A, m.D, true
+}
+
+// snapPixels returns r at scale pixels per DIP, on whole pixels.
+func snapPixels(r Rect, scale float32) Rect {
+	x0, y0 := round(r.X*scale), round(r.Y*scale)
+	x1, y1 := round((r.X+r.W)*scale), round((r.Y+r.H)*scale)
+	return Rect{x0, y0, x1 - x0, y1 - y0}
+}
+
+// holeRadii returns the radii of the corners of the hole showing the web
+// view of e, in pixels at scale pixels per DIP: its border's inner edge
+// less its padding.
+func holeRadii(e *node, scale float32) [4]float32 {
+	in := [4]float32{e.border[0] + e.pad[0], e.border[1] + e.pad[1], e.border[2] + e.pad[2], e.border[3] + e.pad[3]}
+	box := snapPixels(Rect{e.x, e.y, e.w, e.h}, scale)
+	px := func(r [4]float32) [4]float32 {
+		return [4]float32{r[0] * scale, r[1] * scale, r[2] * scale, r[3] * scale}
+	}
+	sb := scene.Rect{X: box.X, Y: box.Y, W: box.W, H: box.H}
+	_, radii := scene.InnerRadii(sb, scene.Corners(sb, px(e.radius), continuousCorners), px(in))
+	for i := range radii {
+		radii[i] = abs32(radii[i])
+	}
+	return radii
 }
 
 // webViewPlacements returns where the frame shows its web views, in the
@@ -101,14 +171,19 @@ func (rt *engine) webViewPlacements() []placedWebView {
 			// The inert one went first: this one takes its place.
 			out = slices.DeleteFunc(out, func(o placedWebView) bool { return o.v == wp.v })
 		}
-		out = append(out, placedWebView{v: wp.v, frame: rectF(wp.frame), clip: rectF(wp.clip), covers: wp.covers(rt.hits)})
+		pv := placedWebView{v: wp.v, frame: rectF(wp.frame), clip: rectF(wp.clip), covers: wp.covers(rt.hits)}
+		pv.size = [2]float64{float64(wp.size[0]), float64(wp.size[1])}
+		for i, r := range wp.radii {
+			pv.radii[i] = float64(r)
+		}
+		out = append(out, pv)
 	}
 	rt.webOut = out
 	return out
 }
 
 // covers returns the boxes, within the web view's clip, of the hits after
-// its own: those inside a box already found add nothing.
+// its own, as they show: those inside a box already found add nothing.
 func (wp *webPlace) covers(hits []hit) []platform.RectF {
 	if wp.inert {
 		return []platform.RectF{rectF(wp.clip)}
@@ -120,7 +195,11 @@ func (wp *webPlace) covers(hits []hit) []platform.RectF {
 	}
 next:
 	for _, h := range hits[start:] {
-		r := intersect(h.r, wp.clip)
+		r := h.r
+		if h.st != nil {
+			r = transformRect(h.st.world, r)
+		}
+		r = intersect(r, wp.clip)
 		if r.W <= 0 || r.H <= 0 {
 			continue
 		}
@@ -237,12 +316,7 @@ func (p *Painter) hole(e *node) {
 	if b.W <= 0 || b.H <= 0 {
 		return
 	}
-	in := [4]float32{e.border[0] + e.pad[0], e.border[1] + e.pad[1], e.border[2] + e.pad[2], e.border[3] + e.pad[3]}
-	box := p.snap(Rect{e.x, e.y, e.w, e.h})
-	_, radii := scene.InnerRadii(box, scene.Corners(box, p.radii(e.radius), continuousCorners), p.radii(in))
-	for i := range radii {
-		radii[i] = abs32(radii[i])
-	}
+	radii := holeRadii(e, p.scale)
 	r := p.snap(b)
 	// Translucent, the page blends over what was painted under it.
 	p.add(scene.Op{Kind: scene.OpHole, Rect: r, Radii: radii, Continuous: continuousCorners, Opacity: p.opacity})

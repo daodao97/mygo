@@ -17,6 +17,11 @@ mygo.NewWindow(mygo.WindowOptions{
 })
 ```
 
+The view first runs once `NewWindow` returned, so it can use the window
+kept from it, as `app.win.Title()`: called on the main thread, `NewWindow`
+shows the window on the main loop's next turn (see
+[showing windows](../windows.md#show-windows-without-flashing)).
+
 ## Title bars
 
 With `TitleBarStyle: mygo.TitleBarHidden`, the view draws the title bar
@@ -123,6 +128,18 @@ bar laid out clear of them stays clear.
 
 The device's safe-area insets (`c.SafeArea()`) are in the same content DIPs.
 
+The window's own sizes are not zoomed: `WindowOptions.Width` and `Height`,
+`Window.SetContentSize` and `Window.ContentSize` are in the window's DIPs,
+`z` times the size the view sees, as a page's are at its zoom
+(`Page.SetZoomFactor`). A flyout of 320 × 400 zoomed by 1.5 lays its view
+out in about 213 × 267. To give the view a size in its own DIPs, multiply
+it by the zoom:
+
+```go
+z := c.Zoom()
+flyout.SetContentSize(int(math.Ceil(float64(320*z))), int(math.Ceil(float64(400*z))))
+```
+
 A transform's `Scale`, by contrast, scales what is drawn at the content's
 own size: its text is drawn as bitmaps of their untransformed size,
 sampled bilinearly ([Transforms](transforms.md#rendering)), right for
@@ -192,6 +209,18 @@ panel floating over the app the user is in. `SetActiveAppearance` keeps
 the window drawn as active, with a private AppKit call that a later macOS may
 drop, the window then drawn as any other: apps for the Mac App Store
 should leave it off.
+
+## Flyouts that fit their content
+
+A flyout with `FitContent` takes the size its native UI measures and
+follows it as it changes, within `MinWidth`, `MinHeight`, `MaxWidth`,
+`MaxHeight` and the work area: the root's content at its max-content
+width and its height at that width, as a tray panel whose list or error
+line comes and goes. A frame that measures another size resizes the
+flyout, and the next lays the content out at that size. A hidden flyout
+lays out content that changed while it was hidden as it shows, and shows
+at the size that content takes. See
+[Size a flyout to its content](../windows.md#size-a-flyout-to-its-content).
 
 ## Active and inactive windows
 

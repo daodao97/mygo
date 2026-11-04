@@ -1,6 +1,9 @@
 package scene
 
-import "math"
+import (
+	"math"
+	"slices"
+)
 
 // ClipShape is a clip in the coordinate system in which it was pushed.
 type ClipShape struct {
@@ -8,6 +11,53 @@ type ClipShape struct {
 	Radii      [4]float32
 	Transform  Affine
 	Continuous bool
+	// Paint, unless PaintSolid, is a gradient whose alpha masks the clip,
+	// with Gradient, Color, Color2 and Stops, as an OpFill's.
+	Paint         Paint
+	Gradient      [4]float32
+	Color, Color2 Color
+	Stops         []Stop
+	// Mask, unless nil, is an image whose alpha in MaskSrc, drawn over
+	// Rect, masks the clip, as it was at MaskVersion.
+	Mask        *Image
+	MaskSrc     Rect
+	MaskVersion uint64
+}
+
+// ClipShapeOf returns the shape of op, an OpPushClip of a scene with
+// stops, moved as MovedClipOp moves it: its Stops are a part of stops.
+func ClipShapeOf(op *Op, stops []Stop) ClipShape {
+	o := MovedClipOp(op)
+	c := ClipShape{Rect: o.Rect, Radii: o.Radii, Transform: o.Transform, Continuous: o.Continuous}
+	if o.Paint != PaintSolid {
+		c.Paint, c.Gradient, c.Color, c.Color2 = o.Paint, o.Gradient, o.Color, o.Color2
+		if o.Paint.HasStops() {
+			if a, b := int(o.Stops[0]), int(o.Stops[1]); a >= 0 && b <= len(stops) && a < b {
+				c.Stops = stops[a:min(b, a+MaxStops)]
+			} else {
+				// No stops: the gradient lets nothing through, as it
+				// fills nothing.
+				c.Stops = []Stop{}
+			}
+		}
+	}
+	if o.Image != nil {
+		c.Mask, c.MaskSrc, c.MaskVersion = o.Image, o.Src, o.Image.Version()
+	}
+	return c
+}
+
+// Masks reports whether a gradient or an image masks the clip, which
+// then lets through less than all of what it holds inside its rounded
+// rectangle.
+func (c *ClipShape) Masks() bool { return c.Paint != PaintSolid || c.Mask != nil }
+
+// Same reports whether the clips are the same, their stops compared by
+// what they hold.
+func (c *ClipShape) Same(o *ClipShape) bool {
+	return c.Rect == o.Rect && c.Radii == o.Radii && c.Transform == o.Transform && c.Continuous == o.Continuous &&
+		c.Paint == o.Paint && c.Gradient == o.Gradient && c.Color == o.Color && c.Color2 == o.Color2 &&
+		c.Mask == o.Mask && c.MaskSrc == o.MaskSrc && c.MaskVersion == o.MaskVersion && slices.Equal(c.Stops, o.Stops)
 }
 
 // Affine maps drawing coordinates to frame coordinates: an affine map,
@@ -71,6 +121,32 @@ func MovedClip(r Rect, m Affine) (Rect, Affine) {
 	r.X += m.X
 	r.Y += m.Y
 	return r, Affine{}
+}
+
+// MovedClipOp returns op, an OpPushClip, as MovedClip moves it: its
+// rectangle moved, with the points of its gradient, when its transform
+// only moves them, the transform then unset.
+func MovedClipOp(op *Op) Op {
+	o := *op
+	r, m := MovedClip(o.Rect, o.Transform)
+	if m.Set || !o.Transform.Set {
+		return o
+	}
+	dx, dy := r.X-o.Rect.X, r.Y-o.Rect.Y
+	o.Rect, o.Transform = r, Affine{}
+	o.moveGradient(dx, dy)
+	return o
+}
+
+// moveGradient moves the points of the op's gradient by (x, y); stripes
+// start from Rect.
+func (op *Op) moveGradient(x, y float32) {
+	switch op.Paint {
+	case PaintLinear, PaintOklab, PaintLinearStops, PaintLinearStopsOklab:
+		op.Gradient = [4]float32{op.Gradient[0] + x, op.Gradient[1] + y, op.Gradient[2] + x, op.Gradient[3] + y}
+	case PaintConic, PaintConicOklab, PaintRadial, PaintRadialOklab:
+		op.Gradient[0], op.Gradient[1] = op.Gradient[0]+x, op.Gradient[1]+y
+	}
 }
 
 // Reshaped reports whether op of s draws under a transform that does more

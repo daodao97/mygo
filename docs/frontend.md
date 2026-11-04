@@ -350,7 +350,8 @@ the window:
   outer pixels of the page resize the window, as a frameless one's. The
   window's menu bar hides, as with `AutoHideMenuBar`: Alt and F10 show it
   above the page while its menus are open, and its shortcuts work all
-  along.
+  along. `Theme.SetGTKCSS` restyles the buttons, as GTK 4's round ones,
+  for example ([GTK's style](windows.md#gtks-style-on-linux)).
 
 ```go
 mygo.NewWindow(mygo.WindowOptions{

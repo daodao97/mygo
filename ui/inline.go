@@ -213,7 +213,7 @@ func union(a, b Rect) Rect {
 func (p *Painter) paintInline(e *node) {
 	if e.ringShown() {
 		for _, r := range e.frags {
-			p.FocusRing(r, [4]float32{2, 2, 2, 2})
+			p.focusRingOf(e, r, [4]float32{2, 2, 2, 2})
 		}
 	}
 	for ch := e.first; ch != nil; ch = ch.next {
