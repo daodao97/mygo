@@ -1394,14 +1394,27 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		clip = intersect(clip, e.visualRect(s.selfClip))
 	}
 	// Children in flow first, absolute ones above them: the paint order.
+	// Sticky ones are in the flow for the focus, and paint among the
+	// absolute ones, where their hits go.
+	var stuckBuf [4][2]int
+	stuck := stuckBuf[:0]
 	for ch := e.first; ch != nil; ch = ch.next {
 		if ch.flags&flagAbsolute == 0 {
+			from := len(rt.hits)
 			rt.commitElement(ch, clip, invisible)
+			if ch.sticky {
+				stuck = append(stuck, [2]int{from, len(rt.hits)})
+			}
 		}
 	}
+	moved := 0
 	for ch := e.first; ch != nil; ch = ch.next {
-		if ch.flags&flagAbsolute != 0 {
+		switch {
+		case ch.flags&flagAbsolute != 0:
 			rt.commitElement(ch, clip, invisible)
+		case ch.sticky:
+			moved = rt.stickyHits(stuck[0], moved)
+			stuck = stuck[1:]
 		}
 	}
 	if lifting {

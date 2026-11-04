@@ -126,6 +126,13 @@ func (rt *engine) lateInput() {
 func place(e *node, x, y float32) {
 	e.x += x
 	e.y += y
+	if e.stuck() {
+		// Its scroll containers and parent are placed: it moves with what
+		// is inside it to where it sticks.
+		dx, dy := e.stickyShift(e.x, e.y, placedOrigin)
+		e.x += dx
+		e.y += dy
+	}
 	if e.hidden {
 		// Not laid out: nor is what is inside it placed, whose scroll
 		// offsets stay as they were for when it shows again.
@@ -176,6 +183,9 @@ func place(e *node, x, y float32) {
 // and Right are set, Left wins, or Right in an element laid out right to
 // left, as in CSS.
 func (e *node) relative(cw, ch float32) (dx, dy float32) {
+	if e.sticky && e.flags&flagAbsolute == 0 {
+		return 0, 0 // they hold it in its scroll container instead
+	}
 	left, lok := e.inset[3].resolve(base(cw))
 	right, rok := e.inset[1].resolve(base(cw))
 	if lok && !(rok && e.rtl()) {
@@ -1363,23 +1373,36 @@ func alongTarget(t0, tsize, at, self, size, off, limit float32) float32 {
 
 // laidOutOrigin returns where place will put the box of an element laid
 // out, in the window: its position and those of the elements around it,
-// less the offsets of the scroll containers among them.
+// less the offsets of the scroll containers among them, and where sticky
+// ones among them stick.
 func laidOutOrigin(e *node) (x, y float32) {
-	x, y = e.x, e.y
-	for ch, p := e, e.parent; p != nil; ch, p = p, p.parent {
-		if ch.flags&flagAbsolute == 0 || ch.leaving == 1 {
-			if f := p.followX; f != nil {
-				x -= float32(f.followShift())
-			}
-			if p.scrolls() {
-				x -= float32(p.scrollLeft())
-				y -= float32(p.st.scrollY - p.scrollBase)
-			}
-		}
-		x += p.x
-		y += p.y
+	x, y = flowOrigin(e)
+	if e.stuck() {
+		dx, dy := e.stickyShift(x, y, laidOutOrigin)
+		x += dx
+		y += dy
 	}
 	return x, y
+}
+
+// flowOrigin returns where the flow puts an element laid out, in the
+// window, as laidOutOrigin does, but for where it sticks itself.
+func flowOrigin(e *node) (x, y float32) {
+	p := e.parent
+	if p == nil {
+		return e.x, e.y
+	}
+	x, y = laidOutOrigin(p)
+	if e.flags&flagAbsolute == 0 || e.leaving == 1 {
+		if f := p.followX; f != nil {
+			x -= float32(f.followShift())
+		}
+		if p.scrolls() {
+			x -= float32(p.scrollLeft())
+			y -= float32(p.st.scrollY - p.scrollBase)
+		}
+	}
+	return x + e.x, y + e.y
 }
 
 // laidOutBox returns where place, or commit for an inline element, will

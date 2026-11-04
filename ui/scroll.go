@@ -251,6 +251,13 @@ func reveal(e *node) {
 	}
 	frame := e.c.rt.frame
 	for ch, p := e, e.parent; p != nil; ch, p = p, p.parent {
+		if ch.stuck() {
+			// Where it sticks, which may be in view already.
+			fx, fy := flowOrigin(ch)
+			dx, dy := ch.stickyShift(fx, fy, laidOutOrigin)
+			x += dx
+			y += dy
+		}
 		if p.scrolls() && ch.flags&flagAbsolute == 0 {
 			p.adoptScroll()
 			st := p.st

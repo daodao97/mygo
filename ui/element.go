@@ -288,6 +288,9 @@ type layoutStyle struct {
 	justifyItems           Align // of a grid
 	cell                   gridCell
 	justifySelf            Align
+	// sticky holds the element in its scroll container by its insets
+	// (Sticky), which then do not move it as relative positioning does.
+	sticky bool
 	// baselines is set on the row of a field in a form, which lines up
 	// the first lines of its label and control.
 	baselines bool

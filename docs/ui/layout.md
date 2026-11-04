@@ -97,6 +97,9 @@ right and the left [right to left](right-to-left.md). On an element in the
 flow, `Top` and the others move
 it from where the layout put it, without moving its siblings, as CSS's
 relative positioning does: a badge raised a little above its text.
+`Sticky` makes them hold an element in the flow inside the scroll
+container around it instead, as CSS's `position: sticky` (see [Scroll
+view](scroll.md#sticky-elements)).
 
 ```go
 ui.Box(c).Size(40, 40).Children(func() {

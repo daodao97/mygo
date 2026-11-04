@@ -3012,6 +3012,25 @@ either.
   `ShapeRichText` retain per-paragraph `TextLayout` geometry, its lines
   included (`Lines`), as a paginating reader needs; an application
   owns its buffer, selections, rendering, editing and undo policy.
+- **Sticky elements** (`ui/sticky.go`). `Sticky` sets `layoutStyle.sticky`,
+  which keeps the insets of an element in the flow from moving it as
+  relative positioning (`relative`); `place`, which reaches an element
+  after its parent and the scroll containers around it, then moves it and
+  what is inside it by `stickyShift`, as CSS Positioned Layout's sticky
+  positioning does: per axis, the padding box of the nearest container
+  scrolling that way (or following one, `ScrollWith`), or the window's,
+  less the insets, is where its margin box stays, within its parent's
+  content box (the content it scrolls, for a scroll container), the
+  start's inset winning (`stick`). Unlike CSS, which makes a container
+  scrolling one way scroll both, each axis looks for its own container,
+  as one here scrolls only the ways it says. Being in window coordinates
+  once placed, the box is where hits, ink, accessibility bounds and the
+  focus ring read it; `laidOutOrigin`, which overlays attach by before
+  `place`, and `reveal` add the same shift, so that a popover follows it
+  and the focus coming to it where it shows scrolls nothing. It paints in
+  its parent's second pass, among the absolute children, and commit moves
+  its hits there (`stickyHits`), while it commits in the flow, so that
+  Tab and assistive technology keep its place among its siblings.
 - **Right to left** (`ui/direction.go`). Each element has a direction
   (`node.dir`): built, it takes its parent's, and the root the window's,
   which `surface.Conn.RightToLeft` gives (package `mygo` from the app's

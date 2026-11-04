@@ -188,6 +188,8 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 		add("attach", anchorText(at)+" / "+anchorText(self))
 	case e.flags&flagAbsolute != 0:
 		add("position", "absolute")
+	case e.sticky:
+		add("position", "sticky")
 	case e.inset != [4]length{}:
 		add("position", "relative")
 	}

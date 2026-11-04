@@ -392,7 +392,7 @@ func (p *Painter) element(e *node) {
 		m := p.rt.matches
 		layers := m != nil && e == e.c.overlay
 		for c := e.first; c != nil; c = c.next {
-			if c.flags&flagAbsolute == 0 && p.paintable(c) {
+			if c.flags&flagAbsolute == 0 && !c.sticky && p.paintable(c) {
 				p.element(c)
 				if layers {
 					m.paint(p, c)
@@ -408,7 +408,9 @@ func (p *Painter) element(e *node) {
 				m.paint(p, nil)
 				content = false
 			}
-			if c.flags&flagAbsolute != 0 && c.leaving == 0 && p.paintable(c) {
+			// Sticky children paint above the flow too, in their order
+			// among the absolute ones, as CSS's positioned elements do.
+			if (c.flags&flagAbsolute != 0 && c.leaving == 0 || c.flags&flagAbsolute == 0 && c.sticky) && p.paintable(c) {
 				p.element(c)
 				if layers {
 					m.paint(p, c)

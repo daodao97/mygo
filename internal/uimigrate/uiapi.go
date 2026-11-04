@@ -332,6 +332,7 @@ var elementChains = map[string]bool{
 	"Start":                true,
 	"StartPercent":         true,
 	"Step":                 true,
+	"Sticky":               true,
 	"Strikethrough":        true,
 	"Stripes":              true,
 	"TextAlign":            true,

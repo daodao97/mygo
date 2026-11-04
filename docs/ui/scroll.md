@@ -60,6 +60,63 @@ if ui.Button(c, "Back to top").Clicked() {
 }
 ```
 
+## Sticky elements
+
+`Sticky` keeps an element in the flow, where it takes its room, and holds
+it inside the scroll container around it while its parent is in view, as
+CSS's `position: sticky`: `Top`, `Right`, `Bottom` and `Left` (or `Start`
+and `End`, and their percentages of the container's size) say how far in
+from the container's edges, inside its border, it stays. It goes no
+further than its parent's content box, so as its parent scrolls away it
+takes the element along, and the next parent's comes up in its place. A
+day's heading stays at the top of a timeline until the next day pushes it
+out:
+
+```go
+ui.Scroll(c).Fill().Children(func() {
+	for _, day := range app.days {
+		ui.Column(c).Children(func() {
+			ui.Text(c, day.Title).Bold().Padding(8, 16).Background(t.Surface).Sticky().Top(0)
+			for _, ev := range day.Events {
+				eventRow(c, ev)
+			}
+		})
+	}
+})
+```
+
+Each axis follows the nearest container scrolling that way (or a header
+following another sideways with `ScrollWith`), or else the window. So the
+check box choosing all the rows of a table scrolling sideways stays at its
+start, while the header row it is in sticks to the top of the page that
+scrolls down, which CSS would not do, as a container scrolling one way
+there scrolls both:
+
+```go
+ui.Scroll(c).Fill().Children(func() {
+	ui.ScrollHorizontal(c).Shrink(0).Children(func() {
+		ui.Column(c).Width(app.tableWidth()).Children(func() {
+			ui.Row(c).Background(t.Surface).Sticky().Top(0).Children(func() {
+				ui.Checkbox(c, &app.all, "").Background(t.Surface).Sticky().Start(0)
+				headerCells(c)
+			})
+			rows(c)
+		})
+	})
+})
+```
+
+Where both insets of an axis are set and the container is too small for
+both, `Top` wins, and `Left`, or `Right` [right to left](right-to-left.md).
+A sticky element paints above its siblings, as absolute ones do, so what
+scrolls under it needs no clip, but give it a background; the pointer,
+assistive technology, what is attached to it (`AttachTo`) and
+`ScrollIntoView` find it where it shows. The focus and assistive technology
+still take it in its place among its siblings. It does nothing to an
+`Absolute` element or to one inside a text. A [list](list.md) builds only
+the rows in view, so give its section headers with `ListState.Header`,
+which pins them, rather than making a row sticky.
+
 ## Scrolling into view
 
 `ScrollIntoView` scrolls the containers around an element as little as

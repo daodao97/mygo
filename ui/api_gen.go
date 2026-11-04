@@ -6647,6 +6647,48 @@ func (_handle Element) Step(step float64) Element {
 	return wrapElement(_node.Step(step))
 }
 
+// Sticky keeps the element in its parent's flow, where it takes its room,
+// and holds it inside the scroll container around it while its parent is
+// in view, as CSS's position: sticky does: Top, Right, Bottom and Left (or
+// Start and End, and their percentages of the container's size) say how far
+// in from the container's edges, inside its border, it stays. It moves no
+// further than its parent's content box, so the parent leaving the view
+// takes it along, and the next one's comes up in its place: a day's heading
+// at the top of a timeline until the next day pushes it out, or the check
+// box choosing all the rows at the left of a table scrolling sideways.
+//
+//	ui.Scroll(c).Fill().Children(func() {
+//		for _, day := range app.days {
+//			ui.Column(c).Children(func() {
+//				ui.Text(c, day.Title).Bold().Background(t.Surface).Sticky().Top(0)
+//				for _, ev := range day.Events {
+//					eventRow(c, ev)
+//				}
+//			})
+//		}
+//	})
+//
+// Each axis follows the nearest container scrolling that way, or one
+// following another sideways (ScrollWith), or else the window: a heading
+// in a table scrolling sideways in a page scrolling down sticks to the
+// page's top and to the table's start. Where both insets of an axis are
+// set and the container is too small for both, Top wins, and Left, or
+// Right right to left. Without insets, the element stays where the flow
+// puts it. It paints above its siblings, as Absolute elements do, and the
+// pointer, assistive technology and the focus ring find it where it shows;
+// the focus and assistive technology still take it in its place among
+// them. Sticky does nothing to an Absolute element, nor to one inside a
+// text.
+func (_handle Element) Sticky() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Sticky())
+}
+
 // Strikethrough strikes text through.
 func (_handle Element) Strikethrough() Element {
 	_node := _handle.node()

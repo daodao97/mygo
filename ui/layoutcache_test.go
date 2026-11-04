@@ -79,7 +79,8 @@ var lcStyles = [][]func(e *node){
 		func(e *node) { e.Balance() }},
 	{nil, func(e *node) { e.ColumnSpan(2) }, func(e *node) { e.ColumnStart(2) }, func(e *node) { e.RowStart(2).RowSpan(2) }},
 	{nil, func(e *node) { e.BorderWidth(3) }, func(e *node) { e.BorderWidth(1, 0, 6, 2) }},
-	{nil, func(e *node) { e.Top(5) }, func(e *node) { e.Left(-3) }, func(e *node) { e.End(4) }},
+	{nil, func(e *node) { e.Top(5) }, func(e *node) { e.Left(-3) }, func(e *node) { e.End(4) },
+		func(e *node) { e.Sticky().Top(5) }, func(e *node) { e.Sticky().Bottom(3).Start(2) }},
 	{nil, func(e *node) { e.Invisible() }, func(e *node) { e.Hidden(true) }},
 	{nil, func(e *node) {
 		e.Transition(ElementTransition{Position: true, Size: true, Duration: 100 * time.Millisecond})
