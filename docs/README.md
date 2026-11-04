@@ -156,6 +156,8 @@ components, from buttons to tables.
   one standard layout.
 - [Loading](plugins/loading.md): loading.dev's 29 loading indicators for
   native UI.
+- [SF Symbols](plugins/sfsymbols.md): Apple's SF Symbols for native UI on
+  macOS, drawn by the system.
 - [Automation](plugins/automation.md): drive a running app from another
   process, as end-to-end test runners and agents do: its windows,
   elements, input, menus and screenshots, and `mygo-automation`, its
