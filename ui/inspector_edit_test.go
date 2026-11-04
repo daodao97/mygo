@@ -461,3 +461,70 @@ func TestGoCallsAreElementMethods(t *testing.T) {
 		t.Errorf("a wide color is %q", got)
 	}
 }
+
+func TestInspectorForcesStates(t *testing.T) {
+	var hovered, pressed, focused, visible, within bool
+	tt, _ := inspected(func(c *context) {
+		coreColumn(c).Padding(20).Children(func() {
+			b := coreBox(c).Key("box").Size(40, 40).Focusable()
+			hovered, pressed = b.Hovered(), b.Pressed()
+			focused, visible, within = b.Focused(), b.FocusVisible(), b.FocusWithin()
+		})
+	})
+	openInspector(tt)
+	e := chooseKeyed(t, tt, "box")
+	if hovered || pressed || focused || visible || within {
+		t.Fatal("the box starts in a state")
+	}
+	if tt.HasText(":hover") {
+		t.Errorf("the bar shows before it opens: %q", tt.Texts())
+	}
+	if err := tt.Click(":hov"); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []struct {
+		name string
+		on   *bool
+	}{{":hover", &hovered}, {":active", &pressed}, {":focus", &focused}, {":focus-visible", &visible}, {":focus-within", &within}} {
+		if err := tt.Click(s.name); err != nil {
+			t.Fatalf("%v: %q", err, tt.Texts())
+		}
+		if !*s.on {
+			t.Errorf("%s does not reach the view", s.name)
+		}
+		if !tt.HasText(s.name) {
+			t.Errorf("%s does not show: %q", s.name, tt.Texts())
+		}
+	}
+	if tt.rt.focused == e.id {
+		t.Error("forcing the focus moved the real focus")
+	}
+	// Forcing goes, one at a time, and with the inspector.
+	if err := tt.Click(":hover"); err != nil {
+		t.Fatal(err)
+	}
+	if hovered {
+		t.Error(":hover stayed forced")
+	}
+	tt.rt.toggleInspector()
+	tt.Frame()
+	if pressed || focused || visible || within {
+		t.Error("the states outlast the inspector")
+	}
+}
+
+func TestInspectorForcedFocusRings(t *testing.T) {
+	tt, _ := inspected(func(c *context) {
+		coreColumn(c).Padding(20).Children(func() { coreBox(c).Key("box").Size(40, 40).Focusable() })
+	})
+	openInspector(tt)
+	e := chooseKeyed(t, tt, "box")
+	if elementOf(t, tt, e.id).ringShown() {
+		t.Fatal("the box has a ring")
+	}
+	tt.rt.insp.toggleForced(e.id, forceFocusVisible)
+	tt.Frame()
+	if !elementOf(t, tt, e.id).ringShown() {
+		t.Error(":focus-visible does not ring the box")
+	}
+}

@@ -227,6 +227,9 @@ func (p *Painter) paintInline(e *node) {
 // keyboard and MyGo rings it.
 func (e *node) ringShown() bool {
 	rt := e.c.rt
+	if e.flags&(flagFocusable|flagOwnRing) == flagFocusable && rt.insp.isForced(e.id, forceFocusVisible) {
+		return true
+	}
 	return e.flags&(flagFocusable|flagOwnRing) == flagFocusable && rt.focused == e.id && rt.focusVisible && rt.windowFocus()
 }
 

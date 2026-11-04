@@ -2890,6 +2890,9 @@ either.
   bar of changes comes above them. Closing the inspector drops the edits.
   `changesAsGo` (`inspector_gocode.go`) writes them as calls of package ui,
   whose methods a test looks up on `Element`, from what `setStyle` parsed.
+  `:hov` forces states by element (`inspector.forced`): `Hovered`, `Pressed`,
+  `Focused`, `FocusVisible`, `FocusWithin` and `ringShown` ask `isForced`,
+  which the stub of `mygo_noinspector` answers with false.
   Production builds of `mygo build` leave the inspector out with the build
   tag `mygo_noinspector` (`inspector_off.go` stands in for it, never
   open), added to the tags of `GOFLAGS`, unless `-debug` or

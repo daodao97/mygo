@@ -495,15 +495,19 @@ func properties(rt *engine, e *node) []inspSection {
 	if r := e.st.trec; r != nil && r.built == rt.frame && r.elem == e {
 		moving = r.moving != 0 || r.colorMoving
 	}
+	in := &rt.insp
 	state := inspSection{title: "State", rows: []inspDecl{
-		{name: "focused", value: yes(rt.focused == e.id)},
-		{name: "hovered", value: yes(hovered)},
-		{name: "pressed", value: yes(e.st.pressed)},
+		{name: "focused", value: yes(rt.focused == e.id || in.isForced(e.id, forceFocus|forceFocusVisible))},
+		{name: "hovered", value: yes(hovered || in.isForced(e.id, forceHover))},
+		{name: "pressed", value: yes(e.st.pressed || in.isForced(e.id, forceActive))},
 		{name: "disabled", value: yes(e.IsDisabled())},
 		{name: "moving", value: yes(moving)},
 	}}
 	if e.leaving != 0 {
 		state.rows = append(state.rows, inspDecl{name: "leaving", value: "true"})
+	}
+	if names := in.forcedNames(e.id); names != "" {
+		state.rows = append(state.rows, inspDecl{name: "forced", value: names})
 	}
 	role, seen := accessibleRole(e)
 	name := e.label

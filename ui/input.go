@@ -1283,6 +1283,15 @@ func (e *node) RightClicked() bool {
 	return true
 }
 
+// The states the inspector can force on an element, as Chrome's :hov does.
+const (
+	forceHover uint8 = 1 << iota
+	forceActive
+	forceFocus
+	forceFocusVisible
+	forceFocusWithin
+)
+
 // Hovered reports whether the pointer is over the element. While the
 // pointer presses an element, the elements it was over as the press began,
 // as those around the element pressed, stay hovered as long as it is over
@@ -1298,6 +1307,9 @@ func (e *node) Hovered() bool {
 		return false
 	}
 	rt := e.c.rt
+	if rt.insp.isForced(e.id, forceHover) {
+		return true
+	}
 	if !slices.Contains(rt.hover, e.id) {
 		return false
 	}
@@ -1337,6 +1349,9 @@ func (e *node) Pressed() bool {
 	e.flags |= flagClickable | flagHover
 	s := e.st
 	rt := e.c.rt
+	if rt.insp.isForced(e.id, forceActive) && !e.disabled() {
+		return true
+	}
 	x, y := s.pointer(rt)
 	if !s.pressedPrimary() || e.disabled() || !rt.contains(s, Rect{s.x, s.y, s.w, s.h}, x, y) {
 		return false
@@ -1378,6 +1393,9 @@ func (s *state) pressedPrimary() bool { return s.pressed && s.pressButton == 0 }
 // Focused reports whether the element has the keyboard focus: for a field
 // around an input, as SearchField's, whether its input has it.
 func (e *node) Focused() bool {
+	if e.hasState() && e.c.rt.insp.isForced(e.id, forceFocus|forceFocusVisible) {
+		return true
+	}
 	if e != nil && e.focusTo != nil {
 		return e.focusTo.Focused()
 	}
@@ -1386,7 +1404,12 @@ func (e *node) Focused() bool {
 
 // FocusVisible reports whether the element has the keyboard focus and
 // should show it, because it came from the keyboard.
-func (e *node) FocusVisible() bool { return e.Focused() && e.c.rt.focusVisible }
+func (e *node) FocusVisible() bool {
+	if e.hasState() && e.c.rt.insp.isForced(e.id, forceFocusVisible) {
+		return true
+	}
+	return e.Focused() && e.c.rt.focusVisible
+}
 
 // FocusWithin reports whether the element or one of its descendants has
 // the keyboard focus.
@@ -1396,6 +1419,9 @@ func (e *node) FocusWithin() bool {
 	}
 	rt := e.c.rt
 	rt.withinRead = true
+	if rt.insp.isForced(e.id, forceFocusWithin) {
+		return true
+	}
 	for s := rt.states[rt.focused]; s != nil; s = rt.states[s.parent] {
 		if s.id == e.id {
 			return true

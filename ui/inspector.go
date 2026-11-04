@@ -109,6 +109,10 @@ type inspector struct {
 	// sources are where the app builds the elements chosen that have
 	// edits, as changesAsGo tells.
 	sources map[uint64]string
+	// forced are the states forced on elements, by element, until the
+	// inspector closes, and statesOpen shows the Styles tab's bar of them.
+	forced     map[uint64]uint8
+	statesOpen bool
 	// Scroll offsets of the breadcrumbs, the sidebar and the issues.
 	crumbs       ScrollState
 	sideScroll   ScrollState
@@ -211,7 +215,7 @@ func (rt *engine) toggleInspector() {
 		in.nodes, in.rows, in.sel = nil, nil, inspDetails{}
 		// What the Styles tab changed goes with the panel: the window shows
 		// what the view builds again.
-		in.edits, in.editing, in.sources = nil, inspEditing{}, nil
+		in.edits, in.editing, in.sources, in.forced = nil, inspEditing{}, nil, nil
 	} else if in.keys == nil {
 		in.keys = map[uint64]any{}
 	}
@@ -245,6 +249,46 @@ func (rt *engine) inspectKey(mods Modifiers, key Key) bool {
 		return true
 	}
 	return false
+}
+
+// isForced reports whether the inspector forces one of the states on the
+// element id.
+func (in *inspector) isForced(id uint64, states uint8) bool {
+	return in.forced != nil && in.forced[id]&states != 0
+}
+
+// toggleForced forces a state on the element id, or stops forcing it.
+func (in *inspector) toggleForced(id uint64, state uint8) {
+	if in.forced == nil {
+		in.forced = map[uint64]uint8{}
+	}
+	if in.forced[id] ^= state; in.forced[id] == 0 {
+		delete(in.forced, id)
+	}
+	in.changed = true
+}
+
+// forcedNames lists the states forced on the element id, as CSS names them.
+func (in *inspector) forcedNames(id uint64) string {
+	var names []string
+	for _, s := range inspStates {
+		if in.isForced(id, s.state) {
+			names = append(names, s.name)
+		}
+	}
+	return strings.Join(names, " ")
+}
+
+// inspStates are the states the inspector can force, as CSS names them.
+var inspStates = [...]struct {
+	name  string
+	state uint8
+}{
+	{":hover", forceHover},
+	{":active", forceActive},
+	{":focus", forceFocus},
+	{":focus-visible", forceFocusVisible},
+	{":focus-within", forceFocusWithin},
 }
 
 // noteSource notes where the app builds the element chosen.

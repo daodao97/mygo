@@ -368,6 +368,10 @@ func (in *inspector) treeRow(c *context, r inspRow, n *inspNode) {
 		}
 	}
 	coreRichText(c, spans...).Font("monospace").FontSize(11.5).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+	if names := in.forcedNames(n.id); !r.close && names != "" {
+		coreText(c, names).Font("monospace").FontSize(10).TextColor(pal.accent).Padding(0, 4).Margin(0, 0, 0, 6).
+			Radius(3).Border(1, pal.accent).Shrink(0).SingleLine()
+	}
 	if !r.close && n.hasTrans {
 		coreText(c, "transition").Font("monospace").FontSize(10).TextColor(pal.muted).Padding(0, 4).Margin(0, 0, 0, 6).
 			Radius(3).Border(1, pal.border).Shrink(0)
@@ -502,6 +506,7 @@ func (in *inspector) decl(c *context, d inspDecl, name Color) {
 // those it inherits, as Chrome's Styles tab.
 func (in *inspector) stylesPane(c *context) {
 	pal := &in.pal
+	in.statesBar(c)
 	if n := in.changes(); n > 0 {
 		coreRow(c).Padding(4, 10).Gap(8).AlignItems(Center).Background(pal.toolbar).BorderWidth(0, 0, 1, 0).BorderColor(pal.border).Children(func() {
 			what := "1 change"
@@ -563,6 +568,46 @@ func (in *inspector) stylesPane(c *context) {
 			mono(c, Span{Text: "}", Color: pal.text})
 		})
 	}
+}
+
+// statesBar builds the bar that forces states on the element chosen, as
+// Chrome's :hov: the view sees them as it asks for them, whatever the
+// pointer and the focus do, to style them.
+func (in *inspector) statesBar(c *context) {
+	pal := &in.pal
+	id := in.sel.id
+	open := in.statesOpen || in.forced[id] != 0
+	coreColumn(c).Padding(3, 6).Gap(3).Background(pal.toolbar).BorderWidth(0, 0, 1, 0).BorderColor(pal.border).Children(func() {
+		toggle := in.tab0(c, ":hov", open, 20).Role(RoleToggleButton).Tooltip("Force an element's state").AlignSelf(Start)
+		if toggle.Clicked() && in.forced[id] == 0 {
+			in.statesOpen = !in.statesOpen
+		}
+		if !open {
+			return
+		}
+		coreRow(c).Wrap().GapY(2).GapX(10).PaddingX(4).Children(func() {
+			for _, s := range inspStates {
+				on := in.isForced(id, s.state)
+				item := coreRow(c).Gap(4).AlignItems(Center).Role(RoleCheckBox).Label(s.name).Cursor(CursorPointer)
+				item.checked = 1
+				if on {
+					item.checked = 2
+				}
+				item.Children(func() {
+					box := coreBox(c).Size(11, 11).Radius(2).Center().Shrink(0)
+					if on {
+						box.Background(pal.accent).Children(func() { coreIcon(c, inspIcons().check).FontSize(9).TextColor(pal.bg) })
+					} else {
+						box.Border(1, pal.muted)
+					}
+					coreText(c, s.name).Font("monospace").FontSize(11).SingleLine()
+				})
+				if item.Clicked() {
+					in.toggleForced(id, s.state)
+				}
+			}
+		})
+	})
 }
 
 // styleDecl builds declaration d of the rule of element id, at index in

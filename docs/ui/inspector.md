@@ -102,6 +102,17 @@ with where it is built when you chose it, and what to remove:
 .Padding(26).Background(ui.Hex("#fde68a"))
 ```
 
+## Forcing states
+
+`:hov` at the top of the Styles tab forces states on the element chosen, to
+style a hover or a press without holding the pointer there: `:hover`,
+`:active`, `:focus`, `:focus-visible` and `:focus-within`. The element's
+`Hovered`, `Pressed`, `Focused`, `FocusVisible` and `FocusWithin` then report
+them, and the tree shows them beside the element. They only reach the element
+the view asks: if a row asks whether it is hovered to color a text inside, force
+the state on the row, not the text. The real focus and pointer stay where they
+are, and the forced states go when the inspector closes.
+
 ## Performance and issues
 
 **Performance** shows how long the last frames took to build, lay out and
