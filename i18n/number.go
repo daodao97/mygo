@@ -39,6 +39,23 @@ type NumberOptions struct {
 	// "compact": "1.2K" and "1.2 thousand" in English, "1,2 k" and "1,2
 	// millier" in French, "1.2万" in Japanese. nil writes it whole.
 	Notation *Notation
+	// Currency, when set, writes the number as an amount of money in it,
+	// as Intl.NumberFormat's style "currency" with currency does: in the
+	// locale's pattern of amounts, which places the currency and spaces
+	// it, with the currency's fraction digits (two for USD, none for
+	// JPY, three for BHD) unless MinFractionDigits, MaxFractionDigits or
+	// Integer say otherwise. CurrencyOf("USD") writes 1842 as "$1,842.00"
+	// in English, CurrencyOf("EUR") as "1.842,00 €" in German. Percent is
+	// ignored then. With a Notation, amounts are compact as Intl writes
+	// them: "$4.2M".
+	Currency Currency
+	// CurrencyDisplay is how an amount names its currency: CurrencySymbol
+	// (nil is it), CurrencyNarrowSymbol, CurrencyCode or CurrencyName.
+	CurrencyDisplay *CurrencyDisplay
+	// Accounting writes negative amounts in the locale's accounting
+	// pattern, as currencySign "accounting" does: "($1,842.00)" in
+	// English, where the standard one writes "-$1,842.00".
+	Accounting bool
 }
 
 // FormatNumber writes a number in the way of locale: its decimal and
@@ -66,6 +83,7 @@ type NumberFormatter struct {
 	pat      *numberPattern
 	o        NumberOptions
 	min, max int
+	cur      *currencyFormat // of amounts, nil for numbers
 }
 
 type numberFormatterKey struct {
@@ -106,6 +124,12 @@ func NewNumberFormatter(locale string, o NumberOptions) *NumberFormatter {
 	if f.max < f.min {
 		f.max = f.min
 	}
+	if o.Currency.link != nil {
+		o.Currency.link.init(f, o.Currency.code)
+	}
+	if o.Notation != nil && o.Notation.init != nil {
+		o.Notation.init(f)
+	}
 	numberFormatters.mu.Lock()
 	if numberFormatters.m == nil || len(numberFormatters.m) > 512 {
 		numberFormatters.m = map[numberFormatterKey]*NumberFormatter{}
@@ -136,14 +160,18 @@ func (f *NumberFormatter) Format(n any) string {
 
 // special writes NaN and the infinities.
 func (f *NumberFormatter) special(v float64) (string, bool) {
+	p := f.pat
+	if f.cur != nil {
+		p = &f.cur.bare // an amount's sign is spaced from digits only
+	}
 	switch {
 	case math.IsNaN(v):
 		// In the pattern's affixes, as ICU writes it: "NaN%", "%NaN".
-		return f.pat.prefix + f.sys.nan + f.pat.suffix, true
+		return p.prefix + f.sys.nan + p.suffix, true
 	case math.IsInf(v, 1):
-		return f.pat.prefix + f.sys.infinity + f.pat.suffix, true
+		return p.prefix + f.sys.infinity + p.suffix, true
 	case math.IsInf(v, -1):
-		return f.pat.negPrefix + f.sys.infinity + f.pat.negSuffix, true
+		return p.negPrefix + f.sys.infinity + p.negSuffix, true
 	}
 	return "", false
 }
@@ -161,6 +189,10 @@ func (f *NumberFormatter) formatDecimal(decimal string) string {
 	var b strings.Builder
 	b.Grow(len(intPart) + len(frac) + 16)
 	p := f.pat
+	if f.cur != nil && f.cur.forms != nil {
+		// The name of the currency of the plural form of the amount.
+		p = &f.cur.forms[f.cur.plural(f, intPart, frac, 0)]
+	}
 	if neg {
 		b.WriteString(p.negPrefix)
 	} else {

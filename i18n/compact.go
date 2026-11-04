@@ -12,6 +12,7 @@ import (
 type Notation struct {
 	long   bool
 	format func(f *NumberFormatter, n *Notation, neg bool, intPart, frac string) string
+	init   func(f *NumberFormatter) // of a NumberFormatter of it
 }
 
 var (
@@ -19,10 +20,10 @@ var (
 	// "compact" does with compactDisplay "short": "1.2K", "12K", "3.4M"
 	// in English, "1,2 k" in French, "1.2万" in Japanese, as a chart's axis
 	// labels them.
-	CompactShort = &Notation{format: formatCompact}
+	CompactShort = &Notation{format: formatCompact, init: initCompact}
 	// CompactLong writes them with compactDisplay "long": "1.2 thousand",
 	// "3.4 million" in English, "1,2 millier" in French.
-	CompactLong = &Notation{long: true, format: formatCompact}
+	CompactLong = &Notation{long: true, format: formatCompact, init: initCompact}
 )
 
 // The patterns of compact numbers, which i18n/internal/gen writes to
@@ -106,7 +107,6 @@ func loadCompactLocale(d *localeData) *compactLocale {
 	var v [compactSlotCount]string
 	var set [compactSlotCount]bool
 	fillSlots(d.index, &compactTables.pool, fmtCompactStarts[:], v[:], set[:])
-	keys := strings.Fields(fmtCompactKeys)
 	c := new(compactLocale)
 	for s := range c {
 		sys := d.numbers(s == 1)
@@ -114,36 +114,110 @@ func loadCompactLocale(d *localeData) *compactLocale {
 			cs := &c[s][st]
 			cs.sys = *sys
 			cs.sys.minGrouping = max(sys.minGrouping, 2)
-			cs.largest = -1
-			for m := range cs.mags {
-				cm := &cs.mags[m]
-				slot := v[(s*2+st)*compactMagnitudes+m]
-				if slot == "" {
-					continue
-				}
-				cs.largest = m
-				parts := strings.Split(slot, "\x00")
-				var raw [len(cm.forms)]string
-				for i := 0; i+1 < len(parts); i += 2 {
-					for j, key := range keys {
-						if key == parts[i] {
-							raw[j] = parts[i+1]
-							cm.forms[j] = parseCompactForm(parts[i+1], sys)
-						}
-					}
-				}
-				// The power of ten of the magnitude's patterns: that of
-				// the first with zeros.
-				for _, p := range raw {
-					if zeros := compactZeros(p); zeros > 0 {
-						cm.exp = compactMinMagnitude + m - (zeros - 1)
-						break
-					}
-				}
-			}
+			cs.parse(v[(s*2+st)*compactMagnitudes:(s*2+st+1)*compactMagnitudes], sys)
 		}
 	}
 	return c
+}
+
+// parse reads the patterns of a style, slots by magnitude from 10^3, in
+// the symbols of sys.
+func (cs *compactStyle) parse(slots []string, sys *numberSystem) {
+	keys := strings.Fields(fmtCompactKeys)
+	cs.largest = -1
+	for m := range cs.mags {
+		cm := &cs.mags[m]
+		slot := slots[m]
+		if slot == "" {
+			continue
+		}
+		cs.largest = m
+		parts := strings.Split(slot, "\x00")
+		var raw [len(cm.forms)]string
+		for i := 0; i+1 < len(parts); i += 2 {
+			for j, key := range keys {
+				if key == parts[i] {
+					raw[j] = parts[i+1]
+					cm.forms[j] = parseCompactForm(parts[i+1], sys)
+				}
+			}
+		}
+		// The power of ten of the magnitude's patterns: that of the
+		// first with zeros.
+		for _, p := range raw {
+			if zeros := compactZeros(p); zeros > 0 {
+				cm.exp = compactMinMagnitude + m - (zeros - 1)
+				break
+			}
+		}
+	}
+}
+
+// The patterns of compact amounts of money, which i18n/internal/gen
+// writes to fmtPackedCurrencyCompact as compact numbers' (of short ones
+// only, as CLDR has no others): ICU writes long compact amounts in them
+// too, unless they name their currency.
+var currencyCompactTables struct {
+	once sync.Once
+	pool pool
+}
+
+// compactAmounts makes the patterns of compact amounts of a formatter.
+// Its method is linked only into an app that formats both amounts and
+// compact numbers: one converts currencyCompact to it, the other calls
+// it.
+type compactAmounts interface {
+	compactStyle(f *NumberFormatter) *compactStyle
+}
+
+// initCompact readies a formatter of amounts for compact notation: its
+// separators grouped as compact numbers are, and its patterns of compact
+// amounts.
+func initCompact(f *NumberFormatter) {
+	cf := f.cur
+	if cf == nil {
+		return
+	}
+	cf.compactSys = cf.sys
+	cf.compactSys.minGrouping = max(cf.sys.minGrouping, 2)
+	if c, ok := cf.compacter.(compactAmounts); ok && cf.units == nil {
+		cf.compact = c.compactStyle(f) // names of currencies follow compact numbers
+	}
+}
+
+// currencyCompact is the compactAmounts of formatters of amounts.
+type currencyCompact struct{}
+
+// compactStyle returns the patterns of compact amounts of f: its
+// currency's sign in the locale's, those of latn where its numbering
+// system has none, as ICU writes them.
+func (currencyCompact) compactStyle(f *NumberFormatter) *compactStyle {
+	cf := f.cur
+	currencyCompactTables.once.Do(func() {
+		t := unpack(fmtPackedCurrencyCompact, packedCurrencyCompactEntriesLen, packedCurrencyCompactLensLen, packedCurrencyCompactPoolLen)
+		currencyCompactTables.pool = newPool(t[0], t[1], t[2], fmtCurrencyCompactStringCount)
+	})
+	d := f.key.dat()
+	var v [2 * compactMagnitudes]string
+	var set [len(v)]bool
+	fillSlots(d.index, &currencyCompactTables.pool, fmtCurrencyCompactStarts[:], v[:], set[:])
+	slots := v[:compactMagnitudes]
+	if cf.base != d.numbers(false) || strings.Join(slots, "") == "" {
+		slots = v[compactMagnitudes:]
+	}
+	cs := &compactStyle{sys: cf.compactSys}
+	cs.parse(slots, &cf.sys)
+	for m := range cs.mags {
+		for i := range cs.mags[m].forms {
+			form := &cs.mags[m].forms[i]
+			if form.ok && !form.whole {
+				spaced := form.number
+				form.prefix, form.suffix = cf.place(form.prefix, true, spaced), cf.place(form.suffix, false, spaced)
+				form.negPrefix, form.negSuffix = cf.place(form.negPrefix, true, spaced), cf.place(form.negSuffix, false, spaced)
+			}
+		}
+	}
+	return cs
 }
 
 // compactZeros returns the number of zeros of a compact pattern, 0 for
@@ -209,7 +283,26 @@ func compactAffixes(sub string, sys *numberSystem) (prefix, suffix string, numbe
 // patterns, rounded, and in the pattern of the plural form of what it
 // writes.
 func formatCompact(f *NumberFormatter, n *Notation, neg bool, intPart, frac string) string {
-	cs := compactStyleOf(f.key, f.sys, n.long)
+	var cs *compactStyle
+	sys, base, grouping := f.sys, f.pat, (*numberPattern)(nil)
+	if f.cur != nil {
+		cs, _ = f.cur.compact.(*compactStyle)
+		sys = f.cur.base
+		base, grouping = &f.cur.pat, &f.cur.pat
+		if f.cur.units != nil {
+			base = &f.cur.inner
+		}
+	}
+	if cs == nil {
+		cs = compactStyleOf(f.key, sys, n.long)
+	}
+	digits := &cs.sys
+	if f.cur != nil {
+		digits = &f.cur.compactSys
+	}
+	if grouping == nil {
+		grouping = &digits.decimal
+	}
 	mag, zero := decimalMagnitude(intPart, frac)
 	exp := 0
 	if zero {
@@ -230,7 +323,8 @@ func formatCompact(f *NumberFormatter, n *Notation, neg bool, intPart, frac stri
 	mag, zero = decimalMagnitude(intPart, frac)
 	form := cs.form(f.key, mag+exp, zero, neg, intPart, frac)
 	// The affixes: those of the form, with the sign, else of the decimal
-	// pattern; a percent's around them.
+	// pattern (or that of amounts); a percent's around them, or the name
+	// of a currency, in the plural form of the number with its exponent.
 	var outerPrefix, outerSuffix, prefix, suffix string
 	switch {
 	case form != nil && neg:
@@ -240,21 +334,25 @@ func formatCompact(f *NumberFormatter, n *Notation, neg bool, intPart, frac stri
 	case f.o.Percent && neg:
 		prefix = f.sys.minus
 	case neg:
-		prefix, suffix = f.pat.negPrefix, f.pat.negSuffix
+		prefix, suffix = base.negPrefix, base.negSuffix
 	case !f.o.Percent:
-		prefix, suffix = f.pat.prefix, f.pat.suffix
+		prefix, suffix = base.prefix, base.suffix
 	}
 	if f.o.Percent {
 		outerPrefix, outerSuffix = f.pat.prefix, f.pat.suffix
+	}
+	if f.cur != nil && f.cur.units != nil {
+		u := &f.cur.units[f.cur.plural(f, intPart, frac, exp)]
+		outerPrefix, outerSuffix = u[0], u[1]
 	}
 	var b strings.Builder
 	b.WriteString(outerPrefix)
 	b.WriteString(prefix)
 	if form == nil || form.number {
-		cs.sys.writeInteger(&b, intPart, &cs.sys.decimal, !f.o.NoGrouping, f.o.MinIntegerDigits)
+		digits.writeInteger(&b, intPart, grouping, !f.o.NoGrouping, f.o.MinIntegerDigits)
 		if frac != "" {
-			b.WriteString(cs.sys.decimalSep)
-			cs.sys.writeDigits(&b, frac)
+			b.WriteString(digits.decimalSep)
+			digits.writeDigits(&b, frac)
 		}
 	}
 	b.WriteString(suffix)

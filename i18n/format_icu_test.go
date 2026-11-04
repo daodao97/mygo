@@ -32,6 +32,10 @@ func knownDifference(locale string, c icuCase) string {
 		return "ICU 78 writes polytonic Greek as Greek: it has no data of el-polyton"
 	case locale == "sr-Cyrl-ME" && c.Options["timeStyle"] == "full" && c.Zone == "":
 		return "ICU 78's sr-Cyrl-ME names UTC in the Latin script; CLDR's names it in Cyrillic"
+	case locale == "sr-Cyrl-ME" && c.Options["currencyDisplay"] == "name":
+		return "ICU 78's sr-Cyrl-ME names currencies in the Latin script; CLDR's names them in Cyrillic"
+	case locale == "my" && c.Options["currencyDisplay"] == "name":
+		return "ICU 78's Burmese writes the name of a currency after the amount, as the root's unit pattern does; CLDR's puts it before (\"{1} {0}\")"
 	case locale == "fr-ML" && c.Options["dateStyle"] == "short" && c.Options["timeStyle"] != nil,
 		locale == "fr-ML" && c.Kind == "range" && c.Options["dateStyle"] == nil && c.Time[:10] != c.End[:10] && c.Options["year"] == nil && (c.Options["hour"] != nil || c.Options["timeStyle"] != nil):
 		return "CLDR 48.2 puts fr-ML's short dates and times together with a comma, as ranges of times of different days write them; ICU 78 has CLDR 48.0"
@@ -100,6 +104,18 @@ func numberOptions(o map[string]any) NumberOptions {
 	}
 	if o["useGrouping"] == false {
 		n.NoGrouping = true
+	}
+	if o["style"] == "currency" {
+		n.Currency = CurrencyOf(o["currency"].(string))
+		switch o["currencyDisplay"] {
+		case "narrowSymbol":
+			n.CurrencyDisplay = CurrencyNarrowSymbol
+		case "code":
+			n.CurrencyDisplay = CurrencyCode
+		case "name":
+			n.CurrencyDisplay = CurrencyName
+		}
+		n.Accounting = o["currencySign"] == "accounting"
 	}
 	if o["notation"] == "compact" {
 		n.Notation = CompactShort

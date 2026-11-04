@@ -17,7 +17,8 @@
 // release (CLDRVersion) by `go generate`.
 //
 // FormatNumber and FormatDate write numbers, compact ones too ("1.2K"),
-// dates and times in the way of a locale, and FormatDateRange ranges of
+// amounts of money ("$1,842.00", "1.842,00 €"), dates and times in the
+// way of a locale, and FormatDateRange ranges of
 // them ("Jan 5 – 9, 2026"), by CLDR's data of the locales of its modern
 // coverage, as ICU and Intl write them; Months, Weekdays and DayPeriods
 // give their names, FirstWeekday and HourCycle a region's week and clock,
