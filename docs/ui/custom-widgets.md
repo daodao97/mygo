@@ -73,6 +73,23 @@ that clips what goes past it, and `FocusRingColor` colors it.
 `FocusRing(false)` turns the ring off for a widget that draws its own,
 with `Painter.FocusRing` while `FocusVisible`.
 
+A disabled element shows at half its opacity, with what is inside it,
+bases too. `DimDisabled(false)` leaves that to you, for a widget that
+shows being disabled in a look of its own: a card that stays readable
+with the reason it is unavailable, or a select's options grayed your way.
+Style it while `IsDisabled`:
+
+```go
+card := ui.RadioBase(c, &app.plan, p.ID).Disabled(!p.Available).DimDisabled(false)
+card.Column().Gap(4).Padding(12).Radius(8).Border(1, t.Border).Children(func() {
+	name := ui.Text(c, p.Name)
+	if card.IsDisabled() {
+		name.TextColor(t.TextMuted)
+		ui.Text(c, p.DisabledReason).FontSize(12)
+	}
+})
+```
+
 ## Widgets of your own
 
 For text controls with their own buffer or selection model, use

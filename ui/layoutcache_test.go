@@ -55,7 +55,8 @@ var lcStyles = [][]func(e *node){
 	{nil, func(e *node) { e.Width(50) }, func(e *node) { e.Width(130) }, func(e *node) { e.WidthPercent(40) }, func(e *node) { e.FillWidth() }},
 	{nil, func(e *node) { e.Height(30) }, func(e *node) { e.Height(90) }, func(e *node) { e.HeightPercent(50) }, func(e *node) { e.FillHeight() }},
 	{nil, func(e *node) { e.MinWidth(60) }, func(e *node) { e.MaxWidth(80) }, func(e *node) { e.MinHeight(20) },
-		func(e *node) { e.MaxHeight(40) }, func(e *node) { e.MaxWidthPercent(50) }, func(e *node) { e.MinHeightPercent(30) }},
+		func(e *node) { e.MaxHeight(40) }, func(e *node) { e.MaxWidthPercent(50) }, func(e *node) { e.MinHeightPercent(30) },
+		func(e *node) { e.MaxWidthPercent(60).MaxWidth(90) }, func(e *node) { e.MinWidth(30).MinWidthPercent(40) }},
 	{nil, func(e *node) { e.Grow(1) }, func(e *node) { e.Grow(2) }},
 	{nil, func(e *node) { e.Shrink(0) }, func(e *node) { e.Shrink(3) }},
 	{nil, func(e *node) { e.Basis(40) }, func(e *node) { e.BasisPercent(30) }},
@@ -452,7 +453,7 @@ func TestLayoutInputs(t *testing.T) {
 	// Fields the layout never reads.
 	other := "epoch key valueInput id depth track transform translatePct originX originY originSet world content contentSet " +
 		"pose poseAnim poseSet poseM poseFade reposed ink noCull backface bg fill grad stripes borderC borderStyle radius " +
-		"shadows material effect effecting cache grads blur opacity opacitySet cursor paintFn objectFn styleFn paintAfterFn " +
+		"shadows material effect effecting cache grads blur opacity opacitySet undimmed cursor paintFn objectFn styleFn paintAfterFn " +
 		"inputFn textClient caret takesText noIME copyData webView maximizeButton fit gray dismissed rotate label widget role " +
 		"checked expanded busy current vertical tip highlighted keepOpen accValue accRange hasRange accFill accStep barInset scrollBase hideScrollbars keepScrollbars barsFrom " +
 		"listRow rowIndex rowsOf focusGroup groupSelects segment activeDescendant nameFrom nameJoin focusTo " +

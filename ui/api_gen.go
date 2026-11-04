@@ -4114,6 +4114,22 @@ func (_handle Element) Description(s string) Element {
 	return wrapElement(_node.Description(s))
 }
 
+// DimDisabled sets whether the element shows at half its opacity, with
+// what is inside it, while Disabled disables it, as it does by default,
+// bases too; an element disabled by one around it dims with that one. A
+// widget of your own that shows being disabled in a look of its own, as
+// a card that keeps the reason it is unavailable readable, turns it off
+// and styles itself while IsDisabled.
+func (_handle Element) DimDisabled(dim bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.DimDisabled(dim))
+}
+
 // Direction lays the element and what is inside it out in d, whatever the
 // direction around it: Direction(ui.LeftToRight) keeps a code sample, a
 // phone number or a media player's controls left to right in a
@@ -4136,7 +4152,8 @@ func (_handle Element) Direction(d Direction) Element {
 }
 
 // Disabled disables the element and those inside it when d is true: they
-// report no clicks, take no focus, and widgets look disabled.
+// report no clicks, take no focus, and show at half their opacity, unless
+// DimDisabled turns that off.
 func (_handle Element) Disabled(d bool) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -5572,7 +5589,11 @@ func (_handle Element) MinWidth(v float32) Element {
 }
 
 // MinWidthPercent, MinHeightPercent, MaxWidthPercent and MaxHeightPercent
-// bound the size by a percentage of the parent's.
+// bound the size by a percentage of the parent's. With a bound in DIPs
+// too, both apply: the larger minimum and the smaller maximum, as CSS's
+// max-width: min(78%, 34rem) for a chat bubble:
+//
+//	ui.Box(c).MaxWidthPercent(78).MaxWidth(544)
 func (_handle Element) MinWidthPercent(p float32) Element {
 	_node := _handle.node()
 	if _node == nil {

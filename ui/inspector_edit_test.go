@@ -402,6 +402,8 @@ func TestGoCallsAreElementMethods(t *testing.T) {
 		{"min-height", "1%", ".MinHeightPercent(1)"},
 		{"max-width", "1", ".MaxWidth(1)"},
 		{"max-height", "1%", ".MaxHeightPercent(1)"},
+		{"max-width", "min(78%, 544px)", ".MaxWidthPercent(78).MaxWidth(544)"},
+		{"min-width", "max(20px, 10%)", ".MinWidthPercent(10).MinWidth(20)"},
 		{"flex-basis", "1%", ".BasisPercent(1)"},
 		{"top", "1", ".Top(1)"},
 		{"right", "1", ".Right(1)"},
@@ -526,5 +528,32 @@ func TestInspectorForcedFocusRings(t *testing.T) {
 	tt.Frame()
 	if !elementOf(t, tt, e.id).ringShown() {
 		t.Error(":focus-visible does not ring the box")
+	}
+}
+
+// The inspector writes a bound in DIPs and by percentage as CSS's min()
+// or max() of the two, and reads it back.
+func TestCSSBoundRoundTrip(t *testing.T) {
+	var both, pct bound
+	both.setPct(78)
+	both.setPx(544)
+	pct.setPct(50)
+	for _, tc := range []struct {
+		b     bound
+		upper bool
+		css   string
+	}{{both, true, "min(78%, 544px)"}, {both, false, "max(78%, 544px)"}, {pct, true, "50%"}} {
+		css := cssBound(tc.b, tc.upper)
+		if css != tc.css {
+			t.Errorf("%+v is %q, want %q", tc.b, css, tc.css)
+		}
+		if b, ok := parseCSSBound(css, tc.upper); !ok || b != tc.b {
+			t.Errorf("%q reads back as %+v, %v", css, b, ok)
+		}
+	}
+	for _, s := range []string{"min(1px, 2px)", "max(78%, 544px)", "min(auto, 5px)", "min(5px)"} {
+		if _, ok := parseCSSBound(s, true); ok {
+			t.Errorf("max-width: %s was understood", s)
+		}
 	}
 }

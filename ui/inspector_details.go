@@ -199,9 +199,18 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 	for _, l := range []struct {
 		name string
 		v    length
-	}{{"width", e.width}, {"height", e.height}, {"min-width", e.minW}, {"min-height", e.minH}, {"max-width", e.maxW}, {"max-height", e.maxH}} {
+	}{{"width", e.width}, {"height", e.height}} {
 		if l.v.u != unitAuto {
 			add(l.name, cssLength(l.v))
+		}
+	}
+	for _, b := range []struct {
+		name  string
+		v     bound
+		upper bool
+	}{{"min-width", e.minW, false}, {"min-height", e.minH, false}, {"max-width", e.maxW, true}, {"max-height", e.maxH, true}} {
+		if b.v.set != 0 {
+			add(b.name, cssBound(b.v, b.upper))
 		}
 	}
 	if e.aspect > 0 {
@@ -564,6 +573,21 @@ func cssLength(l length) string {
 		return num(l.v) + "%"
 	}
 	return "auto"
+}
+
+// cssBound returns a minimum or a maximum size as CSS writes it: one of
+// both sizes in max() for a minimum, and in min() for a maximum.
+func cssBound(b bound, upper bool) string {
+	px, pct := pxText(b.px), num(b.pct)+"%"
+	switch {
+	case b.set == boundPx:
+		return px
+	case b.set == boundPct:
+		return pct
+	case upper:
+		return "min(" + pct + ", " + px + ")"
+	}
+	return "max(" + pct + ", " + px + ")"
 }
 
 // edgesCSS returns the four sides top, right, bottom and left as CSS

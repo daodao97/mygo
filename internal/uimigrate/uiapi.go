@@ -178,6 +178,7 @@ var elementChains = map[string]bool{
 	"DecorationColor":      true,
 	"DecorationThickness":  true,
 	"Description":          true,
+	"DimDisabled":          true,
 	"Direction":            true,
 	"Disabled":             true,
 	"Dividers":             true,

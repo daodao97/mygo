@@ -280,12 +280,19 @@ func styleKnown(name string) bool {
 func setStyle(e *node, name, value string) bool {
 	value = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(value), ";"))
 	lower := strings.ToLower(value)
-	lengths := map[string]*length{"width": &e.width, "height": &e.height, "min-width": &e.minW, "min-height": &e.minH,
-		"max-width": &e.maxW, "max-height": &e.maxH, "flex-basis": &e.basis}
+	lengths := map[string]*length{"width": &e.width, "height": &e.height, "flex-basis": &e.basis}
 	if l, ok := lengths[name]; ok {
 		v, ok := parseCSSLength(lower)
 		if ok {
 			*l = v
+		}
+		return ok
+	}
+	bounds := map[string]*bound{"min-width": &e.minW, "min-height": &e.minH, "max-width": &e.maxW, "max-height": &e.maxH}
+	if b, ok := bounds[name]; ok {
+		v, ok := parseCSSBound(lower, strings.HasPrefix(name, "max-"))
+		if ok {
+			*b = v
 		}
 		return ok
 	}
@@ -603,13 +610,13 @@ func unsetStyle(e *node, name string) {
 	case "height":
 		e.height = length{}
 	case "min-width":
-		e.minW = length{}
+		e.minW = bound{}
 	case "min-height":
-		e.minH = length{}
+		e.minH = bound{}
 	case "max-width":
-		e.maxW = length{}
+		e.maxW = bound{}
 	case "max-height":
-		e.maxH = length{}
+		e.maxH = bound{}
 	case "aspect-ratio":
 		e.aspect = 0
 	case "flex-grow":
@@ -756,6 +763,47 @@ func parseCSSLength(s string) (length, bool) {
 	}
 	v, ok := parseCSSNumber(s)
 	return px(v), ok
+}
+
+// parseCSSBound parses a minimum or a maximum size: a length, auto, none
+// for a maximum, or a percentage and DIPs in max() for a minimum and in
+// min() for a maximum, as cssBound writes them.
+func parseCSSBound(s string, upper bool) (bound, bool) {
+	var b bound
+	add := func(l length) {
+		switch l.u {
+		case unitPx:
+			b.setPx(l.v)
+		case unitPercent:
+			b.setPct(l.v)
+		}
+	}
+	fn := "max("
+	if upper {
+		fn = "min("
+	}
+	if args, ok := strings.CutPrefix(s, fn); ok {
+		args, ok = strings.CutSuffix(args, ")")
+		x, y, two := strings.Cut(args, ",")
+		if !ok || !two {
+			return bound{}, false
+		}
+		lx, okx := parseCSSLength(strings.TrimSpace(x))
+		ly, oky := parseCSSLength(strings.TrimSpace(y))
+		if !okx || !oky || lx.u == unitAuto || ly.u == unitAuto || lx.u == ly.u {
+			// An element holds one percentage and one size in DIPs.
+			return bound{}, false
+		}
+		add(lx)
+		add(ly)
+		return b, true
+	}
+	if upper && s == "none" {
+		return b, true
+	}
+	l, ok := parseCSSLength(s)
+	add(l)
+	return b, ok
 }
 
 // parseCSSEdges parses one to four sides, as CSS writes them.

@@ -67,6 +67,42 @@ func TestBasesHaveNoLook(t *testing.T) {
 	}
 }
 
+// TestDimDisabled: a disabled element shows at half its opacity, bases
+// and the themed widgets alike, unless DimDisabled(false) leaves its look
+// to the view, as a card that keeps the reason it is unavailable.
+func TestDimDisabled(t *testing.T) {
+	plan := "pro"
+	var para *node
+	img := coreRender(func(c *context) {
+		th := *c.Theme()
+		th.Background = RGB(255, 255, 255)
+		c.SetTheme(&th)
+		coreColumn(c).Fill().AlignItems(Start).Children(func() {
+			coreRadioBase(c, &plan, "team").Size(20, 20).Background(RGB(0, 0, 0)).Disabled(true)
+			coreRadioBase(c, &plan, "team").Size(20, 20).Background(RGB(0, 0, 0)).Disabled(true).DimDisabled(false)
+			coreBox(c).Disabled(true).DimDisabled(false).DimDisabled(true).Children(func() {
+				coreBox(c).Size(20, 20).Background(RGB(0, 0, 0))
+			})
+			para = coreRichText(c).Children(func() {
+				coreText(c, "dim").TextColor(RGB(0, 0, 0)).Disabled(true)
+				coreText(c, "kept").TextColor(RGB(0, 0, 0)).Disabled(true).DimDisabled(false)
+			})
+		})
+	}, 100, 100, 1)
+	for _, tc := range []struct {
+		y, want int
+	}{{10, 128}, {30, 0}, {50, 128}} {
+		if got := int(img.RGBAAt(10, tc.y).R); got < tc.want-2 || got > tc.want+2 {
+			t.Errorf("at y %d: %d, want %d", tc.y, got, tc.want)
+		}
+	}
+	for _, s := range para.inlineSpans() {
+		if dim := s.Color.A < 255; dim != (s.Text == "dim") {
+			t.Errorf("the span %q has alpha %d", s.Text, s.Color.A)
+		}
+	}
+}
+
 func TestToggleBases(t *testing.T) {
 	var check, on bool
 	radio := "a"

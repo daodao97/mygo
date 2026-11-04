@@ -38,10 +38,10 @@ func (e *node) scrolls() bool { return e.flags&(flagScrollX|flagScrollY) != 0 }
 
 // clampW and clampH apply the min and max sizes.
 func (e *node) clampW(w, cbW float32) float32 {
-	if v, ok := e.maxW.resolve(base(cbW)); ok {
+	if v, ok := e.maxW.upper(base(cbW)); ok {
 		w = min(w, v)
 	}
-	if v, ok := e.minW.resolve(base(cbW)); ok {
+	if v, ok := e.minW.lower(base(cbW)); ok {
 		w = max(w, v)
 	}
 	// No narrower than its padding and border, as in CSS.
@@ -49,10 +49,10 @@ func (e *node) clampW(w, cbW float32) float32 {
 }
 
 func (e *node) clampH(h, cbH float32) float32 {
-	if v, ok := e.maxH.resolve(base(cbH)); ok {
+	if v, ok := e.maxH.upper(base(cbH)); ok {
 		h = min(h, v)
 	}
-	if v, ok := e.minH.resolve(base(cbH)); ok {
+	if v, ok := e.minH.lower(base(cbH)); ok {
 		h = max(h, v)
 	}
 	return max(h, e.padY())
@@ -429,7 +429,7 @@ func measureIntrinsic(e *node, maxContent bool) float32 {
 // min-content width unless it scrolls or clips sideways, no wider than
 // its width.
 func autoMinWidth(c *node) float32 {
-	if v, ok := c.minW.resolve(-1); ok {
+	if v, ok := c.minW.lower(-1); ok {
 		return max(v, c.padX())
 	}
 	if c.scrolls() || c.flags&flagClipX != 0 {
@@ -709,10 +709,10 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		// element asked for itself still wins over the maximum.
 		it.minMain, it.maxMain = 0, inf
 		if row {
-			if v, ok := c.maxW.resolve(base(cw)); ok {
+			if v, ok := c.maxW.upper(base(cw)); ok {
 				it.maxMain = v
 			}
-			if v, ok := c.minW.resolve(base(cw)); ok {
+			if v, ok := c.minW.lower(base(cw)); ok {
 				it.minMain = v
 			} else if !c.scrolls() && c.flags&flagClipX == 0 {
 				it.minMain = min(intrinsic(c, false), it.maxMain)
@@ -721,10 +721,10 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 				}
 			}
 		} else {
-			if v, ok := c.maxH.resolve(base(ch)); ok {
+			if v, ok := c.maxH.upper(base(ch)); ok {
 				it.maxMain = v
 			}
-			if v, ok := c.minH.resolve(base(ch)); ok {
+			if v, ok := c.minH.lower(base(ch)); ok {
 				it.minMain = v
 			} else if !c.scrolls() && c.flags&flagClipY == 0 && c.grow == 0 {
 				it.minMain = min(heightAt(c, crossOf(c, cw, align, e.wrap), inf), it.maxMain)

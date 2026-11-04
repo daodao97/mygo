@@ -59,6 +59,55 @@ func isAuto(v float32) bool { return math.IsInf(float64(v), 1) }
 func px(v float32) length      { return length{v, unitPx} }
 func percent(v float32) length { return length{v, unitPercent} }
 
+// bound is a minimum or a maximum size, in DIPs, by a percentage of the
+// parent's, or by both, as CSS's max-width: min(78%, 34rem): the larger
+// of two minimums applies, and the smaller of two maximums.
+type bound struct {
+	px, pct float32
+	set     uint8 // boundPx, boundPct
+}
+
+const (
+	boundPx uint8 = 1 << iota
+	boundPct
+)
+
+func (b *bound) setPx(v float32)  { b.px, b.set = v, b.set|boundPx }
+func (b *bound) setPct(p float32) { b.pct, b.set = p, b.set|boundPct }
+
+// lower and upper return a minimum and a maximum in DIPs against base,
+// and false when none applies: a percentage applies only against a known
+// base, not -1. Most elements have none, which they find inline.
+func (b bound) lower(base float32) (float32, bool) {
+	if b.set == 0 {
+		return 0, false
+	}
+	return b.resolve(base, true)
+}
+
+func (b bound) upper(base float32) (float32, bool) {
+	if b.set == 0 {
+		return 0, false
+	}
+	return b.resolve(base, false)
+}
+
+func (b bound) resolve(base float32, larger bool) (float32, bool) {
+	v, ok := b.px, b.set&boundPx != 0
+	if b.set&boundPct != 0 && base >= 0 {
+		p := b.pct / 100 * base
+		switch {
+		case !ok:
+			v, ok = p, true
+		case larger:
+			v = max(v, p)
+		default:
+			v = min(v, p)
+		}
+	}
+	return v, ok
+}
+
 // resolve returns the length in DIPs against base, and false for auto or a
 // percentage of an unknown base.
 func (l length) resolve(base float32) (float32, bool) {
@@ -230,7 +279,7 @@ type layoutStyle struct {
 	border                 [4]float32 // top, right, bottom, left
 	margin                 [4]float32 // Auto for auto margins
 	width, height          length
-	minW, minH, maxW, maxH length
+	minW, minH, maxW, maxH bound
 	grow, shrink           float32
 	basis                  length
 	inset                  [4]length
@@ -349,6 +398,7 @@ type node struct {
 	blur       float32
 	opacity    float32
 	opacitySet bool
+	undimmed   bool // kept at its opacity while disabled (DimDisabled)
 	cursor     Cursor
 	paintFn    func(p *Painter, r Rect)
 	// objectFn draws the inline objects of a text (DrawObjects).
@@ -897,17 +947,21 @@ func (e *node) FillHeight() *node { e.height = percent(100); return e }
 func (e *node) Fill() *node { e.width, e.height = percent(100), percent(100); return e }
 
 // MinWidth, MinHeight, MaxWidth and MaxHeight bound the size in DIPs.
-func (e *node) MinWidth(v float32) *node  { e.minW = px(v); return e }
-func (e *node) MinHeight(v float32) *node { e.minH = px(v); return e }
-func (e *node) MaxWidth(v float32) *node  { e.maxW = px(v); return e }
-func (e *node) MaxHeight(v float32) *node { e.maxH = px(v); return e }
+func (e *node) MinWidth(v float32) *node  { e.minW.setPx(v); return e }
+func (e *node) MinHeight(v float32) *node { e.minH.setPx(v); return e }
+func (e *node) MaxWidth(v float32) *node  { e.maxW.setPx(v); return e }
+func (e *node) MaxHeight(v float32) *node { e.maxH.setPx(v); return e }
 
 // MinWidthPercent, MinHeightPercent, MaxWidthPercent and MaxHeightPercent
-// bound the size by a percentage of the parent's.
-func (e *node) MinWidthPercent(p float32) *node  { e.minW = percent(p); return e }
-func (e *node) MinHeightPercent(p float32) *node { e.minH = percent(p); return e }
-func (e *node) MaxWidthPercent(p float32) *node  { e.maxW = percent(p); return e }
-func (e *node) MaxHeightPercent(p float32) *node { e.maxH = percent(p); return e }
+// bound the size by a percentage of the parent's. With a bound in DIPs
+// too, both apply: the larger minimum and the smaller maximum, as CSS's
+// max-width: min(78%, 34rem) for a chat bubble:
+//
+//	ui.Box(c).MaxWidthPercent(78).MaxWidth(544)
+func (e *node) MinWidthPercent(p float32) *node  { e.minW.setPct(p); return e }
+func (e *node) MinHeightPercent(p float32) *node { e.minH.setPct(p); return e }
+func (e *node) MaxWidthPercent(p float32) *node  { e.maxW.setPct(p); return e }
+func (e *node) MaxHeightPercent(p float32) *node { e.maxH.setPct(p); return e }
 
 // Grow gives the element a share f of the free space along its parent's
 // main axis: Grow(1) on one child makes it take all of it. Like CSS flex:
@@ -1532,7 +1586,8 @@ func (e *node) Ellipsis(s string) *node { e.ellipsis = s; return e }
 func (e *node) Label(s string) *node { e.label = s; return e }
 
 // Disabled disables the element and those inside it when d is true: they
-// report no clicks, take no focus, and widgets look disabled.
+// report no clicks, take no focus, and show at half their opacity, unless
+// DimDisabled turns that off.
 func (e *node) Disabled(d bool) *node {
 	if d {
 		e.flags |= flagDisabled
@@ -1541,6 +1596,14 @@ func (e *node) Disabled(d bool) *node {
 	}
 	return e
 }
+
+// DimDisabled sets whether the element shows at half its opacity, with
+// what is inside it, while Disabled disables it, as it does by default,
+// bases too; an element disabled by one around it dims with that one. A
+// widget of your own that shows being disabled in a look of its own, as
+// a card that keeps the reason it is unavailable readable, turns it off
+// and styles itself while IsDisabled.
+func (e *node) DimDisabled(dim bool) *node { e.undimmed = !dim; return e }
 
 // IsDisabled reports whether the element or an ancestor is disabled.
 func (e *node) IsDisabled() bool {
