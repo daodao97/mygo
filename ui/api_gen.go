@@ -2084,6 +2084,24 @@ func SelectBase[T comparable](c *Context, selected *T) SelectParts[T] {
 	return wrapSelectParts[T](_p)
 }
 
+// SelectBaseOpen is SelectBase whose popup shows while *open, a flag the
+// caller owns, as PopoverBase's: the select sets it as it opens and
+// closes, and the caller may set it too, as typing on the closed trigger
+// opens the popup, or Tab moving on closes it. The highlight starts on the
+// choice each time the popup opens. Owning the flag, the caller can keep
+// the popup a little longer as it closes, to shrink it back into the
+// trigger.
+func SelectBaseOpen[T comparable](c *Context, selected *T, open *bool) SelectParts[T] {
+	_ctx := c.build()
+	if _ctx == nil {
+		return SelectParts[T]{}
+	}
+	_ctx.rt.beginBuild()
+	_p := coreSelectBaseOpen[T](_ctx, selected, open)
+	_ctx.rt.endBuild()
+	return wrapSelectParts[T](_p)
+}
+
 // Sidebar creates a sidebar of the sections and the items that fn builds
 // (SidebarSection, SidebarItem), as Finder's and Mail's, scrolling when
 // they do not fit: a click chooses an item, whose ID *selected holds, and
@@ -7118,7 +7136,9 @@ func (_handle SegmentedParts) Segment(i int) Element {
 
 // Highlight moves the highlight to the option of value while the popup
 // shows, unless it is disabled, as a select of your own may do as the
-// user types the option's first letters; Enter then chooses it.
+// user types the option's first letters; Enter then chooses it. Called
+// before Popup as the popup opens, it highlights the option once Popup
+// builds it.
 func (_handle SelectParts[T]) Highlight(value T) {
 	_parts := _handle.resolve()
 	if _parts == nil {
@@ -7173,6 +7193,19 @@ func (_handle SelectParts[T]) Popup(fn func(panel Element)) Element {
 	_e := _parts.Popup(func(panel *node) { fn(wrapElement(panel)) })
 	_ctx.rt.endBuild()
 	return wrapElement(_e)
+}
+
+// SetOpen opens or closes the popup, as typing on the closed trigger may
+// open it, or Tab moving on close it. It opens with the highlight on the
+// choice, which Highlight then moves.
+func (_handle SelectParts[T]) SetOpen(o bool) {
+	_parts := _handle.resolve()
+	if _parts == nil {
+		return
+	}
+	_ctx := _parts.c
+	_ = _ctx
+	_parts.SetOpen(o)
 }
 
 // Tab creates tab i of the list: a row that takes the focus and chooses

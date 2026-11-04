@@ -18,7 +18,7 @@ own on them, as headless component libraries do on the web.
 | `CollapsibleBase` | a `Trigger` that shows and hides what `Panel` builds, growing and shrinking it with `Progress`, which goes from 0 closed to 1 open |
 | `AccordionBase` | a `Root` of sections, each `Item` a `CollapsibleBase` whose triggers the arrows, Home and End move the focus between ([Accordion](accordion.md#without-a-look)) |
 | `TreeBase` | a `Root` of `Item`s, each a `Row` and a `Group` of the items inside it while its `*bool` is true, with the arrows, Home, End and typing moving the focus and opening and closing them ([Tree](tree.md#without-a-look)) |
-| `SelectBase` | a `Trigger` opening a `Popup` of `Item`s choosing a `*T`, which the arrows highlight (`Highlighted`) and Enter chooses |
+| `SelectBase` | a `Trigger` opening a `Popup` of `Item`s choosing a `*T`, which the arrows highlight (`Highlighted`) and Enter chooses; `SetOpen` opens and closes it, and `SelectBaseOpen` takes the open flag from you |
 | `ComboboxBase` | an `Input` whose text filters the `Item`s of a `Popup` below it, which the arrows highlight and Enter or a click chooses (`Chosen`), or shows a row of yours when none match ([Combobox](combobox.md#without-a-look)) |
 | `PopoverBase`, `DialogBase` | a panel beside an anchor, or over a backdrop covering the window, that a press outside or Escape closes |
 | `MenuBase`, `ContextMenuBase` | a menu button's `Trigger`, or an element's context menu, opening a `Popup` of `Item`s, `CheckItem`s, `RadioItem`s and `SubmenuItem`s with their `Submenu`s, which the pointer and the keys highlight (`Highlighted`) and choose (`Clicked`), closing the menu unless `KeepOpen`, and `Group`s of items the keys take as one stop ([Menu button](menu-button.md#without-a-look)) |

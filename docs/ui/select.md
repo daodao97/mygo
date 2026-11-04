@@ -46,6 +46,56 @@ sel.Popup(func(panel ui.Element) {
 })
 ```
 
+`SetOpen` opens and closes the popup, as typing on the closed trigger may
+open it, highlighting the option typed, or Tab moving on close it; the
+popup opens with the highlight on the choice, which `Highlight` then
+moves, once the options are built if they are not yet:
+
+```go
+if !sel.Open() && sel.Trigger.Shortcut(0, ui.KeyL) {
+	sel.SetOpen(true)
+	sel.Highlight("L")
+}
+if !sel.Trigger.Focused() {
+	sel.SetOpen(false) // Tab moved on
+}
+```
+
+`ui.SelectBaseOpen` takes the open flag from you instead, as
+[`PopoverBase`](popover.md) does: the popup shows while `*open` is true,
+the select sets it as it opens and closes, and you may set it too. Owning
+it, you can keep the popup a little longer as it closes, as a list that
+grows out of its trigger and shrinks back into it, which takes no input
+while it shrinks:
+
+```go
+// The select closed the list since the last pass: it stays until it
+// has shrunk back into the trigger.
+if !app.open && app.listShown {
+	app.open, app.closing = true, true
+}
+sel := ui.SelectBaseOpen(c, &app.size, &app.open)
+sel.Trigger.Height(32).Padding(0, 10).Children(func() { ui.Text(c, app.size) })
+var target float32
+if app.open && !app.closing {
+	target = 1
+}
+grow := sel.Trigger.Animate("grow", target, 200*time.Millisecond)
+if app.closing && grow == 0 {
+	app.open, app.closing = false, false
+}
+panel := sel.Popup(func(panel ui.Element) {
+	// From the trigger's height to the options', over the trigger.
+	full := float32(len(sizes)) * 32
+	panel.AttachTo(sel.Trigger, ui.AnchorTopStart, ui.AnchorTopStart).Height(32 + grow*(full-32)).ClipY().
+		IgnoreInput(app.closing).Radius(8).Background(t.Background).Border(1, t.Border)
+	for _, size := range sizes {
+		sel.Item(size).Height(32).Padding(0, 10).Children(func() { ui.Text(c, size) })
+	}
+})
+app.listShown = panel.Valid()
+```
+
 See [custom widgets](custom-widgets.md).
 
 ## Accessibility

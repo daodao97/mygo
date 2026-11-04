@@ -341,14 +341,20 @@ type selectParts[T comparable] struct {
 	// the pointer was when it last highlighted an option: it highlights
 	// another once it moves. shown is the option last scrolled into view
 	// as the highlight moved to it, while shows says whether it is one.
+	// later is the value Highlight asked for before Popup built its
+	// option, as the popup opens.
+	// opened is set once the popup opened, until a pass builds the select
+	// closed: the highlight starts afresh as it opens, however it does.
 	highlight *int
 	values    *[]T
 	off       *[]bool
 	next      []T
 	items     []*node
+	later     *T
 	pointer   *[2]float32
 	shown     *T
 	shows     *bool
+	opened    *bool
 }
 
 // SelectBase creates a select without a look: a trigger that opens a
@@ -376,26 +382,44 @@ type selectParts[T comparable] struct {
 //
 // Select is SelectBase with the theme's look.
 func coreSelectBase[T comparable](c *context, selected *T) *selectParts[T] {
+	return selectBase(c, selected, nil)
+}
+
+// SelectBaseOpen is SelectBase whose popup shows while *open, a flag the
+// caller owns, as PopoverBase's: the select sets it as it opens and
+// closes, and the caller may set it too, as typing on the closed trigger
+// opens the popup, or Tab moving on closes it. The highlight starts on the
+// choice each time the popup opens. Owning the flag, the caller can keep
+// the popup a little longer as it closes, to shrink it back into the
+// trigger.
+func coreSelectBaseOpen[T comparable](c *context, selected *T, open *bool) *selectParts[T] {
+	return selectBase(c, selected, open)
+}
+
+// selectBase is SelectBase, open while *open, or while a local of its own
+// is when open is nil.
+func selectBase[T comparable](c *context, selected *T, open *bool) *selectParts[T] {
 	b := coreButtonBase(c)
 	b.widget, b.role, b.accValue = "Select", RolePopUpButton, fmt.Sprint(*selected)
+	if open == nil {
+		open = coreLocal(b, "open", func() bool { return false })
+	}
 	s := &selectParts[T]{
-		Trigger: b, c: c, selected: selected,
-		open:      coreLocal(b, "open", func() bool { return false }),
+		Trigger: b, c: c, selected: selected, open: open,
 		highlight: coreLocal(b, "highlight", func() int { return -1 }),
 		values:    coreLocal(b, "values", func() []T { return nil }),
 		off:       coreLocal(b, "off", func() []bool { return nil }),
 		pointer:   coreLocal(b, "pointer", func() [2]float32 { return [2]float32{} }),
 		shown:     coreLocal(b, "shown", func() T { var zero T; return zero }),
 		shows:     coreLocal(b, "shows", func() bool { return false }),
+		opened:    coreLocal(b, "opened", func() bool { return false }),
+	}
+	if !*s.open {
+		*s.opened = false
 	}
 	b.afterInput(func() {
-		open := func(o bool) {
-			*s.open, *s.highlight, *s.shows = o, -1, false
-			*s.pointer = [2]float32{c.rt.pointerX, c.rt.pointerY}
-			c.rt.consumed = true
-		}
 		if b.Clicked() {
-			open(!*s.open)
+			s.SetOpen(!*s.open)
 		}
 		n, off := len(*s.values), *s.off
 		// move highlights the first option from i on, going by d, that
@@ -411,7 +435,7 @@ func coreSelectBase[T comparable](c *context, selected *T) *selectParts[T] {
 		}
 		if !*s.open {
 			if b.Shortcut(0, KeyDown) || b.Shortcut(0, KeyUp) {
-				open(true)
+				s.SetOpen(true)
 			}
 		} else if n > 0 {
 			switch {
@@ -446,10 +470,36 @@ func (s *selectParts[T]) choose(v T) {
 // Open reports whether the popup shows.
 func (s *selectParts[T]) Open() bool { return *s.open }
 
+// SetOpen opens or closes the popup, as typing on the closed trigger may
+// open it, or Tab moving on close it. It opens with the highlight on the
+// choice, which Highlight then moves.
+func (s *selectParts[T]) SetOpen(o bool) {
+	if *s.open == o {
+		return
+	}
+	*s.open, *s.opened = o, false
+	s.fresh()
+	s.Trigger.expanded = o
+	s.c.rt.consumed = true
+}
+
+// fresh starts the highlight afresh as the popup opens, on the choice: the
+// pointer, resting where it was, highlights another once it moves.
+func (s *selectParts[T]) fresh() {
+	if *s.open && !*s.opened {
+		*s.opened = true
+		*s.highlight, *s.shows = -1, false
+		*s.pointer = [2]float32{s.c.rt.pointerX, s.c.rt.pointerY}
+	}
+}
+
 // Highlight moves the highlight to the option of value while the popup
 // shows, unless it is disabled, as a select of your own may do as the
-// user types the option's first letters; Enter then chooses it.
+// user types the option's first letters; Enter then chooses it. Called
+// before Popup as the popup opens, it highlights the option once Popup
+// builds it.
 func (s *selectParts[T]) Highlight(value T) {
+	s.fresh()
 	for i, v := range *s.values {
 		if v == value {
 			if *s.highlight != i && !(*s.off)[i] {
@@ -459,6 +509,7 @@ func (s *selectParts[T]) Highlight(value T) {
 			return
 		}
 	}
+	s.later = &value
 }
 
 // Popup shows the popup below the trigger, at least as wide, while it is
@@ -467,6 +518,9 @@ func (s *selectParts[T]) Highlight(value T) {
 // or nil when the popup is closed.
 func (s *selectParts[T]) Popup(fn func(panel *node)) *node {
 	b := s.Trigger
+	// Opened or closed since the trigger was built, as by the caller.
+	b.expanded = *s.open
+	s.fresh()
 	return popover(s.c, b, s.open, true, func(panel *node) {
 		panel.MinWidth(b.Bounds().W)
 		s.next, s.items = s.next[:0], s.items[:0]
@@ -478,6 +532,13 @@ func (s *selectParts[T]) Popup(fn func(panel *node)) *node {
 		}
 		*s.off = off
 		h := *s.highlight
+		if s.later != nil {
+			// Asked for before its option was built.
+			if i := slices.Index(*s.values, *s.later); i >= 0 && !off[i] {
+				h = i
+			}
+			s.later = nil
+		}
 		if h < 0 {
 			// The choice, which its option, disabled in the pass
 			// before, did not highlight.

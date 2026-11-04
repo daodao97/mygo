@@ -73,6 +73,7 @@ var uiResults = map[string]string{
 	"SegmentedBase":        "SegmentedParts",
 	"Select":               "Element",
 	"SelectBase":           "SelectParts",
+	"SelectBaseOpen":       "SelectParts",
 	"Sidebar":              "Element",
 	"SidebarItem":          "Element",
 	"SidebarSection":       "Element",
