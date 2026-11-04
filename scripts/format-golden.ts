@@ -1,6 +1,7 @@
 // Writes i18n/testdata/format_icu.json: how ICU (Intl.NumberFormat,
 // Intl.DateTimeFormat, Intl.DisplayNames, Intl.Locale) writes numbers,
-// dates and times, the first day of the week and the hour cycle, and
+// compact ones too, dates and times, ranges of them (formatRange), the
+// first day of the week and the hour cycle, and
 // the names of languages in themselves, in every locale package i18n has formatting
 // data of, which TestFormatMatchesICU checks package i18n against. Run it
 // again after updating CLDR, with a Node.js whose ICU has the same CLDR
@@ -26,7 +27,8 @@ const { locales, autonyms } = JSON.parse(await readFile(join(dir, "format_locale
 type NumberCase = { kind: "number"; value: string; options: Intl.NumberFormatOptions & { roundingMode?: string } };
 type DateCase = { kind: "date"; time: string; zone?: string; options: Intl.DateTimeFormatOptions };
 type NamesCase = { kind: "names"; times: string[]; options: Intl.DateTimeFormatOptions };
-type Case = NumberCase | DateCase | NamesCase | { kind: "firstDay" | "hourCycle" };
+type RangeCase = { kind: "range"; time: string; end: string; options: Intl.DateTimeFormatOptions };
+type Case = NumberCase | DateCase | NamesCase | RangeCase | { kind: "firstDay" | "hourCycle" };
 
 const cases: Case[] = [];
 
@@ -43,6 +45,14 @@ for (const value of ["2.5", "3.5", "-2.5"]) {
 }
 cases.push({ kind: "number", value: "1234567.891", options: { useGrouping: false } });
 cases.push({ kind: "number", value: "1234.5", options: { minimumFractionDigits: 3 } });
+// Compact numbers, as a chart's axis labels them.
+const compacts = ["0", "999.9", "1234", "-1234", "12345", "123456", "999999", "1234567", "-2500000", "1000000000",
+  "123456789012", "1000000000000000", "0.001234"];
+for (const compactDisplay of ["short", "long"] as const) {
+  for (const value of compacts) cases.push({ kind: "number", value, options: { notation: "compact", compactDisplay } });
+}
+cases.push({ kind: "number", value: "1234567", options: { notation: "compact", maximumFractionDigits: 2 } });
+cases.push({ kind: "number", value: "1000", options: { notation: "compact", minimumFractionDigits: 2 } });
 
 // Dates and times.
 const times = ["2026-01-05T13:07:09Z", "2025-12-29T00:07:09Z", "2024-07-14T12:00:00Z", "1999-10-31T06:30:05Z"];
@@ -97,6 +107,26 @@ for (const zone of ["Etc/GMT-8", "Etc/GMT+5"]) {
   for (const s of ["full", "long"] as const) cases.push({ kind: "date", time: times[0]!, zone, options: { timeStyle: s } });
 }
 
+// Ranges, as a date-range picker labels them: from a time to one of the
+// same minute, hour, half of the day, day, month and year, and others.
+const rangeStart = "2026-01-05T09:30:00Z";
+const rangeEnds = ["2026-01-05T09:30:40Z", "2026-01-05T09:45:00Z", "2026-01-05T11:00:00Z", "2026-01-05T13:07:09Z",
+  "2026-01-09T10:00:00Z", "2026-02-09T10:00:00Z", "2027-03-02T10:00:00Z"];
+const rangeOptions: Intl.DateTimeFormatOptions[] = [
+  { dateStyle: "full" }, { dateStyle: "medium" }, { dateStyle: "short" }, { timeStyle: "short" },
+  { dateStyle: "medium", timeStyle: "short" },
+  { year: "numeric", month: "short", day: "numeric" }, // yMMMd
+  { year: "numeric", month: "long" }, // yMMMM
+  { month: "short", day: "numeric", weekday: "short" }, // MMMEEEd
+  { hour: "numeric", minute: "2-digit" }, // jmm
+  { hour: "numeric", minute: "2-digit", hourCycle: "h23" },
+  { hour: "numeric", minute: "2-digit", second: "2-digit" }, // jmmss
+  { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }, // yMMMdjmm
+];
+for (const options of rangeOptions) {
+  for (const end of rangeEnds) cases.push({ kind: "range", time: rangeStart, end, options });
+}
+
 // The names of months and weekdays, as dates of every month and weekday
 // write them: Intl gives no list of them but its patterns'.
 const monthTimes = Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(2023, m, 15)).toISOString());
@@ -123,6 +153,9 @@ for (const locale of locales) {
         break;
       case "date":
         row.push(new Intl.DateTimeFormat(`${locale}-u-ca-gregory`, { timeZone: c.zone ?? "UTC", ...c.options }).format(new Date(c.time)));
+        break;
+      case "range":
+        row.push(new Intl.DateTimeFormat(`${locale}-u-ca-gregory`, { timeZone: "UTC", ...c.options }).formatRange(new Date(c.time), new Date(c.end)));
         break;
       case "names": {
         const f = new Intl.DateTimeFormat(`${locale}-u-ca-gregory`, { timeZone: "UTC", ...c.options });

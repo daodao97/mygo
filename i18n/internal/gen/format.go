@@ -88,7 +88,8 @@ type gregorian struct {
 	TimeFormats     map[string]string                       `json:"timeFormats"`
 	DateTimeFormats struct {
 		Full, Long, Medium, Short string
-		AvailableFormats          map[string]string `json:"availableFormats"`
+		AvailableFormats          map[string]string          `json:"availableFormats"`
+		IntervalFormats           map[string]json.RawMessage `json:"intervalFormats"`
 	} `json:"dateTimeFormats"`
 	AtTime struct {
 		Standard map[string]string `json:"standard"`
@@ -102,7 +103,35 @@ type localeRecord struct {
 	tag    string
 	values []string // by slot, "" when the locale has none
 	usesB  bool     // its patterns have flexible day periods
+	// compact and intervals are the values of the slots of the halves of
+	// their own (extraHalf): the patterns of compact numbers, and of
+	// intervals of dates.
+	compact, intervals []string
 }
+
+// The patterns of compact numbers: [system][style][magnitude], system the
+// default one then latn, as numbers' slots, style short then long, and
+// magnitudes 10^3 to 10^19. A slot holds the plural forms of its pattern,
+// each its key in CLDR (a category, or an exact number as "1") and its
+// pattern, in compactKeys' order, separated by NUL bytes.
+var (
+	compactStyles = []string{"short", "long"}
+	compactKeys   = []string{"0", "1", "zero", "one", "two", "few", "many", "other"}
+)
+
+const (
+	compactMinMagnitude = 3
+	compactMagnitudes   = 17
+)
+
+// The patterns of intervals of dates: the fallback, then
+// [skeleton][field], the skeletons of intervalFormats any locale has,
+// sorted, and the fields whose difference each pattern is for.
+var intervalFields = []string{"G", "y", "M", "d", "a", "B", "h", "H", "m"}
+
+// intervalSkeletonRe matches the skeletons of intervalFormats MyGo keeps:
+// those of the fields it formats.
+var intervalSkeletonRe = regexp.MustCompile(`^[GyMLdEBahHKkmv]+$`)
 
 func writeFormatTables(out, cache string, core map[string][]byte) error {
 	var coverage struct {
@@ -166,6 +195,7 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 	// The skeletons of availableFormats any locale has.
 	grego := map[string]*gregorian{}
 	skelSet := map[string]bool{}
+	intervalSet := map[string]bool{}
 	for _, tag := range tags {
 		var doc struct {
 			Main map[string]struct {
@@ -190,6 +220,11 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 				skelSet[k] = true
 			}
 		}
+		for k := range g.DateTimeFormats.IntervalFormats {
+			if intervalSkeletonRe.MatchString(k) {
+				intervalSet[k] = true
+			}
+		}
 	}
 	skeletons := slices.Sorted(func(yield func(string) bool) {
 		for k := range skelSet {
@@ -199,6 +234,13 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 		}
 	})
 	sl := newSlots(skeletons)
+	intervalSkeletons := slices.Sorted(func(yield func(string) bool) {
+		for k := range intervalSet {
+			if !yield(k) {
+				return
+			}
+		}
+	})
 
 	var records []*localeRecord
 	for _, tag := range tags {
@@ -255,6 +297,42 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 		for w, table := range eraTables {
 			r.values[sl.eras+w*2] = g.Eras[table]["0"]
 			r.values[sl.eras+w*2+1] = g.Eras[table]["1"]
+		}
+
+		// Intervals.
+		r.intervals = make([]string, 1+len(intervalSkeletons)*len(intervalFields))
+		if raw, ok := g.DateTimeFormats.IntervalFormats["intervalFormatFallback"]; ok {
+			if err := json.Unmarshal(raw, &r.intervals[0]); err != nil {
+				return fmt.Errorf("%s intervalFormatFallback: %v", tag, err)
+			}
+		}
+		if !strings.Contains(r.intervals[0], "{0}") || !strings.Contains(r.intervals[0], "{1}") {
+			return fmt.Errorf("%s: the interval fallback %q lacks {0} or {1}", tag, r.intervals[0])
+		}
+		for i, k := range intervalSkeletons {
+			raw, ok := g.DateTimeFormats.IntervalFormats[k]
+			if !ok {
+				continue
+			}
+			var byField map[string]string
+			if err := json.Unmarshal(raw, &byField); err != nil {
+				return fmt.Errorf("%s intervalFormats %s: %v", tag, k, err)
+			}
+			for f, p := range byField {
+				if strings.Contains(f, "-alt-") {
+					continue // ICU formats the standard ones
+				}
+				j := slices.Index(intervalFields, f)
+				if j < 0 {
+					return fmt.Errorf("%s: the interval pattern of %s for %s is for a field MyGo does not know", tag, k, f)
+				}
+				for _, c := range patternFields(p) {
+					if !strings.ContainsRune(patternLetters, c) {
+						return fmt.Errorf("%s: the interval pattern %q has the field %c, which MyGo does not format", tag, p, c)
+					}
+				}
+				r.intervals[1+i*len(intervalFields)+j] = p
+			}
 		}
 
 		// Time zones.
@@ -314,7 +392,13 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 				return fmt.Errorf("%s: the numbering system %s has no decimal digits", tag, sys)
 			}
 			var symbols map[string]string
-			var decimal, percent struct {
+			var decimal struct {
+				Standard    string `json:"standard"`
+				Short, Long struct {
+					DecimalFormat map[string]string `json:"decimalFormat"`
+				}
+			}
+			var percent struct {
 				Standard string `json:"standard"`
 			}
 			for key, v := range map[string]any{"symbols": &symbols, "decimalFormats": &decimal, "percentFormats": &percent} {
@@ -344,6 +428,35 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 				}
 				r.values[base+k] = v
 			}
+			if r.compact == nil {
+				r.compact = make([]string, 2*len(compactStyles)*compactMagnitudes)
+			}
+			for st, forms := range []map[string]string{decimal.Short.DecimalFormat, decimal.Long.DecimalFormat} {
+				byMag := make([][]string, compactMagnitudes)
+				for key, p := range forms {
+					if strings.Contains(key, "-alt-") {
+						continue
+					}
+					num, count, ok := strings.Cut(key, "-count-")
+					m := len(num) - 1
+					if !ok || strings.Trim(num, "0") != "1" || m < compactMinMagnitude || m >= compactMinMagnitude+compactMagnitudes || !slices.Contains(compactKeys, count) {
+						return fmt.Errorf("%s: the compact pattern %s of %s", tag, key, sys)
+					}
+					if byMag[m-compactMinMagnitude] == nil {
+						byMag[m-compactMinMagnitude] = make([]string, len(compactKeys))
+					}
+					byMag[m-compactMinMagnitude][slices.Index(compactKeys, count)] = p
+				}
+				for m, ps := range byMag {
+					var parts []string
+					for k, p := range ps {
+						if p != "" {
+							parts = append(parts, compactKeys[k], p)
+						}
+					}
+					r.compact[(i*len(compactStyles)+st)*compactMagnitudes+m] = strings.Join(parts, "\x00")
+				}
+			}
 		}
 		records = append(records, r)
 	}
@@ -372,32 +485,8 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 		}
 	}
 
-	// The synthetic root: of the locales without a parent, the value most
-	// have, in each slot most of them fill.
-	root := make([]string, sl.count)
-	var tops []int
-	for i := range records {
-		if parentOf[i] < 0 {
-			tops = append(tops, i)
-		}
-	}
-	for s := range root {
-		counts := map[string]int{}
-		for _, i := range tops {
-			if v := records[i].values[s]; v != "" {
-				counts[v]++
-			}
-		}
-		best, bestN := "", 0
-		for v, n := range counts {
-			if n > bestN || n == bestN && v < best {
-				best, bestN = v, n
-			}
-		}
-		if bestN*2 > len(tops) {
-			root[s] = best
-		}
-	}
+	values := func(r *localeRecord) []string { return r.values }
+	root := syntheticRoot(records, parentOf, sl.count, values)
 
 	// The data is split in two halves, each with its own pool of
 	// strings and its own entries: the numbers, which every app that
@@ -530,6 +619,34 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 	if err := writePacked(&b, "fmtPackedDates", "the dates of the locales and the names of languages", packed); err != nil {
 		return err
 	}
+	// The patterns of compact numbers and of intervals of dates, each a
+	// blob of its own, which only apps that format them link.
+	compact := func(r *localeRecord) []string { return r.compact }
+	compactHalf, err := extraHalf(records, parentOf, len(records[0].compact), compact)
+	if err != nil {
+		return err
+	}
+	if err := compactHalf.write(&b, "Compact", "compact numbers", "the patterns of compact numbers of the locales"); err != nil {
+		return err
+	}
+	fmt.Fprintf(&b, "// The slots of the compact numbers of a locale (see i18n/internal/gen).\nconst (\n\tcompactMinMagnitude = %d\n\tcompactMagnitudes = %d\n\tcompactSlotCount = %d\n)\n\n", compactMinMagnitude, compactMagnitudes, len(records[0].compact))
+	b.WriteString("// fmtCompactKeys are the keys of the forms of the compact patterns of a\n// slot, in their order, separated by spaces.\nconst fmtCompactKeys = ")
+	writeLongString(&b, strings.Join(compactKeys, " "))
+	b.WriteString("\n\n")
+
+	intervals := func(r *localeRecord) []string { return r.intervals }
+	intervalHalf, err := extraHalf(records, parentOf, len(records[0].intervals), intervals)
+	if err != nil {
+		return err
+	}
+	if err := intervalHalf.write(&b, "Interval", "intervals", "the patterns of intervals of dates of the locales"); err != nil {
+		return err
+	}
+	fmt.Fprintf(&b, "// intervalSlotCount is the number of slots of the intervals of a locale:\n// the fallback, then those of fmtIntervalSkeletons by fmtIntervalFields.\nconst intervalSlotCount = %d\n\n", len(records[0].intervals))
+	b.WriteString("// fmtIntervalSkeletons are the skeletons of intervalFormats, sorted,\n// separated by spaces, and fmtIntervalFields the fields whose\n// difference their patterns are for, in their order.\nconst fmtIntervalSkeletons = ")
+	writeLongString(&b, strings.Join(intervalSkeletons, " "))
+	fmt.Fprintf(&b, "\n\nconst fmtIntervalFields = %q\n\n", strings.Join(intervalFields, ""))
+
 	for _, h := range []struct {
 		name string
 		h    *half
@@ -670,6 +787,73 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 		return fmt.Errorf("formatting format_tables.go: %v", err)
 	}
 	return os.WriteFile(filepath.Join(out, "format_tables.go"), src, 0o644)
+}
+
+// syntheticRoot returns the synthetic root of slots of records, which
+// values gives: of the locales without a parent, the value most have, in
+// each slot most of them fill.
+func syntheticRoot(records []*localeRecord, parentOf []int, count int, values func(*localeRecord) []string) []string {
+	root := make([]string, count)
+	var tops []int
+	for i := range records {
+		if parentOf[i] < 0 {
+			tops = append(tops, i)
+		}
+	}
+	for s := range root {
+		counts := map[string]int{}
+		for _, i := range tops {
+			if v := values(records[i])[s]; v != "" {
+				counts[v]++
+			}
+		}
+		best, bestN := "", 0
+		for v, n := range counts {
+			if n > bestN || n == bestN && v < best {
+				best, bestN = v, n
+			}
+		}
+		if bestN*2 > len(tops) {
+			root[s] = best
+		}
+	}
+	return root
+}
+
+// extraHalf returns the half of slots of their own of records, which
+// values gives, over their parents' as the other halves are.
+func extraHalf(records []*localeRecord, parentOf []int, count int, values func(*localeRecord) []string) (*half, error) {
+	root := syntheticRoot(records, parentOf, count, values)
+	h := newHalf(func(int) bool { return true })
+	h.diff(root, make([]string, count))
+	for i, r := range records {
+		base := root
+		if parentOf[i] >= 0 {
+			base = values(records[parentOf[i]])
+		}
+		h.diff(values(r), base)
+	}
+	if len(h.pool) >= 1<<15 || count >= 1<<9 || len(h.entries) >= 1<<16 {
+		return nil, fmt.Errorf("%d strings or %d slots do not fit the entries", len(h.pool), count)
+	}
+	return h, nil
+}
+
+// write writes the half as a blob of its own, fmtPacked<name>, with its
+// starts and its number of strings.
+func (h *half) write(b *bytes.Buffer, name, what, doc string) error {
+	sections, err := h.sections(name, what)
+	if err != nil {
+		return err
+	}
+	if err := writePacked(b, "fmtPacked"+name, doc, sections); err != nil {
+		return err
+	}
+	fmt.Fprintf(b, "// fmt%sStarts are where the entries of each locale start in those of the\n// %s, counted in entries.\nvar fmt%sStarts = [...]uint16{\n", name, what, name)
+	writeInts(b, h.starts)
+	b.WriteString("}\n\n")
+	fmt.Fprintf(b, "// fmt%sStringCount is the number of strings of the pool of the %s.\nconst fmt%sStringCount = %d\n\n", name, what, name, len(h.pool))
+	return nil
 }
 
 // half is the entries of the slots of one half of the data, over a

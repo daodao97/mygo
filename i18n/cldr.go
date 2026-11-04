@@ -144,12 +144,18 @@ func (d *localeData) withDates() *localeData {
 // root's last; the nearest wins.
 func (d *localeData) fill(p *pool, starts []uint16) {
 	var set [slotCount]bool
-	for j := d.index; ; j = uint16At(tables.parents, j) {
+	fillSlots(d.index, p, starts, d.v[:], set[:])
+}
+
+// fillSlots sets the slots v of locale i from p as fill does, where set
+// tells which are set.
+func fillSlots(i int, p *pool, starts []uint16, v []string, set []bool) {
+	for j := i; ; j = uint16At(tables.parents, j) {
 		for e := int(starts[j]); e < int(starts[j+1]); e++ {
-			v := uint32(p.entries[3*e])<<16 | uint32(p.entries[3*e+1])<<8 | uint32(p.entries[3*e+2])
-			if s := v >> 15; !set[s] {
+			en := uint32(p.entries[3*e])<<16 | uint32(p.entries[3*e+1])<<8 | uint32(p.entries[3*e+2])
+			if s := en >> 15; !set[s] {
 				set[s] = true
-				d.v[s] = p.at(v & (1<<15 - 1))
+				v[s] = p.at(en & (1<<15 - 1))
 			}
 		}
 		if j == 0 {

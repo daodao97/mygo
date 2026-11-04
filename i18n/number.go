@@ -34,6 +34,11 @@ type NumberOptions struct {
 	// ICU's MessageFormat does ("2.5" is "2"), rather than away from zero
 	// ("3"), as Intl.NumberFormat does.
 	HalfEven bool
+	// Notation, when CompactShort or CompactLong, writes the number in
+	// the locale's compact notation, as Intl.NumberFormat's notation
+	// "compact": "1.2K" and "1.2 thousand" in English, "1,2 k" and "1,2
+	// millier" in French, "1.2万" in Japanese. nil writes it whole.
+	Notation *Notation
 }
 
 // FormatNumber writes a number in the way of locale: its decimal and
@@ -56,6 +61,7 @@ func FormatNumber(locale string, n any, o NumberOptions) string {
 // A NumberFormatter writes numbers in a locale with options, for writing
 // many: FormatNumber keeps one per locale and options.
 type NumberFormatter struct {
+	key      *localeKey
 	sys      *numberSystem
 	pat      *numberPattern
 	o        NumberOptions
@@ -83,7 +89,7 @@ func NewNumberFormatter(locale string, o NumberOptions) *NumberFormatter {
 	}
 	k := keyOf(locale)
 	sys := k.dat().numbers(k.latn)
-	f = &NumberFormatter{sys: sys, pat: &sys.decimal, o: o}
+	f = &NumberFormatter{key: k, sys: sys, pat: &sys.decimal, o: o}
 	if o.Percent {
 		f.pat = &sys.percent
 	}
@@ -94,7 +100,7 @@ func NewNumberFormatter(locale string, o NumberOptions) *NumberFormatter {
 	switch {
 	case o.Integer:
 		f.min, f.max = 0, 0
-	case f.max <= 0 && f.min == 0:
+	case f.max <= 0:
 		f.max = f.pat.maxFrac
 	}
 	if f.max < f.min {
@@ -144,18 +150,14 @@ func (f *NumberFormatter) special(v float64) (string, bool) {
 
 // formatDecimal writes a decimal number, "-1234.5".
 func (f *NumberFormatter) formatDecimal(decimal string) string {
-	min, max := f.min, f.max
 	neg, intPart, frac := splitDecimal(decimal)
 	if f.o.Percent {
 		intPart, frac = shiftLeft(intPart, frac, 2)
 	}
-	intPart, frac = roundDigits(intPart, frac, max, f.o.HalfEven)
-	for len(frac) > min && frac[len(frac)-1] == '0' {
-		frac = frac[:len(frac)-1]
+	if f.o.Notation != nil {
+		return f.o.Notation.format(f, f.o.Notation, neg, intPart, frac)
 	}
-	for len(frac) < min {
-		frac += "0"
-	}
+	intPart, frac = f.round(intPart, frac, f.max)
 	var b strings.Builder
 	b.Grow(len(intPart) + len(frac) + 16)
 	p := f.pat
@@ -175,6 +177,19 @@ func (f *NumberFormatter) formatDecimal(decimal string) string {
 		b.WriteString(p.suffix)
 	}
 	return b.String()
+}
+
+// round rounds a number to max fraction digits, and pads it to the
+// formatter's least.
+func (f *NumberFormatter) round(intPart, frac string, max int) (string, string) {
+	intPart, frac = roundDigits(intPart, frac, max, f.o.HalfEven)
+	for len(frac) > f.min && frac[len(frac)-1] == '0' {
+		frac = frac[:len(frac)-1]
+	}
+	for len(frac) < f.min {
+		frac += "0"
+	}
+	return intPart, frac
 }
 
 // splitDecimal splits a decimal number into its sign, integer digits
