@@ -4665,8 +4665,14 @@ either.
   (`ui/headless.go`) with the CPU renderer, at its own time
   (`engine.clock`), which stands still until `Tester.Advance` moves it.
   Its host runs no timer; it notes their deadlines, and `Advance` runs
-  the frames due. The fake backend's surface lets the core's tests drive
-  content windows through `package mygo`.
+  the frames due. `Tester.Access` and `AccessByRole`
+  (`ui/tester_access.go`) build the last frame's accessibility tree on
+  demand, as `accessTree` does for a window, and give its nodes as
+  `AccessInfo`: the role an element was given (`node.role`), so that
+  roles sharing a node's role stay apart, or the one following the
+  node's in the order of `Role`; a role added to both needs nothing
+  there, a state a field. The fake backend's surface lets the core's
+  tests drive content windows through `package mygo`.
   `BenchmarkFrame` in `ui` measures a frame of a large window on the CPU,
   and `BenchmarkListScroll` the frames scrolling a list of a million rows;
   `BenchmarkDiff*` the frames of a window as godiff's, two lists of texts

@@ -106,6 +106,15 @@ ATK's busy state and UI Automation's `AriaProperties` (`busy=true`);
 `Current` is AppKit's `AXARIACurrent`, ATK's `current` attribute with the
 active state, and `AriaProperties` (`current=page`).
 
+A [test](testing.md#what-assistive-technology-sees) reads them as
+assistive technology gets them, with `Tester.AccessByRole`:
+
+```go
+if a, _ := tt.AccessByRole(ui.RoleGroup, "Messages"); !a.Busy {
+	t.Error("Messages is not busy while loading")
+}
+```
+
 A check box that is mixed as often as not is better built on
 [`CheckboxStateBase`](checkbox.md#without-a-look), which tells it itself
 from its `ui.CheckState`, and checks it as it is pressed.
