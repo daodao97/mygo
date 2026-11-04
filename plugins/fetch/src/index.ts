@@ -45,7 +45,7 @@ const NORMALIZED = new Set(["DELETE", "GET", "HEAD", "OPTIONS", "POST", "PUT"]);
  * Makes an HTTP request from Go, with the options and result of the
  * standard `fetch`. `mode`, `credentials`, `cache` and the like have no
  * meaning there and are ignored; cookies are those of the Go side's
- * `http.Client`. Response headers are all there but `Set-Cookie`.
+ * `http.Client`. Response headers are all there but `Set-Cookie` and `Set-Cookie2`.
  */
 export async function fetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const req = typeof Request !== "undefined" && input instanceof Request ? input : null;
