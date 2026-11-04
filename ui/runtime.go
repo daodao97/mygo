@@ -691,9 +691,13 @@ func (rt *engine) runFrame() {
 	if rt.stats != nil {
 		rt.stats.passes = rt.pass + 1
 	}
+	root := rt.c.root
+	if rt.insp.open {
+		// What the inspector's Styles tab changed, over what the view built.
+		rt.insp.applyEdits(root)
+	}
 	rt.stats.lap(phaseBuild)
 	rt.insp.lap(0)
-	root := rt.c.root
 	layoutTree(root, appW, h)
 	rt.measureFit(root)
 	rt.commit(root, w, h)

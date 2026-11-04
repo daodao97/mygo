@@ -23,7 +23,7 @@ The content gives the panel the right of the window: the view gets a
 narrower window, as `c.Size()` tells.
 
 Production builds of `mygo build` leave the inspector out, as their
-developer tools are off: it takes some 250 KB of a binary. `mygo build
+developer tools are off: it takes some 370 KB of a binary. `mygo build
 -debug` keeps it, as `MYGO_INSPECTOR=1 mygo build` does in a production
 build, for a window with `DevToolsEnabled` to open it there. Apps built
 with `go build` keep it unless `-tags mygo_noinspector` leaves it out. Drag the panel's left edge to resize
@@ -63,12 +63,37 @@ Below the tree, the element chosen has three tabs:
   `Key`), then the text styles it inherits, by the element setting them.
   MyGo's layout is CSS's, so the properties are CSS's: `flex-direction`,
   `gap`, `padding`, `flex-grow`, `width`, `color`, …
+  [Change them](#changing-styles) to try a value in the window.
 - **Computed**: the box model, its margins, border, padding and content,
   with their sizes, and the values the element has as laid out: its size
   and place in the window, its font, its scroll offset.
 - **Properties**: what it is (its type, ID, key, text), its state
   (focused, under the pointer, pressed, disabled, moving), and what
   assistive technology sees of it.
+
+## Changing styles
+
+The Styles tab changes what it shows, as Chrome's does, for trying a value
+without rebuilding the app:
+
+- Click a value to type another: the window follows as you type, Enter or
+  clicking away keeps it, and Escape goes back. `Up` and `Down` move its
+  first number by 1, with `Shift` by 10 and with `Alt` by 0.1. Clearing a
+  value turns it off.
+- The checkbox before a declaration, which shows as the pointer is over it,
+  turns it off and on. What an element inherits changes on the element
+  setting it.
+- The `+` of a rule adds declarations, typed as `opacity: 0.5; gap: 8px`.
+  What MyGo does not understand shows struck through, with a warning.
+
+Lengths are in DIPs, with or without `px`, or percentages where the element
+takes them; colors are hex, `rgb()`, `oklch()` or a few names. Declarations
+the tab cannot change, such as `overflow` or `transition`, have no checkbox.
+
+The changes apply over what the view builds, whatever it builds, so they
+outlast its state changing, and last until **Reset** or the inspector closes.
+They change neither the code nor the view's state: copy what works into the
+view.
 
 ## Performance and issues
 

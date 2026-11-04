@@ -2872,6 +2872,14 @@ either.
   parent share one state: `rekey` reports it (`duplicateKey`), logged
   once and listed as an issue, and in a `Tester` it panics
   (`engine.strict`), without package testing in apps.
+  The Styles tab edits (`inspector_edit.go`): a view builds its elements
+  anew each frame, so edits are kept by element ID and applied to the
+  frame's elements after the view and before layout (`applyEdits`), through
+  `setStyle` and `unsetStyle`, which `ownStyles` must read back; a property
+  they don't know stays read-only (`styleKnown`). `describe` then overlays
+  what the elements can't show: values as typed, declarations turned off or
+  not understood (`overlayEdits`). Rules are keyed by their element, as the
+  bar of changes comes above them. Closing the inspector drops the edits.
   Production builds of `mygo build` leave the inspector out with the build
   tag `mygo_noinspector` (`inspector_off.go` stands in for it, never
   open), added to the tags of `GOFLAGS`, unless `-debug` or

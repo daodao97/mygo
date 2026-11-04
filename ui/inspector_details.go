@@ -33,17 +33,21 @@ type inspDetails struct {
 // inspRule is a rule of the Styles tab: the element's own, or those of an
 // element it inherits from.
 type inspRule struct {
+	// id is the element that sets the declarations.
+	id        uint64
 	selector  string
 	inherited bool
 	decls     []inspDecl
 }
 
 // inspDecl is a declaration: a property and its value, with a color
-// swatch before the value when swatch is set.
+// swatch before the value when swatch is set. off, edited, invalid and
+// added tell what the Styles tab did to it (inspEdit).
 type inspDecl struct {
-	name, value string
-	color       Color
-	swatch      bool
+	name, value                 string
+	color                       Color
+	swatch                      bool
+	off, edited, invalid, added bool
 }
 
 // inspSection is a section of the Properties tab.
@@ -64,6 +68,13 @@ func (d *inspDetails) hash() uint64 {
 		for _, dc := range r.decls {
 			b.WriteString(dc.name)
 			b.WriteString(dc.value)
+			for _, on := range [...]bool{dc.off, dc.edited, dc.invalid, dc.added} {
+				if on {
+					b.WriteByte('1')
+				} else {
+					b.WriteByte('0')
+				}
+			}
 		}
 	}
 	for _, dc := range d.computed {
@@ -84,17 +95,27 @@ func describe(rt *engine, e *node) inspDetails {
 	if k, ok := rt.insp.keys[e.id]; ok {
 		sel += "#" + fmt.Sprint(k)
 	}
-	d.rules = append(d.rules, inspRule{selector: sel, decls: ownStyles(rt, e)})
+	own := inspRule{id: e.id, selector: sel, decls: ownStyles(rt, e)}
+	rt.insp.overlayEdits(&own, nil)
+	d.rules = append(d.rules, own)
 	// What it inherits: the text styles that the elements around it set
-	// and nothing nearer overrides.
+	// and nothing nearer overrides, with those turned off there, to turn
+	// on again.
 	taken := e.ts.set
 	for p := e.parent; p != nil && taken != setAll; p = p.parent {
 		set := p.ts.set &^ taken
-		if set == 0 {
+		before := taken
+		edited := false
+		for _, ed := range rt.insp.edits[p.id] {
+			edited = edited || textStyleBit(ed.name)&^before != 0
+		}
+		if set == 0 && !edited {
 			continue
 		}
 		taken |= set
-		d.rules = append(d.rules, inspRule{selector: elementName(p), inherited: true, decls: textStyles(&p.ts, set)})
+		r := inspRule{id: p.id, selector: elementName(p), inherited: true, decls: textStyles(&p.ts, set)}
+		rt.insp.overlayEdits(&r, func(name string) bool { return textStyleBit(name)&^before != 0 })
+		d.rules = append(d.rules, r)
 	}
 	d.margin, d.border, d.padding = e.margin, e.border, e.pad
 	d.w, d.h = max(e.w-e.padX(), 0), max(e.h-e.padY(), 0)
