@@ -3579,6 +3579,13 @@ func TestContentWindowObserved(t *testing.T) {
 	if mark, _, named, ok := axAttribute(w, "Bold", "AXMenuItemMarkChar"); ok && (mark != "✓" || !named) {
 		t.Errorf("the menu item's mark is %q, named %v", mark, named)
 	}
+	// What never opens says nothing of being open, which VoiceOver
+	// would read as "collapsed".
+	for _, label := range []string{"Settings", "Name", "Edit menu", "Bold"} {
+		if v, _, named, ok := axAttribute(w, label, "AXExpanded"); ok && named {
+			t.Errorf("%s names AXExpanded, %q", label, v)
+		}
+	}
 }
 
 // TestContentWindowListAccessibility reads the rows of a List as assistive

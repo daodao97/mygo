@@ -170,6 +170,17 @@ func roleOf(n platform.AccessNode) (role, subrole string) {
 	return role, subrole
 }
 
+// expands reports whether a node opens and closes what it shows: the
+// triggers of popups and disclosures, an item of a tree with children, or
+// anything open.
+func expands(n platform.AccessNode) bool {
+	switch n.Role {
+	case platform.RolePopUpButton, platform.RoleComboBox, platform.RoleDisclosure, platform.RoleMenuButton:
+		return true
+	}
+	return n.States&(platform.AccessExpanded|platform.AccessExpandable) != 0
+}
+
 // titled reports whether elements of a role show their name as a title.
 func titled(r platform.AccessRole) bool {
 	switch r {
@@ -257,8 +268,13 @@ func (el *accessElement) apply(n platform.AccessNode, fresh bool) (valueChanged 
 	if fresh || n.States&platform.AccessDisabled != o.States&platform.AccessDisabled {
 		send(obj, "setAccessibilityEnabled:", boolArg(n.States&platform.AccessDisabled == 0))
 	}
-	if fresh || n.States&platform.AccessExpanded != o.States&platform.AccessExpanded {
-		send(obj, "setAccessibilityExpanded:", boolArg(n.States&platform.AccessExpanded != 0))
+	// Only what opens says whether it is open, and what was open says it
+	// closed: AppKit reports AXExpanded once it is set, and VoiceOver
+	// then reads "collapsed" on lists and rows that never open.
+	if was := !fresh && expands(o); expands(n) || was {
+		if !was || n.States&platform.AccessExpanded != o.States&platform.AccessExpanded {
+			send(obj, "setAccessibilityExpanded:", boolArg(n.States&platform.AccessExpanded != 0))
+		}
 	}
 	if n.Role == platform.RoleSlider && (fresh || n.States&platform.AccessVertical != o.States&platform.AccessVertical) {
 		// NSAccessibilityOrientationVertical or Horizontal.
