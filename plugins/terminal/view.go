@@ -153,12 +153,15 @@ type view struct {
 
 	// The grid, in device pixels: the cells, the baseline in a cell, and
 	// the origin of the grid relative to the element; scale is device
-	// pixels per DIP, and size the element's in DIPs.
+	// pixels per DIP, and size the element's in DIPs. fitW is the width of
+	// a cell at the font's own advance, which glyphs too wide for their
+	// cells shrink to, whatever Font.CellWidth makes the cells.
 	size                   [2]float32
 	font                   fontKey
 	fonts                  [4]ui.Font
 	scale                  float32
 	cellW, cellH, baseline int
+	fitW                   int
 	ox, oy                 int
 	cols, rows             int
 

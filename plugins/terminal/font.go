@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"math"
 	"runtime"
 	"strings"
 
@@ -27,6 +28,12 @@ type Font struct {
 	// On macOS, kerning is off unless they name kern: each character
 	// keeps its place in its cells.
 	Features []string
+	// CellWidth is the width of columns, as a multiple of the font's
+	// advance: 1 when zero or less. It changes the grid, not the font's
+	// size or the height of rows: glyphs keep their size, centered in
+	// their cells, and below 1 they overlap. Widths round up to whole
+	// display pixels.
+	CellWidth float32
 	// LineHeight is the height of rows, as a multiple of the font's own
 	// line height: 1 when zero, and 1.2 rows 20% taller, as Ghostty's
 	// adjust-cell-height = 20%. Text is centered in its row.
@@ -44,13 +51,14 @@ type fontKey struct {
 	size       float32
 	weight     int
 	features   string
+	cellWidth  float32
 	lineHeight float32
 	thicken    bool
 	scale      float32
 }
 
 func (f *Font) key(scale float32) fontKey {
-	k := fontKey{family: f.Family, size: f.Size, weight: f.Weight, features: featureList(f.Features), lineHeight: f.LineHeight, thicken: f.Thicken, scale: scale}
+	k := fontKey{family: f.Family, size: f.Size, weight: f.Weight, features: featureList(f.Features), cellWidth: f.CellWidth, lineHeight: f.LineHeight, thicken: f.Thicken, scale: scale}
 	if runtime.GOOS == "darwin" {
 		k.features = unkerned(k.features)
 	}
@@ -64,6 +72,9 @@ func (f *Font) key(scale float32) fontKey {
 		k.weight = 400
 	}
 	k.weight = min(max(k.weight, 100), 900)
+	if !(k.cellWidth > 0) || math.IsInf(float64(k.cellWidth), 0) {
+		k.cellWidth = 1
+	}
 	if k.lineHeight <= 0 {
 		k.lineHeight = 1
 	}

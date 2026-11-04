@@ -93,7 +93,8 @@ func (v *view) layout(r ui.Rect, scale float32) {
 		for _, g := range ui.Shape(asciiPrintable, v.fonts[0]) {
 			adv = max(adv, g.Advance)
 		}
-		v.cellW = max(int(math.Ceil(float64(adv*scale-0.05))), 1)
+		v.fitW = max(int(math.Ceil(float64(adv*scale-0.05))), 1)
+		v.cellW = max(int(math.Ceil(float64(adv*fk.cellWidth*scale-0.05))), 1)
 		v.cellH = max(int(math.Ceil(float64((m.Ascent+m.Descent+m.LineGap)*fk.lineHeight*scale-0.05))), 1)
 		v.baseline = int(math.Round(float64((float32(v.cellH)-(m.Ascent+m.Descent)*scale)/2 + m.Ascent*scale)))
 		v.shaped.clear()
@@ -423,12 +424,14 @@ func (v *view) shapeRun(line *rowCache, text []rune, cols []int16, widths []int8
 		return
 	}
 	shaped := v.shape(string(text), variant, 1)
-	cw := float32(v.cellW) / v.scale
+	cw, fw := float32(v.cellW)/v.scale, float32(v.fitW)/v.scale
 	out := glyphRun{glyphs: make([]ui.Glyph, 0, len(shaped)), cols: make([]int16, 0, len(shaped)), c: fg}
 	// The glyphs of a cell, or of the cells a ligature spans, keep their
 	// places relative to each other and are centered in the cells, as the
 	// glyphs of fallback fonts, wider or narrower than a cell, are. Those
-	// too wide, as emoji are, shrink to fit, as in Ghostty.
+	// too wide, as emoji are, shrink to fit, as in Ghostty: to cells at the
+	// font's own advance, so that Font.CellWidth spaces glyphs without
+	// resizing them.
 	for i := 0; i < len(shaped); {
 		first := max(0, min(shaped[i].Cluster, len(cols)-1))
 		col := cols[first]
@@ -449,8 +452,9 @@ func (v *view) shapeRun(line *rowCache, text []rune, cols []int16, widths []int8
 			span += int(widths[k])
 		}
 		room := float32(max(span, 1)) * cw
+		fit := float32(max(span, 1)) * fw
 		group := shaped[i : j+1]
-		if f := room / (x1 - x0); f < 0.95 && x1 > x0 {
+		if f := fit / (x1 - x0); f < 0.95 && x1 > x0 {
 			// Too wide: the same text, smaller.
 			small := v.shape(string(text[first:last+1]), variant, max(f, 0.5))
 			if len(small) > 0 {

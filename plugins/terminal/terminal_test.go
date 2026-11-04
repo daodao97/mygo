@@ -1313,6 +1313,11 @@ func TestFont(t *testing.T) {
 	if w2, h2, _ := render(Font{LineHeight: 1.5}); w2 != w || h2 < h*3/2-1 || h2 > h*3/2+1 {
 		t.Errorf("rows 1.5 times as high are %dx%d, from %dx%d", w2, h2, w, h)
 	}
+	if w2, h2, spaced := render(Font{CellWidth: 1.5}); w2 < w*3/2-1 || w2 > w*3/2+1 || h2 != h {
+		t.Errorf("columns 1.5 times as wide are %dx%d, from %dx%d", w2, h2, w, h)
+	} else if spaced < ink*95/100 || spaced > ink*105/100 {
+		t.Errorf("spacing changed glyph ink from %d to %d", ink, spaced)
+	}
 	if _, _, bold := render(Font{Weight: 700}); bold < ink*11/10 {
 		t.Errorf("weight 700 has ink %d, 400 %d", bold, ink)
 	}

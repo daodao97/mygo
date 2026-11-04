@@ -427,6 +427,7 @@ term, err := terminal.New(terminal.Options{Font: terminal.Font{
 	Size:       14,                                  // DIPs, 13 when zero
 	Weight:     500,                                 // 400 when zero
 	Features:   []string{"-calt", "+ss01"},          // as Ghostty's font-feature
+	CellWidth:  1.03,                                // wider cells, unchanged glyph size
 	LineHeight: 1.2,                                 // as adjust-cell-height = 20%
 	Thicken:    true,                                // as font-thicken, on macOS
 }})
@@ -456,6 +457,13 @@ term, err := terminal.New(terminal.Options{Font: terminal.Font{
   spans the cells of its characters. On macOS, kerning is off unless the
   list names `kern`, so that each character keeps its place in its cells;
   `"+kern"` keeps the font's.
+- `CellWidth` multiplies the font's horizontal advance to size columns,
+  without scaling glyphs or changing row height. Zero or less means `1`;
+  `1.03` requests 3% wider cells, and below `1` glyphs overlap. Cell
+  widths round to whole display pixels, so small increments can share a
+  width or jump a pixel. Wide characters, the cursor, selection, mouse
+  reports and box drawing all follow the adjusted grid; glyphs too wide
+  for a cell, as emoji are, shrink to the font's own cell width.
 - `LineHeight` makes rows taller or shorter than the font's line height,
   with the text centered in them; box drawing still joins.
 - `Thicken` draws text with a thicker stroke, with Core Text's font
