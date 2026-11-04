@@ -113,6 +113,8 @@ type inspector struct {
 	// inspector closes, and statesOpen shows the Styles tab's bar of them.
 	forced     map[uint64]uint8
 	statesOpen bool
+	// openable notes whether the file of the element's source can open.
+	openable openableSource
 	// Scroll offsets of the breadcrumbs, the sidebar and the issues.
 	crumbs       ScrollState
 	sideScroll   ScrollState

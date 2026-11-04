@@ -2905,6 +2905,11 @@ either.
   `:hov` forces states by element (`inspector.forced`): `Hovered`, `Pressed`,
   `Focused`, `FocusVisible`, `FocusWithin` and `ringShown` ask `isForced`,
   which the stub of `mygo_noinspector` answers with false.
+  `main.go:42` opens in the developer's editor (`inspector_editor.go`):
+  `MYGO_EDITOR`, `VISUAL` or `EDITOR` names the command, started in a session
+  of its own so that it outlasts `mygo dev` restarting the app, and failures
+  go to the Issues tab. Browsers and phones keep `os/exec` out
+  (`inspector_editor_none.go`).
   Production builds of `mygo build` leave the inspector out with the build
   tag `mygo_noinspector` (`inspector_off.go` stands in for it, never
   open), added to the tags of `GOFLAGS`, unless `-debug` or

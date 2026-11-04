@@ -113,6 +113,34 @@ the view asks: if a row asks whether it is hovered to color a text inside, force
 the state on the row, not the text. The real focus and pointer stay where they
 are, and the forced states go when the inspector closes.
 
+## Opening the source
+
+The link beside the element in the Styles tab, such as `main.go:42`, opens that
+line in your editor. Set the editor in `MYGO_EDITOR`, or MyGo uses `VISUAL`,
+then `EDITOR`:
+
+```sh
+MYGO_EDITOR=code mygo dev
+```
+
+VS Code and its forks (`code`, `cursor`, `windsurf`), Zed, Sublime Text,
+JetBrains' IDEs (`goland`), TextMate, GVim and Emacs open at the line. Other
+editors get the file alone, unless the command says where things go with
+`{file}` and `{line}`:
+
+```sh
+MYGO_EDITOR='tmux new-window nvim +{line} {file}'
+```
+
+An app has no terminal to run an editor in, so `VISUAL` and `EDITOR` are skipped
+when they name one, such as `vim` or `nano`. A command like the one above opens
+one. Quote a path with spaces. With no editor set, the file opens at its top in
+the system's default application. What goes wrong is listed under Issues.
+
+The variables must reach the app, as they do from a shell running `mygo dev`, but
+not when it starts from the Dock or a file manager. A build with `-trimpath`, as
+`mygo build --debug` is, has no paths to open, so its location isn't a link.
+
 ## Performance and issues
 
 **Performance** shows how long the last frames took to build, lay out and

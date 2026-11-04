@@ -543,8 +543,17 @@ func (in *inspector) stylesPane(c *context) {
 				mono(c, Span{Text: r.selector, Color: pal.text}, Span{Text: " {", Color: pal.text})
 				coreSpacer(c)
 				if i == 0 && in.sel.source != "" {
-					coreText(c, shortSource(in.sel.source)).FontSize(11).TextColor(pal.muted).Underline().
+					link := coreText(c, shortSource(in.sel.source)).FontSize(11).TextColor(pal.muted).
 						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0).Tooltip(in.sel.source)
+					if in.canOpenSource(in.sel.source) {
+						link.Underline().Cursor(CursorPointer).Role(RoleLink)
+						if link.Hovered() {
+							link.TextColor(pal.text)
+						}
+						if link.Clicked() {
+							in.openSource(c.rt, in.sel.source)
+						}
+					}
 				}
 				if !r.inherited {
 					if in.iconButton(c, inspIcons().plus, false, "Add a style").Size(18, 18).Clicked() {
