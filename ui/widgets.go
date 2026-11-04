@@ -600,6 +600,23 @@ func (e *node) intrinsicSize() (w, h float32) {
 // Fit sets how an Image fills its box.
 func (e *node) Fit(f Fit) *node { e.fit = f; return e }
 
+// ObjectPosition places an Image's picture in its box where Fit leaves
+// room around it, or crops it, as CSS's object-position: x and y are
+// fractions of that room across and down, 0 by the left or top edge, 1 by
+// the right or bottom one, and 0.5, as by default, in the middle. An
+// avatar's face, near the top of its photo, stays in view with
+//
+//	ui.Image(c, photo).Size(40, 40).Fit(ui.Cover).ObjectPosition(0.5, 0.15)
+//
+// as object-position: 50% 15%; the edge keywords are 0 and 1, as
+// ObjectPosition(1, 0) for right top. Values beyond 0 and 1 move the
+// picture further, past the box's edges.
+func (e *node) ObjectPosition(x, y float32) *node {
+	finiteTransform(x, y)
+	e.objectPos = [2]float32{x - 0.5, y - 0.5}
+	return e
+}
+
 // Overlay builds fn's elements above the rest of the window. Place them
 // with Absolute, Left and Top, in DIPs relative to the window, or beside
 // another element with AttachTo. Each, as it goes with the focus in it,

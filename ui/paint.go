@@ -1130,19 +1130,20 @@ func (e *node) contentBox() Rect {
 
 func (p *Painter) image(e *node) {
 	if s := e.svg; s != nil {
-		p.drawSVG(s, e.contentBox(), e.fit, e.radius, e.resolvedText().color, e.gray)
+		p.drawSVG(s, e.contentBox(), e.fit, e.objectPos, e.radius, e.resolvedText().color, e.gray)
 		return
 	}
 	img := e.image
 	if img == nil || img.w == 0 || img.h == 0 {
 		return
 	}
-	p.drawBitmap(img, e.contentBox(), e.fit, e.radius, e.gray)
+	p.drawBitmap(img, e.contentBox(), e.fit, e.objectPos, e.radius, e.gray)
 }
 
-// fitIn returns where a picture w×h DIPs goes in box as fit says, and
-// which part of it shows there, as fractions of its size.
-func fitIn(box Rect, w, h float32, fit Fit) (dst, src Rect) {
+// fitIn returns where a picture w×h DIPs goes in box as fit says, placed
+// pos from the middle of the room around it (ObjectPosition), and which
+// part of it shows there, as fractions of its size.
+func fitIn(box Rect, w, h float32, fit Fit, pos [2]float32) (dst, src Rect) {
 	dst, src = box, Rect{0, 0, 1, 1}
 	scale := float32(1)
 	switch fit {
@@ -1155,19 +1156,23 @@ func fitIn(box Rect, w, h float32, fit Fit) (dst, src Rect) {
 	case ScaleDown:
 		scale = min(box.W/w, box.H/h, 1)
 	}
-	dst.W, dst.H = w*scale, h*scale
-	dst.X += (box.W - dst.W) / 2
-	dst.Y += (box.H - dst.H) / 2
+	dst = placeIn(box, w*scale, h*scale, pos)
 	// Only what falls in the box shows.
 	shown := intersect(dst, box)
 	src = Rect{(shown.X - dst.X) / dst.W, (shown.Y - dst.Y) / dst.H, shown.W / dst.W, shown.H / dst.H}
 	return shown, src
 }
 
-func (p *Painter) drawBitmap(img *Bitmap, box Rect, fit Fit, radius [4]float32, gray bool) {
+// placeIn returns the box of a picture w×h DIPs in box, placed pos from
+// the middle of the room around it (ObjectPosition).
+func placeIn(box Rect, w, h float32, pos [2]float32) Rect {
+	return Rect{box.X + (box.W-w)*(0.5+pos[0]), box.Y + (box.H-h)*(0.5+pos[1]), w, h}
+}
+
+func (p *Painter) drawBitmap(img *Bitmap, box Rect, fit Fit, pos [2]float32, radius [4]float32, gray bool) {
 	// A bitmap's own size is its pixels in DIPs, as an Image lays it out.
 	iw, ih := float32(img.w), float32(img.h)
-	dst, frac := fitIn(box, iw, ih, fit)
+	dst, frac := fitIn(box, iw, ih, fit, pos)
 	if dst.W <= 0 || dst.H <= 0 {
 		return
 	}
@@ -1423,10 +1428,10 @@ func (p *Painter) Image(src ImageSource, r Rect, fit Fit) {
 	switch s := src.(type) {
 	case *Bitmap:
 		if s != nil && s.w > 0 && s.h > 0 {
-			p.drawBitmap(s, r, fit, [4]float32{}, false)
+			p.drawBitmap(s, r, fit, [2]float32{}, [4]float32{}, false)
 		}
 	case *SVG:
-		p.drawSVG(s, r, fit, [4]float32{}, p.Theme().Text, false)
+		p.drawSVG(s, r, fit, [2]float32{}, [4]float32{}, p.Theme().Text, false)
 	}
 }
 

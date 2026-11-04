@@ -244,9 +244,9 @@ func (p *Painter) contentImage(e *node) bool {
 	defer func() { p.opacity = saved }()
 	p.opacity = saved * (1 - k)
 	if r.oldSVG != nil {
-		p.drawSVG(r.oldSVG, box, e.fit, e.radius, r.oldColor, e.gray)
+		p.drawSVG(r.oldSVG, box, e.fit, e.objectPos, e.radius, r.oldColor, e.gray)
 	} else if r.oldImg != nil && r.oldImg.w > 0 && r.oldImg.h > 0 {
-		p.drawBitmap(r.oldImg, box, e.fit, e.radius, e.gray)
+		p.drawBitmap(r.oldImg, box, e.fit, e.objectPos, e.radius, e.gray)
 	}
 	p.opacity = saved * k
 	p.image(e)

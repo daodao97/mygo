@@ -93,6 +93,17 @@ gray, as for what is disabled. `Radius` rounds its corners, and
 ui.Image(c, photo).AspectRatio(16.0 / 9).Fit(ui.Cover).Radius(8)
 ```
 
+`ObjectPosition(x, y)` places the picture where `Fit` crops it or leaves
+room around it, as CSS's `object-position`: fractions of that room across
+and down, 0 by the left or top edge, 1 by the right or bottom one, and
+0.5, the default, in the middle. Its edge keywords are 0 and 1: `left
+top` is `ObjectPosition(0, 0)`. An avatar whose face, near the top of the
+photo, stays in view, as `object-position: 50% 15%`:
+
+```go
+ui.Image(c, photo).Size(40, 40).Radius(20).Fit(ui.Cover).ObjectPosition(0.5, 0.15)
+```
+
 ## SVGs
 
 `ui.ParseSVG` parses an SVG, and `ui.MustParseSVG` one that is part of the

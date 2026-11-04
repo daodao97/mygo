@@ -5589,6 +5589,41 @@ func (_handle Element) MaskRadialGradient(g RadialGradient) Element {
 	return wrapElement(_node.MaskRadialGradient(g))
 }
 
+// Masks masks the element and what is inside it by layers of masks, the
+// first on top, each composited with those after it as its Composite
+// says, as CSS's mask-image with mask-composite does: each point shows as
+// much as the result's alpha there, and nothing shows outside the box (or
+// the inset of ClipInset). It replaces MaskLinearGradient and the others,
+// which make one layer, and they replace it. A ring 1.5 DIPs wide, of a
+// gradient, its middle cut out by a layer over the content box:
+//
+//	black := ui.RGB(0, 0, 0)
+//	solid := ui.LinearGradient{From: black, To: black}
+//	ui.Box(c).Size(120, 40).Radius(20).Padding(1.5).Gradient(pink, violet, 90).Masks(
+//		ui.Mask{Image: solid, Box: ui.MaskContentBox, Composite: ui.MaskExclude},
+//		ui.Mask{Image: solid},
+//	)
+//
+// and a crescent, a disc less one beside it:
+//
+//	disc := func(x, y float32) ui.RadialGradient {
+//		return ui.RadialGradient{Center: ui.Point{X: x, Y: y}, Radius: 40,
+//			Stops: []ui.GradientStop{{black, 0.98}, {ui.Transparent, 1}}}
+//	}
+//	moon.Masks(ui.Mask{Image: disc(0.5, 0.5), Composite: ui.MaskSubtract}, ui.Mask{Image: disc(0.7, 0.35)})
+//
+// Layers that are not one gradient across the border box make a mask of
+// their alpha, drawn once for each size the element paints at.
+func (_handle Element) Masks(layers ...Mask) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Masks(layers...))
+}
+
 func (_handle Element) MaxHeight(v float32) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -5769,6 +5804,27 @@ func (_handle Element) NoWrap() Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.NoWrap())
+}
+
+// ObjectPosition places an Image's picture in its box where Fit leaves
+// room around it, or crops it, as CSS's object-position: x and y are
+// fractions of that room across and down, 0 by the left or top edge, 1 by
+// the right or bottom one, and 0.5, as by default, in the middle. An
+// avatar's face, near the top of its photo, stays in view with
+//
+//	ui.Image(c, photo).Size(40, 40).Fit(ui.Cover).ObjectPosition(0.5, 0.15)
+//
+// as object-position: 50% 15%; the edge keywords are 0 and 1, as
+// ObjectPosition(1, 0) for right top. Values beyond 0 and 1 move the
+// picture further, past the box's edges.
+func (_handle Element) ObjectPosition(x float32, y float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ObjectPosition(x, y))
 }
 
 // OnPaste has fn see a paste into a text input, by Cmd+V, Ctrl+V or a

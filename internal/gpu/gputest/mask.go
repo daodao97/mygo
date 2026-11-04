@@ -10,8 +10,9 @@ import (
 // of stops, radial and conic, and by an image (a path's coverage),
 // with fills, a shadow and an image inside, a clip within a masked one,
 // rounded or not, a masked clip turned, and one only moved, by whole
-// pixels and between them, which renderers fold; and all of them again,
-// scaled, under the reference scene's size (Scene).
+// pixels and between them, which renderers fold; all of them again,
+// scaled, under the reference scene's size (Scene); and part of an image
+// over a rounded clip.
 func MaskedClipScene() *scene.Scene {
 	scene.FoldTranslations() // as package ui does
 	s := &scene.Scene{Width: 320, Height: 740, Clear: scene.Color{R: 246, G: 247, B: 249, A: 255}}
@@ -96,5 +97,11 @@ func MaskedClipScene() *scene.Scene {
 		op.Transform = grow.Mul(op.Transform)
 		add(op)
 	}
+	// Part of an image's alpha over a rounded clip, as an element's
+	// layers of masks under its ClipInset (ui's Masks): the disc's middle,
+	// stretched.
+	add(scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 10, Y: 696, W: 90, H: 40}, Radii: r4(8), Image: disc, Src: scene.Rect{X: 8, Y: 16, W: 48, H: 32}})
+	add(scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 0, Y: 690, W: 110, H: 50}, Color: red})
+	add(scene.Op{Kind: scene.OpPopClip})
 	return s
 }

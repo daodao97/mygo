@@ -448,6 +448,9 @@ type node struct {
 	maximizeButton bool
 	fit            Fit
 	gray           bool
+	// objectPos is where ObjectPosition puts the picture in its box, from
+	// its middle: 0, 0 by default.
+	objectPos [2]float32
 	// ringOffset and ringColor are the offset and the color of the
 	// element's focus ring, where ringSet says it sets them.
 	ringOffset float32

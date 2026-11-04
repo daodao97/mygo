@@ -153,8 +153,10 @@ type engine struct {
 	nextMeasured int
 	paths        paths
 	// pathClips are the masks of the paths clips were cut to lately, by
-	// their shapes (clipMask).
+	// their shapes (clipMask), and of the layers of masks (Masks), and
+	// maskScene the scene the layers are drawn from.
 	pathClips map[uint64]*pathClip
+	maskScene *scene.Scene
 	svgs      svgs
 	flex      flexScratch
 	grid      gridScratch
