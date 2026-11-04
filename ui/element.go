@@ -1620,7 +1620,8 @@ func (e *node) TextBackground(c Color) *node {
 func (e *node) Strikethrough() *node { e.ts.strike = true; e.ts.set |= setStrike; return e }
 
 // LetterSpacing adds v DIPs after every character of text, or tightens it
-// with a negative v, as for labels in capitals.
+// with a negative v, as for labels in capitals; 0 takes away that of the
+// text around it, as for a number within such a label.
 func (e *node) LetterSpacing(v float32) *node {
 	e.ts.spacing = v
 	e.ts.set |= setSpacing

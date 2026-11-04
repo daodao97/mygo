@@ -36,10 +36,23 @@ type Span struct {
 	// Radius rounds the corners of the Background, which then hugs the
 	// span's glyphs, a little wider than them, rather than filling the
 	// line, as code within text shows.
-	Radius        float32
-	LetterSpacing float32
-	Features      string // as for Element.FontFeatures, comma separated
-	Lang          string // the language, as for Element.Lang
+	Radius float32
+	// PaddingX and PaddingY pad the Background, which then hugs the
+	// span's glyphs, as CSS pads an inline box: a key cap, a mention chip.
+	// PaddingX, which replaces the little that Radius widens it by, also
+	// takes room in the line, moving the span's glyphs in and the text
+	// after them on; PaddingY only paints, over the lines above and below,
+	// as the background of an inline box does on the web. Each
+	// line's piece of a span that wraps gets both, and its corners, as
+	// with CSS's box-decoration-break: clone.
+	PaddingX, PaddingY float32
+	LetterSpacing      float32
+	// NoLetterSpacing makes a zero LetterSpacing the span's own, rather
+	// than the text's around it, as CSS's letter-spacing: 0 on an inline
+	// box: digits or code within tracked capitals.
+	NoLetterSpacing bool
+	Features        string // as for Element.FontFeatures, comma separated
+	Lang            string // the language, as for Element.Lang
 	// ObjectWidth and ObjectHeight, when ObjectWidth is set, make each
 	// rune of the span, an object replacement character (U+FFFC), an
 	// inline object: a box of that size in DIPs standing on the baseline,
@@ -67,6 +80,11 @@ type Span struct {
 // one.
 func (s *Span) underlineOffset() (float32, bool) {
 	return s.UnderlineOffset, s.offsetSet || s.UnderlineOffset != 0
+}
+
+// letterSpacing returns the span's LetterSpacing, and whether it sets one.
+func (s *Span) letterSpacing() (float32, bool) {
+	return s.LetterSpacing, s.NoLetterSpacing || s.LetterSpacing != 0
 }
 
 // RichText creates a text whose spans differ in style, over the style of
@@ -194,8 +212,8 @@ func (sc *spanCache) update(spans []Span) {
 // spanStyle returns the style of a span ending at rune end, for its
 // layout.
 func spanStyle(s Span, end int) text.Span {
-	return text.Span{End: end, Family: s.Font, Size: s.Size, Weight: s.Weight, Italic: s.Italic, LetterSpacing: s.LetterSpacing, Features: s.Features, Lang: s.Lang,
-		ObjectWidth: s.ObjectWidth, ObjectHeight: s.ObjectHeight, ObjectDescent: s.ObjectDescent, BaselineShift: s.BaselineShift}
+	return text.Span{End: end, Family: s.Font, Size: s.Size, Weight: s.Weight, Italic: s.Italic, LetterSpacing: s.LetterSpacing, SpacingSet: s.NoLetterSpacing, Features: s.Features, Lang: s.Lang,
+		ObjectWidth: s.ObjectWidth, ObjectHeight: s.ObjectHeight, ObjectDescent: s.ObjectDescent, BaselineShift: s.BaselineShift, PaddingX: s.PaddingX}
 }
 
 // encodeSpans encodes the styles of spans for a layout.
@@ -358,11 +376,15 @@ func (sp *spanPaint) backgrounds(p *Painter, line *text.Line, x, y float32) {
 		if k < 0 || sp.spans[k].Background.A == 0 {
 			return
 		}
-		if r := sp.spans[k].Radius; r > 0 {
+		if s := &sp.spans[k]; s.Radius > 0 || s.PaddingX > 0 || s.PaddingY > 0 {
 			size := line.Glyphs[i].Size
-			px := min(size*0.22, r)
-			base := line.Baseline - sp.spans[k].BaselineShift
-			p.Fill(Rect{x + x0 - px, y + base - size*0.98, x1 - x0 + 2*px, size * 1.32}, sp.spans[k].Background, r)
+			px := min(size*0.22, s.Radius)
+			if s.PaddingX > 0 || s.PaddingY > 0 {
+				px = max(s.PaddingX, 0) // the room the layout left
+			}
+			py := max(s.PaddingY, 0)
+			base := line.Baseline - s.BaselineShift
+			p.Fill(Rect{x + x0 - px, y + base - size*0.98 - py, x1 - x0 + 2*px, size*1.32 + 2*py}, s.Background, s.Radius)
 			return
 		}
 		p.Fill(Rect{x + x0, y + line.Y, x1 - x0, line.Height}, sp.spans[k].Background, 0)

@@ -874,7 +874,7 @@ func (e *dwrite) typeset(layout uintptr, style Style, spans []Span, text []rune)
 		return uintptr(units[from]) | uintptr(units[to]-units[from])<<32
 	}
 	all := textRange(0, len(text))
-	e.spacing(layout, style.LetterSpacing, all)
+	e.spacing(layout, style.LetterSpacing, false, all)
 	e.typography(layout, style.Features, all)
 	from := 0
 	for _, sp := range spans {
@@ -900,7 +900,7 @@ func (e *dwrite) typeset(layout uintptr, style Style, spans []Span, text []rune)
 		if sp.Size > 0 {
 			method[func(this uintptr, size float32, r uintptr) uintptr](layout, layoutSetFontSize)(layout, sp.Size, r)
 		}
-		e.spacing(layout, sp.LetterSpacing, r)
+		e.spacing(layout, sp.LetterSpacing, sp.SpacingSet, r)
 		e.typography(layout, sp.Features, r)
 	}
 	// The runes in other languages than the format's: those of spans, and
@@ -914,9 +914,10 @@ func (e *dwrite) typeset(layout uintptr, style Style, spans []Span, text []rune)
 	setObjects(layout, spans, units)
 }
 
-// spacing adds letter spacing to a range of a text layout.
-func (e *dwrite) spacing(layout uintptr, spacing float32, r uintptr) {
-	if spacing == 0 {
+// spacing adds letter spacing to a range of a text layout, or, set, makes
+// it that of the range, zero included.
+func (e *dwrite) spacing(layout uintptr, spacing float32, set bool, r uintptr) {
+	if spacing == 0 && !set {
 		return
 	}
 	// IDWriteTextLayout1 came with Windows 8.

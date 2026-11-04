@@ -130,7 +130,10 @@ type Span struct {
 	Weight        int
 	Italic        bool
 	LetterSpacing float32
-	Features      string
+	// SpacingSet makes LetterSpacing the span's when zero too, rather
+	// than the text's, as CSS's letter-spacing: 0 on an inline box.
+	SpacingSet bool
+	Features   string
 	// Lang is the language of the runes, as Style.Lang; "" keeps the
 	// text's.
 	Lang string
@@ -145,6 +148,11 @@ type Span struct {
 	// above the baseline, or lowers them when negative, as superscripts
 	// and subscripts are; the line makes room for them.
 	BaselineShift float32
+	// PaddingX widens the span that many DIPs at both ends of each line's
+	// piece of it, as the horizontal padding of CSS's inline boxes with
+	// box-decoration-break: clone: the glyphs move in, and the line, which
+	// breaks to fit it, is that much wider.
+	PaddingX float32
 }
 
 // style returns the style of the span's runes in a text of style base.
@@ -162,7 +170,7 @@ func (sp Span) style(base Style) Style {
 	if sp.Italic {
 		s.Italic = true
 	}
-	if sp.LetterSpacing != 0 {
+	if sp.LetterSpacing != 0 || sp.SpacingSet {
 		s.LetterSpacing = sp.LetterSpacing
 	}
 	if sp.Features != "" {
@@ -187,8 +195,8 @@ func EncodeSpans(spans []Span) string {
 		str(sp.Family)
 		b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.Size))
 		b = binary.AppendUvarint(b, uint64(max(sp.Weight, 0)))
-		// Italics, and whether a baseline shift follows: other spans'
-		// keys stay short.
+		// Italics, a letter spacing set, and whether a baseline shift and
+		// a padding follow: other spans' keys stay short.
 		var flags byte
 		if sp.Italic {
 			flags |= 1
@@ -196,9 +204,18 @@ func EncodeSpans(spans []Span) string {
 		if sp.BaselineShift != 0 {
 			flags |= 2
 		}
+		if sp.SpacingSet {
+			flags |= 4
+		}
+		if sp.PaddingX != 0 {
+			flags |= 8
+		}
 		b = append(b, flags)
 		if sp.BaselineShift != 0 {
 			b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.BaselineShift))
+		}
+		if sp.PaddingX != 0 {
+			b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.PaddingX))
 		}
 		b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.LetterSpacing))
 		str(sp.Features)
@@ -257,8 +274,12 @@ func DecodeSpans(s string) []Span {
 			b = b[1:]
 		}
 		sp.Italic = flags&1 != 0
+		sp.SpacingSet = flags&4 != 0
 		if flags&2 != 0 {
 			sp.BaselineShift = f32()
+		}
+		if flags&8 != 0 {
+			sp.PaddingX = f32()
 		}
 		sp.LetterSpacing = f32()
 		sp.Features = str()
@@ -331,6 +352,9 @@ type Line struct {
 	carets   []float32
 	stops    []caretStop
 	upstream []float32
+	// padding is the room the padding of spans' pieces takes in the line
+	// (Span.PaddingX).
+	padding float32
 }
 
 // Glyph is a positioned glyph.
@@ -1194,9 +1218,13 @@ func (s *System) paragraph(out []Line, p Params, spans []Span, runes []rune, sta
 		room = make([]Glyph, n)
 	}
 	first := len(out)
+	pads := padded(spans)
 	for _, sl := range shaped {
 		k := glyphCount(sl)
 		out = append(out, line(p, text, sl, start, rtl, m, y, room[:0:k], &s.starts, spans))
+		if pads {
+			padLine(&out[len(out)-1], spans, start)
+		}
 		room = room[k:]
 	}
 	lines := out[first:]
@@ -1415,16 +1443,26 @@ func (s *System) ellipsize(text []rune, spans []Span, start int, p Params, width
 		b.Reset(rest)
 		w := float32(0)
 		cut = 0
+		// The padding of the spans' pieces before the cut, and the span of
+		// the last, which the ellipsis ends.
+		pads, k := padded(restSpans), -1
 		for cut < len(rest) {
 			next := b.NextGrapheme(cut)
 			gw := float32(0)
 			for _, a := range advances[cut:next] {
 				gw += a
 			}
-			if w+gw+ellipsis > width {
+			j := k
+			if pads {
+				if j = spanIndex(restSpans, cut); j != k {
+					gw += padOf(restSpans, k) + padOf(restSpans, j)
+				}
+			}
+			if w+gw+padOf(restSpans, j)+ellipsis > width {
 				break
 			}
 			w += gw
+			k = j
 			cut = next
 		}
 	}

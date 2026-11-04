@@ -125,6 +125,35 @@ ui.RichText(c,
 )
 ```
 
+`PaddingX` and `PaddingY` pad a span's background, which then hugs its
+glyphs too, as CSS pads an inline box: a key cap or a mention chip within
+a sentence. As on the web, `PaddingX` takes room in the line, moving the
+span's glyphs in and the words after it on, and lines break to fit it;
+`PaddingY` only paints, over the lines above and below, which keep their
+height. A span that wraps pads its piece of each line at both ends, with
+its own corners, as `box-decoration-break: clone` does:
+
+```go
+ui.RichText(c,
+	ui.Span{Text: "Press "},
+	ui.Span{Text: "Ctrl K", Background: t.Surface, Radius: 4, PaddingX: 6, PaddingY: 2},
+	ui.Span{Text: " to search"},
+)
+```
+
+A span's `LetterSpacing` left zero takes the text's; `NoLetterSpacing`
+makes the zero its own, as CSS's `letter-spacing: 0` on an inline box,
+for a number or code that keeps its normal spacing within tracked
+capitals. An element within a sentence does the same with
+`LetterSpacing(0)`:
+
+```go
+ui.RichText(c,
+	ui.Span{Text: "BUILD "},
+	ui.Span{Text: "4.2.1", NoLetterSpacing: true},
+).LetterSpacing(2)
+```
+
 A span with an `ObjectWidth` makes its object replacement characters
 (U+FFFC) inline objects: boxes `ObjectWidth` wide, `ObjectHeight` above
 the baseline and `ObjectDescent` below it, which wrap with the words and

@@ -804,7 +804,7 @@ func TestSpans(t *testing.T) {
 }
 
 func TestEncodeSpans(t *testing.T) {
-	spans := []Span{{End: 3, Family: "A, B", Size: 1.5, Weight: 600, Italic: true, LetterSpacing: -0.5, Features: "tnum", Lang: "ja"}, {End: 5, BaselineShift: -2.5}, {End: 9}}
+	spans := []Span{{End: 3, Family: "A, B", Size: 1.5, Weight: 600, Italic: true, LetterSpacing: -0.5, Features: "tnum", Lang: "ja"}, {End: 5, BaselineShift: -2.5}, {End: 7, SpacingSet: true, PaddingX: 3}, {End: 9}}
 	if got := DecodeSpans(EncodeSpans(spans)); !slices.Equal(got, spans) {
 		t.Errorf("decoded %+v, want %+v", got, spans)
 	}
@@ -815,6 +815,106 @@ func TestEncodeSpans(t *testing.T) {
 	in := spansIn([]Span{{End: 3, Weight: 1}, {End: 8, Weight: 2}, {End: 12, Weight: 3}}, 5, 10)
 	if want := []Span{{End: 3, Weight: 2}, {End: 5, Weight: 3}}; !slices.Equal(in, want) {
 		t.Errorf("spansIn = %+v, want %+v", in, want)
+	}
+}
+
+// TestSpanZeroLetterSpacing checks that a span's letter spacing of 0,
+// once set, is its own over the text's, as CSS's letter-spacing: 0 on an
+// inline box, and that a zero not set is the text's.
+func TestSpanZeroLetterSpacing(t *testing.T) {
+	s := newSystem()
+	width := func(spacing float32, spans ...Span) float32 {
+		return s.Layout(Params{Text: "LABEL 42", Style: Style{Size: 20, LetterSpacing: spacing}, Spans: EncodeSpans(spans)}).Width
+	}
+	plain, tracked := width(0), width(4)
+	if tracked <= plain+20 {
+		t.Fatalf("letter spacing of 4 leaves LABEL 42 %v wide, from %v", tracked, plain)
+	}
+	if w := width(4, Span{End: 6}, Span{End: 8}); w != tracked {
+		t.Errorf("spans without a spacing are %v wide, the tracked text %v", w, tracked)
+	}
+	// The number keeps normal spacing: two letters' worth less.
+	untracked := width(4, Span{End: 6}, Span{End: 8, SpacingSet: true})
+	if d := tracked - untracked; d < 4*1-0.5 || d > 4*2+0.5 {
+		t.Errorf("a span set to no spacing makes the text %v wide, %v tracked", untracked, tracked)
+	}
+	if w := width(0, Span{End: 6}, Span{End: 8, SpacingSet: true}); w != plain {
+		t.Errorf("no spacing over none is %v wide, not %v", w, plain)
+	}
+}
+
+// TestSpanPadding checks the horizontal padding of spans: each line's
+// piece of a span takes it at both ends, moving its glyphs in and the
+// text after it on, and lines break to fit it.
+func TestSpanPadding(t *testing.T) {
+	s := newSystem()
+	const text = "See Ctrl K now"
+	const pad = 6
+	lay := func(width float32, maxLines int, spans ...Span) *Layout {
+		return s.Layout(Params{Text: text, Style: Style{Size: 14}, Width: width, MaxLines: maxLines, Spans: EncodeSpans(spans)})
+	}
+	chip := []Span{{End: 4}, {End: 10, PaddingX: pad}, {End: 14}}
+	x := func(l *Layout, r int) float32 {
+		for _, line := range l.Lines {
+			for _, g := range line.Glyphs {
+				if g.Cluster == r {
+					return g.X
+				}
+			}
+		}
+		t.Fatalf("no glyph of rune %d", r)
+		return 0
+	}
+	plain, padded := lay(0, 0), lay(0, 0, chip...)
+	if d := padded.Width - plain.Width; math.Abs(float64(d-2*pad)) > 0.01 {
+		t.Errorf("a padded span widens the text by %v, not %v", d, 2*pad)
+	}
+	for _, c := range []struct{ r, by int }{{0, 0}, {3, 0}, {4, pad}, {9, pad}, {10, 2 * pad}, {13, 2 * pad}} {
+		if d := x(padded, c.r) - x(plain, c.r); math.Abs(float64(d-float32(c.by))) > 0.01 {
+			t.Errorf("rune %d moves %v, not %d", c.r, d, c.by)
+		}
+	}
+	// Wide enough for the text but not its padding, the line breaks
+	// before what does not fit.
+	fit := x(plain, 10) + 1
+	if l := lay(fit, 0); len(l.Lines) != 2 || l.Lines[0].End != 11 {
+		t.Fatalf("unpadded at %v: %d lines, the first to %d", fit, len(l.Lines), l.Lines[0].End)
+	}
+	wrapped := lay(fit, 0, chip...)
+	if len(wrapped.Lines) < 2 {
+		t.Fatalf("padded at %v: %d lines", fit, len(wrapped.Lines))
+	}
+	for i, line := range wrapped.Lines {
+		if line.Width > fit+0.01 {
+			t.Errorf("line %d is %v wide, past %v", i, line.Width, fit)
+		}
+	}
+	// A span that wraps pads its piece of each line: the clone of
+	// box-decoration-break.
+	long := []Span{{End: 4}, {End: 14, PaddingX: pad}}
+	at := x(plain, 9) + 1
+	unpadded, split := lay(at, 0), lay(at+2*pad, 0, long...)
+	if len(unpadded.Lines) != 2 || len(split.Lines) != 2 || split.Lines[0].End != unpadded.Lines[0].End {
+		t.Fatalf("lines %d and %d, the first to %d and %d", len(unpadded.Lines), len(split.Lines), unpadded.Lines[0].End, split.Lines[0].End)
+	}
+	for i := range split.Lines {
+		if d := split.Lines[i].Width - unpadded.Lines[i].Width; math.Abs(float64(d-2*pad)) > 0.01 {
+			t.Errorf("line %d is %v wider padded, not %v", i, d, 2*pad)
+		}
+	}
+	second := split.Lines[1].Start
+	if d := x(split, second) - x(unpadded, second); math.Abs(float64(d-pad)) > 0.01 {
+		t.Errorf("the second line's first glyph moves %v, not %d", d, pad)
+	}
+	// Truncated, the ellipsis and the padding fit the width.
+	if cut := lay(fit, 1, chip...); !cut.Truncated || cut.Width > fit+0.01 {
+		t.Errorf("truncated at %v: %v, %v wide", fit, cut.Truncated, cut.Width)
+	}
+	// Justified, padded lines stretch to the width, not past it.
+	s.UseJustify()
+	j := s.Layout(Params{Text: text, Style: Style{Size: 14}, Width: fit, Justify: true, Spans: EncodeSpans(chip)})
+	if w := j.Lines[0].Width; len(j.Lines) > 1 && math.Abs(float64(w-fit)) > 0.01 {
+		t.Errorf("a justified padded line is %v wide, not %v", w, fit)
 	}
 }
 

@@ -5413,7 +5413,8 @@ func (_handle Element) LeftPercent(p float32) Element {
 }
 
 // LetterSpacing adds v DIPs after every character of text, or tightens it
-// with a negative v, as for labels in capitals.
+// with a negative v, as for labels in capitals; 0 takes away that of the
+// text around it, as for a number within such a label.
 func (_handle Element) LetterSpacing(v float32) Element {
 	_node := _handle.node()
 	if _node == nil {

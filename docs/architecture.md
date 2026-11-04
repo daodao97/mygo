@@ -4179,7 +4179,10 @@ either.
   ranges of runes (`text.Span`): DirectWrite's setters over a range, the
   fonts of a Core Text attributed string's ranges, Pango's attributes
   between byte indices. `Params.Spans` holds them encoded as a string, so
-  `Params` stays a key of the layout cache. Laying out reuses what shaping
+  `Params` stays a key of the layout cache. A span's letter spacing of 0
+  is the text's unless `SpacingSet` (ui's `Span.NoLetterSpacing`, or an
+  inline element's `LetterSpacing(0)`) makes it its own, which each engine
+  sets over the span's range as any other. Laying out reuses what shaping
   throws away: engines take the glyphs, runs and lines `shape` returns from
   a scratch each layout resets (`shapeScratch`), as the layout copies them
   into its lines, which share one allocation; Core Text keeps its buffers,
@@ -4217,8 +4220,14 @@ either.
   Only Pango leaves room for it as it breaks, so a line whose hyphen does
   not fit is broken again, narrower by the hyphen, where Unicode's line
   breaking allows (else the hyphen overflows, as a long word does), and
-  the rest anew (`breakLines`). A paragraph without an indent or a soft
-  hyphen is shaped once.
+  the rest anew (`breakLines`). The padding of a span (`Span.PaddingX`),
+  which engines know nothing of, is the shared layout's too: `padLine`
+  moves the glyphs of each line's piece of the span in, and those after
+  it on, by the padding at both ends of each piece, as CSS's
+  `box-decoration-break: clone`, and widens the line; a line that does
+  not fit with the padding of its pieces is broken again, narrower by it,
+  and the rest anew, and an ellipsis leaves room for it. A paragraph
+  without an indent, a soft hyphen or a padded span is shaped once.
   `Params.Balance` (`Element.Balance`) breaks a paragraph that wraps at
   narrower widths, bisecting to a quarter of a DIP, for the narrowest
   that keeps its count of lines (`System.balance`). The layout cache

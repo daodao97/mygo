@@ -805,13 +805,13 @@ func (e *pangoEngine) attributes(style Style, spans []Span, text []rune) uintptr
 		}
 		return l.attrFontFeaturesNew(b.String())
 	}
-	spacing := func(v float32) uintptr {
-		if v == 0 {
+	spacing := func(v float32, set bool) uintptr {
+		if v == 0 && !set {
 			return 0
 		}
 		return l.attrLetterSpacingNew(int32(math.Round(float64(v) * pangoScale)))
 	}
-	add(spacing(style.LetterSpacing), 0, 0)
+	add(spacing(style.LetterSpacing, false), 0, 0)
 	add(features(style.Features), 0, 0)
 	if style.Lang != "" {
 		add(l.attrLanguageNew(e.language(style.Lang)), 0, 0)
@@ -847,7 +847,7 @@ func (e *pangoEngine) attributes(style Style, spans []Span, text []rune) uintptr
 		if sp.Italic {
 			add(l.attrStyleNew(pangoStyleItalic), b0, b1)
 		}
-		add(spacing(sp.LetterSpacing), b0, b1)
+		add(spacing(sp.LetterSpacing, sp.SpacingSet), b0, b1)
 		add(features(sp.Features), b0, b1)
 		if sp.ObjectWidth > 0 {
 			// Each rune an inline object: a shape of its size standing on
