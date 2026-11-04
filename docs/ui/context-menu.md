@@ -68,6 +68,10 @@ message.Selectable().ContextMenu(func(m *ui.Menu) {
 })
 ```
 
+An element within text, as a link in a paragraph, opens its menu on that
+text: `EditItems` in the link's `ContextMenu` adds the paragraph's Copy
+and Select All, which act on the selection.
+
 The same menu opens below a button with `Element.Menu`: see
 [menu button](menu-button.md). In tests, `tt.RightClick` opens a context
 menu, which `tt.Menu` lists and `tt.ChooseMenuItem` chooses from.

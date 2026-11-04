@@ -176,8 +176,9 @@ func (m *Menu) add(label string, typ platform.MenuItemType) *MenuItem {
 // EditItems adds the editing items of the text the menu opened on, as its
 // menu has them without ContextMenu: Copy and Select All for selectable
 // text, the platform's text field items for a text input. Choosing one does
-// its command on the text, without reaching the menu's function. It adds
-// nothing to a menu that opened on no text.
+// its command on the text, without reaching the menu's function. An element
+// within text, as a link in a paragraph, opens its menu on that text. It
+// adds nothing to a menu that opened on no text.
 func (m *Menu) EditItems() {
 	if m.text == nil || m.text.editor == nil {
 		return
@@ -347,6 +348,17 @@ func (rt *engine) menuTarget(chain []uint64) *state {
 	return nil
 }
 
+// textAround returns the selectable text or text input around s in chain,
+// whose context menu s replaces, as a paragraph's for a link in it, or nil.
+func (rt *engine) textAround(chain []uint64, s *state) *state {
+	for _, id := range chain[slices.Index(chain, s.id)+1:] {
+		if t := rt.states[id]; t != nil && t.flags&(flagEditable|flagSelectable) != 0 && t.editor != nil {
+			return t
+		}
+	}
+	return nil
+}
+
 // askMenu has the next frame build the context menu of s, or with button
 // its menu button's, to show at (x, y): where it was clicked, or below the
 // focus.
@@ -399,6 +411,8 @@ func (rt *engine) menuPress(chain []uint64, x, y float32) bool {
 	if s.editor != nil {
 		text = s.id
 		s = rt.textMenu(s)
+	} else if t := rt.textAround(chain, s); t != nil {
+		text = t.id
 	}
 	if runtime.GOOS == "windows" {
 		rt.menu.release, rt.menu.releaseText = s.id, text
@@ -445,6 +459,8 @@ func (rt *engine) menuKey() bool {
 		x, y = r.X, r.Y+r.H
 		text = s.id
 		s = rt.textMenu(s)
+	} else if t := rt.textAround(rt.focusChain(), s); t != nil {
+		text = t.id
 	}
 	rt.askMenu(s, x, y, false)
 	rt.menu.text, rt.menu.key = text, true

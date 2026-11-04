@@ -21,6 +21,14 @@ type Options struct {
 	// Extensions is the syntax read beyond CommonMark: Default when zero.
 	Extensions parser.Extensions
 
+	// LinkMenu, when set, builds the context menu of a link, given its
+	// destination, as a chat's Copy Path and Reveal in Finder for a link
+	// to a file. The link's menu replaces the one around the view, as its
+	// Selectable container's, since the innermost element with a context
+	// menu gets the click; m.EditItems adds the text's Copy and Select
+	// All to it. Links to #a-heading, footnote references and a link
+	// whose destination is still coming keep the menu around them.
+	LinkMenu func(m *ui.Menu, url string)
 	// OnLink, when set, handles a click on a link, given its destination.
 	// Without it, links to http, https and mailto addresses open as a
 	// ui.Link opens them, a path without a scheme goes there in the
@@ -486,6 +494,9 @@ func (st *viewState) link(c *ui.Context, in *parser.Inline, children func()) {
 		l = ui.Link(c, "", dest)
 	default:
 		l = ui.Link(c, "", "")
+	}
+	if st.o.LinkMenu != nil && !in.Pending && dest != "" && !strings.HasPrefix(dest, "#") {
+		l.ContextMenu(func(m *ui.Menu) { st.o.LinkMenu(m, dest) })
 	}
 	l.TextColor(st.th.Link)
 	l.Children(children)
