@@ -240,8 +240,9 @@ type transition struct {
 	moving              uint8
 	fresh               bool
 	// held keeps the element appearing unseen while copies of its
-	// siblings leave (AfterExits).
-	held bool
+	// siblings leave (AfterExits), and focus the keyboard focus given to
+	// it meanwhile, which it takes as it shows.
+	held, focus bool
 	// collapse is the axis a Motion collapses the element along, while it
 	// does.
 	collapse uint8
@@ -589,9 +590,22 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 		e, r := u.e, u.r
 		if e.parent.ghosts {
 			e.flags |= flagInvisible
+			if rt.focused == e.id {
+				// Unseen, it takes no focus yet, but keeps it for later.
+				rt.focused, r.focus = 0, true
+			}
 			continue
 		}
 		r.held = false
+		if r.focus {
+			r.focus = false
+			if rt.focused == 0 {
+				// Unless the focus went elsewhere meanwhile; the next
+				// frame builds it focused.
+				e.Focus()
+				rt.animating = true
+			}
+		}
 		if !resized {
 			r.enter(e, r.next, still, now)
 		}

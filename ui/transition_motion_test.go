@@ -573,6 +573,64 @@ func TestTransitionAfterExits(t *testing.T) {
 	}
 }
 
+// TestTransitionAfterExitsFocus checks that an element held back by
+// AfterExits, given the focus as it replaces another (by a Handle or
+// AutoFocus), takes it once it shows, unless the focus went elsewhere
+// meanwhile.
+func TestTransitionAfterExitsFocus(t *testing.T) {
+	for _, how := range []string{"handle", "autofocus", "elsewhere"} {
+		t.Run(how, func(t *testing.T) {
+			confirm := false
+			var h Handle
+			tr := ElementTransition{Duration: 100 * time.Millisecond, Ease: Linear, Enter: &Motion{}, Exit: &Motion{}}
+			tt := NewTester(func(c *Context) {
+				Column(c).Children(func() {
+					ButtonBase(c).Size(80, 20).Label("other")
+					Box(c).Size(200, 40).Children(func() {
+						if !confirm {
+							ButtonBase(c).Key("actions").Size(80, 20).Label("delete").Transition(tr)
+							return
+						}
+						held := tr
+						held.AfterExits = true
+						b := ButtonBase(c).Key("confirm").Size(80, 20).Label("confirm").Transition(held).Bind(&h)
+						if how == "autofocus" {
+							b.AutoFocus()
+						}
+					})
+				})
+			}, 200, 100)
+			if err := tt.Click("delete"); err != nil {
+				t.Fatal(err)
+			}
+			confirm = true
+			if how != "autofocus" {
+				h.Focus()
+			}
+			tt.Frame()
+			if tt.Focused("confirm") {
+				t.Error("the element held back has the focus while unseen")
+			}
+			if how == "elsewhere" {
+				if err := tt.Click("other"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			tt.Advance(50 * time.Millisecond)
+			if tt.Focused("confirm") {
+				t.Error("halfway through the exit, the element held back has the focus")
+			}
+			tt.Advance(time.Second)
+			if want := how != "elsewhere"; tt.Focused("confirm") != want {
+				t.Errorf("once it shows, the element held back has the focus: %v, want %v", !want, want)
+			}
+			if how == "elsewhere" && !tt.Focused("other") {
+				t.Error("the focus moved elsewhere meanwhile was taken back")
+			}
+		})
+	}
+}
+
 func TestTransitionMotionPercent(t *testing.T) {
 	show := false
 	tt, now := clockTester(func(c *context) {
