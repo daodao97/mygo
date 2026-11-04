@@ -1983,7 +1983,12 @@ as in Tauri:
   `window.open()` without one itself before asking
   (`javascript-can-open-windows-automatically` stays off), so the handler
   sees those only on macOS and Windows; on Windows the event arguments'
-  `get_IsUserInitiated`, WebView2 having no pop-up blocker.
+  `get_IsUserInitiated`, WebView2 having no pop-up blocker. Only main-frame
+  navigations reach `OnWillNavigate`: on Linux the action's target frame
+  says so (`webkit_navigation_action_get_target_frame_info`, 2.56+, bound
+  when present); before it WebKitGTK tells no navigation's frame, and
+  `mainFrameNavigation` takes all for the main frame's but `about:srcdoc`,
+  which only an iframe shows.
 
 ## Menus
 

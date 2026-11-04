@@ -491,7 +491,8 @@ var (
 	gtkRecentManagerHasItem                           func(manager ptr, uri *byte) bool
 	webkitJavascriptResultGetJSValue                  func(r ptr) ptr
 	webkitNavigationPolicyDecisionGetNavigationAction func(d ptr) ptr
-	webkitNavigationPolicyDecisionGetFrameName        func(d ptr) ptr
+	webkitNavigationActionGetTargetFrameInfo          func(a ptr) ptr  // 2.56+
+	webkitFrameInfoIsMainFrame                        func(f ptr) bool // 2.56+
 	webkitNavigationActionGetRequest                  func(a ptr) ptr
 	webkitNavigationActionGetNavigationType           func(a ptr) int32
 	webkitNavigationActionIsUserGesture               func(a ptr) bool
@@ -989,7 +990,8 @@ func loadWebKit() error {
 	mustBind(w, &webkitPermissionRequestDeny, "webkit_permission_request_deny")
 	mustBind(w, &webkitJavascriptResultGetJSValue, "webkit_javascript_result_get_js_value")
 	mustBind(w, &webkitNavigationPolicyDecisionGetNavigationAction, "webkit_navigation_policy_decision_get_navigation_action")
-	bind(w, &webkitNavigationPolicyDecisionGetFrameName, "webkit_navigation_policy_decision_get_frame_name")
+	bind(w, &webkitNavigationActionGetTargetFrameInfo, "webkit_navigation_action_get_target_frame_info")
+	bind(w, &webkitFrameInfoIsMainFrame, "webkit_frame_info_is_main_frame")
 	mustBind(w, &webkitNavigationActionGetRequest, "webkit_navigation_action_get_request")
 	mustBind(w, &webkitNavigationActionGetNavigationType, "webkit_navigation_action_get_navigation_type")
 	mustBind(w, &webkitNavigationActionIsUserGesture, "webkit_navigation_action_is_user_gesture")
