@@ -5406,7 +5406,7 @@ after it are not affected. A test that changes them undoes it in a cleanup.
 
 `.github/workflows/bench.yml` measures every push to main on GitHub's
 macOS, Linux and Windows runners, and the website shows the results at
-[/benchmarks](https://mygo.egoist.dev/benchmarks). `scripts/bench.ts`
+[/measures](https://mygo.egoist.dev/measures). `scripts/bench.ts`
 runs them:
 
 ```sh
@@ -5453,7 +5453,7 @@ push that races another run's merges again onto it. Started by hand with a
 in history.
 
 The page finds the commits that moved each series (`findSteps` in
-`website/src/lib/benchmarks.ts`): a commit whose value, and the median of
+`website/src/lib/measures.ts`): a commit whose value, and the median of
 the five from it, differ from the median of the five before by more than
 the series' noise, five median absolute deviations of the twenty before
 (their range while fewer than fifteen; at least 5% for time, 1% for
@@ -5562,6 +5562,17 @@ image's `LastPresentTime`), and took 43 ms when every frame was built ahead: hal
 a millisecond builds it, and a refresh or so goes from its present to
 the screen. Linux's frames follow GTK's frame clock, which is not measured:
 the containers have no display that refreshes.
+
+### Comparison with other frameworks
+
+`benchmarks/` holds the same small apps written with MyGo's native UI, GPUI,
+GPUI Fast and egui, and `go run ./benchmarks/run`, which measures them from outside the
+process: see `benchmarks/README.md`. It runs by hand on a real Mac, and
+`benchmarks/results.json`, which it writes, is what the website's
+[/benchmarks](https://mygo.egoist.dev/benchmarks) page shows.
+`.github/workflows/comparison.yml` only checks that the apps build and run.
+An app of a scene does what the others do, each the usual way of its
+framework: a scene changes in all of them, or in none.
 
 ### Binary size
 

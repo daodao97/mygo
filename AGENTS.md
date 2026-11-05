@@ -82,7 +82,8 @@ go generate ./cmd/mygo                     # the Mandarin readings of slugs (cmd
 go generate ./internal/l10n                # MyGo's own strings: their functions, and the packages of translations in locales/
 go generate ./plugins/glass                # recompile the glass plugin's shaders (on macOS, and on Windows)
 bun run --cwd website dev                  # the website, with docs/ at /docs (see website/README.md)
-bun scripts/bench.ts run [--e2e]           # benchmarks and app sizes, medians of 6 runs (CI: bench.yml, /benchmarks)
+bun scripts/bench.ts run [--e2e]           # benchmarks and app sizes, medians of 6 runs (CI: bench.yml, /measures)
+go run ./benchmarks/run -out benchmarks/results.json  # MyGo, GPUI, GPUI Fast and egui on the same apps, for /benchmarks (opens windows, on a real Mac)
 go run ./internal/idlemem app...           # apps' memory once idle, with their webviews' processes
 go run ./internal/inputlatency             # native UI's input-to-screen latency on macOS (opens windows)
 ```
