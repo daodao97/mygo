@@ -425,6 +425,30 @@ func TestNumberInput(t *testing.T) {
 	}
 }
 
+// A width given to a NumberInput or DecimalInput sizes the whole input,
+// buttons and all: the field gives up the room the buttons need rather
+// than pushing them over what comes after.
+func TestNumberInputsKeepToTheirWidth(t *testing.T) {
+	n, d := 600.0, "600"
+	for _, input := range []func(c *context) *node{
+		func(c *context) *node { return coreNumberInput(c, &n, 100, 2000, 100) },
+		func(c *context) *node { return coreDecimalInput(c, &d, "100", "2000", "100") },
+	} {
+		tt := coreNewTester(func(c *context) {
+			coreRow(c).Padding(10).AlignItems(Center).Children(func() {
+				input(c).Width(90).Label("Wait")
+				coreText(c, "after")
+			})
+		}, 400, 100)
+		field, _ := tt.Find("Wait")
+		plus, _ := tt.Find("Increase")
+		after, _ := tt.Find("after")
+		if right := plus.X + plus.W; right > field.X+90 || right > after.X {
+			t.Errorf("the + button ends at x %.0f, past the input's 90 (from x %.0f) and the text after it (from x %.0f)", right, field.X, after.X)
+		}
+	}
+}
+
 func TestToast(t *testing.T) {
 	tt := coreNewTester(func(c *context) {
 		if coreButton(c, "Save").Clicked() {
