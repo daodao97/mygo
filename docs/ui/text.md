@@ -116,6 +116,9 @@ one that shows on it. A right-click on selectable text shows Copy and
 Select All; a `ContextMenu` on the text or its `Selectable` container
 replaces that menu, and `Menu.EditItems` puts Copy and Select All in it.
 
+The caret of a text input is the theme's `Accent`; `CaretColor` sets another
+for an input and the inputs inside an element, as CSS's `caret-color` does.
+
 ## Rich text
 
 `ui.RichText` mixes styles in one paragraph: each `ui.Span` sets what it

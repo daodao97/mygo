@@ -230,6 +230,9 @@ type textStyle struct {
 	background Color
 	// selection is the highlight of selected text, the theme's when unset.
 	selection Color
+	// caret is the color of the insertion caret, the theme's accent when
+	// unset.
+	caret Color
 	// strokeWidth and strokeColor stroke the outlines of the glyphs
 	// under their fill (TextStroke).
 	strokeWidth float32
@@ -256,6 +259,7 @@ const (
 	setSelection
 	setLang
 	setDecoOffset
+	setCaret
 	setStroke
 	setTabSize
 
@@ -1553,6 +1557,23 @@ func (ts *textStyle) selectionColor(t *Theme) Color {
 		return ts.selection
 	}
 	return t.Selection
+}
+
+// CaretColor sets the color of the insertion caret of the text inputs in
+// the element, as CSS's caret-color does, a field's own text color for
+// one; the theme's accent is the color elsewhere.
+func (e *node) CaretColor(c Color) *node {
+	e.ts.caret = c
+	e.ts.set |= setCaret
+	return e
+}
+
+// caretColor is the color of the style's insertion caret.
+func (ts *textStyle) caretColor(t *Theme) Color {
+	if ts.set&setCaret != 0 {
+		return ts.caret
+	}
+	return t.Accent
 }
 
 // LineHeight sets the height of lines of text as a multiple of the font

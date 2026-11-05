@@ -288,6 +288,9 @@ func (e *node) resolvedText() textStyle {
 		if take&setSelection != 0 {
 			out.selection = t.selection
 		}
+		if take&setCaret != 0 {
+			out.caret = t.caret
+		}
 		if take&setStroke != 0 {
 			out.strokeWidth, out.strokeColor = t.strokeWidth, t.strokeColor
 		}
