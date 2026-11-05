@@ -57,6 +57,25 @@ ui.Form(c, func() {
 A control with a name of its own, as a check box with its text, keeps it,
 and the field's label names the group around them.
 
+## Labels of your own
+
+A view that draws a control's caption itself, as a text above an input in
+a component's own layout, ties the two with `LabelledBy`, as a `<label
+for>` does on the web: the text names the control for assistive
+technology, in place of the control's `Label`, and a click on it focuses
+the control, or clicks a check box, a switch or a radio button, as a
+field's label does. The label can come before the control or after it:
+
+```go
+caption := ui.Text(c, "Card number").TextColor(t.TextMuted)
+ui.TextInput(c, &app.card).LabelledBy(caption)
+
+ui.Row(c).Gap(8).Children(func() {
+	agree := ui.Checkbox(c, &app.agree, "")
+	agree.LabelledBy(ui.Text(c, "I agree to the terms"))
+})
+```
+
 ## Accessibility
 
 Assistive technology reads a control by its field's label, with the

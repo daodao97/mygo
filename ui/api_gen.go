@@ -5466,6 +5466,29 @@ func (_handle Element) Label(s string) Element {
 	return wrapElement(_node.Label(s))
 }
 
+// LabelledBy has label, a text the view draws as the element's caption,
+// name the element for assistive technology, in place of its Label or the
+// text inside it, as ARIA's aria-labelledby does, and gives a click on
+// label to the element, as HTML's <label for> does: the click focuses it,
+// as a text input, or in a group of controls, as a RadioGroup, the one
+// chosen, else the first, and clicks a check box, a switch or a radio
+// button, as a Field's label does. Call it once both are built, before or
+// after the element:
+//
+//	label := ui.Text(c, "Card number").TextColor(t.TextMuted)
+//	ui.TextInput(c, &app.card).LabelledBy(label)
+//
+// A label that is no text names the element by its Label.
+func (_handle Element) LabelledBy(label Element) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.LabelledBy(label.nodeFor(_ctx.rt)))
+}
+
 // Lang sets the language of the element's text, and of the text of the
 // elements inside it, as a BCP 47 tag, as HTML's lang attribute does: the
 // system's text stack draws the glyphs of that language, as the Han

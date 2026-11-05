@@ -244,6 +244,7 @@ var elementChains = map[string]bool{
 	"Key":                  true,
 	"KeyShortcuts":         true,
 	"Label":                true,
+	"LabelledBy":           true,
 	"Lang":                 true,
 	"Left":                 true,
 	"LeftPercent":          true,

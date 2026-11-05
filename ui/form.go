@@ -112,22 +112,55 @@ func coreField(c *context, label string, fn func()) *node {
 	} else if ctrl.nameFrom == nil || ctrl.nameFrom.label == "" {
 		ctrl.nameFrom = l
 	}
-	l.flags |= flagClickable
-	if l.Clicked() && !ctrl.disabled() {
-		if to := focusIn(ctrl); to != nil {
-			to.Focus()
-		}
-		if ctrl.flags&flagToggle != 0 {
-			c.rt.clickLater = append(c.rt.clickLater, ctrl.id)
-		}
-		c.rt.consumed = true
-	}
+	l.labels(ctrl)
 	l.styleFn = func(l *node) {
 		if ctrl.IsDisabled() && !l.IsDisabled() {
 			l.Opacity(0.5)
 		}
 	}
 	return f
+}
+
+// LabelledBy has label, a text the view draws as the element's caption,
+// name the element for assistive technology, in place of its Label or the
+// text inside it, as ARIA's aria-labelledby does, and gives a click on
+// label to the element, as HTML's <label for> does: the click focuses it,
+// as a text input, or in a group of controls, as a RadioGroup, the one
+// chosen, else the first, and clicks a check box, a switch or a radio
+// button, as a Field's label does. Call it once both are built, before or
+// after the element:
+//
+//	label := ui.Text(c, "Card number").TextColor(t.TextMuted)
+//	ui.TextInput(c, &app.card).LabelledBy(label)
+//
+// A label that is no text names the element by its Label.
+func (e *node) LabelledBy(label *node) *node {
+	if e == nil || label == nil || label == e {
+		return e
+	}
+	ctrl := e
+	if e.focusTo != nil {
+		ctrl = e.focusTo // the input of the box around it, as a SearchField's
+	}
+	ctrl.nameFrom, ctrl.labelledBy = label, true
+	label.labels(ctrl)
+	return e
+}
+
+// labels gives a click on e, a label of ctrl (Field, LabelledBy), to
+// ctrl, as HTML's label activation behavior does: it focuses ctrl, or
+// what is chosen in it, and clicks it when it toggles.
+func (e *node) labels(ctrl *node) {
+	e.flags |= flagClickable
+	if e.Clicked() && !ctrl.disabled() {
+		if to := focusIn(ctrl); to != nil {
+			to.Focus()
+		}
+		if ctrl.flags&flagToggle != 0 {
+			e.c.rt.clickLater = append(e.c.rt.clickLater, ctrl.id)
+		}
+		e.c.rt.consumed = true
+	}
 }
 
 // fieldControl returns the control of a field: the first element inside e
@@ -179,7 +212,7 @@ func focusIn(e *node) *node {
 // namesItself reports whether a control has a name of its own, as a
 // check box with its own text has, rather than a value.
 func namesItself(e *node) bool {
-	if e.label != "" {
+	if e.label != "" || e.labelledBy {
 		return true
 	}
 	switch e.role {

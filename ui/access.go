@@ -534,7 +534,7 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	n.Description = e.description
 	if f := e.nameFrom; f != nil {
 		switch {
-		case n.Label == "":
+		case n.Label == "" || e.labelledBy && f.nameOf() != "":
 			n.Label = f.nameOf()
 		case e.nameJoin && f.nameOf() != "":
 			n.Label = f.nameOf() + " " + n.Label

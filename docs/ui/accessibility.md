@@ -19,7 +19,9 @@ ui.TextInput(c, &app.query).Placeholder("Search").Label("Search")
 ui.Box(c).Size(24, 24).Draw(drawIcon).Label("Unread messages")
 ```
 
-A [field](form.md) names its control with its label.
+A [field](form.md) names its control with its label, and `LabelledBy`
+names a control by a text the view draws as its caption, a click on which
+goes to the control ([labels of your own](form.md#labels-of-your-own)).
 
 ## Roles
 
