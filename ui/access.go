@@ -259,14 +259,14 @@ func (e *node) accessRole() (platform.AccessRole, bool) {
 }
 
 // leafRole reports whether elements of a role take the text inside them
-// as their name, rather than showing it as elements of its own. A column
-// header shows what is inside it too, as ARIA's columnheader, whose
-// children are not presentational: a sort button in it is reached.
+// as their name, rather than showing it as elements of its own. Column
+// headers and headings show what is inside them too, as their children
+// are not presentational in ARIA: buttons in them can be reached.
 func leafRole(r platform.AccessRole) bool {
 	switch r {
 	case platform.RoleGroup, platform.RoleList, platform.RoleScroll, platform.RoleDialog, platform.RoleAlertDialog, platform.RolePopup, platform.RoleStatus,
 		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleColumnHeader, platform.RoleTree, platform.RoleListItem,
-		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleNavigation:
+		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleHeading, platform.RoleNavigation:
 		return false
 	}
 	return true
@@ -501,10 +501,10 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.chooseMany {
 		n.States |= platform.AccessMultiselectable
 	}
-	// Rows and items of lists, column headers and statuses are named by
-	// their content, as leaves are, but show what is inside them too, as a
-	// toast's button.
-	if n.Label == "" && (leafRole(n.Role) || n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleColumnHeader || n.Role == platform.RoleStatus) {
+	// Rows and items of lists, column headers, headings and statuses are
+	// named by their content, as leaves are, but show what is inside them
+	// too, as a toast's button.
+	if n.Label == "" && (leafRole(n.Role) || n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleColumnHeader || n.Role == platform.RoleHeading || n.Role == platform.RoleStatus) {
 		n.Label = e.innerText()
 	}
 	switch e.checked {
