@@ -53,7 +53,7 @@ export async function fetch(input: RequestInfo | URL, init: RequestInit = {}): P
   const url = new URL(req ? req.url : input instanceof URL ? input.href : String(input), base);
   if (url.protocol !== "http:" && url.protocol !== "https:") return globalThis.fetch(input, init);
 
-  const signal = init.signal ?? req?.signal ?? null;
+  const signal = init.signal === undefined ? req?.signal ?? null : init.signal;
   signal?.throwIfAborted();
   let method = init.method ?? req?.method ?? "GET";
   if (NORMALIZED.has(method.toUpperCase())) method = method.toUpperCase();
@@ -65,7 +65,7 @@ export async function fetch(input: RequestInfo | URL, init: RequestInit = {}): P
     const type = r.headers.get("content-type");
     if (type && !headers.has("content-type")) headers.set("content-type", type);
     body = new Uint8Array(await r.arrayBuffer());
-  } else if (init.body === undefined && req?.body) {
+  } else if (req?.body) {
     body = new Uint8Array(await req.arrayBuffer());
   }
   // Reading the body yields: it may have been aborted before Go sees it.
