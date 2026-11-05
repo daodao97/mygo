@@ -129,6 +129,111 @@ func TestSplitVertical(t *testing.T) {
 	}
 }
 
+// TestSplitResetOnDoubleClick restores the size SplitReset chose, while a
+// single click keeps the one the user dragged to.
+func TestSplitResetOnDoubleClick(t *testing.T) {
+	size := float32(120)
+	tt := coreNewTester(func(c *context) {
+		coreSplit(c, &size, func() { coreText(c, "left") }, func() { coreText(c, "right") }).SplitReset(220).Fill()
+	}, 400, 200)
+	drag(tt, 121, 100, 171, 100)
+	if size != 170 {
+		t.Fatalf("dragged to 170, the first pane is %v", size)
+	}
+	tt.ClickAt(171, 100)
+	if size != 170 {
+		t.Errorf("a click reset the first pane to %v", size)
+	}
+	tt.ClickAt(171, 100)
+	if size != 220 {
+		t.Errorf("double click on the divider: first pane %v, want 220", size)
+	}
+	if r, _ := tt.Find("right"); r.X != 221 {
+		t.Errorf("the second pane starts at %v after the reset, want 221", r.X)
+	}
+}
+
+// TestSplitResetThroughTheFacade is TestSplitResetOnDoubleClick through
+// the public API, whose constructor applies input before the chained
+// SplitReset of that build runs: the value the build before set is the one
+// the input applies by.
+func TestSplitResetThroughTheFacade(t *testing.T) {
+	size := float32(120)
+	tt := NewTester(func(c *Context) {
+		Split(c, &size, func() { Text(c, "left") }, func() { Text(c, "right") }).SplitReset(220).Fill()
+	}, 400, 200)
+	drag(tt, 121, 100, 171, 100)
+	if size != 170 {
+		t.Fatalf("dragged to 170, the first pane is %v", size)
+	}
+	tt.ClickAt(171, 100)
+	tt.ClickAt(171, 100)
+	if size != 220 {
+		t.Errorf("double click on the divider: first pane %v, want 220", size)
+	}
+	if r, _ := tt.Find("right"); r.X != 221 {
+		t.Errorf("the second pane starts at %v after the reset, want 221", r.X)
+	}
+}
+
+// TestSplitPercentResetOnDoubleClick resets a percent split in percent,
+// not DIPs.
+func TestSplitPercentResetOnDoubleClick(t *testing.T) {
+	firstPercent := float32(75)
+	tt := coreNewTester(func(c *context) {
+		coreSplitVerticalPercent(c, &firstPercent, func() { coreText(c, "top") }, func() { coreText(c, "bottom") }).SplitReset(50).Fill()
+	}, 300, 401)
+	drag(tt, 100, 301, 100, 101)
+	if firstPercent != 25 {
+		t.Fatalf("dragged to a quarter, the first pane takes %v%%", firstPercent)
+	}
+	tt.ClickAt(100, 101)
+	tt.ClickAt(100, 101)
+	if firstPercent != 50 {
+		t.Errorf("double click on the divider: first pane takes %v%%, want 50", firstPercent)
+	}
+	if r := at(t, tt, "bottom"); r.Y != 201 {
+		t.Errorf("the second pane starts at %v after the reset, want 201", r.Y)
+	}
+}
+
+// TestSplitResetKeepsSizeForLater keeps a size the window is too small to
+// show, as a press on the divider does, so the pane takes it back when the
+// window grows.
+func TestSplitResetKeepsSizeForLater(t *testing.T) {
+	size := float32(120)
+	tt := coreNewTester(func(c *context) {
+		coreSplit(c, &size, func() { coreText(c, "left") }, func() { coreText(c, "right") }).SplitReset(220).Fill()
+	}, 200, 200)
+	tt.ClickAt(121, 100)
+	tt.ClickAt(121, 100)
+	if size != 220 {
+		t.Fatalf("double click in a window 200 wide: first pane %v, want 220", size)
+	}
+	if r := at(t, tt, "right"); r.X != 160 {
+		t.Errorf("the second pane starts at %v in a window 200 wide, want 160", r.X)
+	}
+	tt.SetSize(400, 200)
+	if r := at(t, tt, "right"); r.X != 221 {
+		t.Errorf("made wide again, the second pane starts at %v, want 221", r.X)
+	}
+}
+
+// TestSplitWithoutResetKeepsSizeOnDoubleClick leaves a split without
+// SplitReset as it was.
+func TestSplitWithoutResetKeepsSizeOnDoubleClick(t *testing.T) {
+	size := float32(120)
+	tt := coreNewTester(func(c *context) {
+		coreSplit(c, &size, func() { coreText(c, "left") }, func() { coreText(c, "right") }).Fill()
+	}, 400, 200)
+	drag(tt, 121, 100, 171, 100)
+	tt.ClickAt(171, 100)
+	tt.ClickAt(171, 100)
+	if size != 170 {
+		t.Errorf("a double click without SplitReset changed the first pane to %v", size)
+	}
+}
+
 // TestSplitShrinks keeps both panes in a window made smaller than the
 // first pane: the first gives way, and takes its size back when there is
 // room again; the divider moves from where it shows.

@@ -2366,7 +2366,8 @@ func Spinner(c *Context) Element {
 // it has the keyboard focus: *size is the width of first, which the
 // divider keeps 40 DIPs from either edge. With less room than that, first
 // gives way, keeping *size for when there is room again. Changed reports a
-// move. Right to left (Direction), first is on the right.
+// move. Right to left (Direction), first is on the right. SplitReset makes
+// a double click on the divider put first back at a size the app chooses.
 //
 //	ui.Split(c, &app.sidebar, app.files, app.editor).Fill()
 func Split(c *Context, size *float32, first func(), second func()) Element {
@@ -7148,6 +7149,24 @@ func (_handle Element) Sort(dir SortDirection) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Sort(dir))
+}
+
+// SplitReset makes a double click on the divider of a Split put the first
+// pane at v, in the split's own unit: DIPs for Split and SplitVertical, a
+// percentage for SplitPercent and SplitVerticalPercent. A split without it
+// keeps its size on a double click. The value is kept even when the window
+// is too small to show it, so the pane takes it back when there is room
+// again.
+//
+//	ui.Split(c, &app.sidebar, app.files, app.editor).SplitReset(220)
+func (_handle Element) SplitReset(v float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.SplitReset(v))
 }
 
 // Spring returns a value following target with a spring, as AnimateTo

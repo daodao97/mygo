@@ -857,9 +857,9 @@ func (g *gallery) controls(c *ui.Context) {
 			})
 		}, func() {
 			ui.Column(c).Fill().Padding(10).Children(func() {
-				ui.Text(c, "Drag the divider, or focus it and press the arrows.").TextColor(t.TextMuted)
+				ui.Text(c, "Drag the divider, double-click it to reset, or focus it and press the arrows.").TextColor(t.TextMuted)
 			})
-		}).Height(140).Border(1, t.Border).Radius(t.Radius).Clip()
+		}).SplitReset(160).Height(140).Border(1, t.Border).Radius(t.Radius).Clip()
 	})
 	card(c, "Built on bases", func() {
 		ui.Text(c, "Bases are the widgets without their look: the pointer, the keys, the focus and accessibility, styled here anew.").TextColor(t.TextMuted)
