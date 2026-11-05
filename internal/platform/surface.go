@@ -69,7 +69,8 @@ type DamageSurface interface {
 // frames: the content then draws nothing that moves until it shows again.
 type OccludableSurface interface {
 	// Occluded reports whether nothing of the surface shows on screen. The
-	// surface sends SurfaceShown once some of it shows again.
+	// surface sends SurfaceHidden as none of it shows any more, and
+	// SurfaceShown once some of it shows again.
 	Occluded() bool
 }
 
@@ -318,8 +319,9 @@ const (
 	// tree, with Text the value of AccessSetValue.
 	AccessAction
 	// SurfaceShown reports that some of an OccludableSurface shows again
-	// after none did.
+	// after none did, and SurfaceHidden that none of it shows any more.
 	SurfaceShown
+	SurfaceHidden
 	// DataDragOver queries a destination; DataDrop commits a transfer.
 	// DataDragLeave clears its hover state. Drag carries the query/result.
 	DataDragOver

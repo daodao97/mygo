@@ -1059,10 +1059,12 @@ type MenuItem struct {
 	Name   string
 }
 
-// FileFilter restricts the files shown in file dialogs.
+// FileFilter restricts the files shown in file dialogs: those of its
+// Extensions, and of its MIMETypes, which may be "kind/*".
 type FileFilter struct {
 	Name       string
 	Extensions []string
+	MIMETypes  []string
 }
 
 // OpenDialogOptions configures an open panel.

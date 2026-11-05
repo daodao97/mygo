@@ -767,7 +767,7 @@ gained one field, `SurfaceNative.Canvas`.
   set before each frame to the frame's size, `ceil(width × scale)` as
   package ui computes it. `RequestFrame` asks `requestAnimationFrame`;
   `Occluded` is `document.hidden`, where browsers give no frames, and
-  `visibilitychange` brings `SurfaceShown`.
+  `visibilitychange` brings `SurfaceShown`, or `SurfaceHidden`.
 - **Drawing.** The canvas's WebGL 2 context (`gl.NewContext`: premultiplied
   alpha, no depth, stencil or antialiasing) is current while a frame is
   handled, as a GtkGLArea's is in its render signal, and
@@ -2782,7 +2782,8 @@ either.
   While nothing of the window shows (`platform.OccludableSurface`: a macOS
   window hidden, minimized or covered by other windows, whose display link
   still ticks, at the display's rate for half a minute, then at about 40
-  Hz), what moves asks for no frame, and a frame asked for by a change of
+  Hz; a minimized window on Linux, as GDK's `window-state-event` tells
+  on X11, and on Windows, as `WM_SIZE` does), what moves asks for no frame, and a frame asked for by a change of
   the state waits (`holdFrame`; both `held`), as browsers draw nothing for
   windows out of sight and as Apple asks of Mac apps: the view function,
   `Draw` and the work `After` drives wait until some of the window shows.
@@ -2802,7 +2803,11 @@ either.
   as assistive technology turns on, and for `CapturePage`, which builds
   the frame waiting; and none waits before the window's first frame
   reached its surface (`windowHost.occluded`), which a window made hidden
-  waits for to become ready to show.
+  waits for to become ready to show. `Context.WindowHidden` reads
+  `occluded`; once a view asked (`hiddenAsked`), `SurfaceHidden`, which
+  the surfaces send as none of the window shows any more, builds one
+  frame out of sight, as input does, for the view to stop its work, and
+  `SurfaceShown` one whether a frame was held or not.
   The window gaining or losing the keyboard focus draws a frame only when
   the last frame read it (`windowFocus`, as a focus ring, a caret, a
   selection's color or a focused text input's IME state do): a window

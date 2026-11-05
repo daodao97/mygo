@@ -2325,8 +2325,12 @@ func registerWindowClasses() {
 				}
 			}),
 			method("windowDidChangeOcclusionState:", func(self id, _ objc.SEL, n id) {
-				if w := b().windowFor(self); w != nil && w.surface != nil && w.surface.visible() {
-					w.surface.send(platform.SurfaceEvent{Kind: platform.SurfaceShown})
+				if w := b().windowFor(self); w != nil && w.surface != nil {
+					kind := platform.SurfaceShown
+					if !w.surface.visible() {
+						kind = platform.SurfaceHidden
+					}
+					w.surface.send(platform.SurfaceEvent{Kind: kind})
 				}
 			}),
 			method("windowDidMiniaturize:", func(self id, _ objc.SEL, n id) {

@@ -134,7 +134,9 @@ func (s *surface) listen() {
 		}
 	})
 	s.on(js.Global().Get("document"), "visibilitychange", true, func(js.Value) {
-		if !s.Occluded() {
+		if s.Occluded() {
+			s.send(platform.SurfaceEvent{Kind: platform.SurfaceHidden})
+		} else {
 			s.send(platform.SurfaceEvent{Kind: platform.SurfaceShown})
 			s.RequestFrame()
 		}

@@ -442,6 +442,22 @@ func (t *Tester) SetWindowActive(active bool) {
 	t.settle()
 }
 
+// SetWindowHidden hides all of the window from sight, as minimizing it
+// or covering it with other windows does, or shows it again:
+// Context.WindowHidden returns it, and what moves waits while it is
+// hidden.
+func (t *Tester) SetWindowHidden(hidden bool) {
+	if t.h.hidden == hidden {
+		return
+	}
+	t.h.hidden = hidden
+	kind := platform.SurfaceShown
+	if hidden {
+		kind = platform.SurfaceHidden
+	}
+	t.send(platform.SurfaceEvent{Kind: kind})
+}
+
 // SetDark switches between the light and the dark appearance.
 func (t *Tester) SetDark(dark bool) {
 	t.h.dark = dark

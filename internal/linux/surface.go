@@ -560,6 +560,11 @@ func (s *surface) Idle() {
 // RefreshRate returns the refresh rate of the monitor showing the area.
 func (s *surface) RefreshRate() float64 { return float64(s.refreshMilliHz()) / 1000 }
 
+// Occluded reports whether nothing of the window shows on screen: while it
+// is minimized, as GDK tells on X11. Wayland tells no such thing, nor do
+// windows covered by others.
+func (s *surface) Occluded() bool { return s.w.state&stateIconified != 0 }
+
 // refreshMilliHz returns the refresh rate of the monitor showing the area,
 // in millihertz as GDK knows it, 0 when unknown: on Wayland the output the
 // window last entered, on X11 the monitor with most of it.

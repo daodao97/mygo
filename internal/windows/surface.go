@@ -371,6 +371,11 @@ func (s *surface) drawNow() {
 	s.now = now
 }
 
+// Occluded reports whether nothing of the window shows on screen: while it
+// is minimized. Windows covered by others, or on another virtual desktop,
+// show.
+func (s *surface) Occluded() bool { return s.w.state == sizeMinimized }
+
 // RefreshRate returns the refresh rate of the monitor showing the window,
 // in its current display mode.
 func (s *surface) RefreshRate() float64 {

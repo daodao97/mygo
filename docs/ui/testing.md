@@ -59,7 +59,9 @@ panics where the second key was given, as apps only log it.
   `tt.SetFocused` takes the keyboard from the window and gives it back,
   and `tt.SetWindowActive` draws it as inactive and active again, as
   another window taking the user's input does
-  ([inactive windows](windows.md#active-and-inactive-windows)).
+  ([inactive windows](windows.md#active-and-inactive-windows)), and
+  `tt.SetWindowHidden` hides all of it from sight and shows it again
+  ([hidden windows](windows.md#hidden-windows)).
 - **What it shows.** `tt.Texts`, `tt.HasText`, `tt.Find` (the box of a
   text), `tt.Focused`, `tt.Cursor`, `tt.Clipboard`, `tt.OpenedURLs` and
   `tt.Announcements`, what the view asked screen readers to read out;

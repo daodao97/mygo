@@ -416,8 +416,11 @@ type engine struct {
 	held       bool
 	shown      time.Time
 	input      bool
-	painted    [3]float32
-	gen        uint64
+	// hiddenAsked tells that a view asked whether the window shows
+	// (WindowHidden), which builds it again as that changes.
+	hiddenAsked bool
+	painted     [3]float32
+	gen         uint64
 	// repaintRate is the most frames a second the drawings that move ask
 	// for with Painter.AnimationFrameRate, repaintFull whether one asked
 	// for the display's with Painter.AnimationFrame. paceEvery is how many

@@ -233,6 +233,7 @@ var (
 	procRegSetValueExW   = advapi32.NewProc("RegSetValueExW")
 	procRegDeleteValueW  = advapi32.NewProc("RegDeleteValueW")
 	procRegDeleteTreeW   = advapi32.NewProc("RegDeleteTreeW")
+	procRegEnumKeyExW    = advapi32.NewProc("RegEnumKeyExW")
 
 	// ntdll
 	procRtlGetVersion = ntdll.NewProc("RtlGetVersion")

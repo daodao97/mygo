@@ -340,6 +340,7 @@ var (
 	gtkFileFilterNew                    func() ptr
 	gtkFileFilterSetName                func(f ptr, name *byte)
 	gtkFileFilterAddPattern             func(f ptr, pattern *byte)
+	gtkFileFilterAddMimeType            func(f ptr, mimeType *byte)
 	gtkMessageDialogNew                 func(parent ptr, flags, typ, buttons int32, format *byte, arg *byte) ptr
 	gtkMessageDialogFormatSecondaryText func(d ptr, format *byte, arg *byte)
 	gtkMessageDialogGetMessageArea      func(d ptr) ptr
@@ -778,6 +779,7 @@ func load() error {
 	mustBind(t, &gtkFileFilterNew, "gtk_file_filter_new")
 	mustBind(t, &gtkFileFilterSetName, "gtk_file_filter_set_name")
 	mustBind(t, &gtkFileFilterAddPattern, "gtk_file_filter_add_pattern")
+	mustBind(t, &gtkFileFilterAddMimeType, "gtk_file_filter_add_mime_type")
 	mustBind(t, &gtkMessageDialogNew, "gtk_message_dialog_new")
 	mustBind(t, &gtkMessageDialogFormatSecondaryText, "gtk_message_dialog_format_secondary_text")
 	mustBind(t, &gtkMessageDialogGetMessageArea, "gtk_message_dialog_get_message_area")
