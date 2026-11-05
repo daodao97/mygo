@@ -532,26 +532,14 @@ func (h *windowHost) present(s *scene.Scene) {
 	h.armIdle(frameIdle)
 	h.useWide(s, now)
 	defer h.ready()
-	// The path is named on the way out, not on the way in: the frame
-	// statistics read it when the frame ends (framestats.go), and makeGPU —
-	// which decides the path — runs in here. Naming it before that made
-	// every frame's log name the path of the frame before it, so a window
-	// that had just started drawing on the GPU kept saying "drawn in
-	// memory" for a while, and the one honest line in the log was the one
-	// that was wrong.
-	defer func() {
-		switch {
-		case h.gpu != nil && h.onGPU && !h.degraded:
-			h.path = "drawn on the GPU"
-		case h.gpu != nil && h.onGPU:
-			h.path = "drawn by the GPU renderer in software"
-		default:
-			h.path = "drawn in memory"
-		}
-	}()
 	if h.render(s) {
+		h.path = "drawn on the GPU"
+		if h.degraded {
+			h.path = "drawn by the GPU renderer in software"
+		}
 		return
 	}
+	h.path = "drawn in memory"
 	damage := h.soft.Render(s)
 	m := &h.soft.Image
 	if d, ok := h.conn.Surface.(platform.DamageSurface); ok {
