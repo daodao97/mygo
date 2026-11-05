@@ -89,6 +89,12 @@ var (
 	atkStateSetAddState                                     func(set ptr, state int32) bool
 	atkRangeNew                                             func(lower, upper float64, description *byte) ptr
 	atkComponentGetExtents                                  func(obj ptr, x, y, w, h *int32, coords int32)
+	// Relations, as what a node controls (aria-controls).
+	atkRelationSetNew                                 func() ptr
+	atkRelationNew                                    func(targets *ptr, n int32, relation int32) ptr
+	atkRelationSetAdd                                 func(set, relation ptr)
+	atkRelationTypeForName                            func(name *byte) int32
+	atkRelationControllerFor, atkRelationControlledBy int32
 
 	cbAreaClassInit, cbRootClassInit, cbNodeClassInit, cbRootComponent     ptr
 	cbComponentInit, cbActionInit, cbValueInit, cbTextInit, cbEditableInit ptr
@@ -137,6 +143,7 @@ const (
 	atkGetNChildren      = 160
 	atkRefChild          = 168
 	atkGetIndexInParent  = 176
+	atkRefRelationSet    = 184
 	atkRefStateSet       = 216
 	atkGetAttributes     = 328
 	gTypeInterfaceHeader = 16 // the functions of interfaces follow a GTypeInterface
@@ -200,6 +207,8 @@ func registerAccess() {
 		{a, &atkObjectSetParent, "atk_object_set_parent"}, {a, &atkObjectNotifyStateChange, "atk_object_notify_state_change"},
 		{a, &atkStateSetNew, "atk_state_set_new"}, {a, &atkStateSetAddState, "atk_state_set_add_state"},
 		{a, &atkRangeNew, "atk_range_new"}, {a, &atkComponentGetExtents, "atk_component_get_extents"},
+		{a, &atkRelationSetNew, "atk_relation_set_new"}, {a, &atkRelationNew, "atk_relation_new"},
+		{a, &atkRelationSetAdd, "atk_relation_set_add"}, {a, &atkRelationTypeForName, "atk_relation_type_for_name"},
 	} {
 		ok = ok && bind(b.lib, b.fn, b.name)
 	}
@@ -303,6 +312,8 @@ func loadAccessNames() {
 	}
 	atkRole.panel, atkRole.text, atkRole.password = role("panel"), role("text"), role("password text")
 	atkRole.listBox = role("list box")
+	atkRelationControllerFor = atkRelationTypeForName(cs("controller-for"))
+	atkRelationControlledBy = atkRelationTypeForName(cs("controlled-by"))
 	for r, names := range map[platform.AccessRole][]string{
 		platform.RoleGroup: {"panel"}, platform.RoleText: {"label"}, platform.RoleButton: {"push button", "button"},
 		platform.RoleLink: {"link"}, platform.RoleCheckBox: {"check box"}, platform.RoleRadio: {"radio button"},
@@ -384,6 +395,12 @@ type accessNode struct {
 // outline that its list chooses.
 func chooses(n platform.AccessNode) bool {
 	return (n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleTreeItem) && n.States&platform.AccessSelectable != 0
+}
+
+// cellRole reports whether nodes of a role are cells of a table, headers
+// included.
+func cellRole(r platform.AccessRole) bool {
+	return r == platform.RoleCell || r == platform.RoleColumnHeader || r == platform.RoleRowHeader
 }
 
 // chosenRows returns the rows of a list or table that are chosen.
@@ -668,9 +685,11 @@ func stateList(n platform.AccessNode, focused bool) []int32 {
 	switch n.Role {
 	case platform.RoleCheckBox, platform.RoleRadio, platform.RoleSwitch, platform.RoleMenuItemCheckBox, platform.RoleMenuItemRadio:
 		list = append(list, st.checkable)
-	case platform.RoleTab, platform.RoleTreeItem, platform.RoleRow, platform.RoleListItem:
-		// Rows and items of lists only where their list chooses them.
-		if n.States&platform.AccessSelectable == 0 && (n.Role == platform.RoleRow || n.Role == platform.RoleListItem) {
+	case platform.RoleTab, platform.RoleTreeItem, platform.RoleRow, platform.RoleListItem,
+		platform.RoleCell, platform.RoleColumnHeader, platform.RoleRowHeader:
+		// Rows and items of lists only where their list chooses them, and
+		// cells where they are chosen or not, as ARIA's gridcells.
+		if n.States&platform.AccessSelectable == 0 && n.Role != platform.RoleTab && n.Role != platform.RoleTreeItem {
 			break
 		}
 		list = append(list, st.selectable)
@@ -711,8 +730,12 @@ func stateList(n platform.AccessNode, focused bool) []int32 {
 		}
 	}
 	// A toggle button is checked while pressed, as GTK's are.
-	if n.States&platform.AccessChecked != 0 && n.Role != platform.RoleTab && n.Role != platform.RoleTreeItem && n.Role != platform.RoleRow && n.Role != platform.RoleListItem {
+	if n.States&platform.AccessChecked != 0 && n.Role != platform.RoleTab && n.Role != platform.RoleTreeItem && n.Role != platform.RoleRow && n.Role != platform.RoleListItem &&
+		(!cellRole(n.Role) || n.States&platform.AccessSelectable == 0) {
 		list = append(list, st.checked)
+	}
+	if n.HasPopup != platform.PopupNone {
+		list = append(list, st.hasPopup)
 	}
 	if n.States&platform.AccessMixed != 0 || n.Now < n.Min {
 		list = append(list, st.indeterminate) // a progress of unknown length
@@ -950,6 +973,36 @@ func initAccessCallbacks() {
 		}
 		return set
 	})
+	// Relations: the nodes a node controls (controller-for), and those
+	// controlling it (controlled-by), as ARIA's aria-controls.
+	relations := purego.NewCallback(func(obj ptr) ptr {
+		set := atkRelationSetNew()
+		an := node(obj)
+		if an == nil {
+			return set
+		}
+		add := func(targets []ptr, relation int32) {
+			if len(targets) > 0 && relation != 0 {
+				r := atkRelationNew(&targets[0], int32(len(targets)), relation)
+				atkRelationSetAdd(set, r)
+				gObjectUnref(r) // the set holds it
+			}
+		}
+		var controls, controlledBy []ptr
+		for _, id := range an.n.Controls {
+			if c := an.tree.nodes[id]; c != nil {
+				controls = append(controls, c.obj)
+			}
+		}
+		for _, o := range an.tree.nodes {
+			if slices.Contains(o.n.Controls, an.n.ID) {
+				controlledBy = append(controlledBy, o.obj)
+			}
+		}
+		add(controls, atkRelationControllerFor)
+		add(controlledBy, atkRelationControlledBy)
+		return set
+	})
 	// Object attributes: the placeholder of a text field, the place of a
 	// row among its list's, which Orca reads as "5 of 10000", which item
 	// the node is the current one of (aria-current), and the ARIA role of
@@ -1012,6 +1065,16 @@ func initAccessCallbacks() {
 			add("sort", "ascending")
 		case an.n.States&platform.AccessSortDescending != 0:
 			add("sort", "descending")
+		case an.n.States&platform.AccessSortOther != 0:
+			add("sort", "other")
+		}
+		// What the app calls the node's role (aria-roledescription), and
+		// the kind of popup it opens (aria-haspopup), as Chromium says.
+		if d := an.n.RoleDescription; d != "" {
+			add("roledescription", d)
+		}
+		if p := an.n.HasPopup; p != platform.PopupNone {
+			add("haspopup", p.String())
 		}
 		return list
 	})
@@ -1021,6 +1084,7 @@ func initAccessCallbacks() {
 		*slot(class, atkGetIndexInParent) = index
 		*slot(class, atkRefStateSet) = states
 		*slot(class, atkGetAttributes) = attributes
+		*slot(class, atkRefRelationSet) = relations
 	})
 
 	contains := purego.NewCallback(func(obj ptr, x, y, coords int32) bool {

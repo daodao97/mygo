@@ -48,6 +48,12 @@ func line(n *node, focus string, full bool) string {
 	if n.Current != "" {
 		b.WriteString(" current=" + n.Current)
 	}
+	if n.HasPopup != "" {
+		b.WriteString(" haspopup=" + n.HasPopup)
+	}
+	if n.RoleDescription != "" {
+		b.WriteString(" roledescription=" + quote(n.RoleDescription, full))
+	}
 	if n.ID == focus {
 		b.WriteString(" focused")
 	}

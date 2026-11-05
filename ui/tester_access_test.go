@@ -1,6 +1,8 @@
 package ui_test
 
 import (
+	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -58,7 +60,7 @@ func TestTesterAccess(t *testing.T) {
 	if !reply.Busy || reply.Role != ui.RoleStatus {
 		t.Errorf("Reply: %+v", reply)
 	}
-	if a, ok := tt.Access("Reply"); !ok || a != reply {
+	if a, ok := tt.Access("Reply"); !ok || !reflect.DeepEqual(a, reply) {
 		t.Errorf("Access(Reply) = %+v, %v; AccessByRole found %+v", a, ok, reply)
 	}
 	streaming = false
@@ -180,5 +182,65 @@ func TestTesterAccessRows(t *testing.T) {
 	}
 	if plums := accessOf(t, tt, ui.RoleListItem, "Plums"); plums.Selected {
 		t.Errorf("Plums: %+v", plums)
+	}
+}
+
+// TestTesterAccessStates checks the states built on the others: a role
+// description, a popup, what an element controls, a column's sort and a
+// grid's cell chosen without painting it.
+func TestTesterAccessStates(t *testing.T) {
+	open := true
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Children(func() {
+			ui.Column(c).Role(ui.RoleGroup).Label("Highlights").RoleDescription("carousel")
+			ui.Button(c, "Fruit").HasPopup(ui.PopupListBox)
+			toggle := ui.Button(c, "Details").Expanded(open)
+			if open {
+				toggle.Controls(ui.Column(c).Role(ui.RoleRegion).Label("More details").Children(func() {
+					ui.Text(c, "Hidden")
+				}))
+			}
+			ui.Column(c).Role(ui.RoleTable).Label("November").Children(func() {
+				ui.Row(c).Role(ui.RoleRow).Children(func() {
+					ui.Text(c, "Day").Role(ui.RoleColumnHeader).Sort(ui.SortDescending)
+					ui.Text(c, "Note").Role(ui.RoleColumnHeader).Sort(ui.SortOther)
+				})
+				ui.Row(c).Role(ui.RoleRow).Children(func() {
+					ui.Text(c, "1").Role(ui.RoleCell).Checked(false)
+					ui.Text(c, "2").Role(ui.RoleCell).Checked(true)
+				})
+			})
+		})
+	}, 400, 400)
+
+	if h := accessOf(t, tt, ui.RoleGroup, "Highlights"); h.RoleDescription != "carousel" {
+		t.Errorf("Highlights: %+v", h)
+	}
+	if f := accessOf(t, tt, ui.RoleButton, "Fruit"); f.HasPopup != ui.PopupListBox || f.RoleDescription != "" {
+		t.Errorf("Fruit: %+v", f)
+	}
+	if d := accessOf(t, tt, ui.RoleButton, "Details"); !slices.Equal(d.Controls, []string{"More details"}) {
+		t.Errorf("Details controls %q", d.Controls)
+	}
+	if day := accessOf(t, tt, ui.RoleColumnHeader, "Day"); day.Sort != ui.SortDescending {
+		t.Errorf("Day: %+v", day)
+	}
+	if note := accessOf(t, tt, ui.RoleColumnHeader, "Note"); note.Sort != ui.SortOther {
+		t.Errorf("Note: %+v", note)
+	}
+	if two := accessOf(t, tt, ui.RoleCell, "2"); !two.Selected || !two.Selectable || two.Checked {
+		t.Errorf("cell 2: %+v", two)
+	}
+	if one := accessOf(t, tt, ui.RoleCell, "1"); one.Selected || !one.Selectable {
+		t.Errorf("cell 1: %+v", one)
+	}
+	if nov := accessOf(t, tt, ui.RoleTable, "November"); !nov.Selectable {
+		t.Errorf("November: %+v", nov)
+	}
+
+	open = false
+	tt.Frame()
+	if d := accessOf(t, tt, ui.RoleButton, "Details"); d.Controls != nil {
+		t.Errorf("Details, closed, controls %q", d.Controls)
 	}
 }

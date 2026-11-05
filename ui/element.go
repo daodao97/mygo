@@ -595,7 +595,7 @@ type node struct {
 	// as a table's; followX is the scroll container whose horizontal
 	// offset the element's content follows, as a table's header follows
 	// its rows; sort is the order a table's column header shows: 1
-	// ascending, 2 descending.
+	// ascending, 2 descending, 3 another (SortDirection).
 	rowMinW float32
 	followX *node
 	sort    int8
@@ -609,7 +609,13 @@ type node struct {
 	// how many columns its items took.
 	chooseMany bool
 	gridFit    *gridFit
-	tl         *text.Layout
+	// roleDescription names the element's role to assistive technology
+	// (RoleDescription), controls are the elements it controls
+	// (Controls), and hasPopup the kind of popup it opens (HasPopup).
+	roleDescription string
+	controls        []*node
+	hasPopup        Popup
+	tl              *text.Layout
 	measured
 	// lay says what the layout cache may do with the element
 	// (layOwner, layReuse), and laid when layoutBox last laid it out, in

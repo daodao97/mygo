@@ -2541,7 +2541,26 @@ either.
   kinds) is WebKit's `AXARIACurrent`, ATK's `current` attribute with the
   active state, as Chromium's, and `current=page` in AriaProperties. Both
   bring a generic element into the tree as a group, as ARIA's global
-  states do. `RoleNavigation`, a landmark (`Breadcrumbs`), is
+  states do. `RoleDescription` (`AccessNode.RoleDescription`,
+  aria-roledescription) is AppKit's `accessibilityRoleDescription`,
+  which elements override, ATK's `roledescription` attribute and UIA's
+  LocalizedControlType; `Controls` (`AccessNode.Controls`, the IDs of
+  the elements, aria-controls) is `AXLinkedUIElements`, ATK's
+  `controller-for` relation and `controlled-by` back, from the nodes'
+  `ref_relation_set`, and UIA's ControllerFor; `HasPopup`
+  (`AccessNode.HasPopup`, aria-haspopup) is `AXPopupValue`, answered as
+  `AXInvalid` is, with `AXShowMenu` pressing the element, ATK's
+  has-popup state and `haspopup` attribute, and UIA's ExpandCollapse
+  with `haspopup=` in AriaProperties; `Sort` sets a header's
+  `AccessSortAscending`, `AccessSortDescending` or `AccessSortOther`
+  (ATK's `sort:other`, UIA's ItemStatus and `sort=` in AriaProperties,
+  AppKit's unknown direction). A cell (`RoleCell` or a header) that
+  `Checked` or `Selected` marks is `AccessSelectable`, chosen while
+  `AccessChecked`, as ARIA's gridcells with aria-selected, and the
+  table around it `AccessSelectable` too: `AXSelected` and the table's
+  `AXSelectedCells` (with `AXSelectedCellsChanged`), ATK's selectable
+  and selected states rather than checked, UIA's SelectionItem in the
+  table's Selection. `RoleNavigation`, a landmark (`Breadcrumbs`), is
   `AXGroup` with the subrole `AXLandmarkNavigation`, ATK's landmark with
   `xml-roles:navigation`, and UI Automation's Group with the navigation
   LandmarkType and AriaRole. Native UI in browsers has no accessibility

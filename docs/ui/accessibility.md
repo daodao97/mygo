@@ -116,6 +116,10 @@ your own tells it with these, as ARIA's states do on the web:
 | `ActiveDescendant(e)` | the option that has the focus while the element keeps it, as the one the arrows are on in a menu or a list |
 | `Busy(on)` | that the element's content is about to change, as a region loading: screen readers wait for it before reading it |
 | `Current(kind)` | that the element is the current one of the items around it: `ui.CurrentPage` (the page the user is on), `CurrentStep`, `CurrentLocation`, `CurrentDate`, `CurrentTime` or `CurrentItem` |
+| `RoleDescription(s)` | what to call its role, in place of the role's own name, as "carousel" for a group of slides and "slide" for each |
+| `Controls(e)` | that it controls the content or presence of `e`, as a disclosure button the region it opens; once for each |
+| `HasPopup(kind)` | the kind of popup it opens: `ui.PopupMenu`, `PopupListBox`, `PopupTree`, `PopupGrid` or `PopupDialog` |
+| `Sort(dir)` | the order a table's rows are sorted in by the column whose header it is: `ui.SortAscending`, `SortDescending`, `SortOther` or `SortNone` |
 
 ```go
 all := ui.CheckboxBase(c, &app.all).Label("Select all")
@@ -155,12 +159,64 @@ ATK's busy state and UI Automation's `AriaProperties` (`busy=true`);
 `Current` is AppKit's `AXARIACurrent`, ATK's `current` attribute with the
 active state, and `AriaProperties` (`current=page`).
 
+A cell of a grid says whether it is chosen with `Checked`, as ARIA's
+`aria-selected` on a `gridcell`, without painting it, as a calendar's
+days or the cells of a spreadsheet of your own; `Selected` paints it in
+the accent color too. Cells (`RoleCell`, `RoleColumnHeader`,
+`RoleRowHeader`) that call neither are not chosen among others, and a
+table (`RoleTable`) holding cells that do chooses them. A carousel, a
+disclosure and a button opening a list box, built on the others:
+
+```go
+ui.Column(c).Role(ui.RoleGroup).Label("Highlights").RoleDescription("carousel").Children(func() {
+	for i, s := range slides {
+		ui.Column(c).Role(ui.RoleGroup).Label(fmt.Sprintf("%d of %d", i+1, len(slides))).
+			RoleDescription("slide").AccessHidden(i != app.slide).Children(s)
+	}
+})
+
+toggle := ui.Button(c, "Details").Expanded(app.open)
+if app.open {
+	toggle.Controls(ui.Column(c).Role(ui.RoleRegion).Label("Details").Children(details))
+}
+
+ui.ButtonBase(c).Role(ui.RolePopUpButton).Label("Fruit").Value(app.fruit).
+	HasPopup(ui.PopupListBox).Expanded(app.picking)
+
+day := ui.Box(c).Role(ui.RoleCell).Label(d.Format("January 2")).Checked(d.Equal(app.picked))
+```
+
+They reach each platform as WAI-ARIA's Core Accessibility API Mappings
+say. `RoleDescription` is AppKit's `AXRoleDescription`, ATK's
+`roledescription` attribute and UI Automation's `LocalizedControlType`.
+`Controls` is AppKit's `AXLinkedUIElements`, ATK's `controller-for`
+relation (and `controlled-by` on what it controls) and UI Automation's
+`ControllerFor`, which screen readers offer to move to (VoiceOver's
+VO-J). `HasPopup` is AppKit's `AXPopupValue` with the `AXShowMenu`
+action, which presses the element, ATK's `has-popup` state and
+`haspopup` attribute, and UI Automation's ExpandCollapse pattern (with
+`Expanded`) and `AriaProperties` (`haspopup=listbox`). `Sort` is
+AppKit's `AXSortDirection` (unknown for another order) on a header that
+is a sort button (`AXSortButton`), as NSTableHeaderView's are, ATK's
+`sort` attribute, and UI Automation's `ItemStatus` and `AriaProperties`
+(`sort=other`), as [`Table`](table.md)'s headers say from
+`ListState.Sort`. A chosen cell is AppKit's `AXSelected` with its
+table's `AXSelectedCells`, and its row in the table's `AXSelectedRows`,
+as NSTableView tells its choice; as VoiceOver reads neither the state of
+a cell nor its change, the cell says "selected" after its name, in the
+app's language, and a cell chosen away from the focus is read out. It is
+ATK's selectable and selected states, and UI Automation's SelectionItem,
+in the table's Selection.
+
 A [test](testing.md#what-assistive-technology-sees) reads them as
 assistive technology gets them, with `Tester.AccessByRole`:
 
 ```go
 if a, _ := tt.AccessByRole(ui.RoleGroup, "Messages"); !a.Busy {
 	t.Error("Messages is not busy while loading")
+}
+if day, _ := tt.AccessByRole(ui.RoleCell, "November 2"); !day.Selected {
+	t.Error("the day picked is not selected")
 }
 ```
 

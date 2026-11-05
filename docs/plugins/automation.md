@@ -123,9 +123,13 @@ A node has its `id`, the `parent`'s ID unless it is at the top, its
 `role`, and those of `key`, `label`, `value`, `placeholder`,
 `description`, `bounds`, `states`, `actions`, `min`, `max`, `now` and
 `step` (of sliders, progress bars, meters and steppers), `selection` (of
-text fields, in runes), `level`, `posInSet`, `setSize` and `current`
+text fields, in runes), `level`, `posInSet`, `setSize`, `current`
 (what it is the current one of, as ARIA's `aria-current`: `true`,
-`page`, `step`, `location`, `date` or `time`) that it has.
+`page`, `step`, `location`, `date` or `time`), `roleDescription` (as
+`aria-roledescription`), `hasPopup` (the kind of popup it opens, as
+`aria-haspopup`: `menu`, `listbox`, `tree`, `grid` or `dialog`) and
+`controls` (the IDs of the elements it controls, as `aria-controls`)
+that it has.
 IDs are strings of digits: they are 64-bit, which JavaScript's numbers
 would round. `keyShortcuts` is the keys that press or focus the element,
 as ARIA's `aria-keyshortcuts`, written as the platform's menus write
@@ -158,7 +162,7 @@ a column that lays others out has no node, keyed or not. Roles are
 `checked`, `mixed`, `selected`, `expanded`, `multiline`, `password`,
 `readOnly`, `selectable`, `offscreen`, `multiselectable`, `segment`,
 `search`, `invalid`, `sortAscending`, `sortDescending`, `expandable`,
-`vertical` and `busy`.
+`vertical`, `busy` and `sortOther`.
 
 A web view in native UI shows as a node marked `webView`, without the
 elements of its page. A window showing a web page has no tree: `tree`

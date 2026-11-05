@@ -398,6 +398,10 @@ func treeJSON(window int, t *platform.AccessTree, keys map[uint64]any) treeResul
 			Actions: names(uint64(n.Actions), actionNames[:]),
 			Level:   n.Level, PosInSet: n.PosInSet, SetSize: n.SetSize,
 			Current: n.Current.String(), WebView: n.WebView != nil,
+			RoleDescription: n.RoleDescription, HasPopup: n.HasPopup.String(),
+		}
+		for _, c := range n.Controls {
+			j.Controls = append(j.Controls, nodeID(c))
 		}
 		if n.Parent >= 0 && n.Parent < len(t.Nodes) {
 			j.Parent = nodeID(t.Nodes[n.Parent].ID)
@@ -457,6 +461,13 @@ type nodeJSON struct {
 	// Current is the item the element is the current one of, as ARIA's
 	// aria-current: true, page, step, location, date or time.
 	Current string `json:"current,omitempty"`
+	// RoleDescription is what the app calls the element's role, as
+	// ARIA's aria-roledescription; HasPopup the kind of popup it opens,
+	// as aria-haspopup: menu, listbox, tree, grid or dialog; Controls the
+	// elements it controls, as aria-controls.
+	RoleDescription string   `json:"roleDescription,omitempty"`
+	HasPopup        string   `json:"hasPopup,omitempty"`
+	Controls        []nodeID `json:"controls,omitempty"`
 	// WebView marks the node of a web view's page, whose elements the
 	// tree leaves out.
 	WebView bool `json:"webView,omitempty"`

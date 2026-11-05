@@ -568,6 +568,15 @@ func properties(rt *engine, e *node) []inspSection {
 	if e.current != CurrentNone {
 		acc.rows = append(acc.rows, inspDecl{name: "current", value: platform.AccessCurrent(e.current).String()})
 	}
+	if e.roleDescription != "" {
+		acc.rows = append(acc.rows, inspDecl{name: "roledescription", value: strconv.Quote(e.roleDescription)})
+	}
+	if e.hasPopup != PopupNone {
+		acc.rows = append(acc.rows, inspDecl{name: "haspopup", value: platform.AccessPopup(e.hasPopup).String()})
+	}
+	if len(e.controls) > 0 {
+		acc.rows = append(acc.rows, inspDecl{name: "controls", value: strconv.Itoa(len(e.controls)) + " elements"})
+	}
 	return []inspSection{el, state, acc}
 }
 

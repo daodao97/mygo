@@ -38,7 +38,7 @@ var stateNames = [...]string{
 	"focusable", "disabled", "checked", "mixed", "selected", "expanded",
 	"multiline", "password", "readOnly", "selectable", "offscreen",
 	"multiselectable", "segment", "search", "invalid", "sortAscending",
-	"sortDescending", "expandable", "vertical", "busy",
+	"sortDescending", "expandable", "vertical", "busy", "sortOther",
 }
 
 // actionNames are the names of platform.AccessActions' bits, from the

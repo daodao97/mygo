@@ -133,6 +133,10 @@ type node struct {
 	SetSize     int             `json:"setSize,omitempty"`
 	Current     string          `json:"current,omitempty"`
 	WebView     bool            `json:"webView,omitempty"`
+	// RoleDescription and HasPopup are aria-roledescription and
+	// aria-haspopup.
+	RoleDescription string `json:"roleDescription,omitempty"`
+	HasPopup        string `json:"hasPopup,omitempty"`
 }
 
 // inputEvent is an event of the input method.

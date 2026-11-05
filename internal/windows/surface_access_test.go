@@ -229,3 +229,49 @@ func TestUIARangeValueText(t *testing.T) {
 		}
 	}
 }
+
+// The ARIA states of #1181 as UI Automation reads them: a role
+// description in LocalizedControlType, a popup in ExpandCollapse and
+// AriaProperties, a sort in ItemStatus, what a button controls in
+// ControllerFor, and a cell chosen in its table's Selection.
+func TestUIAStates(t *testing.T) {
+	tree := newTestTree(t, false)
+	tree.update(&platform.AccessTree{Nodes: []platform.AccessNode{
+		{ID: 1, Parent: -1, Role: platform.RoleGroup, Label: "Highlights", RoleDescription: "carousel"},
+		{ID: 2, Parent: -1, Role: platform.RoleButton, Label: "Fruit", HasPopup: platform.PopupListBox, Controls: []uint64{3, 99}},
+		{ID: 3, Parent: -1, Role: platform.RoleTable, Label: "Days", States: platform.AccessSelectable},
+		{ID: 4, Parent: 2, Role: platform.RoleRow},
+		{ID: 5, Parent: 3, Role: platform.RoleColumnHeader, Label: "Day", States: platform.AccessSortOther},
+		{ID: 6, Parent: 3, Role: platform.RoleCell, Label: "2", States: platform.AccessSelectable | platform.AccessChecked},
+	}})
+	text := func(id uint64, property int) string {
+		var v variant
+		tree.nodes[id].property(property, &v)
+		if v.VT != vtBSTR {
+			return ""
+		}
+		return bstrString(uintptr(v.Val))
+	}
+	if got := text(1, uiaLocalizedControlProperty); got != "carousel" {
+		t.Errorf("the carousel's control type %q", got)
+	}
+	if got := text(2, uiaAriaPropertiesProperty); got != "haspopup=listbox" {
+		t.Errorf("the button's ARIA properties %q", got)
+	}
+	if !tree.nodes[2].supports(ifaceExpandCollapse) {
+		t.Error("the button opening a list box does not expand")
+	}
+	if got := text(5, uiaItemStatusProperty); got != "other" {
+		t.Errorf("the header's item status %q", got)
+	}
+	var v variant
+	if tree.nodes[2].property(uiaControllerForProperty, &v); v.VT != vtArray|vtUnknown || v.Val == 0 {
+		t.Errorf("the button controls %+v", v)
+	}
+	if day := tree.nodes[6]; !day.supports(ifaceSelectionItem) || day.container() != tree.nodes[3] {
+		t.Error("the day is not chosen in its table")
+	}
+	if chosen := tree.nodes[3].chosen(); len(chosen) != 1 || chosen[0].n.ID != 6 {
+		t.Errorf("the table chose %v", ids(chosen))
+	}
+}
