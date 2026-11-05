@@ -35,13 +35,12 @@ func (l *Layout) visualStops(li int) []caretStop {
 		b.Reset(l.Runes)
 		l.boundaries = b.GraphemeOffsets()
 	}
-	// Most clusters contribute their two edges. Ligatures can add more;
-	// append still grows for them without repeatedly copying ordinary lines.
-	stops := make([]caretStop, 0, 2*len(line.Glyphs)+1)
+	var stops []caretStop
+	// Offsets the glyph scan appended, so the boundary sweep below skips
+	// them without rescanning the stops. Stops outside the line's range
+	// can't match a swept offset, so only in-range ones set a flag.
+	seen := make([]bool, line.End-line.Start+1)
 	line.upstream = slices.Clone(line.lineCarets())
-	// Track covered rune offsets once. Searching every stop for every
-	// grapheme makes the first caret query quadratic on long input lines.
-	covered := make([]bool, line.End-line.Start+1)
 	for i := 0; i < len(line.Glyphs); {
 		g := line.Glyphs[i]
 		x0, x1 := g.X, g.X+g.Advance
@@ -78,7 +77,7 @@ func (l *Layout) visualStops(li int) []caretStop {
 			}
 			stops = append(stops, caretStop{CaretPosition{at, affinity}, x, arrival})
 			if at >= line.Start && at <= line.End {
-				covered[at-line.Start] = true
+				seen[at-line.Start] = true
 			}
 		}
 	}
@@ -87,7 +86,7 @@ func (l *Layout) visualStops(li int) []caretStop {
 	first, _ := slices.BinarySearch(l.boundaries, line.Start)
 	for k := first; k < len(l.boundaries) && l.boundaries[k] <= line.End; k++ {
 		at := l.boundaries[k]
-		if !covered[at-line.Start] {
+		if !seen[at-line.Start] {
 			stops = append(stops, caretStop{CaretPosition{at, Downstream}, carets[at-line.Start], 0})
 		}
 	}
