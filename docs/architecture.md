@@ -2847,7 +2847,9 @@ either.
   (`pressedPrimary`), a right or middle press only clicking or opening a
   menu. Keyframe sequences keep one sequence per
   key with an explicit replay token. All ask for frames only while moving,
-  and end at their targets under reduced motion. Poses (`ui/pose.go`,
+  and end at their targets under reduced motion, but for those whose
+  `NonMotion` (of `Animation`, `KeyframeOptions`, `TimelineOptions`) says
+  they move nothing, which play on. Poses (`ui/pose.go`,
   `AnimatePose`) are channels sampled as frames commit, into a transform
   after the element's own (`poseM`) and a fade; frames that only paint
   (`repaintFrame`) move the posed elements of the last frame built on

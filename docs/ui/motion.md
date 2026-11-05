@@ -433,9 +433,11 @@ element. An element asks for each of its timelines once per build, and the
 While the desktop asks for less motion, a timeline that would play is at
 once where it would come to rest, every tween at its `To`, or at its `From`
 when it plays back to its start, as values, poses and `Keyframes` are, and
-it asks for no frame. What the view does with the playhead itself still
-works, as a drag still moves a `Draggable` element: `Seek` and `Progress`
-put it where a scrubber asks, and `Paused` holds it there.
+it asks for no frame, unless its `NonMotion` says it only fades (see
+[Less motion](#less-motion-and-frames)). What the view does with the
+playhead itself still works, as a drag still moves a `Draggable` element:
+`Seek` and `Progress` put it where a scrubber asks, and `Paused` holds it
+there.
 `DisableAnimations` does not change a timeline, which plays on its own as
 `Keyframes` do; `Seek` jumps it. A timeline draws frames only while it
 plays, timed by `c.Now()`.
@@ -528,6 +530,20 @@ last value. What changes without moving still changes smoothly: colors
 (`AnimateColor`), a pose's `Fade`, content fading across, and
 [transitions](transitions.md)' colors and fades. `Loop` goes on, as the
 system's spinners do.
+
+What a value moves is the view's to say. One that moves nothing, as an
+opacity, a blur or a crossfade the view drives itself, says so with
+`NonMotion` on its `Animation`, `KeyframeOptions` or `TimelineOptions`,
+and then animates with less motion too, as an element's own fades do:
+
+```go
+op := e.AnimateTo("fade", target, ui.Animation{Duration: 200 * time.Millisecond, NonMotion: true})
+ui.Image(c, first).Opacity(1 - op)
+ui.Image(c, second).Opacity(op)
+```
+
+Leave it off for a position, a size, a scale or a scroll, and give what
+moves a timeline of its own beside its fades', which goes to rest at once.
 
 Animations draw frames only while something moves, at the display's rate,
 and none while the window is out of sight (below). Frames moving values

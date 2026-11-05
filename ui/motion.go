@@ -31,6 +31,14 @@ type Animation struct {
 	// keeps their lightness and saturation rather than going through a
 	// dull, darker middle.
 	Oklab bool
+	// NonMotion says that the value AnimateTo animates moves nothing on
+	// screen, as an opacity, a blur or a crossfade: it still animates
+	// while the desktop asks for less motion (Preferences.ReduceMotion),
+	// as colors and a Transition's fades do, where other values go to
+	// their targets at once. Leave it off for a position, a size, a
+	// scale or a scroll. What MyGo moves itself (ScrollTo, a pose, a
+	// Transition) knows what moves, and does not read it.
+	NonMotion bool
 }
 
 // Springs that settle without bouncing, with a little bounce, and with a
@@ -305,7 +313,9 @@ func (e *node) channel(key any, value float64) (*channel, bool) {
 // on the way, or a new kind of Animation, takes over from where the value
 // is: a spring keeps its velocity, even that of a curve. When the desktop
 // asks for less motion (Preferences.ReduceMotion), the value goes to its
-// target at once.
+// target at once, unless a's NonMotion says it moves nothing, as a fade:
+//
+//	op := e.AnimateTo("fade", target, ui.Animation{Duration: 200 * time.Millisecond, NonMotion: true})
 func (e *node) AnimateTo(key any, target float32, a Animation) float32 {
 	finiteMotion("animation", float64(target))
 	if a.Duration < 0 || a.Delay < 0 {
@@ -326,7 +336,7 @@ func (e *node) AnimateTo(key any, target float32, a Animation) float32 {
 	now := e.c.now
 	moving := ch.moving || ch.pending
 	ch.advance(now)
-	if rt.preferences().ReduceMotion || rt.instant() {
+	if rt.preferences().ReduceMotion && !a.NonMotion || rt.instant() {
 		if ch.moving || ch.pending || ch.value != to {
 			ch.rested = rt.frame
 		}
@@ -628,13 +638,18 @@ type KeyframeOptions struct {
 	// plays, and RepeatDelay how long it holds where it got to before it
 	// plays again.
 	Delay, RepeatDelay time.Duration
+	// NonMotion says that the sequence moves nothing on screen, as a
+	// pulsing opacity or a blur that settles: it still plays while the
+	// desktop asks for less motion, as Animation's NonMotion does.
+	NonMotion bool
 }
 
 // Keyframes plays a sequence, holding its last value when done. It starts
 // on the first call, with the first frame's value. Keep the element and
 // key stable, and change Run when changing the sequence. Only active
 // playback asks for animation frames. Reduced motion completes playback at
-// its final value, including when the preference changes mid-sequence.
+// its final value, including when the preference changes mid-sequence,
+// unless the options' NonMotion says the sequence moves nothing.
 func (e *node) Keyframes(key any, frames []Keyframe, options ...KeyframeOptions) float32 {
 	if len(frames) < 2 || frames[0].At != 0 {
 		panic("ui: Keyframes needs at least two frames starting at zero")
@@ -675,7 +690,7 @@ func (e *node) Keyframes(key any, frames []Keyframe, options ...KeyframeOptions)
 	rt := e.c.rt
 	switch {
 	case s.done:
-	case rt.preferences().ReduceMotion:
+	case rt.preferences().ReduceMotion && !o.NonMotion:
 		s.value, s.done, s.rested = s.final(), true, rt.frame
 	default:
 		s.value, s.done = s.sample(now)

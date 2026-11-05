@@ -3402,7 +3402,9 @@ func (_handle Element) AnimatePose(p Pose, a Animation) Element {
 // on the way, or a new kind of Animation, takes over from where the value
 // is: a spring keeps its velocity, even that of a curve. When the desktop
 // asks for less motion (Preferences.ReduceMotion), the value goes to its
-// target at once.
+// target at once, unless a's NonMotion says it moves nothing, as a fade:
+//
+//	op := e.AnimateTo("fade", target, ui.Animation{Duration: 200 * time.Millisecond, NonMotion: true})
 func (_handle Element) AnimateTo(key any, target float32, a Animation) float32 {
 	_node := _handle.node()
 	if _node == nil {
@@ -5418,7 +5420,8 @@ func (_handle Element) KeyShortcuts(mods Modifiers, key Key) Element {
 // on the first call, with the first frame's value. Keep the element and
 // key stable, and change Run when changing the sequence. Only active
 // playback asks for animation frames. Reduced motion completes playback at
-// its final value, including when the preference changes mid-sequence.
+// its final value, including when the preference changes mid-sequence,
+// unless the options' NonMotion says the sequence moves nothing.
 func (_handle Element) Keyframes(key any, frames []Keyframe, options ...KeyframeOptions) float32 {
 	_node := _handle.node()
 	if _node == nil {
@@ -7237,10 +7240,11 @@ func (_handle Element) TextStroke(width float32, c Color) Element {
 // valid while the view builds this frame.
 //
 // While the desktop asks for less motion (Preferences.ReduceMotion), a
-// timeline that would play is at once where it would come to rest, but
-// Seek, Progress and Paused still put and hold its playhead, as a drag
-// still moves a Draggable element. DisableAnimations does not change a
-// timeline, which plays on its own, as Keyframes do: jump it with Seek.
+// timeline that would play is at once where it would come to rest, unless
+// o's NonMotion says it moves nothing, but Seek, Progress and Paused still
+// put and hold its playhead, as a drag still moves a Draggable element.
+// DisableAnimations does not change a timeline, which plays on its own,
+// as Keyframes do: jump it with Seek.
 func (_handle Element) Timeline(key any, o TimelineOptions) *Timeline {
 	_node := _handle.node()
 	if _node == nil {
