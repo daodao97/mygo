@@ -97,7 +97,10 @@ export function createRuntime(
         const ch = typeof arg === "object" && arg !== null ? states.get(arg) : undefined;
         if (!ch) continue;
         if (ch.id || ch.closed) {
-          chans?.forEach((c) => channels.delete(c.id));
+          chans?.forEach((c) => {
+            channels.delete(c.id);
+            c.id = 0;
+          });
           reject(new Error("mygo: a channel can be passed to one call, before it is closed"));
           return;
         }
@@ -110,7 +113,10 @@ export function createRuntime(
         send({ t: "call", id, k: token, m: method, a: args });
       } catch (err) {
         pending.delete(id);
-        chans?.forEach((c) => channels.delete(c.id));
+        chans?.forEach((c) => {
+          channels.delete(c.id);
+          c.id = 0;
+        });
         reject(err);
       }
     });
