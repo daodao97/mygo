@@ -568,6 +568,9 @@ func properties(rt *engine, e *node) []inspSection {
 	if e.current != CurrentNone {
 		acc.rows = append(acc.rows, inspDecl{name: "current", value: platform.AccessCurrent(e.current).String()})
 	}
+	if e.autoComplete != AutoCompleteNone {
+		acc.rows = append(acc.rows, inspDecl{name: "autocomplete", value: platform.AccessAutoComplete(e.autoComplete).String()})
+	}
 	if e.roleDescription != "" {
 		acc.rows = append(acc.rows, inspDecl{name: "roledescription", value: strconv.Quote(e.roleDescription)})
 	}

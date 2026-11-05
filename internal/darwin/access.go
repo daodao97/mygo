@@ -799,9 +799,10 @@ func registerAccessClass() {
 		// AXInvalid, which the newer API lacks, says a value is not valid,
 		// as WebKit's fields do, AXMenuItemMarkChar what an item of a
 		// menu shows of its choice, AXElementBusy that the content is
-		// about to change, and AXARIACurrent which item of those around it
-		// the element is the current one of, as WebKit's say aria-busy and
-		// aria-current.
+		// about to change, AXARIACurrent which item of those around it the
+		// element is the current one of, and AXAutocompleteValue what a
+		// text field's suggestions complete, as WebKit's say aria-busy,
+		// aria-current and aria-autocomplete.
 		method("accessibilityAttributeNames", func(self id, cmd objc.SEL) id {
 			names := sendSuper(self, "MyGoAccessibilityElement", cmd)
 			el := b().accessElementOf(self)
@@ -852,6 +853,9 @@ func registerAccessClass() {
 			}
 			if el.node.Current != platform.CurrentNone {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXARIACurrent")))
+			}
+			if el.node.AutoComplete != platform.AutoCompleteNone {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXAutocompleteValue")))
 			}
 			// How a live region is read, as WebKit's say aria-live,
 			// aria-atomic and aria-relevant.
@@ -958,6 +962,10 @@ func registerAccessClass() {
 				case "AXARIACurrent":
 					if c := el.node.Current; c != platform.CurrentNone {
 						return nsString(c.String())
+					}
+				case "AXAutocompleteValue":
+					if a := el.node.AutoComplete; a != platform.AutoCompleteNone {
+						return nsString(a.String())
 					}
 				case "AXARIALive", "AXARIAAtomic", "AXARIARelevant":
 					if live, atomic := el.node.Role.Live(); live != "" {

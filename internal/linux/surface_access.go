@@ -109,7 +109,7 @@ var (
 		enabled, sensitive, visible, showing, focusable, focused, checkable, checked, indeterminate,
 		expandable, expanded, editable, readOnly, multiLine, singleLine, selectableText, defunct int32
 		selectable, selected, multiselectable, hasPopup, invalidEntry, vertical, horizontal int32
-		busy, active                                                                        int32
+		busy, active, supportsAutocompletion                                                int32
 	}
 
 	// The trees of surfaces, by the surface and by its accessible, and the
@@ -352,7 +352,7 @@ func loadAccessNames() {
 		&st.singleLine: "single-line", &st.selectableText: "selectable-text", &st.defunct: "defunct",
 		&st.selectable: "selectable", &st.selected: "selected", &st.multiselectable: "multiselectable",
 		&st.hasPopup: "has-popup", &st.invalidEntry: "invalid-entry", &st.vertical: "vertical", &st.horizontal: "horizontal",
-		&st.busy: "busy", &st.active: "active",
+		&st.busy: "busy", &st.active: "active", &st.supportsAutocompletion: "supports-autocompletion",
 	} {
 		*p = atkStateTypeForName(cs(name))
 	}
@@ -759,6 +759,11 @@ func stateList(n platform.AccessNode, focused bool) []int32 {
 	if n.Current != platform.CurrentNone {
 		list = append(list, st.active)
 	}
+	// A field whose suggestions complete it, as Core-AAM maps
+	// aria-autocomplete, with its autocomplete attribute.
+	if n.AutoComplete != platform.AutoCompleteNone {
+		list = append(list, st.supportsAutocompletion)
+	}
 	return slices.DeleteFunc(list, func(s int32) bool { return s == 0 })
 }
 
@@ -1005,8 +1010,9 @@ func initAccessCallbacks() {
 	})
 	// Object attributes: the placeholder of a text field, the place of a
 	// row among its list's, which Orca reads as "5 of 10000", which item
-	// the node is the current one of (aria-current), and the ARIA role of
-	// a landmark or a live region.
+	// the node is the current one of (aria-current), what a field's
+	// suggestions complete (aria-autocomplete), and the ARIA role of a
+	// landmark or a live region.
 	attributes := purego.NewCallback(func(obj ptr) ptr {
 		an := node(obj)
 		if an == nil {
@@ -1037,6 +1043,9 @@ func initAccessCallbacks() {
 		}
 		if c := an.n.Current; c != platform.CurrentNone {
 			add("current", c.String())
+		}
+		if a := an.n.AutoComplete; a != platform.AutoCompleteNone {
+			add("autocomplete", a.String())
 		}
 		if r := xmlRoles[an.n.Role]; r != "" {
 			add("xml-roles", r)

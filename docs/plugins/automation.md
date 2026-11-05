@@ -125,7 +125,9 @@ A node has its `id`, the `parent`'s ID unless it is at the top, its
 `step` (of sliders, progress bars, meters and steppers), `selection` (of
 text fields, in runes), `level`, `posInSet`, `setSize`, `current`
 (what it is the current one of, as ARIA's `aria-current`: `true`,
-`page`, `step`, `location`, `date` or `time`), `roleDescription` (as
+`page`, `step`, `location`, `date` or `time`), `autoComplete` (what
+a text field's or a combo box's suggestions complete, as ARIA's
+`aria-autocomplete`: `inline`, `list` or `both`), `roleDescription` (as
 `aria-roledescription`), `hasPopup` (the kind of popup it opens, as
 `aria-haspopup`: `menu`, `listbox`, `tree`, `grid` or `dialog`) and
 `controls` (the IDs of the elements it controls, as `aria-controls`)

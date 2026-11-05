@@ -2534,14 +2534,24 @@ either.
   Statuses, as toasts, are polite live regions too (`LiveSetting`).
   Widgets of an app's own set what the bases set with element methods
   (`Checked`, `Mixed`, `Expanded`, `Value`, `Range`, `Level`,
-  `ActiveDescendant`, `Busy`, `Current`). `Busy` (`AccessBusy`, ARIA's
-  aria-busy) is WebKit's `AXElementBusy`, with `AXElementBusyChanged`, on
+  `ActiveDescendant`, `Busy`, `Current`, `AutoComplete`). `Busy`
+  (`AccessBusy`, ARIA's aria-busy) is WebKit's `AXElementBusy`, with `AXElementBusyChanged`, on
   macOS, ATK's busy state, and `busy=true` in UI Automation's
   AriaProperties; `Current` (`AccessNode.Current`, aria-current's
   kinds) is WebKit's `AXARIACurrent`, ATK's `current` attribute with the
   active state, as Chromium's, and `current=page` in AriaProperties. Both
   bring a generic element into the tree as a group, as ARIA's global
-  states do. `RoleDescription` (`AccessNode.RoleDescription`,
+  states do. `AutoComplete` (`AccessNode.AutoComplete`,
+  aria-autocomplete's inline, list and both; none writes nothing) is
+  WebKit's `AXAutocompleteValue`, answered through
+  `accessibilityAttributeValue:`, ATK's `autocomplete` object attribute
+  with the supports-autocompletion state, as Core-AAM maps it (and as
+  IAccessible2's object attribute and state), and `autocomplete=list`
+  in AriaProperties, which UI Automation has for ARIA's properties
+  without one of its own: Core-AAM maps nothing in UI Automation nor in
+  AX API, and Chromium nothing in UI Automation; `Combobox`,
+  `Autocomplete` and a `TokenField` with suggestions set it to list.
+  `RoleDescription` (`AccessNode.RoleDescription`,
   aria-roledescription) is AppKit's `accessibilityRoleDescription`,
   which elements override, ATK's `roledescription` attribute and UIA's
   LocalizedControlType; `Controls` (`AccessNode.Controls`, the IDs of

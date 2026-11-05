@@ -136,7 +136,7 @@ func testTree() (*platform.AccessTree, map[uint64]any) {
 		{ID: 1 << 60, Parent: 0, Role: platform.RoleButton, Label: "Add", KeyShortcuts: "Ctrl+N",
 			States: platform.AccessFocusable, Actions: platform.ActionPress | platform.ActionFocus,
 			Bounds: platform.RectF{X: 1, Y: 2, W: 30, H: 20}},
-		{ID: 9, Parent: 0, Role: platform.RoleTextField, Value: "hey", SelStart: 3, SelEnd: 3},
+		{ID: 9, Parent: 0, Role: platform.RoleTextField, Value: "hey", SelStart: 3, SelEnd: 3, AutoComplete: platform.AutoCompleteList},
 		{ID: 11, Parent: 0, Role: platform.RoleSlider, Min: 0, Max: 10, Now: 4},
 	}}
 	return t, map[uint64]any{1 << 60: "add", 9: 42}
@@ -164,7 +164,7 @@ func TestTreeRequest(t *testing.T) {
 	if b := button["bounds"].(map[string]any); b["x"] != 1.0 || b["height"] != 20.0 {
 		t.Errorf("button's bounds: %v", b)
 	}
-	if field["key"] != 42.0 || field["value"] != "hey" || !slices.Equal(field["selection"].([]any), []any{3.0, 3.0}) {
+	if field["key"] != 42.0 || field["value"] != "hey" || !slices.Equal(field["selection"].([]any), []any{3.0, 3.0}) || field["autoComplete"] != "list" {
 		t.Errorf("text field: %v", field)
 	}
 	if slider["max"] != 10.0 || slider["now"] != 4.0 || slider["min"] != 0.0 {
@@ -172,6 +172,9 @@ func TestTreeRequest(t *testing.T) {
 	}
 	if _, ok := field["keyShortcuts"]; ok {
 		t.Errorf("a text field with key shortcuts: %v", field)
+	}
+	if _, ok := button["autoComplete"]; ok {
+		t.Errorf("a button with suggestions: %v", button)
 	}
 	if _, ok := button["min"]; ok {
 		t.Errorf("a button with a range: %v", button)

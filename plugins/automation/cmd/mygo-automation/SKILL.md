@@ -89,7 +89,9 @@ A line is the element's ref, `[role]`, its label in quotes, then what
 it has of `value=`, `placeholder=` (when it has no label), `key=` (the
 app's own name for it), its states, `current=` (what it is the current
 one of, as the last crumb of a breadcrumb trail is the `page`),
-`haspopup=`, `roledescription=` and `focused`. Empty fields are left
+`autocomplete=` (what a field's suggestions complete as you type: `list`
+for a popup of them, `inline` for the text completed in place, or
+`both`), `haspopup=`, `roledescription=` and `focused`. Empty fields are left
 out, and so is `focusable`, which every control is. `webview` marks a web
 view inside native UI: its page has no elements here. `announced` lines
 are what the app announced to screen readers. Labels and values longer

@@ -48,6 +48,9 @@ func line(n *node, focus string, full bool) string {
 	if n.Current != "" {
 		b.WriteString(" current=" + n.Current)
 	}
+	if n.Complete != "" {
+		b.WriteString(" autocomplete=" + n.Complete)
+	}
 	if n.HasPopup != "" {
 		b.WriteString(" haspopup=" + n.HasPopup)
 	}

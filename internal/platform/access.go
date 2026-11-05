@@ -59,6 +59,9 @@ type AccessNode struct {
 	// Current says which item the element is the current one of, as the
 	// page the user is on.
 	Current AccessCurrent
+	// AutoComplete says what the suggestions of a text field or a combo
+	// box complete as the user types, as ARIA's aria-autocomplete.
+	AutoComplete AccessAutoComplete
 	// PosInSet is the place of an item in its set, from 1, and SetSize
 	// the size of the set, 0 when not given: a list's rows say which of
 	// all they are, whether or not the others are built, and the list how
@@ -346,6 +349,37 @@ func (c AccessCurrent) String() string {
 		return "date"
 	case CurrentTime:
 		return "time"
+	}
+	return ""
+}
+
+// AccessAutoComplete is what the suggestions of a text field complete as
+// the user types, as ARIA's aria-autocomplete says.
+type AccessAutoComplete uint8
+
+const (
+	// AutoCompleteNone suggests nothing as the user types.
+	AutoCompleteNone AccessAutoComplete = iota
+	// AutoCompleteInline completes the text in place, the rest of the
+	// value inserted after the caret and selected.
+	AutoCompleteInline
+	// AutoCompleteList shows a popup of the values that complete it.
+	AutoCompleteList
+	// AutoCompleteBoth shows the popup and completes the text in place
+	// with the option the arrows are on.
+	AutoCompleteBoth
+)
+
+// String returns the value of aria-autocomplete that a is, "" for
+// AutoCompleteNone.
+func (a AccessAutoComplete) String() string {
+	switch a {
+	case AutoCompleteInline:
+		return "inline"
+	case AutoCompleteList:
+		return "list"
+	case AutoCompleteBoth:
+		return "both"
 	}
 	return ""
 }

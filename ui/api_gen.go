@@ -1231,7 +1231,9 @@ func Combobox(c *Context, selected *string, options []string) Element {
 // as the user types, clicks it or presses Down. Up and Down move among the
 // options, Enter or a click chooses one, which Chosen reports, and
 // Escape, or the input losing the focus, closes the popup. Assistive
-// technology sees a combo box, and follows the option the arrows are on.
+// technology sees a combo box, and follows the option the arrows are on;
+// tell it with AutoComplete when the options are those matching what was
+// typed (AutoCompleteList).
 //
 //	cb := ui.ComboboxBase(c, &app.query)
 //	cb.Input.Padding(6, 10).Border(1, gray).Label("Font")
@@ -3572,6 +3574,25 @@ func (_handle Element) AttachedOrigin() Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.AttachedOrigin())
+}
+
+// AutoComplete tells assistive technology what the suggestions of a
+// text input or a combobox of your own complete as the user types, as
+// ARIA's aria-autocomplete: AutoCompleteList for a popup of the values
+// matching what was typed, which screen readers announce with the field
+// so that the user knows to look there, AutoCompleteInline for the text
+// completed in place. It only tells it: the view shows the suggestions
+// itself, as in ComboboxBase's popup. Combobox, Autocomplete, and a
+// TokenField with suggestions, tell AutoCompleteList themselves;
+// AutoCompleteNone takes it back.
+func (_handle Element) AutoComplete(kind AutoComplete) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.AutoComplete(kind))
 }
 
 // AutoFocus gives the element the keyboard focus in the frame it appears,

@@ -111,7 +111,8 @@ name, the value, the description and the `RoleDescription`, and the
 states, as [accessibility](accessibility.md#states) lists them:
 `Checked` and `Mixed` (`aria-checked`, `aria-pressed`), `Selected`
 (`aria-selected`, the tab, tree item, row or grid cell chosen),
-`Expanded`, `HasPopup`, `Busy`, `Current`, `Sort` (a column header's
+`Expanded`, `HasPopup`, `Busy`, `Current`,
+`AutoComplete` (`aria-autocomplete`), `Sort` (a column header's
 `ui.SortDirection`), `Disabled`, `Invalid`, `Focused` (the element or
 option the focus is on, `ActiveDescendant` included), `Controls` (the
 names of the elements it controls, which `Access` finds), `Level`,

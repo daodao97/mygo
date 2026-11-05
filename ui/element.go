@@ -489,10 +489,12 @@ type node struct {
 	role     Role
 	checked  int8
 	expanded bool
-	// busy marks content about to change (Busy), and current the item
-	// the element is the current one of (Current).
-	busy    bool
-	current Current
+	// busy marks content about to change (Busy), current the item the
+	// element is the current one of (Current), and autoComplete what the
+	// suggestions of a text input complete (AutoComplete).
+	busy         bool
+	current      Current
+	autoComplete AutoComplete
 	// vertical marks a slider going up (Vertical).
 	vertical bool
 	// tip marks an element with a tooltip (TooltipBase).

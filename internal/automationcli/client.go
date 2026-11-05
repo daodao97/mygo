@@ -132,6 +132,7 @@ type node struct {
 	PosInSet    int             `json:"posInSet,omitempty"`
 	SetSize     int             `json:"setSize,omitempty"`
 	Current     string          `json:"current,omitempty"`
+	Complete    string          `json:"autoComplete,omitempty"`
 	WebView     bool            `json:"webView,omitempty"`
 	// RoleDescription and HasPopup are aria-roledescription and
 	// aria-haspopup.

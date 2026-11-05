@@ -116,6 +116,7 @@ your own tells it with these, as ARIA's states do on the web:
 | `ActiveDescendant(e)` | the option that has the focus while the element keeps it, as the one the arrows are on in a menu or a list |
 | `Busy(on)` | that the element's content is about to change, as a region loading: screen readers wait for it before reading it |
 | `Current(kind)` | that the element is the current one of the items around it: `ui.CurrentPage` (the page the user is on), `CurrentStep`, `CurrentLocation`, `CurrentDate`, `CurrentTime` or `CurrentItem` |
+| `AutoComplete(kind)` | what a text input's suggestions complete as the user types: `ui.AutoCompleteList` (a popup of them), `AutoCompleteInline` (the text completed in place) or `AutoCompleteBoth` ([below](#suggestions)) |
 | `RoleDescription(s)` | what to call its role, in place of the role's own name, as "carousel" for a group of slides and "slide" for each |
 | `Controls(e)` | that it controls the content or presence of `e`, as a disclosure button the region it opens; once for each |
 | `HasPopup(kind)` | the kind of popup it opens: `ui.PopupMenu`, `PopupListBox`, `PopupTree`, `PopupGrid` or `PopupDialog` |
@@ -223,6 +224,35 @@ if day, _ := tt.AccessByRole(ui.RoleCell, "November 2"); !day.Selected {
 A check box that is mixed as often as not is better built on
 [`CheckboxStateBase`](checkbox.md#without-a-look), which tells it itself
 from its `ui.CheckState`, and checks it as it is pressed.
+
+## Suggestions
+
+`AutoComplete(kind)` tells screen readers what a text input's suggestions
+complete as the user types, as ARIA's `aria-autocomplete`, so that they
+say a field has them: `ui.AutoCompleteList` for a popup of the values
+matching what was typed, `AutoCompleteInline` for the rest of the value
+inserted after the caret, selected, and `AutoCompleteBoth` for both. A
+[combobox](combobox.md), an [autocomplete](autocomplete.md) and a
+[token field](token-field.md) with suggestions tell `AutoCompleteList`
+themselves; a combobox of your own, with `Expanded` for its popup and
+`ActiveDescendant` for the option the arrows are on, tells it too:
+
+```go
+in := ui.TextInputBase(c, &app.query).Role(ui.RoleComboBox).Label("Search")
+in.Expanded(len(app.matches) > 0).AutoComplete(ui.AutoCompleteList)
+```
+
+It only tells: the view shows the suggestions itself. `AutoCompleteNone`,
+the default, tells nothing, as for a combobox whose popup shows the same
+options whatever is typed. It is AppKit's `AXAutocompleteValue` on macOS,
+as WebKit gives it, ATK's `autocomplete` object attribute with the
+supports-autocompletion state on Linux, as Core-AAM maps it, and
+`autocomplete=list` in UI Automation's `AriaProperties` on Windows, the
+place of ARIA's properties UI Automation has none of. A
+[test](testing.md#what-assistive-technology-sees) reads it in the
+`AutoComplete` of `Tester.AccessByRole`'s answer, and the
+[automation plugin](../plugins/automation.md) in a node's
+`autoComplete`.
 
 ## Descriptions and errors
 

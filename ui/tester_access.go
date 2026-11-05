@@ -66,6 +66,10 @@ type AccessInfo struct {
 	// Current is the item the element is the current one of
 	// (aria-current), CurrentNone for none.
 	Current Current
+	// AutoComplete is what the suggestions of a text field or a combo
+	// box complete as the user types (aria-autocomplete),
+	// AutoCompleteNone for none.
+	AutoComplete AutoComplete
 	// KeyShortcuts are the keys that press or focus the element
 	// (aria-keyshortcuts), as the platform's menus write them and
 	// separated by spaces: "⌘K" for Cmd+K on macOS, "Ctrl+K" elsewhere.
@@ -201,6 +205,7 @@ func accessInfoOf(r Role, n *platform.AccessNode, focus uint64) AccessInfo {
 		Segment:         s&platform.AccessSegment != 0,
 		Offscreen:       s&platform.AccessOffscreen != 0,
 		Current:         Current(n.Current),
+		AutoComplete:    AutoComplete(n.AutoComplete),
 		KeyShortcuts:    n.KeyShortcuts,
 		Level:           n.Level,
 		PosInSet:        n.PosInSet,

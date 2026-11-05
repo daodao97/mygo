@@ -26,6 +26,9 @@ For a text that may be anything, with suggestions, use
 `ui.ComboboxBase` is a combobox without a look: an `Input` whose text
 filters the `Item`s of a `Popup` below it, which the arrows highlight and
 Enter or a click chooses (`Chosen`): see [custom widgets](custom-widgets.md).
+When the options are those matching what was typed, as here, tell
+assistive technology with
+[`cb.Input.AutoComplete(ui.AutoCompleteList)`](accessibility.md#suggestions).
 
 A popup without options hides, unless it holds something else to read, as
 a row saying that nothing matches, which then shows in their place:
@@ -46,7 +49,8 @@ cb.Popup(func(panel ui.Element) {
 ## Accessibility
 
 Assistive technology sees a combo box named by its `Label`, editable as a
-text field, which expands; the option the arrows are on has the focus for
-it, and reads as which of how many it is. With no options, the focus stays
+text field, which expands, and whose options complete what was typed
+(`aria-autocomplete="list"`); the option the arrows are on has the focus
+for it, and reads as which of how many it is. With no options, the focus stays
 in the field, and a popup showing a row in their place is read out as it
 appears.
