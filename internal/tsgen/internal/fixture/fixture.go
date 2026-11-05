@@ -32,6 +32,11 @@ type Timestamps struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// Channel groups tasks, and shares its name with the runtime's stream type.
+type Channel struct {
+	Name string `json:"name"`
+}
+
 // Task is a unit of work.
 type Task struct {
 	ID int64 `json:"id"`
@@ -43,6 +48,7 @@ type Task struct {
 	Due      *time.Time       `json:"due"`
 	Meta     map[string]any   `json:"meta,omitempty"`
 	Parent   *Task            `json:"parent,omitzero"`
+	Channel  *Channel         `json:"channel,omitzero"`
 	Secret   string           `json:"-"`
 	Count    int64            `json:"count,string"`
 	CountPtr *int64           `json:"countPtr,string"`

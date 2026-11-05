@@ -72,8 +72,8 @@ var runtimeTypes = map[string]string{
 	"github.com/egoist/mygo.ThemePreferences": "ThemePreferences",
 }
 
-// runtimeSentinel holds the names of runtimeTypes in generator.taken, so
-// that types of the app with those names get others.
+// runtimeSentinel reserves mygo-runtime's type names in generator.taken,
+// so types of the app with those names get others.
 type runtimeSentinel struct{}
 
 // Generate renders the TypeScript client.
@@ -91,7 +91,7 @@ func Generate(m Model) ([]byte, error) {
 		g.taken[name] = reflect.TypeFor[runtimeSentinel]()
 	}
 
-	// Learn package directories first so type docs can be found.
+	// Reserve imported names and learn package directories before declaring types.
 	type methodSrc struct {
 		file string
 		line int
@@ -100,6 +100,10 @@ func Generate(m Model) ([]byte, error) {
 	for si := range m.Services {
 		for mi := range m.Services[si].Methods {
 			meth := &m.Services[si].Methods[mi]
+			// A later method may need Channel after an app type was named.
+			if slices.Contains(meth.Channels, true) {
+				g.taken["Channel"] = reflect.TypeFor[runtimeSentinel]()
+			}
 			file, line := g.src.learnPC(meth.PC)
 			locs[meth] = methodSrc{file, line}
 		}
