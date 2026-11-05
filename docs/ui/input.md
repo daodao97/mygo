@@ -42,6 +42,17 @@ hides them from assistive technology, they are inert.
 Elements that take the pointer give it to the innermost under it: a button
 in a clickable row takes its own clicks.
 
+`PressedInside` reports a press on an element or inside it without the
+element taking the pointer, where `Pressed` and `Clicked` make it take
+it: a table's cell notices an Alt-click while its row still chooses:
+
+```go
+cell := ui.Box(c).Children(func() { ui.Text(c, value) })
+if cell.PressedInside() && c.Modifiers()&ui.Alt != 0 {
+	app.inspect(row, col)
+}
+```
+
 `Pressed` stays true while the pointer is held inside the element. A
 release that comes with moves no build has read leaves the element
 pressed for the build that reads them, with the pointer where it let go

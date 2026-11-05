@@ -6576,6 +6576,20 @@ func (_handle Element) PressedButton() (int, bool) {
 	return _node.PressedButton()
 }
 
+// PressedInside reports whether the pointer went down since the last
+// frame on the element, inside it, or in a popover attached to it, as
+// PressedOutside reports one outside. Unlike Pressed and Clicked, the
+// element does not take the pointer.
+func (_handle Element) PressedInside() bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.PressedInside()
+}
+
 // PressedOutside reports whether the pointer went down since the last
 // frame outside the element: on neither it, nor what it holds, nor the
 // element it is attached to (AttachTo), nor the overlays attached to

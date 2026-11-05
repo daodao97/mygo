@@ -105,9 +105,10 @@ menus, are built from what those are made of:
   })
   ```
 - `PressedOutside` reports a press outside an element, its target and the
-  popovers of what is inside it, as a popover closes for. A press before
-  the element showed is not outside it: an overlay that a right-click
-  opens stays open, the press opening it in the same frame.
+  popovers of what is inside it, as a popover closes for; `PressedInside`
+  one inside them, without taking the pointer. A press before the element
+  showed is not outside it: an overlay that a right-click opens stays open,
+  the press opening it in the same frame.
 - `OverlayShortcut` takes the keys the focused element and those around it
   leave, wherever the focus is, the overlay built last first, as Escape
   closing the one on top.
