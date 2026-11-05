@@ -67,6 +67,11 @@ func initSystemCallbacks() {
 	if d := gdkDisplayGetDefault(); d != 0 {
 		connect(d, "monitor-added", cbMonitorsChanged, 0)
 		connect(d, "monitor-removed", cbMonitorsChanged, 0)
+		// The pointing devices (Theme.Preferences).
+		if seat := gdkDisplayGetDefaultSeat(d); seat != 0 {
+			connect(seat, "device-added", cbThemeChanged, 0)
+			connect(seat, "device-removed", cbThemeChanged, 0)
+		}
 	}
 }
 
@@ -365,10 +370,12 @@ func doubleClick() platform.DoubleClick {
 	return platform.DoubleClick{Time: time.Duration(ms) * time.Millisecond, DX: float64(distance), DY: float64(distance)}
 }
 
-// Preferences reads GTK's animations setting, and the accent, contrast
-// and text size the desktop portal gives, as GNOME's and KDE's do.
+// Preferences reads GTK's animations setting, the accent, contrast and
+// text size the desktop portal gives, as GNOME's and KDE's do, and the
+// seat's pointing devices.
 func (t theme) Preferences() platform.Preferences {
 	var p platform.Preferences
+	p.Pointer, p.AnyPointer, p.NoHover, p.NoAnyHover = pointingDevices()
 	settings := gtkSettingsGetDefault()
 	animations := int32(1)
 	gObjectGetPtr(settings, cs("gtk-enable-animations"), unsafe.Pointer(&animations), 0)
@@ -408,6 +415,57 @@ func (t theme) Preferences() platform.Preferences {
 		gVariantUnref(v)
 	}
 	return p
+}
+
+// GdkInputSource's sources of pointing devices, and GdkSeatCapabilities'
+// of pointing.
+const (
+	sourceMouse       = 0
+	sourcePen         = 1
+	sourceEraser      = 2
+	sourceCursor      = 3
+	sourceTouchscreen = 5
+	sourceTouchpad    = 6
+	sourceTrackpoint  = 7
+	seatAllPointing   = 7 // GDK_SEAT_CAPABILITY_ALL_POINTING
+)
+
+// pointingDevices returns how accurate the primary pointing device is and
+// the most accurate of all, and whether they cannot hover, from the
+// seat's devices as Chromium tells them: mice, touchpads, trackpoints and
+// pens point finely and hover, touch screens coarsely, without hovering;
+// the primary device is the finest. A seat that lists none, as a display
+// GDK does not know, has a mouse's.
+func pointingDevices() (primary, finest platform.PointerAccuracy, noHover, noneHover bool) {
+	d := gdkDisplayGetDefault()
+	if d == 0 {
+		return
+	}
+	seat := gdkDisplayGetDefaultSeat(d)
+	if seat == 0 {
+		return
+	}
+	list := gdkSeatGetSlaves(seat, seatAllPointing)
+	if list == 0 {
+		return
+	}
+	defer gListFree(list)
+	fine, touch := false, false
+	for node := list; node != 0; node = field[ptr](node, 8) {
+		switch gdkDeviceGetSource(field[ptr](node, 0)) {
+		case sourceMouse, sourcePen, sourceEraser, sourceCursor, sourceTouchpad, sourceTrackpoint:
+			fine = true
+		case sourceTouchscreen:
+			touch = true
+		}
+	}
+	switch {
+	case fine:
+		return platform.PointerFine, platform.PointerFine, false, false
+	case touch:
+		return platform.PointerCoarse, platform.PointerCoarse, true, true
+	}
+	return platform.PointerNone, platform.PointerNone, true, true
 }
 
 func (t theme) IsDark() bool {

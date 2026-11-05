@@ -194,6 +194,7 @@ var (
 	gdkMonitorGetModel              func(m ptr) ptr
 	gdkDisplayGetDefaultSeat        func(d ptr) ptr
 	gdkSeatGetPointer               func(s ptr) ptr
+	gdkSeatGetSlaves                func(s ptr, caps int32) ptr
 	gdkDeviceGetPosition            func(dev ptr, screen *ptr, x, y *int32)
 	gdkWindowGetDevicePosition      func(w, dev ptr, x, y *int32, mask *uint32) ptr
 	gdkWindowGetDisplay             func(w ptr) ptr
@@ -645,6 +646,8 @@ func load() error {
 	mustBind(d, &gdkMonitorGetModel, "gdk_monitor_get_model")
 	mustBind(d, &gdkDisplayGetDefaultSeat, "gdk_display_get_default_seat")
 	mustBind(d, &gdkSeatGetPointer, "gdk_seat_get_pointer")
+	mustBind(d, &gdkSeatGetSlaves, "gdk_seat_get_slaves")
+	mustBind(d, &gdkDeviceGetSource, "gdk_device_get_source") // the preferences read it before a surface binds it
 	mustBind(d, &gdkDeviceGetPosition, "gdk_device_get_position")
 	mustBind(d, &gdkWindowGetDevicePosition, "gdk_window_get_device_position")
 	mustBind(d, &gdkWindowGetDisplay, "gdk_window_get_display")

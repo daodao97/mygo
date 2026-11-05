@@ -266,7 +266,28 @@ type Tester struct {
 // elements given one key under one parent make it panic where the second
 // was given, as apps only log it.
 func coreNewTester(view func(c *context), width, height int) *Tester {
-	h := &headless{w: float32(width), h: float32(height), scale: 1}
+	return coreNewTesterWith(view, width, height, TesterOptions{})
+}
+
+// TesterOptions are settings of the desktop that a Tester starts with,
+// which its first frame follows, as Media Queries 5 has the user's
+// preferences apply from the first time styles resolve: a view mounted
+// under ReduceMotion starts no animation in its first frames either, as
+// it would before a SetPreferences after NewTester.
+type TesterOptions struct {
+	// Preferences are the desktop's settings that controls follow
+	// (SetPreferences).
+	Preferences Preferences
+	// Dark starts in the dark appearance (SetDark).
+	Dark bool
+}
+
+// NewTesterWith starts testing view in a window of width×height DIPs, as
+// NewTester does, with the desktop's settings of o from the first frame:
+//
+//	tt := ui.NewTesterWith(view, 400, 300, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true}})
+func coreNewTesterWith(view func(c *context), width, height int, o TesterOptions) *Tester {
+	h := &headless{w: float32(width), h: float32(height), scale: 1, prefs: platformPreferences(o.Preferences), dark: o.Dark}
 	t := &Tester{rt: newRuntime(view, h), h: h, now: time.Now()}
 	t.rt.clock = t.Now
 	h.clock = t.Now
@@ -468,10 +489,16 @@ func (t *Tester) SetDark(dark bool) {
 // SetPreferences changes the desktop's settings that controls follow, as
 // the user does in the system's settings.
 func (t *Tester) SetPreferences(p Preferences) {
-	t.h.prefs = platform.Preferences{Accent: platform.Color{R: p.Accent.R, G: p.Accent.G, B: p.Accent.B, A: p.Accent.A}, ReduceMotion: p.ReduceMotion,
-		ReduceTransparency: p.ReduceTransparency, HighContrast: p.HighContrast, TextScale: float64(p.TextScale)}
+	t.h.prefs = platformPreferences(p)
 	t.rt.themeChanged()
 	t.settle()
+}
+
+// platformPreferences returns p as a backend gives them.
+func platformPreferences(p Preferences) platform.Preferences {
+	return platform.Preferences{Accent: platform.Color{R: p.Accent.R, G: p.Accent.G, B: p.Accent.B, A: p.Accent.A}, ReduceMotion: p.ReduceMotion,
+		ReduceTransparency: p.ReduceTransparency, HighContrast: p.HighContrast, TextScale: float64(p.TextScale),
+		Pointer: platform.PointerAccuracy(p.Pointer), AnyPointer: platform.PointerAccuracy(p.AnyPointer), NoHover: p.NoHover, NoAnyHover: p.NoAnyHover}
 }
 
 // SetLocale makes tag the language the app shows, as mygo.App.SetLocale

@@ -27,7 +27,41 @@ type Preferences struct {
 	// Windows's and GNOME's text size settings say, 1 for usual: the
 	// default theme's FontSize is that much larger.
 	TextScale float32
+	// Pointer is how accurately the primary pointing device points, and
+	// AnyPointer the most accurate of all, as Media Queries 4's pointer
+	// and any-pointer: PointerFine for a mouse, a touchpad or a pen,
+	// PointerCoarse for a touch screen alone, or in Windows's tablet mode.
+	// A touch-first layout, with larger targets, reads Pointer; macOS's
+	// and those not known are a mouse's.
+	Pointer, AnyPointer PointerAccuracy
+	// NoHover tells that the primary pointing device cannot hover, as a
+	// finger on a touch screen, and NoAnyHover that none can: Media
+	// Queries 4's hover: none and any-hover: none. Hover and AnyHover say
+	// the opposite. Tooltips and what shows on hover alone want a pointer
+	// that hovers.
+	NoHover, NoAnyHover bool
 }
+
+// PointerAccuracy is how accurately a pointing device points.
+type PointerAccuracy uint8
+
+const (
+	// PointerFine is a mouse's, a touchpad's or a pen's: the default.
+	PointerFine PointerAccuracy = iota
+	// PointerCoarse is a finger's on a touch screen, which wants larger
+	// targets.
+	PointerCoarse
+	// PointerNone is that of no pointing device, as a keyboard alone.
+	PointerNone
+)
+
+// Hover reports whether the primary pointing device can hover, as Media
+// Queries 4's hover: hover.
+func (p Preferences) Hover() bool { return !p.NoHover }
+
+// AnyHover reports whether any pointing device can hover, as Media
+// Queries 4's any-hover: hover.
+func (p Preferences) AnyHover() bool { return !p.NoAnyHover }
 
 // Preferences returns the settings of the desktop that controls follow.
 // A frame follows their changes.
@@ -43,6 +77,10 @@ func (rt *engine) preferences() Preferences {
 			ReduceTransparency: p.ReduceTransparency,
 			HighContrast:       p.HighContrast,
 			TextScale:          float32(p.TextScale),
+			Pointer:            PointerAccuracy(p.Pointer),
+			AnyPointer:         PointerAccuracy(p.AnyPointer),
+			NoHover:            p.NoHover,
+			NoAnyHover:         p.NoAnyHover,
 		}
 		if rt.prefs.TextScale <= 0 {
 			rt.prefs.TextScale = 1

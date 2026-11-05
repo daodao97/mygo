@@ -369,3 +369,31 @@ theme follows and a frame follows the changes of:
   times larger.
 - **`ReduceMotion`.** macOS's Reduce Motion, Windows's animation effects and
   GNOME's animations turned off: `Animate` goes to its target at once.
+- **`Pointer`, `AnyPointer`, `Hover()` and `AnyHover()`.** What the
+  pointing devices can do, as Media Queries 4's `pointer`, `any-pointer`,
+  `hover` and `any-hover`: `Pointer` is how accurately the primary one
+  points, `ui.PointerFine` for a mouse, a touchpad or a pen,
+  `ui.PointerCoarse` for a touch screen, `ui.PointerNone` for none, and
+  `AnyPointer` the most accurate of all; `NoHover` and `NoAnyHover`
+  (`Hover()` and `AnyHover()` the other way round) tell that the primary
+  one, or every one, cannot hover. A touch-first layout gives larger
+  targets to a coarse pointer, and shows on hover alone only what a
+  pointer that hovers can reach:
+
+  ```go
+  p := c.Preferences()
+  size := float32(28)
+  if p.Pointer == ui.PointerCoarse {
+  	size = 44
+  }
+  del := ui.Button(c, "×").Size(size, size).Label("Delete")
+  if p.Hover() {
+  	del.Tooltip("Delete")
+  }
+  ```
+
+  Linux reads the seat's devices (GDK's), and follows them as they come
+  and go; Windows reads whether a mouse, a pen or a touch screen is
+  there, the touch screen being the primary one in tablet mode; browsers
+  answer the media queries. macOS's, and those not known, are a mouse's:
+  fine, and hovering.

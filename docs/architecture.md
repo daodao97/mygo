@@ -3309,12 +3309,21 @@ either.
   `SPI_GETHIGHCONTRAST` and Accessibility's `TextScaleFactor`, with
   `WM_SETTINGCHANGE`; on Linux, GTK's `gtk-enable-animations` and the
   settings portal's accent, contrast and GNOME's text scaling factor
-  (`ReadAll`, `SettingChanged`). A change goes through
-  `Handler.ThemeChanged`, as the appearance's does; package `ui` reads them
+  (`ReadAll`, `SettingChanged`). What the pointing devices can do
+  (`Pointer`, `AnyPointer`, `NoHover`, `NoAnyHover`, Media Queries 4's
+  interaction features), whose zero is a mouse's, as macOS's always is,
+  comes from the media queries in browsers; on Linux from the sources of
+  the default seat's pointing devices (`gdk_seat_get_slaves`), followed
+  through its `device-added` and `device-removed`; on Windows from
+  `SM_MOUSEPRESENT` and `SM_DIGITIZER`, the touch screen primary in
+  tablet mode (`SM_CONVERTIBLESLATEMODE`, whose `ConvertibleSlateMode`
+  setting changes), as Chromium tells them, primary the finest. A change
+  goes through `Handler.ThemeChanged`, as the appearance's does; package `ui` reads them
   once until the next, the default theme follows them (`Theme.follow`), and
   `Animate` follows reduced motion. Package `mygo` reads them the same way:
   `Theme.Preferences()` keeps them until the next change, with reduced
-  transparency too, which package `ui` does not follow. Pages get them as
+  transparency too, which package `ui` does not follow, and without the
+  pointing devices, which pages' own media queries answer. Pages get them as
   `ThemePreferences`' JSON (its `MarshalJSON`, the accent a CSS color or
   `null`), which is mygo-runtime's `ThemePreferences`: `tsgen` imports that
   type for it rather than declaring one (`runtimeTypes`). A user script
@@ -5690,7 +5699,7 @@ which npm allows only for packages that exist: the first release uses an
 | secrets | Security.framework generic passwords in the login keychain (`SecItem*`), service and account as keytar | libsecret's `org.freedesktop.Secret.Generic` schema (attributes `service`, `account`), loaded on first use, libsecret 0.19 or later; no libsecret, no session bus (`g_bus_get_sync`) or no Secret Service on it (`G_DBUS_ERROR_SERVICE_UNKNOWN`, `NAME_HAS_NO_OWNER`, `NO_SERVER`) is `ErrUnsupported` | Credential Manager generic credentials (`CredWriteW`), target `service/account` |
 | vibrancy | all materials, behind pages and native UI; Liquid Glass (`NSGlassEffectView`) from macOS 26, the popover and HUD materials before, with a `tintColor` and the native UI's `Glass{Native}` placed over web views; frameless windows cut to `CornerRadius`; `SetActiveAppearance` through AppKit's private `_setForceMainAppearance:` | ignored | Windows 11 22H2 Mica, Acrylic, Tabbed, behind pages and native UI, in windows created with a material, which have no menu bar; Liquid Glass as Acrylic; frameless windows given a `CornerRadius` rounded by DWM |
 | active windows | the core's state, from key windows; materials follow AppKit's (`NSVisualEffectStateFollowsWindowActiveState`), but panels', flyouts' and kept ones' (`NSVisualEffectStateActive`) | the core's state, from GDK's focus; GTK's own title bar goes `:backdrop` as a focusable flyout takes the keyboard | the core's state, from `WM_ACTIVATE`; DWM's Mica and Acrylic follow the frame, kept active while the window's focusable flyout is (`WM_NCACTIVATE`) |
-| accent color and accessibility preferences | `NSColor.controlAccentColor` (10.14+), `accessibilityDisplayShouldReduceMotion` (10.12+), `accessibilityDisplayShouldReduceTransparency` and `accessibilityDisplayShouldIncreaseContrast` (10.10+), with `NSSystemColorsDidChangeNotification` and `NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification`; no text scale | GTK's `gtk-enable-animations` and theme name, and the settings portal's accent, contrast and GNOME's `text-scaling-factor` (`ReadAll`, `SettingChanged`); no reduced transparency | DWM's `AccentColor`, `SPI_GETCLIENTAREAANIMATION`, Personalize's `EnableTransparency`, `SPI_GETHIGHCONTRAST` and Accessibility's `TextScaleFactor`, with `WM_SETTINGCHANGE` |
+| accent color and accessibility preferences | `NSColor.controlAccentColor` (10.14+), `accessibilityDisplayShouldReduceMotion` (10.12+), `accessibilityDisplayShouldReduceTransparency` and `accessibilityDisplayShouldIncreaseContrast` (10.10+), with `NSSystemColorsDidChangeNotification` and `NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification`; no text scale | GTK's `gtk-enable-animations` and theme name, and the settings portal's accent, contrast and GNOME's `text-scaling-factor` (`ReadAll`, `SettingChanged`); no reduced transparency; the pointing devices from the default seat's, as they come and go | DWM's `AccentColor`, `SPI_GETCLIENTAREAANIMATION`, Personalize's `EnableTransparency`, `SPI_GETHIGHCONTRAST` and Accessibility's `TextScaleFactor`, with `WM_SETTINGCHANGE`; the pointing devices from `SM_MOUSEPRESENT`, `SM_DIGITIZER` and tablet mode, not followed as they are plugged in |
 | preferred languages | the global `AppleLanguages` (`CFPreferencesCopyValue`), not the app's | `LANGUAGE`, then `LC_ALL`, `LC_MESSAGES`, `LANG`; read when asked, no changes reported | `GetUserPreferredUILanguages`, `WM_SETTINGCHANGE` "intl" |
 | regional formats | `autoupdatingCurrentLocale`, its calendar's first weekday, the hour of the skeleton "j"; `NSCurrentLocaleDidChangeNotification` and System Settings' distributed notifications | glibc's `nl_langinfo_l` of `LC_TIME` (`_NL_TIME_FIRST_WEEKDAY`, `T_FMT`), else by region | `GetLocaleInfoEx` of the user's default: `LOCALE_IFIRSTDAYOFWEEK`, `LOCALE_STIMEFORMAT` |
 | the app's language kept | `AppleLanguages` of the app's defaults | the file `locale` in PathUserData | the file `locale` in PathUserData, and the process's preferred UI languages |

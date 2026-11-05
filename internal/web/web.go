@@ -88,7 +88,8 @@ func (b *Backend) Init(h platform.AppHandler, _ platform.AppOptions) error {
 		b.sync(func() { b.h.ThemeChanged() })
 		return nil
 	})
-	for _, q := range []string{"(prefers-color-scheme: dark)", "(prefers-reduced-motion: reduce)", "(prefers-reduced-transparency: reduce)", "(prefers-contrast: more)"} {
+	for _, q := range []string{"(prefers-color-scheme: dark)", "(prefers-reduced-motion: reduce)", "(prefers-reduced-transparency: reduce)", "(prefers-contrast: more)",
+		"(pointer: fine)", "(pointer: coarse)", "(any-pointer: fine)", "(any-pointer: coarse)", "(hover: none)", "(any-hover: none)"} {
 		js.Global().Call("matchMedia", q).Call("addEventListener", "change", changed)
 	}
 	// The languages the user reads: the browser's.
@@ -587,7 +588,25 @@ func (theme) Preferences() platform.Preferences {
 		ReduceTransparency: matches("(prefers-reduced-transparency: reduce)"),
 		HighContrast:       matches("(prefers-contrast: more)"),
 		TextScale:          1,
+		Pointer:            pointer("pointer"),
+		AnyPointer:         pointer("any-pointer"),
+		NoHover:            matches("(hover: none)"),
+		NoAnyHover:         matches("(any-hover: none)"),
 	}
+}
+
+// pointer returns the accuracy the media feature (pointer or any-pointer)
+// matches: the finest of any-pointer's.
+func pointer(feature string) platform.PointerAccuracy {
+	switch {
+	case matches("(" + feature + ": fine)"):
+		return platform.PointerFine
+	case matches("(" + feature + ": coarse)"):
+		return platform.PointerCoarse
+	case matches("(" + feature + ": none)"):
+		return platform.PointerNone
+	}
+	return platform.PointerFine // a browser without the feature
 }
 
 type power struct{}

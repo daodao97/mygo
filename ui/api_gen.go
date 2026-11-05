@@ -1764,6 +1764,14 @@ func NewTester(view func(c *Context), width int, height int) *Tester {
 	return coreNewTester(func(c *context) { view(makeContext(c)) }, width, height)
 }
 
+// NewTesterWith starts testing view in a window of width×height DIPs, as
+// NewTester does, with the desktop's settings of o from the first frame:
+//
+//	tt := ui.NewTesterWith(view, 400, 300, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true}})
+func NewTesterWith(view func(c *Context), width int, height int, o TesterOptions) *Tester {
+	return coreNewTesterWith(func(c *context) { view(makeContext(c)) }, width, height, o)
+}
+
 // NumberInput creates a text input editing *value as a number between lo
 // and hi, which the arrows Up and Down, and the buttons beside it, step
 // by step. What is typed applies as soon as it is a number in range, and

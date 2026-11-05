@@ -393,10 +393,12 @@ func TestContentFollowsPreferences(t *testing.T) {
 	})
 	t.Cleanup(func() { onMain(func() { fb.SetPreferences(platform.Preferences{}) }) })
 	onMain(func() {
-		fb.SetPreferences(platform.Preferences{Accent: platform.Color{R: 255, G: 128, A: 255}, ReduceMotion: true, TextScale: 1.25})
+		fb.SetPreferences(platform.Preferences{Accent: platform.Color{R: 255, G: 128, A: 255}, ReduceMotion: true, TextScale: 1.25,
+			Pointer: platform.PointerCoarse, NoHover: true})
 		s.Frame()
 	})
-	if !prefs.ReduceMotion || prefs.TextScale != 1.25 || accent != ui.RGB(255, 128, 0) {
+	if !prefs.ReduceMotion || prefs.TextScale != 1.25 || accent != ui.RGB(255, 128, 0) ||
+		prefs.Pointer != ui.PointerCoarse || prefs.AnyPointer != ui.PointerFine || prefs.Hover() || !prefs.AnyHover() {
 		t.Errorf("the content sees %+v, accent %v", prefs, accent)
 	}
 }
