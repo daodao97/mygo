@@ -565,8 +565,6 @@ type Terminal struct {
 	prompt   promptTracker
 	shellDir string
 
-	search            *vt.Search
-	searchMoves       int
 	size              gridSize
 	events            events
 	closed            bool

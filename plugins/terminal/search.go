@@ -28,7 +28,6 @@ type search struct {
 	// starts.
 	pick   bool
 	status SearchStatus
-	rects  []vt.MatchRect
 }
 
 // searchBudget bounds what a frame spends going through the scrollback; a
@@ -42,59 +41,38 @@ const searchBudget = 4 * time.Millisecond
 // letters, which it ignores. Searching for the text searched already keeps
 // the selected match; "" ends the search, as EndSearch. A view drives the
 // search, which goes on in the frames that show the terminal.
-func (t *Terminal) Search(text string) { _ = t.SetSearch(text) }
-
-// SetSearch is the error-reporting form of Search, kept for existing callers.
-func (t *Terminal) SetSearch(text string) error {
+func (t *Terminal) Search(text string) {
 	if text == "" {
 		t.EndSearch()
-		return nil
+		return
 	}
 	t.mu.Lock()
 	if t.term == nil {
 		t.mu.Unlock()
-		return nil
+		return
 	}
 	f := &t.find
 	if f.s == nil {
-		native, err := vt.NewSearch(t.term)
+		s, err := vt.NewSearch(t.term)
 		if err != nil {
 			t.mu.Unlock()
-			return err
+			return
 		}
-		f.s = native
+		f.s = s
 	}
-	t.search = f.s
 	if f.status.Text != text {
 		f.s.SetText(text)
 		f.status, f.pick = SearchStatus{Text: text, Searching: true}, true
-		t.searchMoves = 0
 	}
 	t.mu.Unlock()
 	t.redraw()
-	return nil
 }
 
 // SearchNext selects the next match of the search toward older output, up
 // the screen and into the scrollback, wrapping around past the oldest, and
 // unless it shows scrolls it to the middle of the view, clear of a find bar
 // over an edge; SearchPrevious goes the other way.
-func (t *Terminal) SearchNext(direction ...int) {
-	if len(direction) == 0 {
-		t.selectMatch(false)
-		return
-	}
-	t.mu.Lock()
-	if t.find.s != nil {
-		if direction[0] < 0 {
-			t.searchMoves--
-		} else {
-			t.searchMoves++
-		}
-	}
-	t.mu.Unlock()
-	t.redraw()
-}
+func (t *Terminal) SearchNext()     { t.selectMatch(false) }
 func (t *Terminal) SearchPrevious() { t.selectMatch(true) }
 
 func (t *Terminal) selectMatch(back bool) {
@@ -127,8 +105,6 @@ func (t *Terminal) endSearch() {
 		t.find.s.Free()
 	}
 	t.find = search{}
-	t.search = nil
-	t.searchMoves = 0
 }
 
 // SearchStatus returns how the search goes.
@@ -207,60 +183,49 @@ func (t *Terminal) viewportMatches(spans []matchSpan, buf []vt.Selection, cols, 
 	if f.s == nil || f.status.Total == 0 {
 		return spans, buf
 	}
+	// The matches as of the terminal now.
 	f.s.Feed()
-	// Share the coordinate conversion with the compatibility API: endpoints
-	// name a grapheme's leading cell, so wide glyphs include their trailing cell.
-	buf, f.rects = f.s.Highlights(t.term, buf, f.rects)
-	for _, r := range f.rects {
-		if r.Row >= 0 && r.Row < rows && r.Start < cols && r.End > 0 {
-			spans = append(spans, matchSpan{r.Row, max(r.Start, 0), min(r.End, cols) - 1, r.Selected})
+	buf = f.s.ViewportMatches(buf)
+	// The cells of a match in the viewport: one that wraps in from above
+	// it starts at its top left, and one that wraps on below it ends at
+	// its bottom right.
+	cells := func(m *vt.Selection) (c [4]int, shows bool) {
+		a, b := m.Ends()
+		x0, y0, ok0 := t.term.ViewportPoint(a)
+		x1, y1, ok1 := t.term.ViewportPoint(b)
+		switch {
+		case !ok0 && !ok1:
+			return c, false
+		case !ok0:
+			x0, y0 = 0, 0
+		case !ok1:
+			x1, y1 = cols-1, rows-1
+		}
+		return [4]int{x0, y0, x1, y1}, y0 < rows
+	}
+	var sel [4]int
+	selOK := false
+	if m, ok := f.s.SelectedMatch(); ok {
+		sel, selOK = cells(&m)
+	}
+	for i := range buf {
+		c, shows := cells(&buf[i])
+		if !shows {
+			continue
+		}
+		x0, y0, x1, y1 := c[0], c[1], c[2], c[3]
+		selected := selOK && sel == c
+		// A match that wraps takes the rows it goes through.
+		for y := y0; y <= min(y1, rows-1); y++ {
+			s := matchSpan{y, 0, cols - 1, selected}
+			if y == y0 {
+				s.x0 = x0
+			}
+			if y == y1 {
+				s.x1 = x1
+			}
+			spans = append(spans, s)
 		}
 	}
 	return spans, buf
-}
-
-// SearchState is the original find-bar status, ordered newest to oldest.
-type SearchState struct {
-	Total, Current int
-	Busy           bool
-	Err            error
-}
-
-// SearchState advances a bounded amount of the search for clients without a view.
-func (t *Terminal) SearchState() SearchState {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.driveSearch()
-	s := t.find.status
-	return SearchState{Total: s.Total, Current: s.Selected, Busy: s.Searching}
-}
-
-// driveSearch also applies legacy directional navigation once the scan is complete.
-// The terminal lock is held.
-func (t *Terminal) driveSearch() bool {
-	f := &t.find
-	if f.s == nil || t.term == nil {
-		return false
-	}
-	busy := f.drive(t.term)
-	if !busy && f.s.Total() > 0 {
-		if _, ok := f.s.Selected(); !ok {
-			f.s.Select(false)
-			f.show(t.term)
-		}
-		moves := t.searchMoves % f.s.Total()
-		t.searchMoves = 0
-		for moves != 0 {
-			back := moves < 0
-			f.s.Select(back)
-			if back {
-				moves++
-			} else {
-				moves--
-			}
-			f.show(t.term)
-		}
-		f.update()
-	}
-	return busy
 }

@@ -141,6 +141,6 @@ func TestConnectionSnapshotReplacesScreenBeforeFollowingOutput(t *testing.T) {
 	})
 	conn.updates <- snapshotUpdate{cols: 100, rows: 32, data: []byte(" + increment")}
 	waitFor(t, tt, "following increment", func() bool { return term.Text() == "replacement + increment" })
-	term.SetSearch("increment")
-	waitFor(t, tt, "search of replaced output", func() bool { state := term.SearchState(); return !state.Busy && state.Total == 1 })
+	term.Search("increment")
+	waitFor(t, tt, "search of replaced output", func() bool { s := term.SearchStatus(); return !s.Searching && s.Total == 1 })
 }

@@ -192,7 +192,6 @@ type view struct {
 	cursor        vt.Cursor
 	scrollbar     vt.Scrollbar
 	searchMatches []vt.Selection
-	searchRects   []vt.MatchRect
 	lines         []rowCache
 	shaped        lru
 	contrastCache map[contrastPair]ui.Color
@@ -355,7 +354,7 @@ func (v *view) build(c *ui.Context, e ui.Element) {
 	reads := t.clipReads
 	t.clipReads = nil
 	term := t.term
-	searching := term != nil && t.driveSearch()
+	searching := term != nil && t.find.drive(term)
 	searched := t.find.status
 	t.mu.Unlock()
 	if !holdDue.IsZero() {

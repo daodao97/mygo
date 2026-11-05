@@ -357,3 +357,10 @@ func layouts() map[string]layout {
 		"GhosttyFormatterScreenExtra":   {unsafe.Sizeof(fo.extra.screen), map[string]uintptr{"charsets": unsafe.Offsetof(fo.extra.screen.charsets)}},
 	}
 }
+
+// pointCoordinate is a point of the screen as libghostty-vt reports it
+// (GhosttyPointCoordinate).
+type pointCoordinate struct {
+	x uint16
+	y uint32
+}
