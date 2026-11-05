@@ -672,6 +672,9 @@ type state struct {
 	// not choose again.
 	rowPressed, pressChose bool
 
+	// hitFn is where in its box the element takes the pointer (HitTest).
+	hitFn func(x, y float32, r Rect) bool
+
 	world scene.Affine
 	clips bool
 	// lifted tells that it was an element flying with a Match, which

@@ -1346,6 +1346,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		s.clipRect, s.clipRadii = e.clipRect()
 	}
 	s.selfClip, s.selfRadius, s.selfClips = e.selfClip()
+	s.hitFn = e.hitFn
 	if len(rt.liftHits) > 0 && (e == e.c.overlay || e.parent != nil && e.parent == e.c.overlay) {
 		// The elements flying in the layer before, the window's content
 		// or an overlay, go over it, under this one.

@@ -30,7 +30,10 @@ held for the last click, as Shift for a Shift-click. `c.Modifiers()` returns the
 keys held now, as one goes down or up on its own too, and the view draws
 again as they change: a list showing each row's Cmd+1–9 while Cmd is held
 reads it. `PassThrough` lets the
-pointer through the element to what is below; `IgnoreInput` lets the
+pointer through the element to what is below; `HitTest` lets it through
+where a function of the pointer's position says, as a ring's hole or the
+gaps between a pie's segments (see
+[Drawing](drawing.md#fill-rules-and-hits));  `IgnoreInput` lets the
 pointer through it and those inside it, and keeps the keyboard focus away
 from them; with
 [`AccessHidden`](accessibility.md#out-of-assistive-technologys-way), which

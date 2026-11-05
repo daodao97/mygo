@@ -319,6 +319,8 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 	}
 	if e.flags&flagPassThrough != 0 || e.ignoreInput {
 		add("pointer-events", "none")
+	} else if e.hitFn != nil {
+		add("pointer-events", "visiblePainted")
 	}
 	if e.cursor != 0 {
 		add("cursor", cursorText(e.cursor-1))
