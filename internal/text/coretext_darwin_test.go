@@ -5,7 +5,11 @@ package text
 import (
 	"bytes"
 	"math"
+	"math/rand/v2"
+	"os"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -385,4 +389,170 @@ func sameShape(a, b []shapedLine) bool {
 		}
 	}
 	return true
+}
+
+// A number put together glyph by glyph is what Core Text shapes, in every
+// font and style, whatever the kerning between its characters, as each of
+// them is checked here rather than only the first of a font.
+func TestCoreTextNumbers(t *testing.T) {
+	numbers := []string{"0", "7", "11", "1,234,567.89", "-42.5%", "+3.14", "$1,000", "1.1.1.1", "$-0.50", "%%", "--", "..", "1+1-1", "00000000000000000000000000000000", "12.345", "98765.4321"}
+	styles := []Style{{Size: 11}, {Size: 13}, {Size: 13, Weight: 700}, {Size: 14, Italic: true}, {Size: 14, Family: "Menlo"}, {Size: 16, Family: "Helvetica Neue"}, {Size: 15, Family: "Georgia"}, {Size: 13, Lang: "zh-Hans"}, {Size: 13, Lang: "en"}}
+	s := newSystem()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.engine().(*coreText)
+	for _, style := range styles {
+		for _, number := range numbers {
+			text := []rune(number)
+			e.resetScratch()
+			lines := e.shapeNumber(text, style, nil, 0, false)
+			if lines == nil {
+				t.Fatalf("%q in %+v was not put together", number, style)
+			}
+			if !sameNumber(lines, e.shapeText(text, style, nil, 0, false, false)) {
+				t.Errorf("%q in %+v put together is not what Core Text shapes", number, style)
+			}
+		}
+	}
+	for _, f := range e.numbers {
+		if f.disagreed {
+			t.Error("a font disagreed with Core Text")
+		}
+	}
+}
+
+// What is not a number, wraps, or takes more than its characters' glyphs is
+// left to Core Text, and a font it disagrees with stays with it.
+func TestCoreTextNumbersLeftOut(t *testing.T) {
+	s := newSystem()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.engine().(*coreText)
+	style := Style{Size: 13}
+	for _, c := range []struct {
+		text  string
+		style Style
+		spans []Span
+		width float32
+		rtl   bool
+	}{
+		{text: "12a", style: style},
+		{text: "12:30", style: style},
+		{text: "١٢٣", style: style},
+		{text: "123", style: style, rtl: true},
+		{text: "123", style: style, spans: []Span{{End: 1, Weight: 700}}},
+		{text: "123", style: Style{Size: 13, LetterSpacing: 1}},
+		{text: "123", style: Style{Size: 13, Features: "tnum"}},
+		{text: "123", style: Style{Size: 13, Lang: "tr"}},
+		{text: "123456", style: style, width: 5},
+		{text: strings.Repeat("1", maxNumber+1), style: style},
+	} {
+		e.resetScratch()
+		if e.shapeNumber([]rune(c.text), c.style, c.spans, c.width, c.rtl) != nil {
+			t.Errorf("%q in %+v (width %v, RTL %v) was put together", c.text, c.style, c.width, c.rtl)
+		}
+	}
+
+	text := []rune("42")
+	e.resetScratch()
+	want := e.shapeText(text, style, nil, 0, false, false)
+	wantX := want[0].runs[0].glyphs[1].X
+	if e.shapeNumber(text, style, nil, 0, false) == nil {
+		t.Fatal("42 was not put together")
+	}
+	f := e.numbers[numberKey{e.ctFont(style), false}]
+	f.pairs[numberSlots['4']-1][numberSlots['2']-1].advance += 5
+	e.resetScratch()
+	got := e.shapeNumber(text, style, nil, 0, false)
+	if !f.disagreed {
+		t.Error("a number wrong by 5 did not count as a disagreement")
+	}
+	if x := got[0].runs[0].glyphs[1].X; x != wantX {
+		t.Errorf("the second digit of a number that disagrees is at %v, Core Text puts it at %v", x, wantX)
+	}
+	e.resetScratch()
+	if e.shapeNumber(text, style, nil, 0, false) != nil {
+		t.Error("a font that disagreed still has numbers put together")
+	}
+}
+
+// Latin text wrapped from one line is what Core Text wraps, for any text made
+// of what wrapping takes, at any width, in a font's first checks and beyond.
+func TestCoreTextWrapFuzz(t *testing.T) {
+	iterations := 400
+	if n, err := strconv.Atoi(os.Getenv("MYGO_WRAP_FUZZ")); err == nil {
+		iterations = n
+	}
+	words := []string{"a", "I", "to", "the", "window", "layout", "AVATAR", "Type", "fi", "ffl", "office", "don't", "well-known", "e.g.", "U.S.A.", "1,234.56", "3.14", "$5", "50%", "a/b", "http://example.com/path?q=1&r=2", "(paren)", "[box]", "{curly}", "\"quoted\"", "'single'", "end.", "yes,", "stop;", "wait:", "what?", "no!", "x+y", "a=b", "#tag", "@me", "under_score", "<tag>", "~", "*star*", "pipe|", "back\\slash", "café", "Über", "señor", "naïve", "Ærø", "garçon", "verylongwordthatdoesnotfitalineandhastobrokenbycoretext", "--", "-", "...", "A-1", "1-2", "T.", "V,", "Y.", "L'", "f)", "ß"}
+	seps := []string{" ", " ", " ", " ", "  ", "   ", "", "-", "/"}
+	styles := []Style{{Size: 13}, {Size: 14, Weight: 700}, {Size: 13, Italic: true}, {Size: 15, Family: "Georgia"}, {Size: 12, Family: "Helvetica Neue"}, {Size: 13, Family: "Menlo"}, {Size: 16, Family: "Times New Roman"}}
+	rng := rand.New(rand.NewPCG(1, 2))
+	s := newSystem()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.engine().(*coreText)
+	wrapped, leftOut := 0, 0
+	defer func() { t.Logf("%d wrappings compared, %d left to Core Text", wrapped, leftOut) }()
+	for it := range iterations {
+		var b strings.Builder
+		for range 1 + rng.IntN(80) {
+			b.WriteString(words[rng.IntN(len(words))])
+			b.WriteString(seps[rng.IntN(len(seps))])
+		}
+		text := []rune(b.String())
+		style := styles[it%len(styles)]
+		e.resetScratch()
+		font := e.ctFont(style)
+		e.u16, e.index = appendUTF16(e.u16[:0], e.index[:0], text)
+		typesetter := e.newTypesetter(font, e.u16, text, style, nil, false, "")
+		kept := &keptTypesetter{typesetter: typesetter, font: font}
+		for _, width := range []float32{float32(20 + rng.IntN(100)), float32(100 + rng.IntN(400)), float32(300+rng.IntN(500)) + rng.Float32()} {
+			e.resetScratch()
+			// Every wrapping checked by the test, not only some.
+			f := e.wrapFonts[font]
+			if f != nil {
+				f.checked = wrapCheckedFirst
+				f.lines = 1
+			}
+			got := e.wrapKept(kept, text, style, width)
+			if got == nil {
+				// What does not shape as a glyph for each rune stays with
+				// Core Text.
+				leftOut++
+				continue
+			}
+			wrapped++
+			e.u16, e.index = appendUTF16(e.u16[:0], e.index[:0], text)
+			want := e.typesetLines(typesetter, len(e.u16), width, nil, e.index, style.Italic)
+			if !sameLines(got, want) {
+				report(t, text, style, width, got, want)
+				return
+			}
+		}
+		ct.release(typesetter)
+	}
+}
+
+// report tells the first line where wrapped text differs from Core Text's.
+func report(t *testing.T, text []rune, style Style, width float32, got, want []shapedLine) {
+	t.Helper()
+	for i := range min(len(got), len(want)) {
+		if got[i].start != want[i].start || got[i].end != want[i].end {
+			t.Fatalf("in %+v at %v, line %d is %q, Core Text's %q", style, width, i, string(text[got[i].start:got[i].end]), string(text[want[i].start:want[i].end]))
+		}
+		if !sameLines(got[i:i+1], want[i:i+1]) {
+			x, y := got[i].runs, want[i].runs
+			t.Errorf("in %+v at %v, line %d %q has %d runs, Core Text's %d", style, width, i, string(text[got[i].start:got[i].end]), len(x), len(y))
+			if len(x) == 1 && len(y) == 1 {
+				for k := range min(len(x[0].glyphs), len(y[0].glyphs)) {
+					g, h := x[0].glyphs[k], y[0].glyphs[k]
+					if g.ID != h.ID || g.X != h.X || g.Advance != h.Advance {
+						t.Errorf("  glyph %d (%q): id %d/%d x %v/%v advance %v/%v", k, string(text[g.Cluster]), g.ID, h.ID, g.X, h.X, g.Advance, h.Advance)
+					}
+				}
+			}
+			t.FailNow()
+		}
+	}
+	t.Fatalf("in %+v at %v, %d lines, Core Text's %d", style, width, len(got), len(want))
 }

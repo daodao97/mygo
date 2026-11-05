@@ -1,6 +1,7 @@
 package text
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -96,6 +97,22 @@ func benchResize(b *testing.B, list, lang string) {
 		}
 		for _, p := range paragraphs {
 			s.Layout(Params{Text: p, Width: width, Style: Style{Size: 13, Lang: lang}})
+		}
+		s.EndFrame()
+	}
+}
+
+// BenchmarkLayoutNumbers lays out the 600 numbers of a dashboard, each new in
+// each frame.
+func BenchmarkLayoutNumbers(b *testing.B) {
+	s := newSystem()
+	frame := 0
+	b.ReportAllocs()
+	for b.Loop() {
+		frame++
+		for i := range 600 {
+			v := (i*7919 + frame*31) % 100000
+			s.Layout(Params{Text: strconv.Itoa(v/100) + "." + strconv.Itoa(v%100 + 100)[1:], NoWrap: true, Style: Style{Size: 11}})
 		}
 		s.EndFrame()
 	}

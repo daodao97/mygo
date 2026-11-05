@@ -1380,16 +1380,20 @@ func line(p Params, text []rune, sl shapedLine, offset int, rtl bool, m lineMetr
 				runSize = f.Size // a span of another size
 			}
 		}
-		// A cluster holds the runes up to the next one of its run.
-		starts = starts[:0]
-		for _, g := range run.glyphs {
-			if g.Cluster >= 0 {
-				starts = append(starts, g.Cluster)
+		// A cluster holds the runes up to the next one of its run: the next
+		// glyph's, as for most text, whose clusters ascend one to a glyph.
+		ascending := clustersAscend(run.glyphs)
+		if !ascending {
+			starts = starts[:0]
+			for _, g := range run.glyphs {
+				if g.Cluster >= 0 {
+					starts = append(starts, g.Cluster)
+				}
 			}
+			slices.Sort(starts)
+			starts = slices.Compact(starts)
 		}
-		slices.Sort(starts)
-		starts = slices.Compact(starts)
-		for _, g := range run.glyphs {
+		for k, g := range run.glyphs {
 			if g.Cluster < 0 { // the ellipsis
 				g.Cluster = line.End
 			} else {
@@ -1397,7 +1401,11 @@ func line(p Params, text []rune, sl shapedLine, offset int, rtl bool, m lineMetr
 					continue
 				}
 				next := run.end
-				if i, _ := slices.BinarySearch(starts, g.Cluster); i+1 < len(starts) {
+				if ascending {
+					if k+1 < len(run.glyphs) {
+						next = run.glyphs[k+1].Cluster
+					}
+				} else if i, _ := slices.BinarySearch(starts, g.Cluster); i+1 < len(starts) {
 					next = starts[i+1]
 				}
 				g.Runes = max(next-g.Cluster, 1)
@@ -1445,9 +1453,25 @@ func line(p Params, text []rune, sl shapedLine, offset int, rtl bool, m lineMetr
 	return line
 }
 
+// clustersAscend reports whether glyphs have a cluster each, ascending.
+func clustersAscend(glyphs []Glyph) bool {
+	last := -1
+	for i := range glyphs {
+		c := glyphs[i].Cluster
+		if c <= last {
+			return false
+		}
+		last = c
+	}
+	return true
+}
+
 // spanAt returns the span of rune i if it makes it an inline object or
 // shifts it off the baseline, else nil.
 func spanAt(spans []Span, i int) *Span {
+	if len(spans) == 0 {
+		return nil
+	}
 	k := spanIndex(spans, i)
 	if k < len(spans) && (spans[k].ObjectWidth > 0 || spans[k].BaselineShift != 0) {
 		return &spans[k]
