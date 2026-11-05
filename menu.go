@@ -627,7 +627,7 @@ func performRole(role MenuRole, win *Window) {
 			return
 		}
 	case RoleReload, RoleForceReload, RoleResetZoom, RoleZoomIn, RoleZoomOut:
-		if win.content != nil {
+		if win.content {
 			return
 		}
 	}
@@ -668,7 +668,7 @@ func performRole(role MenuRole, win *Window) {
 			RoleUndo: "undo", RoleRedo: "redo", RoleCut: "cut", RoleCopy: "copy", RolePaste: "paste",
 			RoleDelete: "delete", RoleSelectAll: "selectAll", RolePasteAndMatchStyle: "pasteAndMatchStyle",
 		}[role]
-		if win.content != nil {
+		if win.content {
 			win.contentCommand(cmd)
 			return
 		}
@@ -677,7 +677,7 @@ func performRole(role MenuRole, win *Window) {
 		}
 		n.Eval("document.execCommand(" + `"` + cmd + `"` + ")")
 	case RoleBold, RoleItalic, RoleUnderline, RoleStrikethrough, RoleAlignLeft, RoleAlignCenter, RoleAlignRight:
-		if win.content != nil {
+		if win.content {
 			win.contentCommand(string(role))
 			return
 		}
