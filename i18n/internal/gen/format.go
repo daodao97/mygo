@@ -179,7 +179,7 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 		return wanted[dir] && slices.Contains(files, file)
 	}
 
-	dates, err := readPackage(datesPackage, cache, func(n string) bool { return inMain(n, "ca-gregorian.json", "timeZoneNames.json") })
+	dates, err := readPackage(datesPackage, cache, func(n string) bool { return inMain(n, "ca-gregorian.json", "timeZoneNames.json", "dateFields.json") })
 	if err != nil {
 		return err
 	}
@@ -950,7 +950,10 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 	if err != nil {
 		return fmt.Errorf("formatting format_tables.go: %v", err)
 	}
-	return os.WriteFile(filepath.Join(out, "format_tables.go"), src, 0o644)
+	if err := os.WriteFile(filepath.Join(out, "format_tables.go"), src, 0o644); err != nil {
+		return err
+	}
+	return writeRelativeTables(out, records, parentOf, dates)
 }
 
 // compactSlots returns the slots of compact patterns of a style, by

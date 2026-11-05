@@ -1578,6 +1578,18 @@ Package `i18n` is a leaf (it imports golang.org/x/text/language only):
   `scripts/format-golden.ts` records Node's `Intl` (upstream ICU) for
   every locale; `TestFormatMatchesICU` compares, and `knownDifference`
   lists, with reasons, the cases that differ on purpose.
+- **Relative times** (`relative.go`) use dateFields from the same pinned
+  cldr-dates-full tarball, written to `relative_tables.go` in a compressed
+  blob of their own: runs of slots as `recordSections` writes them, by
+  style, unit, and words for offsets -2 to 2 or past/future plural form.
+  Only `NewRelativeTimeFormatter` reaches it, so formatting dates or
+  numbers links none of it. The formatter uses the number formatter
+  (half-even, as ICU's RelativeDateTimeFormatter does), the plural form
+  of its rounded number, and ICU's rounding of offsets to hundredths
+  when choosing words with `Auto`. `scripts/relative-time-golden.ts`
+  records Node's Intl for every formatting locale, with the full matrix
+  compressed in `testdata/relative_time_icu.json.gz`; the tests name the
+  CLDR/ICU data differences explicitly.
 - **MessageFormat** (`message.go`, `format.go`) parses ICU's syntax as
   ICU's MessagePattern does (apostrophe mode DOUBLE_OPTIONAL, `#` only in
   a plural's own cases), and formats numbers and dates with the
