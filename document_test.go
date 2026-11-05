@@ -608,7 +608,11 @@ func TestDocumentWatchStartFollowsRename(t *testing.T) {
 		t.Fatal(err)
 	}
 	watchDocumentFile(context.Background(), path)
-	waitFor(t, "the document to follow the rename", func() bool { return d.Path() == renamed })
+	// The recent documents too: the move writes them in the user data
+	// directory after the path, which the test's cleanup removes.
+	waitFor(t, "the document to follow the rename", func() bool {
+		return d.Path() == renamed && slices.Contains(App.RecentDocuments(), renamed)
+	})
 	if d.State().Deleted {
 		t.Error("the document is deleted")
 	}
