@@ -638,7 +638,7 @@ const pageNodeID = 0x9e3779b97f4a7c15
 // accessDetails fills in the name, value, states and actions of a node.
 func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	disabled := e.IsDisabled()
-	if disabled {
+	if disabled || e.st.accessDisabled {
 		n.States |= platform.AccessDisabled
 	}
 	if e.segment {
@@ -795,6 +795,11 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.accFill != nil {
 		e.accFill(n)
 	}
+	// What is unavailable (AccessDisabled) is reached, read and focused,
+	// but not operated, as ARIA's aria-disabled.
+	if e.st.accessDisabled {
+		n.Actions &= platform.ActionFocus | platform.ActionScrollIntoView
+	}
 }
 
 // accessibilityOn starts describing frames for assistive technology,
@@ -821,6 +826,15 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 	// What is hidden from it, as a page leaving, takes none of its actions.
 	if s == nil || s.flags&flagDisabled != 0 || s.accessHidden {
 		return
+	}
+	// What is unavailable takes the focus, is scrolled to and has its text
+	// selected, but is neither pressed nor edited.
+	if s.accessDisabled {
+		switch ev.Action {
+		case platform.AccessFocus, platform.AccessScrollIntoView, platform.AccessSelectText:
+		default:
+			return
+		}
 	}
 	switch ev.Action {
 	case platform.AccessPress:

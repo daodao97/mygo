@@ -2523,6 +2523,15 @@ either.
   takes input, but `accessElement` skips it with what is inside it, as an
   invisible one, its text names no ancestor (`innerText`), and its
   state drops what `AccessAction` sends it.
+  One only unavailable (`AccessDisabled`, ARIA's aria-disabled, a
+  field of the node and of its inherited state too) keeps
+  `flagDisabled` off, and so its hits, its stop of Tab and its look,
+  but its node is `AccessDisabled`, which the backends already map
+  (`AXEnabled`, ATK's enabled and sensitive states, UI Automation's
+  `IsEnabled`), still `AccessFocusable`, with no actions but the focus
+  and scrolling into view, and its state drops the others; UI
+  Automation's `SetFocus` reaches a disabled element that offers the
+  focus, as Chromium's does one aria-disabled.
   `AccessTree.Announcements` are texts to read out once
   (`Context.Announce`, toasts, routers): `AXAnnouncementRequested` posted
   on the application with a medium priority on macOS, AtkObject's

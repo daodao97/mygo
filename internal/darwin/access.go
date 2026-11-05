@@ -821,6 +821,10 @@ func registerAccessClass() {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXPopupValue")))
 			}
 			names = send(names, "arrayByAddingObject:", uintptr(nsString("AXElementBusy")))
+			// Whether it can be used: the older API does not list or answer
+			// AXEnabled for what setAccessibilityEnabled: set, and VoiceOver
+			// would read every disabled control as available.
+			names = send(names, "arrayByAddingObject:", uintptr(nsString("AXEnabled")))
 			// Where a cell is and whether it is chosen, and the cells a
 			// table has chosen, which AppKit's names of an AXCell and an
 			// AXTable leave out though their setters are called.
@@ -894,6 +898,8 @@ func registerAccessClass() {
 					}
 				case "AXElementBusy":
 					return nsBool(el.node.States&platform.AccessBusy != 0)
+				case "AXEnabled":
+					return nsBool(el.node.States&platform.AccessDisabled == 0)
 				// The role and subrole the newer API was given, so that
 				// both APIs agree: AppKit's answer here missed a header
 				// made a sort button.

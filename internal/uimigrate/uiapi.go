@@ -123,6 +123,7 @@ var uiResults = map[string]string{
 var elementChains = map[string]bool{
 	"Absolute":             true,
 	"Access":               true,
+	"AccessDisabled":       true,
 	"AccessHidden":         true,
 	"ActiveDescendant":     true,
 	"AlignContent":         true,

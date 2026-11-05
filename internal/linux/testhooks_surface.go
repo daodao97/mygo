@@ -280,6 +280,21 @@ func TestAccessibilityPerform(handle uintptr, label, action, value string) bool 
 	return false
 }
 
+// TestAccessibilityEnabled reports whether the element labeled label is
+// enabled and focusable for assistive technology, as ATK's enabled and
+// focusable states say, and ok false without one.
+func TestAccessibilityEnabled(handle uintptr, label string) (enabled, focusable, ok bool) {
+	nodes, _ := TestAccessibility(handle)
+	for _, n := range nodes {
+		if n.Label == label {
+			states := atkObjectRefStateSet(n.obj)
+			defer gObjectUnref(states)
+			return atkStateSetContainsState(states, atkStates.enabled), atkStateSetContainsState(states, atkStates.focusable), true
+		}
+	}
+	return false, false, false
+}
+
 // What tests read of ATK's states by name and of relations.
 var (
 	accessStateTestsOnce        sync.Once

@@ -3289,6 +3289,38 @@ func (_handle Element) Access(fn func(n *platform.AccessNode)) Element {
 	return wrapElement(_node.Access(fn))
 }
 
+// AccessDisabled tells assistive technology that the element and those
+// inside it are unavailable when off is true, as HTML's aria-disabled
+// does, while they keep the keyboard focus, their place in the Tab order,
+// the pointer and their look: a screen reader still reaches them and reads
+// them, as dimmed or unavailable, with their Description, which can say
+// why. It is for what the user must still find while it cannot be used,
+// as a menu item whose action is blocked, a tab disabled but still in the
+// arrows' order, or a submit button while the form is not valid:
+//
+//	del := ui.Button(c, "Delete project").AccessDisabled(app.locked)
+//	if app.locked {
+//		del.Description("Unlock the project to delete it")
+//	}
+//	if del.Clicked() && !app.locked {
+//		app.deleteProject()
+//	}
+//
+// It only tells: clicks and keys still reach the element, which the view
+// ignores while it is unavailable, and it does not dim it, which the view
+// styles itself if it wants. Assistive technology focuses it, but neither
+// presses nor edits it. Disabled does all of it at once: no clicks, no
+// focus, and half the opacity.
+func (_handle Element) AccessDisabled(off bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.AccessDisabled(off))
+}
+
 // AccessHidden leaves the element and those inside it out of what
 // assistive technology reads when hide is true, while they still show, as
 // HTML's aria-hidden does: none of them is in its tree, their text names
@@ -4397,7 +4429,8 @@ func (_handle Element) Direction(d Direction) Element {
 
 // Disabled disables the element and those inside it when d is true: they
 // report no clicks, take no focus, and show at half their opacity, unless
-// DimDisabled turns that off.
+// DimDisabled turns that off. AccessDisabled keeps their clicks and their
+// focus, for what assistive technology must still reach.
 func (_handle Element) Disabled(d bool) Element {
 	_node := _handle.node()
 	if _node == nil {

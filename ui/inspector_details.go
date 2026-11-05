@@ -556,6 +556,11 @@ func properties(rt *engine, e *node) []inspSection {
 		{name: "keyboard-focusable", value: yes(e.flags&flagFocusable != 0 && !e.IsDisabled() && !e.st.ignoreInput)},
 		{name: "ignored", value: yes(!seen || e.flags&(flagInvisible|flagInert) != 0 || e.inHidden() || e.st.accessHidden)},
 	}}
+	// Unavailable to assistive technology alone, focusable still
+	// (AccessDisabled), as aria-disabled.
+	if e.st.accessDisabled && !e.IsDisabled() {
+		acc.rows = append(acc.rows, inspDecl{name: "disabled", value: "true"})
+	}
 	if e.description != "" {
 		acc.rows = append(acc.rows, inspDecl{name: "description", value: strconv.Quote(e.description)})
 	}

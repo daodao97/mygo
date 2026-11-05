@@ -460,7 +460,7 @@ func TestLayoutInputs(t *testing.T) {
 		"listRow rowIndex rowsOf focusGroup groupSelects segment activeDescendant nameFrom nameJoin labelledBy focusTo " +
 		"keyShortcuts " +
 		"setPos setSize choosesItems search description invalid followX sort level expandable " +
-		"chooseMany serial ignoreInput accessHidden themed lift ringOffset ringColor ringSet clipping zIndex zOrder " +
+		"chooseMany serial ignoreInput accessHidden accessDisabled themed lift ringOffset ringColor ringSet clipping zIndex zOrder " +
 		"roleDescription controls hasPopup"
 	known := map[string]bool{}
 	for _, f := range strings.Fields(read + " " + other) {

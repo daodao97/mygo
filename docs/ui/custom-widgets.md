@@ -90,6 +90,11 @@ card.Column().Gap(4).Padding(12).Radius(8).Border(1, t.Border).Children(func() {
 })
 ```
 
+A widget that must stay focusable while it is unavailable, for screen
+readers to reach it, tells them with
+[`AccessDisabled`](accessibility.md#unavailable-still-reachable) instead
+of `Disabled`, and styles itself while it is.
+
 ## Widgets of your own
 
 For text controls with their own buffer or selection model, use

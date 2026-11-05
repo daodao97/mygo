@@ -721,12 +721,14 @@ func (e *uiaElement) runtimeID() []int32 {
 	return []int32{3, int32(uint32(e.n.ID)), int32(uint32(e.n.ID >> 32))}
 }
 
-// act performs an action of assistive technology on the element.
+// act performs an action of assistive technology on the element. One
+// disabled takes none, but the focus where it keeps it, as one that is
+// only unavailable does (aria-disabled), as Chromium's.
 func (e *uiaElement) act(action platform.AccessActionKind, text string) uintptr {
 	switch {
 	case e.dead:
 		return uiaElementNotAvailable
-	case e.n.States&platform.AccessDisabled != 0:
+	case e.n.States&platform.AccessDisabled != 0 && (action != platform.AccessFocus || e.n.Actions&platform.ActionFocus == 0):
 		return uiaElementNotEnabled
 	}
 	e.tree.s.send(platform.SurfaceEvent{Kind: platform.AccessAction, ID: e.n.ID, Action: action, Text: text})

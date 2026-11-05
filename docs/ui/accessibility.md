@@ -311,6 +311,40 @@ Down are read as they move the choice, and focusing a row chooses it. A
 screen reader moving out of view asks the list to scroll there, which
 builds the rows it reaches. `Label` names a list or a table.
 
+## Unavailable, still reachable
+
+`Disabled(true)` does three things: the element reads as disabled, it
+leaves the focus and the Tab order and takes no clicks, and it shows at
+half its opacity (unless `DimDisabled(false)`). A screen reader moving
+by Tab then never reaches it. `AccessDisabled(true)` does the first alone,
+as HTML's `aria-disabled="true"`, for what the user must still find while
+it cannot be used, as the APG asks of a menu item whose action is
+blocked, a tab disabled but still in the arrows' order, or a submit
+button while the form is not valid: the element, and those inside it,
+read as disabled (dimmed, unavailable), and keep the focus, their place
+in the Tab order, the pointer and their look.
+
+```go
+del := ui.Button(c, "Delete project").AccessDisabled(app.locked)
+if app.locked {
+	del.Description("Unlock the project to delete it")
+}
+if del.Clicked() && !app.locked {
+	app.deleteProject()
+}
+```
+
+It only tells: clicks, Enter and Space still press the element, which
+the view ignores while it is unavailable, as on the web, and it shows as
+the view styles it. Assistive technology focuses it and reads it, its
+`Description` with it, but neither presses nor edits it. It is AppKit's
+`AXEnabled` false on macOS, ATK's enabled and sensitive states left out
+on Linux, and UI Automation's `IsEnabled` false on Windows, with
+`IsKeyboardFocusable` true and its `SetFocus` taken, as Chromium's
+aria-disabled. A [test](testing.md#what-assistive-technology-sees)
+reads it as `Disabled` with `Focusable` in `Tester.AccessByRole`'s
+answer.
+
 ## Out of the pointer's way
 
 `IgnoreInput(true)` leaves an element, and those inside it, to assistive
@@ -343,7 +377,7 @@ both go through the keyboard focus; it can set a text input's value.
 Unlike HTML's `inert`, which hides an element from assistive technology
 too, it stays in the tree: `Invisible` and `Hidden` take it out of it,
 `AccessHidden` too while it still shows, and `Disabled` keeps it there
-without its press.
+without its press, as `AccessDisabled` does with its focus too.
 
 ## Out of assistive technology's way
 
