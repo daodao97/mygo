@@ -545,6 +545,7 @@ func (h *windowHost) idle() {
 		return
 	}
 	h.soft.Release()
+	h.rt.text.ReleaseShaping()
 	if s, ok := h.conn.Surface.(platform.IdleSurface); ok {
 		s.Idle()
 	}

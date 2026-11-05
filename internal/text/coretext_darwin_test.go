@@ -207,3 +207,182 @@ func TestCoreTextLanguageSpacing(t *testing.T) {
 		}
 	}
 }
+
+// A text wrapped again at another width takes its typesetter from before,
+// and lays out as the same text does when shaped anew, in every script and
+// direction and with what a style gives its attributes.
+func TestCoreTextKeptTypesetter(t *testing.T) {
+	texts := []string{
+		"The quick brown fox jumps over the lazy dog, and then some more words follow to wrap the paragraph.",
+		"你好世界，这段中文会换行。The fonts fall back within a line 日本語のテキストも含む。",
+		"مرحبا بالعالم، هذا نص طويل يلتف على عدة أسطر من اليمين إلى اليسار في الفقرة",
+		"Emoji 😀🎉👩‍👩‍👧‍👦 and a verylongwordthatdoesnotfitalineandmustbreakorhang somewhere",
+	}
+	styles := []Style{{Size: 14}, {Size: 14, Italic: true}, {Size: 14, Weight: 700}, {Size: 14, LetterSpacing: 2}, {Size: 14, Features: "kern=0"}, {Size: 14, Lang: "ja"}}
+	widths := []float32{300, 120, 450, 120, 77}
+	kept := newSystem()
+	for _, text := range texts {
+		for _, style := range styles {
+			for _, width := range widths {
+				p := Params{Text: text, Width: width, Style: style}
+				// Without the layouts' cache, which would answer the second
+				// time a width comes.
+				kept.mu.Lock()
+				got := &kept.layout(p).layout
+				kept.mu.Unlock()
+				fresh := newSystem()
+				fresh.mu.Lock()
+				want := &fresh.layout(p).layout
+				fresh.mu.Unlock()
+				if len(got.Lines) != len(want.Lines) || got.Width != want.Width || got.Height != want.Height {
+					t.Fatalf("%q in %+v at %v: %d lines, %v×%v, shaped anew %d lines, %v×%v", text, style, width, len(got.Lines), got.Width, got.Height, len(want.Lines), want.Width, want.Height)
+				}
+				for i := range got.Lines {
+					a, b := got.Lines[i].Glyphs, want.Lines[i].Glyphs
+					if len(a) != len(b) {
+						t.Fatalf("%q in %+v at %v: line %d has %d glyphs, shaped anew %d", text, style, width, i, len(a), len(b))
+					}
+					for k := range a {
+						if a[k].ID != b[k].ID || a[k].X != b[k].X || a[k].Y != b[k].Y || a[k].Advance != b[k].Advance || a[k].Cluster != b[k].Cluster {
+							t.Fatalf("%q in %+v at %v: line %d glyph %d is %+v, shaped anew %+v", text, style, width, i, k, a[k], b[k])
+						}
+					}
+				}
+			}
+		}
+	}
+	e := kept.engine().(*coreText)
+	// The first text is all ASCII: in Japanese, it shapes as in no language.
+	if want := len(texts)*len(styles) - 1; len(e.typesetters) != want {
+		t.Errorf("%d typesetters kept, want one for each of the %d shapings", len(e.typesetters), want)
+	}
+}
+
+// Typesetters go once their text stopped wrapping again, and all of them as
+// windows go idle, and what does not wrap keeps none.
+func TestCoreTextTypesettersGo(t *testing.T) {
+	s := newSystem()
+	e := s.engine().(*coreText)
+	wrapped := Params{Text: "A paragraph that wraps", Width: 60, Style: Style{Size: 14}}
+	s.Layout(wrapped)
+	s.Layout(Params{Text: "A label on one line", Style: Style{Size: 14}})
+	if len(e.typesetters) != 1 {
+		t.Fatalf("%d typesetters kept, want that of the text that wraps", len(e.typesetters))
+	}
+	for range keptTypesetterFrames {
+		s.EndFrame()
+	}
+	if len(e.typesetters) != 1 {
+		t.Fatalf("gone after %d frames, which another window's may be", keptTypesetterFrames)
+	}
+	s.EndFrame()
+	if len(e.typesetters) != 0 {
+		t.Fatalf("%d typesetters kept after their text stopped wrapping", len(e.typesetters))
+	}
+	s.Layout(Params{Text: wrapped.Text, Width: 70, Style: wrapped.Style})
+	s.ReleaseShaping()
+	if len(e.typesetters) != 0 {
+		t.Fatalf("%d typesetters kept once idle", len(e.typesetters))
+	}
+}
+
+// Text whose language the engine is not told, for it changes nothing
+// (languageShapes), lays out as it does when the engine is told, in the fonts
+// of the system, so that leaving it out costs no one a glyph or a line break.
+func TestCoreTextLanguageLeftOut(t *testing.T) {
+	cases := []struct {
+		text  string
+		langs []string
+	}{
+		{"The quick brown fox -- jumps/over the lazy dog's back, e.g. at 10:30 (or 22:30); fi fl ffi 1,234.50 well-known \"quotes\" and a verylongwordthatoverflowsitsline.", []string{"en", "en-GB", "zh-Hans", "zh-Hant", "ja", "ko", "de", "fr", "ru", "ar", "fi", "sv"}},
+		{"Über die Straße, déjà vu à la crème: señor, naïve, fjörd, Ærø, garçon, ¿qué? ¡sí! 50 % × 2 ÷ 4 ± 1 °C", []string{"en", "de", "fr", "es", "pt", "it", "sv", "fi", "da", "nb"}},
+	}
+	for _, c := range cases {
+		text := []rune(c.text)
+		for _, lang := range c.langs {
+			if languageShapes(text, lang) {
+				t.Errorf("%q in %s tells the engine", c.text, lang)
+				continue
+			}
+			for _, width := range []float32{0, 90, 233, 400} {
+				told := shapedWithLanguage(t, text, lang, width)
+				s := newSystem()
+				s.mu.Lock()
+				left := s.engine().shape(text, Style{Size: 14, Lang: lang}, nil, width, false, false)
+				if !sameShape(told, left) {
+					t.Errorf("%q in %s at %v shapes apart from when the engine is told", c.text, lang, width)
+				}
+				s.mu.Unlock()
+			}
+		}
+	}
+	for text, lang := range map[string]string{"直骨": "ja", "“quoted”": "zh-Hans", "kind fi": "tr", "ijs": "nl", "Привет": "ru", "شكرا": "ar"} {
+		if !languageShapes([]rune(text), lang) {
+			t.Errorf("%q in %s does not tell the engine", text, lang)
+		}
+	}
+}
+
+// shapedWithLanguage shapes text with the language in its attributes, as
+// shape does for a text whose language changes it.
+func shapedWithLanguage(t *testing.T, text []rune, lang string, width float32) []shapedLine {
+	t.Helper()
+	s := newSystem()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.engine().(*coreText)
+	style := Style{Size: 14, Lang: lang}
+	font := e.ctFont(style)
+	e.u16, e.index = appendUTF16(e.u16[:0], e.index[:0], text)
+	u16, index := e.u16, e.index
+	typesetter := e.newTypesetter(font, u16, text, style, nil, false, lang)
+	if typesetter == 0 {
+		t.Fatal("no typesetter")
+	}
+	defer ct.release(typesetter)
+	var out []shapedLine
+	n := len(u16)
+	for start := 0; start < n; {
+		count := n - start
+		if width > 0 {
+			count = max(ct.suggestLineBreak(typesetter, start, float64(width)+1.0/1024), 1)
+		}
+		line := ct.typesetterCreateLine(typesetter, cfRange{start, count})
+		out = append(out, cloneLine(e.line(line, index, n, false)))
+		ct.release(line)
+		start += count
+	}
+	return out
+}
+
+// cloneLine copies a line out of the engine's scratch.
+func cloneLine(l shapedLine) shapedLine {
+	l.runs = slices.Clone(l.runs)
+	for i := range l.runs {
+		l.runs[i].glyphs = slices.Clone(l.runs[i].glyphs)
+	}
+	return l
+}
+
+func sameShape(a, b []shapedLine) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].start != b[i].start || a[i].end != b[i].end || len(a[i].runs) != len(b[i].runs) {
+			return false
+		}
+		for j := range a[i].runs {
+			x, y := a[i].runs[j].glyphs, b[i].runs[j].glyphs
+			if len(x) != len(y) {
+				return false
+			}
+			for k := range x {
+				if x[k].ID != y[k].ID || x[k].X != y[k].X || x[k].Y != y[k].Y || x[k].Advance != y[k].Advance || x[k].Cluster != y[k].Cluster || x[k].Font.Ascent != y[k].Font.Ascent {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}

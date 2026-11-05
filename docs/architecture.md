@@ -4072,7 +4072,11 @@ either.
   2D context (`canvas_js.go`, see [Browsers](#browsers-internalweb)). They find the fonts, fall
   back to other fonts for what one lacks, shape, run the bidirectional
   algorithm and break lines; font files stay memory mapped and shared with
-  every other process. Every engine gives a line's glyphs in visual order,
+  every other process. A text wrapped again at another width, as in a window
+  being resized, keeps its `CTTypesetter` while frames use it, and gives it up
+  8 frames after the last, or as windows go idle. Core Text opens a break
+  iterator for each line of text with a language attribute, so
+  `languageShapes` leaves the attribute out where it changes nothing. Every engine gives a line's glyphs in visual order,
   from the left, through right-to-left runs too (DirectWrite's runs, whose
   glyphs come in logical order, are reversed), so that what walks them,
   and `ui.Shape`'s callers, rely on one order. The package assembles their
