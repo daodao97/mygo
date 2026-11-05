@@ -37,7 +37,7 @@ type demo struct {
 	biometricCancel     func()
 	submissions         int
 	systemResult        string
-	secrets             *mygo.SecureStore
+	secrets             mygo.SecretsModule
 	window              *mygo.Window
 	media               *mediaState
 	pickerResult        string
@@ -245,11 +245,7 @@ func main() {
 		}
 	})
 	mygo.App.WhenReady(func() {
-		var err error
-		s.secrets, err = mygo.NewSecureStore("mobile-tests", mygo.SecureStoreOptions{})
-		if err != nil {
-			log.Fatal(err)
-		}
+		s.secrets = mygo.Secrets.Service("mobile-tests")
 		if _, err := mygo.PersistState("demo", &s.savedDemo); err != nil {
 			log.Fatal(err)
 		}

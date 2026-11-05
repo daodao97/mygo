@@ -560,23 +560,22 @@ coalescing results. The built-in `apple` name is reserved.
 
 ## Secure storage
 
-`NewSecureStore("account", SecureStoreOptions{})` creates an application-scoped
-Keychain namespace. `Set`, `Get` and `Delete` accept binary values and are safe
+`Secrets` keeps secrets in the Keychain on iOS as on macOS: `Secrets.Service("account")`
+names a service, and `Set`, `Get` and `Delete` accept binary values and are safe
 from any goroutine. `Get` returns `ErrSecretNotFound` for an absent key;
 `Delete` succeeds for an already absent key. Empty values are supported.
 
-The default policy is `SecretWhenUnlocked` (WhenUnlockedThisDeviceOnly).
-`SecretAfterFirstUnlock` opts into reads after the device's first unlock.
-Neither policy synchronizes with iCloud or migrates the item to a different
-device. Items may survive application deletion, so use `Delete` when signing
-out. Native Security calls run off the UI thread and return errors for locked
-or unavailable protected data. There is no plaintext fallback. Keychain
+Items are WhenUnlockedThisDeviceOnly: readable while the device is unlocked,
+never synchronized with iCloud or migrated to another device. Items may survive
+application deletion, so use `Delete` when signing out. Native Security calls
+run off the UI thread, one at a time, and return errors for locked or
+unavailable protected data. There is no plaintext fallback. Keychain
 user-presence/biometry access-control policies remain pending; standalone
 authentication below does not enforce access control on these items.
 
 See Apple's [Keychain guide](https://developer.apple.com/documentation/security/using-the-keychain-to-manage-user-secrets)
 and [accessibility policy](https://developer.apple.com/documentation/security/ksecattraccessiblewhenunlockedthisdeviceonly)
-for the system behavior behind these options.
+for the system behavior behind this.
 
 ## Biometric authentication
 

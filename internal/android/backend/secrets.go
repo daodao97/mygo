@@ -2,69 +2,34 @@
 
 package backend
 
-// The secure store: platform.SecureStorage over the Java side's Keystore.
-//
-// The Keystore holds one key of this app's, made on first use and kept in the
-// hardware where the device has one; the entries are ciphertexts of it, kept in
-// the app's shared preferences. That is what Android offers, and it is why Get
-// can fail where Set once succeeded: a key is invalidated when the lock screen
-// is removed or the app's data is restored to another device, and the entries it
-// encrypted are then unreadable. The store reports that
-// (platform.ErrSecretNotFound, with the reason in logcat) rather than returning
-// garbage.
-//
-// Every call runs the Keystore off the pump and calls back through Post: an
-// unwrap of a hardware key is milliseconds, and the pump draws frames, so
-// blocking it there would stall the window the value is being read for.
+import "github.com/egoist/mygo/internal/platform"
 
-import (
-	"github.com/egoist/mygo/internal/platform"
-)
+// Secrets keeps secrets in the Keystore-backed store of the platform bridge.
+// Secrets calls it off the main thread, so it calls the bridge directly.
+func (b *Backend) Secrets() platform.Secrets { return androidSecrets{} }
 
-// SecureStorage returns the store the Java side implements.
-func (b *Backend) SecureStorage() platform.SecureStorage { return androidSecureStorage{b: b} }
+type androidSecrets struct{}
 
-type androidSecureStorage struct{ b *Backend }
-
-// Set stores value. accessibility is accepted and not narrowed: the Keystore
-// has no per-item lifetime — an entry is readable whenever the device is
-// unlocked — so platform's vocabulary has nothing to choose between here.
-func (s androidSecureStorage) Set(namespace, key string, value []byte, accessibility string, done func(error)) {
-	s.run(done, func(bridge PlatformBridge) error {
-		return bridge.SecretSet(namespace, key, value, accessibility)
-	})
-}
-
-// Get reads value; a missing or unreadable one is platform.ErrSecretNotFound.
-func (s androidSecureStorage) Get(namespace, key string, done func([]byte, error)) {
+func (androidSecrets) SetSecret(service, account string, secret []byte) error {
 	bridge := platformBridge()
 	if bridge == nil {
-		s.b.Post(func() { done(nil, ErrPlatformBridge) })
-		return
+		return ErrPlatformBridge
 	}
-	go func() {
-		value, err := bridge.SecretGet(namespace, key)
-		s.b.Post(func() { done(value, err) })
-	}()
+	return bridge.SecretSet(service, account, secret, "")
 }
 
-// Delete removes value; a missing one is not an error.
-func (s androidSecureStorage) Delete(namespace, key string, done func(error)) {
-	s.run(done, func(bridge PlatformBridge) error {
-		return bridge.SecretDelete(namespace, key)
-	})
-}
-
-// run is Set and Delete: the call off the pump, then done with its result on
-// the pump.
-func (s androidSecureStorage) run(done func(error), fn func(PlatformBridge) error) {
+func (androidSecrets) Secret(service, account string) ([]byte, error) {
 	bridge := platformBridge()
 	if bridge == nil {
-		s.b.Post(func() { done(ErrPlatformBridge) })
-		return
+		return nil, ErrPlatformBridge
 	}
-	go func() {
-		err := fn(bridge)
-		s.b.Post(func() { done(err) })
-	}()
+	return bridge.SecretGet(service, account)
+}
+
+func (androidSecrets) DeleteSecret(service, account string) error {
+	bridge := platformBridge()
+	if bridge == nil {
+		return ErrPlatformBridge
+	}
+	return bridge.SecretDelete(service, account)
 }

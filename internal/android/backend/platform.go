@@ -115,7 +115,7 @@ type PlatformBridge interface {
 
 	// SecretSet, SecretGet and SecretDelete are the secure store, backed by
 	// the Android Keystore on the Java side. accessibility is the value's
-	// lifetime in the terms platform.SecureStorage takes it in; the Java side
+	// lifetime in the terms platform.Secrets takes it in; the Java side
 	// maps it to what the Keystore offers, which is less than iOS's Keychain.
 	//
 	// Get reports a missing secret as platform.ErrSecretNotFound and any

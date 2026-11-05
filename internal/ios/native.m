@@ -1700,7 +1700,7 @@ int mygo_ios_start(void) {
 }
 bool mygo_ios_is_main(void) { return NSThread.isMainThread; }
 // Go runs on the main run loop, not in a block of GCD's main queue. Go code
-// that awaits (a SecureStore call from a Ready listener, say) pumps with
+// that awaits (a Secrets call from a Ready listener, say) pumps with
 // mygo_ios_step, and a nested run loop does not drain the main queue while the
 // thread is already inside one of its blocks — so the results UIKit,
 // LocalAuthentication and the keychain deliver with dispatch_async(main)

@@ -182,8 +182,6 @@ type Backend struct {
 	PermissionDecision string
 	PermissionError    error
 	SettingsOpened     int
-	secureItems        map[string][]byte
-	SecureStoreError   error
 	// NotificationError, when set, is what showing a notification fails
 	// with.
 	NotificationError error

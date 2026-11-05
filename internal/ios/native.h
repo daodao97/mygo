@@ -63,7 +63,7 @@ void mygo_ios_message(uint64_t token, const char *json);
 void mygo_ios_share(uint64_t token, const char *json);
 void mygo_ios_permission(uint64_t token, const char *kind, bool request);
 void mygo_ios_settings(uint64_t token);
-void mygo_ios_secret(uint64_t token, const char *json);
+int mygo_ios_keychain(int op, const char *service, const char *account, const void *bytes, int length, void **out, int *outLength, char **message);
 void mygo_ios_auth_query(uint64_t token);
 void mygo_ios_authenticate(uint64_t token, const char *json);
 void mygo_ios_auth_cancel(uint64_t token);

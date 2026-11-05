@@ -112,7 +112,6 @@ type Backend interface {
 	Dialogs() Dialogs
 	Sharing() Sharing
 	Permissions() Permissions
-	SecureStorage() SecureStorage
 	Speech() SpeechRecognizer
 	Authenticator() Authenticator
 	Mobile() Mobile
