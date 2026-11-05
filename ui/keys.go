@@ -116,6 +116,21 @@ var Cmd = func() Modifiers {
 	return Ctrl
 }()
 
+// PointerType is the kind of device moving the pointer, as Pointer
+// Events' pointerType.
+type PointerType uint8
+
+// Pointer devices.
+const (
+	// PointerMouse is a mouse, or a touchpad, which moves the pointer as
+	// one does.
+	PointerMouse = PointerType(platform.PointerMouse)
+	// PointerPen is a pen on a tablet or a screen, its eraser too.
+	PointerPen = PointerType(platform.PointerPen)
+	// PointerTouch is a finger on a touchscreen.
+	PointerTouch = PointerType(platform.PointerTouch)
+)
+
 // Cursor is a pointer shape.
 type Cursor uint8
 
@@ -151,4 +166,21 @@ const (
 	CursorContextMenu = Cursor(platform.CursorContextMenu)
 	// CursorNone hides the pointer over the element, as over a video.
 	CursorNone = Cursor(platform.CursorNone)
+	// CursorProgress shows that the app is busy while it can still be
+	// used, as over an element marked busy (aria-busy), and CursorWait
+	// that it cannot be.
+	CursorProgress = Cursor(platform.CursorProgress)
+	CursorWait     = Cursor(platform.CursorWait)
+	CursorHelp     = Cursor(platform.CursorHelp)
+	// CursorCell selects cells, as of a spreadsheet.
+	CursorCell = Cursor(platform.CursorCell)
+	// CursorZoomIn and CursorZoomOut show that a click zooms, as over an
+	// image.
+	CursorZoomIn  = Cursor(platform.CursorZoomIn)
+	CursorZoomOut = Cursor(platform.CursorZoomOut)
+	// CursorAllScroll scrolls in every direction, as a middle-button
+	// autoscroll does.
+	CursorAllScroll = Cursor(platform.CursorAllScroll)
+	// CursorNoDrop shows that what is dragged cannot be dropped here.
+	CursorNoDrop = Cursor(platform.CursorNoDrop)
 )

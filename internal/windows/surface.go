@@ -128,12 +128,18 @@ type surface struct {
 	now      bool
 	tracking bool
 	buttons  int
+	// pressure is the last WM_POINTER message's (mouseDevice).
+	pressure float64
 	clicks   platform.ClickCounter
 	cursor   platform.Cursor
 	high     uint16 // a high surrogate of WM_CHAR waiting for its pair
 	ime      bool
 	caret    platform.RectF
 	input    platform.TextInputState
+
+	// pointerAt is where on the screen the last WM_POINTER message's
+	// pointer was, in pixels (pointerMessage).
+	pointerAt point
 
 	// keyTaken tells that the content took the key down, whose
 	// WM_SYSCHAR then opens no menu.
@@ -533,10 +539,16 @@ func cursorHandle(c platform.Cursor) uintptr {
 		platform.CursorResizeN: 32645, platform.CursorResizeS: 32645, platform.CursorResizeE: 32644,
 		platform.CursorResizeW: 32644, platform.CursorResizeColumn: 32644, platform.CursorResizeRow: 32645,
 		platform.CursorVerticalText: 32513,
+		platform.CursorProgress:     32650, platform.CursorWait: 32514, platform.CursorHelp: 32651, // IDC_APPSTARTING, IDC_WAIT, IDC_HELP
+		platform.CursorAllScroll: 32646, platform.CursorNoDrop: 32648, // IDC_SIZEALL, IDC_NO
 	}
 	if c == platform.CursorNone {
 		surfaceCursors[c] = 0 // SetCursor(NULL) hides it
 		return 0
+	}
+	if h := drawnCursor(c); h != 0 {
+		surfaceCursors[c] = h
+		return h
 	}
 	id, ok := ids[c]
 	if !ok {
@@ -668,7 +680,8 @@ func (s *surface) pointer(kind platform.SurfaceEventKind, lp uintptr, button int
 		w, h := systemMetric(smCxDoubleClk, s.hwnd), systemMetric(smCyDoubleClk, s.hwnd)
 		clicks = s.clicks.Press(button, float64(x), float64(y), uint32(at), platform.DoubleClick{Time: time.Duration(ms) * time.Millisecond, DX: float64(w) / 2, DY: float64(h) / 2})
 	}
-	s.send(platform.SurfaceEvent{Kind: kind, X: s.toDIP(int32(x)), Y: s.toDIP(int32(y)), Button: button, Clicks: clicks, Mods: mods()})
+	pointer, pressure := s.mouseDevice()
+	s.send(platform.SurfaceEvent{Kind: kind, X: s.toDIP(int32(x)), Y: s.toDIP(int32(y)), Button: button, Clicks: clicks, Mods: mods(), Pointer: pointer, Pressure: pressure})
 }
 
 func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool) {
@@ -724,6 +737,10 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		// resized.
 		s.drawNow()
 		return 0, true
+	case wmPointerDown, wmPointerUpdate, wmPointerUp:
+		// A pen or a finger, whose mouse messages DefWindowProc makes.
+		s.pointerMessage(m, wp)
+		return 0, false
 	case wmMouseMove:
 		if !s.tracking {
 			tme := trackMouseEvent{Flags: tmeLeaveFlag, Track: hwnd}

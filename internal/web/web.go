@@ -405,6 +405,44 @@ func (c clipboard) WriteText(text string) {
 	}
 }
 
+// WriteTextThen writes text as WriteText does, and gives done what the
+// browser's clipboard answers: an error where it refuses, as without the
+// user acting, or in a page of no secure context, which has no clipboard
+// API. The text is copied in the page either way, which pastes it.
+func (c clipboard) WriteTextThen(text string, done func(error)) {
+	c.b.mu.Lock()
+	c.b.clip = text
+	c.b.clipData = transfer.TextData(text)
+	c.b.mu.Unlock()
+	var p js.Value
+	if cb := js.Global().Get("navigator").Get("clipboard"); cb.IsUndefined() || cb.IsNull() {
+		p = js.Global().Get("Promise").Call("reject", js.Global().Get("Error").New("no clipboard API outside secure contexts"))
+	} else {
+		p = cb.Call("writeText", text)
+	}
+	var ok, failed js.Func
+	answer := func(err error) {
+		ok.Release()
+		failed.Release()
+		c.b.sync(func() { done(err) })
+	}
+	ok = js.FuncOf(func(js.Value, []js.Value) any {
+		answer(nil)
+		return nil
+	})
+	failed = js.FuncOf(func(_ js.Value, args []js.Value) any {
+		msg := "refused"
+		if len(args) > 0 && args[0].Type() == js.TypeObject {
+			if m := args[0].Get("message"); m.Type() == js.TypeString && m.String() != "" {
+				msg = m.String()
+			}
+		}
+		answer(errors.New("mygo: the browser did not write the clipboard: " + msg))
+		return nil
+	})
+	p.Call("then", ok, failed)
+}
+
 func (c clipboard) ReadData(formats []transfer.Format) (transfer.Data, error) {
 	c.b.mu.Lock()
 	d := c.b.clipData

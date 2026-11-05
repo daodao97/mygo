@@ -78,6 +78,7 @@ var (
 	gdkWindowGetUserData        func(w ptr, data *ptr)
 	gdkEventGetSourceDevice     func(e ptr) ptr
 	gdkDeviceGetSource          func(d ptr) int32
+	gdkEventGetAxis             func(e ptr, use int32, value *float64) bool
 	gtkWidgetGetFrameClock      func(w ptr) ptr
 	gdkFrameClockCurrentTimings func(clock ptr) ptr
 	gdkFrameTimingsRefresh      func(t ptr) int64
@@ -125,6 +126,7 @@ func loadSurface() {
 		mustBind(d, &gdkWindowGetUserData, "gdk_window_get_user_data")
 		mustBind(d, &gdkEventGetSourceDevice, "gdk_event_get_source_device")
 		mustBind(d, &gdkDeviceGetSource, "gdk_device_get_source")
+		mustBind(d, &gdkEventGetAxis, "gdk_event_get_axis")
 		mustBind(t, &gtkWidgetGetFrameClock, "gtk_widget_get_frame_clock")
 		mustBind(d, &gdkFrameClockCurrentTimings, "gdk_frame_clock_get_current_timings")
 		mustBind(d, &gdkFrameTimingsRefresh, "gdk_frame_timings_get_refresh_interval")
@@ -694,6 +696,16 @@ var cursorNames = map[platform.Cursor]string{
 	platform.CursorResizeW: "w-resize", platform.CursorResizeColumn: "col-resize", platform.CursorResizeRow: "row-resize",
 	platform.CursorVerticalText: "vertical-text", platform.CursorCopy: "copy", platform.CursorAlias: "alias",
 	platform.CursorContextMenu: "context-menu", platform.CursorNone: "none",
+	platform.CursorProgress: "progress", platform.CursorWait: "wait", platform.CursorHelp: "help", platform.CursorCell: "cell",
+	platform.CursorZoomIn: "zoom-in", platform.CursorZoomOut: "zoom-out", platform.CursorAllScroll: "all-scroll",
+	platform.CursorNoDrop: "no-drop",
+}
+
+// cursorFallbacks are the nearest cursors for those a cursor theme may
+// lack, which GDK finds no X cursor for either.
+var cursorFallbacks = map[platform.Cursor]string{
+	platform.CursorProgress: "wait", platform.CursorCell: "crosshair",
+	platform.CursorAllScroll: "move", platform.CursorNoDrop: "not-allowed",
 }
 
 func (s *surface) SetCursor(c platform.Cursor) {
@@ -709,6 +721,9 @@ func (s *surface) SetCursor(c platform.Cursor) {
 			name = "default"
 		}
 		cur = gdkCursorNewFromName(gtkWidgetGetDisplay(s.area), cs(name))
+		if fallback := cursorFallbacks[c]; cur == 0 && fallback != "" {
+			cur = gdkCursorNewFromName(gtkWidgetGetDisplay(s.area), cs(fallback))
+		}
 		surfaceCursors[c] = cur
 	}
 	gdkWindowSetCursor(win, cur)
@@ -802,8 +817,10 @@ func (s *surface) touchEvent(typ int32, event ptr) {
 		evs = s.touch.end(seq, x, y, t, typ == 40)
 	}
 	mods := gdkMods(field[uint32](event, 48))
+	pressure := eventPressure(event)
 	for _, ev := range evs {
 		ev.Mods = mods
+		ev.Pointer, ev.Pressure = platform.PointerTouch, pressure
 		if ev.Kind == platform.PointerDown {
 			if !gtkWidgetHasFocus(s.area) {
 				gtkWidgetGrabFocus(s.area)
@@ -820,6 +837,36 @@ func (s *surface) touchEvent(typ int32, event ptr) {
 		}
 		s.send(ev)
 	}
+}
+
+// eventDevice returns the device of a button or motion event, by its
+// source device, and the pressure of its axes: a tablet's pen or eraser,
+// or a touchscreen's finger GTK makes a mouse of, else a mouse or a
+// touchpad, whose pressure the content leaves to Pointer Events' default.
+func eventDevice(event ptr) (platform.PointerKind, float64) {
+	k := platform.PointerMouse
+	if d := gdkEventGetSourceDevice(event); d != 0 {
+		switch gdkDeviceGetSource(d) {
+		case 1, 2: // GDK_SOURCE_PEN, GDK_SOURCE_ERASER
+			k = platform.PointerPen
+		case 5: // GDK_SOURCE_TOUCHSCREEN
+			k = platform.PointerTouch
+		}
+	}
+	if k == platform.PointerMouse {
+		return k, 0
+	}
+	return k, eventPressure(event)
+}
+
+// eventPressure returns the pressure of an event's axes, which GDK
+// scales from 0 to 1 (GDK_AXIS_PRESSURE), or 0 for none.
+func eventPressure(event ptr) float64 {
+	var v float64
+	if !gdkEventGetAxis(event, 3, &v) {
+		return 0
+	}
+	return v
 }
 
 // emulated tells that a button or motion event is the mouse GTK makes of
@@ -1105,7 +1152,8 @@ func initSurfaceCallbacks() {
 		if kind == platform.PointerDown {
 			clicks = s.clicks.Press(button, x, y, field[uint32](event, 20), doubleClick())
 		}
-		s.send(platform.SurfaceEvent{Kind: kind, X: x, Y: y, Button: button, Clicks: clicks, Mods: mods})
+		pointer, pressure := eventDevice(event)
+		s.send(platform.SurfaceEvent{Kind: kind, X: x, Y: y, Button: button, Clicks: clicks, Mods: mods, Pointer: pointer, Pressure: pressure})
 		if kind == platform.PointerUp && button == 0 && s.dragRequest == nil && s.lastPointer != 0 {
 			gdkEventFree(s.lastPointer)
 			s.lastPointer = 0
@@ -1121,7 +1169,8 @@ func initSurfaceCallbacks() {
 				}
 				s.lastPointer = gdkEventCopy(event)
 			}
-			s.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: field[float64](event, 24), Y: field[float64](event, 32), Mods: gdkMods(field[uint32](event, 48))})
+			pointer, pressure := eventDevice(event)
+			s.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: field[float64](event, 24), Y: field[float64](event, 32), Mods: gdkMods(field[uint32](event, 48)), Pointer: pointer, Pressure: pressure})
 		}
 		return false
 	})

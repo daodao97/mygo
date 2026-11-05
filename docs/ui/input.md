@@ -77,6 +77,41 @@ on a touchscreen; a second finger presses nothing, in browsers too
 (`isPrimary`). [`HandleInput`](#every-key-as-it-comes) hears every
 button go down and up, with `InputEvent.Button`.
 
+`PressedPointer` tells what presses the element, and how hard, as
+Pointer Events' `pointerType` and `pressure`: `PointerMouse` (a mouse or
+a touchpad), `PointerPen` (a pen on a tablet or a screen) or
+`PointerTouch` (a finger on a touchscreen), and a pressure from 0 to 1
+as of the press's last move. A device that tells no pressure, as a
+mouse, presses 0.5 while a button is down. `HandleInput` gets the same
+on every `InputPointerDown`, `InputPointerMove` and `InputPointerUp`
+(`InputEvent.Pointer` and `Pressure`), every move as it comes rather
+than once a frame, and a pen pressing harder or softer where it stands
+comes as a move too. A signature pad widens its stroke with a pen's
+pressure, and goes by the pointer's speed for a mouse:
+
+```go
+ui.Box(c).Grow(1).Draw(app.paint).HandleInput(func(ev ui.InputEvent) bool {
+	switch {
+	case ev.Kind == ui.InputPointerDown, ev.Kind == ui.InputPointerMove && ev.Button == 0:
+		width := app.widthBySpeed(ev.X, ev.Y, ev.Time) // a mouse's, or a finger's
+		if ev.Pointer == ui.PointerPen {
+			width = 1 + 5*ev.Pressure
+		}
+		app.stroke = append(app.stroke, stroke{ev.X, ev.Y, width})
+		return true
+	}
+	return ev.Kind == ui.InputPointerUp
+})
+```
+
+The systems tell the device of each press and move: AppKit's tablet
+events on macOS (a mouse event's subtype and `pressure`, and
+`tabletPoint:` between moves), the `WM_POINTER` messages of pens and
+fingers on Windows, which Windows turns into the mouse messages it
+marks as theirs, GDK's source device and pressure axis on Linux, and
+`PointerEvent` in browsers. A `Tester` presses as a pen or a finger
+after `UsePointer(ui.PointerPen, 0.6)`.
+
 While the pointer presses an element, the elements it was over as the
 press began, as the row around a button, stay `Hovered` as long as it is
 over them, as in CSS, and the others hover no more: dragging over other
@@ -452,7 +487,12 @@ except in browsers, which cannot. `c.ReadClipboard`,
 `c.WriteClipboard` and `c.OpenURL` copy, paste and open links for them;
 `c.OpenURLThen` opens a link too, and its function gets what came of it a
 moment later, as the system opens it, with an error when no app could,
-and the view builds a frame anew. `Services.ReadClipboardData` and
+and the view builds a frame anew. `c.WriteClipboardThen` copies text the
+same way, as `navigator.clipboard.writeText` resolves or rejects: its
+function gets an error when the text did not get there, as when
+another app holds the clipboard, or a browser refuses a write the user
+did not act for, so that a copy button can show "Copied" or "Failed"
+(a `Tester` refuses them after `FailClipboard`). `Services.ReadClipboardData` and
 `WriteClipboardData` read and write several formats at once, as a rich
 text editor copies its own, HTML and plain text, and
 `ClipboardFormats` lists the clipboard's without reading them, as a
@@ -477,6 +517,12 @@ c.OpenURLThen(url, func(err error) {
 		c.Toast("No app opens " + url)
 	}
 })
+
+if ui.Button(c, "Copy").Clicked() {
+	c.WriteClipboardThen(link, func(err error) {
+		app.copied, app.copyFailed = err == nil, err != nil
+	})
+}
 ```
 
 ## Input inside a region

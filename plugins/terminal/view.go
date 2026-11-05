@@ -85,22 +85,22 @@ func cursorOf(shape int) ui.Cursor {
 	shapes := [...]ui.Cursor{
 		ui.CursorDefault,      // default
 		ui.CursorContextMenu,  // context-menu
-		ui.CursorDefault,      // help
+		ui.CursorHelp,         // help
 		ui.CursorPointer,      // pointer
-		ui.CursorDefault,      // progress
-		ui.CursorDefault,      // wait
-		ui.CursorCrosshair,    // cell
+		ui.CursorProgress,     // progress
+		ui.CursorWait,         // wait
+		ui.CursorCell,         // cell
 		ui.CursorCrosshair,    // crosshair
 		ui.CursorText,         // text
 		ui.CursorVerticalText, // vertical-text
 		ui.CursorAlias,        // alias
 		ui.CursorCopy,         // copy
 		ui.CursorMove,         // move
-		ui.CursorNotAllowed,   // no-drop
+		ui.CursorNoDrop,       // no-drop
 		ui.CursorNotAllowed,   // not-allowed
 		ui.CursorGrab,         // grab
 		ui.CursorGrabbing,     // grabbing
-		ui.CursorMove,         // all-scroll
+		ui.CursorAllScroll,    // all-scroll
 		ui.CursorResizeColumn, // col-resize
 		ui.CursorResizeRow,    // row-resize
 		ui.CursorResizeN,      // n-resize
@@ -115,8 +115,8 @@ func cursorOf(shape int) ui.Cursor {
 		ui.CursorResizeNS,     // ns-resize
 		ui.CursorResizeNESW,   // nesw-resize
 		ui.CursorResizeNWSE,   // nwse-resize
-		ui.CursorDefault,      // zoom-in
-		ui.CursorDefault,      // zoom-out
+		ui.CursorZoomIn,       // zoom-in
+		ui.CursorZoomOut,      // zoom-out
 	}
 	if shape < 0 || shape >= len(shapes) {
 		return ui.CursorDefault

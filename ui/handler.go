@@ -79,6 +79,14 @@ type InputEvent struct {
 	// middle.
 	Button int
 	Clicks int
+	// Pointer is the device of InputPointerDown, InputPointerUp and
+	// InputPointerMove, and Pressure how hard it presses, from 0 to 1, as
+	// Pointer Events' pointerType and pressure: a pen's or a finger's
+	// where the system tells it, else, as for a mouse, 0.5 while a button
+	// is down and 0 while none is. A pen's pressure changing where it
+	// stands comes as an InputPointerMove too.
+	Pointer  PointerType
+	Pressure float32
 	// DX and DY are what InputScroll scrolls by, in local axes; positive DY moves the view
 	// down the content.
 	DX, DY   float32
@@ -181,6 +189,10 @@ func (rt *engine) deliver(s *state, ev InputEvent) bool {
 	}
 	ev.X, ev.Y = s.local(rt.pointerX, rt.pointerY)
 	ev.Time = rt.now()
+	switch ev.Kind {
+	case InputPointerDown, InputPointerUp, InputPointerMove:
+		ev.Pointer, ev.Pressure = rt.pointerType, rt.pressure
+	}
 	if ev.Kind == InputScroll {
 		ev.DX, ev.DY = s.vector(rt.pointerX, rt.pointerY, ev.DX, ev.DY)
 	}

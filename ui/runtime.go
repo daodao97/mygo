@@ -41,6 +41,9 @@ type host interface {
 	updateAccessibility(tree *platform.AccessTree)
 	readClipboard() string
 	writeClipboard(string)
+	// writeClipboardThen puts text on the clipboard as writeClipboard
+	// does, and done gets what came of it on the main thread, later.
+	writeClipboardThen(text string, done func(error))
 	// readClipboardData reads the representations of formats on the
 	// clipboard, all for nil; writeClipboardData puts data there;
 	// clipboardFormats lists them.
@@ -302,7 +305,15 @@ type engine struct {
 
 	pointerX, pointerY float32
 	pointerIn          bool
-	hover              []uint64
+	// pointerType and pressure are the device of the last pointer event
+	// and how hard it pressed (InputEvent.Pressure), buttons the buttons
+	// down as the events tell, and pressureMoved that the last move
+	// changed the pressure alone, which moves as the pointer moving does.
+	pointerType   PointerType
+	pressure      float32
+	buttons       uint8
+	pressureMoved bool
+	hover         []uint64
 	// chain is a buffer for the elements under the pointer.
 	chain       []uint64
 	pressed     *state

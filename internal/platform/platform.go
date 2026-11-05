@@ -1146,6 +1146,14 @@ type Clipboard interface {
 	AvailableFormats() []string
 }
 
+// LaterClipboard is a clipboard whose writes finish later, as a
+// browser's, whose clipboard answers with a promise: WriteTextThen puts
+// text there as WriteText does, and gives done what came of it, on the
+// main thread. Desktops' clipboards answer at once (WriteData).
+type LaterClipboard interface {
+	WriteTextThen(text string, done func(error))
+}
+
 // Shell integrates with the desktop environment.
 type Shell interface {
 	OpenExternal(url string) error

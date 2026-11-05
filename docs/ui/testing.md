@@ -40,6 +40,8 @@ panics where the second key was given, as apps only log it.
   a right-button drag, `tt.Scroll`, which scrolls at
   once as a touchpad does, and `tt.Wheel`, a notch of a mouse wheel, which
   glides there as the clock advances (`tt.Advance`).
+  `tt.UsePointer(ui.PointerPen, 0.6)` has the presses and moves after it
+  come from a pen pressing that hard, or a finger (`ui.PointerTouch`).
 - **Keyboard.** `tt.Key(ui.Cmd, ui.KeyS)` presses a key, `tt.KeyRepeat` presses
   it again as its auto-repeat does while it is held, `tt.TypeKey` a key
   with the text it types, and `tt.Type` types text into the focused
@@ -61,7 +63,9 @@ panics where the second key was given, as apps only log it.
 - **What it shows.** `tt.Texts`, `tt.HasText`, `tt.Find` (the box of a
   text), `tt.Focused`, `tt.Cursor`, `tt.Clipboard`, `tt.OpenedURLs` and
   `tt.Announcements`, what the view asked screen readers to read out;
-  `tt.FailOpenURL` makes the links it opens fail, as those no app opens.
+  `tt.FailOpenURL` makes the links it opens fail, as those no app opens,
+  and `tt.FailClipboard` its writes of text to the clipboard, as a
+  browser refuses them (`WriteClipboardThen`).
 - **What assistive technology sees.** `tt.Access` and `tt.AccessByRole`
   read an element's role, name, value and states
   ([below](#what-assistive-technology-sees)).

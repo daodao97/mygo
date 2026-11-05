@@ -158,12 +158,13 @@ func (s *surface) listen() {
 			return
 		}
 		x, y := s.point(e)
-		s.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: x, Y: y, Mods: s.mods(e)})
+		pointer, pressure := device(e)
+		s.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: x, Y: y, Mods: s.mods(e), Pointer: pointer, Pressure: pressure})
 		// A button pressed or released while another is held comes as a
 		// move, which pointerdown and pointerup leave out; the desktop's
 		// windows hear each button.
 		if kind, b, ok := chord(e.Get("button").Int(), e.Get("buttons").Int()); ok {
-			ev := platform.SurfaceEvent{Kind: kind, X: x, Y: y, Button: b, Mods: s.mods(e)}
+			ev := platform.SurfaceEvent{Kind: kind, X: x, Y: y, Button: b, Mods: s.mods(e), Pointer: pointer, Pressure: pressure}
 			if kind == platform.PointerDown {
 				s.downX, s.downY = x, y
 				ev.Clicks = s.clicks.Press(b, x, y, uint32(e.Get("timeStamp").Float()), platform.DefaultDoubleClick)
@@ -193,7 +194,8 @@ func (s *surface) listen() {
 		b := buttonOf(button)
 		s.downX, s.downY = x, y
 		clicks := s.clicks.Press(b, x, y, uint32(e.Get("timeStamp").Float()), platform.DefaultDoubleClick) // browsers tell no double-click settings
-		s.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: x, Y: y, Button: b, Clicks: clicks, Mods: s.mods(e)})
+		pointer, pressure := device(e)
+		s.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: x, Y: y, Button: b, Clicks: clicks, Mods: s.mods(e), Pointer: pointer, Pressure: pressure})
 	})
 	s.on(c, "pointerup", true, func(e js.Value) {
 		if !primary(e) {
@@ -204,14 +206,16 @@ func (s *surface) listen() {
 			return
 		}
 		x, y := s.point(e)
-		s.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: x, Y: y, Button: buttonOf(button), Mods: s.mods(e)})
+		pointer, _ := device(e)
+		s.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: x, Y: y, Button: buttonOf(button), Mods: s.mods(e), Pointer: pointer})
 	})
 	s.on(c, "pointercancel", true, func(e js.Value) {
 		if !primary(e) {
 			return
 		}
 		x, y := s.point(e)
-		s.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: x, Y: y, Button: buttonOf(e.Get("button").Int()), Mods: s.mods(e)})
+		pointer, _ := device(e)
+		s.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: x, Y: y, Button: buttonOf(e.Get("button").Int()), Mods: s.mods(e), Pointer: pointer})
 	})
 	s.on(c, "pointerleave", true, func(e js.Value) {
 		if !primary(e) {
@@ -456,6 +460,24 @@ func buttonOf(b int) int {
 func primary(e js.Value) bool {
 	p := e.Get("isPrimary")
 	return p.Type() != js.TypeBoolean || p.Bool()
+}
+
+// device returns the device of a pointer event (pointerType) and its
+// pressure, which browsers give a mouse too: 0.5 while a button is down.
+func device(e js.Value) (platform.PointerKind, float64) {
+	k := platform.PointerMouse
+	if t := e.Get("pointerType"); t.Type() == js.TypeString {
+		switch t.String() {
+		case "pen":
+			k = platform.PointerPen
+		case "touch":
+			k = platform.PointerTouch
+		}
+	}
+	if p := e.Get("pressure"); p.Type() == js.TypeNumber {
+		return k, p.Float()
+	}
+	return k, 0
 }
 
 // chord returns the press or release of button, a DOM pointermove's, with
@@ -725,6 +747,9 @@ var cursors = [...]string{
 	platform.CursorResizeS: "s-resize", platform.CursorResizeW: "w-resize", platform.CursorResizeColumn: "col-resize",
 	platform.CursorResizeRow: "row-resize", platform.CursorVerticalText: "vertical-text", platform.CursorCopy: "copy",
 	platform.CursorAlias: "alias", platform.CursorContextMenu: "context-menu", platform.CursorNone: "none",
+	platform.CursorProgress: "progress", platform.CursorWait: "wait", platform.CursorHelp: "help", platform.CursorCell: "cell",
+	platform.CursorZoomIn: "zoom-in", platform.CursorZoomOut: "zoom-out", platform.CursorAllScroll: "all-scroll",
+	platform.CursorNoDrop: "no-drop",
 }
 
 func (s *surface) SetCursor(c platform.Cursor) {

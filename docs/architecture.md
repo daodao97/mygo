@@ -813,7 +813,9 @@ gained one field, `SurfaceNative.Canvas`.
   one (`isPrimary`), as a second finger, are left out, as no second finger
   presses on the desktops; a button going down or up while another is
   held, which comes as a `pointermove` with its `button`, is a
-  `PointerDown` or `PointerUp` as on the desktops (`chord`). `wheel` events scroll, lines and pages
+  `PointerDown` or `PointerUp` as on the desktops (`chord`); their
+  `pointerType` and `pressure` are the device and the pressure
+  (`device`). `wheel` events scroll, lines and pages
   turned into DIPs, notches of 120 not `Precise`. The textarea, out of
   sight at the caret (`SetTextInput`), has the keyboard: `keydown` and
   `keyup` are keys, by what they type (`key`) and else by where they are
@@ -2082,6 +2084,14 @@ object or user data. Native reads copy bytes so application data outlives
 native handles. See [Clipboard and drag data](data-transfer.md) for API and
 format mappings.
 
+Native UI's `Context.WriteClipboardThen` writes its text with `WriteData`
+and posts the error to the main thread for the next frame. A browser's
+clipboard answers later: the web backend's is a `platform.LaterClipboard`,
+whose `WriteTextThen` keeps the text for the page's own pastes and
+answers once `navigator.clipboard.writeText` settles (it rejects without
+transient user activation, and outside secure contexts there is no
+`navigator.clipboard` to write).
+
 ## Audio (`audio`)
 
 Package `audio` is independent of windows and the main thread: it neither
@@ -3045,7 +3055,14 @@ either.
   release comes as the window loses the focus or once a frame builds the
   element no more (not built again, or built over by an element without
   `HandleInput`, as when the press moved it into a split), so that the
-  next press starts anew. Its
+  next press starts anew. The pointer's events carry their device and
+  pressure (`SurfaceEvent.Pointer` and `Pressure`), which the engine
+  keeps with the buttons they leave down (`engine.pointerDevice`): a
+  device that tells no pressure presses 0.5 while a button is down and 0
+  otherwise, as Pointer Events have it, a move that changes the
+  pressure alone is a move, and the element pressed keeps the device and
+  pressure of its press's last move for `PressedPointer`
+  (`state.pressPointer`). Its
   `TextCaret` turns on the input method at that caret, with no text around
   it; `InputMethod(false)` (`TextInputState.NoInputMethod`) keeps text on
   but input methods off, as winit's `set_ime_allowed(false)`: macOS skips
@@ -5526,6 +5543,8 @@ which npm allows only for packages that exist: the first release uses an
 | web views' language | from the app's `AppleLanguages`, next launch | `webkit_web_context_set_preferred_languages`, live | the environment's `Language`, as it is created |
 | `Theme.SetSource` | `NSApp`'s appearance (Aqua, DarkAqua, or none) | `gtk-application-prefer-dark-theme`; light also puts a theme named for its dark variant (Yaru-dark) in place of its light one (Yaru), which GTK and WebKitGTK otherwise take for dark, and the other sources reset the theme. Without a source, or with system, the setting follows the settings portal's `color-scheme` (GNOME's and KDE's dark style, which GTK 3 does not read) from `Init` on: dark where the portal prefers dark, else the desktop's own GTK settings | the title bars, menus and native UI, and pages through the DevTools protocol's emulated `prefers-color-scheme` |
 | `Theme.SetGTKCSS` | nothing | a `GtkCssProvider` for the default screen at `GTK_STYLE_PROVIDER_PRIORITY_USER`, replaced by the next sheet that parses | nothing |
+| pointer device and pressure of native UI (`InputEvent.Pointer`, `Pressure`) | a mouse event's `subtype`: a tablet's pen (`NSEventSubtypeTabletPoint`, with `pressure`, or `TabletProximity`) or a touch; `tabletPoint:` events, a pen pressing harder or softer between moves, are moves where the pointer is | the event's source device (`gdk_event_get_source_device`): a pen or eraser, or a touchscreen, its pressure axis (`gdk_event_get_axis`); the area's own touches are fingers | `WM_POINTER` messages, left to `DefWindowProc` to make mouse messages of, give the pressure (`GetPointerPenInfo`, `GetPointerTouchInfo`); the mouse messages' `GetMessageExtraInfo` (`MI_WP_SIGNATURE`) tells a pen's or a finger's |
+| cursors of native UI without a system cursor | `CursorWait`, `CursorHelp`, `CursorZoomIn`, `CursorZoomOut`, `CursorAllScroll` and `CursorCell` from AppKit's private class methods (`_waitCursor`, `_helpCursor`, …, looked up with `respondsToSelector:`), `CursorProgress` its `busyButClickableCursor`, else the nearest public cursor or the arrow | the CSS names from the cursor theme, then GDK's X cursors, then the nearest (`cursorFallbacks`) | `CursorZoomIn`, `CursorZoomOut` and `CursorCell` drawn (`CreateCursor`, `cursorMasks`), the others `IDC_APPSTARTING`, `IDC_WAIT`, `IDC_HELP`, `IDC_SIZEALL`, `IDC_NO` |
 | traffic lights, Dock | yes | ignored | ignored |
 | hidden title bar | AppKit's traffic lights over a full-size content view | GTK's title buttons in header bars over the page, per `gtk-decoration-layout`; none where the Wayland compositor decorates windows | caption buttons drawn in a layered child window, through DirectComposition over a material, light or dark per window (`SetWindowButtonsTheme`); snap layouts; a top edge that resizes |
 | progress bar | Dock tile content view (NSBoxes: NSProgressIndicator does not draw there), app-wide | Unity launcher API over D-Bus (`com.canonical.Unity.LauncherEntry`), app-wide | `ITaskbarList3`, per window |

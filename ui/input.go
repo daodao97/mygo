@@ -33,6 +33,16 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		// A press is of no element until countPress finds it one.
 		rt.lastPress.prev, rt.lastPress.id = rt.lastPress.id, 0
 	}
+	switch ev.Kind {
+	case platform.PointerMove, platform.PointerUp:
+		rt.pointerDevice(ev)
+	case platform.PointerDown:
+		// It presses once it came where it presses (pointerDevice).
+		rt.pointerType = PointerType(ev.Pointer)
+	case platform.SurfaceBlur:
+		// Buttons let go of elsewhere never come back up here.
+		rt.buttons, rt.pressure = 0, 0
+	}
 	if rt.insp.pointer(rt, ev, x, y) {
 		return true
 	}
@@ -57,6 +67,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.pointerMove(x, y)
 	case platform.PointerDown:
 		rt.pointerMove(x, y)
+		rt.pointerDevice(ev)
 		rt.pointerDown(x, y, ev.Button, Modifiers(ev.Mods), ev.Clicks)
 	case platform.PointerUp:
 		rt.pointerMove(x, y)
@@ -261,7 +272,9 @@ func (rt *engine) pointerMove(x, y float32) {
 		}
 		rt.dragMove(x, y)
 	}
-	moved := x != rt.pointerX || y != rt.pointerY
+	// A pen pressing harder or softer where it stands moves too.
+	moved := x != rt.pointerX || y != rt.pointerY || rt.pressureMoved
+	rt.pressureMoved = false
 	rt.pointerX, rt.pointerY, rt.pointerIn = x, y, true
 	if rt.selection.dragging && rt.pressed != nil {
 		rt.moveTextSelection(x, y)
@@ -296,6 +309,33 @@ func (rt *engine) pointerMove(x, y float32) {
 				break
 			}
 		}
+	}
+}
+
+// pointerDevice keeps the device of a pointer event, the buttons it
+// leaves down and how hard it presses, as Pointer Events have it: a
+// device that tells no pressure, as a mouse, presses 0.5 while a button
+// is down, and none presses while no button is.
+func (rt *engine) pointerDevice(ev platform.SurfaceEvent) {
+	if b := ev.Button; b >= 0 && b < 8 {
+		switch ev.Kind {
+		case platform.PointerDown:
+			rt.buttons |= 1 << b
+		case platform.PointerUp:
+			rt.buttons &^= 1 << b
+		}
+	}
+	p := float32(min(max(ev.Pressure, 0), 1))
+	switch {
+	case rt.buttons == 0:
+		p = 0
+	case p == 0:
+		p = 0.5
+	}
+	rt.pressureMoved = ev.Kind == platform.PointerMove && p != rt.pressure
+	rt.pointerType, rt.pressure = PointerType(ev.Pointer), p
+	if s := rt.pressed; s != nil && ev.Kind == platform.PointerMove {
+		s.pressPointer, s.pressPressure = rt.pointerType, p
 	}
 }
 
@@ -361,6 +401,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 		// It takes the moves and the release.
 		rt.pressed, rt.pressButton, rt.pressClicks = h, button, clicks
 		h.pressed, h.pressButton = true, button
+		h.pressPointer, h.pressPressure = rt.pointerType, rt.pressure
 		h.pressPending = true
 		h.pressX, h.pressY = h.local(x, y)
 		h.drag.reset(rt.now(), x, y)
@@ -390,6 +431,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 	rt.pressed, rt.pressButton, rt.pressClicks = target, button, clicks
 	rt.pressDragger = pressDragger(rt, chain, target)
 	target.pressed, target.pressButton, target.pressMods = true, button, mods
+	target.pressPointer, target.pressPressure = rt.pointerType, rt.pressure
 	target.pressPending = true
 	target.pressX, target.pressY = target.local(x, y)
 	target.drag.reset(rt.now(), x, y)
@@ -417,7 +459,7 @@ func (rt *engine) endPress(input func(InputEvent) bool, x, y float32) {
 	rt.pressed = nil
 	rt.requestFrame()
 	if input != nil {
-		input(InputEvent{Kind: InputPointerUp, X: x, Y: y, Button: rt.pressButton, Mods: rt.mods, Clicks: rt.pressClicks, Time: rt.now()})
+		input(InputEvent{Kind: InputPointerUp, X: x, Y: y, Button: rt.pressButton, Mods: rt.mods, Clicks: rt.pressClicks, Pointer: rt.pointerType, Time: rt.now()})
 	}
 }
 
@@ -1434,6 +1476,25 @@ func (e *node) PressedButton() (button int, ok bool) {
 		return 0, false
 	}
 	return s.pressButton, true
+}
+
+// PressedPointer returns the device pressing the element and how hard it
+// presses, from 0 to 1, as of the press's last move, while the press
+// lasts, as PressedButton; ok is false while nothing presses it, or it is
+// disabled. As InputEvent.Pressure, a device that tells no pressure, as a
+// mouse, presses 0.5. A signature pad widens its stroke with a pen's
+// pressure, and goes by the pointer's speed for a mouse. Elements asking
+// for it get a frame whenever the pointer moves or the pressure changes.
+func (e *node) PressedPointer() (pointer PointerType, pressure float32, ok bool) {
+	if !e.hasState() {
+		return 0, 0, false
+	}
+	e.flags |= flagClickable | flagTrackPointer
+	s := e.st
+	if !s.pressed || e.disabled() {
+		return 0, 0, false
+	}
+	return s.pressPointer, s.pressPressure, true
 }
 
 // pressedPrimary reports whether the pointer's primary button presses s:

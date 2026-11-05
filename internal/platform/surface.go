@@ -371,7 +371,13 @@ type SurfaceEvent struct {
 	Momentum bool
 	// Scale is PointerZoom's.
 	Scale float64
-	Key   Key
+	// Pointer is the device of PointerMove, PointerDown and PointerUp, as
+	// Pointer Events' pointerType, and Pressure how hard a pen or a finger
+	// presses, from 0 to 1, where the device tells: 0 where it does not,
+	// as a mouse, which the content takes for Pointer Events' default.
+	Pointer  PointerKind
+	Pressure float64
+	Key      Key
 	// PhysicalKey is the key by its position on an ANSI US keyboard,
 	// whatever the active layout types; KeyUnknown where the backend does
 	// not report it. Key and PhysicalKey agree on a US layout.
@@ -400,6 +406,19 @@ type SurfaceEvent struct {
 	// SurfaceEvent; the refreshes go on meanwhile.
 	Paced bool
 }
+
+// PointerKind is the kind of device of a pointer event.
+type PointerKind uint8
+
+const (
+	// PointerMouse is a mouse, or a touchpad, which moves the pointer as
+	// one does.
+	PointerMouse PointerKind = iota
+	// PointerPen is a pen on a tablet or a screen, its eraser too.
+	PointerPen
+	// PointerTouch is a finger on a touchscreen.
+	PointerTouch
+)
 
 // Modifiers are the modifier keys held during an event.
 type Modifiers uint8
@@ -595,4 +614,12 @@ const (
 	CursorAlias
 	CursorContextMenu
 	CursorNone
+	CursorProgress
+	CursorWait
+	CursorHelp
+	CursorCell
+	CursorZoomIn
+	CursorZoomOut
+	CursorAllScroll
+	CursorNoDrop
 )

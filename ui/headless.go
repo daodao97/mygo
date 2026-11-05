@@ -40,6 +40,9 @@ type headless struct {
 	// escapes counts the Escapes nothing handled.
 	escapes int
 	openErr error
+	// clipboardErr fails the writes of text to the clipboard
+	// (FailClipboard).
+	clipboardErr error
 	// later are what the view asked to run after the frame, as a window
 	// posts them to the main thread.
 	later  []func()
@@ -111,7 +114,6 @@ func (h *headless) repaintTimer(at time.Time)                  { h.repaintAt = a
 func (h *headless) setCursor(c Cursor)                         { h.cursor = c }
 func (h *headless) setTextInput(t platform.TextInputState)     { h.ime = t }
 func (h *headless) updateAccessibility(t *platform.AccessTree) { h.keepAccess(t) }
-func (h *headless) writeClipboard(s string)                    { h.clipboard, h.clipboardData = s, transfer.Data{} }
 func (h *headless) startDrag()                                 {}
 func (h *headless) setDropFormats([]transfer.Format)           {}
 func (h *headless) readClipboard() string {
@@ -180,6 +182,21 @@ func (h *headless) invalidate() {
 	h.requested.Store(true)
 }
 
+// writeClipboard copies s, unless FailClipboard set an error;
+// writeClipboardThen gives done that error before the next frame too, as
+// a window gives it after the system wrote the clipboard.
+func (h *headless) writeClipboard(s string) {
+	if h.clipboardErr == nil {
+		h.clipboard, h.clipboardData = s, transfer.Data{}
+	}
+}
+
+func (h *headless) writeClipboardThen(s string, done func(error)) {
+	h.writeClipboard(s)
+	err := h.clipboardErr
+	h.later = append(h.later, func() { done(err) })
+}
+
 // openURL notes the link, and gives done the error FailOpenURL set before
 // the next frame, as a window gives it after the system opened the link.
 func (h *headless) openURL(u string, done func(error)) {
@@ -239,6 +256,10 @@ type Tester struct {
 	// that of the last frame.
 	now     time.Time
 	frameAt time.Time
+	// pointer and pressure are the device of the pointer's events, and
+	// how hard it presses (UsePointer).
+	pointer  PointerType
+	pressure float32
 }
 
 // NewTester starts testing view in a window of width×height DIPs. Two
@@ -364,6 +385,10 @@ func (t *Tester) timerDue(at, armed time.Time) (time.Time, bool) {
 }
 
 func (t *Tester) send(ev platform.SurfaceEvent) {
+	switch ev.Kind {
+	case platform.PointerMove, platform.PointerDown, platform.PointerUp:
+		ev.Pointer, ev.Pressure = platform.PointerKind(t.pointer), float64(t.pressure)
+	}
 	if ev.Kind == platform.PointerDown && ev.Clicks == 0 {
 		// Counted as a backend counts.
 		ev.Clicks = t.clicks.Press(ev.Button, ev.X, ev.Y, uint32(t.now.UnixMilli()), platform.DefaultDoubleClick)
@@ -757,6 +782,20 @@ func (t *Tester) webViewPress(x, y float32, button int, mods platform.Modifiers)
 	return true
 }
 
+// UsePointer has the pointer's presses and moves from now on come from
+// the device pointer pressing with pressure, from 0 to 1, as a pen's, which
+// a system tells: 0 is a mouse's, which tells none. The Tester starts with
+// UsePointer(PointerMouse, 0). Calling it between moves while the pointer
+// presses changes the pressure as a pen pressing harder does:
+//
+//	tt.UsePointer(ui.PointerPen, 0.2)
+//	tt.Press(10, 10)
+//	tt.UsePointer(ui.PointerPen, 0.9)
+//	tt.Move(10, 10) // the pen presses harder where it stands
+func (t *Tester) UsePointer(pointer PointerType, pressure float32) {
+	t.pointer, t.pressure = pointer, pressure
+}
+
 // Move moves the pointer to (x, y).
 func (t *Tester) Move(x, y float32) {
 	t.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: float64(x), Y: float64(y)})
@@ -906,6 +945,12 @@ func (t *Tester) Cursor() Cursor { return t.h.cursor }
 
 // OpenedURLs returns the links the view opened.
 func (t *Tester) OpenedURLs() []string { return t.h.opened }
+
+// FailClipboard makes the view's writes of text to the clipboard from now
+// on fail with err, copying nothing, as a browser refuses them without
+// the user acting (Context.WriteClipboardThen); nil lets them through
+// again.
+func (t *Tester) FailClipboard(err error) { t.h.clipboardErr = err }
 
 // FailOpenURL makes the links the view opens from now on fail with err, as
 // those no app opens, or opens them again for nil.
