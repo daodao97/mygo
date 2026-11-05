@@ -6258,6 +6258,21 @@ func (_handle Element) PopoverMenuButton(build func(m *Menu)) Element {
 	return wrapElement(_node.PopoverMenuButton(build))
 }
 
+// PreserveSpaces keeps the spaces the element's text ends its lines with,
+// and a text of only spaces, with their advance, as CSS's white-space:
+// break-spaces does: a gap made of spaces between two texts in a row, or
+// the padding a monospaced column is aligned with. Without it spaces
+// ending a line take no room, as with white-space: normal.
+func (_handle Element) PreserveSpaces() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.PreserveSpaces())
+}
+
 // Pressed reports whether the element is being pressed with the pointer's
 // primary button, unless it is disabled. A press of another button, as a
 // right-click's, is no press here, as CSS's :active and drags on the web

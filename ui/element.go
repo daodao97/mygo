@@ -308,11 +308,12 @@ type layoutStyle struct {
 	// the first lines of its label and control.
 	baselines bool
 
-	maxLines int
-	single   bool
-	noWrap   bool
-	balance  bool
-	ellipsis string
+	maxLines   int
+	single     bool
+	noWrap     bool
+	balance    bool
+	keepSpaces bool
+	ellipsis   string
 }
 
 // Element is a node of a frame's user interface. The functions that create
@@ -1752,6 +1753,13 @@ func (e *node) NoWrap() *node { e.noWrap = true; return e }
 // within that width. Each paragraph is balanced on its own, once a
 // layout, as the text system keeps it.
 func (e *node) Balance() *node { e.balance = true; return e }
+
+// PreserveSpaces keeps the spaces the element's text ends its lines with,
+// and a text of only spaces, with their advance, as CSS's white-space:
+// break-spaces does: a gap made of spaces between two texts in a row, or
+// the padding a monospaced column is aligned with. Without it spaces
+// ending a line take no room, as with white-space: normal.
+func (e *node) PreserveSpaces() *node { e.keepSpaces = true; return e }
 
 // Ellipsis sets what ends text that MaxLines or SingleLine cuts, "…" by
 // default.
