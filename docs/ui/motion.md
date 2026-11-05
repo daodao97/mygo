@@ -481,6 +481,21 @@ is `InView()`. A `List` or `GridView` builds only the rows near its edges,
 two beyond each, so in one the margin reaches no further than the rows it
 builds.
 
+`InViewAmount(amount, margin...)` waits for that share of the element's
+area, from 0 to 1, to show, as IntersectionObserver's `threshold` and
+Motion's `amount` do: an impression counts once half of a card shows,
+not as it peeks in at the bottom of a list, and an animation starts at a
+fifth of it. `1` waits for all of it, `0` is `InViewMargin`; the margin
+grows the window and the scroll containers as `InViewMargin`'s does. Its
+area is that of its box as transforms move it:
+
+```go
+card := ui.Column(c).Key(ad.ID)
+if card.InViewAmount(0.5) {
+	app.counted(ad.ID)
+}
+```
+
 `ScrollState.ScrollTo(x, y, animation)` scrolls a container smoothly, and
 `ScrollIntoView` with an `Animation` in its options the containers around
 an element (see [Scrolling](scroll.md)).

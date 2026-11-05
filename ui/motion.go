@@ -488,13 +488,53 @@ func (e *node) InViewMargin(margin ...float32) bool {
 	if s.seen+1 < rt.frame || s.invisible {
 		return false
 	}
-	return rt.inViewWithin(s, m)
+	v := rt.visibleWithin(s, m)
+	return v.W > 0 && v.H > 0
 }
 
-// inViewWithin reports whether some of the element showed in the last
+// InViewAmount reports whether at least amount of the element's area,
+// from 0 to 1, showed in the frame before, within the window and the
+// scroll containers and clips around it, grown by margin as InViewMargin
+// grows them: as IntersectionObserver's threshold, and Motion's amount
+// for whileInView and useInView. An impression counts once half of a
+// card shows with 0.5, an animation starts at a fifth of it with 0.2,
+// and 1 waits for all of it; 0 is InViewMargin. Its area is that of its
+// box as transforms move it, the box holding them as InView's clips do.
+//
+//	card := ui.Column(c).Key(ad.ID)
+//	if card.InViewAmount(0.5) {
+//		app.counted(ad.ID)
+//	}
+func (e *node) InViewAmount(amount float32, margin ...float32) bool {
+	if !(amount > 0) {
+		return e.InViewMargin(margin...)
+	}
+	if !e.hasState() {
+		return false
+	}
+	s, rt := e.st, e.c.rt
+	if s.seen+1 < rt.frame || s.invisible {
+		return false
+	}
+	whole := transformRect(s.world, Rect{s.x, s.y, s.w, s.h})
+	if !(whole.W > 0 && whole.H > 0) {
+		return false
+	}
+	v := Rect{s.vx, s.vy, s.vw, s.vh}
+	if m := edges(margin); m != [4]float32{} {
+		v = rt.visibleWithin(s, m)
+	}
+	if !(v.W > 0 && v.H > 0) {
+		return false
+	}
+	// A shade under the area, which the clips and transforms round.
+	return v.W*v.H >= min(amount, 1)*whole.W*whole.H*(1-1e-5)
+}
+
+// visibleWithin returns the part of the element that showed in the last
 // frame with the window and the scroll containers around it grown by m,
 // top, right, bottom and left, as commitElement clips it otherwise.
-func (rt *engine) inViewWithin(s *state, m [4]float32) bool {
+func (rt *engine) visibleWithin(s *state, m [4]float32) Rect {
 	w, h, _ := rt.size()
 	v := intersect(transformRect(s.world, Rect{s.x, s.y, s.w, s.h}), outset(Rect{0, 0, w, h}, m))
 	// The clips around an element flying stop at it, as it paints out of
@@ -514,7 +554,7 @@ func (rt *engine) inViewWithin(s *state, m [4]float32) bool {
 			break
 		}
 	}
-	return v.W > 0 && v.H > 0
+	return v
 }
 
 // outset returns r grown by m, top, right, bottom and left: shrunk where

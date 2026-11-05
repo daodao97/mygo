@@ -5266,6 +5266,29 @@ func (_handle Element) InView() bool {
 	return _node.InView()
 }
 
+// InViewAmount reports whether at least amount of the element's area,
+// from 0 to 1, showed in the frame before, within the window and the
+// scroll containers and clips around it, grown by margin as InViewMargin
+// grows them: as IntersectionObserver's threshold, and Motion's amount
+// for whileInView and useInView. An impression counts once half of a
+// card shows with 0.5, an animation starts at a fifth of it with 0.2,
+// and 1 waits for all of it; 0 is InViewMargin. Its area is that of its
+// box as transforms move it, the box holding them as InView's clips do.
+//
+//	card := ui.Column(c).Key(ad.ID)
+//	if card.InViewAmount(0.5) {
+//		app.counted(ad.ID)
+//	}
+func (_handle Element) InViewAmount(amount float32, margin ...float32) bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.InViewAmount(amount, margin...)
+}
+
 // InViewMargin reports whether some of the element showed in the frame
 // before, as InView does, with the window and the scroll containers
 // around it grown by margin, in DIPs, CSS style as Padding: all sides,
