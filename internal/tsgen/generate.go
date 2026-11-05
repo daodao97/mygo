@@ -78,6 +78,14 @@ type runtimeSentinel struct{}
 
 // Generate renders the TypeScript client.
 func Generate(m Model) ([]byte, error) {
+	for _, s := range m.Services {
+		if !IsIdentifier(s.Name) || reserved[s.Name] {
+			return nil, fmt.Errorf("service %q is not a TypeScript binding name", s.Name)
+		}
+		if s.Name == "call" || len(m.Events) > 0 && (s.Name == "event" || s.Name == "events") {
+			return nil, fmt.Errorf("service %q conflicts with a generated TypeScript binding", s.Name)
+		}
+	}
 	g := &generator{
 		src:   newSources(),
 		names: map[reflect.Type]string{},
