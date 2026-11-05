@@ -272,9 +272,16 @@ func init() {
 ```
 
 Then `Font("Inter")` uses it, or set it for every element in the theme's
-`Font`. A list of families, as `Font("Inter, Noto Sans JP")`, draws with
-the first the system or the app has, and what it lacks with the next that
-has it, before the system's own choice.
+`Font`. The fonts registered under a family make it up, apart from other
+fonts of their own family: on the desktop its weight and style are matched
+among them, whichever was registered first. A font's own family name still
+finds it, unless the app registers other fonts under that name. So two
+faces that declare the same weight, as a font's Light and Semilight, are
+told apart by registering one under a family of its own.
+
+A list of families, as `Font("Inter, Noto Sans JP")`, draws with the first
+the system or the app has, and what it lacks with the next that has it,
+before the system's own choice.
 
 `ui.FontFamilies()` lists the families text can use, as a font setting
 offers them: the app's registered ones first, under the names it gave them

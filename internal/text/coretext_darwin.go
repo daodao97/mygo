@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"runtime"
 	"slices"
@@ -439,7 +440,12 @@ type coreText struct {
 	runAdvances  []cgSize
 	runIndices   []int
 
-	registered map[string][]registeredFace // by lowercased family
+	// registered holds the faces of each family, by lowercased name:
+	// the faces the app gave it, or else the faces of their own family
+	// that the app gave another (registerFaces).
+	registered map[string][]registeredFace
+	gaveFaces  map[string][]registeredFace
+	ownFaces   map[string][]registeredFace
 	// names are the families the app's fonts are listed under, one per
 	// face: the name it gave them, or their own.
 	names []string
@@ -471,6 +477,8 @@ func newCoreText() (*coreText, error) {
 		typesetters: map[typesetterKey]*keptTypesetter{},
 		tabStyles:   map[tabStyleKey]uintptr{},
 		registered:  map[string][]registeredFace{},
+		gaveFaces:   map[string][]registeredFace{},
+		ownFaces:    map[string][]registeredFace{},
 		bands:       map[bandKey][2]float32{},
 		italic:      cfString("MyGoItalic"),
 	}
@@ -1636,16 +1644,23 @@ func (e *coreText) register(data []byte, family string) error {
 			face.mono = ct.fontGetSymbolicTraits(font)&ctFontMonoSpaceTrait != 0
 			ct.release(font)
 		}
-		for _, f := range []string{name, family} {
-			if f != "" {
-				key := strings.ToLower(f)
-				e.registered[key] = append(e.registered[key], face)
+		// A family the app gives holds only the faces it gave it, apart
+		// from their own family's, so the faces of a family that declare
+		// the same weight, as Selawik's Light and Semilight, are told
+		// apart whichever the app registers first (#1224).
+		if gave := strings.ToLower(cmp.Or(family, name)); gave != "" {
+			e.gaveFaces[gave] = append(e.gaveFaces[gave], face)
+			if own := strings.ToLower(name); own != "" && own != gave {
+				e.ownFaces[own] = append(e.ownFaces[own], face)
 			}
 		}
 		// Listed under the name the app gave it, which is the one it
 		// uses, or its own.
 		e.names = append(e.names, cmp.Or(family, name))
 	}
+	clear(e.registered)
+	maps.Copy(e.registered, e.ownFaces)
+	maps.Copy(e.registered, e.gaveFaces)
 	e.forgetPrimary()
 	return nil
 }
