@@ -826,6 +826,13 @@ func (ed *editor) paintBar(p *ui.Painter, r ui.Rect, s lineLook) {
 		p.Fill(r, s.bar, 0)
 		return
 	}
+	// Only the stripes in view: a long line's bar runs thousands of rows.
+	vis := p.Visible()
+	y0, y1 := max(r.Y, vis.Y), min(r.Y+r.H, vis.Y+vis.H)
+	if y1 <= y0 {
+		return
+	}
+	r.Y, r.H = y0, y1-y0
 	barStripes(r, float64(r.Y-ed.r.Y)+ed.scrollY, func(sr ui.Rect) { p.Fill(sr, s.bar, 0) })
 }
 

@@ -222,6 +222,11 @@ func (s *diffSide) paintDeleted(p *ui.Painter, ed *editor, b *block, r ui.Rect) 
 			for ri := range l.rows {
 				row := &l.rows[ri]
 				ry := pl.y + float32(ri)*lh
+				// Only the rows in view: a long line wraps into
+				// thousands, each shaped and painted otherwise.
+				if ry > p.Visible().Y+p.Visible().H || ry+lh < p.Visible().Y {
+					continue
+				}
 				if d.Inline != DiffInlineNone {
 					for _, w := range words.oldWords[pl.line] {
 						rects = mergeRects(ov.rangeRects(l, row, l.toDisp(w.start, false), l.toDisp(w.end, false), rects[:0]))
