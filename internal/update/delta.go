@@ -324,6 +324,9 @@ func applyFile(e deltaEntry, data *io.SectionReader, oldRoot, newRoot *os.Root) 
 		// Most likely, the app is not the one the delta was made from.
 		return fmt.Errorf("the delta update made %s wrong", e.Path)
 	}
+	if err == nil {
+		err = newRoot.Chmod(filepath.FromSlash(e.Path), fs.FileMode(e.Mode).Perm())
+	}
 	return err
 }
 
