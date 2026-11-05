@@ -148,3 +148,6 @@ func (*window) SetDocumentEdited(bool)               {}
 func (*window) SetRepresentedFile(string)            {}
 func (*window) SetUserScripts([]platform.UserScript) {}
 func (*window) SetContentRules([]any)                {}
+
+// SetVibrancyTint does nothing: iOS windows have no tinted window material.
+func (w *window) SetVibrancyTint(*platform.Color) {}
