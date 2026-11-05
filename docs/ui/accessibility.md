@@ -67,6 +67,38 @@ ui.Row(c).Role(ui.RoleColumnHeader).Children(func() { // named "Sort Options"
 })
 ```
 
+`ui.RoleListBox` is a list of options to choose from, and `ui.RoleOption`
+one of its options, selected with `Checked`, as ARIA's `listbox`, `option`
+and `aria-selected`: a list box on Windows (UI Automation's List, with
+`Selection` and `SelectionItem`), on Linux (ATK's list box, with
+`AtkSelection`) and on macOS (a table whose rows are selected, as
+AppKit's lists are), as the
+popups of [`SelectBase`](select.md#without-a-look) and
+[`ComboboxBase`](combobox.md) are. Suggestions shown at a text area's
+caret, as for mentions, are one, the text area keeping the focus and
+pointing at the option highlighted with `ActiveDescendant`:
+
+```go
+area := ui.TextArea(c, &app.draft)
+if len(app.matches) > 0 {
+	ui.Column(c).Role(ui.RoleListBox).Label("People").Children(func() {
+		for i, p := range app.matches {
+			opt := ui.Row(c).Padding(4, 8).Role(ui.RoleOption).Checked(i == app.hi)
+			if opt.Clicked() {
+				app.mention(p)
+			}
+			opt.Children(func() { ui.Text(c, p.Name) })
+			if i == app.hi {
+				area.ActiveDescendant(opt)
+			}
+		}
+	})
+}
+```
+
+Pressing an option, as assistive technology choosing it does, clicks it;
+it takes the focus only if it is `Focusable`.
+
 ## States
 
 The bases tell assistive technology what their widgets show. A widget of
@@ -74,7 +106,7 @@ your own tells it with these, as ARIA's states do on the web:
 
 | Method | What it tells |
 |---|---|
-| `Checked(on)`, `Mixed()` | whether a check box, switch, radio button, toggle or menu item is on, or partly on |
+| `Checked(on)`, `Mixed()` | whether a check box, switch, radio button, toggle or menu item is on, or partly on, or whether an option is selected |
 | `Expanded(open)` | whether what the element opens shows, as a popup or a section |
 | `Value(s)` | its value, as the choice a button opening a popup shows |
 | `Range(lo, hi, value)`, `Step(step)` | the range and value of a slider, progress bar, meter or stepper, and how far the keys move it |

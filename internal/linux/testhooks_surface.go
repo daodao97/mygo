@@ -153,11 +153,11 @@ func TestDataDragResources() int { return len(gtkDataSources) }
 // it through ATK: the name of its role, its name, and its value.
 type TestAccessNode struct {
 	Role, Label, Value string
-	// Busy and Active are its ATK states of those names, and Attributes
-	// its object attributes.
-	Busy, Active bool
-	Attributes   map[string]string
-	obj          ptr
+	// Busy, Active, Selectable, Selected and Focused are its ATK states
+	// of those names, and Attributes its object attributes.
+	Busy, Active, Selectable, Selected, Focused bool
+	Attributes                                  map[string]string
+	obj                                         ptr
 }
 
 func loadAccessTests() {
@@ -217,6 +217,9 @@ func TestAccessibility(handle uintptr) ([]TestAccessNode, bool) {
 			}
 			n.Busy = atkStateSetContainsState(states, atkStates.busy)
 			n.Active = atkStateSetContainsState(states, atkStates.active)
+			n.Selectable = atkStateSetContainsState(states, atkStates.selectable)
+			n.Selected = atkStateSetContainsState(states, atkStates.selected)
+			n.Focused = atkStateSetContainsState(states, atkStates.focused)
 			gObjectUnref(states)
 			if set := atkObjectGetAttributes(child); set != 0 {
 				// A GSList of AtkAttribute: name and value.

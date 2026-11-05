@@ -2585,7 +2585,18 @@ either.
   rows is `AccessMultiselectable` (ATK's `multiselectable`, UIA's
   `CanSelectMultiple`, rows then raising `ElementAddedToSelection` and
   `ElementRemovedFromSelection` unless chosen alone), and its focus is on
-  the row last chosen.
+  the row last chosen. `RoleListBox` and `RoleOption`, a list box of an
+  app's own (ARIA's `listbox` and `option`), are `RoleList` and
+  `RoleListItem` with `AccessSelectable`, as a `ComboboxBase`'s popup and
+  its options (`choosesItems`, `flagChoosable`) and a `SelectBase`'s
+  are, so the bridges show them as the lists above, selected with
+  `Checked`; unlike `flagChoosable`'s rows, they take the focus only
+  when `Focusable`. A `SelectBase`'s options are selected while
+  highlighted, the trigger's `ActiveDescendant` the one highlighted, as a
+  native select's popup: assistive technology focusing one
+  (`focusHighlights`) notes it on its state (`focusAsked`), which the
+  select highlights as it builds it, rather than clicking it, which
+  would choose it.
 - **The connection.** `content.go` attaches the content to its window
   through `internal/surface.Conn`, which carries the surface and, as
   functions, what the content needs of the app (the clipboard, dragging

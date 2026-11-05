@@ -496,12 +496,15 @@ type node struct {
 	tip bool
 	// highlighted is set on the option of a select the pointer or the
 	// arrows are on, and keepOpen on an item of a menu that leaves the
-	// menu open as it is chosen (KeepOpen).
-	highlighted bool
-	keepOpen    bool
-	accValue    string
-	accRange    [3]float64
-	hasRange    bool
+	// menu open as it is chosen (KeepOpen). focusHighlights marks an
+	// option of a select, which assistive technology focusing highlights,
+	// as the arrows do, rather than choosing it.
+	highlighted     bool
+	focusHighlights bool
+	keepOpen        bool
+	accValue        string
+	accRange        [3]float64
+	hasRange        bool
 	// accFill describes the element to assistive technology further, as
 	// a code editor its text and selection.
 	accFill func(n *platform.AccessNode)

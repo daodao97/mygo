@@ -529,7 +529,8 @@ func (s *selectParts[T]) Popup(fn func(panel *node)) *node {
 	b.expanded = *s.open
 	s.fresh()
 	return popover(s.c, b, s.open, true, func(panel *node) {
-		panel.MinWidth(b.Bounds().W)
+		// A list box of options, as a native select's popup.
+		panel.Role(RoleListBox).MinWidth(b.Bounds().W)
 		s.next, s.items = s.next[:0], s.items[:0]
 		fn(panel)
 		*s.values = append((*s.values)[:0], s.next...)
@@ -560,6 +561,15 @@ func (s *selectParts[T]) Popup(fn func(panel *node)) *node {
 			*s.highlight = h
 			s.c.rt.consumed = true
 		}
+		// The options say which of how many they are, and the trigger,
+		// which keeps the focus, has it for the one highlighted, as a
+		// combobox's input.
+		for i, it := range s.items {
+			it.setPos, it.setSize = i+1, len(s.items)
+		}
+		if h >= 0 && h < len(s.items) {
+			b.activeDescendant = s.items[h]
+		}
 	})
 }
 
@@ -567,18 +577,31 @@ func (s *selectParts[T]) Popup(fn func(panel *node)) *node {
 // the pointer or the arrows are on it, and chooses value and closes the
 // popup when clicked. Disabled leaves it out of the keys' way and of the
 // pointer's. The option the highlight moves to scrolls into view, once,
-// so that the wheel scrolls on past it.
+// so that the wheel scrolls on past it. Assistive technology reads it as
+// an option of a list box (RoleOption), selected while it is
+// highlighted, as a native select's; focusing it highlights it, and
+// pressing it chooses it.
 func (s *selectParts[T]) Item(value T) *node {
 	c := s.c
 	i := len(s.next)
 	s.next = append(s.next, value)
-	item := coreRow(c)
+	item := coreRow(c).Role(RoleOption)
 	item.flags |= flagClickable | flagHover
+	item.focusHighlights = true
 	s.items = append(s.items, item)
 	// Disabled once built, which the pass before learned.
 	off := i < len(*s.off) && (*s.off)[i]
 	if *s.highlight < 0 && value == *s.selected && !off {
 		*s.highlight = i
+	}
+	if st := item.st; st != nil && st.focusAsked {
+		// Assistive technology focused it, which highlights it, as the
+		// arrows do, without choosing it.
+		st.focusAsked = false
+		if !off && *s.highlight != i {
+			*s.highlight = i
+			c.rt.consumed = true
+		}
 	}
 	if p := [2]float32{c.rt.pointerX, c.rt.pointerY}; !off && item.Hovered() && p != *s.pointer {
 		// The pointer moved onto it, which moves the highlight; the
@@ -594,7 +617,9 @@ func (s *selectParts[T]) Item(value T) *node {
 		*s.shown, *s.shows = value, true
 		item.ScrollIntoView()
 	}
-	item.checked = 1 + int8(b2f(value == *s.selected))
+	// The option highlighted is the one assistive technology reads as
+	// selected, as in a list box; the trigger's value is the choice.
+	item.checked = 1 + int8(b2f(item.highlighted))
 	item.afterInput(func() {
 		if item.Clicked() {
 			s.choose(value)

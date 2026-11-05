@@ -782,8 +782,11 @@ type state struct {
 	// input, as Shift going back in a find bar.
 	submitMods Modifiers
 	// expand is what assistive technology asked of an item of a tree: 1
-	// to open it, -1 to close it.
-	expand int8
+	// to open it, -1 to close it. focusAsked is set as it focuses an
+	// option of a select (focusHighlights, of the last frame), which
+	// the select highlights as it builds it.
+	expand                      int8
+	focusHighlights, focusAsked bool
 	// role is the element's Role in the last frame.
 	role Role
 	// holding is set while a stepper's arrow is held, since holdStart, and

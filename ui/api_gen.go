@@ -3893,8 +3893,9 @@ func (_handle Element) Changed() bool {
 }
 
 // Checked tells assistive technology whether the element, as a check box,
-// switch, radio button, toggle button or menu item of your own, is on.
-// Bases set it from their value.
+// switch, radio button, toggle button or menu item of your own, is on, or
+// whether an option (RoleOption) is selected. Bases set it from their
+// value.
 func (_handle Element) Checked(on bool) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -7633,7 +7634,10 @@ func (_handle SelectParts[T]) Highlight(value T) {
 // the pointer or the arrows are on it, and chooses value and closes the
 // popup when clicked. Disabled leaves it out of the keys' way and of the
 // pointer's. The option the highlight moves to scrolls into view, once,
-// so that the wheel scrolls on past it.
+// so that the wheel scrolls on past it. Assistive technology reads it as
+// an option of a list box (RoleOption), selected while it is
+// highlighted, as a native select's; focusing it highlights it, and
+// pressing it chooses it.
 func (_handle SelectParts[T]) Item(value T) Element {
 	_parts := _handle.resolve()
 	if _parts == nil {

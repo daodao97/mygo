@@ -954,17 +954,24 @@ func initUIA() {
 	)
 
 	selected := func(e *uiaElement) bool { return e.n.States&platform.AccessChecked != 0 }
-	selectItem := cb(func(this uintptr) uintptr { // Select, AddToSelection
+	selectItem := func(this uintptr, add bool) uintptr {
 		e, hr := live(this)
-		if e == nil || selected(e) {
+		if e == nil {
 			return hr
 		}
+		// What is selected is left as it is, but for Select on an
+		// option of a list box, as a select's popup, whose selected
+		// option is the one highlighted: Select chooses it, as a press
+		// does, as Enter would.
+		if selected(e) && (add || e.n.Role != platform.RoleListItem || e.n.Actions&platform.ActionFocus == 0) {
+			return sOK
+		}
 		return e.act(platform.AccessPress, "")
-	})
+	}
 	uiaVtbls[ifaceSelectionItem] = vtbl(
-		selectItem,
-		selectItem,
-		cb(func(this uintptr) uintptr { return uiaInvalidOperation }), // RemoveFromSelection
+		cb(func(this uintptr) uintptr { return selectItem(this, false) }), // Select
+		cb(func(this uintptr) uintptr { return selectItem(this, true) }),  // AddToSelection
+		cb(func(this uintptr) uintptr { return uiaInvalidOperation }),     // RemoveFromSelection
 		cb(func(this, p uintptr) uintptr { // get_IsSelected
 			setBool(p, selected(uiaOf(this)))
 			return sOK
