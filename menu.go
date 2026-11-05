@@ -107,8 +107,12 @@ type MenuItem struct {
 	ToolTip string
 	// Icon is an image shown beside the label (see NewMenuIcon), nil for
 	// none.
-	Icon    *MenuIcon
-	Submenu []*MenuItem
+	Icon *MenuIcon
+	// Subtitle is a second, smaller line under the label: macOS 14 and
+	// browsers show it so, and earlier macOS, Windows and Linux after the
+	// label, as "Label — Subtitle".
+	Subtitle string
+	Submenu  []*MenuItem
 	// Click is called on the main thread when the item is chosen. On Linux
 	// and Windows, win is the window whose menu bar or context menu was
 	// chosen. Other menus use the focused window, which may be nil.
@@ -302,6 +306,9 @@ func (it *MenuItem) SetLabel(label string) { it.update(func() { it.Label = label
 
 // SetAccelerator changes the keyboard shortcut of the item.
 func (it *MenuItem) SetAccelerator(acc string) { it.update(func() { it.Accelerator = acc }) }
+
+// SetSubtitle changes the second line of the item; "" removes it.
+func (it *MenuItem) SetSubtitle(subtitle string) { it.update(func() { it.Subtitle = subtitle }) }
 
 // SetIcon replaces the image beside the label; nil removes it.
 func (it *MenuItem) SetIcon(icon *MenuIcon) { it.update(func() { it.Icon = icon }) }
@@ -535,6 +542,7 @@ func (it *MenuItem) snapshotLocked() *platform.MenuItem {
 	p := &platform.MenuItem{
 		ID:          it.uid,
 		Label:       it.Label,
+		Subtitle:    it.Subtitle,
 		Role:        string(it.Role),
 		Accelerator: it.Accelerator,
 		Enabled:     !it.Disabled,

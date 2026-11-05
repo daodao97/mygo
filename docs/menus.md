@@ -44,6 +44,9 @@ A `MenuItem` has:
   items toggle `Checked` before `Click` runs;
 - `Disabled`, `Hidden` and `ToolTip`;
 - `Icon`, an image shown beside the label (see [icons](#icons));
+- `Subtitle`, a second, smaller line under the label. macOS 14 and browsers
+  show it so; earlier macOS, Windows and Linux show it after the label, as
+  `Label — Subtitle`;
 - `ID`, to find the item with `Menu.ItemByID`;
 - `Role`, a built-in behavior with its label and accelerator.
 
@@ -104,7 +107,7 @@ the state the app gave them. An item the app disables stays disabled.
 
 Change items of a menu in use with their methods, so that the native menu
 follows: `SetLabel`, `SetEnabled`, `SetVisible`, `SetChecked`,
-`SetAccelerator` and `SetIcon`:
+`SetAccelerator`, `SetSubtitle` and `SetIcon`:
 
 ```go
 item := menu.ItemByID("sidebar")

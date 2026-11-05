@@ -72,7 +72,12 @@ func (b *docBase) watch() {
 func watchDocumentFile(ctx context.Context, path string) {
 	w, err := WatchFiles(ctx, path, FileWatchOptions{Debounce: 100 * time.Millisecond})
 	if err != nil {
-		return // the file is gone: focus checks remain
+		// The file may have gone before the watch started, renamed after
+		// the document read it: nothing would look for it until a focus.
+		for _, b := range documentsAt(path) {
+			go b.checkDisk()
+		}
+		return
 	}
 	defer w.Close()
 	// What changed before the watch started, as after a rename.

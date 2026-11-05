@@ -1038,6 +1038,7 @@ type MenuItem struct {
 	ID          int
 	Type        MenuItemType
 	Label       string
+	Subtitle    string
 	Role        string
 	Accelerator string
 	Enabled     bool

@@ -3,6 +3,7 @@
 package mygo
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -592,6 +593,24 @@ func TestDocumentFollowsReplacedRename(t *testing.T) {
 	})
 	if d.State().Deleted {
 		t.Error("deleted")
+	}
+}
+
+// TestDocumentWatchStartFollowsRename renames the file before its watch
+// starts, which then can't: the document follows it all the same.
+func TestDocumentWatchStartFollowsRename(t *testing.T) {
+	ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+	path := writeTemp(t, "start.txt", "one")
+	path, _ = filepath.EvalSymlinks(path)
+	d, _ := ds.Open(path)
+	renamed := filepath.Join(filepath.Dir(path), "started.txt")
+	if err := os.Rename(path, renamed); err != nil {
+		t.Fatal(err)
+	}
+	watchDocumentFile(context.Background(), path)
+	waitFor(t, "the document to follow the rename", func() bool { return d.Path() == renamed })
+	if d.State().Deleted {
+		t.Error("the document is deleted")
 	}
 }
 

@@ -227,11 +227,11 @@ func buildItem(it *platform.MenuItem, accel ptr, owner, windowID int, bar bool) 
 	case platform.MenuItemSeparator:
 		item = gtkSeparatorMenuItemNew()
 	case platform.MenuItemCheckbox, platform.MenuItemRadio:
-		item = gtkCheckMenuItemNewWithLabel(cs(it.Label))
+		item = gtkCheckMenuItemNewWithLabel(cs(it.LabelWithSubtitle()))
 		gtkCheckMenuItemSetDrawAsRadio(item, it.Type == platform.MenuItemRadio)
 		check = true
 	default:
-		item = gtkMenuItemNewWithLabel(cs(it.Label))
+		item = gtkMenuItemNewWithLabel(cs(it.LabelWithSubtitle()))
 	}
 	if it.Submenu != nil {
 		sub := gtkMenuNew()
@@ -435,9 +435,9 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 		n := &itemsByID[it.ID][i]
 		if it.Type != platform.MenuItemSeparator {
 			if n.label != 0 {
-				gtkLabelSetLabel(n.label, cs(it.Label))
+				gtkLabelSetLabel(n.label, cs(it.LabelWithSubtitle()))
 			} else {
-				gtkMenuItemSetLabel(n.item, cs(it.Label))
+				gtkMenuItemSetLabel(n.item, cs(it.LabelWithSubtitle()))
 			}
 			if it.Icon != n.icon && !n.bar && setMenuItemIcon != nil {
 				n.icon = it.Icon
