@@ -123,7 +123,10 @@ jobs:
             ${{ runner.os == 'Windows' && '~/AppData/Local' || runner.os == 'macOS' && '~/Library/Caches' || '~/.cache' }}/mygo/natives
             ${{ runner.os == 'Windows' && '~/AppData/Local' || runner.os == 'macOS' && '~/Library/Caches' || '~/.cache' }}/mygo/nsis-*
           key: ${{ steps.downloads.outputs.cache-primary-key }}
-      - run: go test ./...
+      # cmd/mygo builds and packages apps, which takes the macOS runners
+      # about six minutes and, on a slow one beside the other packages,
+      # past go test's ten: the same tests, more time.
+      - run: go test -timeout ${{ runner.os == 'macOS' && '20m' || '10m' }} ./...
       - name: Test without the inspector, as production builds
         if: runner.os == 'Linux'
         run: go test -tags mygo_noinspector ./ui .
