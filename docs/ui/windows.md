@@ -219,6 +219,8 @@ The window goes at once, by `Destroy` or by a `Close` no `OnClose`
 listener prevents, and the rest of the view builds as it would, with a
 `Context` that still has the theme and the window's size. The frame ends
 there: nothing more is laid out or painted, and no other callback runs.
+The closed window keeps nothing of what it showed, the view and what it
+reaches included, though the app keeps the `*mygo.Window`.
 Open the window that takes over first, since an app [quits](../app.md)
 when its last window closes:
 

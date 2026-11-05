@@ -2361,7 +2361,11 @@ The public API keeps one stable `*Context` per window. Child builders share
 it and temporarily change its parent. `Element` is a 16-byte checked value:
 a direct owner record, arena slot and 32-bit generation. The owner detaches
 from the engine on close and retires before generation wrap. Old elements
-cannot alias recycled nodes. Development builds and `Tester` diagnose stale
+cannot alias recycled nodes. A closed window keeps nothing of what it
+showed (#1281): `mygo.Window` keeps only that it shows Content, handing the
+Content to its surface as it attaches, and the closed engine drops its view,
+the last frame's elements, states and scene, and the host its last scene,
+renderers and placements, in case anything still holds them. Development builds and `Tester` diagnose stale
 use; production methods return empty results or ignore it. `Handle` stores
 persistent control identity separately for each window. Focus queries read
 identity without depending on construction order; focus requests wait for a

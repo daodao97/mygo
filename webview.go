@@ -64,7 +64,7 @@ func (w *Window) NewWebView(opts WebViewOptions) (*WebView, error) {
 	if err != nil {
 		return nil, err
 	}
-	if w.content == nil {
+	if !w.content {
 		return nil, errNoContent
 	}
 	var v *WebView

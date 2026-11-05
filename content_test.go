@@ -6,13 +6,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"image"
 	"image/png"
 	"log"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+	"weak"
 
 	"github.com/egoist/mygo/internal/fake"
 	"github.com/egoist/mygo/internal/platform"
@@ -521,4 +524,72 @@ func TestContentMaximizeButton(t *testing.T) {
 	if fw.MaximizeButton != (platform.RectF{}) {
 		t.Errorf("maximize button at %+v after it went", fw.MaximizeButton)
 	}
+}
+
+// TestContentClosedWindowLetsItsBitmapsGo checks issue #1281: once a
+// window of native UI closes, nothing of it keeps its view, the bitmaps
+// its last frame drew, or that frame, though the app keeps the window, as
+// apps that stay open between windows do (a tool in the menu bar showing
+// a capture of the screen in a window of its own), whether the app or
+// the view closed it.
+func TestContentClosedWindowLetsItsBitmapsGo(t *testing.T) {
+	for _, fromView := range []bool{false, true} {
+		t.Run(fmt.Sprint("fromView=", fromView), func(t *testing.T) {
+			// An *image.RGBA from the origin is the bitmap's pixels as it
+			// is, without a copy: a weak pointer to them tells when they go.
+			src := image.NewRGBA(image.Rect(0, 0, 512, 512))
+			for i := range src.Pix {
+				src.Pix[i] = 0xff
+			}
+			pix := weak.Make(&src.Pix[0])
+			st := &shotState{bitmap: ui.NewBitmap(src)}
+			bitmap, state := weak.Make(st.bitmap), weak.Make(st)
+			src = nil
+			w, _, s := contentWindow(t, st.view)
+			if p := s.Pixel(150, 100); p != [4]byte{255, 255, 255, 255} {
+				t.Fatalf("the bitmap did not draw: %v", p)
+			}
+			if fromView {
+				onMain(func() {
+					st.close = w
+					w.Invalidate()
+				})
+				onMain(func() {})
+				onMain(func() { s.Frame() })
+			} else {
+				w.Close()
+			}
+			if !w.IsDestroyed() {
+				t.Fatal("the window did not close")
+			}
+			st = nil // the app lets go of its state, and keeps the window
+			onMain(func() {})
+			for range 3 {
+				runtime.GC()
+			}
+			if state.Value() != nil || bitmap.Value() != nil || pix.Value() != nil {
+				t.Errorf("after the window closed: view's state kept %v, bitmap kept %v, pixels kept %v",
+					state.Value() != nil, bitmap.Value() != nil, pix.Value() != nil)
+			}
+			runtime.KeepAlive(w)
+		})
+	}
+}
+
+// shotState is an app's state that its view shows, a capture.
+type shotState struct {
+	bitmap *ui.Bitmap
+	// close is the window the view closes, as a press of its last button
+	// does.
+	close *Window
+}
+
+func (st *shotState) view(c *ui.Context) {
+	if st.close != nil {
+		st.close.Close()
+		return
+	}
+	ui.Box(c).Size(300, 200).Draw(func(p *ui.Painter, r ui.Rect) {
+		p.ImageRegion(st.bitmap, ui.Rect{}, r, ui.ImageOptions{})
+	})
 }

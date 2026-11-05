@@ -37,7 +37,7 @@ func (w *Window) bridgeScript() string {
 // page's (FitContent), in the CSS pixels of its page, or nil. Main thread
 // only.
 func (w *Window) fitLimits() *bridge.FitContent {
-	if w.fit == nil || w.content != nil {
+	if w.fit == nil || w.content {
 		return nil
 	}
 	l := bridge.NewFitContent(w.fit.min, w.fit.max, w.fit.zoom)
@@ -50,7 +50,7 @@ func (w *Window) fitLimits() *bridge.FitContent {
 // pages it loads next through its scripts. Main thread only.
 func (w *Window) zoomChanged() {
 	w.sendTitleBar()
-	if w.fit == nil || w.native == nil || w.content != nil {
+	if w.fit == nil || w.native == nil || w.content {
 		return
 	}
 	w.fit.zoom = w.native.Zoom()
@@ -90,7 +90,7 @@ func localeEvent(locale string) (message, error) {
 // tells its listeners only of a language it did not have. Main thread
 // only.
 func (w *Window) sendLocale() {
-	if w.content != nil || w.native == nil {
+	if w.content || w.native == nil {
 		return
 	}
 	if msg, err := localeEvent(App.Locale()); err == nil {
@@ -107,7 +107,7 @@ func pagesLocaleChanged(locale string) {
 		return
 	}
 	for _, w := range pageWindows() {
-		if w.content != nil || w.native == nil {
+		if w.content || w.native == nil {
 			continue
 		}
 		w.userScripts = w.pageScripts()
@@ -137,7 +137,7 @@ func sendPreferences() {
 // the backend replaces, so that their first paint has them, and the
 // current one through the event. Main thread only.
 func (w *Window) sendPreferences(prefs ThemePreferences, script string) {
-	if w.content != nil || w.native == nil || len(w.userScripts) <= preferencesScriptIndex ||
+	if w.content || w.native == nil || len(w.userScripts) <= preferencesScriptIndex ||
 		w.userScripts[preferencesScriptIndex].Source == script {
 		return
 	}
@@ -167,7 +167,7 @@ var evalCanceled func()
 // eval returns the JSON result of code, which shares the memory of the
 // page's answer.
 func (w *Window) eval(ctx context.Context, code string) (jsontext.Value, error) {
-	if w.content != nil {
+	if w.content {
 		return nil, errNoPage
 	}
 	type result struct {
@@ -251,7 +251,7 @@ func (w *Window) eval(ctx context.Context, code string) (jsontext.Value, error) 
 // start; this keeps the current page, and later ones, up to date. Main
 // thread only.
 func (w *Window) sendTitleBar() {
-	if w.content != nil || !w.hiddenTitleBar || w.native == nil {
+	if w.content || !w.hiddenTitleBar || w.native == nil {
 		return
 	}
 	if msg, err := encodeEvent(bridge.TitleBarEvent, bridge.NewTitleBar(w.native.TitleBar(), w.native.Zoom())); err == nil {
@@ -263,7 +263,7 @@ func (w *Window) sendTitleBar() {
 // the window is drawn as active (active.go). Pages start active, and hear
 // otherwise as their DOM is ready. Main thread only.
 func (w *Window) sendActive() {
-	if w.content != nil || w.native == nil {
+	if w.content || w.native == nil {
 		return
 	}
 	if msg, err := encodeEvent(bridge.WindowActiveEvent, w.top().active); err == nil {

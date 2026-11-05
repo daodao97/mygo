@@ -311,6 +311,9 @@ var newGPU = newGPURenderer
 // event handles an event of the surface, noting when it asks for a frame:
 // only then may renderers draw (OpenGL's context is current only then).
 func (h *windowHost) event(ev platform.SurfaceEvent) bool {
+	if h.detached {
+		return false // the window closed: it draws nothing more
+	}
 	if ev.Kind == platform.SurfaceRenew {
 		// The next frame makes the renderer again, for the surface's new
 		// native objects.
@@ -442,6 +445,9 @@ func (h *windowHost) size() (float32, float32, float32) {
 }
 
 func (h *windowHost) present(s *scene.Scene) {
+	if h.detached {
+		return // closed while the frame was built: nothing shows it
+	}
 	h.last, h.path = s, ""
 	defer h.recheck()
 	if s.Width <= 0 || s.Height <= 0 {
@@ -713,6 +719,9 @@ func (h *windowHost) detach() {
 		h.gpu.Release()
 		h.gpu = nil
 	}
+	// The last frame, and the bitmaps it drew, go with the window (#1281).
+	h.last = nil
+	h.placed, h.views, h.glassPlaced = nil, nil, nil
 }
 
 func (h *windowHost) requestFrame() {

@@ -1232,6 +1232,26 @@ func (rt *engine) close() {
 	// Last, with the engine closed: a Close that asks for a frame, or reads
 	// the window, finds it closed rather than half so.
 	rt.closeLocals()
+	rt.dropFrame()
+}
+
+// dropFrame lets go of what the closed window showed: the view, and all
+// it reaches, the elements of the last frame, their states and the scene
+// painted from them, with the bitmaps they drew. Whatever may still hold
+// the engine of a closed window (the window, a renderer, a plugin)
+// keeps none of it (#1281). The engine draws no frame once closed.
+func (rt *engine) dropFrame() {
+	rt.view = func(*context) {}
+	rt.scene = scene.Scene{}
+	rt.maskScene = nil
+	clear(rt.pathClips)
+	c := &rt.c
+	c.parent, c.root, c.overlay = nil, nil, nil
+	c.chunks, c.spare = nil, nil
+	c.used, c.dirty, c.spareDirty = 0, 0, 0
+	clear(rt.states)
+	rt.free = nil
+	rt.hits, rt.liftHits = nil, nil
 }
 
 // endFrame ends a frame, and closes the engine when its window closed
