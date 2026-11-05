@@ -837,13 +837,16 @@ type state struct {
 	// dragValue is the value the element drags (Drag), or dragFn returns
 	// it as the drag starts; accepts reports whether it takes a value
 	// dragged (Drop), and droppedValue is the value dropped on it, while
-	// hasDropped, at (dropX, dropY).
+	// hasDropped, at (dropX, dropY). dragMissed is set on the source when
+	// its value was let go over no element taking it, at (missX, missY).
 	dragValue    any
 	dragFn       func() any
 	accepts      func(any) bool
 	droppedValue any
 	hasDropped   bool
 	dropX, dropY float32
+	dragMissed   bool
+	missX, missY float32
 	dataSource   *dataSource
 	dataTarget   *transfer.DropOptions
 	dataDropped  *transfer.Drop

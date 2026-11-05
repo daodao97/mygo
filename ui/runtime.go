@@ -1081,6 +1081,7 @@ func (rt *engine) forgetInput() {
 		s.released = false
 		s.dropped = nil
 		s.droppedValue, s.hasDropped = nil, false
+		s.dragMissed = false
 		s.dataDropped = nil
 		if s.releaseLater.due {
 			// The pass read the moves of a press that ended: the next
