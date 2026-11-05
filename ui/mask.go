@@ -84,9 +84,9 @@ func (e *node) ClipInsetPercent(top, right, bottom, left, radius float32) *node 
 //	fade := []ui.GradientStop{{ui.Transparent, 0}, {black, 0.1}, {black, 0.9}, {ui.Transparent, 1}}
 //	list.MaskLinearGradient(ui.LinearGradient{Angle: 180, Stops: fade})
 //
-// Each thing drawn is masked on its own, as Opacity fades each, rather
-// than the element drawn into a layer first: where the mask lets a part
-// through, a row's background shows what is under it too.
+// Each thing drawn is masked on its own, rather than the element drawn
+// into a layer first, as Opacity fades a group: where the mask lets a
+// part through, a row's background shows what is under it too.
 func (e *node) MaskLinearGradient(g LinearGradient) *node {
 	k := e.clippings()
 	k.mask, k.linear, k.layers = maskLinear, g, nil

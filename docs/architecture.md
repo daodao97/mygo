@@ -2868,8 +2868,8 @@ either.
   textures, as transformed or rounded clips do (`raster.ClipMask`), and
   never evaluate them in the shaders, so no shader changed for them. The
   CPU renderer multiplies the clip's coverage by the mask
-  (`raster.clipMasking`). Each op under a mask is masked on its own, as
-  `Opacity` fades each, rather than through a group layer. A clip moved
+  (`raster.clipMasking`). Each op under a mask is masked on its own,
+  rather than through a group layer as `Opacity` fades (below). A clip moved
   by a translation moves its gradient with it (`scene.MovedClipOp`), and
   damage compares the version of its image.
 - **Motion** (`ui/motion.go`): every animated value of an element
@@ -4065,9 +4065,29 @@ either.
   it (`keptLayer.area`: each one's box and shadows grown by 4, in its
   space, clipped by those that clip). Its code is reached only through
   the interface `Cache` stores (`layerKeeper`), so apps that never call
-  it do not link it. `ui/shader` gives an
-  effect's entry point (`ColorEffect`, `DistortionEffect`, `LayerEffect`)
-  a `Fragment` that calls it, and the bridge reads the content as image 3
+  it, nor fade a group (below), do not link it. `Opacity` below 1 (a transition's fade and a pose's
+  `Fade` too) fades an element with children as one group, as CSS's
+  group opacity (`ui/group.go`): the subtree renders into the same
+  transient canvas, the area `keptLayer.area` gives within the clip,
+  drawn as one image at the opacity (`paintGroup`), so every renderer
+  draws it as it draws an effect's, and kept as `Cache` keeps its layer
+  while what it holds is the same (`keptLayer.draw`). A layer costs a
+  render pass, so a group paints flat first, its opacity multiplied into
+  each op as before, and `checkFlat` looks at the ops it painted
+  (`overlapping`: their bounds within the clips pairwise, at most 32 of
+  them, so that what culling skips counts for nothing): when two
+  overlap, it renders the layer, takes the flat ops back (`takeBack`:
+  the scene's slices, its canvases and the parts drawn,
+  `engine.drawn`) and paints the layer in their place. The state's
+  `grouped` then has the next frames go to the layer at once, back to
+  flat when it no longer overlaps, so the frames before change what a
+  group costs, never what shows. Holes (web views) and effects reading
+  their backdrop keep a group flat, as no layer shows what is behind
+  it. The code is linked by `Opacity`, `Transition` and `AnimatePose`
+  (`linkGroups`). A blurred or kept element fades its canvas at its
+  opacity rather than each op in it, and paints nothing faded out.
+  `ui/shader` gives an effect's entry point (`ColorEffect`,
+  `DistortionEffect`, `LayerEffect`) a `Fragment` that calls it, and the bridge reads the content as image 3
   (`LayerImage`) from where the box's corner lies in it
   (`__layerInset`). A shader reading its backdrop (`backdropAt`,
   `backdropSample`) is an effect with `Backdrop`: `Painter.EffectBackdrop`

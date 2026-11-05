@@ -290,15 +290,24 @@ func (p *Painter) element(e *node) {
 	if p.paintEffect(e) {
 		return
 	}
+	// Faded with what is inside it, it paints as a group (paintGroup), or
+	// flat when that shows the same, which painting tells (checkFlat).
+	var flat groupMark
+	grouped := false
+	if paintGroup != nil && e.first != nil && !e.effecting && e.fade() < 1 {
+		if flat, grouped = paintGroup(p, e); !grouped {
+			return
+		}
+	} else if e.st.effectLayer != nil && !e.effecting {
+		e.dropGroupLayer()
+	}
 	saved := p.opacity
 	if e.flags&flagDisabled != 0 && !e.undimmed {
 		p.opacity *= 0.5
 	}
-	if e.opacitySet {
-		p.opacity *= e.opacity
-	}
-	if e.poseFade > 0 {
-		p.opacity *= 1 - e.poseFade
+	// In its layer (paintEffect, paintGroup), the layer takes its fade.
+	if !e.effecting || e.effect != nil {
+		p.opacity *= e.fade()
 	}
 	if p.opacity <= 0.001 {
 		p.opacity = saved
@@ -451,6 +460,9 @@ func (p *Painter) element(e *node) {
 		p.focusRingOf(e, box, e.radius)
 	}
 	p.opacity = saved
+	if grouped {
+		checkFlat(p, e, flat)
+	}
 	p.opaque, p.under = savedOpaque, p.under[:under]
 }
 

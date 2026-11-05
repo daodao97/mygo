@@ -69,6 +69,20 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
   what is unavailable. A painter fills rectangles and paths with the same
   gradients (`FillGradient`, `FillConicGradient`, `FillRadialGradient`,
   `FillPathGradient`, `FillPathConicGradient`, `StrokePathConicGradient`).
+- **Opacity.** `Opacity(o)` fades the element and its children as one
+  group, as CSS's `opacity`: what they paint is put together first, then
+  faded, so a badge over a card's edge, or two bars of a chart that
+  overlap, show as one, not each through the other.
+
+  ```go
+  ui.Row(c).Gap(8).Children(func() { /* … */ }).Opacity(0.5) // a toolbar, faded
+  ```
+
+  Children that overlap nothing paint faded each on their own, which
+  looks the same at no cost; where they overlap, they render into a
+  bitmap of the GPU first, as a blur's, its text smoothed in grayscale.
+  Web views, and materials that show what is behind them, fade on their
+  own, as no bitmap shows them; so does what `Disabled` dims.
 - **Blur.** `Blur(sigma)` blurs the element and its children, as CSS's
   `filter: blur()`: what they draw spreads about 3 sigma DIPs around,
   transparent beyond, on the GPU. They render into a bitmap first, as an
@@ -116,7 +130,7 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
 
   The end of clamped text fades the same way, along its width:
   `MaskLinearGradient(ui.LinearGradient{Angle: 90, Stops: …})`.
-  Like `Opacity`, the mask applies to each thing drawn on its own; the
+  Unlike `Opacity`, the mask applies to each thing drawn on its own; the
   element isn't drawn into a layer first. So where a row's background
   is faded, what is under the row shows through it too. Clicks are not
   masked.

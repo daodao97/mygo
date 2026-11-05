@@ -1516,8 +1516,18 @@ func (e *node) InsetShadow(x, y, blur, spread float32, c Color) *node {
 // start afresh.
 func (e *node) NoShadow() *node { e.shadows = e.shadows[:0]; return e }
 
-// Opacity makes the element and its children translucent.
+// Opacity makes the element and its children translucent as one group,
+// as CSS's opacity does: what they paint is composited first and then
+// faded, so that children overlapping one another, or the element's
+// background under them, never show through each other. Where nothing
+// they paint overlaps, they paint faded each on its own, which looks the
+// same and costs nothing more; otherwise they render into a layer of the
+// GPU first, in which text is smoothed in grayscale, as in Cache's. A web
+// view or a material reading its backdrop inside the element shows
+// through no layer: there each thing fades on its own. Disabled's dimming
+// fades each thing on its own too.
 func (e *node) Opacity(o float32) *node {
+	linkGroups()
 	e.opacity, e.opacitySet = max(0, min(o, 1)), true
 	return e
 }
