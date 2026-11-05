@@ -1017,10 +1017,13 @@ func (rt *engine) repaintFrame(w, h, scale float32) {
 	rt.c.now = rt.frameTime()
 	rt.text.BeginFrame()
 	rt.repainting, rt.repaintAt = false, time.Time{}
+	// What the last frame painted outside Draw callbacks that asked to be
+	// painted again, as a content transition, moves only painted whole.
+	whole := rt.untracked
 	rt.repaintRate, rt.repaintFull, rt.untracked = 0, false, false
 	root := rt.c.root
 	rt.repose()
-	if !rt.repaintParts() {
+	if whole || !rt.repaintParts() {
 		rt.paint(root, w, h, scale)
 	}
 	for try := 0; try < 2 && rt.text.Full(); try++ {
