@@ -298,10 +298,7 @@ func (s *diffSide) buildBlocks(c *ui.Context, ed *editor) {
 	if ed.r.W <= 0 {
 		return
 	}
-	y0, y1 := ed.scrollY, ed.scrollY+float64(ed.viewH)
-	if ed.o.fitContent {
-		y0, y1 = 0, h.total()
-	}
+	y0, y1 := ed.buildRange()
 	first, last := h.lineAt(y0), h.lineAt(y1)
 	side := DiffNew
 	if s.old {

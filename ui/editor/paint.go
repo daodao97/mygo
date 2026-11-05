@@ -47,7 +47,7 @@ func (ed *editor) layout(w, h, scale float32) {
 	if ed.o.signs {
 		ed.textX += 2 * v.charWidth
 	}
-	ed.viewH = h
+	ed.viewH, ed.laidW = h, w
 	wrap := ed.o.wrap != ed.toggledWrap
 	ww := w - ed.textX - ed.trackWidth() - 4
 	if ed.o.wrapColumn > 0 {
@@ -119,6 +119,17 @@ func (ed *editor) paint(p *ui.Painter, r ui.Rect) {
 	var f frame
 	f.first, f.last = ed.visibleLines(y0, y1)
 	ed.shown = [2]int{f.first, f.last}
+	ed.shownY = [2]float64{min(max(y0, 0), float64(r.H)), min(max(y1, 0), float64(r.H))}
+	if ed.shownY[1] < ed.shownY[0] {
+		ed.shownY[0], ed.shownY[1] = ed.shownY[1], ed.shownY[0]
+	}
+	ed.pad, ed.paintedBuild = float64(max(clip.H, 400)), ed.builds
+	// Scrolled past what the blocks were built for, by its container in
+	// one turn of the wheel or a drag of its scroll bar: build them again
+	// around what shows, which no other change asks for.
+	if ed.o.fitContent && (ed.shownY[0] < ed.builtY[0] || ed.shownY[1] > ed.builtY[1]) {
+		ed.services.Invalidate()
+	}
 	if !v.advanceSyntax(f.last+1, 4*time.Millisecond) {
 		more = true
 	}
@@ -299,11 +310,44 @@ func (ed *editor) blocksInView(fn func(b *block, top float64)) {
 	if len(h.blocks) == 0 || h.n == 0 {
 		return
 	}
-	y0, y1 := ed.scrollY, ed.scrollY+float64(ed.viewH)
-	if ed.o.fitContent {
-		y0, y1 = 0, h.total()
-	}
+	y0, y1 := ed.buildRange()
 	ed.eachBlock(h.lineAt(y0), min(h.lineAt(y1), h.n-1), fn)
+}
+
+// fitWidth is the width an editor as high as its content lays out at as
+// it builds: the one it was laid out at last, else its box's, else a
+// guess until it shows.
+func (ed *editor) fitWidth() float32 {
+	switch {
+	case ed.laidW > 0:
+		return ed.laidW
+	case ed.r.W > 0:
+		return ed.r.W
+	}
+	return 600
+}
+
+// buildRange is the part of the content whose blocks build elements: the
+// view's, or for an editor as high as its content the part its build
+// chose (fitRange).
+func (ed *editor) buildRange() (y0, y1 float64) {
+	if !ed.o.fitContent {
+		return ed.scrollY, ed.scrollY + float64(ed.viewH)
+	}
+	return ed.builtY[0], ed.builtY[1]
+}
+
+// fitRange is the part of the content an editor as high as its content
+// builds the blocks of: what it showed as it painted last, a view's
+// height to either side for a scroll since, or all of it where it has not
+// painted since its last build, as out of view: else each frame would
+// build the blocks of every line, of a long file too. It counts builds,
+// not time, so that the first frame after a pause builds no more.
+func (ed *editor) fitRange() (y0, y1 float64) {
+	if ed.paintedBuild == 0 || ed.paintedBuild != ed.builds {
+		return 0, ed.view.heights.total()
+	}
+	return ed.shownY[0] - ed.pad, ed.shownY[1] + ed.pad
 }
 
 func (ed *editor) paintBlock(p *ui.Painter, r ui.Rect, b *block, top float64) {

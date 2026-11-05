@@ -154,24 +154,39 @@ type editor struct {
 	anchorOff  float64
 	reveal     reveal
 	r          ui.Rect // the element's box of the last frame, in the window
-	gutterW    float32
-	textX      float32
-	viewH      float32
+	// laidW is the width the editor was laid out at last, which an editor
+	// as high as its content lays out at again as it builds: the element's,
+	// or the half of a split diff's its row's Draw gives it while the
+	// element itself, out of view, does not paint.
+	laidW   float32
+	gutterW float32
+	textX   float32
+	viewH   float32
 	// builtViewH is the viewH the view was last built with, which a
 	// frame laying the editor out at another height builds it again for
 	// (ViewportHeight).
 	builtViewH float32
 	// hbarY is the top of the horizontal scroll bar, at the bottom of the
 	// part of the editor the window showed last frame.
-	hbarY      float32
-	shown      [2]int // the first and last lines the last frame showed
-	focused    bool   // the editor and its window have the keyboard
-	blinkStart time.Time
-	services   ui.Services
-	chord      *Binding
-	pointer    ui.Point
-	pointerIn  bool
-	hoverLine  int
+	hbarY float32
+	shown [2]int // the first and last lines the last frame showed
+	// shownY is the part of the content the last frame painted showed,
+	// and pad the height of the view it showed in, for an editor as high
+	// as its content; builtY is the part the last build built the blocks
+	// of (buildRange). builds counts its builds, and paintedBuild is the
+	// build its last paint followed.
+	shownY       [2]float64
+	pad          float64
+	builtY       [2]float64
+	builds       int
+	paintedBuild int
+	focused      bool // the editor and its window have the keyboard
+	blinkStart   time.Time
+	services     ui.Services
+	chord        *Binding
+	pointer      ui.Point
+	pointerIn    bool
+	hoverLine    int
 	// region is the part of the editor under the pointer, which its
 	// cursor and the scroll bars' highlight show.
 	region     region
