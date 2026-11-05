@@ -74,8 +74,8 @@ UI as they read other apps (see [Accessibility](accessibility.md)).
   and fonts.
 - [Styling and themes](styling.md): backgrounds, borders, shadows and
   gradients, and the theme that follows the desktop.
-- [Input](input.md): the pointer, the keyboard focus, shortcuts, input
-  methods, dropped files, and widgets that take every key.
+- [Input](input.md): the pointer, the keyboard focus, shortcuts, the keys
+  held, input methods, dropped files, and widgets that take every key.
 - [Drag and drop](drag-and-drop.md): values dragged within the window, and
   rows reordered by dragging.
 - [Pages and navigation](navigation.md): a router of pages with a history,

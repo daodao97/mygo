@@ -141,6 +141,9 @@ type surface struct {
 	// menuRan tells that the key down ran a menu item (menuShortcut): its
 	// character goes nowhere.
 	menuRan bool
+	// held are the keys the content got pressed and not yet released,
+	// whose releases a menu's loop or an input method may take (liftKeys).
+	held platform.HeldKeys
 
 	reconvert  *[2]int // the runes a reconversion replaces
 	dropTarget uintptr // IDropTarget
@@ -597,11 +600,20 @@ func (s *surface) send(ev platform.SurfaceEvent) bool {
 	if ev.Kind == platform.PointerDown || ev.Kind == platform.SurfaceBlur {
 		s.clientComposition.Reset()
 	}
+	if !s.held.Track(ev) {
+		return false
+	}
 	if s.w.closed {
 		return false
 	}
 	return s.w.h.SurfaceEvent(ev)
 }
+
+// liftKeys lets go of the keys held, as a menu's loop takes the keyboard,
+// and their releases with it: Alt and a letter opening a menu of the bar,
+// Alt and Space the window's menu, F10 or Alt the bar. The window keeps
+// the focus meanwhile, so no WM_KILLFOCUS lets go of them.
+func (s *surface) liftKeys() { s.held.LiftAll(mods(), s.send) }
 
 // modifierKey is whether the virtual key vk is Shift, Ctrl, Alt or a Windows key.
 func modifierKey(vk uintptr) bool {
@@ -862,6 +874,11 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		}
 		if k, physical, ok := keyAndPosition(wp, lp, true, modifiers); ok {
 			s.send(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: k, PhysicalKey: physical, Mods: modifiers})
+		} else if wp == vkProcessKey && lp&(1<<24) == 0 {
+			// The input method took the release of a key the content got
+			// pressed, as it began composing while the key was held: the
+			// key goes up all the same, by its position.
+			s.held.Lift(platform.KeyUnknown, platform.KeyForScancode(uint16(lp>>16&0xFF)), modifiers, s.send)
 		}
 		return 0, m == wmKeyUp
 	case wmSysChar:

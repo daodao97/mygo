@@ -177,6 +177,9 @@ type surface struct {
 		stride, width, height int
 	}
 
+	// held are the keys the content got pressed and not yet released,
+	// whose releases the input method may take (cbSurfaceKey).
+	held platform.HeldKeys
 	// pinch is the scale of the touchpad's pinch in progress at its last
 	// event, from 1 as it began.
 	pinch float64
@@ -768,6 +771,9 @@ func (s *surface) send(ev platform.SurfaceEvent) bool {
 	if ev.Kind == platform.PointerDown || ev.Kind == platform.SurfaceBlur {
 		s.clientComposition.Reset()
 	}
+	if !s.held.Track(ev) {
+		return false
+	}
 	if s.w.closed {
 		return false
 	}
@@ -1194,6 +1200,14 @@ func initSurfaceCallbacks() {
 				defer s.typed(event)
 			}
 		} else if s.textInput && gtkIMContextFilterKeypress(s.im, event) {
+			if kind == platform.KeyReleased {
+				// The input method took the release of a key the content
+				// got pressed, as the focus moved to a text input while
+				// the key was held: the key goes up all the same. One it
+				// hands back, as IBus and Fcitx do the keys they leave,
+				// comes again, which held keeps from the content.
+				s.held.Lift(keyvalKey(field[uint32](event, 28)), eventPhysicalKey(event), gdkMods(field[uint32](event, 24)), s.send)
+			}
 			return true
 		}
 		// A modifier key on its own: the state is the one before the

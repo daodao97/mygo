@@ -385,6 +385,43 @@ func (_handle *Context) Instant() bool {
 	return _ctx.Instant()
 }
 
+// KeyDown reports whether key is held down in the window, whichever
+// element has the focus and whether or not one took the key, without
+// taking it from them: a cheat sheet of shortcuts lights the keys held
+// while its search field has the focus. A frame that reads it is drawn
+// again as the keys held change. Keys count as shortcuts take them (a
+// chord of a key the layout types no US key for, as S on a Cyrillic
+// layout, by its position); the modifier keys are Modifiers'. A key whose
+// press ran a menu item's shortcut went to the menu, not the window. The
+// window lets go of every key as it loses the keyboard, whose releases go
+// elsewhere.
+func (_handle *Context) KeyDown(key Key) bool {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return false
+	}
+	return _ctx.KeyDown(key)
+}
+
+// KeysDown returns the keys held down in the window, as KeyDown tells
+// them, in the order they were pressed; nil while none is. A cheat sheet
+// fades the rows of shortcuts that use none of them:
+//
+//	held := c.KeysDown()
+//	for _, s := range app.shortcuts {
+//		row := shortcutRow(c, s)
+//		if len(held) > 0 && !s.usesAny(held) {
+//			row.Opacity(0.4)
+//		}
+//	}
+func (_handle *Context) KeysDown() []Key {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return nil
+	}
+	return _ctx.KeysDown()
+}
+
 // Locale returns the language the app shows (mygo.App.Locale), a BCP 47
 // tag such as "en" or "zh-Hans", for what the view says in it. Text is in
 // it unless an element says otherwise (Element.Lang). A frame follows its

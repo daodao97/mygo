@@ -79,6 +79,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.zoom(float32(ev.Scale), Modifiers(ev.Mods))
 	case platform.KeyPressed:
 		rt.modsChanged(Modifiers(ev.Mods))
+		rt.holdKey(Modifiers(ev.Mods), Key(ev.Key), Key(ev.PhysicalKey))
 		taken = rt.keyDownPhysical(Modifiers(ev.Mods), Key(ev.Key), Key(ev.PhysicalKey), ev.Repeat)
 	case platform.ModifiersChanged:
 		rt.modsChanged(Modifiers(ev.Mods))
@@ -89,6 +90,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 			key = physical
 		}
 		delete(rt.byPosition, physical)
+		rt.releaseKey(key, physical)
 		rt.observeFocus(InputEvent{Kind: InputKeyUp, Key: key, PhysicalKey: physical, Mods: Modifiers(ev.Mods)})
 		if h := rt.focusHandler(); h != nil {
 			rt.deliver(h, InputEvent{Kind: InputKeyUp, Key: key, PhysicalKey: physical, Mods: Modifiers(ev.Mods)})
@@ -109,6 +111,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		// Keys let go of elsewhere never come back up here.
 		rt.modsChanged(0)
 		clear(rt.byPosition)
+		rt.releaseKeys()
 		if p := rt.pressed; p != nil {
 			x, y := p.local(rt.pointerX, rt.pointerY)
 			rt.endPress(p.input, x, y)
@@ -1824,3 +1827,98 @@ func (rt *engine) modsChanged(mods Modifiers) {
 // or modifier event said: a view showing each row's shortcut while Cmd is
 // held reads it, and draws again as it changes.
 func (c *context) Modifiers() Modifiers { return c.rt.mods }
+
+// heldKey is a key held in the window: the key as shortcuts take it, and
+// its position, KeyUnknown where the platform tells none.
+type heldKey struct{ key, physical Key }
+
+// heldIndex returns the index in keysHeld of the key at physical, or of
+// key where either position is unknown, or -1.
+func (rt *engine) heldIndex(key, physical Key) int {
+	for i, h := range rt.keysHeld {
+		if h.physical != KeyUnknown && physical != KeyUnknown {
+			if h.physical == physical {
+				return i
+			}
+		} else if h.key == key {
+			return i
+		}
+	}
+	return -1
+}
+
+// holdKey notes a key pressed, whichever element has the focus or takes
+// it, as shortcuts take it: by position for a chord of a key the layout
+// types no US key for (keyDownPhysical).
+func (rt *engine) holdKey(mods Modifiers, key, physical Key) {
+	if platform.KeyByPosition(platform.Key(key), platform.Key(physical), platform.Modifiers(mods)) {
+		key = physical
+	}
+	if key == KeyUnknown || rt.heldIndex(key, physical) >= 0 {
+		return // a key no shortcut names, or held already: a repeat
+	}
+	rt.keysHeld = append(rt.keysHeld, heldKey{key, physical})
+	rt.keysChanged()
+}
+
+// releaseKey notes a key let go of.
+func (rt *engine) releaseKey(key, physical Key) {
+	if i := rt.heldIndex(key, physical); i >= 0 {
+		rt.keysHeld = slices.Delete(rt.keysHeld, i, i+1)
+		rt.keysChanged()
+	}
+}
+
+// releaseKeys lets go of every key held, as the window loses the
+// keyboard: their releases go to the window that has it.
+func (rt *engine) releaseKeys() {
+	if len(rt.keysHeld) > 0 {
+		rt.keysHeld = rt.keysHeld[:0]
+		rt.keysChanged()
+	}
+}
+
+// keysChanged draws a frame after the keys held changed, when the last
+// frame read them.
+func (rt *engine) keysChanged() {
+	if rt.keysRead {
+		rt.requestFrame()
+	}
+}
+
+// KeyDown reports whether key is held down in the window, whichever
+// element has the focus and whether or not one took the key, without
+// taking it from them: a cheat sheet of shortcuts lights the keys held
+// while its search field has the focus. A frame that reads it is drawn
+// again as the keys held change. Keys count as shortcuts take them (a
+// chord of a key the layout types no US key for, as S on a Cyrillic
+// layout, by its position); the modifier keys are Modifiers'. A key whose
+// press ran a menu item's shortcut went to the menu, not the window. The
+// window lets go of every key as it loses the keyboard, whose releases go
+// elsewhere.
+func (c *context) KeyDown(key Key) bool {
+	c.rt.keysRead = true
+	return key != KeyUnknown && c.rt.heldIndex(key, KeyUnknown) >= 0
+}
+
+// KeysDown returns the keys held down in the window, as KeyDown tells
+// them, in the order they were pressed; nil while none is. A cheat sheet
+// fades the rows of shortcuts that use none of them:
+//
+//	held := c.KeysDown()
+//	for _, s := range app.shortcuts {
+//		row := shortcutRow(c, s)
+//		if len(held) > 0 && !s.usesAny(held) {
+//			row.Opacity(0.4)
+//		}
+//	}
+func (c *context) KeysDown() []Key {
+	c.rt.keysRead = true
+	var keys []Key
+	for _, h := range c.rt.keysHeld {
+		if !slices.Contains(keys, h.key) {
+			keys = append(keys, h.key)
+		}
+	}
+	return keys
+}

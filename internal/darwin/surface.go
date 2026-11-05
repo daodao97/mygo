@@ -219,6 +219,34 @@ func (w *window) createSurface(content NSRect) {
 	send(s.view, "registerForDraggedTypes:", uintptr(nsArray(nsString("public.file-url"))))
 	w.surface = s
 	w.b.bySurface[s.view] = s
+	w.b.watchCommandKeyUps()
+}
+
+// commandKeyUps is the monitor of the app's events that gives a surface
+// the keys let go of while Command is held, which NSApplication's
+// sendEvent: keeps from the key window, as it takes them for key
+// equivalents: the content would hold them on (Context.KeyDown). It is
+// made once, with the first surface.
+var commandKeyUps id
+
+func (b *Backend) watchCommandKeyUps() {
+	if commandKeyUps != 0 {
+		return
+	}
+	const mask = 1 << 11 // NSEventMaskKeyUp
+	blk := newBlock(func(_ objc.Block, ev id) id {
+		mods := eventMods(ev)
+		if mods&platform.ModSuper == 0 {
+			return ev
+		}
+		s := b.bySurface[send(send(ev, "window"), "firstResponder")]
+		if s == nil {
+			return ev
+		}
+		s.send(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Mods: mods})
+		return 0
+	})
+	commandKeyUps = retain(send(class("NSEvent"), "addLocalMonitorForEventsMatchingMask:handler:", mask, uintptr(blk)))
 }
 
 func (s *surface) destroy() {

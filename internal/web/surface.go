@@ -45,6 +45,9 @@ type surface struct {
 	// copied tells that a key copying went to the content, which the copy
 	// event that follows does not repeat.
 	copied bool
+	// held are the keys the content got pressed and not yet released,
+	// whose key ups an input method or Command may keep (key).
+	held platform.HeldKeys
 
 	// downX and downY place the last press, where a context menu opens.
 	downX, downY float64
@@ -102,7 +105,12 @@ type listener struct {
 	fn     js.Func
 }
 
-func (s *surface) send(ev platform.SurfaceEvent) bool { return s.w.h.SurfaceEvent(ev) }
+func (s *surface) send(ev platform.SurfaceEvent) bool {
+	if !s.held.Track(ev) {
+		return false
+	}
+	return s.w.h.SurfaceEvent(ev)
+}
 
 func (s *surface) listen() {
 	c, in := s.canvas, s.input
@@ -506,19 +514,32 @@ func (s *surface) key(e js.Value, down bool) {
 	if down {
 		s.copied = false
 	}
+	name, code := e.Get("key").String(), e.Get("code").String()
+	mods := s.mods(e)
 	if e.Get("isComposing").Bool() || e.Get("keyCode").Int() == 229 {
+		if !down {
+			// The input method took the key up of a key the content got
+			// pressed, as it began composing while the key was held: the
+			// key goes up all the same.
+			s.held.Lift(keyOf(name, code), codeKey(code), mods, s.send)
+		}
 		return
 	}
-	name := e.Get("key").String()
-	mods := s.mods(e)
 	switch name {
 	case "Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph":
 		s.send(platform.SurfaceEvent{Kind: platform.ModifiersChanged, Mods: mods})
+		if name == "Meta" && !down && s.w.b.mac {
+			// A Mac's browsers send no key up for the keys let go of
+			// while Command is held: they go up with it.
+			s.held.LiftAll(mods, s.send)
+		}
 		return
 	case "Dead", "Process", "Unidentified", "Compose":
+		if !down {
+			s.held.Lift(keyOf(name, code), codeKey(code), mods, s.send)
+		}
 		return
 	}
-	code := e.Get("code").String()
 	k, physical := keyOf(name, code), codeKey(code)
 	primary := mods&platform.ModCtrl != 0
 	if down && primary && mods&(platform.ModAlt|platform.ModShift) == 0 {
