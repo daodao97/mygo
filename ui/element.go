@@ -239,6 +239,8 @@ type textStyle struct {
 	strokeColor Color
 	// tabSize puts tab stops every tabSize spaces (TabSize).
 	tabSize float32
+	// shadow is the shadow the glyphs cast (TextShadow).
+	shadow TextShadow
 }
 
 const (
@@ -262,9 +264,10 @@ const (
 	setCaret
 	setStroke
 	setTabSize
+	setShadow
 
 	// setAll has every bit of textStyle.set.
-	setAll = setTabSize<<1 - 1
+	setAll = setShadow<<1 - 1
 )
 
 // layoutStyle is what lays an element out, of what the view sets on it:
@@ -312,6 +315,7 @@ type layoutStyle struct {
 	single     bool
 	noWrap     bool
 	balance    bool
+	pretty     bool
 	keepSpaces bool
 	ellipsis   string
 }
@@ -1722,6 +1726,22 @@ func (e *node) TextStroke(width float32, c Color) *node {
 	return e
 }
 
+// TextShadow casts a shadow of the element's text, as CSS's text-shadow:
+// the shapes of its glyphs, offset by x and y DIPs, blurred by blur, in c,
+// under the glyphs and their strokes, as a chart's labels over its bars
+// or a caption over a photo take one to stand out. The text of the
+// elements inside takes it too, and theirs where they set one; a
+// transparent c casts none, where those around it cast one. A span's
+// Shadow sets one for its text. The shadow of color glyphs, as emoji, is
+// that of their pixels' shape; underlines and strikethroughs cast none.
+//
+//	ui.Text(c, "Golden hour").TextColor(ui.RGB(255, 255, 255)).TextShadow(0, 1, 4, ui.RGBA(0, 0, 0, 0.6))
+func (e *node) TextShadow(x, y, blur float32, c Color) *node {
+	e.ts.shadow = NewTextShadow(x, y, blur, c)
+	e.ts.set |= setShadow
+	return e
+}
+
 // TabSize puts the tab stops of the element's text every n spaces of its
 // font from the start of each line, as CSS's tab-size: a tab advances
 // to the next of them, as a code block indents with tabs of 2 or 4
@@ -1806,6 +1826,21 @@ func (e *node) NoWrap() *node { e.noWrap = true; return e }
 // within that width. Each paragraph is balanced on its own, once a
 // layout, as the text system keeps it.
 func (e *node) Balance() *node { e.balance = true; return e }
+
+// Pretty keeps the last line of each paragraph of the element's text from
+// holding a single word, as CSS's text-wrap: pretty does at least: the
+// line before gives it a word, and the lines before stay as they are. A
+// paragraph of body text then ends on more than one word, at no cost to
+// the rest of its lines; Balance balances them all instead.
+func (e *node) Pretty() *node {
+	linkPretty.Do(text.Shared().UsePretty)
+	e.pretty = true
+	return e
+}
+
+// linkPretty lets the text system wrap text pretty once an element or a
+// TextShape asks for it, so that apps that never do not link it.
+var linkPretty sync.Once
 
 // PreserveSpaces keeps the spaces the element's text ends its lines with,
 // and a text of only spaces, with their advance, as CSS's white-space:

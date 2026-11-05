@@ -937,6 +937,13 @@ func (p *Painter) textForeground(l *text.Layout, x, y float32, color Color, ts t
 	// Inline transforms do not change while the text paints; look for them once.
 	moves := p.inlineTransforms()
 	clips := !p.transform.Set && !moves
+	if paintShadows != nil && (ts.shadow.color.A > 0 || sp != nil && sp.shadows()) {
+		var spans spanPaint
+		if sp != nil {
+			spans = *sp
+		}
+		paintShadows(p, l, x, y, color, ts, spans, moves, clips)
+	}
 	if paintStrokes != nil && (ts.strokeWidth > 0 && ts.strokeColor.A > 0 || sp != nil && sp.strokes()) {
 		// The spans by value, as a call through a variable would move a
 		// pointer to the caller's to the heap.
@@ -1067,6 +1074,82 @@ func (p *Painter) textStrokes(l *text.Layout, x, y float32, color Color, ts text
 				U: gi.X, V: gi.Y, UW: gi.W, VH: gi.H,
 				Transform: p.inlineTransform(g.Cluster).Pixels(s),
 				Color:     stroke.scene(), Wide: p.glyphWide(stroke),
+			})
+		}
+	}
+	if end := int32(len(p.s.Glyphs)); end > start {
+		p.add(scene.Op{Kind: scene.OpGlyphs, Start: start, End: end})
+	}
+}
+
+// paintShadows is textShadows, and shadowGlyph the text system's
+// ShadowGlyph, once a TextShadow is made (NewTextShadow), so that apps
+// whose text casts none do not link them.
+var (
+	paintShadows func(p *Painter, l *text.Layout, x, y float32, color Color, ts textStyle, sp spanPaint, moves, clips bool)
+	shadowGlyph  func(s *text.System, f *text.Font, id uint32, scale, x float32, shade text.Shade, opaque bool, sigma float32) text.GlyphImage
+)
+
+func linkTextShadows() {
+	if paintShadows == nil {
+		paintShadows, shadowGlyph = (*Painter).textShadows, (*text.System).ShadowGlyph
+	}
+}
+
+// textShadows paints the shadows the glyphs of l, laid out from (x, y),
+// cast under them and their strokes (TextShadow): that of ts, or of spans
+// where it has any, as textForeground draws the glyphs. moves tells that
+// inline transforms move glyphs, and clips that glyphs whose shadow falls
+// outside the clip are left out.
+func (p *Painter) textShadows(l *text.Layout, x, y float32, color Color, ts textStyle, spans spanPaint, moves, clips bool) {
+	var sp *spanPaint
+	if spans.spans != nil {
+		sp = &spans
+	}
+	sys := p.rt.text
+	s := p.scale
+	shade := text.ShadeOf(color.R, color.G, color.B)
+	start := int32(len(p.s.Glyphs))
+	for li := range l.Lines {
+		line := &l.Lines[li]
+		for _, g := range line.Glyphs {
+			if g.Object {
+				continue
+			}
+			sh := ts.shadow
+			glyphShade := shade
+			if sp != nil {
+				k := sp.at(g.Cluster)
+				c := sp.color(k, color)
+				if c.A == 0 {
+					continue // faded out, or hidden, with its glyph
+				}
+				if c != color {
+					glyphShade = text.ShadeOf(c.R, c.G, c.B)
+				}
+				sh = sp.shadow(k, sh)
+			}
+			if sh.color.A == 0 {
+				continue
+			}
+			// The blur reaches three sigmas, of half the blur each.
+			reach := sh.blur * 1.5
+			gx, gy := x+g.X+sh.x, y+line.Y+sh.y
+			if clips && (gy-reach > p.clip.Y+p.clip.H || gy+line.Height+reach < p.clip.Y ||
+				gx-reach > p.clip.X+p.clip.W || gx+g.Advance+g.Size+reach < p.clip.X) {
+				continue
+			}
+			pen := gx * s
+			gi := shadowGlyph(sys, g.Font, g.ID, s, pen, glyphShade, p.opaque && !moves, sh.blur/2*s)
+			if !gi.OK {
+				continue
+			}
+			c := sh.color.Alpha(p.opacity)
+			p.s.Glyphs = append(p.s.Glyphs, scene.Glyph{
+				X: float32(math.Floor(float64(pen))) + gi.Left, Y: sys.Baseline((y+line.Baseline+sh.y)*s) + gi.Top, W: float32(gi.W), H: float32(gi.H),
+				U: gi.X, V: gi.Y, UW: gi.W, VH: gi.H,
+				Transform: p.inlineTransform(g.Cluster).Pixels(s),
+				Color:     c.scene(), Wide: p.glyphWide(c),
 			})
 		}
 	}

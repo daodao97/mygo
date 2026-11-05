@@ -209,7 +209,7 @@ func (e *node) textParams(width float32) text.Params {
 	if ts.fixedLine && ts.lineHeight > 0 {
 		style.LineHeight = ts.lineHeight / style.FontSize()
 	}
-	p := text.Params{Text: e.text, Width: width, MaxLines: e.maxLines, Style: style, Spans: e.textSpans(), NoWrap: e.noWrap, Balance: e.balance, KeepSpaces: e.keepSpaces, Ellipsis: e.ellipsis, RTL: e.rtl()}
+	p := text.Params{Text: e.text, Width: width, MaxLines: e.maxLines, Style: style, Spans: e.textSpans(), NoWrap: e.noWrap, Balance: e.balance, Pretty: e.pretty, KeepSpaces: e.keepSpaces, Ellipsis: e.ellipsis, RTL: e.rtl()}
 	switch {
 	case ts.align == Center:
 		p.Align = text.Center
@@ -296,6 +296,9 @@ func (e *node) resolvedText() textStyle {
 		}
 		if take&setTabSize != 0 {
 			out.tabSize = t.tabSize
+		}
+		if take&setShadow != 0 {
+			out.shadow = t.shadow
 		}
 		out.set |= take
 	}

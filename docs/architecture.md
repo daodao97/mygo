@@ -4337,6 +4337,16 @@ either.
     every renderer as any mask glyph, all of a text's before its glyphs
     (`paint-order: stroke fill`). `TextStroke` links it, so that apps that
     stroke no text do not.
+  - *Shadows.* `TextShadow` and `Span.Shadow` draw each glyph's shadow
+    as a mask of its own (`System.ShadowGlyph`), the glyph's coverage
+    (the alpha of a color glyph) blurred in Go by a separable Gaussian
+    of sigma half the blur, as CSS has it, padded by three sigmas and
+    capped at 64 pixels. Cached with the glyphs, under a key with the
+    sigma, and drawn as a mask glyph at the offset, all of a text's
+    before its strokes and glyphs. `NewTextShadow`, which
+    `Element.TextShadow` and a `Span`'s `Shadow` take, links it: a
+    `TextShadow` has no fields to set otherwise, so a shadow that paints
+    is one that linked it.
   - *Tabs.* `Style.TabSize` sets tab stops every that many spaces of the
     style's font, letter spacing included, from the start of each line,
     which each engine takes natively: Core Text's paragraph style (no
@@ -4458,8 +4468,13 @@ either.
   without an indent, a soft hyphen or a padded span is shaped once.
   `Params.Balance` (`Element.Balance`) breaks a paragraph that wraps at
   narrower widths, bisecting to a quarter of a DIP, for the narrowest
-  that keeps its count of lines (`System.balance`). The layout cache
-  keys it with the other params, so a build lays it out once.
+  that keeps its count of lines (`System.balance`); `Params.Pretty`
+  (`Element.Pretty`) breaks again only its last two lines, when the last
+  is a word alone, bisecting for the widest width at which the line
+  before gives it a word and they stay two, at a space
+  (`System.prettyLines`), which `Element.Pretty` and a `TextShape` that
+  asks for it link (`System.UsePretty`). The layout cache keys both with
+  the other params, so a build lays it out once.
   Text elements built inside a text (`ui/inline.go`) are inline: the
   paragraph takes their text when its `Children` returns, and their
   styles as spans over its own when it lays out. At commit, each gets the

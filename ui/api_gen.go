@@ -6597,6 +6597,21 @@ func (_handle Element) PressedPointer() (PointerType, float32, bool) {
 	return _node.PressedPointer()
 }
 
+// Pretty keeps the last line of each paragraph of the element's text from
+// holding a single word, as CSS's text-wrap: pretty does at least: the
+// line before gives it a word, and the lines before stay as they are. A
+// paragraph of body text then ends on more than one word, at no cost to
+// the rest of its lines; Balance balances them all instead.
+func (_handle Element) Pretty() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Pretty())
+}
+
 // RadialGradient fills the element with a radial gradient, its colors
 // spreading out from a point (CSS's radial-gradient()), as a glow:
 //
@@ -7484,6 +7499,26 @@ func (_handle Element) TextSelection() (int, int) {
 	_ctx := _node.c
 	_ = _ctx
 	return _node.TextSelection()
+}
+
+// TextShadow casts a shadow of the element's text, as CSS's text-shadow:
+// the shapes of its glyphs, offset by x and y DIPs, blurred by blur, in c,
+// under the glyphs and their strokes, as a chart's labels over its bars
+// or a caption over a photo take one to stand out. The text of the
+// elements inside takes it too, and theirs where they set one; a
+// transparent c casts none, where those around it cast one. A span's
+// Shadow sets one for its text. The shadow of color glyphs, as emoji, is
+// that of their pixels' shape; underlines and strikethroughs cast none.
+//
+//	ui.Text(c, "Golden hour").TextColor(ui.RGB(255, 255, 255)).TextShadow(0, 1, 4, ui.RGBA(0, 0, 0, 0.6))
+func (_handle Element) TextShadow(x float32, y float32, blur float32, c Color) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.TextShadow(x, y, blur, c))
 }
 
 // TextStroke strokes the outlines of the glyphs of text width DIPs wide
