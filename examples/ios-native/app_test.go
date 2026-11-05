@@ -128,11 +128,11 @@ func TestAppTabsAndRestoredHistory(t *testing.T) {
 	if restored.app.NavigationValue != "中文草稿 👋" {
 		t.Fatal("draft was not restored")
 	}
-	restored.app.Routers[0].Pop()
+	restored.app.Routers[0].Back()
 	if restored.app.Routers[0].Path() != "/home/navigation" {
 		t.Fatal("restored page cannot go back")
 	}
-	restored.app.Routers[0].Pop()
+	restored.app.Routers[0].Back()
 	if restored.app.Routers[0].Path() != "/home" || restored.app.Routers[0].CanGoBack() {
 		t.Fatal("restored root has incorrect history")
 	}
@@ -148,7 +148,7 @@ func TestAppLegacyHistoryCheckpoint(t *testing.T) {
 	if s.app.Routers[1].Path() != "/features/navigation/detail" || s.app.NavigationValue != "中文草稿 👋" {
 		t.Fatal("upgrade lost navigation or editor state")
 	}
-	s.app.Routers[1].Pop()
+	s.app.Routers[1].Back()
 	data, err := json.Marshal(s.app)
 	if err != nil {
 		t.Fatal(err)

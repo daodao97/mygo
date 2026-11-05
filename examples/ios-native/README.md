@@ -58,7 +58,7 @@ focus. The root page cannot go back. Vertical gestures still scroll.
 The demo keeps its three `*ui.Router` values directly in state registered with
 `mygo.PersistState`. Routers serialize and restore their own history and
 cursor, including forward entries; the demo has no separate history mirror,
-per-frame synchronization or path replay. Pages call `Push` and `Pop` directly,
+per-frame synchronization or path replay. Pages call `Push` and `Back` directly,
 and the overview deep link uses `Reset`. Existing location-array checkpoints
 are accepted by the router. Tab selection, tracked scroll positions and the
 navigation editor value are saved alongside the routers.

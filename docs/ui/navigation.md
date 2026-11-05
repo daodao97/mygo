@@ -53,7 +53,7 @@ build those pages, as `view` builds the window.
 ## Going to pages
 
 `Push` goes to a page, after the page shown, `Replace` shows one in its
-place, and `Pop`/`Back`, `Forward` and `Go` move through the history; paths
+place, and `Back`, `Forward` and `Go` move through the history; paths
 relative to the page shown resolve as links in a web page do, so
 `Push("?tab=info")` changes the query and `Push("edit")` goes to a sibling.
 A [link](link.md) to a path in a page goes there in its router, and
@@ -90,8 +90,8 @@ whose right click lists the pages to go back or forward to, by their
 titles. The keys go to the router holding the keyboard focus, else to the
 first of the window.
 
-`Pop()` is the same as `Back()` / `Go(-1)`: it returns to the previous
-entry and retains forward history. A new `Push` after returning replaces the
+`Back()`, as `Go(-1)`, returns to the previous entry and retains
+forward history. A new `Push` after returning replaces the
 forward branch. `Replace` changes only the current entry. `Reset("/home")`
 clears both directions and shows that location as the only entry. History
 ownership stays in the router; page code calls these methods directly.
@@ -179,7 +179,7 @@ mygo.App.WhenReady(func() {
 
 // Inside page handlers:
 state.Router.Push("/settings")
-state.Router.Pop()
+state.Router.Back()
 ```
 
 Automatic background checkpoints include navigation from methods, links,

@@ -3533,8 +3533,8 @@ either.
   only after completion. Cancellation, surface blur/resize and navigation
   overriding the gesture preserve or discard the preview without a stale
   Back. Reduce Motion removes settling animation. Root entries cannot go
-  back. All completed gestures navigate through `Pop`/`Go`, as Back buttons
-  and shortcuts do. `Pop` traverses backward while preserving forward entries;
+  back. All completed gestures navigate through `Back`/`Go`, as Back buttons
+  and shortcuts do. `Back` traverses backward while preserving forward entries;
   `Reset` clears both directions. Routers own and JSON-serialize complete
   history and its cursor, so a router can live directly in `PersistState`
   without application-side mirrors or path replay. Deserialization validates

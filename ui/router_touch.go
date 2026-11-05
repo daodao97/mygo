@@ -99,7 +99,7 @@ func (r *Router) advanceBack(c *context) {
 			r.back = nil
 			if g.complete {
 				r.suppressTransitionAt = c.rt.frame
-				r.Pop()
+				r.Back()
 			}
 			return
 		}

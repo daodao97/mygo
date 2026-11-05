@@ -7,7 +7,7 @@ building a native bridge alone is not runtime validation.
 
 | Requirement | Implementation | Verification still required |
 |---|---|---|
-| Navigation: interactive edge back, cancellation, system navigation containers | `ui.Router.InteractiveBack` defaults on for iOS through `NewRouter`; preview/settling, cancellation, shared layouts, Pop/Reset and full JSON history/cursor persistence implemented. Feature demo uses independent per-tab routers; system containers pending | Completion through two levels, cancellation retaining editor/keyboard, root guard, scroll/history cold restoration passed on iPhone 12 mini; system containers pending |
+| Navigation: interactive edge back, cancellation, system navigation containers | `ui.Router.InteractiveBack` defaults on for iOS through `NewRouter`; preview/settling, cancellation, shared layouts, Back/Reset and full JSON history/cursor persistence implemented. Feature demo uses independent per-tab routers; system containers pending | Completion through two levels, cancellation retaining editor/keyboard, root guard, scroll/history cold restoration passed on iPhone 12 mini; system containers pending |
 | Input: keyboard types, return actions, autofill, dismissal, selection and edit menus | Keyboard traits, native menus/selection, interactive dismissal and read-only copying implemented; IME snapshots reconcile marked ranges atomically and pin long-document context. Native history and hardware edit/focus commands now route through Go | Real Pinyin candidate commit/cancel passed on iPhone 12 mini; long-context/Unicode/history pass headless tests. Keyboard types, selection/handles and masked paste have earlier iPhone coverage; Command editing/undo and Tab/Shift-Tab/password trait reload passed with public XCTest native key events on iPhone; actual host Escape clears focus/keyboard on the iPad simulator. Physical keyboard, button Return/Space, autofill, alternate IMEs and older-iOS fallback remain pending |
 | System dialogs, action sheets, sharing, files/export, photo picker | Native alerts/actions and text/URL/file sharing plus file import, photo selection and existing-file export implemented; persistent external-directory access pending | Alert/actions/share-copy and cancellation passed on iPhone 12 mini; file-picker verification below. Photo single/multiple/copy integrity and cleanup pass with generated PNGs in the simulator; URL/file shares, iCloud/third-party providers pending; action/share anchoring verified on iPad simulator |
 | Permissions: query/request/settings | Camera/microphone/location/photos/notifications query and request plus settings entry implemented | Camera grant/deny/re-request, missing microphone purpose, settings round trip passed; other resources and restricted/limited states pending |
@@ -92,8 +92,8 @@ production inspector-free vet and `git diff --check` pass on the final source.
 Router-owned history verification (2026-10-07): routers now serialize and
 restore complete history and the cursor themselves, including forward
 entries. The demo holds `*ui.Router` values directly in its checkpoint, calls
-Push/Pop/Reset, and has no separate history mirror, per-frame synchronization
-or manual path replay. Gesture completion uses the same Pop/Go path. Legacy
+Push/Back/Reset, and has no separate history mirror, per-frame synchronization
+or manual path replay. Gesture completion uses the same Back/Go path. Legacy
 location-array checkpoints remain readable. Headless tests cover duplicate
 entries, query sharing, forward branches, history bounds, invalid/atomic
 restoration, initialized configuration/host retention, Reset, gesture

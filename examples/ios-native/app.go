@@ -118,7 +118,7 @@ func (s *demo) appView(c *ui.Context) {
 				b := ui.ButtonBase(c).Label("Back").Width(64).Height(44).Gap(3).TextColor(t.Accent)
 				b.Children(func() { ui.Icon(c, backIcon).FontSize(18); ui.Text(c, "Back").FontSize(14) })
 				if b.Clicked() {
-					s.app.Routers[s.app.Tab].Pop()
+					s.app.Routers[s.app.Tab].Back()
 				}
 			} else {
 				ui.Box(c).Width(64).Height(44)
@@ -313,7 +313,7 @@ func (s *demo) navigationDetail(c *ui.Context, p string) {
 		ui.TextArea(c, &s.app.NavigationValue).Scrollbars(false).Label("State input").InputOptions(ui.InputOptions{Return: ui.ReturnDefault}).MinHeight(150).FillWidth()
 		if ui.PrimaryButton(c, "Save State").FillWidth().Height(48).Clicked() {
 			s.app.SavedValue = s.app.NavigationValue
-			s.app.Routers[s.app.Tab].Pop()
+			s.app.Routers[s.app.Tab].Back()
 			if err := mygo.App.SaveState(); err != nil {
 				s.status = err.Error()
 			} else {

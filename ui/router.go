@@ -282,10 +282,6 @@ func (r *Router) Replace(target string) {
 // Back shows the page before, if any.
 func (r *Router) Back() { r.Go(-1) }
 
-// Pop returns to the previous entry, if any, as Back does. It keeps the
-// entry left in forward history; a subsequent Push replaces that branch.
-func (r *Router) Pop() { r.Back() }
-
 // Reset shows target as the only entry, clearing back and forward history.
 // Relative targets resolve against the current location as Push does.
 func (r *Router) Reset(target string) {

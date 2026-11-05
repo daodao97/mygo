@@ -16,7 +16,7 @@ func TestRouterJSONRoundTrip(t *testing.T) {
 	r.Push("/中文?text=%F0%9F%91%8B")
 	r.Push("/edit")
 	r.Replace("/中文?text=%F0%9F%91%8B") // duplicate adjacent entries must survive
-	r.Pop()
+	r.Back()
 	data, err := json.Marshal(r)
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestRouterJSONRoundTrip(t *testing.T) {
 	if restored.at != 2 {
 		t.Fatal("duplicate entry was dropped")
 	}
-	restored.Pop()
+	restored.Back()
 	restored.Push("/other")
 	if restored.CanGoForward() || r.entries[2].loc != "/%E4%B8%AD%E6%96%87?text=%F0%9F%91%8B" {
 		t.Fatal("push retained a forward branch or restoration aliased its source")
@@ -57,7 +57,7 @@ func TestRouterJSONQuerySharingAndLegacy(t *testing.T) {
 	for i := range 120 {
 		r.Push(fmt.Sprintf("/page/%d", i))
 	}
-	r.Pop()
+	r.Back()
 	data, _ := json.Marshal(&r)
 	var bounded Router
 	if err := json.Unmarshal(data, &bounded); err != nil || len(bounded.entries) != maxHistory || bounded.at != maxHistory-2 || !bounded.CanGoForward() {
@@ -201,7 +201,7 @@ func TestRestoredRouterNavigationBeforeFirstView(t *testing.T) {
 			}
 			tt.Type(" edited")
 			want := latest
-			r.Pop()
+			r.Back()
 			tt.Frame()
 			if latest != want {
 				t.Fatal("navigation before the first restored frame lost a shared layout")

@@ -655,7 +655,7 @@ mygo.App.OnStateSaveError(func(err error) { log.Printf("save failed: %v", err) }
 ```
 
 A `*ui.Router` owns and serializes its complete history and current index,
-including forward entries. Page code calls `Push`, `Replace`, `Pop`/`Back`,
+including forward entries. Page code calls `Push`, `Replace`, `Back`,
 `Forward`, `Go` or `Reset`; it does not copy or replay history. See
 [pages and navigation](ui/navigation.md). Editor and scroll values remain
 separate application state.
