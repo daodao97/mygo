@@ -251,6 +251,28 @@ func (it *MenuItem) Radio(on bool) *MenuItem {
 	return it
 }
 
+// MenuIcon is the image of a menu item, as mygo.NewMenuIcon makes it.
+type MenuIcon interface {
+	PlatformMenuIcon() *platform.MenuIcon
+}
+
+// Icon shows an image beside the item's label, one mygo.NewMenuIcon made:
+// make each once, not as the menu builds, and give it to the items that
+// show it. A template image takes the color of the item's text. nil shows
+// none. The system's menus show it as package mygo's items do (see
+// NewMenuIcon), and browsers show none; PopoverMenu draws it on every
+// platform.
+//
+//	if m.Item("Archive").Icon(archiveIcon).Chosen() {
+//		app.archive(msg)
+//	}
+func (it *MenuItem) Icon(icon MenuIcon) *MenuItem {
+	if it.p != nil && icon != nil {
+		it.p.Icon = icon.PlatformMenuIcon()
+	}
+	return it
+}
+
 // Shortcut shows a key with modifiers by the item, as the shortcut that
 // does the same; the view handles the key itself, as with
 // Context.Shortcut.

@@ -42,6 +42,10 @@ notes it, for the change once the loop is done (see
   item toggles, and `Radio(on)` shows it as one of a group choosing one
   setting, marked as the one chosen when on is true.
 - `Disabled(d)` grays it out: it cannot be chosen.
+- `Icon(icon)` shows an image beside its label, made once with
+  [`mygo.NewMenuIcon`](../menus.md#icons). The system's menus show it as
+  they show the icons of `mygo.MenuItem`, browsers show none, and
+  `PopoverMenu` draws it on every platform.
 - `Shortcut(mods, key)` shows a key by it, as the shortcut that does the
   same. It only shows the key: handle it with `Shortcut` on the context or
   an element.

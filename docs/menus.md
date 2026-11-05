@@ -157,6 +157,9 @@ image included, and frees what it made of it once neither the app nor a
 menu holds the icon; the bitmaps of Windows 10's menus go with their
 menus. Apps that make no icon don't link the code that draws them.
 
+The context menus of native UI take the same icons, with
+[`Icon`](ui/context-menu.md#items) on their items.
+
 - **macOS** shows the icon (an `NSImage`) after the column of checks, on
   every menu, the menu bar's own items included, which show it in the
   menu bar.

@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"bytes"
+	"image"
 	"runtime"
 	"slices"
 	"strings"
@@ -731,6 +733,62 @@ type drawnMenu struct {
 	built uint64
 	pass  int
 	menu  menuShown
+	// icons are the bitmaps of its items' icons, by image and tint, as the
+	// menu builds in every frame it shows.
+	icons map[drawnIcon]*Bitmap
+}
+
+// drawnIcon is an icon of a drawn menu in a color: the color of the text
+// for a template image, whose items change it as they are highlighted.
+type drawnIcon struct {
+	icon *platform.MenuIcon
+	tint Color
+}
+
+// icon returns the bitmap of an item's icon in the color of its text, or
+// nil for an image that cannot be decoded.
+func (d *drawnMenu) icon(ic *platform.MenuIcon, text Color) *Bitmap {
+	k := drawnIcon{icon: ic}
+	if ic.Template {
+		k.tint = text
+	}
+	b, ok := d.icons[k]
+	if !ok {
+		b = menuIconBitmap(ic, text)
+		if d.icons == nil {
+			d.icons = map[drawnIcon]*Bitmap{}
+		}
+		d.icons[k] = b
+	}
+	return b
+}
+
+// menuIconBitmap decodes an icon: a template image in the color tint, with
+// the image's alpha, and others in their own colors.
+func menuIconBitmap(ic *platform.MenuIcon, tint Color) *Bitmap {
+	if !ic.Template {
+		b, err := DecodeBitmap(ic.PNG)
+		if err != nil {
+			return nil
+		}
+		return b
+	}
+	img, _, err := image.Decode(bytes.NewReader(ic.PNG))
+	if err != nil {
+		return nil
+	}
+	r := img.Bounds()
+	out := image.NewNRGBA(r)
+	i := 0
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			_, _, _, a := img.At(x, y).RGBA()
+			out.Pix[i], out.Pix[i+1], out.Pix[i+2] = tint.R, tint.G, tint.B
+			out.Pix[i+3] = uint8((a >> 8) * uint32(tint.A) / 255)
+			i += 4
+		}
+	}
+	return NewBitmap(out)
 }
 
 // openDrawnMenu opens the drawn menu of e, at the point asked for.
@@ -778,6 +836,7 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 		marks := slices.ContainsFunc(list, func(it *platform.MenuItem) bool {
 			return it.Type == platform.MenuItemCheckbox || it.Type == platform.MenuItemRadio
 		})
+		icons := slices.ContainsFunc(list, func(it *platform.MenuItem) bool { return it.Icon != nil })
 		for _, it := range list {
 			if !it.Visible {
 				continue
@@ -786,7 +845,7 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 				coreBox(c).Height(1).Margin(t.Space(1), t.Space(2)).Background(t.Border).Shrink(0)
 				continue
 			}
-			row := m.drawnItem(it, marks)
+			row := m.drawnItem(d, it, marks, icons)
 			if sub := it.Submenu; it.Type == platform.MenuItemSubmenu && sub != nil {
 				m.Submenu(row, func(panel *node) {
 					style(panel)
@@ -826,9 +885,10 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 	}
 }
 
-// drawnItem builds item it of the menu being drawn, with room for the
-// marks of check box and radio items when marks is set.
-func (m *menuParts) drawnItem(it *platform.MenuItem, marks bool) *node {
+// drawnItem builds item it of the menu d being drawn, with room for the
+// marks of check box and radio items when marks is set, and for the icons
+// of the items around it when icons is, so that their labels line up.
+func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, marks, icons bool) *node {
 	c := m.c
 	t := c.theme
 	sub := it.Type == platform.MenuItemSubmenu && it.Submenu != nil
@@ -873,6 +933,20 @@ func (m *menuParts) drawnItem(it *platform.MenuItem, marks bool) *node {
 						p.StrokePath(checkPath(r), 1.5, color)
 					}
 				})
+			}
+		}
+		if icons {
+			var b *Bitmap
+			if it.Icon != nil {
+				b = d.icon(it.Icon, color)
+			}
+			if b == nil {
+				coreBox(c).Size(platform.MenuIconSize, platform.MenuIconSize).Shrink(0)
+			} else {
+				img := coreImage(c, b).Size(platform.MenuIconSize, platform.MenuIconSize).Fit(Contain).Shrink(0)
+				if !it.Enabled && !it.Icon.Template {
+					img.Opacity(0.4)
+				}
 			}
 		}
 		coreText(c, it.Label).SingleLine().Grow(1)
