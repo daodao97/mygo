@@ -170,6 +170,11 @@ type ListState struct {
 	// or -1 for the part of the header past the columns, as AppKit's
 	// clickedColumn. A menu built without items does not open.
 	HeaderMenu func(m *Menu, col int)
+	// HeaderCell, when set, is called as a Table builds each column's
+	// header cell, with the cell: what it builds goes in the cell after the
+	// title and the sort arrow, as a mark, and it may give the cell a
+	// tooltip or a card of its own. col is as HeaderMenu's.
+	HeaderCell func(cell Element, col int)
 	// CellMenu, when set, gives a Table's cells a context menu, built as
 	// ContextMenu's is, over the whole cell with its padding: row and col
 	// are as the cell builder receives them. A menu built without items

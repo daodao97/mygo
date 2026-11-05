@@ -225,7 +225,12 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 			case End:
 				box.Justify(End)
 			}
-			box.Children(func() { fill(j) })
+			box.Children(func() {
+				fill(j)
+				if role == RoleColumnHeader && s.HeaderCell != nil {
+					s.HeaderCell(wrapElement(box), j)
+				}
+			})
 			if menu := s.CellMenu; menu != nil && role == RoleCell && c.row != nil {
 				row := c.row.i
 				box.ContextMenu(func(m *Menu) { menu(m, row, j) })

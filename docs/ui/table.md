@@ -157,6 +157,19 @@ app.files.HeaderMenu = func(m *ui.Menu, col int) {
 }
 ```
 
+## Header cells
+
+`ListState.HeaderCell` is called as the table builds each column's header
+cell, with the cell and the column's index, as `HeaderMenu`'s: what it
+builds goes in the cell after the title and the sort arrow, and it may
+give the cell a tooltip or a card of its own:
+
+```go
+app.files.HeaderCell = func(cell ui.Element, col int) {
+	cell.Tooltip(app.columnTypes[col])
+}
+```
+
 ## Cell menu
 
 `ListState.CellMenu` gives the cells a context menu over the whole cell,
