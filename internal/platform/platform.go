@@ -157,6 +157,14 @@ type StyleBackend interface {
 	SetStyleSheet(css string) error
 }
 
+// WindowButtonsBackend reports the window buttons the desktop puts at the
+// start and at the end of title bars (Linux): "minimize", "maximize" and
+// "close", in their order, none where the desktop wants none. Main thread
+// only.
+type WindowButtonsBackend interface {
+	WindowButtons() (start, end []string)
+}
+
 // AppOptions configures Backend.Init.
 type AppOptions struct {
 	Name string

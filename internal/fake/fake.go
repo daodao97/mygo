@@ -155,6 +155,9 @@ type Backend struct {
 	// before. Main thread only.
 	StyleSheet      string
 	StyleSheetError error
+	// StartButtons and EndButtons are the desktop's window buttons that
+	// WindowButtons reports, as Linux's button layout gives them.
+	StartButtons, EndButtons []string
 	// notifications are the notifications shown and not yet removed, by
 	// id.
 	notifications map[string]*platform.Notification
@@ -1261,6 +1264,10 @@ func (screen) Displays() []platform.Display {
 	}}
 }
 func (screen) CursorPoint() platform.Point { return platform.Point{X: 10, Y: 20} }
+
+// WindowButtons returns StartButtons and EndButtons, as Linux's desktop
+// layout gives them (platform.WindowButtonsBackend).
+func (b *Backend) WindowButtons() (start, end []string) { return b.StartButtons, b.EndButtons }
 
 // SetStyleSheet loads css in place of the sheet before, as Linux's GTK
 // does (platform.StyleBackend).

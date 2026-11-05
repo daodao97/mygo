@@ -1779,6 +1779,8 @@ func initWindowCallbacks() {
 				w.layoutControls()
 			}
 		}
+		// Theme.WindowButtons too.
+		theBackend.h.ThemeChanged()
 	})
 	cbButtonPress = purego.NewCallback(func(widget, event, data ptr) bool {
 		w := b().window(data)
