@@ -214,9 +214,8 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 	}
 	t.rmu.Lock()
 	defer t.rmu.Unlock()
-	// Keep active updates hidden even if they take longer than a second.
-	// Recover only when the program stops sending data without committing.
-	if t.held && time.Since(t.heldSince) >= syncOutputTimeout {
+	// A synchronized update shows when it ends, or after a second.
+	if t.held && time.Since(t.heldSince) > syncOutputTimeout {
 		event = &RenderEvent{Kind: "sync_timeout", Duration: time.Since(t.holdStarted)}
 		t.term.SetMode(vt.ModeSyncOutput, false)
 		t.held = false

@@ -483,9 +483,9 @@ cell background. `AdaptiveColors` optionally remaps neutral panels cached by a
 program across appearance changes; `SetAdaptiveColors` changes it live. These
 controls are disabled by default and do not alter emulator text or copying.
 
-Synchronized output holds the prior frame until the program commits. A watchdog
-releases it after one second without output, even with a hidden cursor. Active
-long redraws continue holding. `OnRenderEvent` reports `slow_sync` (updates of
+Synchronized output holds the prior frame until the program commits, or a
+second after the update started; the view wakes for it even with a hidden
+cursor and no further output. `OnRenderEvent` reports `slow_sync` (updates of
 at least 250 ms) and `sync_timeout`, with a duration and no terminal contents.
 It runs on the reader or UI thread after emulator/render locks are released.
 

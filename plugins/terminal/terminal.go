@@ -936,12 +936,6 @@ func (t *Terminal) write(p []byte) {
 			t.prompt.feed(p)
 		}
 		t.term.Write(p)
-
-		if t.held && len(p) != 0 {
-			// A slow but active redraw is not a stalled program. Only release
-			// an unfinished update after incoming data has stopped.
-			t.heldSince = time.Now()
-		}
 		ev, t.events = t.events, events{}
 		if ev.title {
 			title = t.term.Title()
