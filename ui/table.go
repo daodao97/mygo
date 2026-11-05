@@ -211,6 +211,9 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 			// Keyed by its column, a cell keeps its state as the columns
 			// move: a header being dragged keeps the press.
 			box := coreRow(c).Key(col.id()).Padding(t.Space(1.5), t.Space(2.5)).AlignItems(Center).Shrink(0).Clip().Role(role)
+			if role == RoleCell && col.RowHeader {
+				box.Role(RoleRowHeader) // naming its row
+			}
 			if w, ok := layout.width(col); ok {
 				box.Width(w)
 			} else {

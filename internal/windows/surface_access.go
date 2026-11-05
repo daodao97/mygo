@@ -135,6 +135,7 @@ const (
 	uiaAriaRoleProperty         = 30101
 	uiaAriaPropertiesProperty   = 30102
 	uiaLandmarkTypeProperty     = 30157
+	uiaLocalizedLandmarkType    = 30158
 
 	uiaFocusChangedEvent                = 20005
 	uiaElementAddedToSelectionEvent     = 20010
@@ -144,8 +145,10 @@ const (
 	uiaTextSelectionChangedEvent        = 20014
 	uiaTextChangedEvent                 = 20015
 
-	// announcerID identifies the live region holding announcements.
+	// announcerID identifies the live region holding announcements, and
+	// alerterID the assertive one holding alerts.
 	announcerID = ^uint64(0)
+	alerterID   = ^uint64(1)
 
 	vtEmpty   = 0
 	vtI4      = 3
@@ -173,6 +176,18 @@ var uiaControlTypes = map[platform.AccessRole]int32{
 	platform.RoleMeter: 50012, platform.RoleStepper: 50016, platform.RoleColorWell: 50000, platform.RoleAlertDialog: 50033,
 	platform.RoleMenu: 50009, platform.RoleMenuBar: 50010, platform.RoleMenuItem: 50011, platform.RoleMenuItemCheckBox: 50011,
 	platform.RoleMenuItemRadio: 50011, platform.RoleHeading: 50020, platform.RoleNavigation: 50026,
+	platform.RoleRegion: 50026, platform.RoleLog: 50026, platform.RoleTimer: 50026, platform.RoleAlert: 50026,
+	platform.RoleSeparator: 50038, platform.RoleRowHeader: 50035, platform.RoleSearch: 50026,
+	platform.RoleArticle: 50026,
+}
+
+// ariaRoles are the ARIA roles of nodes whose control type does not say
+// all, as landmarks' and live regions', in AriaRole, with what
+// LocalizedControlType says of them.
+var ariaRoles = map[platform.AccessRole]string{
+	platform.RoleNavigation: "navigation", platform.RoleRegion: "region", platform.RoleLog: "log",
+	platform.RoleTimer: "timer", platform.RoleAlert: "alert", platform.RoleSeparator: "separator",
+	platform.RoleRowHeader: "rowheader", platform.RoleSearch: "search", platform.RoleArticle: "article",
 }
 
 // variant is VARIANT, with the value of the types used here.
@@ -219,8 +234,9 @@ type uiaTree struct {
 	order []*uiaElement // in the order of the content's tree
 	focus uint64
 	quiet bool // building the tree a client asked for
-	// announced is the text of the live region of announcements.
-	announced string
+	// announced is the text of the live region of announcements, and
+	// alerted that of the alerts'.
+	announced, alerted string
 
 	// What update reuses from frame to frame, as the content describes
 	// every frame once a client asked: the map and the order of the last
@@ -459,13 +475,24 @@ func (t *uiaTree) update(tree *platform.AccessTree) {
 	// notification events (UiaRaiseNotificationEvent), which a provider of
 	// another process raises, reached no client in tests, unlike its other
 	// events.
+	// Alerts go into an assertive one beside it, which interrupts.
 	if len(tree.Announcements) > 0 {
 		t.announced = strings.Join(tree.Announcements, " ")
 	}
-	if t.announced != "" {
-		announcer := platform.AccessNode{ID: announcerID, Parent: -1, Role: platform.RoleText, Label: t.announced, Bounds: platform.RectF{W: 1, H: 1}}
-		t.withAnnouncer = append(append(t.withAnnouncer[:0], tree.Nodes...), announcer)
-		t.announcerTree = platform.AccessTree{Nodes: t.withAnnouncer, Focus: tree.Focus, Announcements: tree.Announcements}
+	if len(tree.Alerts) > 0 {
+		t.alerted = strings.Join(tree.Alerts, " ")
+	}
+	if t.announced != "" || t.alerted != "" {
+		t.withAnnouncer = append(t.withAnnouncer[:0], tree.Nodes...)
+		for _, a := range []struct {
+			id   uint64
+			text string
+		}{{announcerID, t.announced}, {alerterID, t.alerted}} {
+			if a.text != "" {
+				t.withAnnouncer = append(t.withAnnouncer, platform.AccessNode{ID: a.id, Parent: -1, Role: platform.RoleText, Label: a.text, Bounds: platform.RectF{W: 1, H: 1}})
+			}
+		}
+		t.announcerTree = platform.AccessTree{Nodes: t.withAnnouncer, Focus: tree.Focus, Announcements: tree.Announcements, Alerts: tree.Alerts}
 		tree = &t.announcerTree
 	}
 	notify := !t.quiet && listening()
@@ -567,6 +594,9 @@ func (t *uiaTree) update(tree *platform.AccessTree) {
 		}
 	}
 	if e := t.nodes[announcerID]; e != nil && notify && len(tree.Announcements) > 0 {
+		procUiaRaiseAutomationEvent.Call(e.ptr(ifaceSimple), uiaLiveRegionChangedEvent)
+	}
+	if e := t.nodes[alerterID]; e != nil && notify && len(tree.Alerts) > 0 {
 		procUiaRaiseAutomationEvent.Call(e.ptr(ifaceSimple), uiaLiveRegionChangedEvent)
 	}
 	// The elements hold copies of the nodes: let go of the content's
@@ -1136,6 +1166,10 @@ func (e *uiaElement) property(id int, v *variant) {
 			str("popup")
 		case platform.RoleHeading:
 			str("heading")
+		case platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleArticle:
+			str(ariaRoles[n.Role])
+		case platform.RoleRowHeader:
+			str("row header")
 		}
 	case uiaNameProperty:
 		str(n.Label)
@@ -1178,8 +1212,8 @@ func (e *uiaElement) property(id int, v *variant) {
 	case uiaIsOffscreenProperty:
 		*v = boolVariant(n.States&platform.AccessOffscreen != 0)
 	case uiaOrientationProperty:
-		// OrientationType_Horizontal or Vertical, of a slider.
-		if n.Role == platform.RoleSlider {
+		// OrientationType_Horizontal or Vertical, of a slider or a rule.
+		if n.Role == platform.RoleSlider || n.Role == platform.RoleSeparator {
 			o := uint64(1)
 			if n.States&platform.AccessVertical != 0 {
 				o = 2
@@ -1204,18 +1238,30 @@ func (e *uiaElement) property(id int, v *variant) {
 			*v = variant{VT: vtI4, Val: uint64(n.SetSize)}
 		}
 	case uiaLiveSettingProperty:
-		// Statuses, as toasts, and announcements are polite live regions.
-		if n.Role == platform.RoleStatus || n.ID == announcerID {
+		// Statuses, as toasts, logs and announcements are polite live
+		// regions, alerts and the alerts' region assertive ones.
+		live, _ := n.Role.Live()
+		switch {
+		case live == "assertive" || n.ID == alerterID:
+			*v = variant{VT: vtI4, Val: 2} // Assertive
+		case live == "polite" || n.ID == announcerID:
 			*v = variant{VT: vtI4, Val: 1} // Polite
 		}
 	case uiaLandmarkTypeProperty:
-		if n.Role == platform.RoleNavigation {
-			*v = variant{VT: vtI4, Val: 80004} // UIA_NavigationLandmarkTypeId
+		switch n.Role {
+		case platform.RoleNavigation:
+			*v = variant{VT: vtI4, Val: 80003} // UIA_NavigationLandmarkTypeId
+		case platform.RoleSearch:
+			*v = variant{VT: vtI4, Val: 80004} // UIA_SearchLandmarkTypeId
+		case platform.RoleRegion:
+			*v = variant{VT: vtI4, Val: 80000} // UIA_CustomLandmarkTypeId
+		}
+	case uiaLocalizedLandmarkType:
+		if n.Role == platform.RoleRegion {
+			str("region")
 		}
 	case uiaAriaRoleProperty:
-		if n.Role == platform.RoleNavigation {
-			str("navigation")
-		}
+		str(ariaRoles[n.Role])
 	case uiaAriaPropertiesProperty:
 		str(ariaProperties(n))
 	}

@@ -11,6 +11,10 @@ type AccessTree struct {
 	// after what it is reading, as the title of a page shown or a toast:
 	// news the focus does not bring.
 	Announcements []string
+	// Alerts are texts to read out at once, interrupting what is being
+	// read: what an alert (RoleAlert) shows as it appears or changes, as
+	// ARIA's assertive live regions.
+	Alerts []string
 }
 
 // AccessNode is an element of an AccessTree.
@@ -154,6 +158,30 @@ const (
 	// RoleHeading is the title of a section, Level its rank: 1 for the
 	// highest.
 	RoleHeading
+	// RoleRegion is a landmark with a name, as a panel screen readers list
+	// among the window's landmarks: ARIA's region.
+	RoleRegion
+	// RoleLog, RoleTimer and RoleAlert are ARIA's live regions of those
+	// roles: content added to a log is read out as it is added
+	// (AccessTree.Announcements), a timer's changes only when the user
+	// goes to it, and an alert's content at once, as it appears or
+	// changes (AccessTree.Alerts).
+	RoleLog
+	RoleTimer
+	RoleAlert
+	// RoleSeparator divides groups of content or controls, as a rule
+	// between a toolbar's groups of buttons, AccessVertical when it runs
+	// up and down.
+	RoleSeparator
+	// RoleRowHeader is the cell of a table's row naming the row, as
+	// RoleColumnHeader names a column.
+	RoleRowHeader
+	// RoleSearch is a landmark holding what searches the app or a
+	// document, as a search field and its button: ARIA's search.
+	RoleSearch
+	// RoleArticle is a self-contained piece of content, as a post of a
+	// feed or a comment of a thread: ARIA's article, no landmark.
+	RoleArticle
 	// RoleNavigation is a landmark holding links that move around the app
 	// or a document, as a breadcrumb trail or a navigation bar: ARIA's
 	// navigation.
@@ -164,6 +192,23 @@ const (
 // Max and Now).
 func (r AccessRole) Ranged() bool {
 	return r == RoleSlider || r == RoleProgress || r == RoleMeter || r == RoleStepper
+}
+
+// Live returns how content changing in a live region of a role is read,
+// as ARIA's aria-live, "polite" or "assertive", and whether the region is
+// read whole (aria-atomic): "" for roles that are no live region.
+// Statuses and logs are read after what is being read, an alert at once;
+// a timer is read only when the user goes to it.
+func (r AccessRole) Live() (live string, atomic bool) {
+	switch r {
+	case RoleStatus:
+		return "polite", true
+	case RoleLog:
+		return "polite", false
+	case RoleAlert:
+		return "assertive", true
+	}
+	return "", false
 }
 
 // AccessStates are the states of an element of an AccessTree.

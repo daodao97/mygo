@@ -310,4 +310,79 @@ if ui.Button(c, "Search").Clicked() {
 MyGo describes frames only once assistive technology asked, so apps pay
 nothing for it otherwise.
 
+## Landmarks, live regions and rules
+
+These roles are ARIA's of the same names, which reach each platform as
+WAI-ARIA's Core Accessibility API Mappings say:
+
+| Role | What it is | macOS | Linux (ATK) | Windows (UI Automation) |
+|---|---|---|---|---|
+| `ui.RoleRegion` | a landmark with a `Label`, as an activity feed or a panel; without one, a group | `AXGroup`, `AXLandmarkRegion` | landmark, `xml-roles:region` | Group, the custom landmark type "region" |
+| `ui.RoleSearch` | a landmark holding what searches the app or a document, as the search field and its button at the top of a window | `AXGroup`, `AXLandmarkSearch` | landmark, `xml-roles:search` | Group, the search landmark type |
+| `ui.RoleArticle` | a self-contained piece of content, as a post of a feed or a comment of a thread, named by its `Label`; no landmark | `AXGroup`, `AXDocumentArticle` | article | Group "article" |
+| `ui.RoleLog` | a live region of messages added in order, as a chat's transcript | `AXGroup`, `AXApplicationLog` | log | Group "log", `LiveSetting` polite |
+| `ui.RoleTimer` | a count of time, as a countdown, read only when the user goes to it | `AXGroup`, `AXApplicationTimer` | timer | Group "timer" |
+| `ui.RoleAlert` | a live region of important news, as a field's error, read at once | `AXGroup`, `AXApplicationAlert` | notification | Group "alert", `LiveSetting` assertive |
+| `ui.RoleSeparator` | a rule between groups of content or controls, running up and down when taller than wide | `AXSplitter` | separator, vertical or horizontal | Separator, with `Orientation` |
+| `ui.RoleRowHeader` | the cell naming its row of a table, named by its content, whose buttons and other elements stay reachable, as a cell's | `AXCell` | row header | HeaderItem "row header" |
+
+Live regions say how they are read (`AXARIALive`, ATK's `live` and
+`container-live` attributes, `LiveSetting`), and MyGo reads them out as
+the web does: once a log has shown, what is added to it is announced,
+after what screen readers are reading, as `c.Announce` does; an alert's
+text is read out at once, interrupting, as it appears and whenever it
+changes (VoiceOver's announcements of high priority, ATK's `notification`
+signal, assertive, where ATK has it (2.50), else an announcement, and an
+assertive live region on Windows). What they show as assistive
+technology comes, or as a log first shows, is not read out, and a timer
+reads nothing by itself:
+
+```go
+ui.Column(c).Role(ui.RoleLog).Label("Messages").Children(func() {
+	for _, m := range app.messages {
+		ui.Row(c).Key(m.ID).Gap(4).Children(func() {
+			ui.Text(c, m.From+":").Bold()
+			ui.Text(c, m.Text)
+		})
+	}
+})
+if app.nameErr != "" {
+	ui.Text(c, app.nameErr).TextColor(t.Danger).Role(ui.RoleAlert)
+}
+ui.Row(c).Role(ui.RoleToolbar).Label("Format").Children(func() {
+	boldAndItalic(c)
+	ui.Divider(c).Role(ui.RoleSeparator)
+	alignment(c)
+})
+```
+
+A log reads out the elements it gained, those of each row together; an
+alert, its text. Keyed rows (`Key`) keep what a log showed apart from
+what it gained when rows come before others.
+
+Screen readers list landmarks and jump to them, so a search field and its
+button at the top of a window go in a search landmark, as HTML's
+`<search>`:
+
+```go
+ui.Row(c).Role(ui.RoleSearch).Label("Search mail").Gap(6).Children(func() {
+	ui.SearchField(c, &app.query).Label("Search mail").Grow(1)
+	if ui.Button(c, "Search").Clicked() {
+		app.search()
+	}
+})
+```
+
+Each post of a feed, or comment of a thread, is an article, as HTML's
+`<article>`, which screen readers step through one by one:
+
+```go
+for _, p := range app.posts {
+	ui.Column(c).Key(p.ID).Role(ui.RoleArticle).Label(p.Title).Gap(4).Children(func() {
+		ui.Text(c, p.Title).Bold().Role(ui.RoleHeading).Level(3)
+		ui.Text(c, p.Body)
+	})
+}
+```
+
 Each component's page says what assistive technology sees of it.

@@ -60,6 +60,10 @@ var (
 	gSignalLookup           func(name *byte, t uintptr) uint32
 	gSignalEmitAnnouncement func(obj ptr, signal *byte, text *byte)
 	announces               bool
+	// gSignalEmitNotification emits AtkObject's notification signal, of
+	// ATK 2.50, with a politeness: notifies is set where it has.
+	gSignalEmitNotification func(obj ptr, signal *byte, text *byte, politeness int32)
+	notifies                bool
 
 	gtkWidgetAccessibleGetType      func() uintptr
 	gtkDrawingAreaGetType           func() uintptr
@@ -211,6 +215,8 @@ func registerAccess() {
 	initAccessCallbacks()
 	announces = bind(o, &gSignalLookup, "g_signal_lookup") && bind(o, &gSignalEmitAnnouncement, "g_signal_emit_by_name") &&
 		gSignalLookup(cs("announcement"), atkObjectGetType()) != 0
+	notifies = announces && bind(o, &gSignalEmitNotification, "g_signal_emit_by_name") &&
+		gSignalLookup(cs("notification"), atkObjectGetType()) != 0
 	register := func(parent uintptr, name string, classInit ptr) uintptr {
 		var q gTypeQueryInfo
 		gTypeQuery(parent, &q)
@@ -317,7 +323,12 @@ func loadAccessNames() {
 		platform.RoleMenuItemCheckBox: {"check menu item", "menu item"}, platform.RoleMenuItemRadio: {"radio menu item", "menu item"},
 		platform.RoleHeading: {"heading", "label"},
 		// A landmark, whose xml-roles attribute says which, as Chromium's.
-		platform.RoleNavigation: {"landmark", "panel"},
+		platform.RoleNavigation: {"landmark", "panel"}, platform.RoleRegion: {"landmark", "panel"},
+		platform.RoleSearch: {"landmark", "panel"}, platform.RoleArticle: {"article", "panel"},
+		// Live regions, which their object attributes say how to read.
+		platform.RoleLog: {"log", "panel"}, platform.RoleTimer: {"timer", "panel"},
+		platform.RoleAlert:     {"notification", "alert"},
+		platform.RoleSeparator: {"separator"}, platform.RoleRowHeader: {"row header", "table row header"},
 	} {
 		atkRoles[r] = role(names...)
 	}
@@ -334,6 +345,13 @@ func loadAccessNames() {
 	} {
 		*p = atkStateTypeForName(cs(name))
 	}
+}
+
+// xmlRoles are the ARIA roles of nodes whose ATK role does not say all,
+// as the landmarks' and live regions', in their xml-roles attribute.
+var xmlRoles = map[platform.AccessRole]string{
+	platform.RoleNavigation: "navigation", platform.RoleRegion: "region", platform.RoleSearch: "search", platform.RoleLog: "log",
+	platform.RoleTimer: "timer", platform.RoleAlert: "alert", platform.RoleStatus: "status",
 }
 
 // accessTree is what assistive technology sees of a surface.
@@ -569,6 +587,15 @@ func (t *accessTree) update(tree *platform.AccessTree) {
 		for _, text := range tree.Announcements {
 			gSignalEmitAnnouncement(t.root, cs("announcement"), cs(text))
 		}
+		// Alerts interrupt, through the notification signal of ATK 2.50,
+		// assertive (ATK_LIVE_ASSERTIVE); before it, they are announced.
+		for _, text := range tree.Alerts {
+			if notifies {
+				gSignalEmitNotification(t.root, cs("notification"), cs(text), 2)
+			} else {
+				gSignalEmitAnnouncement(t.root, cs("announcement"), cs(text))
+			}
+		}
 	}
 }
 
@@ -652,8 +679,8 @@ func stateList(n platform.AccessNode, focused bool) []int32 {
 		}
 	case platform.RolePopUpButton:
 		list = append(list, st.expandable)
-	case platform.RoleSlider:
-		// As GtkScale's.
+	case platform.RoleSlider, platform.RoleSeparator:
+		// As GtkScale's and GtkSeparator's.
 		if n.States&platform.AccessVertical != 0 {
 			list = append(list, st.vertical)
 		} else {
@@ -926,7 +953,7 @@ func initAccessCallbacks() {
 	// Object attributes: the placeholder of a text field, the place of a
 	// row among its list's, which Orca reads as "5 of 10000", which item
 	// the node is the current one of (aria-current), and the ARIA role of
-	// a landmark.
+	// a landmark or a live region.
 	attributes := purego.NewCallback(func(obj ptr) ptr {
 		an := node(obj)
 		if an == nil {
@@ -958,8 +985,26 @@ func initAccessCallbacks() {
 		if c := an.n.Current; c != platform.CurrentNone {
 			add("current", c.String())
 		}
-		if an.n.Role == platform.RoleNavigation {
-			add("xml-roles", "navigation")
+		if r := xmlRoles[an.n.Role]; r != "" {
+			add("xml-roles", r)
+		}
+		// How a live region and what is inside it are read, as
+		// Chromium's say aria-live, aria-atomic and aria-relevant.
+		for p := an; p != nil; p = p.parent {
+			live, atomic := p.n.Role.Live()
+			if live == "" {
+				continue
+			}
+			if p == an {
+				add("live", live)
+				add("atomic", strconv.FormatBool(atomic))
+				add("relevant", "additions text")
+			}
+			add("container-live", live)
+			add("container-atomic", strconv.FormatBool(atomic))
+			add("container-relevant", "additions text")
+			add("container-live-role", xmlRoles[p.n.Role])
+			break
 		}
 		// The order of the column a table is sorted by, as Chromium says.
 		switch {

@@ -609,6 +609,22 @@ func roleName(r Role) string {
 		return "MenuItemCheckbox"
 	case RoleMenuItemRadio:
 		return "MenuItemRadio"
+	case RoleRegion:
+		return "Region"
+	case RoleLog:
+		return "Log"
+	case RoleTimer:
+		return "Timer"
+	case RoleAlert:
+		return "Alert"
+	case RoleSeparator:
+		return "Separator"
+	case RoleRowHeader:
+		return "RowHeader"
+	case RoleSearch:
+		return "Search"
+	case RoleArticle:
+		return "Article"
 	case RoleHeading:
 		return "Heading"
 	case RoleNavigation:

@@ -2546,7 +2546,39 @@ either.
   `xml-roles:navigation`, and UI Automation's Group with the navigation
   LandmarkType and AriaRole. Native UI in browsers has no accessibility
   tree yet (`UpdateAccessibility` is empty in `internal/web`), so there
-  is no ARIA to map them to. Menus drawn in the window are AppKit's `AXMenu`,
+  is no ARIA to map them to. The other landmarks, live regions and rules
+  map as WAI-ARIA's Core Accessibility API Mappings do: `RoleRegion` is
+  one only with a name (a group without), `AXLandmarkRegion`, ATK's
+  landmark with `xml-roles:region`, and UIA's custom LandmarkType;
+  `RoleSearch` is `AXGroup` with `AXLandmarkSearch`, ATK's landmark
+  with `xml-roles:search`, and UIA's Group with the search LandmarkType;
+  `RoleArticle`, no landmark, is `AXGroup` with `AXDocumentArticle`,
+  ATK's article, and UIA's Group named "article";
+  `RoleLog`, `RoleTimer` and `RoleAlert` are `AXGroup` with
+  `AXApplicationLog`, `AXApplicationTimer` and `AXApplicationAlert`,
+  ATK's log, timer and notification, and UIA's Group named "log",
+  "timer" and "alert"; `RoleSeparator` is `AXSplitter`, ATK's separator
+  and UIA's Separator, vertical when taller than wide (`AccessVertical`,
+  with `AXOrientation`, ATK's vertical state and UIA's Orientation);
+  `RoleRowHeader` is `AXCell`, ATK's row header and UIA's HeaderItem,
+  named by its content but keeping what is inside it, as a cell does
+  (ARIA's rowheader is not children-presentational).
+  Live regions (`AccessRole.Live`) say how they are read: `AXARIALive`,
+  `AXARIAAtomic` and `AXARIARelevant`, answered as `AXInvalid` is; ATK's
+  `live`, `atomic` and `relevant` attributes, with their `container-`
+  forms on what is inside them; UIA's LiveSetting. Screen readers read
+  the platforms' live regions in web content alone (WebKit's and
+  Chromium's `AXLiveRegionChanged`, Orca's web scripts), so the engine
+  reads them out itself (`ui/access_live.go`): it compares each frame's
+  tree with the last, announces what a log that showed gained, joined
+  for each log, and puts the text an alert shows that no alert showed
+  in the last tree into `AccessTree.Alerts`, which interrupt:
+  `AXAnnouncementRequested` with a high priority, ATK's `notification`
+  signal with `ATK_LIVE_ASSERTIVE` (ATK 2.50, else an announcement), and
+  an assertive live region beside the announcements' on Windows. Alerts
+  are told apart by their text, as an element's ID shifts when others
+  appear before it; the tree assistive technology first gets, and a log
+  first showing, read nothing out. Menus drawn in the window are AppKit's `AXMenu`,
   `AXMenuBar` and `AXMenuItem`, whose choice shows as
   `AXMenuItemMarkChar` (answered through `accessibilityAttributeValue:`,
   as `AXInvalid` is), ATK's menu, menu bar, menu item, check menu item and

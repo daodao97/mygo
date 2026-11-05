@@ -487,6 +487,8 @@ type engine struct {
 	// announcements are the texts for assistive technology to read out
 	// (Context.Announce).
 	announcements []string
+	// live is what the live regions of the last frame's tree held.
+	live liveState
 	// stats measures frames for MYGO_FRAME_STATS, nil when it is unset.
 	stats *frameStats
 	// dropOver is the element files are dragged over; access is true once
@@ -810,7 +812,9 @@ func (rt *engine) runFrame() {
 	rt.updateTextInput()
 	rt.updateCursor()
 	if rt.access {
-		rt.host.updateAccessibility(rt.windowAccess(rt.accessTree()))
+		t := rt.accessTree()
+		rt.liveRegions(t, true)
+		rt.host.updateAccessibility(rt.windowAccess(t))
 	}
 	if h, ok := rt.host.(*headless); ok {
 		// For tests, whether assistive technology reads the window or not.

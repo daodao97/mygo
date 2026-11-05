@@ -22,4 +22,6 @@ time, search on `Submitted`, or after a pause with `c.After`.
 ## Accessibility
 
 Assistive technology sees a search field (`AXSearchField` on macOS), named
-by its `Label`.
+by its `Label`. Put it, with the button that searches if there is one, in
+an element of `Role(ui.RoleSearch)`, a search landmark that screen
+readers list and jump to ([Accessibility](accessibility.md#landmarks-live-regions-and-rules)).
