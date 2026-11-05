@@ -17,10 +17,6 @@ type Theme struct {
 	// opaque, when zero. SelectionText colors the selected text: its own
 	// colors when zero.
 	Selection, SelectionText ui.Color
-	// MinimumContrast adjusts rendered text against its cell background,
-	// including program-supplied RGB and faint text. Zero preserves colors.
-	// Backgrounds, concealed text and drawn block characters stay unchanged.
-	MinimumContrast float64
 	// Search highlights the matches of a search (Terminal.Search) and
 	// SearchText colors their text, as Ghostty's search-background and
 	// search-foreground; SearchSelected and SearchSelectedText the selected

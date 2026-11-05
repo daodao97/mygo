@@ -49,7 +49,7 @@ func TestProgramCachedPanelThemeChanges(t *testing.T) {
 				if targetDark == cachedDark && panel != original {
 					t.Fatalf("matching appearance changed panel: %v", panel)
 				}
-				if targetDark != cachedDark && (colorLuminance(panel) < .18) != targetDark {
+				if targetDark != cachedDark && (luminance(panel) < .18) != targetDark {
 					t.Fatalf("stale panel did not adapt: dark=%v panel=%v", targetDark, panel)
 				}
 				cols, _ := term.Size()
@@ -57,11 +57,11 @@ func TestProgramCachedPanelThemeChanges(t *testing.T) {
 					t.Fatal("panel padding kept the cached color")
 				}
 				for _, run := range term.v.lines[0].runs {
-					if ratio := contrastRatio(run.c, panel); ratio < 4.5 {
+					if ratio := contrast(luminance(run.c), luminance(panel)); ratio < 4.5 {
 						t.Fatalf("unreadable placeholder: %.2f", ratio)
 					}
 				}
-				if got := background(1, 0); targetDark && colorLuminance(got) >= .18 {
+				if got := background(1, 0); targetDark && luminance(got) >= .18 {
 					t.Fatalf("extended gray panel did not adapt: %v", got)
 				}
 				if background(2, 0) != color(term.v.colors.Palette[15]) {
@@ -85,84 +85,17 @@ func TestProgramCachedPanelThemeChanges(t *testing.T) {
 	}
 }
 
-func TestMinimumContrastRendering(t *testing.T) {
-	loadLib(t)
-	light := LightTheme()
-	light.MinimumContrast = 4.5
-	dark := DarkTheme()
-	term, err := New(Options{Conn: newPipe(), Theme: light, DarkTheme: dark, NoBlink: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { term.Close() })
-	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill() }, 700, 220)
-	tt.SetDark(false)
-	// Bright ANSI, the extended palette, RGB and faint text all commonly
-	// appear in Program output. The fifth row uses its own dark background.
-	term.Feed([]byte("\x1b[?25l\x1b[H\x1b[2J" +
-		"\x1b[92mgreen \x1b[93myellow \x1b[97mwhite\x1b[0m\r\n" +
-		"\x1b[38;5;154mextended green \x1b[38;5;250mgray\x1b[0m\r\n" +
-		"\x1b[38;2;210;220;235mRGB text\x1b[0m\r\n" +
-		"\x1b[2;38;2;130;140;150mfaint text\x1b[0m\r\n" +
-		"\x1b[48;2;20;24;28;38;2;45;50;55mtext on dark background\x1b[0m\r\n" +
-		"\x1b[7;38;2;210;220;235minverse text\x1b[0m\r\n" +
-		"\x1b[38;2;210;220;235m█\x1b[0m\r\n" +
-		"\x1b[8mconcealed\x1b[0m"))
-	before := term.Text()
-	tt.Frame()
-	v := term.v
-	for row := range 6 {
-		line := v.lines[row]
-		if len(line.runs) == 0 {
-			t.Fatalf("row %d has no text", row)
-		}
-		for _, run := range line.runs {
-			bg := color(v.colors.Background)
-			for _, span := range line.bgs {
-				if int(run.cols[0]) >= span.x0 && int(run.cols[0]) < span.x1 {
-					bg = span.c
-					break
-				}
-			}
-			if ratio := contrastRatio(run.c, bg); ratio < light.MinimumContrast {
-				t.Errorf("row %d: text %v on %v has contrast %.2f", row, run.c, bg, ratio)
-			}
-		}
-	}
-	if boxes := v.lines[6].boxes; len(boxes) != 1 || boxes[0].c != ui.RGB(210, 220, 235) {
-		t.Fatalf("contrast correction changed block artwork: %+v", boxes)
-	}
-	if len(v.lines[7].runs) != 0 {
-		t.Fatal("contrast correction revealed concealed text")
-	}
-	if term.Text() != before {
-		t.Fatal("contrast correction changed copied terminal content")
-	}
-	tt.SetDark(true)
-	tt.Frame()
-	if got := v.lines[2].runs[0].c; got != ui.RGB(210, 220, 235) {
-		t.Fatalf("dark theme changed RGB text: %v", got)
-	}
-	if got := v.lines[3].runs[0].c; got != ui.RGB(130, 140, 150).Alpha(.5) {
-		t.Fatalf("dark theme changed faint text: %v", got)
-	}
-	tt.SetDark(false)
-	tt.Frame()
-	if ratio := contrastRatio(v.lines[2].runs[0].c, light.Background); ratio < 4.5 {
-		t.Fatalf("switching back reused dark text: contrast %.2f", ratio)
-	}
-	save(t, tt, "terminal-contrast-light")
-}
-
-func TestMinimumContrastPreservesReadableColorsAndBoundsCache(t *testing.T) {
-	v := &view{theme: &Theme{MinimumContrast: 4.5}}
+// AdaptiveColors keeps readable colors, makes faint text readable, and
+// bounds its cache.
+func TestAdaptiveContrastPreservesReadableColorsAndBoundsCache(t *testing.T) {
+	v := &view{adaptiveColors: true}
 	bg := ui.RGB(251, 251, 251)
 	for _, fg := range []ui.Color{ui.RGB(30, 40, 50), ui.RGB(0, 70, 160), ui.RGB(0, 0, 0).Alpha(.8)} {
 		if got := v.readableForeground(fg, bg); got != fg {
 			t.Fatalf("already readable color %v changed to %v", fg, got)
 		}
 	}
-	if got := v.readableForeground(ui.RGB(0, 0, 0).Alpha(.5), bg); got.A != 255 || contrastRatio(got, bg) < 4.5 {
+	if got := v.readableForeground(ui.RGB(0, 0, 0).Alpha(.5), bg); got.A != 255 || contrast(luminance(got), luminance(bg)) < 4.5 {
 		t.Fatalf("faint black text remained unreadable: %v", got)
 	}
 	for i := range 1024 {

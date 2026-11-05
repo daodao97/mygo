@@ -1,28 +1,35 @@
 package terminal
 
-import (
-	"math"
-
-	"github.com/egoist/mygo/ui"
-)
+import "github.com/egoist/mygo/ui"
 
 type contrastPair struct{ fg, bg ui.Color }
 
-// Cache color pairs across rows, keeping long sessions with many RGB colors
-// bounded. Adjustment happens when building changed rows, never when drawing.
+// adaptiveContrast is the contrast AdaptiveColors keeps text at with the
+// panels it moves; Options.MinimumContrast is the terminal's own
+// (contrasted, in resolve).
+const adaptiveContrast = 4.5
+
+// readableForeground keeps text readable with AdaptiveColors. Faint text is
+// flattened onto its background first, so the check measures the color that
+// shows. Pairs are cached across rows, bounded for long sessions with many
+// RGB colors; adjustment happens when changed rows are built, never when
+// they are drawn.
 func (v *view) readableForeground(fg, bg ui.Color) ui.Color {
-	minimum := v.theme.MinimumContrast
-	if v.adaptiveColors {
-		minimum = max(minimum, 4.5)
-	}
-	if minimum <= 1 {
+	if !v.adaptiveColors {
 		return fg
 	}
 	key := contrastPair{fg, bg}
 	if c, ok := v.contrastCache[key]; ok {
 		return c
 	}
-	c := contrastingText(fg, bg, minimum)
+	visible := fg
+	if fg.A < 255 {
+		visible = bg.Mix(ui.RGB(fg.R, fg.G, fg.B), float32(fg.A)/255)
+	}
+	c := fg
+	if contrast(luminance(visible), luminance(bg)) < adaptiveContrast {
+		c = contrasted(visible, bg, adaptiveContrast)
+	}
 	if v.contrastCache == nil {
 		v.contrastCache = make(map[contrastPair]ui.Color)
 	} else if len(v.contrastCache) >= 512 {
@@ -41,7 +48,7 @@ func (v *view) adaptiveBackground(bg ui.Color) ui.Color {
 		return bg
 	}
 	current := color(v.colors.Background)
-	lb, lc := colorLuminance(bg), colorLuminance(current)
+	lb, lc := luminance(bg), luminance(current)
 	if !(lb >= .5 && lc < .18 || lb < .18 && lc >= .5) {
 		return bg
 	}
@@ -51,63 +58,4 @@ func (v *view) adaptiveBackground(bg ui.Color) ui.Color {
 		return uint8(min(max(int(to)-delta, 0), 255))
 	}
 	return ui.RGB(channel(bg.R, previous.R, current.R), channel(bg.G, previous.G, current.G), channel(bg.B, previous.B, current.B))
-}
-
-var linearChannels = func() (values [256]float64) {
-	for i := range values {
-		c := float64(i) / 255
-		if c <= 0.04045 {
-			values[i] = c / 12.92
-		} else {
-			values[i] = math.Pow((c+0.055)/1.055, 2.4)
-		}
-	}
-	return
-}()
-
-func colorLuminance(c ui.Color) float64 {
-	return .2126*linearChannels[c.R] + .7152*linearChannels[c.G] + .0722*linearChannels[c.B]
-}
-
-func contrastRatio(a, b ui.Color) float64 {
-	l1, l2 := colorLuminance(a), colorLuminance(b)
-	return (max(l1, l2) + .05) / (min(l1, l2) + .05)
-}
-
-// contrastingText preserves sufficient colors, otherwise blending toward
-// black or white only as far as necessary. Flatten faint alpha against the
-// background first so the contrast check measures the displayed color.
-func contrastingText(fg, bg ui.Color, minimum float64) ui.Color {
-	visible := fg
-	if fg.A < 255 {
-		alpha := float64(fg.A) / 255
-		channel := func(f, b uint8) uint8 {
-			return uint8(math.Round(float64(f)*alpha + float64(b)*(1-alpha)))
-		}
-		visible = ui.RGB(channel(fg.R, bg.R), channel(fg.G, bg.G), channel(fg.B, bg.B))
-	}
-	if contrastRatio(visible, bg) >= minimum {
-		return fg
-	}
-	target := ui.RGB(0, 0, 0)
-	white := ui.RGB(255, 255, 255)
-	if contrastRatio(white, bg) > contrastRatio(target, bg) {
-		target = white
-	}
-	blend := func(amount int) ui.Color {
-		channel := func(from, to uint8) uint8 {
-			return uint8((int(from)*(256-amount) + int(to)*amount + 128) / 256)
-		}
-		return ui.RGB(channel(visible.R, target.R), channel(visible.G, target.G), channel(visible.B, target.B))
-	}
-	lo, hi := 0, 256
-	for lo < hi {
-		mid := (lo + hi) / 2
-		if contrastRatio(blend(mid), bg) >= minimum {
-			hi = mid
-		} else {
-			lo = mid + 1
-		}
-	}
-	return blend(hi)
 }
