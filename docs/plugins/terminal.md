@@ -469,11 +469,11 @@ within 8 DIPs of the viewport edge scrolls through history.
 - `OnSubmit` runs on the UI thread after an unmodified Return release, receiving
   persistent `ui.Services`; the key has already been queued.
 
-`OnOpenLink` receives a typed `Link` containing a URL or path and optional
-1-based line/column. It takes precedence over the existing `OpenLink` callback.
+`OpenLink` takes printed file references too, as printed, with their place in
+the file.
 File references support quoted paths, Unicode prose, wrapped lines and common
 compiler locations such as `file.go:12:3`, `file.ts(12,3)` and `file.go#L12C3`.
-Paths are recognized as clickable only when an app supplies either callback.
+Paths are recognized as clickable only when an app supplies `OpenLink`.
 The app resolves relative paths and decides how remote files open.
 
 ## Rendering controls

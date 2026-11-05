@@ -250,9 +250,6 @@ type Options struct {
 	// without terminal contents. It runs on the reader or UI thread after
 	// releasing emulator locks; calls back into the terminal are safe.
 	OnRenderEvent func(RenderEvent)
-	// OnOpenLink runs on the UI thread, without holding the emulator lock.
-	// It receives a Command-clicked URL or printed file path and location.
-	OnOpenLink func(Link)
 	// OnPasteStatus tells how a paste goes that a program reads itself
 	// (mode 5522, see PasteData), on a goroutine of the terminal: offered,
 	// then sending as the program reads, then sent; or not taken when the

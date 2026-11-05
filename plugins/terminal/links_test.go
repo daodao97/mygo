@@ -60,27 +60,27 @@ func TestPathAt(t *testing.T) {
 func TestFileAndURLMatches(t *testing.T) {
 	for _, tc := range []struct {
 		text, click string
-		want        Link
+		want        linkTarget
 	}{
-		{"error: src/main.go:42:5: failed", "main", Link{Path: "src/main.go", Line: 42, Column: 5}},
-		{"at (./src/main.ts(12,3))", "main", Link{Path: "./src/main.ts", Line: 12, Column: 3}},
-		{"see ~/work/中文.go#L8C2", "中文", Link{Path: "~/work/中文.go", Line: 8, Column: 2}},
-		{`File "/tmp/my project/中文.go":13:2`, "project", Link{Path: "/tmp/my project/中文.go", Line: 13, Column: 2}},
-		{"(../README.md),", "README", Link{Path: "../README.md"}},
-		{"已保存新版图标 (assets/branding/terminal-icon.png)，使用新版", "terminal", Link{Path: "assets/branding/terminal-icon.png"}},
-		{"terminal-icon.prompt.txt)也已保存。", "terminal", Link{Path: "terminal-icon.prompt.txt"}},
-		{"已保存（assets/branding/中文.png），继续", "中文", Link{Path: "assets/branding/中文.png"}},
-		{"见：src/main.go:42:5，错误", "main", Link{Path: "src/main.go", Line: 42, Column: 5}},
-		{"错误 (src/main.ts(12,3))，继续", "main", Link{Path: "src/main.ts", Line: 12, Column: 3}},
-		{"已保存 (assets/icon_(copy).png)，继续", "icon", Link{Path: "assets/icon_(copy).png"}},
-		{`文件 "assets/图标（新版），副本.png"，已保存`, "新版", Link{Path: "assets/图标（新版），副本.png"}},
-		{"文档（https://example.com/a_(b)），继续", "example", Link{URL: "https://example.com/a_(b)"}},
-		{"Makefile:4", "Make", Link{Path: "Makefile", Line: 4}},
-		{"目录 /tmp/project/", "project", Link{Path: "/tmp/project/"}},
-		{"🙂 中文 https://example.com/a_(b)?q=1.", "example", Link{URL: "https://example.com/a_(b)?q=1"}},
-		{"see file:///tmp/a%20b.go:4", "a%20", Link{URL: "file:///tmp/a%20b.go:4"}},
-		{"plain words without a link", "words", Link{}},
-		{"main.go:0", "main", Link{}},
+		{"error: src/main.go:42:5: failed", "main", linkTarget{Path: "src/main.go", Line: 42, Column: 5}},
+		{"at (./src/main.ts(12,3))", "main", linkTarget{Path: "./src/main.ts", Line: 12, Column: 3}},
+		{"see ~/work/中文.go#L8C2", "中文", linkTarget{Path: "~/work/中文.go", Line: 8, Column: 2}},
+		{`File "/tmp/my project/中文.go":13:2`, "project", linkTarget{Path: "/tmp/my project/中文.go", Line: 13, Column: 2}},
+		{"(../README.md),", "README", linkTarget{Path: "../README.md"}},
+		{"已保存新版图标 (assets/branding/terminal-icon.png)，使用新版", "terminal", linkTarget{Path: "assets/branding/terminal-icon.png"}},
+		{"terminal-icon.prompt.txt)也已保存。", "terminal", linkTarget{Path: "terminal-icon.prompt.txt"}},
+		{"已保存（assets/branding/中文.png），继续", "中文", linkTarget{Path: "assets/branding/中文.png"}},
+		{"见：src/main.go:42:5，错误", "main", linkTarget{Path: "src/main.go", Line: 42, Column: 5}},
+		{"错误 (src/main.ts(12,3))，继续", "main", linkTarget{Path: "src/main.ts", Line: 12, Column: 3}},
+		{"已保存 (assets/icon_(copy).png)，继续", "icon", linkTarget{Path: "assets/icon_(copy).png"}},
+		{`文件 "assets/图标（新版），副本.png"，已保存`, "新版", linkTarget{Path: "assets/图标（新版），副本.png"}},
+		{"文档（https://example.com/a_(b)），继续", "example", linkTarget{URL: "https://example.com/a_(b)"}},
+		{"Makefile:4", "Make", linkTarget{Path: "Makefile", Line: 4}},
+		{"目录 /tmp/project/", "project", linkTarget{Path: "/tmp/project/"}},
+		{"🙂 中文 https://example.com/a_(b)?q=1.", "example", linkTarget{URL: "https://example.com/a_(b)?q=1"}},
+		{"see file:///tmp/a%20b.go:4", "a%20", linkTarget{URL: "file:///tmp/a%20b.go:4"}},
+		{"plain words without a link", "words", linkTarget{}},
+		{"main.go:0", "main", linkTarget{}},
 	} {
 		t.Run(tc.text, func(t *testing.T) {
 			text := []rune(tc.text)
@@ -94,7 +94,7 @@ func TestFileAndURLMatches(t *testing.T) {
 				}
 			}
 			i := len([]rune(tc.text[:strings.Index(tc.text, tc.click)]))
-			if got := matchLink(text, cols, cols[i]).Link; got != tc.want {
+			if got := matchLink(text, cols, cols[i]).linkTarget; got != tc.want {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}
 		})
@@ -112,7 +112,7 @@ func TestFileLinkProseBoundaries(t *testing.T) {
 			continue
 		}
 		if got := matchLink(text, cols, i); got.valid() {
-			t.Errorf("punctuation %q matched %+v", r, got.Link)
+			t.Errorf("punctuation %q matched %+v", r, got.linkTarget)
 		}
 	}
 }
@@ -120,13 +120,14 @@ func TestFileLinkProseBoundaries(t *testing.T) {
 func TestCommandClickWrappedLinksAndMouseTracking(t *testing.T) {
 	loadLib(t)
 	conn := newPipe()
-	var opened []Link
+	var opened []linkTarget
 	var term *Terminal
 	var err error
-	term, err = New(Options{Conn: conn, OnOpenLink: func(link Link) {
+	term, err = New(Options{Conn: conn, OpenLink: func(link string) bool {
 		// Calling the emulator here also verifies the callback runs unlocked.
 		_ = term.Text()
-		opened = append(opened, link)
+		opened = append(opened, openedTarget(link))
+		return true
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +161,7 @@ func TestCommandClickWrappedLinksAndMouseTracking(t *testing.T) {
 	tt.Frame()
 	x, y = point(5, 1)
 	tt.ClickAtWith(ui.Cmd, x, y)
-	if len(opened) != 2 || opened[1] != (Link{Path: "src/main.go", Line: 17, Column: 3}) {
+	if len(opened) != 2 || opened[1] != (linkTarget{Path: "src/main.go", Line: 17, Column: 3}) {
 		t.Fatalf("file location = %+v", opened)
 	}
 	// Ordinary pointer clicks still reach mouse-aware terminal programs.
@@ -192,15 +193,15 @@ func TestCommandClickWrappedLinksAndMouseTracking(t *testing.T) {
 
 func TestCommandClickTUIPaintedFileContinuations(t *testing.T) {
 	loadLib(t)
-	var opened []Link
-	term, err := New(Options{Conn: newPipe(), OnOpenLink: func(link Link) { opened = append(opened, link) }})
+	var opened []linkTarget
+	term, err := New(Options{Conn: newPipe(), OpenLink: func(link string) bool { opened = append(opened, openedTarget(link)); return true }})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer term.Close()
 	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 960, 240)
 	v := term.v
-	click := func(col, row int) Link {
+	click := func(col, row int) linkTarget {
 		t.Helper()
 		x := float32(v.ox+col*v.cellW+v.cellW/2) / v.scale
 		y := float32(v.oy+row*v.cellH+v.cellH/2) / v.scale
@@ -217,9 +218,9 @@ func TestCommandClickTUIPaintedFileContinuations(t *testing.T) {
 			last := "0e64fee3-e2b3-4f2a-99c7-7619d408d347.png"
 			term.Feed([]byte("\x1b[H\x1b[2JSaved to: " + first + "\r\n  " + last))
 			tt.Frame()
-			want := Link{Path: first + last}
+			want := linkTarget{Path: first + last}
 			if strings.HasPrefix(prefix, "file://") {
-				want = Link{URL: first + last}
+				want = linkTarget{URL: first + last}
 			}
 			for _, cell := range [][2]int{{12, 0}, {v.cols - 5, 0}, {4, 1}, {len(last), 1}} {
 				if got := click(cell[0], cell[1]); got != want {
@@ -242,7 +243,7 @@ func TestCommandClickTUIPaintedFileContinuations(t *testing.T) {
 	middle := strings.Repeat("b", v.cols-4) + "-"
 	term.Feed([]byte("\x1b[H\x1b[2J" + first + "\x1b[2;1H" + middle + "\x1b[3;1Hfinal.png:12:3"))
 	tt.Frame()
-	want := Link{Path: first + middle + "final.png", Line: 12, Column: 3}
+	want := linkTarget{Path: first + middle + "final.png", Line: 12, Column: 3}
 	for row := range 3 {
 		if got := click(4, row); got != want {
 			t.Fatalf("three-row path = %+v, want %+v", got, want)
@@ -257,12 +258,12 @@ func TestCommandClickTUIPaintedFileContinuations(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		first, second string
-		want          Link
+		want          linkTarget
 	}{
-		{"https://example.com/" + strings.Repeat("a", v.cols-23), "other.png", Link{Path: "other.png"}},
-		{"/tmp/" + strings.Repeat("a", v.cols-14) + ".png", "other.png", Link{Path: "other.png"}},
-		{first, "/tmp/other.png", Link{Path: "/tmp/other.png"}},
-		{"file:///tmp/short-", "other.png", Link{Path: "other.png"}},
+		{"https://example.com/" + strings.Repeat("a", v.cols-23), "other.png", linkTarget{Path: "other.png"}},
+		{"/tmp/" + strings.Repeat("a", v.cols-14) + ".png", "other.png", linkTarget{Path: "other.png"}},
+		{first, "/tmp/other.png", linkTarget{Path: "/tmp/other.png"}},
+		{"file:///tmp/short-", "other.png", linkTarget{Path: "other.png"}},
 	} {
 		term.Feed([]byte("\x1b[H\x1b[2J" + tc.first + "\r\n" + tc.second))
 		tt.Frame()
@@ -302,4 +303,15 @@ func TestURLAtSpan(t *testing.T) {
 	if m.URL != "https://x.org/a" || m.cellA != 6 || m.cellB != 21 {
 		t.Fatalf("URL = %q %d..%d, want https://x.org/a 6..21", m.URL, m.cellA, m.cellB)
 	}
+}
+
+// openedTarget reads what OpenLink was given back into its URL, or its path
+// and place in the file.
+func openedTarget(link string) linkTarget {
+	text := []rune(link)
+	cols := make([]int, len(text))
+	for i := range cols {
+		cols[i] = i
+	}
+	return matchLink(text, cols, 0).linkTarget
 }

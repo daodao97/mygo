@@ -8,15 +8,15 @@ import (
 	"unicode/utf8"
 )
 
-// Link is a printed URL or a file reference. Line and Column are 1-based;
+// linkTarget is a printed URL or a file reference. Line and Column are 1-based;
 // zero means the output did not specify a location.
-type Link struct {
+type linkTarget struct {
 	URL, Path    string
 	Line, Column int
 }
 
 type linkMatch struct {
-	Link
+	linkTarget
 	raw               string
 	start, end        int // rune indices, excluding surrounding punctuation
 	cellA, cellB, row int
@@ -44,7 +44,7 @@ func matchLink(text []rune, cols []int, col int) linkMatch {
 	for _, bounds := range urlPattern.FindAllStringIndex(s, -1) {
 		u := trimURL(trimLinkToken(s[bounds[0]:bounds[1]]))
 		start := utf8.RuneCountInString(s[:bounds[0]])
-		m := linkMatch{Link: Link{URL: u}, start: start, end: start + utf8.RuneCountInString(u)}
+		m := linkMatch{linkTarget: linkTarget{URL: u}, start: start, end: start + utf8.RuneCountInString(u)}
 		if contains(m) {
 			return m
 		}
@@ -99,7 +99,7 @@ func matchLink(text []rune, cols []int, col int) linkMatch {
 			continue
 		}
 		start := utf8.RuneCountInString(s[:bounds[0]+prefix])
-		m := linkMatch{Link: Link{Path: path, Line: line, Column: column}, raw: strings.TrimRight(raw, ":"), start: start, end: start + utf8.RuneCountInString(raw)}
+		m := linkMatch{linkTarget: linkTarget{Path: path, Line: line, Column: column}, raw: strings.TrimRight(raw, ":"), start: start, end: start + utf8.RuneCountInString(raw)}
 		if contains(m) {
 			return m
 		}
@@ -154,15 +154,15 @@ func (v *view) linkAt(x, y float32) linkMatch {
 				}
 				b++
 			}
-			return linkMatch{Link: Link{URL: url}, cellA: a, cellB: b, row: row}
+			return linkMatch{linkTarget: linkTarget{URL: url}, cellA: a, cellB: b, row: row}
 		}
 	}
-	if m := v.hardWrappedFileAt(col, row); m.valid() && (v.t.opts.OpenLink != nil || v.t.opts.OnOpenLink != nil) {
+	if m := v.hardWrappedFileAt(col, row); m.valid() && v.t.opts.OpenLink != nil {
 		return m
 	}
 	text, cols, start := v.t.term.LogicalRowText(row)
 	m := matchLink(text, cols, col+(row-start)*v.cols)
-	if m.Path != "" && v.t.opts.OpenLink == nil && v.t.opts.OnOpenLink == nil {
+	if m.Path != "" && v.t.opts.OpenLink == nil {
 		return linkMatch{}
 	}
 	if m.valid() {

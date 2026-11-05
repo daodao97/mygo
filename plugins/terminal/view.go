@@ -1110,16 +1110,12 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 
 		t.mu.Unlock()
 		if opened.URL != "" || opened.Path != "" {
-			if t.opts.OnOpenLink != nil {
-				t.opts.OnOpenLink(opened.Link)
-			} else {
-				link := opened.URL
-				if link == "" {
-					link = opened.raw
-				}
-				if open := t.opts.OpenLink; (open == nil || !open(link)) && opened.URL != "" {
-					v.services.OpenURL(opened.URL)
-				}
+			link := opened.URL
+			if link == "" {
+				link = opened.raw
+			}
+			if open := t.opts.OpenLink; (open == nil || !open(link)) && opened.URL != "" {
+				v.services.OpenURL(opened.URL)
 			}
 		}
 		if copied != "" {
@@ -1162,7 +1158,7 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 			return true
 		case ui.InputPointerUp:
 			v.linkTap = nil
-			if ev.Button == 0 && !tap.cancelled && !tap.moved(ev.X, ev.Y) && v.linkAt(ev.X, ev.Y).Link == tap.link.Link {
+			if ev.Button == 0 && !tap.cancelled && !tap.moved(ev.X, ev.Y) && v.linkAt(ev.X, ev.Y).linkTarget == tap.link.linkTarget {
 				opened = tap.link
 			}
 			return true

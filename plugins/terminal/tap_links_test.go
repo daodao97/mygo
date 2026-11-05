@@ -51,9 +51,10 @@ func TestTapLinksCancelAndKeepLongPressSelection(t *testing.T) {
 			conn := newPipe()
 			opened := 0
 			var term *Terminal
-			term, err := New(Options{Conn: conn, OpenLinksOnTap: true, OnOpenLink: func(Link) {
+			term, err := New(Options{Conn: conn, OpenLinksOnTap: true, OpenLink: func(string) bool {
 				_ = term.Text() // Callback must run outside the emulator lock.
 				opened++
+				return true
 			}})
 			if err != nil {
 				t.Fatal(err)

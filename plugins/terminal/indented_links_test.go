@@ -9,8 +9,8 @@ import (
 
 func TestCommandClickIndentedTableFileContinuation(t *testing.T) {
 	loadLib(t)
-	var opened []Link
-	term, err := New(Options{Conn: newPipe(), OnOpenLink: func(link Link) { opened = append(opened, link) }})
+	var opened []linkTarget
+	term, err := New(Options{Conn: newPipe(), OpenLink: func(link string) bool { opened = append(opened, openedTarget(link)); return true }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestCommandClickIndentedTableFileContinuation(t *testing.T) {
 		tail := "relay/api/transport.go:21)"
 		term.Feed([]byte("\x1b[H\x1b[2J" + prefix + first + "\r\n" + strings.Repeat(" ", indent) + tail))
 		tt.Frame()
-		want := Link{Path: first + "relay/api/transport.go", Line: 21}
+		want := linkTarget{Path: first + "relay/api/transport.go", Line: 21}
 		for _, cell := range [][2]int{{start + 3, 0}, {indent + 3, 1}, {indent + len(tail) - 3, 1}} {
 			x := float32(v.ox+cell[0]*v.cellW+v.cellW/2) / v.scale
 			y := float32(v.oy+cell[1]*v.cellH+v.cellH/2) / v.scale
@@ -58,7 +58,7 @@ func TestCommandClickIndentedTableFileContinuation(t *testing.T) {
 		y := float32(v.oy+cell[1]*v.cellH+v.cellH/2) / v.scale
 		opened = nil
 		tt.ClickAtWith(ui.Cmd, x, y)
-		want := Link{Path: first + middle + "relay.go", Line: 324, Column: 2}
+		want := linkTarget{Path: first + middle + "relay.go", Line: 324, Column: 2}
 		if len(opened) != 1 || opened[0] != want {
 			t.Fatalf("three-row table click %v: got %+v, want %+v", cell, opened, want)
 		}
@@ -72,7 +72,7 @@ func TestCommandClickIndentedTableFileContinuation(t *testing.T) {
 		x := float32(v.ox+(indent+2)*v.cellW+v.cellW/2) / v.scale
 		y := float32(v.oy+v.cellH+v.cellH/2) / v.scale
 		tt.ClickAtWith(ui.Cmd, x, y)
-		want := Link{Path: strings.TrimSuffix(next, ":12"), Line: 12}
+		want := linkTarget{Path: strings.TrimSuffix(next, ":12"), Line: 12}
 		if len(opened) != 1 || opened[0] != want {
 			t.Fatalf("separate table row %q became %+v", next, opened)
 		}
