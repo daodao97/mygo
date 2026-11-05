@@ -4,6 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
+This is a fork of egoist/mygo. Read [FORK.md](FORK.md) first: how the fork differs
+from upstream, the rule that upstream wins where both implement a feature, the
+upstream PRs in flight, and the sync and PR workflow.
+
 AGENTS.md (imported above) holds the hard rules, the full command list, the
 conventions and the Android runbook; it is authoritative. This file adds what
 it leaves to `docs/architecture.md` (about 5,000 lines: read the section you

@@ -229,6 +229,33 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   out while the code is right has a race to fix, in the test or the
   product, not a timeout to raise or a rerun to hide behind.
 
+## Fork and upstream
+
+This repository is the daodao97/mygo fork of egoist/mygo (remotes `origin` and
+`upstream`). [FORK.md](FORK.md) records how the fork differs, what was already
+reconciled, the upstream PRs in flight and the workflow: read it before syncing
+upstream or porting fork commits, and keep it current.
+
+- **Where both implement the same feature, upstream wins.** When upstream lands
+  a feature or a fix the fork also has, with a different design, API or code,
+  take upstream's: delete the fork's version and move its callers (Miya,
+  myclash and the fork's own code) onto upstream's API, in the sync or right
+  after it. Do not keep the fork's because it came first. Features upstream has
+  no counterpart for stay.
+- **Syncing:** `git fetch upstream`, then `git merge --no-ff upstream/main`.
+  Resolve each conflict by the rule above, and build what merged cleanly too:
+  upstream renames things under fork code (`Bitmap.decode` became `remake`).
+  Verify with `go build ./...`, `go vet . ./ui`, the tests of the packages the
+  merge touched and `go build ./...` in `../Miya`; push `main` to `origin` as a
+  fast-forward, never forced.
+- **After a sync,** look at the fork's additions next to what changed upstream
+  for the overlaps a merge does not flag (the same feature, no textual
+  conflict), and update FORK.md: move the PRs upstream merged, drop the
+  differences that are gone.
+- Upstream does not want iOS or Android code. An upstream PR carries only the
+  general part of a change, from a worktree on `upstream/main`, opened as a
+  draft whose "a human read every line" box the user ticks.
+
 ## Runbook
 
 Android build/install/EGL checks live in `scripts/android-*.sh` (bash; run them from
