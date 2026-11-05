@@ -114,7 +114,11 @@ func (ed *editor) build(c *ui.Context, buf *Buffer, o options) ui.Element {
 		h.pending, h.restOff = false, -1
 	}
 	if h.pending && ed.pointerIn && !ed.gesture.active {
-		if wait := 600*time.Millisecond - c.Now().Sub(h.restAt); wait > 0 {
+		delay := ed.o.hoverDelay
+		if delay <= 0 {
+			delay = defaultHoverDelay
+		}
+		if wait := delay - c.Now().Sub(h.restAt); wait > 0 {
 			c.After(wait)
 		} else {
 			h.pending = false

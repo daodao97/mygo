@@ -334,9 +334,12 @@ app.code.SetDiagnostics(buf.Version(), app.lsp.Diagnostics())
   pressed. `ShowCompletions` lists them below the caret, filtered and
   ranked as typing goes on by the word typed, with their kinds, details
   and documentation; Enter or Tab inserts the one chosen.
-- `OnHover` asks what to show as the pointer rests on the text, or for
-  Cmd+K Cmd+I at the caret. `ShowHover` shows text in a popover over the
-  range, or what a function builds there. The pointer can go into the
+- `OnHover` asks what to show as the pointer rests on the text
+  (`HoverDelay`, 600 ms by default), or for Cmd+K Cmd+I at the caret.
+  `NoPointerHover` turns hovers from the resting pointer off, diagnostics'
+  too, as VS Code's `editor.hover.enabled`; the keys still show one.
+  `ShowHover` shows text in a popover over the range, or what a function
+  builds there. The pointer can go into the
   hover, which stays while it is there, to select and copy its text; the
   hover goes a moment after the pointer leaves the text and the hover,
   and Escape closes it.

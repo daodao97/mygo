@@ -75,6 +75,10 @@ type options struct {
 	sharedScroll *sharedScroll
 	// signs leaves room for a diff's + and - before the text.
 	signs bool
+	// hoverDelay and noPointerHover are State's HoverDelay and
+	// NoPointerHover.
+	hoverDelay     time.Duration
+	noPointerHover bool
 }
 
 // sharedScroll is the vertical scroll several editors share.

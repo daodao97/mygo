@@ -2,6 +2,7 @@ package editor
 
 import (
 	"slices"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -90,6 +91,13 @@ type State struct {
 	// OnHover asks the app what to show for the text under the pointer
 	// once it rests there: answer with ShowHover.
 	OnHover func(HoverRequest)
+	// HoverDelay is how long the pointer rests on the text before the
+	// hover is asked for: a tooltip's, 600 ms, when zero or less.
+	HoverDelay time.Duration
+	// NoPointerHover shows no hover as the pointer rests, an app's nor a
+	// diagnostic's, as VS Code's editor.hover.enabled off: ShowHover, as
+	// Cmd+K Cmd+I, still asks for one at the caret.
+	NoPointerHover bool
 	// OnDefinition is called for Cmd+click (Ctrl+click elsewhere) and F12
 	// on a word, as to go to its definition.
 	OnDefinition func(offset int)
@@ -224,6 +232,7 @@ func (st *State) options() options {
 		autoClose: !st.NoAutoClose, folding: !st.NoFolding, activeLine: !st.NoActiveLine, cursorShape: st.CursorShape, fitContent: st.FitContent,
 		placeholder: st.Placeholder, label: st.Label, theme: st.Theme, bindings: st.Bindings, gutterMarks: st.GutterMarks,
 		backgrounds: st.LineBackgrounds, textBgs: st.TextBackgrounds, diffBase: st.DiffBase, onCompletion: st.OnCompletion, onHover: st.OnHover, onDefinition: st.OnDefinition,
+		hoverDelay: st.HoverDelay, noPointerHover: st.NoPointerHover,
 		onGutterClick: st.OnGutterClick, contextMenu: st.ContextMenu, onInput: st.OnInput, noInputMethod: st.NoInputMethod, minDigits: 3,
 		renderFindBar: st.RenderFindBar, renderGoToLine: st.RenderGoToLine,
 		renderCompletions: st.RenderCompletions, renderHover: st.RenderHover,

@@ -459,3 +459,47 @@ func TestDiffFitContentMeasuresLinesShown(t *testing.T) {
 		t.Errorf("all lines shown, %d of their %d wraps measured", known, v.text.LineCount())
 	}
 }
+
+// HoverDelay sets how long the pointer rests before the hover is asked.
+func TestCodeEditorHoverDelay(t *testing.T) {
+	st := &State{Buffer: NewBuffer("SELECT 1\n"), HoverDelay: 2 * time.Second}
+	asked := 0
+	st.OnHover = func(r HoverRequest) { asked++ }
+	tt := ui.NewTester(func(c *ui.Context) { View(c, st).Fill() }, 600, 300)
+	tt.Frame()
+	ed := &st.ed
+	tt.Move(ed.textX+ed.view.charWidth*2, float32(-ed.scrollY)+ed.view.lineHeight/2)
+	tt.Advance(time.Second)
+	tt.Frame()
+	if asked != 0 {
+		t.Fatal("asked before the delay")
+	}
+	tt.Advance(1500 * time.Millisecond)
+	tt.Frame()
+	if asked != 1 {
+		t.Fatalf("asked %d times after the delay", asked)
+	}
+}
+
+// With NoPointerHover the resting pointer asks for no hover, nor shows a
+// diagnostic's; ShowHover, from the keys, still asks.
+func TestCodeEditorNoPointerHover(t *testing.T) {
+	st := &State{Buffer: NewBuffer("SELECT 1\n"), NoPointerHover: true}
+	asked := 0
+	st.OnHover = func(r HoverRequest) { asked++ }
+	tt := ui.NewTester(func(c *ui.Context) { View(c, st).Fill().AutoFocus() }, 600, 300)
+	tt.Frame()
+	st.SetDiagnostics(st.Buffer.Version(), []Diagnostic{{Start: 0, End: 6, Message: "a problem"}})
+	ed := &st.ed
+	tt.Move(ed.textX+ed.view.charWidth*2, float32(-ed.scrollY)+ed.view.lineHeight/2)
+	tt.Advance(time.Hour)
+	tt.Frame()
+	if asked != 0 || tt.HasText("a problem") {
+		t.Fatalf("the resting pointer asked %d times, problem shown %v", asked, tt.HasText("a problem"))
+	}
+	st.Run(ShowHover)
+	tt.Frame()
+	if asked != 1 {
+		t.Fatalf("ShowHover asked %d times", asked)
+	}
+}

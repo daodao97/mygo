@@ -326,6 +326,10 @@ type hover struct {
 	focused bool
 }
 
+// defaultHoverDelay is how long the pointer rests before a hover is asked
+// for, when State.HoverDelay is not set: a tooltip's.
+const defaultHoverDelay = 600 * time.Millisecond
+
 // hoverHideDelay is how long a hover stays once the pointer has left the
 // text hovered, for the pointer to go into it, as VS Code's
 // editor.hover.hidingDelay.
