@@ -676,8 +676,45 @@ features GTK 4 lacks become X11-only code beside it.
   menus show (`WM_ENTERMENULOOP` to `WM_EXITMENULOOP`, and around
   `TrackPopupMenuEx`, which creates its window before), a `WH_CALLWNDPROC`
   hook of the main thread rounds the windows of class `#32768` in their
-  `WM_CREATE` (`DWMWCP_ROUNDSMALL`, outlined in the colors of Windows'
-  menus) and takes the shadow off the class, for DWM's around the window.
+  `WM_CREATE` (`DWMWCP_ROUND`, WinUI's 8 pixels), gives them one outline
+  (`DWMWA_BORDER_COLOR`: a pixel of WinUI's `SurfaceStrokeColorFlyout`
+  over the menu's background, `#00000019` in the light appearance and
+  `#FFFFFF19` in the dark, a color of its own rather than the accent) and
+  takes the shadow off the class, for DWM's around the window. It also
+  subclasses them: on Windows 11 22H2 with transparency effects on, no
+  contrast theme, energy saver off, outside remote sessions and with a
+  GPU (`glassConditions`: DWM draws no material when the first DXGI
+  adapter is Microsoft's Basic Render Driver or a software one, unless
+  its `ForceEffectMode` policy is 2), a window that says (`MN_GETHMENU`, before it shows
+  or paints) that it shows a menu MyGo draws gets Acrylic
+  (`DWMSBT_TRANSIENTWINDOW`, in the appearance through
+  `DWMWA_USE_IMMERSIVE_DARK_MODE`) with the frame extended over all of
+  it, and is framed active (`WM_NCACTIVATE` to `DefWindowProc` as active
+  with an lParam of -1, again once shown and whatever it is told after,
+  as Firefox's popups with Acrylic are): DWM draws a system backdrop as a
+  flat grey in a window it frames inactive, as a menu's window, never
+  activated, otherwise is. Its background brush turns black, which DWM
+  shows as transparent, its border too (`WM_NCPAINT`, and `WM_PRINT` for
+  animations), and its items wear the veil of WinUI's Acrylic tint over
+  the material: the fallback color at the opacity of its luminosity layer
+  (`acrylicLuminosity`, 85% in either appearance), so that a menu is as
+  light as the shell's flyouts over a dark desktop, the material showing
+  a seventh of the way through, and the highlights and separators are
+  WinUI's translucent fills over it, their rounded corners leaving DWM's
+  window to show. The labels, the shortcuts and the icons go over the
+  veil's own color, opaque, and once: what shows is the text as GDI draws
+  it on the color the shell's menus draw theirs on, its ClearType
+  blending with it, rather than the grayscale antialiasing of text drawn
+  over black and over white for unblend to tell its alpha, and the pixels
+  GDI leaves no alpha to take the item's. A window that shows another
+  menu, as Windows' window menu, stays as it is, and so do its items.
+  Elsewhere a menu MyGo draws has WinUI's solid background, the fallback
+  of its Acrylic (`#F9F9F9`, dark `#2C2C2C`), its window's own border
+  painted in it, for that one outline to be the menu's only border. Tray
+  menus open on Windows 11 as the system's do, centered on the icon 12
+  DIPs from the taskbar (`ABM_GETTASKBARPOS`, aligned by
+  `TrackPopupMenuEx` and kept off the taskbar by its `rcExclude`), and at
+  the pointer on Windows 10 or for an icon not on the taskbar.
   The bar grows from `WM_UAHMEASUREMENUITEM` and its items get inset
   backplates with rounded corners. A contrast theme keeps the system's
   colors: the bar is Windows' again, the popup items take the system's.

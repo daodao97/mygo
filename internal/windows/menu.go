@@ -300,7 +300,7 @@ func (w *window) popupMenuBar(key uintptr) {
 		w.menuKey = menuKey{popup: popup, key: key}
 		postMessage(w.hwnd, wmChar, key, 0)
 	}
-	cmd := w.b.trackPopup(popup, w.hwnd, pt, 0)
+	cmd := w.b.trackPopup(popup, w.hwnd, pt, 0, nil)
 	w.menuKey = menuKey{}
 	for i := count - 1; i >= 0; i-- {
 		procRemoveMenu.Call(popup, uintptr(i), mfByPosition)
@@ -515,22 +515,32 @@ func (b *Backend) PopupMenu(m *platform.Menu, pw platform.Window, pos *platform.
 		// Its right edge at the point, laid out from the right.
 		flags = tpmRightAlign | tpmLayoutRTL
 	}
-	cmd := b.trackPopup(menu, owner, pt, flags)
+	cmd := b.trackPopup(menu, owner, pt, flags, nil)
 	if cmd != 0 {
 		b.menuCommand(cmd, w)
 	}
 }
 
 // trackPopup shows a popup menu, with TrackPopupMenuEx's flags besides
-// those it always gives, and returns the chosen command, or 0.
-func (b *Backend) trackPopup(menu, owner uintptr, pt point, flags uintptr) uint16 {
+// those it always gives, out of the rectangle exclude unless it is nil,
+// and returns the chosen command, or 0.
+func (b *Backend) trackPopup(menu, owner uintptr, pt point, flags uintptr, exclude *rect) uint16 {
 	// The owner must be in the foreground, or the menu does not close
 	// when the user clicks elsewhere.
 	procSetForegroundWindow.Call(owner)
 	// Windows creates the menu's window before WM_ENTERMENULOOP.
 	b.hookMenus(true)
 	defer b.hookMenus(false)
-	cmd, _, _ := procTrackPopupMenuEx.Call(menu, tpmReturnCmd|tpmRightButton|flags, uintptr(pt.X), uintptr(pt.Y), owner, 0)
+	// The windows the loop creates meanwhile are a popup's, which stays
+	// open on Alt (menuProc).
+	b.popups++
+	defer func() { b.popups-- }()
+	var params *tpmParams
+	if exclude != nil {
+		params = &tpmParams{Exclude: *exclude}
+		params.Size = uint32(unsafe.Sizeof(*params))
+	}
+	cmd, _, _ := procTrackPopupMenuEx.Call(menu, tpmReturnCmd|tpmRightButton|flags, uintptr(pt.X), uintptr(pt.Y), owner, uintptr(unsafe.Pointer(params)))
 	postMessage(owner, 0, 0, 0) // WM_NULL, as the documentation asks
 	return uint16(cmd)
 }

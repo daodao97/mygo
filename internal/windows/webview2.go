@@ -175,8 +175,9 @@ var (
 )
 
 const (
-	hkeyCurrentUser = 0x80000001
-	keyQueryValue   = 0x0001
+	hkeyCurrentUser  = 0x80000001
+	hkeyLocalMachine = 0x80000002
+	keyQueryValue    = 0x0001
 )
 
 // unthrottledArguments are the browser's arguments that keep the pages of
