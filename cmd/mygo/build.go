@@ -222,8 +222,13 @@ func buildPlatforms(raw string) ([]string, error) {
 		}
 		switch goos {
 		case "darwin", "linux", "windows":
+		case "ios":
+			// buildIOS packages the device and simulator SDKs for arm64 only.
+			if goarch != "arm64" {
+				return nil, fmt.Errorf("unsupported build platform %q: iOS builds use ios/arm64", p)
+			}
 		default:
-			return nil, fmt.Errorf("unsupported build platform %q: use darwin, linux, windows or web", p)
+			return nil, fmt.Errorf("unsupported build platform %q: use darwin, linux, windows, ios/arm64 or web", p)
 		}
 	}
 	return targets, nil
