@@ -658,6 +658,9 @@ func (v *view) input(ev ui.InputEvent) bool {
 var goos = runtime.GOOS
 
 func (v *view) keyDown(ev ui.InputEvent) bool {
+	if ev.Key == ui.KeyUnknown {
+		return false // a modifier on its own, or a key of no name
+	}
 	t := v.t
 	if on := t.opts.OnKey; on != nil && on(ev.Mods, ev.Key) {
 		k, _ := vtKey(ev.Key)
@@ -798,6 +801,9 @@ func (v *view) clearScreen() bool {
 }
 
 func (v *view) keyUp(ev ui.InputEvent) bool {
+	if ev.Key == ui.KeyUnknown {
+		return false
+	}
 	k, unshifted := vtKey(ev.Key)
 	if p := v.pending; p != nil && p.taken && p.key == k {
 		// The release of a key OnKey or a keybind took, Command held or

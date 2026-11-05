@@ -557,14 +557,18 @@ func (s *surface) key(e js.Value, down bool) {
 			// while Command is held: they go up with it.
 			s.held.LiftAll(mods, s.send)
 		}
+		s.rawKey(e, code, codeKey(code), mods, down)
 		return
 	case "Dead", "Process", "Unidentified", "Compose":
 		if !down {
 			s.held.Lift(keyOf(name, code), codeKey(code), mods, s.send)
 		}
+		if name != "Process" {
+			s.rawKey(e, code, codeKey(code), mods, down)
+		}
 		return
 	}
-	k, physical := keyOf(name, code), codeKey(code)
+	k, physical, keyCode := keyOf(name, code), codeKey(code), platform.KeyCodeForDOM(code)
 	primary := mods&platform.ModCtrl != 0
 	if down && primary && mods&(platform.ModAlt|platform.ModShift) == 0 {
 		switch k {
@@ -574,7 +578,7 @@ func (s *surface) key(e js.Value, down bool) {
 		case platform.KeyC, platform.KeyX:
 			// The content copies now, and the copy event that follows
 			// gives the browser the text.
-			s.send(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: k, PhysicalKey: physical, Mods: mods, Repeat: e.Get("repeat").Bool()})
+			s.send(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: k, PhysicalKey: physical, Code: keyCode, Mods: mods, Repeat: e.Get("repeat").Bool()})
 			s.copied = true
 			return
 		}
@@ -583,13 +587,29 @@ func (s *surface) key(e js.Value, down bool) {
 	if down {
 		kind = platform.KeyPressed
 	}
-	s.send(platform.SurfaceEvent{Kind: kind, Key: k, PhysicalKey: physical, Mods: mods, Repeat: e.Get("repeat").Bool()})
+	s.send(platform.SurfaceEvent{Kind: kind, Key: k, PhysicalKey: physical, Code: keyCode, Mods: mods, Repeat: e.Get("repeat").Bool()})
 	if !down {
 		return
 	}
 	switch {
 	case name == "F5" || name == "F11" || name == "F12":
 	case utf8.RuneCountInString(name) > 1 || primary:
+		e.Call("preventDefault")
+	}
+}
+
+// rawKey sends a key shortcuts have no name for by its position, code being
+// the KeyboardEvent's; what the content takes the browser does nothing with.
+func (s *surface) rawKey(e js.Value, code string, physical platform.Key, mods platform.Modifiers, down bool) {
+	keyCode := platform.KeyCodeForDOM(code)
+	if keyCode == platform.CodeUnknown {
+		return
+	}
+	kind := platform.RawKeyReleased
+	if down {
+		kind = platform.RawKeyPressed
+	}
+	if s.send(platform.SurfaceEvent{Kind: kind, PhysicalKey: physical, Code: keyCode, Mods: mods, Repeat: e.Get("repeat").Bool()}) {
 		e.Call("preventDefault")
 	}
 }

@@ -1788,6 +1788,33 @@ func TestOnPasteTakesAPaste(t *testing.T) {
 // TestOnKeyTakesAKey: Options.OnKey sees a key press before the terminal
 // encodes it, in order with the keys after it; a true result sends
 // nothing, not even the text the key types.
+// A modifier on its own is no key to the terminal: nothing goes to the shell
+// or to OnKey, and Alt is left to the menu bar.
+func TestModifierKeyAlone(t *testing.T) {
+	loadLib(t)
+	conn := newPipe()
+	var seen []ui.Key
+	term, err := New(Options{Conn: conn, OnKey: func(mods ui.Modifiers, key ui.Key) bool {
+		seen = append(seen, key)
+		return true
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.Frame()
+	tt.CodeDown(ui.Shift, ui.CodeShiftLeft)
+	tt.CodeUp(0, ui.CodeShiftLeft)
+	tt.Frame()
+	if len(seen) != 0 {
+		t.Errorf("OnKey saw %v", seen)
+	}
+	if got := conn.take(term); got != "" {
+		t.Errorf("the shell got %q", got)
+	}
+}
+
 func TestOnKeyTakesAKey(t *testing.T) {
 	loadLib(t)
 	conn := newPipe()

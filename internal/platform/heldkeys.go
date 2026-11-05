@@ -13,7 +13,10 @@ type HeldKeys struct {
 	gone []heldKey
 }
 
-type heldKey struct{ key, physical Key }
+type heldKey struct {
+	key, physical Key
+	code          KeyCode
+}
 
 // same reports whether k is the key at physical, or key where either
 // position is unknown.
@@ -43,7 +46,7 @@ func (h *HeldKeys) Track(ev SurfaceEvent) bool {
 			h.gone = append(h.gone[:i], h.gone[i+1:]...)
 		}
 		if indexKey(h.held, ev.Key, ev.PhysicalKey) < 0 && (ev.Key != KeyUnknown || ev.PhysicalKey != KeyUnknown) {
-			h.held = append(h.held, heldKey{ev.Key, ev.PhysicalKey})
+			h.held = append(h.held, heldKey{ev.Key, ev.PhysicalKey, ev.Code})
 		}
 	case KeyReleased:
 		if i := indexKey(h.held, ev.Key, ev.PhysicalKey); i >= 0 {
@@ -71,7 +74,7 @@ func (h *HeldKeys) Lift(key, physical Key, mods Modifiers, send func(SurfaceEven
 		return
 	}
 	k := h.held[i]
-	send(SurfaceEvent{Kind: KeyReleased, Key: k.key, PhysicalKey: k.physical, Mods: mods})
+	send(SurfaceEvent{Kind: KeyReleased, Key: k.key, PhysicalKey: k.physical, Code: k.code, Mods: mods})
 	// send tracked the release, unless the window closed.
 	if i := indexKey(h.held, k.key, k.physical); i >= 0 {
 		h.held = append(h.held[:i], h.held[i+1:]...)

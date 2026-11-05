@@ -244,7 +244,7 @@ func (b *Backend) watchCommandKeyUps() {
 		if s == nil {
 			return ev
 		}
-		s.send(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Mods: mods})
+		s.send(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Code: eventKeyCode(ev), Mods: mods})
 		return 0
 	})
 	commandKeyUps = retain(send(class("NSEvent"), "addLocalMonitorForEventsMatchingMask:handler:", mask, uintptr(blk)))
@@ -970,6 +970,11 @@ func physicalKey(ev id) platform.Key {
 	if code != macISOSectionCode && code != macANSIGraveCode {
 		return keyAtCode(code)
 	}
+	return keyAtCodeForLayout(code, eventLayoutType(ev))
+}
+
+// eventLayoutType returns the layout type of the keyboard of a key event.
+func eventLayoutType(ev id) uint32 {
 	var keyboardType int16
 	if cgEvent := send(ev, "CGEvent"); cgEvent != 0 {
 		keyboardType = int16(cgEventGetIntegerValueField(uintptr(cgEvent), 10)) // kCGKeyboardEventKeyboardType
@@ -977,7 +982,52 @@ func physicalKey(ev id) platform.Key {
 	if keyboardType == 0 { // Synthetic NSEvents can lack a keyboard type.
 		keyboardType = int16(lmGetKbdType())
 	}
-	return keyAtCodeForLayout(code, kbGetLayoutType(keyboardType))
+	return kbGetLayoutType(keyboardType)
+}
+
+// keyCodeForLayout returns the key by position of a virtual key code: an ISO
+// keyboard swaps the codes of the key left of 1 and the extra key beside the
+// left Shift, as keyAtCodeForLayout tells.
+func keyCodeForLayout(code uint16, layoutType uint32) platform.KeyCode {
+	if layoutType == macISOLayoutType {
+		switch code {
+		case macISOSectionCode:
+			return platform.CodeBackquote
+		case macANSIGraveCode:
+			return platform.CodeIntlBackslash
+		}
+	}
+	return platform.KeyCodeForMac(code)
+}
+
+// eventKeyCode returns the key by position of a key event.
+func eventKeyCode(ev id) platform.KeyCode {
+	code := uint16(send(ev, "keyCode"))
+	if code != macISOSectionCode && code != macANSIGraveCode {
+		return platform.KeyCodeForMac(code)
+	}
+	return keyCodeForLayout(code, eventLayoutType(ev))
+}
+
+// flagsChanged sends the key of a flagsChanged: event, which tells of a
+// modifier or Caps Lock going down or up, by position.
+func (s *surface) flagsChanged(ev id) {
+	code, down := platform.MacFlagsChanged(uint16(send(ev, "keyCode")), uint(send(ev, "modifierFlags")))
+	if code == platform.CodeUnknown {
+		return
+	}
+	mods := eventMods(ev)
+	if code == platform.CodeCapsLock {
+		// Told of once for each change of the lock, not as the key moves.
+		s.send(platform.SurfaceEvent{Kind: platform.RawKeyPressed, Code: code, Mods: mods})
+		s.send(platform.SurfaceEvent{Kind: platform.RawKeyReleased, Code: code, Mods: mods})
+		return
+	}
+	kind := platform.RawKeyReleased
+	if down {
+		kind = platform.RawKeyPressed
+	}
+	s.send(platform.SurfaceEvent{Kind: kind, Code: code, Mods: mods})
 }
 
 // stringOf returns the text of an NSString or NSAttributedString. Other
@@ -1282,7 +1332,7 @@ func registerSurfaceClass() {
 			// giving the composition up, as GTK's and IMM32's filtering
 			// keeps them on Linux and Windows.
 			if !ime || !s.hasMarkedText() {
-				s.send(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Mods: mods, Repeat: sendBool(ev, "isARepeat")})
+				s.send(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Code: eventKeyCode(ev), Mods: mods, Repeat: sendBool(ev, "isARepeat")})
 			}
 			// Input methods see the key while a text input has the focus;
 			// they answer with insertText: or setMarkedText:.
@@ -1304,12 +1354,13 @@ func registerSurfaceClass() {
 		}),
 		method("keyUp:", func(self id, _ objc.SEL, ev id) {
 			if s := b().surfaceOf(self); s != nil {
-				s.send(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Mods: eventMods(ev)})
+				s.send(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Code: eventKeyCode(ev), Mods: eventMods(ev)})
 			}
 		}),
 		method("flagsChanged:", func(self id, _ objc.SEL, ev id) {
 			if s := b().surfaceOf(self); s != nil {
 				s.send(platform.SurfaceEvent{Kind: platform.ModifiersChanged, Mods: eventMods(ev)})
+				s.flagsChanged(ev)
 			}
 		}),
 		command("copy"), command("cut"), command("paste"), command("selectAll"), command("undo"), command("redo"), command("delete"),

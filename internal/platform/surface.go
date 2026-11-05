@@ -285,6 +285,14 @@ const (
 	// ModifiersChanged reports the modifier keys held, Mods, as one of
 	// them goes down or up on its own.
 	ModifiersChanged
+	// RawKeyPressed and RawKeyReleased report a key by its position, Code,
+	// that KeyPressed and KeyReleased leave out: a modifier, a lock key, or
+	// one the layout types no Key for. PhysicalKey is set where it can be,
+	// Key never is. The content reports whether it took the press or the
+	// release, which then goes no further in the system, as Alt opening
+	// the window's menu bar.
+	RawKeyPressed
+	RawKeyReleased
 	// TextInput inserts Text, typed or committed by an input method.
 	TextInput
 	// TextComposition shows Text as the input method's composition, its
@@ -384,10 +392,14 @@ type SurfaceEvent struct {
 	// whatever the active layout types; KeyUnknown where the backend does
 	// not report it. Key and PhysicalKey agree on a US layout.
 	PhysicalKey Key
-	Mods        Modifiers
-	Repeat      bool
-	Text        string
-	Caret       int
+	// Code is the key by its position, on any keyboard and with the sides
+	// of the modifiers told apart; CodeUnknown where the backend does not
+	// report it. KeyPressed, KeyReleased and the raw keys have it.
+	Code   KeyCode
+	Mods   Modifiers
+	Repeat bool
+	Text   string
+	Caret  int
 	// Replace makes TextInput replace, and TextComposition compose over,
 	// the runes From to To of the last TextInputState.Text, instead of the
 	// selection.

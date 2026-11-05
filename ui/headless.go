@@ -882,6 +882,19 @@ func (t *Tester) KeyAt(mods Modifiers, physical Key) {
 	t.send(platform.SurfaceEvent{Kind: platform.KeyReleased, PhysicalKey: platform.Key(physical), Mods: platform.Modifiers(mods)})
 }
 
+// CodeDown presses a key that only its position names, as a modifier on its
+// own or Caps Lock (InputEvent.Code): mods are the modifiers held with it,
+// its own among them.
+func (t *Tester) CodeDown(mods Modifiers, code KeyCode) {
+	t.send(platform.SurfaceEvent{Kind: platform.RawKeyPressed, Code: platform.KeyCode(code), Mods: platform.Modifiers(mods)})
+}
+
+// CodeUp lets go of a key CodeDown pressed: mods are the modifiers still
+// held.
+func (t *Tester) CodeUp(mods Modifiers, code KeyCode) {
+	t.send(platform.SurfaceEvent{Kind: platform.RawKeyReleased, Code: platform.KeyCode(code), Mods: platform.Modifiers(mods)})
+}
+
 // TypeKey presses a key that types text, as a keyboard does: the key goes
 // down, the text comes, then the key goes up.
 func (t *Tester) TypeKey(mods Modifiers, key Key, text string) {

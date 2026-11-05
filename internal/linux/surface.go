@@ -974,6 +974,102 @@ func eventPhysicalKey(event ptr) platform.Key {
 	return platform.KeyUnknown
 }
 
+// eventKeyCode reads the key by position from GdkEventKey.hardware_keycode,
+// as eventPhysicalKey does, on any keyboard.
+func eventKeyCode(event ptr) platform.KeyCode {
+	if code := field[uint16](event, 48); code >= 8 {
+		return platform.KeyCodeForEvdev(code - 8)
+	}
+	return platform.CodeUnknown
+}
+
+// keyEvent handles a GdkEventKey (type 0, state 24, keyval 28,
+// hardware_keycode 48), and reports whether it stops there.
+func (s *surface) keyEvent(event ptr) bool {
+	kind := platform.KeyPressed
+	repeat := false
+	keycode := field[uint16](event, 48)
+	if field[int32](event, 0) == 9 { // GDK_KEY_RELEASE
+		kind = platform.KeyReleased
+		s.down.release(keycode)
+	} else {
+		// Before the input method sees it, which may take the press
+		// or the release.
+		repeat = s.down.press(keycode)
+		s.clientComposition.Reset()
+		if s.lastKey != 0 {
+			gdkEventFree(s.lastKey)
+		}
+		s.lastKey = gdkEventCopy(event)
+	}
+	if s.rawInput() {
+		if kind == platform.KeyPressed {
+			defer s.typed(event)
+		}
+	} else if s.textInput && gtkIMContextFilterKeypress(s.im, event) {
+		if kind == platform.KeyReleased {
+			// The input method took the release of a key the content
+			// got pressed, as the focus moved to a text input while
+			// the key was held: the key goes up all the same. One it
+			// hands back, as IBus and Fcitx do the keys they leave,
+			// comes again, which held keeps from the content.
+			s.held.Lift(keyvalKey(field[uint32](event, 28)), eventPhysicalKey(event), gdkMods(field[uint32](event, 24)), s.send)
+		}
+		return true
+	}
+	// A modifier key on its own: the state is the one before the
+	// event, so the key's own bit goes in or out, unless the same
+	// modifier of the other side stays held.
+	if bit := modifierKeyval(field[uint32](event, 28)); bit != 0 {
+		state := gdkMods(field[uint32](event, 24))
+		if kind == platform.KeyPressed || s.down.otherSideHeld(keycode) {
+			state |= bit
+		} else {
+			state &^= bit
+		}
+		s.send(platform.SurfaceEvent{Kind: platform.ModifiersChanged, Mods: state})
+		return s.rawKey(kind, event, state, repeat)
+	}
+	k := keyvalKey(field[uint32](event, 28))
+	mods := gdkMods(field[uint32](event, 24))
+	physical := eventPhysicalKey(event)
+	code := eventKeyCode(event)
+	// A key the layout types no US key for, as S on a Cyrillic layout,
+	// still reaches shortcuts by its position.
+	// A release is sent whatever the modifiers held now, so that a press
+	// sent as a chord is let go of even after Ctrl was.
+	if k == platform.KeyUnknown {
+		switch {
+		case kind == platform.KeyReleased && physical != platform.KeyUnknown:
+			s.send(platform.SurfaceEvent{Kind: kind, PhysicalKey: physical, Code: code, Mods: mods})
+			return false
+		case !platform.KeyByPosition(k, physical, mods):
+			return s.rawKey(kind, event, mods, repeat)
+		}
+	}
+	if kind == platform.KeyPressed {
+		s.pressing = event
+		defer func() { s.pressing = 0 }()
+	}
+	s.send(platform.SurfaceEvent{Kind: kind, Key: k, PhysicalKey: physical, Code: code, Mods: mods, Repeat: repeat})
+	return true
+}
+
+// rawKey sends a key shortcuts have no name for, whose keyval tells nothing
+// (a modifier, a lock key, one the layout types no US key for), by its
+// position, and reports whether the content took it.
+func (s *surface) rawKey(kind platform.SurfaceEventKind, event ptr, mods platform.Modifiers, repeat bool) bool {
+	code := eventKeyCode(event)
+	if code == platform.CodeUnknown {
+		return false
+	}
+	raw := platform.RawKeyPressed
+	if kind == platform.KeyReleased {
+		raw = platform.RawKeyReleased
+	}
+	return s.send(platform.SurfaceEvent{Kind: raw, PhysicalKey: eventPhysicalKey(event), Code: code, Mods: mods, Repeat: repeat})
+}
+
 func (b *Backend) surfaceOf(data ptr) *surface {
 	if w := b.window(data); w != nil {
 		return w.surface
@@ -1228,76 +1324,9 @@ func initSurfaceCallbacks() {
 		}
 		return true
 	})
-	// GdkEventKey: type 0, state 24, keyval 28, hardware_keycode 48.
 	cbSurfaceKey = purego.NewCallback(func(widget, event, data ptr) bool {
 		s := b().surfaceOf(data)
-		if s == nil {
-			return false
-		}
-		kind := platform.KeyPressed
-		repeat := false
-		if field[int32](event, 0) == 9 { // GDK_KEY_RELEASE
-			kind = platform.KeyReleased
-			s.down.release(field[uint16](event, 48))
-		} else {
-			// Before the input method sees it, which may take the press
-			// or the release.
-			repeat = s.down.press(field[uint16](event, 48))
-			s.clientComposition.Reset()
-			if s.lastKey != 0 {
-				gdkEventFree(s.lastKey)
-			}
-			s.lastKey = gdkEventCopy(event)
-		}
-		if s.rawInput() {
-			if kind == platform.KeyPressed {
-				defer s.typed(event)
-			}
-		} else if s.textInput && gtkIMContextFilterKeypress(s.im, event) {
-			if kind == platform.KeyReleased {
-				// The input method took the release of a key the content
-				// got pressed, as the focus moved to a text input while
-				// the key was held: the key goes up all the same. One it
-				// hands back, as IBus and Fcitx do the keys they leave,
-				// comes again, which held keeps from the content.
-				s.held.Lift(keyvalKey(field[uint32](event, 28)), eventPhysicalKey(event), gdkMods(field[uint32](event, 24)), s.send)
-			}
-			return true
-		}
-		// A modifier key on its own: the state is the one before the
-		// event, so the key's own bit goes in or out.
-		if bit := modifierKeyval(field[uint32](event, 28)); bit != 0 {
-			state := gdkMods(field[uint32](event, 24))
-			if kind == platform.KeyPressed {
-				state |= bit
-			} else {
-				state &^= bit
-			}
-			s.send(platform.SurfaceEvent{Kind: platform.ModifiersChanged, Mods: state})
-			return false
-		}
-		k := keyvalKey(field[uint32](event, 28))
-		mods := gdkMods(field[uint32](event, 24))
-		physical := eventPhysicalKey(event)
-		// A key the layout types no US key for, as S on a Cyrillic layout,
-		// still reaches shortcuts by its position.
-		// A release is sent whatever the modifiers held now, so that a press
-		// sent as a chord is let go of even after Ctrl was.
-		if k == platform.KeyUnknown {
-			switch {
-			case kind == platform.KeyReleased && physical != platform.KeyUnknown:
-				s.send(platform.SurfaceEvent{Kind: kind, PhysicalKey: physical, Mods: mods})
-				return false
-			case !platform.KeyByPosition(k, physical, mods):
-				return false
-			}
-		}
-		if kind == platform.KeyPressed {
-			s.pressing = event
-			defer func() { s.pressing = 0 }()
-		}
-		s.send(platform.SurfaceEvent{Kind: kind, Key: k, PhysicalKey: physical, Mods: mods, Repeat: repeat})
-		return true
+		return s != nil && s.keyEvent(event)
 	})
 	cbSurfaceFocusIn = purego.NewCallback(func(widget, event, data ptr) bool {
 		if s := b().surfaceOf(data); s != nil {

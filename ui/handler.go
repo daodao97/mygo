@@ -1,6 +1,10 @@
 package ui
 
-import time "time"
+import (
+	"time"
+
+	"github.com/egoist/mygo/internal/platform"
+)
 
 // InputKind is the kind of an InputEvent.
 type InputKind uint8
@@ -11,7 +15,12 @@ const (
 	// Repeat marks the auto-repeat of a key held down. A key that types
 	// text comes before the text, an InputText event, on macOS and
 	// Windows; on Linux, only the text comes while the element takes text
-	// (TextCaret) with input methods on (InputMethod).
+	// (TextCaret) with input methods on (InputMethod). Every key the system
+	// tells the window of comes: a modifier on its own, a lone tap of Super
+	// among them, the lock keys, and a key whose press the layout types no
+	// Key for come with Key KeyUnknown, named by Code alone, and Mods holds
+	// the modifier a press brings and not the one a release takes. Taking
+	// one keeps it from the system, as Alt from the menu bar.
 	InputKeyDown InputKind = iota + 1
 	InputKeyUp
 	// InputText is text typed, or committed by an input method.
@@ -67,8 +76,14 @@ type InputEvent struct {
 	// layout types: the S key is KeyS on a Cyrillic layout too, where Key
 	// is KeyUnknown. KeyUnknown where the platform does not report it.
 	PhysicalKey Key
-	Mods        Modifiers
-	Repeat      bool
+	// Code is the key by its position on any keyboard, with the sides of
+	// the modifiers told apart, as CodeShiftLeft; CodeUnknown where the
+	// platform does not report it, as for a mouse's side buttons, whose
+	// keys are KeyBack and KeyForward. It alone names a key whose Key is
+	// KeyUnknown, as a modifier on its own or Caps Lock.
+	Code   KeyCode
+	Mods   Modifiers
+	Repeat bool
 	// Text of InputText, InputCompose and InputCommand, and Caret the
 	// rune of an InputCompose's caret.
 	Text  string
@@ -168,6 +183,19 @@ func (e *node) TextCaret(r Rect) *node {
 func (e *node) InputMethod(on bool) *node {
 	e.noIME = !on
 	return e
+}
+
+// rawKey gives a key no shortcut can name to the elements around the focus
+// that observe their input and to the element with the focus, and reports
+// whether that one took it. It goes nowhere else in the window.
+func (rt *engine) rawKey(ev platform.SurfaceEvent) bool {
+	kind := InputKeyDown
+	if ev.Kind == platform.RawKeyReleased {
+		kind = InputKeyUp
+	}
+	input := InputEvent{Kind: kind, Key: Key(ev.Key), PhysicalKey: Key(ev.PhysicalKey), Code: KeyCode(ev.Code), Mods: Modifiers(ev.Mods), Repeat: ev.Repeat}
+	rt.observeFocus(input)
+	return rt.deliver(rt.focusHandler(), input)
 }
 
 // handler returns the state of the innermost element of chain that
