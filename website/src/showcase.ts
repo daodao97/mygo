@@ -258,4 +258,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/nanodoll-cover.png",
   },
+  {
+    name: "Teebots",
+    description:
+      "A free desktop app for a small team of AI bots on your own Mac, Windows or Linux machine. Each bot uses your API key and model; chats, memory and files stay on the device.",
+    url: "https://teebots.ai",
+    author: "希嘉嘉",
+    mode: "native",
+    image: "/showcase/teebots.png",
+  },
 ]
