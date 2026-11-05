@@ -5311,6 +5311,17 @@ a longer timeout only makes that rarer. So:
   fail) may wait a short while: a slow machine can only make them miss
   a bug, never fail right code.
 
+### What tests leave behind
+
+The GUI tests of a package share a process, and on Linux an X server,
+which can outlive the process when one is reused between runs. A test
+that leaves something in them can fail another much later, or in every
+other run as a lock key flips, which looks like a race in a test that did
+nothing wrong. `newWindow` checks after each test that used it (`watchLeftBehind`), and fails
+that test by name if it left a window open or, on an X server, a key held
+or Caps Lock or Num Lock changed, then puts them back so that the tests
+after it are not affected. A test that changes them undoes it in a cleanup.
+
 ### Benchmarks
 
 `.github/workflows/bench.yml` measures every push to main on GitHub's

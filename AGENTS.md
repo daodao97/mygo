@@ -152,3 +152,7 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   sleeping; measure work by counts, not durations. A test that can time
   out while the code is right has a race to fix, in the test or the
   product, not a timeout to raise or a rerun to hide behind.
+  GUI tests share a process and, on Linux, an X server: what one leaves
+  behind ("What tests leave behind" in the architecture guide) fails it, not
+  the tests after it. Before calling a failure older than a pull request,
+  reproduce it on a new X server, without running the branch's binary on it.

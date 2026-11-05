@@ -457,3 +457,7 @@ func nativeGlassTint(w *mygo.Window) (red, green, blue, alpha float64) {
 }
 
 func activateApp() { mygo.RunOnMain(darwin.TestActivate) }
+
+// Only X servers keep a keyboard's state for the tests after a test: see
+// left_behind_linux_test.go.
+func keyboardState() (state string, restore func()) { return "", func() {} }

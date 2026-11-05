@@ -14,13 +14,15 @@ on:
 permissions:
   contents: read
 
-# A push supersedes the runs before it, on main as on a pull request: the
-# newest commit's run covers theirs. A release commit runs on its own, so
-# that it is neither queued behind nor canceled by others, as its tag waits
-# for its run.
+# A push supersedes the runs before it on a pull request: the newest commit's
+# run covers theirs. On main a run that started finishes, so that main has a
+# history to tell whether a test that fails on a pull request fails without
+# it; at most the newest commit waits behind it, and GitHub cancels the older
+# ones waiting. A release commit runs on its own, so that it is neither queued
+# behind nor canceled by others, as its tag waits for its run.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}${{ startsWith(github.event.head_commit.message, 'Release ') && format('-{0}', github.sha) || '' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:

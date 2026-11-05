@@ -495,3 +495,7 @@ func nativeGlassTint(*mygo.Window) (red, green, blue, alpha float64) { return 0,
 func activateApp() {}
 
 func hitView(*mygo.Window, float64, float64) string { return "" }
+
+// Only X servers keep a keyboard's state for the tests after a test: see
+// left_behind_linux_test.go.
+func keyboardState() (state string, restore func()) { return "", func() {} }

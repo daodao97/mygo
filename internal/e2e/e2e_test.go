@@ -538,6 +538,10 @@ func pageState(p *mygo.Page) string {
 
 func newWindow(t *testing.T, opts mygo.WindowOptions) *mygo.Window {
 	t.Helper()
+	// Registered first, it runs last, with the test's own cleanups and
+	// this window's Destroy done.
+	check := watchLeftBehind()
+	t.Cleanup(func() { check(t.Errorf) })
 	w := mygo.NewWindow(opts)
 	t.Cleanup(w.Destroy)
 	return w
