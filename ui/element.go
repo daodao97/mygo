@@ -181,7 +181,7 @@ const (
 	// state while the page is in the history, shown or not.
 	flagPage
 	// flagFocusTarget marks an element the focus goes to but Tab does not
-	// stop at, as a Router's page.
+	// stop at, as a Router's page, or an element of TabStop(false).
 	flagFocusTarget
 	// flagDividers marks an element drawing lines between its children,
 	// listed in Context.dividers.
@@ -1817,6 +1817,23 @@ func (e *node) hasState() bool {
 
 // Focusable lets the element take the keyboard focus, by a click or Tab.
 func (e *node) Focusable() *node { e.flags |= flagFocusable; return e }
+
+// TabStop makes the element focusable, and sets whether Tab and Shift+Tab
+// stop at it, as they do at a Focusable element. One that is no tab stop
+// is HTML's tabindex="-1": it takes the focus from a click, from Focus and
+// AutoFocus, and from assistive technology, while Tab passes over it, on
+// to what is inside it and after it: a container that takes the focus to
+// hold its keys, as a card or a dialog's panel, without coming before its
+// own controls.
+func (e *node) TabStop(stop bool) *node {
+	e.flags |= flagFocusable
+	if stop {
+		e.flags &^= flagFocusTarget
+	} else {
+		e.flags |= flagFocusTarget
+	}
+	return e
+}
 
 // DragWindow makes the element a handle that moves the window, such as the
 // title bar of a frameless window. A double click on it maximizes the

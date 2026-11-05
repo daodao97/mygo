@@ -117,6 +117,25 @@ button, and Space toggles a focused check box, switch, toggle or radio
 button. A focused link, or an element with `Role(ui.RoleLink)`, takes Enter
 alone, as in a web page: Space scrolls the container around it.
 
+`TabStop(false)` makes an element focusable but out of Tab's order, as
+HTML's `tabindex="-1"`: it takes the focus from a click, from `Focus` and
+`AutoFocus`, and from assistive technology, while Tab and Shift+Tab pass
+over it, on to the controls inside it and after it. A card or a panel
+takes the focus so to hold its keys without coming before its own
+buttons; `TabStop(true)` puts it back in the order. In a [focus
+group](#focus-groups), Tab enters at a member it stops at, while the
+arrows still reach the others.
+
+```go
+card := ui.Column(c).Padding(12).TabStop(false).Children(func() {
+	ui.Text(c, item.Title)
+	ui.Button(c, "Open") // Tab goes here, past the card
+})
+if card.Shortcut(0, ui.KeyDelete) {
+	app.remove(item)
+}
+```
+
 `FocusLeft` reports that the focus left an element since the last frame:
 it was on the element or inside it, and is now outside it, or nowhere, as
 the window lost the keyboard. That is the web's `focusout` whose

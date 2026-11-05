@@ -48,27 +48,35 @@ func (rt *engine) groupOf(id uint64) uint64 { return rt.memberOf[id] }
 
 // groupEntry returns the element Tab moves the focus to in group g: the
 // one that had it last, the one checked, or the first; in a radio group
-// or a tab list, the one checked first.
+// or a tab list, the one checked first. One that Tab does not stop at
+// (TabStop(false)) is never the entry.
 func (rt *engine) groupEntry(g uint64) uint64 {
 	info := rt.groups[g]
-	if last := rt.groupLast[g]; last != 0 && rt.memberOf[last] == g && (info.checked == 0 || !info.chooses) {
+	if last := rt.groupLast[g]; last != 0 && rt.memberOf[last] == g && (info.checked == 0 || !info.chooses) && !rt.focusTarget(last) {
 		return last
 	}
-	if info.checked != 0 {
+	if info.checked != 0 && !rt.focusTarget(info.checked) {
 		return info.checked
 	}
 	for _, id := range rt.focusOrder {
-		if rt.memberOf[id] == g {
+		if rt.memberOf[id] == g && !rt.focusTarget(id) {
 			return id
 		}
 	}
 	return 0
 }
 
+// focusTarget reports whether id takes the focus but Tab does not stop at
+// it, as a Router's page or an element of TabStop(false).
+func (rt *engine) focusTarget(id uint64) bool {
+	s := rt.states[id]
+	return s != nil && s.flags&flagFocusTarget != 0
+}
+
 // tabStop reports whether Tab stops at id: an element in no group, or the
 // entry of its group.
 func (rt *engine) tabStop(id uint64) bool {
-	if s := rt.states[id]; s != nil && s.flags&flagFocusTarget != 0 {
+	if rt.focusTarget(id) {
 		return false
 	}
 	g := rt.memberOf[id]

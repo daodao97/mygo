@@ -345,6 +345,7 @@ var elementChains = map[string]bool{
 	"Strikethrough":        true,
 	"Stripes":              true,
 	"TabSize":              true,
+	"TabStop":              true,
 	"TextAlign":            true,
 	"TextBackground":       true,
 	"TextCaret":            true,
