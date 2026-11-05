@@ -35,7 +35,10 @@ toggle := ui.Box(c).Size(36, 20).Focusable().Role(ui.RoleSwitch).Label("Wi-Fi")
 ```
 
 Besides the roles of MyGo's widgets, `ui.RoleHeading` is the title of a
-section, ranked with `Level`, and `ui.RoleMenu`, `ui.RoleMenuBar`,
+section, ranked with `Level`, `ui.RoleNavigation` a landmark of links
+that move around the app or a document, as a breadcrumb trail or a
+navigation bar, which screen readers list and jump to (as
+[`Breadcrumbs`](breadcrumbs.md) is), and `ui.RoleMenu`, `ui.RoleMenuBar`,
 `ui.RoleMenuItem`, `ui.RoleMenuItemCheckBox` and `ui.RoleMenuItemRadio`
 make menus drawn in the window, as a drop-down menu or a menu bar of your
 own (an element's menu drawn in the window,
@@ -46,6 +49,22 @@ menus without a look that keep their keys and focus):
 
 ```go
 ui.Text(c, "Appearance").Bold().Role(ui.RoleHeading).Level(2)
+ui.Row(c).Role(ui.RoleNavigation).Label("Sections").Children(sectionLinks)
+```
+
+A table of your own builds its rows with `ui.RoleRow`, its cells with
+`ui.RoleCell` and the headers of its columns with `ui.RoleColumnHeader`.
+A header is named by the text inside it, and keeps the elements inside it
+in the tree, as ARIA's `columnheader` does: a sort button and a column's
+menu button in it are reached and pressed as any other button.
+
+```go
+ui.Row(c).Role(ui.RoleColumnHeader).Children(func() { // named "Sort Options"
+	if ui.Button(c, "Sort").Clicked() {
+		app.sortBy("name")
+	}
+	ui.Button(c, "Options")
+})
 ```
 
 ## States
@@ -61,6 +80,8 @@ your own tells it with these, as ARIA's states do on the web:
 | `Range(lo, hi, value)`, `Step(step)` | the range and value of a slider, progress bar, meter or stepper, and how far the keys move it |
 | `Level(n)` | the rank of a heading, or how deep an item of a tree is |
 | `ActiveDescendant(e)` | the option that has the focus while the element keeps it, as the one the arrows are on in a menu or a list |
+| `Busy(on)` | that the element's content is about to change, as a region loading: screen readers wait for it before reading it |
+| `Current(kind)` | that the element is the current one of the items around it: `ui.CurrentPage` (the page the user is on), `CurrentStep`, `CurrentLocation`, `CurrentDate`, `CurrentTime` or `CurrentItem` |
 
 ```go
 all := ui.CheckboxBase(c, &app.all).Label("Select all")
@@ -69,6 +90,44 @@ if app.some {
 }
 
 date := ui.ButtonBase(c).Role(ui.RolePopUpButton).Label("Due").Value(app.due.Format("Jan 2")).Expanded(app.picking)
+```
+
+A region loading says so while a placeholder stands in for it, and the
+link to the page shown in a navigation bar says it is the current page:
+
+```go
+ui.Column(c).Label("Messages").Busy(app.loading).Children(func() {
+	if app.loading {
+		ui.Spinner(c).Label("Loading")
+		return
+	}
+	messageList(c, app.messages)
+})
+
+ui.Row(c).Role(ui.RoleNavigation).Label("Main").Children(func() {
+	for _, p := range pages {
+		l := ui.Link(c, p.Title, p.Path)
+		if p.Path == app.path {
+			l.Current(ui.CurrentPage)
+		}
+	}
+})
+```
+
+An element with no role of its own and no `Label` is still seen once
+`Busy` or `Current` marks it, as a group, as ARIA's states make a
+generic element seen on the web. `Busy` is AppKit's `AXElementBusy`,
+ATK's busy state and UI Automation's `AriaProperties` (`busy=true`);
+`Current` is AppKit's `AXARIACurrent`, ATK's `current` attribute with the
+active state, and `AriaProperties` (`current=page`).
+
+A [test](testing.md#what-assistive-technology-sees) reads them as
+assistive technology gets them, with `Tester.AccessByRole`:
+
+```go
+if a, _ := tt.AccessByRole(ui.RoleGroup, "Messages"); !a.Busy {
+	t.Error("Messages is not busy while loading")
+}
 ```
 
 A check box that is mixed as often as not is better built on
@@ -81,6 +140,36 @@ from its `ui.CheckState`, and checks it as it is pressed.
 [tooltip](tooltip.md) does, and `Error` marks a value as invalid, for a
 message read with it; a [field](form.md) gives its control the texts below
 it.
+
+## Keyboard shortcuts
+
+`KeyShortcuts(mods, key)` tells screen readers a key that presses or
+focuses the element, as ARIA's `aria-keyshortcuts`: a toolbar button
+whose command the window's shortcut runs, or the button opening a command
+palette, is read with its key after its name. It only tells the key,
+which the view handles itself, as with
+[`c.Shortcut`](input.md#shortcuts); call it once for each key that does:
+
+```go
+if c.Shortcut(ui.Cmd, ui.KeyK) {
+	app.palette = true
+}
+ui.Toolbar(c, func() {
+	if ui.Button(c, "Search").KeyShortcuts(ui.Cmd, ui.KeyK).Clicked() {
+		app.palette = true
+	}
+	ui.Button(c, "Redo").KeyShortcuts(ui.Cmd|ui.Shift, ui.KeyZ).KeyShortcuts(ui.Cmd, ui.KeyY)
+})
+```
+
+The keys are written as the platform's menus write them, separated by
+spaces: `⌘K` and `⇧⌘Z ⌘Y` on macOS, in AppKit's `AXKeyShortcutsValue` as
+WebKit gives it; `Ctrl+K` and `Ctrl+Shift+Z Ctrl+Y` on Linux, in ATK's
+`keyshortcuts` object attribute, and on Windows, in UI Automation's
+`AcceleratorKey`, where Super is `Win`. A
+[test](testing.md#what-assistive-technology-sees) reads them in the
+`KeyShortcuts` of `Tester.AccessByRole`'s answer, and the
+[automation plugin](../plugins/automation.md) in a node's `keyShortcuts`.
 
 ## Formats of text
 

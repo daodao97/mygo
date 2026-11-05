@@ -5,6 +5,8 @@ package ui
 import (
 	"image/color"
 	"math"
+	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -259,6 +261,7 @@ func TestSetStyleRoundTripsOwnStyles(t *testing.T) {
 		{"font-weight", "600"},
 		{"line-height", "18px"},
 		{"text-decoration", "underline line-through"},
+		{"z-index", "-2"},
 	} {
 		var decls []inspDecl
 		understood := false
@@ -282,7 +285,7 @@ func TestSetStyleRoundTripsOwnStyles(t *testing.T) {
 	}
 	for _, tc := range []struct{ name, value string }{
 		{"width", "wide"}, {"padding", "1 2 3 4 5"}, {"opacity", "much"}, {"color", "#12"},
-		{"nonsense", "1"}, {"box-shadow", "1px"}, {"font-size", "-1"},
+		{"nonsense", "1"}, {"box-shadow", "1px"}, {"font-size", "-1"}, {"z-index", "1.5"},
 	} {
 		if setStyle(&node{}, tc.name, tc.value) {
 			t.Errorf("setStyle understood %s: %s", tc.name, tc.value)
@@ -338,6 +341,223 @@ func TestParseCSS(t *testing.T) {
 	} {
 		if got := nudge(tc.text, tc.by); got != tc.want {
 			t.Errorf("nudge(%q, %v) = %q, not %q", tc.text, tc.by, got, tc.want)
+		}
+	}
+}
+
+func TestInspectorCopiesChangesAsGo(t *testing.T) {
+	tt := styled(t)
+	chooseKeyed(t, tt, "box")
+	clickValue(t, tt, "background-color")
+	tt.Type("#fde68a")
+	tt.Key(0, KeyEnter)
+	if err := tt.Click("width on"); err != nil {
+		t.Fatal(err)
+	}
+	clickValue(t, tt, "padding")
+	tt.Type("8px 12px")
+	tt.Key(0, KeyEnter)
+	if err := tt.Click("Add a style"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("opacity: lots")
+	tt.Key(0, KeyEnter)
+	tt.Frame()
+	// Package ui's own frames have no source, unlike an app's.
+	tt.rt.insp.sources = map[uint64]string{tt.rt.insp.selected: "/app/main.go:42"}
+	if err := tt.Click("Copy as Go"); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	got := tt.Clipboard()
+	for _, want := range []string{
+		"// Column#box, main.go:42\n",
+		"// Remove width: 100px\n",
+		"// Not understood, opacity: lots\n",
+		`.Background(ui.Hex("#fde68a")).Padding(8, 12)`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the code lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestGoCallsAreElementMethods(t *testing.T) {
+	methods := reflect.TypeFor[Element]()
+	callRE := regexp.MustCompile(`\.([A-Z]\w*)\(`)
+	for _, tc := range []struct{ name, value, want string }{
+		{"flex-direction", "row-reverse", ".Row().Reverse()"},
+		{"flex-direction", "column", ".Column()"},
+		{"flex-wrap", "wrap-reverse", ".WrapReverse()"},
+		{"gap", "8", ".Gap(8)"},
+		{"gap", "8 4", ".GapY(8).GapX(4)"},
+		{"row-gap", "8", ".GapY(8)"},
+		{"column-gap", "8", ".GapX(8)"},
+		{"justify-content", "space-between", ".Justify(ui.SpaceBetween)"},
+		{"align-items", "center", ".AlignItems(ui.Center)"},
+		{"align-content", "stretch", ".AlignContent(ui.Stretch)"},
+		{"align-self", "end", ".AlignSelf(ui.End)"},
+		{"width", "12px", ".Width(12)"},
+		{"width", "50%", ".WidthPercent(50)"},
+		{"height", "50%", ".HeightPercent(50)"},
+		{"min-width", "1", ".MinWidth(1)"},
+		{"min-height", "1%", ".MinHeightPercent(1)"},
+		{"max-width", "1", ".MaxWidth(1)"},
+		{"max-height", "1%", ".MaxHeightPercent(1)"},
+		{"max-width", "min(78%, 544px)", ".MaxWidthPercent(78).MaxWidth(544)"},
+		{"min-width", "max(20px, 10%)", ".MinWidthPercent(10).MinWidth(20)"},
+		{"flex-basis", "1%", ".BasisPercent(1)"},
+		{"top", "1", ".Top(1)"},
+		{"right", "1", ".Right(1)"},
+		{"bottom", "1%", ".BottomPercent(1)"},
+		{"left", "1%", ".LeftPercent(1)"},
+		{"aspect-ratio", "16 / 8", ".AspectRatio(2)"},
+		{"flex-grow", "2", ".Grow(2)"},
+		{"flex-shrink", "0", ".Shrink(0)"},
+		{"padding", "1 2 3 4", ".Padding(1, 2, 3, 4)"},
+		{"margin", "auto", ".Margin(ui.Auto)"},
+		{"border", "1px solid #111111", `.Border(1, ui.Hex("#111111"))`},
+		{"border", "0 0 1px 0 dashed red", `.BorderWidth(0, 0, 1, 0).BorderColor(ui.Hex("#ff0000")).BorderStyle(ui.BorderDashed)`},
+		{"border-width", "2", ".BorderWidth(2)"},
+		{"border-color", "white", `.BorderColor(ui.Hex("#ffffff"))`},
+		{"border-style", "dashed", ".BorderStyle(ui.BorderDashed)"},
+		{"border-radius", "6", ".Radius(6)"},
+		{"border-radius", "1 2", ".Radius(1, 2, 1, 2)"},
+		{"filter", "blur(3px)", ".Blur(3)"},
+		{"background", "transparent", ".Background(ui.Transparent)"},
+		{"box-shadow", "1 2 3 4 #000000", `.Shadow(1, 2, 3, 4, ui.Hex("#000000"))`},
+		{"box-shadow", "inset 1 2 #000000", `.InsetShadow(1, 2, 0, 0, ui.Hex("#000000"))`},
+		{"box-shadow", "none", ".NoShadow()"},
+		{"opacity", "50%", ".Opacity(0.5)"},
+		{"visibility", "hidden", ".Invisible()"},
+		{"display", "none", ".Hidden(true)"},
+		{"color", "oklch(0.7 0.3 150 / 0.5)", ""},
+		{"font-family", "'Menlo'", `.Font("Menlo")`},
+		{"font-size", "13", ".FontSize(13)"},
+		{"font-weight", "bold", ".FontWeight(700)"},
+		{"font-style", "italic", ".Italic()"},
+		{"line-height", "18px", ".FixedLineHeight(18)"},
+		{"line-height", "1.5", ".LineHeight(1.5)"},
+		{"letter-spacing", "1", ".LetterSpacing(1)"},
+		{"text-align", "center", ".TextAlign(ui.Center)"},
+		{"text-decoration", "underline wavy", ".WavyUnderline()"},
+		{"text-decoration", "underline dotted line-through", ".DottedUnderline().Strikethrough()"},
+		{"font-feature-settings", "tnum", `.FontFeatures("tnum")`},
+		{"selection-color", "#000", `.SelectionColor(ui.Hex("#000000"))`},
+		{"line-clamp", "2", ".MaxLines(2)"},
+		{"white-space", "nowrap", ".NoWrap()"},
+		{"z-index", "3", ".ZIndex(3)"},
+		{"z-index", "auto", ".ZIndex(0)"},
+	} {
+		code := strings.Join(goCalls(tc.name, tc.value), "")
+		if tc.want != "" && code != tc.want {
+			t.Errorf("%s: %s is %q, not %q", tc.name, tc.value, code, tc.want)
+		}
+		if code == "" {
+			t.Errorf("%s: %s has no call", tc.name, tc.value)
+		}
+		for _, m := range callRE.FindAllStringSubmatch(code, -1) {
+			if _, ok := methods.MethodByName(m[1]); !ok && m[1] != "Oklch" && m[1] != "Hex" && m[1] != "Alpha" {
+				t.Errorf("%s: %s calls %s, which Element lacks", tc.name, tc.value, m[1])
+			}
+		}
+	}
+	// A wide color stays wide, with its alpha.
+	c := Oklch(0.7, 0.3, 150).Alpha(0.5)
+	if got := goColor(c); !strings.HasPrefix(got, "ui.Oklch(0.") || !strings.HasSuffix(got, ").Alpha(0.5)") {
+		t.Errorf("a wide color is %q", got)
+	}
+}
+
+func TestInspectorForcesStates(t *testing.T) {
+	var hovered, pressed, focused, visible, within bool
+	tt, _ := inspected(func(c *context) {
+		coreColumn(c).Padding(20).Children(func() {
+			b := coreBox(c).Key("box").Size(40, 40).Focusable()
+			hovered, pressed = b.Hovered(), b.Pressed()
+			focused, visible, within = b.Focused(), b.FocusVisible(), b.FocusWithin()
+		})
+	})
+	openInspector(tt)
+	e := chooseKeyed(t, tt, "box")
+	if hovered || pressed || focused || visible || within {
+		t.Fatal("the box starts in a state")
+	}
+	if tt.HasText(":hover") {
+		t.Errorf("the bar shows before it opens: %q", tt.Texts())
+	}
+	if err := tt.Click(":hov"); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []struct {
+		name string
+		on   *bool
+	}{{":hover", &hovered}, {":active", &pressed}, {":focus", &focused}, {":focus-visible", &visible}, {":focus-within", &within}} {
+		if err := tt.Click(s.name); err != nil {
+			t.Fatalf("%v: %q", err, tt.Texts())
+		}
+		if !*s.on {
+			t.Errorf("%s does not reach the view", s.name)
+		}
+		if !tt.HasText(s.name) {
+			t.Errorf("%s does not show: %q", s.name, tt.Texts())
+		}
+	}
+	if tt.rt.focused == e.id {
+		t.Error("forcing the focus moved the real focus")
+	}
+	// Forcing goes, one at a time, and with the inspector.
+	if err := tt.Click(":hover"); err != nil {
+		t.Fatal(err)
+	}
+	if hovered {
+		t.Error(":hover stayed forced")
+	}
+	tt.rt.toggleInspector()
+	tt.Frame()
+	if pressed || focused || visible || within {
+		t.Error("the states outlast the inspector")
+	}
+}
+
+func TestInspectorForcedFocusRings(t *testing.T) {
+	tt, _ := inspected(func(c *context) {
+		coreColumn(c).Padding(20).Children(func() { coreBox(c).Key("box").Size(40, 40).Focusable() })
+	})
+	openInspector(tt)
+	e := chooseKeyed(t, tt, "box")
+	if elementOf(t, tt, e.id).ringShown() {
+		t.Fatal("the box has a ring")
+	}
+	tt.rt.insp.toggleForced(e.id, forceFocusVisible)
+	tt.Frame()
+	if !elementOf(t, tt, e.id).ringShown() {
+		t.Error(":focus-visible does not ring the box")
+	}
+}
+
+// The inspector writes a bound in DIPs and by percentage as CSS's min()
+// or max() of the two, and reads it back.
+func TestCSSBoundRoundTrip(t *testing.T) {
+	var both, pct bound
+	both.setPct(78)
+	both.setPx(544)
+	pct.setPct(50)
+	for _, tc := range []struct {
+		b     bound
+		upper bool
+		css   string
+	}{{both, true, "min(78%, 544px)"}, {both, false, "max(78%, 544px)"}, {pct, true, "50%"}} {
+		css := cssBound(tc.b, tc.upper)
+		if css != tc.css {
+			t.Errorf("%+v is %q, want %q", tc.b, css, tc.css)
+		}
+		if b, ok := parseCSSBound(css, tc.upper); !ok || b != tc.b {
+			t.Errorf("%q reads back as %+v, %v", css, b, ok)
+		}
+	}
+	for _, s := range []string{"min(1px, 2px)", "max(78%, 544px)", "min(auto, 5px)", "min(5px)"} {
+		if _, ok := parseCSSBound(s, true); ok {
+			t.Errorf("max-width: %s was understood", s)
 		}
 	}
 }

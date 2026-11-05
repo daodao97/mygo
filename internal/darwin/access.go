@@ -122,8 +122,9 @@ var accessRoles = map[platform.AccessRole][2]string{
 	platform.RoleMenuItem:         {"AXMenuItem", ""},
 	platform.RoleMenuItemCheckBox: {"AXMenuItem", ""},
 	platform.RoleMenuItemRadio:    {"AXMenuItem", ""},
-	// WebKit's headings, whose value is their level.
-	platform.RoleHeading: {"AXHeading", ""},
+	// WebKit's headings, whose value is their level, and landmarks.
+	platform.RoleHeading:    {"AXHeading", ""},
+	platform.RoleNavigation: {"AXGroup", "AXLandmarkNavigation"},
 }
 
 // menuItem reports whether nodes of a role are items of a menu.
@@ -169,6 +170,17 @@ func roleOf(n platform.AccessNode) (role, subrole string) {
 	return role, subrole
 }
 
+// expands reports whether a node opens and closes what it shows: the
+// triggers of popups and disclosures, an item of a tree with children, or
+// anything open.
+func expands(n platform.AccessNode) bool {
+	switch n.Role {
+	case platform.RolePopUpButton, platform.RoleComboBox, platform.RoleDisclosure, platform.RoleMenuButton:
+		return true
+	}
+	return n.States&(platform.AccessExpanded|platform.AccessExpandable) != 0
+}
+
 // titled reports whether elements of a role show their name as a title.
 func titled(r platform.AccessRole) bool {
 	switch r {
@@ -194,6 +206,11 @@ func toggle(r platform.AccessRole) bool {
 	}
 	return false
 }
+
+// valueText reports whether a node of a range has a text for its value, as
+// aria-valuetext, which Core-AAM maps to AXValueDescription beside the
+// number.
+func valueText(n platform.AccessNode) bool { return n.Role.Ranged() && n.Value != "" }
 
 // valueOf returns the value of a node as AppKit wants it: a number for
 // toggles, disclosures and ranges, a string for texts.
@@ -256,8 +273,13 @@ func (el *accessElement) apply(n platform.AccessNode, fresh bool) (valueChanged 
 	if fresh || n.States&platform.AccessDisabled != o.States&platform.AccessDisabled {
 		send(obj, "setAccessibilityEnabled:", boolArg(n.States&platform.AccessDisabled == 0))
 	}
-	if fresh || n.States&platform.AccessExpanded != o.States&platform.AccessExpanded {
-		send(obj, "setAccessibilityExpanded:", boolArg(n.States&platform.AccessExpanded != 0))
+	// Only what opens says whether it is open, and what was open says it
+	// closed: AppKit reports AXExpanded once it is set, and VoiceOver
+	// then reads "collapsed" on lists and rows that never open.
+	if was := !fresh && expands(o); expands(n) || was {
+		if !was || n.States&platform.AccessExpanded != o.States&platform.AccessExpanded {
+			send(obj, "setAccessibilityExpanded:", boolArg(n.States&platform.AccessExpanded != 0))
+		}
 	}
 	if n.Role == platform.RoleSlider && (fresh || n.States&platform.AccessVertical != o.States&platform.AccessVertical) {
 		// NSAccessibilityOrientationVertical or Horizontal.
@@ -352,7 +374,7 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 		}
 		changed := false
 		objs := make([]id, len(tree.Nodes))
-		var valueChanged []id
+		var valueChanged, busyChanged []id
 		fresh := map[uint64]bool{}
 		for i, n := range tree.Nodes {
 			el := s.elements[n.ID]
@@ -363,8 +385,14 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				s.w.b.byAccess[el.obj] = el
 				el.apply(n, true)
 				changed = true
-			} else if el.apply(n, false) {
-				valueChanged = append(valueChanged, el.obj)
+			} else {
+				wasBusy := el.node.States & platform.AccessBusy
+				if el.apply(n, false) {
+					valueChanged = append(valueChanged, el.obj)
+				}
+				if n.States&platform.AccessBusy != wasBusy {
+					busyChanged = append(busyChanged, el.obj)
+				}
 			}
 			objs[i] = el.obj
 		}
@@ -481,6 +509,9 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 		for _, el := range selectionChanged {
 			postNote(el.obj, "AXSelectedRowsChanged")
 		}
+		for _, obj := range busyChanged {
+			postNote(obj, "AXElementBusyChanged")
+		}
 		if tree.Focus != s.access.Focus {
 			if el := s.elements[tree.Focus]; el != nil {
 				postNote(el.obj, "AXFocusedUIElementChanged")
@@ -583,8 +614,11 @@ func registerAccessClass() {
 			return el != nil && el.s.access.Focus == el.node.ID
 		}),
 		// AXInvalid, which the newer API lacks, says a value is not valid,
-		// as WebKit's fields do, and AXMenuItemMarkChar what an item of a
-		// menu shows of its choice.
+		// as WebKit's fields do, AXMenuItemMarkChar what an item of a
+		// menu shows of its choice, AXElementBusy that the content is
+		// about to change, and AXARIACurrent which item of those around it
+		// the element is the current one of, as WebKit's say aria-busy and
+		// aria-current.
 		method("accessibilityAttributeNames", func(self id, cmd objc.SEL) id {
 			names := sendSuper(self, "MyGoAccessibilityElement", cmd)
 			el := b().accessElementOf(self)
@@ -596,6 +630,18 @@ func registerAccessClass() {
 			}
 			if menuItem(el.node.Role) {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXMenuItemMarkChar")))
+			}
+			names = send(names, "arrayByAddingObject:", uintptr(nsString("AXElementBusy")))
+			if el.node.Current != platform.CurrentNone {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXARIACurrent")))
+			}
+			if valueText(el.node) {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXValueDescription")))
+			}
+			// The keys that press or focus it, as WebKit's elements say
+			// aria-keyshortcuts.
+			if el.node.KeyShortcuts != "" {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXKeyShortcutsValue")))
 			}
 			return names
 		}),
@@ -612,6 +658,20 @@ func registerAccessClass() {
 					}
 					if menuItem(el.node.Role) {
 						return 0
+					}
+				case "AXElementBusy":
+					return nsBool(el.node.States&platform.AccessBusy != 0)
+				case "AXARIACurrent":
+					if c := el.node.Current; c != platform.CurrentNone {
+						return nsString(c.String())
+					}
+				case "AXValueDescription":
+					if valueText(el.node) {
+						return nsString(el.node.Value)
+					}
+				case "AXKeyShortcutsValue":
+					if el.node.KeyShortcuts != "" {
+						return nsString(el.node.KeyShortcuts)
 					}
 				}
 			}

@@ -114,3 +114,20 @@ func TestGLDamage(handle uintptr) (damage []image.Rectangle, area image.Point, s
 
 // testGLDamaged holds what TestGLDamage recorded, by window.
 var testGLDamaged map[*window][]image.Rectangle
+
+// TestFrameClockInterval returns the refresh interval, in microseconds, in
+// the timings of the last frame of the frame clock of a window showing
+// native UI, which the clock waits after it for the next (paceFrameClock),
+// and the refresh rate of the monitor showing the window in millihertz.
+func TestFrameClockInterval(handle uintptr) (interval int64, mhz int32) {
+	s := surfaceByHandle(handle)
+	if s == nil {
+		return 0, 0
+	}
+	if clock := gtkWidgetGetFrameClock(s.area); clock != 0 {
+		if t := gdkFrameClockCurrentTimings(clock); t != 0 {
+			interval = gdkFrameTimingsRefresh(t)
+		}
+	}
+	return interval, s.refreshMilliHz()
+}

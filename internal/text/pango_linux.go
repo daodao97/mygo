@@ -37,6 +37,7 @@ func newEngine() engine {
 
 const (
 	pangoScale       = 1024
+	pangoTabLeft     = 0
 	pangoGlyphEmpty  = 0x0FFFFFFF
 	pangoGlyphUnknow = 0x10000000
 
@@ -158,6 +159,10 @@ var pangoLib struct {
 	layoutSetWidth            func(layout uintptr, width int32)
 	layoutSetWrap             func(layout uintptr, wrap int32)
 	layoutSetAutoDir          func(layout uintptr, auto int32)
+	layoutSetTabs             func(layout, tabs uintptr)
+	tabArrayNew               func(size, pixels int32) uintptr
+	tabArraySetTab            func(tabs uintptr, index, align, location int32)
+	tabArrayFree              func(tabs uintptr)
 	layoutGetLineCount        func(layout uintptr) int32
 	layoutGetLineReadonly     func(layout uintptr, line int32) *pangoLayoutLine
 	layoutSetAttributes       func(layout, attrs uintptr)
@@ -291,6 +296,10 @@ func loadPango() error {
 	bind(pango, &l.layoutSetWidth, "pango_layout_set_width")
 	bind(pango, &l.layoutSetWrap, "pango_layout_set_wrap")
 	bind(pango, &l.layoutSetAutoDir, "pango_layout_set_auto_dir")
+	bind(pango, &l.layoutSetTabs, "pango_layout_set_tabs")
+	bind(pango, &l.tabArrayNew, "pango_tab_array_new")
+	bind(pango, &l.tabArraySetTab, "pango_tab_array_set_tab")
+	bind(pango, &l.tabArrayFree, "pango_tab_array_free")
 	bind(pango, &l.layoutGetLineCount, "pango_layout_get_line_count")
 	bind(pango, &l.layoutGetLineReadonly, "pango_layout_get_line_readonly")
 	bind(pango, &l.layoutSetAttributes, "pango_layout_set_attributes")
@@ -690,6 +699,13 @@ func (e *pangoEngine) shape(text []rune, style Style, spans []Span, width float3
 		l.layoutSetAttributes(layout, attrs)
 		l.attrListUnref(attrs)
 	}
+	if style.tabStop > 0 {
+		// One stop, which Pango repeats at multiples of its position.
+		tabs := l.tabArrayNew(1, int32(gFalse))
+		l.tabArraySetTab(tabs, 0, pangoTabLeft, int32(min(math.Round(float64(style.tabStop)*pangoScale), math.MaxInt32)))
+		l.layoutSetTabs(layout, tabs)
+		l.tabArrayFree(tabs)
+	}
 	if width > 0 {
 		// Round up to whole Pango units: truncating can make the box a
 		// thousandth of a dip narrower than the text measured within it.
@@ -731,9 +747,13 @@ func (e *pangoEngine) shape(text []rune, style Style, spans []Span, width float3
 				for j, g := range infos {
 					cluster := at(item.offset + clusters[j])
 					// Pango empties the space ending a wrapped line; the
-					// other engines keep it, as editors need.
+					// other engines keep it, as editors need. A tab, which
+					// fonts have no glyph of, keeps the advance to its
+					// stop.
 					if g.glyph == pangoGlyphEmpty && cluster < len(text) && unicode.IsSpace(text[cluster]) {
-						g.glyph, g.width = e.space(item.font, text[cluster])
+						if id, w := e.space(item.font, text[cluster]); id != pangoGlyphEmpty {
+							g.glyph, g.width = id, w
+						}
 					}
 					sr.glyphs[j] = Glyph{
 						Font: f, ID: g.glyph,
@@ -805,13 +825,13 @@ func (e *pangoEngine) attributes(style Style, spans []Span, text []rune) uintptr
 		}
 		return l.attrFontFeaturesNew(b.String())
 	}
-	spacing := func(v float32) uintptr {
-		if v == 0 {
+	spacing := func(v float32, set bool) uintptr {
+		if v == 0 && !set {
 			return 0
 		}
 		return l.attrLetterSpacingNew(int32(math.Round(float64(v) * pangoScale)))
 	}
-	add(spacing(style.LetterSpacing), 0, 0)
+	add(spacing(style.LetterSpacing, false), 0, 0)
 	add(features(style.Features), 0, 0)
 	if style.Lang != "" {
 		add(l.attrLanguageNew(e.language(style.Lang)), 0, 0)
@@ -847,7 +867,7 @@ func (e *pangoEngine) attributes(style Style, spans []Span, text []rune) uintptr
 		if sp.Italic {
 			add(l.attrStyleNew(pangoStyleItalic), b0, b1)
 		}
-		add(spacing(sp.LetterSpacing), b0, b1)
+		add(spacing(sp.LetterSpacing, sp.SpacingSet), b0, b1)
 		add(features(sp.Features), b0, b1)
 		if sp.ObjectWidth > 0 {
 			// Each rune an inline object: a shape of its size standing on

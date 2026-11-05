@@ -138,6 +138,33 @@ func TestMenuBaseKeyboard(t *testing.T) {
 	}
 }
 
+// Up on the button opens the menu on its last item that can be chosen
+// (WAI-ARIA Authoring Practices, Menu Button: Up Arrow), past Delete,
+// which is disabled; Down then moves round to the first.
+func TestMenuBaseUpOpensOnLast(t *testing.T) {
+	a := &baseMenuApp{sort: "Name"}
+	tt := coreNewTester(a.view, 400, 400)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tt.Click("Edit")
+	tt.Key(0, KeyTab)
+	if !tt.Focused("Actions") {
+		t.Fatal("the focus is not on the button")
+	}
+	tt.Key(0, KeyUp)
+	if !a.open || !menuShows(tt) {
+		t.Fatalf("Up did not open the menu: open %v", a.open)
+	}
+	wantFocus(t, tt, "Sort by")
+	if !slices.Contains(a.highlighted, "Sort by") || slices.Contains(a.highlighted, "Open") {
+		t.Errorf("highlighted %q, want only the last item", a.highlighted)
+	}
+	tt.Key(0, KeyDown)
+	wantFocus(t, tt, "Open")
+	tt.Key(0, KeyEscape)
+	tt.Key(0, KeyDown)
+	wantFocus(t, tt, "Open")
+}
+
 func TestMenuBasePointer(t *testing.T) {
 	a := &baseMenuApp{sort: "Name"}
 	tt := coreNewTester(a.view, 400, 400)

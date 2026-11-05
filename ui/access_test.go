@@ -248,6 +248,56 @@ func TestAccessibilityOfTables(t *testing.T) {
 	}
 }
 
+// TestColumnHeaderShowsItsChildren checks that a column header keeps the
+// buttons inside it in the tree, as ARIA's columnheader, whose children
+// are not presentational, and is still named by its content (#1275).
+func TestColumnHeaderShowsItsChildren(t *testing.T) {
+	sorted := 0
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Role(RoleColumnHeader).Children(func() {
+			if coreButton(c, "Sort").Clicked() {
+				sorted++
+			}
+			coreButton(c, "Options")
+		})
+	}, 300, 200)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tree := tt.h.access
+	head := accessNode(t, tree, platform.RoleColumnHeader, "Sort Options")
+	if head.Label != "Sort Options" {
+		t.Errorf("the header is named %q", head.Label)
+	}
+	for _, name := range []string{"Sort", "Options"} {
+		b := accessNode(t, tree, platform.RoleButton, name)
+		if b.Parent < 0 || tree.Nodes[b.Parent].ID != head.ID {
+			t.Errorf("%s is not inside the header", name)
+		}
+		if b.States&platform.AccessFocusable == 0 || b.Actions&platform.ActionPress == 0 {
+			t.Errorf("%s: %+v", name, b)
+		}
+	}
+	sort := accessNode(t, tree, platform.RoleButton, "Sort")
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessAction, ID: sort.ID, Action: platform.AccessPress})
+	if sorted != 1 {
+		t.Errorf("pressing Sort clicked it %d times", sorted)
+	}
+	// A table's headers are named by their titles alone, with nothing
+	// inside them.
+	s := ListState{}
+	cols := []TableColumn{{Title: "Name", Sortable: true}, {Title: "Kind"}}
+	tt = coreNewTester(tableView(&s, cols, []string{"a.txt"}), 400, 300)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tree = tt.h.access
+	for _, title := range []string{"Name", "Kind"} {
+		h := accessNode(t, tree, platform.RoleColumnHeader, title)
+		for _, n := range tree.Nodes {
+			if n.Parent >= 0 && tree.Nodes[n.Parent].ID == h.ID {
+				t.Errorf("the header %s holds %+v", title, n)
+			}
+		}
+	}
+}
+
 func TestAccessibilityOfOverlays(t *testing.T) {
 	open := true
 	tt := coreNewTester(func(c *context) {

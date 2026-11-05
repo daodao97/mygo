@@ -34,6 +34,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/internal/wait"
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -767,6 +768,21 @@ func TestGlass(t *testing.T) {
 	if !glass && class != "NSVisualEffectView" || glass && style != 1 || radius != 16 {
 		t.Errorf("material %s, style %d, corners %v; want the clear glass, or the HUD material before macOS 26, cut to 16", class, style, radius)
 	}
+	if glass {
+		if err := w.SetVibrancyTint("rgba(255, 0, 0, 0.5)"); err != nil {
+			t.Fatalf("tint: %v", err)
+		}
+		r, g, b, a, _ := glassTint(w)
+		if math.Abs(r-1) > 0.02 || math.Abs(g) > 0.02 || math.Abs(b) > 0.02 || math.Abs(a-0.5) > 0.02 {
+			t.Errorf("tint is %v, %v, %v, %v; want red at half alpha", r, g, b, a)
+		}
+		if err := w.SetVibrancyTint(""); err != nil {
+			t.Fatalf("clear tint: %v", err)
+		}
+		if _, _, _, a, _ := glassTint(w); a != 0 {
+			t.Errorf("tint alpha is %v after clearing it", a)
+		}
+	}
 	// Without SetActiveAppearance, a window draws as inactive once the app is.
 	// Focusing other activates the app, done once other is key: it is waited
 	// for so that the activation does not land after the Finder's and bring
@@ -798,6 +814,88 @@ func TestGlass(t *testing.T) {
 	if class, _, _, _, _ := material(w); class != "" {
 		t.Errorf("no material: %s", class)
 	}
+}
+
+// TestNativeGlassOverWebView puts a toolbar of the system's glass over a
+// web view: NSGlassEffectView sits under the content and above the web
+// view, with the toolbar's frame, where it samples the page.
+func TestNativeGlassOverWebView(t *testing.T) {
+	if !nativeGlassSupported() {
+		t.Skip("the system has no Liquid Glass, or reduces transparency")
+	}
+	var view *mygo.WebView
+	var clicks atomic.Int32
+	var show atomic.Bool
+	show.Store(true)
+	w := newWindow(t, mygo.WindowOptions{Width: 400, Height: 300, Content: ui.View(func(c *ui.Context) {
+		c.Root().Background(ui.Transparent)
+		ui.Box(c).Fill().Children(func() {
+			if view != nil {
+				ui.WebView(c, view).Fill()
+			}
+			if show.Load() {
+				ui.Row(c).Absolute().Top(0).Left(0).Right(0).Height(60).Radius(18).Padding(0, 16).AlignItems(ui.Center).Material(glass.Glass{Native: true, Tint: ui.RGBA(255, 0, 0, 0.5)}).Children(func() {
+					if ui.Button(c, "On glass").Width(100).Clicked() {
+						clicks.Add(1)
+					}
+				})
+			}
+		})
+	})})
+	v, err := w.NewWebView(mygo.WebViewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Update(func() { view = v })
+	v.Page().LoadHTML(`<body style="margin:0;height:3000px;background:#ff0000"><script>requestAnimationFrame(() => requestAnimationFrame(() => { window.ready = true }))</script></body>`, "")
+	waitForPage(t, v.Page(), "window.ready")
+	eventually(t, "the system's glass", func() bool { class, _, _, _ := nativeGlass(w); return class != "" })
+	class, frame, style, ok := nativeGlass(w)
+	if !ok || class != "NSGlassEffectView" {
+		t.Fatalf("the system's glass is %q, not NSGlassEffectView", class)
+	}
+	if style != 0 {
+		t.Errorf("glass style is %d, not regular", style)
+	}
+	if r, g, b, a := nativeGlassTint(w); math.Abs(r-1) > 0.02 || math.Abs(g) > 0.02 || math.Abs(b) > 0.02 || math.Abs(a-0.5) > 0.02 {
+		t.Errorf("glass tint is %v, %v, %v, %v; want red at half alpha", r, g, b, a)
+	}
+	// The toolbar is 60 DIPs at the top of the content, whose height the
+	// title bar leaves.
+	h := float64(w.ContentBounds().Height)
+	want := [4]float64{0, h - 60, 400, 60}
+	for i := range want {
+		if math.Abs(frame[i]-want[i]) > 1 {
+			t.Errorf("glass frame is %v, want %v", frame, want)
+			break
+		}
+	}
+	// The glass is under the content, which takes the pointer: its button
+	// works through it. TestGlass may have left another app in front.
+	activateApp()
+	w.Show()
+	if _, ok := appActive(); ok {
+		eventually(t, "the app in front", func() bool { active, _ := appActive(); return active })
+	}
+	w.Focus()
+	eventually(t, "the glass window focused", w.IsFocused)
+	if !click(w, 66, 30) {
+		t.Skip("click automation not available")
+	}
+	// The first click after another app was in front may only activate the
+	// app; the next one is the button's.
+	if clicks.Load() == 0 {
+		click(w, 66, 30)
+	}
+	eventually(t, "the click on the glass", func() bool { return clicks.Load() == 1 })
+	// The page is under the glass, and the glass is under the content: the
+	// web view takes the pointer where the page shows.
+	if class := hitView(w, 200, 250); !strings.Contains(class, "WebView") {
+		t.Errorf("the view at the page is %q, not the web view", class)
+	}
+	// The glass of an element that goes away is removed, not only hidden.
+	w.Update(func() { show.Store(false) })
+	eventually(t, "the glass removed", func() bool { class, _, _, ok := nativeGlass(w); return !ok || class == "" })
 }
 
 // TestRoundedOpaqueWindow rounds a frameless window that is not
@@ -1082,6 +1180,12 @@ func TestRestoreMaximizedCaptionless(t *testing.T) {
 				b.X+b.Width <= d.Bounds.X+d.Bounds.Width && b.Y+b.Height <= d.Bounds.Y+d.Bounds.Height
 		})
 		want := w.ContentBounds()
+		// Restore undoes minimizing alone: a window not minimized stays
+		// maximized.
+		w.Restore()
+		if !w.IsMaximized() {
+			t.Errorf("display %d: Restore took a visible window out of maximized", i)
+		}
 		w.Minimize()
 		eventually(t, "a minimized window", w.IsMinimized)
 		w.Restore()
@@ -2581,6 +2685,29 @@ func TestUserInitiated(t *testing.T) {
 	navigated("https://example.com/went", true)
 }
 
+// TestSrcdocIframes checks that srcdoc iframes load in a page whose
+// OnWillNavigate cancels every navigation it is asked about, as it is
+// asked about the main frame's alone: on Linux before WebKitGTK 2.56,
+// which tells no navigation's frame, it was asked about theirs, named or
+// not, and they stayed blank (mainFrameNavigation).
+func TestSrcdocIframes(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{Hidden: true})
+	var srcdoc atomic.Bool
+	w.Page().OnWillNavigate(func(e *mygo.NavigateEvent) {
+		if e.URL == "about:srcdoc" {
+			srcdoc.Store(true)
+		}
+		e.PreventDefault()
+	})
+	w.Page().LoadHTML(`<iframe id=a srcdoc="<p id=x>unnamed</p>"></iframe><iframe id=b name=named srcdoc="<p id=x>named</p>"></iframe>`, "https://example.com/")
+	for _, id := range []string{"a", "b"} {
+		waitFor(t, w, `document.getElementById("`+id+`").contentDocument?.getElementById("x")`)
+	}
+	if srcdoc.Load() {
+		t.Error("OnWillNavigate was asked about an iframe's about:srcdoc")
+	}
+}
+
 func TestMenuActivation(t *testing.T) {
 	w := newWindow(t, mygo.WindowOptions{Width: 400, Height: 300})
 	w.Page().LoadHTML("<p>menus</p>", "")
@@ -3480,6 +3607,42 @@ func TestContentWindowObserved(t *testing.T) {
 	}
 	if mark, _, named, ok := axAttribute(w, "Bold", "AXMenuItemMarkChar"); ok && (mark != "✓" || !named) {
 		t.Errorf("the menu item's mark is %q, named %v", mark, named)
+	}
+	// What never opens says nothing of being open, which VoiceOver
+	// would read as "collapsed".
+	for _, label := range []string{"Settings", "Name", "Edit menu", "Bold"} {
+		if v, _, named, ok := axAttribute(w, label, "AXExpanded"); ok && named {
+			t.Errorf("%s names AXExpanded, %q", label, v)
+		}
+	}
+}
+
+// TestContentWindowValueText reads the text a slider gives for its value
+// (aria-valuetext) beside the number, as VoiceOver does.
+func TestContentWindowValueText(t *testing.T) {
+	var frames atomic.Int32
+	volume, steps := 30.0, 3.0
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		ui.Column(c).Fill().Padding(20).Gap(10).Children(func() {
+			ui.Slider(c, &volume, 0, 100).Label("Volume").Value("30 percent")
+			ui.Slider(c, &steps, 0, 10).Label("Steps")
+		})
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Value text", Width: 400, Height: 200, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	eventually(t, "the sliders", func() bool {
+		nodes, _ := accessibility(w)
+		return slices.ContainsFunc(nodes, func(n accessNode) bool { return n.role == roleSlider && n.label == "Steps" })
+	})
+	if _, _, _, ok := axAttribute(w, "Volume", "AXValue"); !ok {
+		t.Skip("only macOS reads attributes")
+	}
+	if v, _, named, _ := axAttribute(w, "Volume", "AXValueDescription"); v != "30 percent" || !named {
+		t.Errorf("the slider's value text is %q, named %v, want %q", v, named, "30 percent")
+	}
+	if v, _, named, _ := axAttribute(w, "Steps", "AXValueDescription"); named {
+		t.Errorf("a slider without a value text names AXValueDescription, %q", v)
 	}
 }
 

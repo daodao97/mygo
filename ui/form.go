@@ -195,7 +195,7 @@ func namesItself(e *node) bool {
 // or the text it is.
 func (e *node) nameOf() string {
 	if e.label == "" && e.kind == kindText {
-		return e.text
+		return e.accessText()
 	}
 	return e.label
 }

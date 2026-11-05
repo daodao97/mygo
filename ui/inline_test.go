@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"slices"
 	"testing"
 	"time"
@@ -224,5 +225,96 @@ func TestLinkHoverSolidUnderline(t *testing.T) {
 	}
 	if s := got[" or "]; !s.Underline || s.solid {
 		t.Errorf("an underlined text by the link: %+v", s)
+	}
+}
+
+// An inline element's Opacity, a transparent TextColor and Invisible fade
+// or hide its words in the paragraph, as CSS's opacity, color: transparent
+// and visibility: hidden do, and leave the line's layout as it is.
+func TestInlineFade(t *testing.T) {
+	black := RGB(0, 0, 0)
+	var style func(e *node)
+	var para, word *node
+	view := func(c *context) {
+		coreColumn(c).Background(RGB(255, 255, 255)).Padding(10).AlignItems(Start).Children(func() {
+			para = coreText(c, "").FontSize(40).TextColor(black).Children(func() {
+				word = coreText(c, "█████")
+				style(word)
+				coreText(c, " █")
+			})
+		})
+	}
+	// darkest returns the lowest red in the boxes of the word.
+	darkest := func(img *image.RGBA) uint8 {
+		low := uint8(255)
+		for _, r := range word.frags {
+			for y := int(r.Y); y < int(r.Y+r.H); y++ {
+				for x := int(r.X); x < int(r.X+r.W); x++ {
+					low = min(low, img.RGBAAt(x, y).R)
+				}
+			}
+		}
+		return low
+	}
+	style = func(*node) {}
+	tt := coreNewTester(view, 400, 100)
+	img := tt.Image()
+	if got := darkest(img); got != 0 {
+		t.Fatalf("the opaque word's darkest red is %d", got)
+	}
+	frags, width := slices.Clone(word.frags), para.w
+
+	for _, tc := range []struct {
+		name     string
+		style    func(e *node)
+		min, max uint8
+	}{
+		{"Opacity(0)", func(e *node) { e.Opacity(0) }, 255, 255},
+		{"Opacity(0.01)", func(e *node) { e.Opacity(0.01) }, 245, 254},
+		{"Opacity(0.5)", func(e *node) { e.Opacity(0.5) }, 100, 140},
+		{"TextColor transparent", func(e *node) { e.TextColor(Transparent) }, 255, 255},
+		{"TextColor half", func(e *node) { e.TextColor(RGBA(0, 0, 0, 0.5)) }, 100, 140},
+		{"Invisible", func(e *node) { e.Invisible() }, 255, 255},
+		{"Invisible with a background", func(e *node) { e.Background(RGB(0, 0, 255)).Invisible() }, 255, 255},
+		{"Opacity(0) over a color", func(e *node) { e.TextColor(RGB(0, 0, 0)).Opacity(0) }, 255, 255},
+	} {
+		style = tc.style
+		tt.Frame()
+		if got := darkest(tt.Image()); got < tc.min || got > tc.max {
+			t.Errorf("%s: the word's darkest red is %d, want %d to %d", tc.name, got, tc.min, tc.max)
+		}
+		if !slices.Equal(word.frags, frags) || para.w != width {
+			t.Errorf("%s: the word moved to %v from %v", tc.name, word.frags, frags)
+		}
+	}
+}
+
+// The fade of an inline element reaches the elements and spans inside it,
+// whatever their own colors.
+func TestInlineFadeNested(t *testing.T) {
+	red := RGB(255, 0, 0)
+	var para *node
+	coreRender(func(c *context) {
+		para = coreText(c, "x ").Children(func() {
+			coreText(c, "").Opacity(0.5).Children(func() {
+				coreText(c, "a").TextColor(red)
+				coreRichText(c, Span{Text: "b", Color: red, Background: red}).Opacity(0)
+			})
+			coreText(c, "c").Invisible().DecorationColor(red)
+		})
+	}, 200, 100, 1)
+	a, b, cs := para.spans[1], para.spans[2], para.spans[3]
+	if a.Color != red.Alpha(0.5) {
+		t.Errorf("the red word inside a half faded one is %v", a.Color)
+	}
+	if c, ok := b.color(); !ok || c.A != 0 || b.Background.A != 0 {
+		t.Errorf("the span of a hidden word: color %v (set %v), background %v", c, ok, b.Background)
+	}
+	if c, ok := cs.decorationColor(); !ok || c.A != 0 {
+		t.Errorf("the decoration color of an invisible word is %v (set %v)", c, ok)
+	}
+	// Spans that leave their color to the text around them take it.
+	if c, ok := para.spans[0].color(); ok {
+		t.Errorf("the paragraph's own span has color %v", c)
 	}
 }

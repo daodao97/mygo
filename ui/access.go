@@ -27,6 +27,8 @@ const (
 	RoleGroup
 	RoleText
 	RoleButton
+	// RoleLink is a link: focused, it takes Enter but not Space, which
+	// scrolls, as in a web page.
 	RoleLink
 	RoleCheckBox
 	RoleRadio
@@ -88,6 +90,11 @@ const (
 	// RoleHeading is the title of a section, named by its text, its rank
 	// set with Level.
 	RoleHeading
+	// RoleNavigation is a landmark holding links that move around the
+	// app or a document, as a breadcrumb trail (Breadcrumbs) or a
+	// navigation bar: screen readers list it among the window's
+	// landmarks, and jump to it.
+	RoleNavigation
 )
 
 // Role sets what the element is to assistive technology, for an element
@@ -123,8 +130,51 @@ func (e *node) Expanded(open bool) *node {
 	return e
 }
 
+// Busy tells assistive technology whether the element's content is about
+// to change, as a region loading, or one updated in several steps:
+// screen readers wait until it is no longer busy to read what changed in
+// it. A placeholder standing in for the content, as a skeleton or a
+// spinner, says what is happening (a RoleStatus labelled "Loading").
+func (e *node) Busy(on bool) *node {
+	e.busy = on
+	return e
+}
+
+// Current is the item an element is the current one of, among those
+// around it (Element.Current), as ARIA's aria-current says.
+type Current uint8
+
+const (
+	// CurrentNone is not current.
+	CurrentNone Current = iota
+	// CurrentItem is the current item of a set, aria-current="true".
+	CurrentItem
+	// CurrentPage is the page the user is on: the last crumb of a
+	// breadcrumb trail, or the link of a navigation bar to the page shown.
+	CurrentPage
+	// CurrentStep is the step of a process the user is at, as in a
+	// wizard's steps.
+	CurrentStep
+	// CurrentLocation is the place shown, as in a flow chart or a map.
+	CurrentLocation
+	// CurrentDate is today in a calendar, and CurrentTime now in a
+	// timetable.
+	CurrentDate
+	CurrentTime
+)
+
+// Current tells assistive technology that the element is the current one
+// of the items around it, as the page the user is on in a breadcrumb
+// trail or a navigation bar, which screen readers read with it ("current
+// page"). CurrentNone takes it back.
+func (e *node) Current(kind Current) *node {
+	e.current = kind
+	return e
+}
+
 // Value sets what assistive technology reads as the element's value, as
-// the choice a button opening a popup shows.
+// the choice a button opening a popup shows, or the text of a range's
+// value beside its number (aria-valuetext), as "3 of 10 steps".
 func (e *node) Value(s string) *node {
 	e.accValue = s
 	return e
@@ -142,6 +192,31 @@ func (e *node) Range(lo, hi, value float64) *node {
 // highest, or how deep an item of a tree is, from 1 at the top.
 func (e *node) Level(n int) *node {
 	e.level = max(n, 0)
+	return e
+}
+
+// KeyShortcuts tells assistive technology a key, with exactly the
+// modifiers mods, that presses or focuses the element, as ARIA's
+// aria-keyshortcuts: the window's shortcut that runs a toolbar button's
+// command, or opens a command palette, which screen readers read with the
+// element's name. It is written as the platform's menus write it ("⌘K"
+// for Cmd+K on macOS, "Ctrl+K" elsewhere). It only tells the key: handle
+// it with Shortcut on the context, or OnWindowShortcut. Call it once for
+// each key that does.
+func (e *node) KeyShortcuts(mods Modifiers, key Key) *node {
+	s := shortcutText(accelerator(mods, key))
+	if s == "" {
+		return e
+	}
+	for k := range strings.FieldsSeq(e.keyShortcuts) {
+		if k == s {
+			return e
+		}
+	}
+	if e.keyShortcuts != "" {
+		s = e.keyShortcuts + " " + s
+	}
+	e.keyShortcuts = s
 	return e
 }
 
@@ -175,19 +250,23 @@ func (e *node) accessRole() (platform.AccessRole, bool) {
 		return platform.RoleButton, true
 	case e.flags&(flagScrollX|flagScrollY) != 0:
 		return platform.RoleScroll, true
-	case e.label != "" || e.flags&flagFocusable != 0:
+	case e.label != "" || e.flags&flagFocusable != 0 || e.busy || e.current != CurrentNone:
+		// A state of its own shows the element too, as ARIA's global
+		// states do a generic element.
 		return platform.RoleGroup, true
 	}
 	return 0, false
 }
 
 // leafRole reports whether elements of a role take the text inside them
-// as their name, rather than showing it as elements of its own.
+// as their name, rather than showing it as elements of its own. A column
+// header shows what is inside it too, as ARIA's columnheader, whose
+// children are not presentational: a sort button in it is reached.
 func leafRole(r platform.AccessRole) bool {
 	switch r {
 	case platform.RoleGroup, platform.RoleList, platform.RoleScroll, platform.RoleDialog, platform.RoleAlertDialog, platform.RolePopup, platform.RoleStatus,
-		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleTree, platform.RoleListItem,
-		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar:
+		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleColumnHeader, platform.RoleTree, platform.RoleListItem,
+		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleNavigation:
 		return false
 	}
 	return true
@@ -205,7 +284,7 @@ func (e *node) innerText() string {
 		return ""
 	}
 	if e.kind == kindText {
-		return e.text // its text holds that of the elements inside it
+		return e.accessText() // its text holds that of the elements inside it
 	}
 	var t innerTexts
 	for ch := e.first; ch != nil; ch = ch.next {
@@ -233,7 +312,7 @@ func (t *innerTexts) walk(e *node) {
 		return
 	}
 	if e.kind == kindText {
-		t.add(e.text)
+		t.add(e.accessText())
 		return // its text holds that of the elements inside it
 	}
 	for ch := e.first; ch != nil; ch = ch.next {
@@ -422,9 +501,10 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.chooseMany {
 		n.States |= platform.AccessMultiselectable
 	}
-	// Rows and items of lists, and statuses, are named by their content,
-	// as leaves are, but show what is inside them too, as a toast's button.
-	if n.Label == "" && (leafRole(n.Role) || n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleStatus) {
+	// Rows and items of lists, column headers and statuses are named by
+	// their content, as leaves are, but show what is inside them too, as a
+	// toast's button.
+	if n.Label == "" && (leafRole(n.Role) || n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleColumnHeader || n.Role == platform.RoleStatus) {
 		n.Label = e.innerText()
 	}
 	switch e.checked {
@@ -439,8 +519,13 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.expandable {
 		n.States |= platform.AccessExpandable
 	}
+	if e.busy {
+		n.States |= platform.AccessBusy
+	}
+	n.Current = platform.AccessCurrent(e.current)
 	n.Level = e.level
 	n.Value = e.accValue
+	n.KeyShortcuts = e.keyShortcuts
 	if e.hasRange {
 		n.Min, n.Max, n.Now, n.Step = e.accRange[0], e.accRange[1], e.accRange[2], e.accStep
 	}
@@ -587,7 +672,7 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 		if ev.Action == platform.AccessDecrement {
 			k = down
 		}
-		rt.keys = append(rt.keys, keyEvent{0, k})
+		rt.keys = append(rt.keys, keyEvent{key: k})
 	case platform.AccessExpand, platform.AccessCollapse:
 		// The tree opens or closes the item as it builds it.
 		s.expand = 1

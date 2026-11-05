@@ -20,7 +20,7 @@ var roleNames = [...]string{
 	"row", "cell", "columnHeader", "tree", "treeItem", "listItem", "menuButton",
 	"toolbar", "radioGroup", "toggleButton", "comboBox", "disclosure", "meter",
 	"stepper", "colorWell", "alertDialog", "menu", "menuBar", "menuItem",
-	"menuItemCheckBox", "menuItemRadio", "heading",
+	"menuItemCheckBox", "menuItemRadio", "heading", "navigation",
 }
 
 func roleName(r platform.AccessRole) string {
@@ -36,7 +36,7 @@ var stateNames = [...]string{
 	"focusable", "disabled", "checked", "mixed", "selected", "expanded",
 	"multiline", "password", "readOnly", "selectable", "offscreen",
 	"multiselectable", "segment", "search", "invalid", "sortAscending",
-	"sortDescending", "expandable", "vertical",
+	"sortDescending", "expandable", "vertical", "busy",
 }
 
 // actionNames are the names of platform.AccessActions' bits, from the

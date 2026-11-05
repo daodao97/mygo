@@ -99,6 +99,7 @@ var (
 		enabled, sensitive, visible, showing, focusable, focused, checkable, checked, indeterminate,
 		expandable, expanded, editable, readOnly, multiLine, singleLine, selectableText, defunct int32
 		selectable, selected, multiselectable, hasPopup, invalidEntry, vertical, horizontal int32
+		busy, active                                                                        int32
 	}
 
 	// The trees of surfaces, by the surface and by its accessible, and the
@@ -315,6 +316,8 @@ func loadAccessNames() {
 		platform.RoleMenu: {"menu"}, platform.RoleMenuBar: {"menu bar"}, platform.RoleMenuItem: {"menu item"},
 		platform.RoleMenuItemCheckBox: {"check menu item", "menu item"}, platform.RoleMenuItemRadio: {"radio menu item", "menu item"},
 		platform.RoleHeading: {"heading", "label"},
+		// A landmark, whose xml-roles attribute says which, as Chromium's.
+		platform.RoleNavigation: {"landmark", "panel"},
 	} {
 		atkRoles[r] = role(names...)
 	}
@@ -327,6 +330,7 @@ func loadAccessNames() {
 		&st.singleLine: "single-line", &st.selectableText: "selectable-text", &st.defunct: "defunct",
 		&st.selectable: "selectable", &st.selected: "selected", &st.multiselectable: "multiselectable",
 		&st.hasPopup: "has-popup", &st.invalidEntry: "invalid-entry", &st.vertical: "vertical", &st.horizontal: "horizontal",
+		&st.busy: "busy", &st.active: "active",
 	} {
 		*p = atkStateTypeForName(cs(name))
 	}
@@ -698,6 +702,13 @@ func stateList(n platform.AccessNode, focused bool) []int32 {
 	if n.States&platform.AccessInvalid != 0 {
 		list = append(list, st.invalidEntry)
 	}
+	if n.States&platform.AccessBusy != 0 {
+		list = append(list, st.busy)
+	}
+	// The current item is active, as Chromium's aria-current is.
+	if n.Current != platform.CurrentNone {
+		list = append(list, st.active)
+	}
 	return slices.DeleteFunc(list, func(s int32) bool { return s == 0 })
 }
 
@@ -912,8 +923,10 @@ func initAccessCallbacks() {
 		}
 		return set
 	})
-	// Object attributes: the placeholder of a text field, and the place of
-	// a row among its list's, which Orca reads as "5 of 10000".
+	// Object attributes: the placeholder of a text field, the place of a
+	// row among its list's, which Orca reads as "5 of 10000", which item
+	// the node is the current one of (aria-current), and the ARIA role of
+	// a landmark.
 	attributes := purego.NewCallback(func(obj ptr) ptr {
 		an := node(obj)
 		if an == nil {
@@ -928,6 +941,11 @@ func initAccessCallbacks() {
 		if an.n.Placeholder != "" {
 			add("placeholder-text", an.n.Placeholder)
 		}
+		// The keys that press or focus it (aria-keyshortcuts), as
+		// Chromium says.
+		if an.n.KeyShortcuts != "" {
+			add("keyshortcuts", an.n.KeyShortcuts)
+		}
 		if an.n.PosInSet > 0 {
 			add("posinset", strconv.Itoa(an.n.PosInSet))
 		}
@@ -936,6 +954,12 @@ func initAccessCallbacks() {
 		}
 		if an.n.Level > 0 {
 			add("level", strconv.Itoa(an.n.Level))
+		}
+		if c := an.n.Current; c != platform.CurrentNone {
+			add("current", c.String())
+		}
+		if an.n.Role == platform.RoleNavigation {
+			add("xml-roles", "navigation")
 		}
 		// The order of the column a table is sorted by, as Chromium says.
 		switch {
@@ -1082,7 +1106,11 @@ func initAccessCallbacks() {
 			*(*float64)(unsafe.Pointer(slot(value, 0))) = max(an.n.Now, an.n.Min)
 		}
 		if text != 0 {
+			// The text of the value (aria-valuetext), the caller's to free.
 			*slot(text, 0) = 0
+			if an := node(obj); an != nil && an.n.Value != "" {
+				*slot(text, 0) = cString(an.n.Value)
+			}
 		}
 	})
 	valueRange := purego.NewCallback(func(obj ptr) ptr {

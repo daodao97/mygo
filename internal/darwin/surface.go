@@ -7,6 +7,7 @@ import (
 	"image"
 	pngenc "image/png"
 	"runtime"
+	"slices"
 	"structs"
 	"sync"
 	"time"
@@ -190,6 +191,10 @@ type surface struct {
 	// placed are where the content shows the window's web views, under
 	// it (webview.go).
 	placed []platform.WebViewPlacement
+	// glass are the system's glass views by element, under the content
+	// and above the web views; glassShown is their order, bottom to top.
+	glass      map[uint64]id
+	glassShown []id
 }
 
 func (w *window) createSurface(content NSRect) {
@@ -224,10 +229,105 @@ func (s *surface) destroy() {
 		s.link = 0
 	}
 	s.destroyAccess()
+	for _, v := range s.glass {
+		send(v, "removeFromSuperview")
+		release(v)
+	}
+	s.glass = nil
 	send(s.view, "removeTrackingArea:", uintptr(s.tracking))
 	release(s.tracking)
 	delete(s.w.b.bySurface, s.view)
 	release(s.view)
+}
+
+var (
+	nativeGlassOnce sync.Once
+	nativeGlassOK   bool
+)
+
+// NativeGlassSupported reports whether the system has Liquid Glass.
+func (s *surface) NativeGlassSupported() bool {
+	nativeGlassOnce.Do(func() { nativeGlassOK = hasClass("NSGlassEffectView") })
+	return nativeGlassOK
+}
+
+// PlaceGlass shows the system's glass where the content shows it: under
+// the surface, above the web views, so that the content paints its
+// children and border over it.
+func (s *surface) PlaceGlass(places []platform.GlassPlacement) {
+	host := s.w
+	if host.closed {
+		return
+	}
+	height := msgRect(host.view, sel("bounds")).Size.Height
+	if s.glass == nil {
+		s.glass = map[uint64]id{}
+	}
+	shown := make([]id, 0, len(places))
+	withPool(func() {
+		for _, p := range places {
+			if p.Clip.W <= 0 || p.Clip.H <= 0 {
+				continue
+			}
+			v := s.glass[p.ID]
+			if v == 0 {
+				v = msgInitRect(send(class("NSGlassEffectView"), "alloc"), sel("initWithFrame:"), NSRect{})
+				s.glass[p.ID] = v
+			}
+			f := p.Frame
+			msgSetRect(v, sel("setFrame:"), NSRect{Origin: NSPoint{f.X, height - f.Y - f.H}, Size: NSSize{f.W, f.H}})
+			send(v, "setStyle:", uintptr(p.Style))
+			msgSetFloat(v, sel("setCornerRadius:"), p.CornerRadius)
+			if p.Tint == nil {
+				send(v, "setTintColor:", 0)
+			} else {
+				send(v, "setTintColor:", uintptr(nsColor(*p.Tint)))
+			}
+			send(v, "setHidden:", 0)
+			shown = append(shown, v)
+		}
+		for id, v := range s.glass {
+			if !slices.Contains(shown, v) {
+				send(v, "removeFromSuperview")
+				release(v)
+				delete(s.glass, id)
+			}
+		}
+		s.glassShown = append(s.glassShown[:0], shown...)
+		s.stackGlass(shown, false)
+	})
+}
+
+// stackGlass puts the glass views shown in the order the content painted
+// them, under the surface and above the web views, unless they are.
+func (s *surface) stackGlass(shown []id, force bool) {
+	if len(shown) == 0 {
+		return
+	}
+	if !force {
+		subviews := send(s.w.view, "subviews")
+		n := sendInt(subviews, "count")
+		at := 0
+		for i := range n {
+			v := send(subviews, "objectAtIndex:", uintptr(i))
+			if slices.Contains(shown, v) {
+				if at >= len(shown) || v != shown[at] {
+					at = -1
+					break
+				}
+				at++
+			}
+		}
+		if at == len(shown) {
+			return
+		}
+	}
+	for _, v := range shown {
+		retain(v)
+		send(v, "removeFromSuperview")
+		send(s.w.view, "addSubview:positioned:relativeTo:", uintptr(v), nsWindowBelow, uintptr(s.view))
+		release(v)
+	}
 }
 
 // Surface returns the surface of a window created with
@@ -852,7 +952,11 @@ func registerSurfaceClass() {
 	command := func(name string) objc.MethodDef {
 		return method(name+":", func(self id, _ objc.SEL, sender id) {
 			if s := b().surfaceOf(self); s != nil {
-				s.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: name})
+				// The Edit menu's key, as Command+V, repeats while held:
+				// shortcuts that take the command tell (ShortcutRepeated).
+				ev := send(s.w.b.app, "currentEvent")
+				repeat := ev != 0 && sendInt(ev, "type") == 10 && sendBool(ev, "isARepeat") // NSEventTypeKeyDown
+				s.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: name, Repeat: repeat})
 			}
 		})
 	}

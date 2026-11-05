@@ -27,6 +27,8 @@ func TestLine(t *testing.T) {
 		{node{ID: "6", Role: "slider", Label: "Volume", Min: f(0), Max: f(1), Now: f(0.25), Step: f(0.05)}, false, `[slider] "Volume" value=0.25`},
 		{node{ID: "6", Role: "slider", Label: "Volume", Min: f(0), Max: f(1), Now: f(0.25), Step: f(0.05)}, true, `[slider] "Volume" value=0.25 range=0..1 step=0.05 bounds=0,0,0x0 id=6`},
 		{node{ID: "7", Role: "group", WebView: true}, false, `[group] webview`},
+		// The keys that press it, after its key.
+		{node{ID: "9", Role: "button", Label: "Redo", Key: json.RawMessage(`"redo"`), Shortcuts: "Ctrl+Shift+Z Ctrl+Y"}, false, `[button] "Redo" key=redo keyshortcuts="Ctrl+Shift+Z Ctrl+Y"`},
 		{
 			node{ID: "18446744073709551615", Role: "textField", Label: "Name", Value: "Ada", Placeholder: "Your name", Description: "Who", Selection: &[2]int{1, 3}, Actions: []string{"focus", "setValue"}, Bounds: rect{20, 90.5, 360, 32}},
 			true,

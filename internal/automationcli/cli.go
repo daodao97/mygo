@@ -928,14 +928,8 @@ func (c *cmd) wait() error {
 	want := !c.a.bools["gone"]
 	start := time.Now()
 	for {
-		// The window may never settle, as with a spinner: what it shows
-		// counts all the same.
-		if err := c.idle(window); err != nil {
-			var pe *protoError
-			if !errors.As(err, &pe) || pe.Code != "timeout" {
-				return err
-			}
-		}
+		// Read the condition even while the window keeps drawing.
+		// Only --settle waits for idle, after the condition is met.
 		t, _, err := c.tree(window)
 		if err != nil {
 			return err

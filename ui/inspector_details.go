@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/egoist/mygo/internal/platform"
 )
 
 // inspDetails describes the element chosen in the inspector, for the
@@ -186,6 +188,8 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 		add("attach", anchorText(at)+" / "+anchorText(self))
 	case e.flags&flagAbsolute != 0:
 		add("position", "absolute")
+	case e.sticky:
+		add("position", "sticky")
 	case e.inset != [4]length{}:
 		add("position", "relative")
 	}
@@ -197,9 +201,18 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 	for _, l := range []struct {
 		name string
 		v    length
-	}{{"width", e.width}, {"height", e.height}, {"min-width", e.minW}, {"min-height", e.minH}, {"max-width", e.maxW}, {"max-height", e.maxH}} {
+	}{{"width", e.width}, {"height", e.height}} {
 		if l.v.u != unitAuto {
 			add(l.name, cssLength(l.v))
+		}
+	}
+	for _, b := range []struct {
+		name  string
+		v     bound
+		upper bool
+	}{{"min-width", e.minW, false}, {"min-height", e.minH, false}, {"max-width", e.maxW, true}, {"max-height", e.maxH, true}} {
+		if b.v.set != 0 {
+			add(b.name, cssBound(b.v, b.upper))
 		}
 	}
 	if e.aspect > 0 {
@@ -298,6 +311,9 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 	if e.opacitySet && e.opacity < 1 {
 		add("opacity", num(e.opacity))
 	}
+	if e.zIndex != 0 {
+		add("z-index", strconv.Itoa(int(e.zIndex)))
+	}
 	if e.flags&flagInvisible != 0 {
 		add("visibility", "hidden")
 	}
@@ -323,11 +339,19 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 		if p&propPosition != 0 {
 			what = append(what, "position")
 		}
-		if p&propSize != 0 {
+		switch p & propSize {
+		case propSize:
 			what = append(what, "size")
+		case propWidth:
+			what = append(what, "width")
+		case propHeight:
+			what = append(what, "height")
 		}
 		if p&propColors != 0 {
 			what = append(what, "colors")
+		}
+		if p&propShadows != 0 {
+			what = append(what, "shadows")
 		}
 		add("transition", strings.Join(what, " ")+" "+strconv.Itoa(int(r.duration().Milliseconds()))+"ms")
 	}
@@ -411,6 +435,12 @@ func textStyles(ts *textStyle, set uint32) []inspDecl {
 	if set&setSelection != 0 {
 		ds = append(ds, inspDecl{name: "selection-color", value: colorText(ts.selection), color: ts.selection, swatch: true})
 	}
+	if set&setStroke != 0 {
+		ds = append(ds, inspDecl{name: "-webkit-text-stroke", value: pxText(ts.strokeWidth) + " " + colorText(ts.strokeColor), color: ts.strokeColor, swatch: true})
+	}
+	if set&setTabSize != 0 {
+		add("tab-size", num(ts.tabSize))
+	}
 	return ds
 }
 
@@ -460,6 +490,7 @@ func computed(e *node) []inspDecl {
 		o = e.opacity
 	}
 	add("opacity", num(o))
+	add("z-index", strconv.Itoa(int(e.zIndex)))
 	if e.scrolls() {
 		add("scroll-left", pxText(float32(e.st.scrollX)))
 		add("scroll-top", pxText(float32(e.st.scrollY)))
@@ -498,15 +529,19 @@ func properties(rt *engine, e *node) []inspSection {
 	if r := e.st.trec; r != nil && r.built == rt.frame && r.elem == e {
 		moving = r.moving != 0 || r.colorMoving
 	}
+	in := &rt.insp
 	state := inspSection{title: "State", rows: []inspDecl{
-		{name: "focused", value: yes(rt.focused == e.id)},
-		{name: "hovered", value: yes(hovered)},
-		{name: "pressed", value: yes(e.st.pressed)},
+		{name: "focused", value: yes(rt.focused == e.id || in.isForced(e.id, forceFocus|forceFocusVisible))},
+		{name: "hovered", value: yes(hovered || in.isForced(e.id, forceHover))},
+		{name: "pressed", value: yes(e.st.pressed || in.isForced(e.id, forceActive))},
 		{name: "disabled", value: yes(e.IsDisabled())},
 		{name: "moving", value: yes(moving)},
 	}}
 	if e.leaving != 0 {
 		state.rows = append(state.rows, inspDecl{name: "leaving", value: "true"})
+	}
+	if names := in.forcedNames(e.id); names != "" {
+		state.rows = append(state.rows, inspDecl{name: "forced", value: names})
 	}
 	role, seen := accessibleRole(e)
 	name := e.label
@@ -521,6 +556,15 @@ func properties(rt *engine, e *node) []inspSection {
 	}}
 	if e.description != "" {
 		acc.rows = append(acc.rows, inspDecl{name: "description", value: strconv.Quote(e.description)})
+	}
+	if e.keyShortcuts != "" {
+		acc.rows = append(acc.rows, inspDecl{name: "keyshortcuts", value: strconv.Quote(e.keyShortcuts)})
+	}
+	if e.busy {
+		acc.rows = append(acc.rows, inspDecl{name: "busy", value: "true"})
+	}
+	if e.current != CurrentNone {
+		acc.rows = append(acc.rows, inspDecl{name: "current", value: platform.AccessCurrent(e.current).String()})
 	}
 	return []inspSection{el, state, acc}
 }
@@ -555,6 +599,21 @@ func cssLength(l length) string {
 		return num(l.v) + "%"
 	}
 	return "auto"
+}
+
+// cssBound returns a minimum or a maximum size as CSS writes it: one of
+// both sizes in max() for a minimum, and in min() for a maximum.
+func cssBound(b bound, upper bool) string {
+	px, pct := pxText(b.px), num(b.pct)+"%"
+	switch {
+	case b.set == boundPx:
+		return px
+	case b.set == boundPct:
+		return pct
+	case upper:
+		return "min(" + pct + ", " + px + ")"
+	}
+	return "max(" + pct + ", " + px + ")"
 }
 
 // edgesCSS returns the four sides top, right, bottom and left as CSS

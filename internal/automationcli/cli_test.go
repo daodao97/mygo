@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/egoist/mygo/internal/wait"
 )
 
 func TestParseArgs(t *testing.T) {
@@ -38,9 +40,16 @@ type fakeApp struct {
 	calls []string
 	// acted are the params of act and input requests.
 	acted []map[string]any
+	// idle can keep a request waiting while the app still draws.
+	idle func()
+	// trees are successive snapshots, as work changes what the app shows.
+	trees [][]map[string]any
 }
 
 func (f *fakeApp) answer(method string, p map[string]any) (any, *protoError) {
+	if method == "idle" && f.idle != nil {
+		f.idle()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, method)
@@ -61,6 +70,9 @@ func (f *fakeApp) answer(method string, p map[string]any) (any, *protoError) {
 	case "tree":
 		if page {
 			return nil, &protoError{"unsupported", "window 2 shows a web page: use eval"}
+		}
+		if len(f.trees) > 0 {
+			f.nodes, f.trees = f.trees[0], f.trees[1:]
 		}
 		return map[string]any{"window": 1, "focus": f.focus, "nodes": f.nodes}, nil
 	case "idle":
@@ -283,4 +295,97 @@ func TestWaitText(t *testing.T) {
 	c.fails(1, `timeout: window 1 does not show text "Saved" after 1ms`, "wait", "--text", "Saved", "--timeout", "1ms")
 	c.fails(1, `timeout: window 1 still shows text "Saving" after 1ms`, "wait", "--text", "Saving", "--gone", "--timeout", "1")
 	c.fails(2, "wait --gone needs", "wait", "--gone")
+}
+
+// A condition can be met while a window keeps drawing. Waiting for it
+// must not need that drawing to stop, even with no timeout.
+func TestWaitWhileDrawing(t *testing.T) {
+	ready := []map[string]any{{"id": "1", "role": "text", "label": "Ready", "key": "ready"}}
+	saving := []map[string]any{{"id": "1", "role": "text", "label": "Saving"}}
+	value := []map[string]any{{"id": "1", "role": "textField", "value": "Ready"}}
+	for _, tc := range []struct {
+		name     string
+		args     []string
+		trees    [][]map[string]any
+		snapshot bool
+		code     int
+		out      string
+	}{
+		{"visible", []string{"--text", "Ready"}, [][]map[string]any{ready}, false, 0, "ok\n"},
+		{"no-timeout", []string{"--text", "Ready", "--timeout", "0"}, [][]map[string]any{ready}, false, 0, "ok\n"},
+		{"later", []string{"--text", "Ready", "--timeout", "0"}, [][]map[string]any{saving, ready}, false, 0, "ok\n"},
+		{"value", []string{"--text", "Ready", "--timeout", "0"}, [][]map[string]any{saving, value}, false, 0, "ok\n"},
+		{"key", []string{"key=ready", "--timeout", "0"}, [][]map[string]any{nil, ready}, false, 0, "ok\n"},
+		{"gone-text", []string{"--text", "Saving", "--gone", "--timeout", "0"}, [][]map[string]any{saving, ready}, false, 0, "ok\n"},
+		{"gone-id", []string{"id=1", "--gone", "--timeout", "0"}, [][]map[string]any{ready, nil}, false, 0, "ok\n"},
+		{"gone-ref", []string{"@e1", "--gone", "--timeout", "0"}, [][]map[string]any{ready, ready, nil}, true, 0, "ok\n"},
+		{"timeout", []string{"--text", "Ready", "--timeout", "1ms"}, [][]map[string]any{saving}, false, 1, "error: timeout: window 1 does not show text \"Ready\" after 1ms\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &fakeApp{trees: tc.trees}
+			idle := make(chan struct{}, 1)
+			stopDrawing := make(chan struct{})
+			stop := sync.OnceFunc(func() { close(stopDrawing) })
+			defer stop()
+			app.idle = func() {
+				select {
+				case idle <- struct{}{}:
+				default:
+				}
+				<-stopDrawing
+			}
+			path := app.serve(t)
+			c := cli{t, t.TempDir()}
+			if out, code := c.run("open", "--socket", path); code != 0 {
+				t.Fatalf("open: exit %d: %s", code, out)
+			}
+			if tc.snapshot {
+				c.must("@e1 [text] \"Ready\" key=ready\n", "snapshot")
+			}
+			type result struct {
+				out  string
+				code int
+			}
+			done := make(chan result, 1)
+			go func() {
+				out, code := c.run(append([]string{"wait"}, tc.args...)...)
+				done <- result{out, code}
+			}()
+			var got result
+			select {
+			case got = <-done:
+			case <-idle:
+				t.Error("condition wait needs the window to stop drawing")
+				stop()
+				got = wait.For(t, "the wait command to finish", done)
+			case <-wait.Context(t).Done():
+				t.Fatal("the wait command never finished or asked the app to settle")
+			}
+			if got.code != tc.code || got.out != tc.out {
+				t.Errorf("wait: exit %d: %s; want exit %d: %s", got.code, got.out, tc.code, tc.out)
+			}
+		})
+	}
+}
+
+func TestWaitSettles(t *testing.T) {
+	for _, condition := range []bool{false, true} {
+		app := &fakeApp{nodes: []map[string]any{{"id": "1", "role": "text", "label": "Ready"}}}
+		app.idle = func() {
+			app.mu.Lock()
+			defer app.mu.Unlock()
+			app.nodes = []map[string]any{{"id": "1", "role": "text", "label": "Settled"}}
+		}
+		path := app.serve(t)
+		c := cli{t, t.TempDir()}
+		if out, code := c.run("open", "--socket", path); code != 0 {
+			t.Fatalf("open: exit %d: %s", code, out)
+		}
+		if condition {
+			c.must("+ @e1 [text] \"Settled\"\n", "wait", "--text", "Ready", "--settle")
+		} else {
+			c.must("ok\n", "wait")
+			c.must("@e1 [text] \"Settled\"\n", "snapshot")
+		}
+	}
 }

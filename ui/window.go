@@ -169,6 +169,8 @@ type windowHost struct {
 	// the web views.
 	placed []platform.WebViewPlacement
 	views  []NativeWebView
+	// glassPlaced is where the surface shows the system's glass.
+	glassPlaced []platform.GlassPlacement
 	// waiting tells that a frame paced by the display waits for waitingOn,
 	// the GPU renderer or refresh, to be able to draw it (displayWaiter);
 	// wake and displayReady draw it then, at the time the display asked
@@ -1007,6 +1009,35 @@ func (h *windowHost) openURL(u string, done func(error)) {
 	if h.conn.OpenURL != nil {
 		h.conn.OpenURL(u, done)
 	}
+}
+
+// nativeGlass reports whether the surface draws the system's glass.
+func (h *windowHost) nativeGlass() bool {
+	s, ok := h.conn.Surface.(platform.GlassSurface)
+	return ok && s.NativeGlassSupported()
+}
+
+// placeGlass gives the surface where the frame shows the system's glass,
+// unless it is where the last frame showed it.
+func (h *windowHost) placeGlass(places []platform.GlassPlacement) {
+	s, ok := h.conn.Surface.(platform.GlassSurface)
+	if !ok {
+		return
+	}
+	if slices.EqualFunc(places, h.glassPlaced, sameGlassPlacement) {
+		return
+	}
+	h.glassPlaced = append(h.glassPlaced[:0], places...)
+	s.PlaceGlass(places)
+}
+
+// sameGlassPlacement reports whether a and b place the same glass.
+func sameGlassPlacement(a, b platform.GlassPlacement) bool {
+	if a.ID != b.ID || a.Frame != b.Frame || a.Clip != b.Clip || a.Radii != b.Radii ||
+		a.CornerRadius != b.CornerRadius || a.Style != b.Style || (a.Tint == nil) != (b.Tint == nil) {
+		return false
+	}
+	return a.Tint == nil || *a.Tint == *b.Tint
 }
 
 // placeWebViews gives the surface where the frame shows the window's web

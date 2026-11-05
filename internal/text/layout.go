@@ -38,6 +38,15 @@ type Style struct {
 	// and falls back to fonts for it. "" is the language of the System
 	// (SetLanguage).
 	Lang string
+	// TabSize puts tab stops every TabSize spaces of the style's font,
+	// letter spacing included, from the start of each line, as CSS's
+	// tab-size, once System.UseTabSize was called; 0 leaves them where
+	// the system's text stack puts them.
+	TabSize float32
+
+	// tabStop is the distance between tab stops in DIPs that TabSize
+	// makes, which the System sets for engines as it shapes.
+	tabStop float32
 }
 
 func (s Style) weight() int {
@@ -130,7 +139,10 @@ type Span struct {
 	Weight        int
 	Italic        bool
 	LetterSpacing float32
-	Features      string
+	// SpacingSet makes LetterSpacing the span's when zero too, rather
+	// than the text's, as CSS's letter-spacing: 0 on an inline box.
+	SpacingSet bool
+	Features   string
 	// Lang is the language of the runes, as Style.Lang; "" keeps the
 	// text's.
 	Lang string
@@ -145,6 +157,11 @@ type Span struct {
 	// above the baseline, or lowers them when negative, as superscripts
 	// and subscripts are; the line makes room for them.
 	BaselineShift float32
+	// PaddingX widens the span that many DIPs at both ends of each line's
+	// piece of it, as the horizontal padding of CSS's inline boxes with
+	// box-decoration-break: clone: the glyphs move in, and the line, which
+	// breaks to fit it, is that much wider.
+	PaddingX float32
 }
 
 // style returns the style of the span's runes in a text of style base.
@@ -162,7 +179,7 @@ func (sp Span) style(base Style) Style {
 	if sp.Italic {
 		s.Italic = true
 	}
-	if sp.LetterSpacing != 0 {
+	if sp.LetterSpacing != 0 || sp.SpacingSet {
 		s.LetterSpacing = sp.LetterSpacing
 	}
 	if sp.Features != "" {
@@ -187,8 +204,8 @@ func EncodeSpans(spans []Span) string {
 		str(sp.Family)
 		b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.Size))
 		b = binary.AppendUvarint(b, uint64(max(sp.Weight, 0)))
-		// Italics, and whether a baseline shift follows: other spans'
-		// keys stay short.
+		// Italics, a letter spacing set, and whether a baseline shift and
+		// a padding follow: other spans' keys stay short.
 		var flags byte
 		if sp.Italic {
 			flags |= 1
@@ -196,9 +213,18 @@ func EncodeSpans(spans []Span) string {
 		if sp.BaselineShift != 0 {
 			flags |= 2
 		}
+		if sp.SpacingSet {
+			flags |= 4
+		}
+		if sp.PaddingX != 0 {
+			flags |= 8
+		}
 		b = append(b, flags)
 		if sp.BaselineShift != 0 {
 			b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.BaselineShift))
+		}
+		if sp.PaddingX != 0 {
+			b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.PaddingX))
 		}
 		b = binary.LittleEndian.AppendUint32(b, math.Float32bits(sp.LetterSpacing))
 		str(sp.Features)
@@ -257,8 +283,12 @@ func DecodeSpans(s string) []Span {
 			b = b[1:]
 		}
 		sp.Italic = flags&1 != 0
+		sp.SpacingSet = flags&4 != 0
 		if flags&2 != 0 {
 			sp.BaselineShift = f32()
+		}
+		if flags&8 != 0 {
+			sp.PaddingX = f32()
 		}
 		sp.LetterSpacing = f32()
 		sp.Features = str()
@@ -321,12 +351,19 @@ type Line struct {
 	// included.
 	Start, End int
 	// RTL reports a right-to-left paragraph.
-	RTL    bool
+	RTL bool
+	// Glyphs are in visual order, from the left, on every engine: X
+	// ascends but for shaping offsets, and Cluster descends through a
+	// right-to-left run (Glyph.RTL). The glyphs of a cluster are next to
+	// each other.
 	Glyphs []Glyph
 
 	carets   []float32
 	stops    []caretStop
 	upstream []float32
+	// padding is the room the padding of spans' pieces takes in the line
+	// (Span.PaddingX).
+	padding float32
 }
 
 // Glyph is a positioned glyph.
@@ -342,7 +379,9 @@ type Glyph struct {
 	// Cluster is the first rune of the glyph's cluster, Runes how many
 	// runes the cluster holds; glyphs of the ellipsis have Runes 0.
 	Cluster, Runes int
-	RTL            bool
+	// RTL marks a glyph of a right-to-left run, whose cluster's first
+	// rune is on its right.
+	RTL bool
 	// Object marks the box of an inline object (Span.ObjectWidth), which
 	// draws no glyph: what shows there is the caller's.
 	Object bool
@@ -421,12 +460,17 @@ type System struct {
 	// justify is justifyLine once UseJustify was called, so that apps
 	// that never justify text do not link it.
 	justify func(line *Line, runes []rune, width float32) (left float32, ok bool)
+	// tabs is tabStop once UseTabSize was called, so that apps that never
+	// set a tab size do not link it.
+	tabs func(s *System, style Style) float32
 }
 
 type markKey struct {
 	style Style
 	mark  string // Params.Ellipsis
 	rtl   bool
+	// space keys the advance of a space of the style instead (tabStop).
+	space bool
 }
 
 // cached is a layout, with room for one line, as most layouts have, and
@@ -579,6 +623,14 @@ func (s *System) UseJustify() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.justify = justifyLine
+}
+
+// UseTabSize lets layouts set their tab stops (Style.TabSize), which
+// package ui calls as the first element sets a tab size.
+func (s *System) UseTabSize() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tabs = (*System).tabStop
 }
 
 // RegisterFont adds a TrueType or OpenType font (or collection) to the
@@ -1051,6 +1103,9 @@ func (s *System) layout(p Params) *cached {
 	if p.Style.Lang == "" {
 		p.Style.Lang = s.lang
 	}
+	if p.Style.TabSize > 0 && s.tabs != nil && strings.ContainsRune(p.Text, '\t') {
+		p.Style.tabStop = s.tabs(s, p.Style)
+	}
 	l.Lines = c.line[:0]
 	y := float32(0)
 	for start := 0; start <= len(runes); {
@@ -1142,6 +1197,28 @@ func (s *System) layout(p Params) *cached {
 	return c
 }
 
+// tabStop returns the distance between the tab stops of a style, TabSize
+// spaces of its font.
+func (s *System) tabStop(style Style) float32 {
+	n := style.TabSize
+	style.TabSize, style.tabStop = 0, 0
+	key := markKey{style: style, space: true}
+	space, ok := s.marks[key]
+	if !ok {
+		for _, l := range s.engine().shape([]rune{' '}, style, nil, 0, false, false) {
+			space += advance(l)
+		}
+		if len(s.marks) >= 256 {
+			clear(s.marks)
+		}
+		s.marks[key] = space
+	}
+	if space <= 0 {
+		space = style.FontSize() / 4
+	}
+	return space * n
+}
+
 // paragraph lays out runes[start:end], a paragraph without newlines, in at
 // most maxLines lines (0 is unlimited) from *y down, appends them to out,
 // and moves *y past it. It reports whether it cut the text, which
@@ -1203,9 +1280,13 @@ func (s *System) paragraph(out []Line, p Params, spans []Span, runes []rune, sta
 		room = make([]Glyph, n)
 	}
 	first := len(out)
+	pads := padded(spans)
 	for _, sl := range shaped {
 		k := glyphCount(sl)
 		out = append(out, line(p, text, sl, start, rtl, m, y, room[:0:k], &s.starts, spans))
+		if pads {
+			padLine(&out[len(out)-1], spans, start)
+		}
 		room = room[k:]
 	}
 	lines := out[first:]
@@ -1396,7 +1477,7 @@ func (s *System) ellipsize(text []rune, spans []Span, start int, p Params, width
 	}
 	cut := len(rest)
 	if width > 0 {
-		key := markKey{p.Style, p.Ellipsis, rtl}
+		key := markKey{style: p.Style, mark: p.Ellipsis, rtl: rtl}
 		ellipsis, ok := s.marks[key]
 		if !ok {
 			for _, l := range e.shape(mark, p.Style, nil, 0, rtl, false) {
@@ -1424,16 +1505,26 @@ func (s *System) ellipsize(text []rune, spans []Span, start int, p Params, width
 		b.Reset(rest)
 		w := float32(0)
 		cut = 0
+		// The padding of the spans' pieces before the cut, and the span of
+		// the last, which the ellipsis ends.
+		pads, k := padded(restSpans), -1
 		for cut < len(rest) {
 			next := b.NextGrapheme(cut)
 			gw := float32(0)
 			for _, a := range advances[cut:next] {
 				gw += a
 			}
-			if w+gw+ellipsis > width {
+			j := k
+			if pads {
+				if j = spanIndex(restSpans, cut); j != k {
+					gw += padOf(restSpans, k) + padOf(restSpans, j)
+				}
+			}
+			if w+gw+padOf(restSpans, j)+ellipsis > width {
 				break
 			}
 			w += gw
+			k = j
 			cut = next
 		}
 	}

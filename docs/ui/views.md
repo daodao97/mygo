@@ -218,7 +218,10 @@ for n := range counts {
 ## State of an element
 
 An element keeps state of its own from frame to frame with `ui.Local`, for
-widgets you build yourself; see [custom widgets](custom-widgets.md).
+widgets you build yourself; see [custom widgets](custom-widgets.md). A
+value of it that is an `io.Closer` closes when the element is no longer
+built, which stops the work the widget started
+([stopping what a widget started](custom-widgets.md#stopping-what-a-widget-started)).
 
 ## Check build lifetimes
 

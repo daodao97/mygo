@@ -200,7 +200,7 @@ func sliderInput(n *node) {
 		}
 	}
 	st, rt := n.st, n.c.rt
-	if st.pressed {
+	if st.pressedPrimary() {
 		x, y := st.local(st.pointer(rt))
 		x += st.x
 		y += st.y
@@ -412,6 +412,17 @@ type inputAction struct {
 
 func (n *node) afterInput(fn func()) {
 	n.c.rt.afterInputs = append(n.c.rt.afterInputs, inputAction{node: n, fn: fn, building: n.c.rt.building})
+}
+
+// onBuilt runs fn once the view is built, after the input of every
+// control, while typing (state.typing) still shows: for what needs all of
+// a widget's parts, which the app builds, as the items of a tree.
+func (c *context) onBuilt(fn func()) { c.rt.afterBuild = append(c.rt.afterBuild, fn) }
+
+func (rt *engine) runAfterBuild() {
+	for _, fn := range rt.afterBuild {
+		fn()
+	}
 }
 
 // SetChanged reports the element's value as changed in this build pass,

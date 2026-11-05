@@ -9,8 +9,8 @@ import (
 )
 
 // clipping is how an element clips and masks what it paints, itself and
-// what is inside it (ClipInset, MaskLinearGradient and the others), made
-// the first time.
+// what is inside it (ClipInset, MaskLinearGradient and the others, and
+// the layers of Masks), made the first time.
 type clipping struct {
 	// inset are the insets of the clip from the box, top, right, bottom
 	// and left, in DIPs or, with percent, in percent of the box's height
@@ -23,6 +23,7 @@ type clipping struct {
 	linear   LinearGradient
 	radial   RadialGradient
 	conic    ConicGradient
+	layers   []Mask
 }
 
 type maskKind uint8
@@ -32,6 +33,7 @@ const (
 	maskLinear
 	maskRadial
 	maskConic
+	maskLayers
 )
 
 // clippings returns the element's clipping, made the first time.
@@ -87,7 +89,7 @@ func (e *node) ClipInsetPercent(top, right, bottom, left, radius float32) *node 
 // through, a row's background shows what is under it too.
 func (e *node) MaskLinearGradient(g LinearGradient) *node {
 	k := e.clippings()
-	k.mask, k.linear = maskLinear, g
+	k.mask, k.linear, k.layers = maskLinear, g, nil
 	return e
 }
 
@@ -96,7 +98,7 @@ func (e *node) MaskLinearGradient(g LinearGradient) *node {
 // spotlight.
 func (e *node) MaskRadialGradient(g RadialGradient) *node {
 	k := e.clippings()
-	k.mask, k.radial = maskRadial, g
+	k.mask, k.radial, k.layers = maskRadial, g, nil
 	return e
 }
 
@@ -105,7 +107,7 @@ func (e *node) MaskRadialGradient(g RadialGradient) *node {
 // as its stops turn.
 func (e *node) MaskConicGradient(g ConicGradient) *node {
 	k := e.clippings()
-	k.mask, k.conic = maskConic, g
+	k.mask, k.conic, k.layers = maskConic, g, nil
 	return e
 }
 
@@ -130,9 +132,14 @@ func (e *node) selfClip() (Rect, float32, bool) {
 }
 
 // clipSelf pushes the clip of e, painting, around all it paints
-// (selfClip): its inset, and its mask's gradient across its box.
+// (selfClip): its inset, and its mask's gradient across its box, or the
+// mask of its layers (Masks).
 func (p *Painter) clipSelf(e *node) {
 	r, radius, _ := e.selfClip()
+	if e.clipping.mask == maskLayers {
+		pushMaskLayers(p, e, r, radius)
+		return
+	}
 	op := scene.Op{Kind: scene.OpPushClip, Rect: p.snap(Rect{e.x, e.y, e.w, e.h})}
 	switch k := e.clipping; k.mask {
 	case maskLinear:
@@ -229,8 +236,7 @@ type pathClip struct {
 
 // clipMask returns the w×h mask of the coverage of the path f from (x0,
 // y0), in device pixels, as an image's alpha: the one made for the same
-// shape lately, or a new one. Masks no paint used since the one before
-// are forgotten; the scenes that drew them keep them as long as they need.
+// shape lately, or a new one (keptMask).
 func (rt *engine) clipMask(f *flatPath, x0, y0 float32, w, h int) *scene.Image {
 	var buf [8]byte
 	var hs maphash.Hash
@@ -247,14 +253,8 @@ func (rt *engine) clipMask(f *flatPath, x0, y0 float32, w, h int) *scene.Image {
 		hs.WriteByte(0xff)
 	}
 	key := hs.Sum64()
-	if c, ok := rt.pathClips[key]; ok {
-		c.used = rt.paints
-		return c.img
-	}
-	for k, c := range rt.pathClips {
-		if c.used+1 < rt.paints {
-			delete(rt.pathClips, k)
-		}
+	if img := rt.keptMask(key); img != nil {
+		return img
 	}
 	z := &rt.paths.raster
 	z.Reset(w, h)
@@ -270,9 +270,30 @@ func (rt *engine) clipMask(f *flatPath, x0, y0 float32, w, h int) *scene.Image {
 		pix[4*i+3] = a
 	}
 	img := scene.NewImageRGBA(w, h, pix)
+	rt.keepMask(key, img)
+	return img
+}
+
+// keptMask returns the mask of a clip kept by key (keepMask), made
+// lately, or nil, which forgets the masks no paint used since the one
+// before; the scenes that drew them keep them as long as they need.
+func (rt *engine) keptMask(key uint64) *scene.Image {
+	if c, ok := rt.pathClips[key]; ok {
+		c.used = rt.paints
+		return c.img
+	}
+	for k, c := range rt.pathClips {
+		if c.used+1 < rt.paints {
+			delete(rt.pathClips, k)
+		}
+	}
+	return nil
+}
+
+// keepMask keeps img, the mask of a clip, by key, for keptMask.
+func (rt *engine) keepMask(key uint64, img *scene.Image) {
 	if rt.pathClips == nil {
 		rt.pathClips = map[uint64]*pathClip{}
 	}
 	rt.pathClips[key] = &pathClip{img: img, used: rt.paints}
-	return img
 }

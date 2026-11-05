@@ -139,7 +139,14 @@ seed := filepath.Join(dir, "seed.db")
 ```
 
 `mygo dev` copies them into the development app too, and rebuilds it when
-they change. Hidden files are left out.
+they change. A dotfile inside a resource directory ships: packages read
+such names, as dsh's provider catalog reads
+`dist/providers/data/.manifest.json`. Hidden directories (`.git`, `.cache`)
+are left out, and so are `.DS_Store`, `Thumbs.db` and `desktop.ini`, and
+the top-level entries of `resources` whose names start with a dot, which
+belong to the repository rather than the app. A dotfile you would rather
+not ship, such as a `.env` beside a resource, is left out with
+[`resourcesExclude`](#leaving-files-out).
 
 ### Leaving files out
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/text"
 )
 
@@ -140,6 +141,128 @@ func TestMaskGradients(t *testing.T) {
 		if p := img.RGBAAt(110, 10); !isWhite(p) {
 			t.Errorf("%s: outside the box, %v", c.name, p)
 		}
+	}
+}
+
+// Masks composites layers of masks, each across its box, as CSS's
+// mask-composite: a ring of the padding, cut out of the border box by the
+// content box, three ways; the content box alone; and half the box with
+// the content box.
+func TestMaskLayers(t *testing.T) {
+	black := RGB(0, 0, 0)
+	solid := LinearGradient{From: black, To: black}
+	left := LinearGradient{Angle: 90, Stops: []GradientStop{{black, 0}, {black, 0.5}, {Transparent, 0.5}, {Transparent, 1}}}
+	ring := "ring"
+	for _, c := range []struct {
+		name   string
+		layers []Mask
+		// What shows: in the padding on the left and the right, and in the
+		// content box.
+		left, right, content bool
+	}{
+		{"exclude", []Mask{{Image: solid, Box: MaskContentBox, Composite: MaskExclude}, {Image: solid}}, true, true, false},
+		{"subtract", []Mask{{Image: solid, Composite: MaskSubtract}, {Image: solid, Box: MaskContentBox}}, true, true, false},
+		{"intersect", []Mask{{Image: solid, Box: MaskContentBox, Composite: MaskIntersect}, {Image: solid}}, false, false, true},
+		{"add", []Mask{{Image: left}, {Image: solid, Box: MaskContentBox}}, true, false, true},
+		{"padding box", []Mask{{Image: solid, Box: MaskPaddingBox, Composite: MaskExclude}, {Image: solid}}, false, false, false},
+	} {
+		for _, scale := range []float32{1, 2} {
+			img := coreRender(func(cx *context) {
+				coreBox(cx).Fill().Background(RGB(255, 255, 255)).Padding(20).Children(func() {
+					coreBox(cx).Size(100, 60).Padding(10).Border(2, RGB(255, 0, 0)).
+						Background(RGB(255, 0, 0)).Label(ring).Masks(c.layers...)
+				})
+			}, 140, 100, scale)
+			at := func(x, y int) color.RGBA { return img.RGBAAt(int(float32(x)*scale), int(float32(y)*scale)) }
+			for _, p := range []struct {
+				what  string
+				x     int
+				shows bool
+			}{{"the padding on the left", 27, c.left}, {"the padding on the right", 113, c.right}, {"the content box", 70, c.content}} {
+				if px := at(p.x, 50); p.shows && !isRed(px) || !p.shows && !isWhite(px) {
+					t.Errorf("%s at %v: %s is %v", c.name, scale, p.what, px)
+				}
+			}
+			if px := at(10, 50); !isWhite(px) {
+				t.Errorf("%s at %v: outside the box, %v", c.name, scale, px)
+			}
+			if px := at(21, 50); c.name == "padding box" && !isRed(px) {
+				t.Errorf("%s at %v: the border, outside the padding box, is %v", c.name, scale, px)
+			}
+		}
+	}
+}
+
+// The boxes of layers are rounded as CSS rounds them inside a border and
+// padding: a rounded box's ring is as wide at its corners.
+func TestMaskLayersAreRounded(t *testing.T) {
+	black := RGB(0, 0, 0)
+	solid := LinearGradient{From: black, To: black}
+	img := coreRender(func(cx *context) {
+		coreBox(cx).Fill().Background(RGB(255, 255, 255)).Padding(20).Children(func() {
+			coreBox(cx).Size(100, 60).Radius(20).Padding(10).Border(2, RGB(255, 0, 0)).Background(RGB(255, 0, 0)).
+				Masks(Mask{Image: solid, Box: MaskContentBox, Composite: MaskExclude}, Mask{Image: solid})
+		})
+	}, 140, 100, 1)
+	// The content box, 32 to 108 across, has corners 8 round.
+	if px := img.RGBAAt(33, 33); !isRed(px) {
+		t.Errorf("in the ring at the content box's rounded corner: %v", px)
+	}
+	if px := img.RGBAAt(42, 42); !isWhite(px) {
+		t.Errorf("in the content box, past its corner: %v", px)
+	}
+	if px := img.RGBAAt(21, 21); !isWhite(px) {
+		t.Errorf("outside the box's rounded corner: %v", px)
+	}
+}
+
+// Masks of one gradient across the box mask as MaskLinearGradient and the
+// others do, which replace the layers, and the mask of layers is made
+// once for each size.
+func TestMaskLayersAreKept(t *testing.T) {
+	black := RGB(0, 0, 0)
+	solid := LinearGradient{From: black, To: black}
+	layers := []Mask{{Image: solid, Box: MaskContentBox, Composite: MaskExclude}, {Image: solid}}
+	var e *node
+	one := false
+	tt := coreNewTester(func(c *context) {
+		e = coreBox(c).Size(100, 60).Padding(10).Background(RGB(255, 0, 0)).Masks(layers...)
+		if one {
+			e.MaskConicGradient(ConicGradient{Stops: []GradientStop{{black, 0}, {black, 1}}})
+		}
+	}, 140, 100)
+	if len(tt.rt.pathClips) != 1 {
+		t.Fatalf("%d masks for one element", len(tt.rt.pathClips))
+	}
+	var img *scene.Image
+	for _, c := range tt.rt.pathClips {
+		img = c.img
+	}
+	tt.Frame()
+	for _, c := range tt.rt.pathClips {
+		if c.img != img {
+			t.Error("the mask was made again")
+		}
+	}
+	tt.SetScale(2)
+	tt.Frame()
+	wide := false
+	for _, c := range tt.rt.pathClips {
+		wide = wide || c.img.W == 200 && c.used == tt.rt.paints
+	}
+	if !wide {
+		t.Error("at twice the scale, no mask twice as wide")
+	}
+	one = true
+	tt.Frame()
+	if k := e.clipping; k.mask != maskConic || k.layers != nil {
+		t.Errorf("MaskConicGradient left %v and %d layers", k.mask, len(k.layers))
+	}
+	layers = layers[1:]
+	one = false
+	tt.Frame()
+	if k := e.clipping; k.mask != maskLinear || k.layers != nil {
+		t.Errorf("one layer across the box makes %v and %d layers", k.mask, len(k.layers))
 	}
 }
 

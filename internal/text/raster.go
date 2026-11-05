@@ -70,6 +70,9 @@ type glyphKey struct {
 	subX     uint8  // the position within a pixel, of placement.n
 	shade    Shade
 	subpixel bool
+	// stroke is the width of a stroke of the glyph's outline in 1/16
+	// pixels (StrokeGlyph), 0 for the glyph itself.
+	stroke uint16
 }
 
 // placement is how the system's text stack places glyphs of a font at a
@@ -251,6 +254,24 @@ func (s *System) makeRoom(color bool, want int, size image.Point, grow bool) {
 // opaque backgrounds may be subpixel ones, when the system's settings
 // (TextParams) ask for subpixel antialiasing.
 func (s *System) Glyph(f *Font, id uint32, scale, x float32, shade Shade, opaque bool) GlyphImage {
+	return s.glyph(f, id, scale, x, shade, opaque, 0, nil)
+}
+
+// StrokeGlyph returns the coverage mask of a stroke width device pixels
+// wide along the outline of the glyph Glyph returns for the same
+// arguments, centered on it and round at its corners, placed as that
+// glyph is: a mask glyph, for color glyphs too, which strokes the edge of
+// their pixels. Text stroked under its fill (CSS's paint-order: stroke
+// fill) shows the half outside the glyph.
+func (s *System) StrokeGlyph(f *Font, id uint32, scale, x float32, shade Shade, opaque bool, width float32) GlyphImage {
+	w := min(max(width*16+0.5, 1), 128*16) // at most 128 pixels
+	return s.glyph(f, id, scale, x, shade, opaque, uint16(w), (*System).rasterizeStroke)
+}
+
+// glyph returns the glyph of Glyph, or with stroke the mask of a stroke
+// stroke/16 pixels wide along it, which strokes rasterizes (StrokeGlyph):
+// apps that stroke no text do not link it.
+func (s *System) glyph(f *Font, id uint32, scale, x float32, shade Shade, opaque bool, stroke uint16, strokes func(s *System, f *Font, id uint32, scale, dx float32, shade Shade, width float32) GlyphImage) GlyphImage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if f == nil {
@@ -259,14 +280,19 @@ func (s *System) Glyph(f *Font, id uint32, scale, x float32, shade Shade, opaque
 	shade = f.shadeFor(shade)
 	subpixel := opaque && s.subpixel
 	q, n, carry := s.place(f, scale, subpixel, x)
-	key := glyphKey{font: f, id: id, scale: uint32(scale*256 + 0.5), subX: uint8(q), shade: shade, subpixel: subpixel}
+	key := glyphKey{font: f, id: id, scale: uint32(scale*256 + 0.5), subX: uint8(q), shade: shade, subpixel: subpixel, stroke: stroke}
 	e, ok := s.glyphs[key]
 	if !ok {
 		if _, out := s.outGlyphs[key]; out {
 			return GlyphImage{}
 		}
 		failed := s.failed
-		g := s.rasterize(f, id, scale, float32(q)/float32(n), key.shade, key.subpixel)
+		var g GlyphImage
+		if stroke == 0 {
+			g = s.rasterize(f, id, scale, float32(q)/float32(n), key.shade, key.subpixel)
+		} else {
+			g = strokes(s, f, id, scale, float32(q)/float32(n), key.shade, float32(stroke)/16)
+		}
 		e = &atlasEntry{g, s.frame}
 		if s.failed == failed { // not left out of a full atlas
 			s.glyphs[key] = e
@@ -342,6 +368,25 @@ func (s *System) rasterize(f *Font, id uint32, scale, dx float32, shade Shade, s
 	}
 	return GlyphImage{OK: true, Colored: b.color, Subpixel: b.subpixel, Thin: f.thin && !b.color,
 		X: uint16(x), Y: uint16(y), W: uint16(b.w), H: uint16(b.h), Left: float32(b.left), Top: float32(b.top)}
+}
+
+// rasterizeStroke puts the mask of a stroke width pixels wide along the
+// outline of a glyph into the mask atlas (StrokeGlyph).
+func (s *System) rasterizeStroke(f *Font, id uint32, scale, dx float32, shade Shade, width float32) GlyphImage {
+	b := s.engine().glyph(f, id, scale, dx, shade, false)
+	if b.w <= 0 || b.h <= 0 || b.w > 2048 || b.h > 2048 {
+		return GlyphImage{}
+	}
+	b = strokeBitmap(b, width/2)
+	if b.w > 2048 || b.h > 2048 {
+		return GlyphImage{}
+	}
+	x, y, ok := s.alloc(false, b.w, b.h)
+	if !ok {
+		return GlyphImage{}
+	}
+	s.MaskAtlas.Put(x, y, b.w, b.h, b.pix, b.w)
+	return GlyphImage{OK: true, X: uint16(x), Y: uint16(y), W: uint16(b.w), H: uint16(b.h), Left: float32(b.left), Top: float32(b.top)}
 }
 
 // TextParams returns how renderers correct the coverage of glyphs, as

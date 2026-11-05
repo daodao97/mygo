@@ -457,6 +457,62 @@ func (e *node) InView() bool {
 	return s.seen+1 >= e.c.rt.frame && s.vw > 0 && s.vh > 0
 }
 
+// InViewMargin reports whether some of the element showed in the frame
+// before, as InView does, with the window and the scroll containers
+// around it grown by margin, in DIPs, CSS style as Padding: all sides,
+// vertical and horizontal, or top, right, bottom and left. As
+// IntersectionObserver's rootMargin and scrollMargin, a margin of 200
+// has the element in view once it is within 200 DIPs of showing, to load
+// what it shows before it scrolls in, and a negative one only once it is
+// that far inside; other clips around it clip it as they do.
+func (e *node) InViewMargin(margin ...float32) bool {
+	m := edges(margin)
+	in := e.InView()
+	if m == [4]float32{} || in && m[0] >= 0 && m[1] >= 0 && m[2] >= 0 && m[3] >= 0 {
+		return in // grown, what showed shows still
+	}
+	if !e.hasState() {
+		return false
+	}
+	s, rt := e.st, e.c.rt
+	if s.seen+1 < rt.frame || s.invisible {
+		return false
+	}
+	return rt.inViewWithin(s, m)
+}
+
+// inViewWithin reports whether some of the element showed in the last
+// frame with the window and the scroll containers around it grown by m,
+// top, right, bottom and left, as commitElement clips it otherwise.
+func (rt *engine) inViewWithin(s *state, m [4]float32) bool {
+	w, h, _ := rt.size()
+	v := intersect(transformRect(s.world, Rect{s.x, s.y, s.w, s.h}), outset(Rect{0, 0, w, h}, m))
+	// The clips around an element flying stop at it, as it paints out of
+	// them (contains).
+	for p := rt.states[s.parent]; p != nil && !s.lifted && v.W > 0 && v.H > 0; p = rt.states[p.parent] {
+		if p.clips {
+			r := transformRect(p.world, p.clipRect)
+			if p.flags&(flagScrollX|flagScrollY) != 0 {
+				r = outset(r, m)
+			}
+			v = intersect(v, r)
+		}
+		if p.selfClips {
+			v = intersect(v, transformRect(p.world, p.selfClip))
+		}
+		if p.lifted || p.parent == 0 {
+			break
+		}
+	}
+	return v.W > 0 && v.H > 0
+}
+
+// outset returns r grown by m, top, right, bottom and left: shrunk where
+// m is negative.
+func outset(r Rect, m [4]float32) Rect {
+	return Rect{r.X - m[3], r.Y - m[0], r.W + m[1] + m[3], r.H + m[0] + m[2]}
+}
+
 // colorMotion is a color that AnimateColor moves from from to to, k of
 // the way.
 type colorMotion struct {

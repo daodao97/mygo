@@ -88,8 +88,11 @@ func TestBreadcrumbs(t *testing.T) {
 		t.Errorf("a click on the last item: %d", chosen)
 	}
 	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
-	accessNode(t, tt.h.access, platform.RoleGroup, "Path")
+	accessNode(t, tt.h.access, platform.RoleNavigation, "Path")
 	accessNode(t, tt.h.access, platform.RoleLink, "ada")
+	if n := accessNode(t, tt.h.access, platform.RoleText, "Documents"); n.Current != platform.CurrentPage {
+		t.Errorf("the last item is current %v, not the page", n.Current)
+	}
 	for _, n := range tt.h.access.Nodes {
 		if n.Role == platform.RoleLink && n.Label == "Documents" {
 			t.Error("the last item is a link")

@@ -208,7 +208,7 @@ func NewFlyout(opts FlyoutOptions) *Window {
 		Content:           opts.Content,
 		Hidden:            opts.Hidden,
 		Vibrancy:          opts.Vibrancy,
-	}, nil, &flyoutOptions{fo, opts.Tray, fit})
+	}, nil, nil, &flyoutOptions{fo, opts.Tray, fit})
 }
 
 // flyoutOptions carries what newWindow needs of a flyout: its tray's

@@ -30,6 +30,11 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
   	Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.3)).
   	InsetShadow(0, 0, 1, 0, ui.RGBA(255, 255, 255, 0.2))
   ```
+
+  `NoShadow()` takes off the shadows added so far, as `box-shadow: none`,
+  to flatten a card a helper returned with one; shadows added after it
+  start afresh. A [transition](transitions.md#what-moves) fades shadows
+  as they change.
 - **Gradients and stripes.** `Gradient(from, to, angle)` fills the box with
   a linear gradient; `LinearGradient` also places its colors along the line
   (`Start`, `End`) and mixes them in Oklab, which keeps their lightness,
@@ -115,6 +120,43 @@ ui.Column(c).Padding(18).Gap(12).Radius(10).
   element isn't drawn into a layer first. So where a row's background
   is faded, what is under the row shows through it too. Clicks are not
   masked.
+- **Layers of masks.** `Masks` masks the element by several layers, as
+  CSS's `mask-image` with `mask-composite`: each a gradient (a
+  `ui.Mask`'s `Image`, a `LinearGradient`, `RadialGradient` or
+  `ConicGradient`) across the border box, or across the padding box or the
+  content box (its `Box`, as `mask-origin` and `mask-clip`), the first
+  on top. Each layer goes with those under it, after it in the list, as
+  its `Composite` says: `MaskAdd`, by default, shows what either shows,
+  `MaskSubtract` the layer where those under it don't show, `MaskIntersect`
+  where both do, and `MaskExclude` where one does but not both. A
+  gradient ring 1.5 DIPs wide, the content box cut out of the border box,
+  as the gradient-border trick of CSS:
+
+  ```go
+  black := ui.RGB(0, 0, 0)
+  solid := ui.LinearGradient{From: black, To: black}
+  ui.Box(c).Size(120, 40).Radius(20).Padding(1.5).Gradient(pink, violet, 90).Masks(
+  	ui.Mask{Image: solid, Box: ui.MaskContentBox, Composite: ui.MaskExclude},
+  	ui.Mask{Image: solid},
+  )
+  ```
+
+  and a crescent, a disc less another beside it:
+
+  ```go
+  disc := func(x, y float32) ui.RadialGradient {
+  	return ui.RadialGradient{Center: ui.Point{X: x, Y: y}, Radius: 40,
+  		Stops: []ui.GradientStop{{black, 0.98}, {ui.Transparent, 1}}}
+  }
+  moon := ui.Box(c).Size(80, 80).Background(t.Text)
+  moon.Masks(ui.Mask{Image: disc(0.5, 0.5), Composite: ui.MaskSubtract}, ui.Mask{Image: disc(0.7, 0.35)})
+  ```
+
+  `Masks` replaces the gradient masks above, and they replace it. One
+  layer across the border box masks as they do; more make a mask of their
+  alpha, on the CPU, once for each size the element shows at, which each
+  renderer draws as a path's clip. Like a gradient mask, it applies to
+  each thing drawn on its own.
 - **Caching.** `Cache()` keeps what the element and its children paint in
   a bitmap of the GPU, as Flutter's `RepaintBoundary` and SwiftUI's
   `drawingGroup()` do, drawn again only when what they paint changes:

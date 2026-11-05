@@ -45,6 +45,7 @@ type Task struct {
 	Parent   *Task            `json:"parent,omitzero"`
 	Secret   string           `json:"-"`
 	Count    int64            `json:"count,string"`
+	CountPtr *int64           `json:"countPtr,string"`
 	Raw      json.RawMessage  `json:"raw"`
 	Data     []byte           `json:"data"`
 	Scores   map[int]float64  `json:"scores"`

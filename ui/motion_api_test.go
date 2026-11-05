@@ -402,6 +402,71 @@ func TestInView(t *testing.T) {
 	}
 }
 
+func TestInViewMargin(t *testing.T) {
+	// A card 60 DIPs below a scroll container's edge, as in the issue.
+	var in, near, notNear, below, above, inside, deep, sides, unused bool
+	var allocs float64
+	tt := coreNewTester(func(c *context) {
+		coreScroll(c).Height(200).Children(func() {
+			coreBox(c).Height(260)
+			card := coreBox(c).Key("card").Height(100)
+			coreBox(c).Height(400)
+			in, near, notNear = card.InView(), card.InViewMargin(80), card.InViewMargin(50)
+			below, above = card.InViewMargin(0, 0, 80, 0), card.InViewMargin(80, 0, 0, 0)
+			inside, deep = card.InViewMargin(-50), card.InViewMargin(-90)
+			sides, unused = card.InViewMargin(80, 0), card.InViewMargin()
+			allocs = testing.AllocsPerRun(10, func() { card.InViewMargin(80) })
+		})
+	}, 200, 400)
+	tt.Frame()
+	if in || !near || notNear || !below || above || !sides || unused {
+		t.Fatalf("60 DIPs below: in view %v, within 80 %v, within 50 %v, within 80 below %v, above %v, vertically %v, without a margin %v",
+			in, near, notNear, below, above, sides, unused)
+	}
+	if allocs != 0 {
+		t.Errorf("InViewMargin allocated %v times", allocs)
+	}
+	// Scrolled by 100, 40 DIPs of the card show, inside a margin of -50
+	// no more.
+	tt.Scroll(50, 50, 0, 100)
+	tt.Frame()
+	if !in || !near || inside || deep {
+		t.Fatalf("40 DIPs in: in view %v, within 80 %v, within -50 %v, within -90 %v", in, near, inside, deep)
+	}
+	// Scrolled by 200, the card shows from 60 to 160: within -50 (from 50
+	// to 150) and -90 (from 90 to 110) too.
+	tt.Scroll(50, 50, 0, 100)
+	tt.Frame()
+	if !in || !inside || !deep {
+		t.Fatalf("all in: in view %v, within -50 %v, within -90 %v", in, inside, deep)
+	}
+}
+
+func TestInViewMarginRoots(t *testing.T) {
+	// The window is grown as the scroll containers are; other clips, the
+	// card's own and those that do not scroll, are not, and what is
+	// invisible shows nowhere.
+	var window, clipped, invisible, hidden, shrunk bool
+	tt := coreNewTester(func(c *context) {
+		window = coreBox(c).Key("window").Absolute().Left(0).Top(230).Size(100, 50).InViewMargin(40)
+		coreBox(c).Absolute().Left(0).Top(0).Size(100, 100).Clip().Children(func() {
+			clipped = coreBox(c).Key("clipped").Absolute().Left(0).Top(120).Size(100, 50).InViewMargin(40)
+		})
+		coreBox(c).Absolute().Left(100).Top(0).Size(100, 100).Children(func() {
+			invisible = coreBox(c).Key("invisible").Size(50, 50).Invisible().InViewMargin(40)
+			hidden = coreBox(c).Key("hidden").Size(50, 50).Hidden(true).InViewMargin(40)
+		})
+		// At the window's left edge, a box is out of the window shrunk by 30
+		// at its sides.
+		shrunk = coreBox(c).Key("edge").Absolute().Left(0).Top(150).Size(20, 20).InViewMargin(0, -30)
+	}, 200, 200)
+	tt.Frame()
+	if !window || clipped || invisible || hidden || shrunk {
+		t.Fatalf("within 40 of the window %v, of a clip %v, invisible %v, hidden %v; at the edge of a window shrunk by 30 %v",
+			window, clipped, invisible, hidden, shrunk)
+	}
+}
+
 func TestDisableAnimations(t *testing.T) {
 	target, instant := float32(0), false
 	show := true

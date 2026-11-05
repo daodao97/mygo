@@ -2,7 +2,6 @@ package ui
 
 import (
 	"math"
-	"slices"
 
 	"github.com/egoist/mygo/internal/text"
 )
@@ -38,10 +37,10 @@ func (e *node) scrolls() bool { return e.flags&(flagScrollX|flagScrollY) != 0 }
 
 // clampW and clampH apply the min and max sizes.
 func (e *node) clampW(w, cbW float32) float32 {
-	if v, ok := e.maxW.resolve(base(cbW)); ok {
+	if v, ok := e.maxW.upper(base(cbW)); ok {
 		w = min(w, v)
 	}
-	if v, ok := e.minW.resolve(base(cbW)); ok {
+	if v, ok := e.minW.lower(base(cbW)); ok {
 		w = max(w, v)
 	}
 	// No narrower than its padding and border, as in CSS.
@@ -49,10 +48,10 @@ func (e *node) clampW(w, cbW float32) float32 {
 }
 
 func (e *node) clampH(h, cbH float32) float32 {
-	if v, ok := e.maxH.resolve(base(cbH)); ok {
+	if v, ok := e.maxH.upper(base(cbH)); ok {
 		h = min(h, v)
 	}
-	if v, ok := e.minH.resolve(base(cbH)); ok {
+	if v, ok := e.minH.lower(base(cbH)); ok {
 		h = max(h, v)
 	}
 	return max(h, e.padY())
@@ -74,10 +73,8 @@ func layoutTree(root *node, w, h float32) {
 	rt.beginLayout(root)
 	layoutBox(root, w, h)
 	// Lists build rows as they lay out, which may ask to come into view.
-	for _, e := range root.c.reveal {
-		if !slices.Contains(rt.revealIDs, e.id) {
-			rt.revealIDs = append(rt.revealIDs, e.id)
-		}
+	for _, r := range root.c.reveal {
+		rt.askReveal(r.e.id, r.o)
 	}
 	if len(rt.revealIDs) > 0 {
 		revealAll(root, rt.revealIDs)
@@ -126,6 +123,13 @@ func (rt *engine) lateInput() {
 func place(e *node, x, y float32) {
 	e.x += x
 	e.y += y
+	if e.stuck() {
+		// Its scroll containers and parent are placed: it moves with what
+		// is inside it to where it sticks.
+		dx, dy := e.stickyShift(e.x, e.y, placedOrigin)
+		e.x += dx
+		e.y += dy
+	}
 	if e.hidden {
 		// Not laid out: nor is what is inside it placed, whose scroll
 		// offsets stay as they were for when it shows again.
@@ -145,6 +149,10 @@ func place(e *node, x, y float32) {
 		if sx, sy := max(0, min(s.scrollX, mx)), max(0, min(s.scrollY, my)); sx != s.scrollX || sy != s.scrollY {
 			s.beginMove(e.c.rt.frame)
 			s.scrollTo(sx, sy)
+		}
+		if e.snap != SnapNone || s.snap != nil {
+			// Where it rests, if it snaps (ScrollSnap).
+			placeSnapper(e)
 		}
 		if t := e.track; t != nil {
 			t.MaxX, t.MaxY = float32(mx), float32(my)
@@ -175,6 +183,9 @@ func place(e *node, x, y float32) {
 // and Right are set, Left wins, or Right in an element laid out right to
 // left, as in CSS.
 func (e *node) relative(cw, ch float32) (dx, dy float32) {
+	if e.sticky && e.flags&flagAbsolute == 0 {
+		return 0, 0 // they hold it in its scroll container instead
+	}
 	left, lok := e.inset[3].resolve(base(cw))
 	right, rok := e.inset[1].resolve(base(cw))
 	if lok && !(rok && e.rtl()) {
@@ -196,7 +207,7 @@ func (e *node) textParams(width float32) text.Params {
 	ts := e.resolvedText()
 	style := text.Style{
 		Family: ts.family, Size: ts.size, Weight: ts.weight, Italic: ts.italic, LineHeight: ts.lineHeight,
-		LetterSpacing: ts.spacing, Features: ts.features, Lang: ts.lang,
+		LetterSpacing: ts.spacing, Features: ts.features, Lang: ts.lang, TabSize: ts.tabSize,
 	}
 	if ts.fixedLine && ts.lineHeight > 0 {
 		style.LineHeight = ts.lineHeight / style.FontSize()
@@ -271,11 +282,20 @@ func (e *node) resolvedText() textStyle {
 		if take&setDecoThick != 0 {
 			out.decoThick = t.decoThick
 		}
+		if take&setDecoOffset != 0 {
+			out.decoOffset = t.decoOffset
+		}
 		if take&setBackground != 0 {
 			out.background = t.background
 		}
 		if take&setSelection != 0 {
 			out.selection = t.selection
+		}
+		if take&setStroke != 0 {
+			out.strokeWidth, out.strokeColor = t.strokeWidth, t.strokeColor
+		}
+		if take&setTabSize != 0 {
+			out.tabSize = t.tabSize
 		}
 		out.set |= take
 	}
@@ -429,7 +449,7 @@ func measureIntrinsic(e *node, maxContent bool) float32 {
 // min-content width unless it scrolls or clips sideways, no wider than
 // its width.
 func autoMinWidth(c *node) float32 {
-	if v, ok := c.minW.resolve(-1); ok {
+	if v, ok := c.minW.lower(-1); ok {
 		return max(v, c.padX())
 	}
 	if c.scrolls() || c.flags&flagClipX != 0 {
@@ -709,10 +729,10 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		// element asked for itself still wins over the maximum.
 		it.minMain, it.maxMain = 0, inf
 		if row {
-			if v, ok := c.maxW.resolve(base(cw)); ok {
+			if v, ok := c.maxW.upper(base(cw)); ok {
 				it.maxMain = v
 			}
-			if v, ok := c.minW.resolve(base(cw)); ok {
+			if v, ok := c.minW.lower(base(cw)); ok {
 				it.minMain = v
 			} else if !c.scrolls() && c.flags&flagClipX == 0 {
 				it.minMain = min(intrinsic(c, false), it.maxMain)
@@ -721,10 +741,10 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 				}
 			}
 		} else {
-			if v, ok := c.maxH.resolve(base(ch)); ok {
+			if v, ok := c.maxH.upper(base(ch)); ok {
 				it.maxMain = v
 			}
-			if v, ok := c.minH.resolve(base(ch)); ok {
+			if v, ok := c.minH.lower(base(ch)); ok {
 				it.minMain = v
 			} else if !c.scrolls() && c.flags&flagClipY == 0 && c.grow == 0 {
 				it.minMain = min(heightAt(c, crossOf(c, cw, align, e.wrap), inf), it.maxMain)
@@ -1297,10 +1317,31 @@ func reattach(ov *node) {
 
 // attachedAt returns where c, w×h and a child of e whose padding box is
 // pw×ph, goes relative to e, attached to t, the box of its target.
+// It notes the anchors it puts together (AttachedAnchors), and puts the
+// transform origin on the element's (AttachedOrigin).
 func attachedAt(c, e *node, t Rect, pw, ph, w, h float32) (x, y float32) {
 	ax, ay, sx, sy := c.attachFractions()
-	x = alongTarget(t.X, t.W, ax, sx, w, c.m(3)-c.m(1), c.c.w)
-	y = alongTarget(t.Y, t.H, ay, sy, h, c.m(0)-c.m(2), c.c.h)
+	x, fx := alongTarget(t.X, t.W, ax, sx, w, c.m(3)-c.m(1), c.c.w)
+	y, fy := alongTarget(t.Y, t.H, ay, sy, h, c.m(0)-c.m(2), c.c.h)
+	c.placed, c.flips = c.attach.flipped(fx, fy), 0
+	if fx {
+		c.flips |= flipAcross
+	}
+	if fy {
+		c.flips |= flipDown
+	}
+	if c.hasState() {
+		c.st.placed, c.st.asked = c.placed, c.attach
+	}
+	if c.originAttached {
+		if fx {
+			sx = 1 - sx
+		}
+		if fy {
+			sy = 1 - sy
+		}
+		c.originX, c.originY, c.originSet = sx, sy, true
+	}
 	dx, dy := c.relative(pw, ph)
 	ox, oy := laidOutOrigin(e)
 	return x + dx - ox, y + dy - oy
@@ -1338,44 +1379,57 @@ func beside(at, self float32) bool { return at == 1 && self == 0 || at == 0 && s
 // alongTarget returns where an element size long goes along an axis of the
 // window, limit long, with its point at fraction self on target's point at
 // fraction at, moved by off: on the other side of target, or the other way
-// along it, where that overflows the window less, then moved into the
-// window along target.
-func alongTarget(t0, tsize, at, self, size, off, limit float32) float32 {
+// along it, where that overflows the window less (flipped), then moved
+// into the window along target.
+func alongTarget(t0, tsize, at, self, size, off, limit float32) (p float32, flipped bool) {
 	pos := func(at, self, off float32) float32 { return t0 + at*tsize - self*size + off }
 	over := func(p float32) float32 {
 		return max(0, windowMargin-p) + max(0, p+size-(limit-windowMargin))
 	}
-	p := pos(at, self, off)
+	p = pos(at, self, off)
 	if over(p) > 0 {
 		if q := pos(1-at, 1-self, -off); over(q) < over(p) {
-			p = q
+			p, flipped = q, true
 		}
 	}
 	if !beside(at, self) && over(p) > 0 {
 		p = max(windowMargin, min(p, limit-windowMargin-size))
 	}
-	return p
+	return p, flipped
 }
 
 // laidOutOrigin returns where place will put the box of an element laid
 // out, in the window: its position and those of the elements around it,
-// less the offsets of the scroll containers among them.
+// less the offsets of the scroll containers among them, and where sticky
+// ones among them stick.
 func laidOutOrigin(e *node) (x, y float32) {
-	x, y = e.x, e.y
-	for ch, p := e, e.parent; p != nil; ch, p = p, p.parent {
-		if ch.flags&flagAbsolute == 0 || ch.leaving == 1 {
-			if f := p.followX; f != nil {
-				x -= float32(f.followShift())
-			}
-			if p.scrolls() {
-				x -= float32(p.scrollLeft())
-				y -= float32(p.st.scrollY - p.scrollBase)
-			}
-		}
-		x += p.x
-		y += p.y
+	x, y = flowOrigin(e)
+	if e.stuck() {
+		dx, dy := e.stickyShift(x, y, laidOutOrigin)
+		x += dx
+		y += dy
 	}
 	return x, y
+}
+
+// flowOrigin returns where the flow puts an element laid out, in the
+// window, as laidOutOrigin does, but for where it sticks itself.
+func flowOrigin(e *node) (x, y float32) {
+	p := e.parent
+	if p == nil {
+		return e.x, e.y
+	}
+	x, y = laidOutOrigin(p)
+	if e.flags&flagAbsolute == 0 || e.leaving == 1 {
+		if f := p.followX; f != nil {
+			x -= float32(f.followShift())
+		}
+		if p.scrolls() {
+			x -= float32(p.scrollLeft())
+			y -= float32(p.st.scrollY - p.scrollBase)
+		}
+	}
+	return x + e.x, y + e.y
 }
 
 // laidOutBox returns where place, or commit for an inline element, will

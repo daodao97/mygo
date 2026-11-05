@@ -245,6 +245,7 @@ func (w *widgetTextInput) SetMarkedText(r *TextInputRange, s string, selected Te
 	selected.Start, selected.End = min(selected.Start, n), min(selected.End, n)
 	selected.Start = countUnits(s[:UTF16ByteOffset(s, selected.Start)])
 	selected.End = countUnits(s[:UTF16ByteOffset(s, selected.End)])
+	ed.dragging = false // as an edit does
 	ed.compose, ed.composeSelected = s, selected
 	ed.composeCaret = utf8.RuneCountInString(s[:UTF16ByteOffset(s, selected.End)])
 	if ed.area != nil {

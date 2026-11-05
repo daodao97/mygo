@@ -99,7 +99,8 @@ func paintCheckbox(c *context, row, box *node, state int8) {
 // path control, separated by chevrons: the items but the last are links,
 // which a click chooses, as Enter does, setting *chosen to its index, which
 // Changed reports. Long items shorten with an ellipsis as room runs short.
-// Assistive technology sees links in a group; name it with Label.
+// Assistive technology sees links in a navigation landmark, which Label
+// names, and the last item as the current page.
 //
 //	path := []string{"Macintosh HD", "Users", "ada", "Documents"}
 //	if ui.Breadcrumbs(c, path, &app.chosen).Label("Path").Changed() {
@@ -107,7 +108,7 @@ func paintCheckbox(c *context, row, box *node, state int8) {
 //	}
 func coreBreadcrumbs(c *context, items []string, chosen *int) *node {
 	t := c.theme
-	e := coreRow(c).AlignItems(Center).Gap(t.Space(0.5)).MinWidth(0).Role(RoleGroup)
+	e := coreRow(c).AlignItems(Center).Gap(t.Space(0.5)).MinWidth(0).Role(RoleNavigation)
 	e.widget = "Breadcrumbs"
 	e.Children(func() {
 		for i, item := range items {
@@ -129,8 +130,8 @@ func coreBreadcrumbs(c *context, items []string, chosen *int) *node {
 			b := coreRow(c).Key(i).Padding(t.Space(0.5), t.Space(1.5)).Radius(t.Radius).MinWidth(t.Space(6)).Shrink(1)
 			b.Children(func() { coreText(c, item).SingleLine() })
 			if last {
-				// Where the path is: no link.
-				b.Shrink(0.5).FontWeight(500)
+				// Where the path is: no link, but the current page.
+				b.Shrink(0.5).FontWeight(500).Role(RoleText).Current(CurrentPage)
 				continue
 			}
 			b.Focusable().Role(RoleLink).TextColor(t.TextMuted)

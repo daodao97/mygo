@@ -17,7 +17,8 @@ own on them, as headless component libraries do on the web.
 | `SegmentedBase` | a `Track` of `Segment`s, a radio group choosing a `*int` |
 | `CollapsibleBase` | a `Trigger` that shows and hides what `Panel` builds, growing and shrinking it with `Progress`, which goes from 0 closed to 1 open |
 | `AccordionBase` | a `Root` of sections, each `Item` a `CollapsibleBase` whose triggers the arrows, Home and End move the focus between ([Accordion](accordion.md#without-a-look)) |
-| `SelectBase` | a `Trigger` opening a `Popup` of `Item`s choosing a `*T`, which the arrows highlight (`Highlighted`) and Enter chooses |
+| `TreeBase` | a `Root` of `Item`s, each a `Row` and a `Group` of the items inside it while its `*bool` is true, with the arrows, Home, End and typing moving the focus and opening and closing them ([Tree](tree.md#without-a-look)) |
+| `SelectBase` | a `Trigger` opening a `Popup` of `Item`s choosing a `*T`, which the arrows highlight (`Highlighted`) and Enter chooses; `SetOpen` opens and closes it, and `SelectBaseOpen` takes the open flag from you |
 | `ComboboxBase` | an `Input` whose text filters the `Item`s of a `Popup` below it, which the arrows highlight and Enter or a click chooses (`Chosen`), or shows a row of yours when none match ([Combobox](combobox.md#without-a-look)) |
 | `PopoverBase`, `DialogBase` | a panel beside an anchor, or over a backdrop covering the window, that a press outside or Escape closes |
 | `MenuBase`, `ContextMenuBase` | a menu button's `Trigger`, or an element's context menu, opening a `Popup` of `Item`s, `CheckItem`s, `RadioItem`s and `SubmenuItem`s with their `Submenu`s, which the pointer and the keys highlight (`Highlighted`) and choose (`Clicked`), closing the menu unless `KeepOpen`, and `Group`s of items the keys take as one stop ([Menu button](menu-button.md#without-a-look)) |
@@ -72,6 +73,23 @@ that clips what goes past it, and `FocusRingColor` colors it.
 `FocusRing(false)` turns the ring off for a widget that draws its own,
 with `Painter.FocusRing` while `FocusVisible`.
 
+A disabled element shows at half its opacity, with what is inside it,
+bases too. `DimDisabled(false)` leaves that to you, for a widget that
+shows being disabled in a look of its own: a card that stays readable
+with the reason it is unavailable, or a select's options grayed your way.
+Style it while `IsDisabled`:
+
+```go
+card := ui.RadioBase(c, &app.plan, p.ID).Disabled(!p.Available).DimDisabled(false)
+card.Column().Gap(4).Padding(12).Radius(8).Border(1, t.Border).Children(func() {
+	name := ui.Text(c, p.Name)
+	if card.IsDisabled() {
+		name.TextColor(t.TextMuted)
+		ui.Text(c, p.DisabledReason).FontSize(12)
+	}
+})
+```
+
 ## Widgets of your own
 
 For text controls with their own buffer or selection model, use
@@ -97,6 +115,65 @@ func Spoiler(c *ui.Context, text string) {
 	box.Children(func() { ui.Text(c, text) })
 }
 ```
+
+### Stopping what a widget started
+
+What `Local`'s `init` makes is the element's. When a frame no longer
+builds the element, its state goes, and a value that is an `io.Closer`
+(`T` or `*T` has `Close() error`) is closed, as the web aborts an
+`AbortController` when an element is removed. A widget that starts work
+in the background, a streaming request, a ticker or a subscription,
+stops it in `Close`:
+
+```go
+type stream struct{ cancel context.CancelFunc }
+
+func (s *stream) Close() error { s.cancel(); return nil }
+
+// Feed shows the lines read from url while it is in the view.
+func Feed(c *ui.Context, win *mygo.Window, app *App, url string) {
+	e := ui.Column(c)
+	ui.Local(e, "stream", func() *stream {
+		ctx, cancel := context.WithCancel(context.Background())
+		go read(ctx, url, func(line string) {
+			win.Update(func() { app.lines = append(app.lines, line) })
+		})
+		return &stream{cancel}
+	})
+	e.Children(func() {
+		for _, line := range app.lines {
+			ui.Text(c, line)
+		}
+	})
+}
+```
+
+- `Close` runs once, on the main thread, after the frame that no longer
+  built the element; an element's last `Local` made closes first, as
+  deferred calls run. The window waits for it: cancel the work and return,
+  rather than wait for the work to stop.
+- `Close` may change the app's state, on the main thread; ask for the
+  frame that shows it with `Window.Invalidate`, or `Invalidate` of the
+  `c.Services()` the widget kept.
+- An element leaving with an exit
+  [transition](transitions.md#coming-and-going) closes its values, and its
+  children's, once the exit ended, as its copy is gone: the copy paints
+  what the element had until then. Built again before that, the element
+  starts anew, with `init`, and the values of the copy close.
+- A [list](list.md) builds only the rows in view: a row scrolled out of
+  view closes its values, and makes them anew with `init` as it comes
+  back. Keep what outlives a row in the app's state, by its item.
+- The pages a [router](navigation.md#pages-keep-their-state) keeps in
+  its history keep their elements' values, which close as it lets the
+  pages go.
+- Every element's values close as its window closes, and so as the app
+  quits.
+- A `Close` that panics panics out of the frame, as the view would; the
+  values left close after the next frame.
+- A nil value is not closed, as a `*stream` that `init` left nil to start
+  later, and `Close`'s error is ignored.
+- A value the element must not close, as one the app shares, belongs in
+  the app's state rather than in a `Local`.
 
 A widget whose input changes what it edits reports it with `SetChanged`
 on its element, as it builds: `Changed` then returns true for it, as for

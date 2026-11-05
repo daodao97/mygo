@@ -13,6 +13,11 @@ type Preferences struct {
 	// goes to its target at once; Loop, which shows that something is
 	// going on, goes on.
 	ReduceMotion bool
+	// ReduceTransparency asks for opaque surfaces in place of translucent
+	// ones: macOS's Reduce Transparency, Windows's transparency effects
+	// turned off. Materials should fall back to an opaque surface, as the
+	// glass plugin does; windows' own materials follow it already.
+	ReduceTransparency bool
 	// HighContrast asks for more contrast: macOS's Increase Contrast,
 	// Windows's contrast themes, the desktop portal's higher contrast. The
 	// default theme then draws borders and secondary text darker (lighter
@@ -33,10 +38,11 @@ func (rt *engine) preferences() Preferences {
 	if !rt.prefsKnown {
 		p := rt.host.preferences()
 		rt.prefs = Preferences{
-			Accent:       Color{R: p.Accent.R, G: p.Accent.G, B: p.Accent.B, A: p.Accent.A},
-			ReduceMotion: p.ReduceMotion,
-			HighContrast: p.HighContrast,
-			TextScale:    float32(p.TextScale),
+			Accent:             Color{R: p.Accent.R, G: p.Accent.G, B: p.Accent.B, A: p.Accent.A},
+			ReduceMotion:       p.ReduceMotion,
+			ReduceTransparency: p.ReduceTransparency,
+			HighContrast:       p.HighContrast,
+			TextScale:          float32(p.TextScale),
 		}
 		if rt.prefs.TextScale <= 0 {
 			rt.prefs.TextScale = 1

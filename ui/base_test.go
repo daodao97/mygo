@@ -67,6 +67,42 @@ func TestBasesHaveNoLook(t *testing.T) {
 	}
 }
 
+// TestDimDisabled: a disabled element shows at half its opacity, bases
+// and the themed widgets alike, unless DimDisabled(false) leaves its look
+// to the view, as a card that keeps the reason it is unavailable.
+func TestDimDisabled(t *testing.T) {
+	plan := "pro"
+	var para *node
+	img := coreRender(func(c *context) {
+		th := *c.Theme()
+		th.Background = RGB(255, 255, 255)
+		c.SetTheme(&th)
+		coreColumn(c).Fill().AlignItems(Start).Children(func() {
+			coreRadioBase(c, &plan, "team").Size(20, 20).Background(RGB(0, 0, 0)).Disabled(true)
+			coreRadioBase(c, &plan, "team").Size(20, 20).Background(RGB(0, 0, 0)).Disabled(true).DimDisabled(false)
+			coreBox(c).Disabled(true).DimDisabled(false).DimDisabled(true).Children(func() {
+				coreBox(c).Size(20, 20).Background(RGB(0, 0, 0))
+			})
+			para = coreRichText(c).Children(func() {
+				coreText(c, "dim").TextColor(RGB(0, 0, 0)).Disabled(true)
+				coreText(c, "kept").TextColor(RGB(0, 0, 0)).Disabled(true).DimDisabled(false)
+			})
+		})
+	}, 100, 100, 1)
+	for _, tc := range []struct {
+		y, want int
+	}{{10, 128}, {30, 0}, {50, 128}} {
+		if got := int(img.RGBAAt(10, tc.y).R); got < tc.want-2 || got > tc.want+2 {
+			t.Errorf("at y %d: %d, want %d", tc.y, got, tc.want)
+		}
+	}
+	for _, s := range para.inlineSpans() {
+		if dim := s.Color.A < 255; dim != (s.Text == "dim") {
+			t.Errorf("the span %q has alpha %d", s.Text, s.Color.A)
+		}
+	}
+}
+
 func TestToggleBases(t *testing.T) {
 	var check, on bool
 	radio := "a"
@@ -632,5 +668,68 @@ func TestEnterWithWindowShortcut(t *testing.T) {
 	tt.Key(0, KeySpace)
 	if window != 2 || !checked {
 		t.Fatalf("Space on a focused check box: window %d, checked %v", window, checked)
+	}
+}
+
+// A focused link takes Enter alone, as in a web page (WAI-ARIA's link
+// pattern): Space scrolls the container around it, as elsewhere, and a
+// button still takes both.
+func TestLinkTakesEnterAlone(t *testing.T) {
+	links, roleLinks, buttons := 0, 0, 0
+	var scroll ScrollState
+	tt := coreNewTester(func(c *context) {
+		coreScroll(c).Size(300, 100).TrackScroll(&scroll).Children(func() {
+			if coreLink(c, "Docs", "").AutoFocus().Clicked() {
+				links++
+			}
+			b := coreText(c, "Next").Focusable().Role(RoleLink)
+			b.flags |= flagClickable
+			if b.Clicked() {
+				roleLinks++
+			}
+			if coreButton(c, "Save").Clicked() {
+				buttons++
+			}
+			coreBox(c).Size(300, 1000)
+		})
+	}, 300, 100)
+	tt.Frame()
+	if !tt.Focused("Docs") {
+		t.Fatal("the link is not focused")
+	}
+	tt.Key(0, KeySpace)
+	tt.Frame()
+	tt.Frame()
+	if links != 0 {
+		t.Fatalf("Space on a focused link made %d clicks", links)
+	}
+	if scroll.Y == 0 {
+		t.Error("Space on a focused link does not scroll its container")
+	}
+	tt.Key(0, KeyEnter)
+	tt.Frame()
+	if links != 1 {
+		t.Fatalf("Enter on a focused link made %d clicks, want 1", links)
+	}
+
+	// The same for an element with the role of a link.
+	tt.Key(0, KeyTab)
+	if !tt.Focused("Next") {
+		t.Fatal("Tab does not focus the element with the role of a link")
+	}
+	tt.Key(0, KeySpace)
+	tt.Key(0, KeyEnter)
+	if roleLinks != 1 {
+		t.Fatalf("Space and Enter on a focused element with the role of a link made %d clicks, want 1", roleLinks)
+	}
+
+	tt.Key(0, KeyTab)
+	if !tt.Focused("Save") {
+		t.Fatal("Tab does not focus the button")
+	}
+	tt.Key(0, KeySpace)
+	tt.Key(0, KeyEnter)
+	if buttons != 2 {
+		t.Fatalf("Space and Enter on a focused button made %d clicks, want 2", buttons)
 	}
 }

@@ -854,12 +854,13 @@ func (w *window) SetBackgroundColor(c platform.Color) {
 	}
 }
 
-func (w *window) SetOpacity(v float64)      { gtkWidgetSetOpacity(w.win, v) }
-func (w *window) Opacity() float64          { return gtkWidgetGetOpacity(w.win) }
-func (w *window) SetIgnoreMouseEvents(bool) {}
-func (w *window) SetContentProtection(bool) {}
-func (w *window) SetVibrancy(string)        {}
-func (w *window) SetActiveAppearance(bool)  {}
+func (w *window) SetOpacity(v float64)            { gtkWidgetSetOpacity(w.win, v) }
+func (w *window) Opacity() float64                { return gtkWidgetGetOpacity(w.win) }
+func (w *window) SetIgnoreMouseEvents(bool)       {}
+func (w *window) SetContentProtection(bool)       {}
+func (w *window) SetVibrancy(string)              {}
+func (w *window) SetVibrancyTint(*platform.Color) {}
+func (w *window) SetActiveAppearance(bool)        {}
 
 // SetWindowButtonsTheme does nothing: GTK's title buttons follow the
 // theme, which is the application's.
@@ -1909,14 +1910,11 @@ func initWindowCallbacks() {
 		}
 		action := webkitNavigationPolicyDecisionGetNavigationAction(decision)
 		navType := webkitNavigationActionGetNavigationType(action)
-		mainFrame := true
-		if webkitNavigationPolicyDecisionGetFrameName != nil {
-			mainFrame = webkitNavigationPolicyDecisionGetFrameName(decision) == 0
-		}
+		uri := goStr(webkitURIRequestGetURI(webkitNavigationActionGetRequest(action)))
 		// WebKitNavigationType: link, form, back/forward, reload, …
 		nav := platform.Navigation{
-			URL:           goStr(webkitURIRequestGetURI(webkitNavigationActionGetRequest(action))),
-			IsMainFrame:   mainFrame,
+			URL:           uri,
+			IsMainFrame:   mainFrameNavigation(action, uri),
 			UserInitiated: webkitNavigationActionIsUserGesture(action) || navType == 0 || navType == 1,
 			Unasked:       navType == 2 || navType == 3,
 			Reload:        navType == 3,
@@ -2016,4 +2014,21 @@ func initWindowCallbacks() {
 		}
 		return 0 // CAIRO_STATUS_SUCCESS
 	})
+}
+
+// mainFrameNavigation reports whether action navigates the main frame.
+// WebKitGTK 2.56+ says so through the action's target frame. Before it,
+// a navigation tells nothing of its frame (its frame name is the target
+// of a link to a new window, NULL for the rest, iframes included), and a
+// srcdoc document only ever shows in an iframe: the HTML Standard gives
+// about:srcdoc to no main frame, and WebKit loads one into the main
+// frame as an empty page. Other iframe navigations still reach
+// OnWillNavigate there.
+func mainFrameNavigation(action ptr, uri string) bool {
+	if webkitNavigationActionGetTargetFrameInfo != nil && webkitFrameInfoIsMainFrame != nil {
+		if f := webkitNavigationActionGetTargetFrameInfo(action); f != 0 {
+			return webkitFrameInfoIsMainFrame(f)
+		}
+	}
+	return uri != "about:srcdoc"
 }

@@ -53,7 +53,7 @@ type context struct {
 	row     *rowBuild
 	sidebar *sidebarBuild
 	// reveal lists the elements to scroll into view (ScrollIntoView).
-	reveal []*node
+	reveal []nodeReveal
 	// router is the Router whose page is being built, for Links; routers
 	// counts the Routers built, the first of which takes the window's
 	// keys for going back and forward. inert is set while a page going
@@ -116,6 +116,8 @@ func (c *context) reset(now time.Time, w, h float32) {
 	c.rt.parts = c.rt.parts[:0]
 	clear(c.rt.afterInputs)
 	c.rt.afterInputs = c.rt.afterInputs[:0]
+	clear(c.rt.afterBuild)
+	c.rt.afterBuild = c.rt.afterBuild[:0]
 	clear(c.rt.inputs)
 	c.rt.inputs = c.rt.inputs[:0]
 	c.rt.building = 0
@@ -612,23 +614,60 @@ func (c *context) Shortcut(mods Modifiers, key Key) bool {
 	return c.rt.shortcut(0, mods, key)
 }
 
+// ShortcutRepeated reports whether the key that the last Shortcut to
+// report one took came as the auto-repeat of a key held down, as the web's
+// KeyboardEvent.repeat: Context's, an Element's, a list's or an overlay's,
+// and those that run OnShortcut's actions, which can ask it as they run.
+// An action that steps while the key is held takes every key; a toggle
+// takes the press alone, and lets the repeats go by:
+//
+//	if c.Shortcut(0, ui.KeyT) && !c.ShortcutRepeated() {
+//		app.panel = !app.panel
+//	}
+//
+// It is false in a frame no shortcut took a key in yet.
+func (c *context) ShortcutRepeated() bool { return c.rt.shortcutRepeat }
+
 // Local returns state of type T that element e keeps from frame to frame,
 // keyed by key among its states; init creates it the first time. Custom
 // widgets keep what they need with it, on the element they create.
+//
+// The element owns what init made. When a frame no longer builds it, a
+// value that is an io.Closer (T or *T has Close() error) is closed once,
+// on the main thread, after that frame, as the web aborts an
+// AbortController as an element is removed: a component cancels in Close
+// the work it started, as a streaming request, a ticker or a subscription:
+//
+//	s := ui.Local(e, "stream", func() *stream { return startStream(url) })
+//
+// An element leaving with an exit transition closes them once its exit
+// ended, and every element as its window closes. A nil value is not
+// closed, and Close's error is ignored. Keep a value the element must not
+// close, as one the app shares, in the app's state.
 func coreLocal[T any](e *node, key any, init func() T) *T {
-	st := e.st
+	v, made := keepLocal(e.st, key, init)
+	if made {
+		closeWithState(e.st, v)
+	}
+	return v
+}
+
+// keepLocal is Local without the element owning what init made, for
+// values of the app the toolkit keeps a copy of (a select's value shown),
+// which it must not close. made tells that init made it.
+func keepLocal[T any](st *state, key any, init func() T) (v *T, made bool) {
 	if st.locals == nil {
 		st.locals = map[any]any{}
 	}
 	if v, ok := st.locals[key]; ok {
 		if p, ok := v.(*T); ok {
-			return p
+			return p, false
 		}
 	}
-	v := new(T)
+	v = new(T)
 	*v = init()
 	st.locals[key] = v
-	return v
+	return v, true
 }
 
 // state is what the runtime keeps about an element from frame to frame.
@@ -655,10 +694,17 @@ type state struct {
 	// takes the pointer where it paints: over the rest of its layer, out
 	// of its ancestors' clips (matches.lifted).
 	lifted bool
+	// invisible tells that the element showed nothing in the last frame,
+	// wherever it was: invisible, inert or hidden (InViewMargin).
+	invisible bool
 	// rtl tells that the element was laid out right to left: a scroll
 	// container's horizontal offset counts from the right, and its
 	// vertical scroll bar is on the left.
-	rtl       bool
+	rtl bool
+	// placed is where AttachTo put the element in the last frame
+	// (AttachedAnchors), asked where it was asked to.
+	placed, asked attachment
+
 	clipRect  Rect
 	clipRadii [4]float32
 	// selfClips tells that the element clips itself and what is inside it
@@ -716,6 +762,9 @@ type state struct {
 	pressX, pressY float32
 	dragX, dragY   float32
 	pressed        bool
+	// pressButton is the button pressing the element: 0 the primary, 1
+	// the secondary, 2 the middle (pressedPrimary).
+	pressButton int
 	// drag follows the press's moves; released tells that it ended since
 	// the last frame, going at releaseVX and releaseVY in the element's
 	// axes, releaseWX and releaseWY in the window's.
@@ -758,6 +807,9 @@ type state struct {
 	// wheel is the notches of a mouse wheel on their way through the
 	// content (wheelScroll).
 	wheel *wheelGlide
+	// snap is where a container that snaps comes to rest (ScrollSnap),
+	// which its layout sets.
+	snap snapper
 	// startX and startY are the offset before frame moveFrame moved it.
 	moveFrame      uint64
 	startX, startY float64
@@ -817,6 +869,7 @@ type state struct {
 	// input, caret and takesText are those of the last frame's element
 	// (HandleInput, TextCaret).
 	input            func(InputEvent) bool
+	observe          func(InputEvent) // ObserveInput
 	caret            Rect
 	caretFn          func() Rect
 	textContext      func() (string, int)
@@ -844,6 +897,9 @@ type state struct {
 	// trec is what the element's Transition keeps, by the engine's
 	// transitions, when it has one.
 	trec *transition
+	// closes closes the values of locals that are io.Closers (Local), in
+	// the order they were made; nil when none can be.
+	closes []func() error
 }
 
 type shortcut struct {
@@ -896,6 +952,9 @@ func (rt *engine) unlook(s *state) {
 		return
 	}
 	delete(rt.states, s.id)
+	// Locals made on the element's place before Key gave it another
+	// identity are the element's no more.
+	rt.dropped = append(rt.dropped, s.closes...)
 	*s = state{text: s.text.emptied()}
 	if len(rt.free) < maxFree {
 		rt.free = append(rt.free, s)

@@ -129,7 +129,8 @@ const (
 	// IDWriteFont1
 	font1IsMonospacedFont = 17
 	// IDWriteFontFace
-	faceGetMetrics = 8
+	faceGetMetrics      = 8
+	faceGetGlyphIndices = 11
 	// IDWriteFontFace2
 	face2IsColorFont                 = 30
 	face2GetRecommendedRenderingMode = 34
@@ -151,6 +152,7 @@ const (
 	formatSetTextAlignment     = 3
 	formatSetWordWrapping      = 5
 	formatSetReadingDirection  = 6
+	formatSetIncrementalTab    = 8
 	layoutSetFontCollection    = 30
 	layoutSetFontFamilyName    = 31
 	layoutSetFontWeight        = 32
@@ -797,6 +799,10 @@ func (e *dwrite) shape(text []rune, style Style, spans []Span, width float32, rt
 		wrapping = wordWrappingWholeWord
 	}
 	call(layout, formatSetWordWrapping, wrapping)
+	if style.tabStop > 0 {
+		// Every stop at multiples of it, from the start of each line.
+		method[func(this uintptr, stop float32) uintptr](layout, formatSetIncrementalTab)(layout, style.tabStop)
+	}
 	e.typeset(layout, style, spans, text)
 	if rtl {
 		// Trailing alignment keeps the lines at the left, as left-to-right
@@ -819,6 +825,7 @@ func (e *dwrite) shape(text []rune, style Style, spans []Span, width float32, rt
 	method[func(this, context, renderer uintptr, x, y float32) uintptr](layout, layoutDraw)(layout, 0, textRenderer(), 0, 0)
 	runs := slices.Clone(drawing)
 	drawMu.Unlock()
+	runs = tabRuns(layout, u16, runs)
 
 	lines := make([]shapedLine, len(metrics))
 	ends := make([]uint32, len(metrics)) // the code unit ending each line
@@ -829,15 +836,32 @@ func (e *dwrite) shape(text []rune, style Style, spans []Span, width float32, rt
 		ends[i] = pos
 		lines[i].end = index[min(int(pos), len(u16))]
 	}
+	lefts := make([][]float32, len(lines)) // the left of each run of a line
 	for _, r := range runs {
 		li, _ := slices.BinarySearch(ends, r.pos+1)
 		if li >= len(lines) || int(r.pos+r.n) > len(u16) {
 			continue
 		}
+		// A left-to-right run starts where its first glyph's code unit
+		// does: code units before it, as a tab, have no glyph in it.
+		at := r.pos
+		if !r.rtl {
+			at += r.firstGlyphUnit()
+		}
 		var x, y float32
 		var hit dwHitTestMetrics
-		call(layout, layoutHitTestTextPosition, uintptr(r.pos), 0, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&hit)))
-		lines[li].runs = append(lines[li].runs, e.run(r, x, index))
+		call(layout, layoutHitTestTextPosition, uintptr(at), 0, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&hit)))
+		run, left := e.run(layout, u16, r, x, index)
+		// The runs of a line go from left to right, whatever order
+		// DirectWrite draws them in: a line is few runs, nearly in order,
+		// insertion sorted.
+		ls := append(lefts[li], left)
+		rs := append(lines[li].runs, run)
+		for k := len(ls) - 1; k > 0 && ls[k-1] > ls[k]; k-- {
+			ls[k-1], ls[k] = ls[k], ls[k-1]
+			rs[k-1], rs[k] = rs[k], rs[k-1]
+		}
+		lefts[li], lines[li].runs = ls, rs
 	}
 	if len(layoutObjects.objects) > 0 {
 		units := make([]uint32, len(text)+1)
@@ -850,6 +874,79 @@ func (e *dwrite) shape(text []rune, style Style, spans []Span, width float32, rt
 		objectRuns(layout, lines, ends, spans, units, index)
 	}
 	return lines
+}
+
+// tabRuns adds to the runs DirectWrite drew of a layout of text a run for
+// each tab it drew no glyph of: a run may cover a tab whose cluster has no
+// glyph, its advance only showing in where the run's glyphs start, so a
+// line starting with tabs would lose them and tabs would add nothing to a
+// line's width. The run is the space glyph of the nearest drawn run's
+// font, as wide as hit testing finds the tab.
+func tabRuns(layout uintptr, u16 []uint16, runs []dwRun) []dwRun {
+	if len(runs) == 0 || !slices.Contains(u16, '\t') {
+		return runs
+	}
+	// The code units starting a cluster with a glyph: a run may cover a
+	// tab whose cluster has none.
+	drawn := make([]bool, len(u16))
+	for _, r := range runs {
+		if r.clusters == nil {
+			for u := r.pos; u < r.pos+r.n && int(u) < len(drawn); u++ {
+				drawn[u] = true
+			}
+		}
+		for k, g := range r.clusters {
+			if u := int(r.pos) + k; int(g) < len(r.glyphs) && (k == 0 || r.clusters[k-1] != g) && u < len(drawn) {
+				drawn[u] = true
+			}
+		}
+	}
+	n := len(runs)
+	for i, c := range u16 {
+		if c != '\t' || drawn[i] {
+			continue
+		}
+		near := &runs[0]
+		for k := range runs[:n] {
+			if d, best := distance(runs[k], uint32(i)), distance(*near, uint32(i)); d < best {
+				near = &runs[k]
+			}
+		}
+		space := uint32(' ')
+		var id uint16
+		call(near.face, faceGetGlyphIndices, uintptr(unsafe.Pointer(&space)), 1, uintptr(unsafe.Pointer(&id)))
+		if id == 0 {
+			continue
+		}
+		var x, y float32
+		var hit dwHitTestMetrics
+		call(layout, layoutHitTestTextPosition, uintptr(i), 0, uintptr(unsafe.Pointer(&x)), uintptr(unsafe.Pointer(&y)), uintptr(unsafe.Pointer(&hit)))
+		runs = append(runs, dwRun{face: near.face, size: near.size, rtl: hit.bidiLevel&1 != 0, pos: uint32(i), n: 1,
+			glyphs: []uint16{id}, advances: []float32{hit.width}, clusters: []uint16{0}})
+	}
+	return runs
+}
+
+// firstGlyphUnit returns the code unit of the run, from its start, whose
+// cluster holds its first glyph.
+func (r *dwRun) firstGlyphUnit() uint32 {
+	for k, g := range r.clusters {
+		if g == 0 {
+			return uint32(k)
+		}
+	}
+	return 0
+}
+
+// distance returns how many code units lie between a run and code unit i.
+func distance(r dwRun, i uint32) uint32 {
+	switch {
+	case i < r.pos:
+		return r.pos - i
+	case i >= r.pos+r.n:
+		return i - (r.pos + r.n) + 1
+	}
+	return 0
 }
 
 // typeset applies a style's letter spacing and OpenType features to a text
@@ -868,7 +965,7 @@ func (e *dwrite) typeset(layout uintptr, style Style, spans []Span, text []rune)
 		return uintptr(units[from]) | uintptr(units[to]-units[from])<<32
 	}
 	all := textRange(0, len(text))
-	e.spacing(layout, style.LetterSpacing, all)
+	e.spacing(layout, style.LetterSpacing, false, all)
 	e.typography(layout, style.Features, all)
 	from := 0
 	for _, sp := range spans {
@@ -894,7 +991,7 @@ func (e *dwrite) typeset(layout uintptr, style Style, spans []Span, text []rune)
 		if sp.Size > 0 {
 			method[func(this uintptr, size float32, r uintptr) uintptr](layout, layoutSetFontSize)(layout, sp.Size, r)
 		}
-		e.spacing(layout, sp.LetterSpacing, r)
+		e.spacing(layout, sp.LetterSpacing, sp.SpacingSet, r)
 		e.typography(layout, sp.Features, r)
 	}
 	// The runes in other languages than the format's: those of spans, and
@@ -908,9 +1005,10 @@ func (e *dwrite) typeset(layout uintptr, style Style, spans []Span, text []rune)
 	setObjects(layout, spans, units)
 }
 
-// spacing adds letter spacing to a range of a text layout.
-func (e *dwrite) spacing(layout uintptr, spacing float32, r uintptr) {
-	if spacing == 0 {
+// spacing adds letter spacing to a range of a text layout, or, set, makes
+// it that of the range, zero included.
+func (e *dwrite) spacing(layout uintptr, spacing float32, set bool, r uintptr) {
+	if spacing == 0 && !set {
 		return
 	}
 	// IDWriteTextLayout1 came with Windows 8.
@@ -940,9 +1038,14 @@ func (e *dwrite) typography(layout uintptr, list string, r uintptr) {
 	call(layout, layoutSetTypography, typography, r)
 }
 
-// run positions the glyphs of a run whose origin, on the right for a
-// right-to-left run, is at x.
-func (e *dwrite) run(r dwRun, x float32, index []int) shapedRun {
+// run positions the glyphs of a run of a layout of u16 whose origin, on
+// the right for a right-to-left run, is at x, in visual order, and returns
+// them with the left of the run's advances. DirectWrite gives the glyphs of
+// a run in logical order, those of a right-to-left run from the right. A
+// tab's glyph has no advance of its own, its stop moving the origin of
+// what follows, which a run's pen cannot see: its place and width are
+// those hit testing finds.
+func (e *dwrite) run(layout uintptr, u16 []uint16, r dwRun, x float32, index []int) (shapedRun, float32) {
 	f := e.fontOf(r.face, r.size)
 	out := shapedRun{font: f, start: index[r.pos], end: index[r.pos+r.n], glyphs: make([]Glyph, len(r.glyphs))}
 	// The code unit starting the cluster of each glyph.
@@ -969,6 +1072,12 @@ func (e *dwrite) run(r dwRun, x float32, index []int) shapedRun {
 			off = r.offsets[i]
 		}
 		g := Glyph{Font: f, ID: uint32(id), Advance: r.advances[i], Y: -off.ascenderOffset, Cluster: index[r.pos+first[i]], RTL: r.rtl}
+		if u := r.pos + first[i]; !r.rtl && int(u) < len(u16) && u16[u] == '\t' && (i == 0 || first[i-1] != first[i]) {
+			var tx, ty float32
+			var hit dwHitTestMetrics
+			call(layout, layoutHitTestTextPosition, uintptr(u), 0, uintptr(unsafe.Pointer(&tx)), uintptr(unsafe.Pointer(&ty)), uintptr(unsafe.Pointer(&hit)))
+			pen, g.Advance = hit.left, hit.width
+		}
 		if r.rtl {
 			pen -= g.Advance
 			g.X = pen - off.advanceOffset
@@ -978,7 +1087,15 @@ func (e *dwrite) run(r dwRun, x float32, index []int) shapedRun {
 		}
 		out.glyphs[i] = g
 	}
-	return out
+	if r.rtl {
+		// From the left, as Pango and Core Text give them: the pen
+		// stopped at the run's left.
+		for i, j := 0, len(out.glyphs)-1; i < j; i, j = i+1, j-1 {
+			out.glyphs[i], out.glyphs[j] = out.glyphs[j], out.glyphs[i]
+		}
+		return out, pen
+	}
+	return out, x
 }
 
 // settings reads the system's settings for text once: the rendering

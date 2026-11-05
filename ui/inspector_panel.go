@@ -188,6 +188,29 @@ func (in *inspector) iconButton(c *context, icon *SVG, on bool, label string) *n
 	return b
 }
 
+// layoutBadge builds the badge of a container, which shows its layout over
+// the content.
+func (in *inspector) layoutBadge(c *context, n *inspNode) {
+	pal := &in.pal
+	name, tip := "flex", "Show the room between its children"
+	if n.layout == inspGrid {
+		name, tip = "grid", "Show its tracks and gaps"
+	}
+	on := in.layoutOn[n.id]
+	b := coreText(c, name).Font("monospace").FontSize(10).Padding(0, 4).Margin(0, 0, 0, 6).Radius(3).Shrink(0).SingleLine().
+		Role(RoleToggleButton).Cursor(CursorPointer).Tooltip(tip)
+	b.checked = 1
+	if on {
+		b.checked = 2
+		b.TextColor(pal.bg).Background(pal.accent)
+	} else {
+		b.TextColor(pal.muted).Border(1, pal.border)
+	}
+	if b.Clicked() {
+		in.toggleLayout(c.rt, n.id)
+	}
+}
+
 // tab0 builds a tab of a bar height high, underlined in the accent color
 // while selected.
 func (in *inspector) tab0(c *context, label string, selected bool, height float32) *node {
@@ -368,6 +391,13 @@ func (in *inspector) treeRow(c *context, r inspRow, n *inspNode) {
 		}
 	}
 	coreRichText(c, spans...).Font("monospace").FontSize(11.5).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+	if names := in.forcedNames(n.id); !r.close && names != "" {
+		coreText(c, names).Font("monospace").FontSize(10).TextColor(pal.accent).Padding(0, 4).Margin(0, 0, 0, 6).
+			Radius(3).Border(1, pal.accent).Shrink(0).SingleLine()
+	}
+	if !r.close && n.layout != inspNoLayout {
+		in.layoutBadge(c, n)
+	}
 	if !r.close && n.hasTrans {
 		coreText(c, "transition").Font("monospace").FontSize(10).TextColor(pal.muted).Padding(0, 4).Margin(0, 0, 0, 6).
 			Radius(3).Border(1, pal.border).Shrink(0)
@@ -502,6 +532,7 @@ func (in *inspector) decl(c *context, d inspDecl, name Color) {
 // those it inherits, as Chrome's Styles tab.
 func (in *inspector) stylesPane(c *context) {
 	pal := &in.pal
+	in.statesBar(c)
 	if n := in.changes(); n > 0 {
 		coreRow(c).Padding(4, 10).Gap(8).AlignItems(Center).Background(pal.toolbar).BorderWidth(0, 0, 1, 0).BorderColor(pal.border).Children(func() {
 			what := "1 change"
@@ -509,12 +540,18 @@ func (in *inspector) stylesPane(c *context) {
 				what = fmt.Sprintf("%d changes", n)
 			}
 			coreText(c, what+", until the inspector closes").FontSize(11).TextColor(pal.muted).Grow(1).MinWidth(0)
-			reset := coreBox(c).PaddingX(6).PaddingY(1).Radius(3).Border(1, pal.border).Role(RoleButton).Label("Reset")
-			if reset.Hovered() {
-				reset.Background(pal.hover)
+			button := func(label string) *node {
+				b := coreBox(c).PaddingX(6).PaddingY(1).Radius(3).Border(1, pal.border).Role(RoleButton).Label(label)
+				if b.Hovered() {
+					b.Background(pal.hover)
+				}
+				b.Children(func() { coreText(c, label).FontSize(11).SingleLine() })
+				return b
 			}
-			reset.Children(func() { coreText(c, "Reset").FontSize(11).SingleLine() })
-			if reset.Clicked() {
+			if button("Copy as Go").Clicked() {
+				c.WriteClipboard(in.changesAsGo())
+			}
+			if button("Reset").Clicked() {
 				in.resetEdits()
 			}
 		})
@@ -532,8 +569,17 @@ func (in *inspector) stylesPane(c *context) {
 				mono(c, Span{Text: r.selector, Color: pal.text}, Span{Text: " {", Color: pal.text})
 				coreSpacer(c)
 				if i == 0 && in.sel.source != "" {
-					coreText(c, shortSource(in.sel.source)).FontSize(11).TextColor(pal.muted).Underline().
+					link := coreText(c, shortSource(in.sel.source)).FontSize(11).TextColor(pal.muted).
 						SingleLine().Ellipsis("…").Shrink(1).MinWidth(0).Tooltip(in.sel.source)
+					if in.canOpenSource(in.sel.source) {
+						link.Underline().Cursor(CursorPointer).Role(RoleLink)
+						if link.Hovered() {
+							link.TextColor(pal.text)
+						}
+						if link.Clicked() {
+							in.openSource(c.rt, in.sel.source)
+						}
+					}
 				}
 				if !r.inherited {
 					if in.iconButton(c, inspIcons().plus, false, "Add a style").Size(18, 18).Clicked() {
@@ -557,6 +603,46 @@ func (in *inspector) stylesPane(c *context) {
 			mono(c, Span{Text: "}", Color: pal.text})
 		})
 	}
+}
+
+// statesBar builds the bar that forces states on the element chosen, as
+// Chrome's :hov: the view sees them as it asks for them, whatever the
+// pointer and the focus do, to style them.
+func (in *inspector) statesBar(c *context) {
+	pal := &in.pal
+	id := in.sel.id
+	open := in.statesOpen || in.forced[id] != 0
+	coreColumn(c).Padding(3, 6).Gap(3).Background(pal.toolbar).BorderWidth(0, 0, 1, 0).BorderColor(pal.border).Children(func() {
+		toggle := in.tab0(c, ":hov", open, 20).Role(RoleToggleButton).Tooltip("Force an element's state").AlignSelf(Start)
+		if toggle.Clicked() && in.forced[id] == 0 {
+			in.statesOpen = !in.statesOpen
+		}
+		if !open {
+			return
+		}
+		coreRow(c).Wrap().GapY(2).GapX(10).PaddingX(4).Children(func() {
+			for _, s := range inspStates {
+				on := in.isForced(id, s.state)
+				item := coreRow(c).Gap(4).AlignItems(Center).Role(RoleCheckBox).Label(s.name).Cursor(CursorPointer)
+				item.checked = 1
+				if on {
+					item.checked = 2
+				}
+				item.Children(func() {
+					box := coreBox(c).Size(11, 11).Radius(2).Center().Shrink(0)
+					if on {
+						box.Background(pal.accent).Children(func() { coreIcon(c, inspIcons().check).FontSize(9).TextColor(pal.bg) })
+					} else {
+						box.Border(1, pal.muted)
+					}
+					coreText(c, s.name).Font("monospace").FontSize(11).SingleLine()
+				})
+				if item.Clicked() {
+					in.toggleForced(id, s.state)
+				}
+			}
+		})
+	})
 }
 
 // styleDecl builds declaration d of the rule of element id, at index in

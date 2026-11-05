@@ -53,7 +53,7 @@ func (e *node) PopoverMenu(build func(m *Menu)) *node {
 // menu MyGo draws in the window with the theme's look, as PopoverMenu
 // draws a context menu, rather than the system showing one of its own. It
 // opens below the element, or above it where the window has no room, as
-// the pointer goes down on it, and for Enter, Space or Down while it has
+// the pointer goes down on it, and for Enter, Space, Up or Down while it has
 // the focus, which it takes. build fills it with the items Menu's
 // function takes, and the item chosen reports Chosen as there:
 //
@@ -152,11 +152,12 @@ type menuShown struct {
 
 // menuLevel is a menu that shows: the item, by its element, whose submenu
 // it is, 0 for the menu, and the item highlighted, 0 for none, or the
-// first that can be chosen once built when first is set; it scrolls into
+// first that can be chosen once built when first is set, or the last when
+// last is too; it scrolls into
 // view when reveal is set, as the keys moved to it.
 type menuLevel struct {
-	sub, hi       uint64
-	first, reveal bool
+	sub, hi             uint64
+	first, last, reveal bool
 }
 
 type menuKey struct{}
@@ -171,12 +172,12 @@ func (s *menuShown) openAt(rt *engine, e *node) {
 	// point by as much (#894).
 	b := e.Bounds()
 	*s = menuShown{below: mr.below, dx: mr.x - b.X, dy: mr.y - b.Y, opened: rt.frame,
-		levels: append(s.levels[:0], menuLevel{first: mr.key}), pointer: [2]float32{rt.pointerX, rt.pointerY}}
+		levels: append(s.levels[:0], menuLevel{first: mr.key, last: mr.last}), pointer: [2]float32{rt.pointerX, rt.pointerY}}
 }
 
 // MenuBase creates a menu button without a look, whose menu shows while
 // *open is true: a button that takes the focus and opens the menu as the
-// pointer goes down on it, or for Enter, Space or Down while it has the
+// pointer goes down on it, or for Enter, Space, Up or Down while it has the
 // focus, and closes it when pressed again. Give the trigger children, and
 // build the menu in Popup with Item, CheckItem, RadioItem and
 // SubmenuItem, and the submenus with Submenu; an item's Clicked reports
@@ -533,11 +534,15 @@ func (m *menuParts) finish(level int) {
 		// The first item to be chosen, which an item disabled after it was
 		// built is not, and of a group its item checked; the items build
 		// again unless it is the one highlighted as they were built.
-		hi, lv.hi, lv.first = nil, 0, false
+		hi, lv.hi = nil, 0
 		if len(stops) > 0 {
 			hi = choices[stops[0]]
+			if lv.last {
+				hi = choices[stops[len(stops)-1]]
+			}
 			lv.hi = hi.id
 		}
+		lv.first, lv.last = false, false
 		if hi == nil || !hi.highlighted {
 			rt.consumed = true
 		}

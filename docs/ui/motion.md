@@ -458,8 +458,30 @@ card.Opacity(card.AnimateTo("shown", shown, ui.Smooth))
 header.Opacity(1 - min(app.scroll.Y/80, 1)) // fades as the page scrolls
 ```
 
-`ScrollState.ScrollTo(x, y, animation)` scrolls a container smoothly (see
-[Scrolling](scroll.md)).
+`InViewMargin(margin...)` grows the window and the scroll containers around
+the element by `margin` DIPs before it looks, as IntersectionObserver's
+`rootMargin` and `scrollMargin` do (Motion's `margin`): CSS style as
+`Padding`, all sides, vertical and horizontal, or top, right, bottom and
+left. A thumbnail starts loading 300 DIPs before it scrolls in, so that it
+never shows blank:
+
+```go
+thumb := ui.Image(c, placeholder).Key(it.ID).Size(160, 120)
+if thumb.InViewMargin(300) {
+	app.load(it.ID) // once; the next frames show the picture
+}
+```
+
+A negative margin shrinks them instead, to count an element in view only
+once it is that far inside. Other clips around it (`Clip`, `ClipInset`)
+clip it as they do, without the margin. `InViewMargin()`, with no margin,
+is `InView()`. A `List` or `GridView` builds only the rows near its edges,
+two beyond each, so in one the margin reaches no further than the rows it
+builds.
+
+`ScrollState.ScrollTo(x, y, animation)` scrolls a container smoothly, and
+`ScrollIntoView` with an `Animation` in its options the containers around
+an element (see [Scrolling](scroll.md)).
 
 ## Content that changes
 

@@ -40,6 +40,42 @@ func (e *node) inlineText() {
 	e.text = b.String()
 }
 
+// accessText returns the text that names a text element for assistive
+// technology: its text without that of the elements inside it hidden from
+// it (AccessHidden), as a hidden node gives nothing to a name. Without
+// one, its text is returned as it is, without a copy.
+func (e *node) accessText() string {
+	cuts := e.accessCuts(nil, 0)
+	if cuts == nil {
+		return e.text
+	}
+	var b strings.Builder
+	at := 0
+	for _, r := range cuts {
+		b.WriteString(e.text[at:runeOffset(e.text, r[0])])
+		at = runeOffset(e.text, r[1])
+	}
+	b.WriteString(e.text[at:])
+	return b.String()
+}
+
+// accessCuts appends to cuts the ranges of runes, in the paragraph's text,
+// of the elements inside e hidden from assistive technology, e's text
+// starting at rune offset of it.
+func (e *node) accessCuts(cuts [][2]int, offset int) [][2]int {
+	for ch := e.first; ch != nil; ch = ch.next {
+		a, b := offset+ch.runes[0], offset+ch.runes[1]
+		switch {
+		case a == b:
+		case ch.accessHidden:
+			cuts = append(cuts, [2]int{a, b})
+		default:
+			cuts = ch.accessCuts(cuts, a)
+		}
+	}
+	return cuts
+}
+
 // inlineSpans returns the spans of a paragraph: its own, then those of the
 // elements inside it, in the styles they set over it.
 func (e *node) inlineSpans() []Span {
@@ -61,8 +97,11 @@ func (e *node) inlineSpans() []Span {
 		case spans == nil:
 			spans = []Span{{Text: ch.text}}
 		}
-		base := ch.spanStyle()
+		base, alpha := ch.spanStyle()
 		for _, s := range spans {
+			if alpha < 1 {
+				s = s.faded(alpha)
+			}
 			out = append(out, over(s, base))
 		}
 	}
@@ -70,8 +109,9 @@ func (e *node) inlineSpans() []Span {
 	return out
 }
 
-// spanStyle returns the text style the element sets, as a span.
-func (e *node) spanStyle() Span {
+// spanStyle returns the text style the element sets, as a span, and the
+// alpha that fades its text and that inside it.
+func (e *node) spanStyle() (Span, float32) {
 	t := &e.ts
 	var s Span
 	if t.set&setFamily != 0 {
@@ -87,7 +127,7 @@ func (e *node) spanStyle() Span {
 		s.Italic = t.italic
 	}
 	if t.set&setColor != 0 {
-		s.Color = t.color
+		s.Color, s.colorSet = t.color, t.color.A == 0
 	}
 	if t.set&setUnderline != 0 {
 		s.Underline = t.underline && !t.wavy && !t.dotted
@@ -99,7 +139,7 @@ func (e *node) spanStyle() Span {
 		s.Strikethrough = t.strike
 	}
 	if t.set&setSpacing != 0 {
-		s.LetterSpacing = t.spacing
+		s.LetterSpacing, s.NoLetterSpacing = t.spacing, t.spacing == 0
 	}
 	if t.set&setFeatures != 0 {
 		s.Features = t.features
@@ -108,10 +148,16 @@ func (e *node) spanStyle() Span {
 		s.Lang = t.lang
 	}
 	if t.set&setDecoColor != 0 {
-		s.DecorationColor = t.decoColor
+		s.DecorationColor, s.decoColorSet = t.decoColor, t.decoColor.A == 0
 	}
 	if t.set&setDecoThick != 0 {
 		s.DecorationThickness = t.decoThick
+	}
+	if t.set&setDecoOffset != 0 {
+		s.UnderlineOffset, s.offsetSet = t.decoOffset, true
+	}
+	if t.set&setStroke != 0 {
+		s.strokeWidth, s.strokeColor, s.strokeSet = t.strokeWidth, t.strokeColor, true
 	}
 	switch {
 	case t.set&setBackground != 0:
@@ -120,17 +166,51 @@ func (e *node) spanStyle() Span {
 		// The background of an inline element is that of its text.
 		s.Background = e.bg
 	}
-	// What dims the element dims its text.
+	// What dims the element dims its text, and what hides it keeps its
+	// room in the line but paints none of it, as CSS's visibility: hidden.
 	alpha := float32(1)
-	if e.flags&flagDisabled != 0 {
+	switch {
+	case e.flags&flagInvisible != 0:
+		alpha = 0
+	case e.flags&flagDisabled != 0 && !e.undimmed:
 		alpha = 0.5
 	}
 	if e.opacitySet {
 		alpha *= e.opacity
 	}
 	if alpha < 1 {
-		s.Color = e.resolvedText().color.Alpha(alpha)
+		// The colors it takes from the text around it, faded.
+		r := e.resolvedText()
+		s.Color, s.colorSet = r.color, r.color.A == 0
+		if r.set&setDecoColor != 0 {
+			s.DecorationColor, s.decoColorSet = r.decoColor, r.decoColor.A == 0
+		}
+		if r.set&setStroke != 0 {
+			s.strokeWidth, s.strokeColor, s.strokeSet = r.strokeWidth, r.strokeColor, true
+		}
+		s = s.faded(alpha)
 	}
+	return s, alpha
+}
+
+// faded returns the span with the colors it sets times alpha, as the
+// opacity of an inline element fades them: a color faded to nothing stays
+// the span's own.
+func (s Span) faded(alpha float32) Span {
+	if c, ok := s.color(); ok {
+		s.Color = c.Alpha(alpha)
+		s.colorSet = s.Color.A == 0
+	}
+	if c, ok := s.decorationColor(); ok {
+		s.DecorationColor = c.Alpha(alpha)
+		s.decoColorSet = s.DecorationColor.A == 0
+	}
+	if s.strokeSet {
+		s.strokeColor = s.strokeColor.Alpha(alpha)
+	}
+	// A background faded to nothing shows that of the text around it, as
+	// it would on the web.
+	s.Background = s.Background.Alpha(alpha)
 	return s
 }
 
@@ -145,20 +225,26 @@ func over(s, base Span) Span {
 	if s.Weight == 0 {
 		s.Weight = base.Weight
 	}
-	if s.Color.A == 0 {
-		s.Color = base.Color
+	if _, ok := s.color(); !ok {
+		s.Color, s.colorSet = base.Color, base.colorSet
 	}
-	if s.DecorationColor.A == 0 {
-		s.DecorationColor = base.DecorationColor
+	if _, ok := s.decorationColor(); !ok {
+		s.DecorationColor, s.decoColorSet = base.DecorationColor, base.decoColorSet
 	}
 	if s.DecorationThickness == 0 {
 		s.DecorationThickness = base.DecorationThickness
 	}
+	if _, ok := s.underlineOffset(); !ok {
+		s.UnderlineOffset, s.offsetSet = base.UnderlineOffset, base.offsetSet
+	}
 	if s.Background.A == 0 {
 		s.Background = base.Background
 	}
-	if s.LetterSpacing == 0 {
-		s.LetterSpacing = base.LetterSpacing
+	if !s.strokeSet {
+		s.strokeWidth, s.strokeColor, s.strokeSet = base.strokeWidth, base.strokeColor, base.strokeSet
+	}
+	if _, ok := s.letterSpacing(); !ok {
+		s.LetterSpacing, s.NoLetterSpacing = base.LetterSpacing, base.NoLetterSpacing
 	}
 	if s.Features == "" {
 		s.Features = base.Features
@@ -227,6 +313,9 @@ func (p *Painter) paintInline(e *node) {
 // keyboard and MyGo rings it.
 func (e *node) ringShown() bool {
 	rt := e.c.rt
+	if e.flags&(flagFocusable|flagOwnRing) == flagFocusable && rt.insp.isForced(e.id, forceFocusVisible) {
+		return true
+	}
 	return e.flags&(flagFocusable|flagOwnRing) == flagFocusable && rt.focused == e.id && rt.focusVisible && rt.windowFocus()
 }
 
@@ -235,7 +324,7 @@ func (e *node) ringShown() bool {
 // parent: the text itself already reads theirs.
 func (rt *engine) accessInline(t *platform.AccessTree, e *node, parent int) {
 	for ch := e.first; ch != nil; ch = ch.next {
-		if ch.flags&flagInvisible != 0 || ch.hidden || len(ch.frags) == 0 {
+		if ch.flags&flagInvisible != 0 || ch.hidden || ch.accessHidden || len(ch.frags) == 0 {
 			continue
 		}
 		role, ok := ch.accessRole()

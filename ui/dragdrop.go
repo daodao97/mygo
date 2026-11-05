@@ -239,7 +239,7 @@ func (rt *engine) handPress(x, y float32) *state {
 	}
 	rt.pressed, rt.pressDragger = a, 0
 	s.pressed = false
-	a.pressed, a.pressMods, a.pressPending = true, s.pressMods, true
+	a.pressed, a.pressButton, a.pressMods, a.pressPending = true, s.pressButton, s.pressMods, true
 	a.pressX, a.pressY = a.local(px, py)
 	a.drag.reset(rt.now(), px, py)
 	return a

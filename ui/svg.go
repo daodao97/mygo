@@ -289,8 +289,9 @@ func (rt *engine) rasterizeIcon() (int, int, []byte) {
 }
 
 // drawSVG paints an SVG in its own colors, with current for currentColor,
-// scaled into box as fit says, clipped to radius and in gray if gray.
-func (p *Painter) drawSVG(s *SVG, box Rect, fit Fit, radius [4]float32, current Color, gray bool) {
+// scaled into box as fit says and placed pos from the middle of the room
+// around it (ObjectPosition), clipped to radius and in gray if gray.
+func (p *Painter) drawSVG(s *SVG, box Rect, fit Fit, pos [2]float32, radius [4]float32, current Color, gray bool) {
 	if s == nil || s.w <= 0 || s.h <= 0 || !p.visible(box, 0) {
 		return
 	}
@@ -305,9 +306,7 @@ func (p *Painter) drawSVG(s *SVG, box Rect, fit Fit, radius [4]float32, current 
 		case ScaleDown:
 			scale = min(box.W/s.w, box.H/s.h, 1)
 		}
-		dst.W, dst.H = s.w*scale, s.h*scale
-		dst.X += (box.W - dst.W) / 2
-		dst.Y += (box.H - dst.H) / 2
+		dst = placeIn(box, s.w*scale, s.h*scale, pos)
 	}
 	d := p.snap(dst)
 	w, h := int(d.W), int(d.H)
@@ -321,9 +320,13 @@ func (p *Painter) drawSVG(s *SVG, box Rect, fit Fit, radius [4]float32, current 
 	// sRGB color.
 	img := p.rt.picture(pictureKey{s: s, w: w, h: h, color: current.SRGB(), stretch: fit == FillBox})
 	op := scene.Op{Kind: scene.OpImage, Rect: d, Radii: p.radii(radius), Continuous: continuousCorners, Image: img, Src: scene.Rect{W: float32(w), H: float32(h)}, Opacity: p.opacity, Grayscale: gray}
-	if fit == Cover || fit == NaturalSize {
-		// Only what falls in the box shows.
+	if fit != FillBox {
+		// Only what falls in the box shows: of Cover and NaturalSize, or
+		// placed past its edges (ObjectPosition).
 		b := p.snap(box).Intersect(d)
+		if b.W <= 0 || b.H <= 0 {
+			return
+		}
 		op.Rect, op.Src = b, scene.Rect{X: b.X - d.X, Y: b.Y - d.Y, W: b.W, H: b.H}
 	}
 	p.add(op)

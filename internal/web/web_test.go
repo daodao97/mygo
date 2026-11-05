@@ -156,3 +156,26 @@ func TestWebViewAvailable(t *testing.T) {
 		t.Error("WebViewAvailable = true in a browser, which has no webview")
 	}
 }
+
+func TestChord(t *testing.T) {
+	// A DOM pointermove with button (DOM numbering) going down or up while
+	// another is held, and buttons held after it.
+	for _, tc := range []struct {
+		button, buttons int
+		kind            platform.SurfaceEventKind
+		want            int
+		ok              bool
+	}{
+		{-1, 1, 0, 0, false},                      // a move
+		{2, 1 | 2, platform.PointerDown, 1, true}, // the secondary goes down while the primary is held
+		{2, 1, platform.PointerUp, 1, true},       // and up
+		{1, 2 | 4, platform.PointerDown, 2, true}, // the middle while the secondary is held
+		{0, 4, platform.PointerUp, 0, true},       // the primary up while the middle is held
+		{3, 1 | 8, 0, 0, false},                   // a side button
+	} {
+		kind, b, ok := chord(tc.button, tc.buttons)
+		if ok != tc.ok || ok && (kind != tc.kind || b != tc.want) {
+			t.Errorf("chord(%d, %d) = %v, %d, %v; want %v, %d, %v", tc.button, tc.buttons, kind, b, ok, tc.kind, tc.want, tc.ok)
+		}
+	}
+}

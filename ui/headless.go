@@ -220,6 +220,8 @@ func (h *headless) popupMenu(m *platform.Menu, x, y float32, chosen func(int)) {
 func (h *headless) placeWebViews(views []placedWebView) {
 	h.webViews = append(h.webViews[:0], views...)
 }
+func (h *headless) nativeGlass() bool                              { return false }
+func (h *headless) placeGlass([]platform.GlassPlacement)           {}
 func (h *headless) tabIntoWebView(v NativeWebView, back bool)      { h.tabbedInto, h.tabbedBack = v, back }
 func (h *headless) platformWebView(NativeWebView) platform.WebView { return nil }
 func (h *headless) image() *image.RGBA {
@@ -455,7 +457,7 @@ func (t *Tester) SetDark(dark bool) {
 // the user does in the system's settings.
 func (t *Tester) SetPreferences(p Preferences) {
 	t.h.prefs = platform.Preferences{Accent: platform.Color{R: p.Accent.R, G: p.Accent.G, B: p.Accent.B, A: p.Accent.A}, ReduceMotion: p.ReduceMotion,
-		HighContrast: p.HighContrast, TextScale: float64(p.TextScale)}
+		ReduceTransparency: p.ReduceTransparency, HighContrast: p.HighContrast, TextScale: float64(p.TextScale)}
 	t.rt.themeChanged()
 	t.settle()
 }
@@ -741,16 +743,24 @@ func (t *Tester) ChooseMenuItem(path ...string) error {
 func (t *Tester) CloseMenu() { t.h.menu, t.h.chosen = nil, nil }
 
 // Press presses (x, y) without releasing; Release releases it.
-func (t *Tester) Press(x, y float32) {
-	if t.webViewPress(x, y, 0, 0) {
-		return
-	}
-	t.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: float64(x), Y: float64(y)})
-}
+func (t *Tester) Press(x, y float32) { t.PressButton(0, x, y) }
 
 // Release releases the pointer at (x, y).
-func (t *Tester) Release(x, y float32) {
-	t.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: float64(x), Y: float64(y)})
+func (t *Tester) Release(x, y float32) { t.ReleaseButton(0, x, y) }
+
+// PressButton presses (x, y) with the pointer's button, 0 the primary, 1
+// the secondary and 2 the middle, without releasing, as a right-button
+// drag begins; ReleaseButton releases it.
+func (t *Tester) PressButton(button int, x, y float32) {
+	if t.webViewPress(x, y, button, 0) {
+		return
+	}
+	t.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: float64(x), Y: float64(y), Button: button})
+}
+
+// ReleaseButton releases the pointer's button at (x, y).
+func (t *Tester) ReleaseButton(button int, x, y float32) {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: float64(x), Y: float64(y), Button: button})
 }
 
 // WebViewAt returns the web view (WebView) that takes the pointer at
@@ -825,6 +835,12 @@ func (t *Tester) Key(mods Modifiers, key Key) {
 // until KeyUp.
 func (t *Tester) KeyDown(key Key) {
 	t.send(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: platform.Key(key)})
+}
+
+// KeyRepeat presses a key with modifiers as its auto-repeat does while
+// it is held down (InputEvent.Repeat, Context.ShortcutRepeated).
+func (t *Tester) KeyRepeat(mods Modifiers, key Key) {
+	t.send(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: platform.Key(key), Mods: platform.Modifiers(mods), Repeat: true})
 }
 
 // KeyUp releases a key KeyDown held.
