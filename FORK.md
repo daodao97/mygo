@@ -1,11 +1,11 @@
 # Fork 与上游的差异
 
-本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`）。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。数字为 2026-11-05 的快照，用文末的命令重新统计。
+本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`）。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。数字为 2026-11-06 的快照，用文末的命令重新统计。
 
-## 快照（2026-11-05）
+## 快照（2026-11-06）
 
-- fork `main`：`d2a71494`；`upstream/main`：`977ea57e`；fork 落后上游 0 个提交。
-- fork 独有的非合并提交：110 个；`git diff upstream/main main` 约 58,000 行。
+- fork `main`：`deccef93`（合并上游）；`upstream/main`：`8a07344d`；fork 落后上游 0 个提交。
+- fork 独有的非合并提交：111 个；`git diff upstream/main main` 约 58,000 行。
 - 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
 
 ## 规则
@@ -68,13 +68,13 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 | 差异 | 上游 PR | 本地分支 | 上游合并后 |
 |---|---|---|---|
-| 窗口空闲时释放文本 shaping 临时缓冲区（`System.ReleaseScratch`），Core Text 属性缓存命中不再构建临时对象 | #1301 | `pr/text-idle-scratch` | 同步时 `internal/text/{engine,layout,coretext_darwin,dwrite_windows,edit}.go`、`ui/window.go` 取上游 |
 | 终端链接识别：Unicode 路径、带引号的路径、`(行,列)` 和 `#L行C列` | #1302 | `pr/terminal-file-links` | fork 的 `matchLink` 与上游的 `pathAt` 是同一功能，按规则 1 改用上游；硬换行续接（B 类）保留并改为调用上游 |
-| 同步更新时光标隐藏也能在 1 秒后放行（`view.go` 中的 `c.After`） | #1305 | `pr/terminal-sync-update-wake` | 同步时 `view.go` 这一段取上游 |
 
-已被上游合并的 fork 改动：#928（macOS 空闲唤醒）、#1057（CJK 强调）、#1058（链接实线下划线）、#1077（zsh shell integration，上游在其基础上做了修改）。
+已被上游合并的 fork 改动：#928（macOS 空闲唤醒）、#1057（CJK 强调）、#1058（链接实线下划线）、#1077（zsh shell integration，上游在其基础上做了修改）、#1305（同步更新在 1 秒后放行，2026-11-06 同步时 `view.go` 取上游，两边的测试都保留）。
 
-## 已清理的重复实现（2026-11-05）
+已关闭、未合并：#1301（窗口空闲时释放文本 shaping 临时缓冲区，2026-11-06 关闭）。上游的 `01dfd8ed` 已经加了 `System.ReleaseShaping`，并在 `windowHost.idle()` 中调用，和 fork 的 `ReleaseScratch` 用的是同一个挂点。idlemem 实测这部分收益不到 1%（59.4 → 58.9 MB）。2026-11-06 同步时已删掉 fork 的 `ReleaseScratch` 和 `ui/window.go` 中的 `textLayouts`，改用上游的实现（规则 1）。Core Text 属性缓存和 `lineCarets` 的改动没有单独提交。
+
+## 已清理的重复实现（2026-11-05、2026-11-06）
 
 | 提交 | 内容 | 迁移注意事项 |
 |---|---|---|
@@ -86,6 +86,10 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 | `229142de` | `SecureStore` 改为上游的 `Secrets`；iOS/Android 实现 `platform.Secrets`；删除 `SecureStorage` | **钥匙串数据没有迁移**：旧数据的 service 是 `<bundleID>.mygo.<namespace>`，新数据用 `Secrets` 的 service。Miya 手机端升级后需要重新配对；Miya 桌面端已按 APNs token 去重推送注册，避免同一部手机重复收到推送 |
 | `73681819` | 删除 `Router.Pop`（等同于 `Back`），改用上游的 `Back` | — |
 | `d2a71494` | `ui/window.go` 中渲染路径的命名改回上游写法 | 上游没有“日志滞后一帧”的问题 |
+| `deccef93` | 指针设备改用上游的 `platform.PointerKind`、`SurfaceEvent.Pointer`（以及 `Pressure`）；删除 `platform.PointerType` 和 `SurfaceEvent.PointerType` | iOS/Android/桌面后端/fake 改写 `Pointer`；mouse 是零值，不用显式写。`Tester.send` 会用 `UsePointer` 的设备覆盖 Move/Down/Up 的 `Pointer`，fork 的触摸测试 helper（`ui/touch_test.go` 的 `touch`）因此先调 `UsePointer(PointerTouch, 0)`，同时在事件里写明 `Pointer`，让 Cancel 等其他 kind 也带上设备 |
+| `deccef93` | 删除 fork 重复的 `platform.PointerCancel`；系统发来的取消走上游的 `pointerCancel` | fork 触摸手势内部的 `cancelPointer` 暂未迁移（见「已知问题」） |
+| `deccef93` | 窗口空闲释放文本缓冲改用上游的 `System.ReleaseShaping`；删除 `ReleaseScratch` 和各引擎的 `releaseScratch` | #1301 已关闭 |
+| `deccef93` | 终端同步更新的唤醒改用上游的 `holdDue` | #1305 已被上游合并 |
 
 此外，滚动条策略在更早的合并中已经采用上游的“悬停时显示”和 `KeepScrollbars`。`93e7fb70`（延迟帧计时）优化的是 fork 自己的 API，不是上游的。
 
@@ -104,6 +108,7 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 - `GOOS=android CGO_ENABLED=0 go build .` 失败：`linkDMABUFProbe`、`linkNotificationImages` 未定义。合并上游前就已存在，fork 的 Android CI 会失败。
 - `android/jni/jni_textinput.go` 没有经过 gofmt。
+- 指针取消有两套：上游用 `InputEvent.Canceled`（`pointerUp(..., canceled=true)`），fork 的触摸手势（`ui/touch.go`、`ui/gesture.go`）还在用 `cancelPointer()` 发 fork 独有的 `InputPointerCancel`。按规则 1 应改成上游的 `pointerCancel`/`Canceled`，并迁移 Miya 等使用 `InputPointerCancel` 的地方，但要连同选区拖动、滚动拖动和 hover 的清理一起处理，没有在同步中顺手改。
 - 上游 macOS 的 GUI 测试不稳定（`TestPanel`、`TestContentWindowResizeRightAfterFrame` 等待超时），上游 `main` 本身也会失败；PR 中 macOS 任务失败时先对照上游 `main`。
 - 用 `go build` 单独链接 `examples/ios-native` 会缺少 `_MyGoBackgroundRefresh*` 符号，这些符号由 `mygo build` 打包时链接；检查 iOS 代码时用 `go build ./internal/ios` 和 `go vet`。
 
