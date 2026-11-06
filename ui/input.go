@@ -1044,7 +1044,9 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 			return false
 		}
 	}
-	if !rt.claimed(k) && rt.scrollKey(mods, key) {
+	// Space types a space where the focus takes text, rather than
+	// paging, as in a web page's field: the text comes after the key.
+	if !rt.claimed(k) && !(typesText(k) && rt.focusTakesText()) && rt.scrollKey(mods, key) {
 		return false
 	}
 	rt.keys = append(rt.keys, k)

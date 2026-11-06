@@ -84,8 +84,10 @@ func (rt *engine) passFocus() {
 //
 // It is false while the window does not have the keyboard, as the
 // window tells the system's input methods then.
-func (c *context) FocusTakesText() bool {
-	rt := c.rt
+func (c *context) FocusTakesText() bool { return c.rt.focusTakesText() }
+
+// focusTakesText is FocusTakesText.
+func (rt *engine) focusTakesText() bool {
 	s := rt.states[rt.focused]
 	if s == nil || !rt.windowFocus() {
 		return false
