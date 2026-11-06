@@ -314,6 +314,11 @@ func (in *inspector) noteKey(id uint64, k any) {
 	}
 }
 
+// holds reports whether the element id is in the panel while it shows.
+func (in *inspector) holds(rt *engine, id uint64) bool {
+	return in.open && in.panel != 0 && rt.within(id, in.panel)
+}
+
 // pointer takes the pointer over the content while picking: moving
 // outlines the element under it, and a press chooses it. It reports
 // whether it took ev.

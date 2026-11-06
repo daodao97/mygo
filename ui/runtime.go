@@ -142,6 +142,9 @@ type engine struct {
 	// zoomChanged tells that it changed since the frame's size was read.
 	contentZoom float32
 	zoomChanged bool
+	// menuPresentation is how the window shows its popup menus
+	// (Context.SetMenuPresentation).
+	menuPresentation MenuPresentation
 
 	// building counts the public constructors under way: input queued
 	// while more were under way than now belongs to controls built since,
@@ -710,6 +713,9 @@ func (rt *engine) runFrame() {
 			return
 		}
 		rt.buildToasts(&rt.c)
+		if d := rt.menu.drawn; d != nil && d.edit && rt.drawsMenus() {
+			menusInWindow.drawEditMenu(rt)
+		}
 		if rt.overlayExits {
 			// Copies of the elements gone from the layer leave in it
 			// (animateExits), empty as it is otherwise: it lets the

@@ -164,15 +164,13 @@ type menuLevel struct {
 
 type menuKey struct{}
 
-// openAt opens the menu of e where the engine was asked to (askMenu): below
-// it, or at the point it was right-clicked, on its first item when the
-// keyboard opened it.
-func (s *menuShown) openAt(rt *engine, e *node) {
+// openAt opens the menu of an element where the engine was asked to
+// (askMenu): below it, or at the point it was right-clicked, on its first
+// item when the keyboard opened it. b is the element's whole box, which the
+// menu attaches to, not its visible part: one scrolled partly out of view
+// would put it off the point by as much (#894).
+func (s *menuShown) openAt(rt *engine, b Rect) {
 	mr := &rt.menu
-	// From the element's whole box, which the menu attaches to, not its
-	// visible part: one scrolled partly out of view would put it off the
-	// point by as much (#894).
-	b := e.Bounds()
 	*s = menuShown{below: mr.below, dx: mr.x - b.X, dy: mr.y - b.Y, opened: rt.frame,
 		levels: append(s.levels[:0], menuLevel{first: mr.key, last: mr.last}), pointer: [2]float32{rt.pointerX, rt.pointerY}}
 }
@@ -252,7 +250,7 @@ func newMenu(c *context, e *node, open *bool, button bool) *menuParts {
 			*open = false
 		default:
 			*open = true
-			s.openAt(rt, e)
+			s.openAt(rt, e.Bounds())
 		}
 		rt.consumed = true
 	}
@@ -733,6 +731,13 @@ type drawnMenu struct {
 	built uint64
 	pass  int
 	menu  menuShown
+	// items is the menu as last built; choose, when not 0, is an item the
+	// Tester chose, which the next build takes.
+	items  *platform.Menu
+	choose int
+	// edit is set for the editing menu of a text input or selectable text
+	// (drawEditMenu).
+	edit bool
 	// icons are the bitmaps of its items' icons, by image and tint, as the
 	// menu builds in every frame it shows.
 	icons map[drawnIcon]*Bitmap
@@ -797,7 +802,7 @@ func (rt *engine) openDrawnMenu(e *node) {
 		return
 	}
 	d := &drawnMenu{id: e.id, text: rt.menu.text}
-	d.menu.openAt(rt, e)
+	d.menu.openAt(rt, e.Bounds())
 	rt.menu.drawn = d
 }
 
@@ -819,6 +824,14 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 	build(&Menu{run: run, menu: pm, rt: rt, text: rt.states[d.text]})
 	if !slices.ContainsFunc(pm.Items, func(it *platform.MenuItem) bool { return it.Visible && it.Type != platform.MenuItemSeparator }) {
 		rt.menu.drawn = nil
+		return
+	}
+	d.items = pm
+	if id := d.choose; id != 0 {
+		rt.menu.drawn = nil
+		if it := menuItemByID(pm.Items, id); it != nil {
+			rt.drawnChoice(d, run, build, it)
+		}
 		return
 	}
 	c := e.c
@@ -871,18 +884,40 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 	} else if d.menu.below {
 		e.expanded = true
 	}
-	if it := chosen; it != nil {
-		if name := run.commands[it.ID-1]; name != "" {
-			target := d.text
-			if target == 0 {
-				target = d.id
+	if chosen != nil {
+		rt.drawnChoice(d, run, build, chosen)
+	}
+}
+
+// drawnChoice does what item it, chosen from the drawn menu d that build
+// built in run, does: its editing command on the text, or the item's Chosen
+// in build.
+func (rt *engine) drawnChoice(d *drawnMenu, run *menuRun, build func(m *Menu), it *platform.MenuItem) {
+	if name := run.commands[it.ID-1]; name != "" {
+		target := d.text
+		if target == 0 {
+			target = d.id
+		}
+		rt.menuCommand(target, name)
+		rt.requestFrame()
+	} else {
+		rt.menuChoice(build, it.ID, it.Label, d.text)
+	}
+}
+
+// menuItemByID returns the item id of items or of their submenus, or nil.
+func menuItemByID(items []*platform.MenuItem, id int) *platform.MenuItem {
+	for _, it := range items {
+		if it.ID == id {
+			return it
+		}
+		if it.Submenu != nil {
+			if found := menuItemByID(it.Submenu.Items, id); found != nil {
+				return found
 			}
-			rt.menuCommand(target, name)
-			rt.requestFrame()
-		} else {
-			rt.menuChoice(build, it.ID, it.Label, d.text)
 		}
 	}
+	return nil
 }
 
 // drawnItem builds item it of the menu d being drawn, with room for the

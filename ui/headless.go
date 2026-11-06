@@ -721,13 +721,15 @@ func (t *Tester) RightClickAt(x, y float32) {
 }
 
 // Menu returns the labels of the items of the context menu shown, "-" for
-// separators, or nil when none is.
+// separators, or nil when none is: the system's, or one drawn in the window
+// (PopoverMenu, SetMenuPresentation).
 func (t *Tester) Menu() []string {
-	if t.h.menu == nil {
+	m, _ := t.currentMenu()
+	if m == nil {
 		return nil
 	}
 	out := []string{}
-	for _, it := range t.h.menu.Items {
+	for _, it := range m.Items {
 		label := it.Label
 		if it.Type == platform.MenuItemSeparator {
 			label = "-"
@@ -740,7 +742,7 @@ func (t *Tester) Menu() []string {
 // ChooseMenuItem chooses the item of the context menu shown labeled with
 // the last of path, in the submenus the others label, and closes the menu.
 func (t *Tester) ChooseMenuItem(path ...string) error {
-	m := t.h.menu
+	m, choose := t.currentMenu()
 	if m == nil {
 		return fmt.Errorf("ui: no context menu is shown")
 	}
@@ -771,15 +773,37 @@ func (t *Tester) ChooseMenuItem(path ...string) error {
 	if found.Type == platform.MenuItemSubmenu {
 		return fmt.Errorf("ui: %q opens a submenu", strings.Join(path, " > "))
 	}
-	chosen := t.h.chosen
-	t.h.menu, t.h.chosen = nil, nil
-	chosen(found.ID)
+	choose(found.ID)
 	t.settle()
 	return nil
 }
 
 // CloseMenu closes the context menu shown without choosing an item.
-func (t *Tester) CloseMenu() { t.h.menu, t.h.chosen = nil, nil }
+func (t *Tester) CloseMenu() {
+	if t.rt.menu.drawn != nil {
+		t.rt.menu.drawn = nil
+		t.settle()
+		return
+	}
+	t.h.menu, t.h.chosen = nil, nil
+}
+
+// currentMenu returns the context menu shown, the one drawn in the window
+// or else the system's, and what chooses its item id and closes it; nil
+// when none shows.
+func (t *Tester) currentMenu() (*platform.Menu, func(id int)) {
+	if d := t.rt.menu.drawn; d != nil && d.items != nil {
+		return d.items, func(id int) { d.choose = id }
+	}
+	if t.h.menu == nil {
+		return nil, nil
+	}
+	chosen := t.h.chosen
+	return t.h.menu, func(id int) {
+		t.h.menu, t.h.chosen = nil, nil
+		chosen(id)
+	}
+}
 
 // Press presses (x, y) without releasing; Release releases it.
 func (t *Tester) Press(x, y float32) { t.PressButton(0, x, y) }

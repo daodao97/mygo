@@ -43,10 +43,11 @@ navigation bar, which screen readers list and jump to (as
 [`Breadcrumbs`](breadcrumbs.md) is), and `ui.RoleMenu`, `ui.RoleMenuBar`,
 `ui.RoleMenuItem`, `ui.RoleMenuItemCheckBox` and `ui.RoleMenuItemRadio`
 make menus drawn in the window, as a drop-down menu or a menu bar of your
-own (an element's menu drawn in the window,
-[`PopoverMenu`](context-menu.md#drawn-in-the-window) or
-[`PopoverMenuButton`](menu-button.md#drawn-in-the-window), has them, as
-do [`MenuBase`](menu-button.md#without-a-look) and `ContextMenuBase`,
+own (every menu MyGo draws in the window,
+[`PopoverMenu`](context-menu.md#drawn-in-the-window)'s,
+[`PopoverMenuButton`](menu-button.md#drawn-in-the-window)'s and [a
+window's](context-menu.md#every-menu-of-a-window), has them, as do
+[`MenuBase`](menu-button.md#without-a-look) and `ContextMenuBase`,
 menus without a look that keep their keys and focus):
 
 ```go

@@ -5,7 +5,8 @@ dimmed window, [alert dialogs](alert-dialog.md), [popovers](popover.md)
 below an element, the popups of [selects](select.md) and
 [comboboxes](combobox.md), menus drawn in the window
 ([`PopoverMenu`](context-menu.md#drawn-in-the-window) and
-[`PopoverMenuButton`](menu-button.md#drawn-in-the-window)),
+[`PopoverMenuButton`](menu-button.md#drawn-in-the-window), and every menu
+of a window that [draws its menus](context-menu.md#every-menu-of-a-window)),
 [tooltips](tooltip.md) and [toasts](toast.md).
 They share how they treat the keyboard and what is behind them. Though
 they show above the window, they take the theme of where they were asked

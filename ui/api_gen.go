@@ -445,6 +445,16 @@ func (_handle *Context) MeasureText(width float32, spans ...Span) (float32, floa
 	return _ctx.MeasureText(width, spans...)
 }
 
+// MenuPresentation returns how the window shows its popup menus
+// (SetMenuPresentation).
+func (_handle *Context) MenuPresentation() MenuPresentation {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return *new(MenuPresentation)
+	}
+	return _ctx.MenuPresentation()
+}
+
 // Modifiers returns the modifier keys held now, as the last key, pointer
 // or modifier event said: a view showing each row's shortcut while Cmd is
 // held reads it, and draws again as it changes.
@@ -546,6 +556,27 @@ func (_handle *Context) Router() *Router {
 		return nil
 	}
 	return _ctx.Router()
+}
+
+// SetMenuPresentation sets how the window shows its popup menus: those of
+// ContextMenu and Menu, the menus MyGo's widgets build with them, as a
+// table's header and cell menus, and the editing menu of text inputs and
+// selectable text. With PopoverMenus they draw in the window as
+// PopoverMenu draws its menu, with its keys, focus and roles, so that an
+// app with a look of its own shows no menu of the desktop's beside its
+// own; with SystemMenus, the default, the system shows them. It stays
+// until set again. PopoverMenu and PopoverMenuButton draw theirs in the
+// window whatever it is. Only the menus MyGo builds follow it: the menu
+// bar, the tray's menu and the Dock's stay the system's, and a web view's
+// are the web view's own.
+//
+//	c.SetMenuPresentation(ui.PopoverMenus)
+func (_handle *Context) SetMenuPresentation(p MenuPresentation) {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return
+	}
+	_ctx.SetMenuPresentation(p)
 }
 
 // SetTheme makes the frame use t, for the window's root and the widgets
@@ -4300,7 +4331,8 @@ func (_handle Element) ContentTransition(t ContentTransition) Element {
 //		m.EditItems()
 //	})
 //
-// PopoverMenu draws the same menu in the window, with the theme's look.
+// PopoverMenu draws the same menu in the window, with the theme's look, as
+// ContextMenu does while the window draws its menus (SetMenuPresentation).
 func (_handle Element) ContextMenu(build func(m *Menu)) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -6068,7 +6100,8 @@ func (_handle Element) MaximizeButton() Element {
 //	})
 //
 // PopoverMenuButton draws the same menu in the window, with the theme's
-// look.
+// look, as Menu does while the window draws its menus
+// (SetMenuPresentation).
 func (_handle Element) Menu(build func(m *Menu)) Element {
 	_node := _handle.node()
 	if _node == nil {

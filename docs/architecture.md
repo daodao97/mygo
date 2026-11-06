@@ -4073,6 +4073,24 @@ either.
   technology (`menuState.key`), it starts on its first item, and a press
   on the button while it shows closes it (`buildMenu`, and `newMenu` for
   the bases).
+  A window whose view sets `PopoverMenus` (`ui/menupresentation.go`,
+  `engine.menuPresentation`) draws every menu so: `ContextMenu` and `Menu`
+  take `PopoverMenu`'s and `PopoverMenuButton`'s path, and so do the
+  widgets built on them. The drawn path is reached only through function
+  values `SetMenuPresentation` sets (`menusInWindow`), so apps that never
+  draw their menus do not link it.
+  A text input's or selectable text's own editing menu has no function of
+  the view's to build it. `resolveMenu` notes it as a drawn menu
+  (`drawnMenu.edit`) and asks for another pass. After that pass's view,
+  before the overlay layer joins the root, the frame finds the text's
+  element in the content or the overlays (`node.find`) and draws the menu
+  of its `EditItems` there, in the element's theme. One in a part that
+  takes no input (`flagInert`), as a page going away, is not drawn, which
+  closes it. The inspector's fields keep the system's: its panel is built
+  after the overlays, over them.
+  The `Tester` reads a drawn menu's items as last built (`drawnMenu.items`)
+  and chooses one by its ID (`drawnMenu.choose`), which the next build
+  takes as a click, so its menu helpers work on either.
 - **Scenes** are flat lists of operations in device pixels: rounded
   rectangles with borders of a width per side, solid or dashed, filled
   with a color, a linear gradient mixed in sRGB or Oklab, a gradient of

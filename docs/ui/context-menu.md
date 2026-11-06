@@ -132,13 +132,41 @@ menu of menu items, check box items and radio items, checked or not, as
 it sees the system's.
 
 A drawn menu's items are elements: in tests, `tt.RightClick` opens it,
-`tt.HasText` finds its items and `tt.Click` chooses one, while `tt.Menu`
-lists only the system's menus.
+`tt.HasText` finds its items and `tt.Click` chooses one. `tt.Menu`,
+`tt.ChooseMenuItem` and `tt.CloseMenu` work on it as on the system's, so a
+test passes with either.
 
 `PopoverMenuButton` draws the menu of a [menu
 button](menu-button.md#drawn-in-the-window) so, below the button, and takes
 the same function: a row's right-click and its ⋯ button can share one
 menu, drawn alike.
+
+### Every menu of a window
+
+`Context.SetMenuPresentation(ui.PopoverMenus)` draws every popup menu of
+the window so, not only those given with `PopoverMenu`: the menus of
+`ContextMenu` and `Menu`, the ones MyGo's widgets build with them (a
+[table](table.md)'s header and cell menus, a toolbar's overflow menu, the
+code editor's), and the editing menu of text inputs and selectable text.
+An app with a look of its own then shows no menu of the desktop's beside
+its own, and its menu functions do not change. It stays until set again,
+so the view can follow a setting of the app's:
+
+```go
+func (app *App) View(c *ui.Context) {
+	if app.settings.systemMenus {
+		c.SetMenuPresentation(ui.SystemMenus) // the default
+	} else {
+		c.SetMenuPresentation(ui.PopoverMenus)
+	}
+	// ...
+}
+```
+
+`PopoverMenu` and `PopoverMenuButton` draw their menus in the window
+whatever it is. Only the menus MyGo builds follow it: the menu bar, the
+tray's menu and the Dock's stay the system's, and a [web
+view](web-view.md)'s are the web view's own.
 
 ## Without a look
 

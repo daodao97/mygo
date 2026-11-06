@@ -49,7 +49,10 @@ panics where the second key was given, as apps only log it.
   `tt.Command` performs an edit command of the menus, such as `"copy"`, and
   `tt.TextCaret` returns where input methods would compose.
 - **Menus.** `tt.RightClick` opens a context menu, which `tt.Menu` lists and
-  `tt.ChooseMenuItem("Move to", "Archive")` chooses from.
+  `tt.ChooseMenuItem("Move to", "Archive")` chooses from, and `tt.CloseMenu`
+  closes: the system's, or one [drawn in the
+  window](context-menu.md#drawn-in-the-window), so a test passes with
+  either.
 - **The window.** `tt.SetSize`, `tt.SetScale`, `tt.SetZoom` (the content's
   [zoom](windows.md#zoom), as `Context.SetZoom`; the tester's coordinates,
   of `Find`, `ClickAt`, `Move` and `TextCaret`, stay the window's), `tt.SetDark`,

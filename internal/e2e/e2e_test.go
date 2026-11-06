@@ -4233,6 +4233,60 @@ func TestContentWindowPopoverMenuButton(t *testing.T) {
 	eventually(t, "the choice", func() bool { return chosen.Load() == "As PNG" })
 }
 
+// TestContentWindowDrawnEditMenu right-clicks a text input of a window
+// that draws its menus (SetMenuPresentation): its editing menu draws in the
+// window and takes the focus, the system shows none, and its keys choose
+// Select All, after which the focus is back in the input, whose typing
+// replaces the text.
+func TestContentWindowDrawnEditMenu(t *testing.T) {
+	var frames atomic.Int32
+	var text atomic.Value
+	var inInput atomic.Bool
+	value := "hello world"
+	text.Store(value)
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		c.SetMenuPresentation(ui.PopoverMenus)
+		ui.Box(c).Fill().Padding(20).Children(func() {
+			ui.TextInput(c, &value).Size(200, 32)
+		})
+		text.Store(value)
+		inInput.Store(c.FocusTakesText())
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Drawn editing menu", Width: 400, Height: 300, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	// focusIs asks for a frame each time it looks, so that the view reads
+	// the focus as it is, not as it was when the window last drew.
+	focusIs := func(input bool) func() bool {
+		return func() bool {
+			w.Invalidate()
+			return inInput.Load() == input
+		}
+	}
+	// A click first gives the window the keyboard, with no window manager.
+	if _, ok := popupMenus(); !ok || !click(w, 120, 36) {
+		t.Skip("context menu automation not available on this platform")
+	}
+	eventually(t, "the input's focus", focusIs(true))
+	rightClick(w, 120, 36)
+	if !wait.Poll(focusIs(false)) {
+		menus, _ := popupMenus()
+		t.Fatalf("the menu never took the focus: %d frames, the system's menus %q", frames.Load(), menus)
+	}
+	if menus, _ := popupMenus(); len(menus) != 0 {
+		t.Fatalf("the system shows a menu: %q", menus)
+	}
+	// It opened on no item: End goes to its last, Select All, on every
+	// platform.
+	if !pressKeys("End") {
+		t.Skip("key automation not available on this platform")
+	}
+	pressKeys("Return")
+	eventually(t, "the focus back in the input", focusIs(true))
+	pressKeys("x")
+	eventually(t, "the text replaced", func() bool { return text.Load() == "x" })
+}
+
 // TestReorderByDragging drags a row of a list below another with the
 // events of a real mouse.
 func TestReorderByDragging(t *testing.T) {

@@ -122,7 +122,9 @@ UI as they read other apps (see [Accessibility](accessibility.md)).
 - [Menu button](menu-button.md): a button opening a menu below it, the
   system's or one MyGo draws in the window with the theme's look.
 - [Context menu](context-menu.md): a menu of the system's for any element,
-  on a right click, or one MyGo draws in the window with the theme's look.
+  on a right click, or one MyGo draws in the window with the theme's look;
+  [every menu of a window](context-menu.md#every-menu-of-a-window) drawn so,
+  text inputs' and tables' too.
 - [Toggle](toggle.md): a button that stays pressed, and toggles joined in a
   group.
 - [Segmented control](segmented.md): segments choosing one of a few views.
