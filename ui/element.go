@@ -639,12 +639,17 @@ type node struct {
 	// attach is where Attach puts the element, 0 for nowhere, and placed
 	// where AttachTo put it as this frame laid it out, on whichever side
 	// of its target, flips the sides it went to (flipAcross, flipDown).
-	leaving uint8
-	ghosts  bool
-	lift    bool
-	attach  attachment
-	placed  attachment
-	flips   uint8
+	leaving       uint8
+	ghosts        bool
+	lift          bool
+	attach        attachment
+	placed        attachment
+	flips         uint8
+	edgeMarginSet bool
+	// edgeMargin, when edgeMarginSet, is how far AttachTo keeps the
+	// element from the window's edges (AttachEdgeMargin), in place of
+	// windowMargin.
+	edgeMargin float32
 	// zIndex orders the element's painting and its hits among its
 	// siblings (ZIndex); zOrder is set on an element with a child having
 	// one, which paints and commits its children in that order alone
@@ -1248,6 +1253,18 @@ func (e *node) AttachedAnchors() (at, self Anchor) {
 		return AnchorTopLeft, AnchorTopLeft
 	}
 	return a.anchors()
+}
+
+// AttachEdgeMargin sets how far an element placed with AttachTo stays
+// from the window's edges, v DIPs on each side, where it is 4 unless set:
+// a panel that must not touch the edges of a small window keeps 12 from
+// them, as the inset-modified containing block of CSS Anchor Positioning
+// keeps a positioned box inside the insets given to it. It is the room
+// the element flips and moves to stay in, and that one scrolling is
+// limited to.
+func (e *node) AttachEdgeMargin(v float32) *node {
+	e.edgeMargin, e.edgeMarginSet = max(v, 0), true
+	return e
 }
 
 // AttachedOrigin sets the transform origin on the element's own point

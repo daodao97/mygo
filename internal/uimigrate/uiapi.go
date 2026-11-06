@@ -132,6 +132,7 @@ var elementChains = map[string]bool{
 	"AnimatePose":          true,
 	"AspectRatio":          true,
 	"Attach":               true,
+	"AttachEdgeMargin":     true,
 	"AttachTo":             true,
 	"AttachedOrigin":       true,
 	"AutoComplete":         true,

@@ -74,6 +74,10 @@ menus, are built from what those are made of:
   vertically is no taller than the room on the target's larger side, and
   scrolls. Its margins keep it apart from the target. It is the target's popover: its elements follow
   the target as Tab moves.
+- `AttachEdgeMargin(v)` keeps such an element `v` DIPs from the window's
+  edges, where it keeps 4 unless set: `AttachEdgeMargin(12)` for a wide
+  panel that must not touch the edges of a narrow window, as the insets of
+  CSS Anchor Positioning's containing block.
 - `AttachedAnchors` returns the anchors it ended on, as Floating UI's
   placement: `ui.AnchorTop, ui.AnchorBottom` for a panel asked below its
   button that went above it. The view reads the last frame's, and a

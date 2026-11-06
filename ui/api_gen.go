@@ -3551,6 +3551,23 @@ func (_handle Element) Attach(at Anchor, self Anchor) Element {
 	return wrapElement(_node.Attach(at, self))
 }
 
+// AttachEdgeMargin sets how far an element placed with AttachTo stays
+// from the window's edges, v DIPs on each side, where it is 4 unless set:
+// a panel that must not touch the edges of a small window keeps 12 from
+// them, as the inset-modified containing block of CSS Anchor Positioning
+// keeps a positioned box inside the insets given to it. It is the room
+// the element flips and moves to stay in, and that one scrolling is
+// limited to.
+func (_handle Element) AttachEdgeMargin(v float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.AttachEdgeMargin(v))
+}
+
 // AttachTo takes the element out of its parent's layout, as Attach does,
 // and puts its point self on the point at of target's box, wherever target
 // is in the window: built in an Overlay, a panel goes below a button with

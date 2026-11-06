@@ -314,6 +314,55 @@ func TestAttachTo(t *testing.T) {
 	}
 }
 
+// TestAttachEdgeMargin keeps an attached panel further from the window's
+// edges than the default 4.
+func TestAttachEdgeMargin(t *testing.T) {
+	var edge float32 = -1
+	var tall bool
+	tt := coreNewTester(func(c *context) {
+		b := coreButtonBase(c).Size(40, 20).Label("anchor").Absolute().Left(2).Top(10)
+		coreOverlay(c, func() {
+			p := coreBox(c).Size(288, 30).Label("panel").AttachTo(b, AnchorBottomLeft, AnchorTopLeft)
+			if tall {
+				p.Height(400).flags |= flagScrollY
+			}
+			if edge >= 0 {
+				p.AttachEdgeMargin(edge)
+			}
+		})
+	}, 320, 300)
+	find := func() Rect {
+		t.Helper()
+		r, ok := tt.Find("panel")
+		if !ok {
+			t.Fatal("no panel")
+		}
+		return r
+	}
+	// Its left edge on the anchor's, 2 from the window's, it moves along
+	// the anchor into the window: 4 from the edge by default.
+	if r := find(); r.X != 4 {
+		t.Errorf("default: x %v, want 4", r.X)
+	}
+	edge = 12
+	tt.Frame()
+	if r := find(); r.X != 12 {
+		t.Errorf("edge margin 12: x %v, want 12", r.X)
+	}
+	edge = 0
+	tt.Frame()
+	if r := find(); r.X != 2 {
+		t.Errorf("edge margin 0: x %v, want 2, on the anchor", r.X)
+	}
+	// One that scrolls is no taller than the room below the anchor, which
+	// ends 30 from the top, less the margin.
+	edge, tall = 12, true
+	tt.Frame()
+	if r := find(); r.H != 300-30-12 {
+		t.Errorf("scrolling panel: h %v, want %v", r.H, 300-30-12)
+	}
+}
+
 func TestAttachedAnchors(t *testing.T) {
 	var viewAt, viewSelf, drawAt, drawSelf Anchor
 	var panel *node

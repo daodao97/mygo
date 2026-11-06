@@ -1299,7 +1299,7 @@ func attachTo(c, e *node, pw, ph float32) {
 	t := laidOutVisualBox(c.popover)
 	if c.flags&flagScrollY != 0 {
 		_, ay, _, sy := c.attachFractions()
-		h = min(h, roomAlong(t.Y, t.H, beside(ay, sy), c.m(0)+c.m(2), c.c.h))
+		h = min(h, roomAlong(t.Y, t.H, beside(ay, sy), c.m(0)+c.m(2), c.c.h, c.windowEdge()))
 	}
 	c.x, c.y = attachedAt(c, e, t, pw, ph, w, h)
 	layoutBox(c, w, h)
@@ -1324,8 +1324,9 @@ func reattach(ov *node) {
 // transform origin on the element's (AttachedOrigin).
 func attachedAt(c, e *node, t Rect, pw, ph, w, h float32) (x, y float32) {
 	ax, ay, sx, sy := c.attachFractions()
-	x, fx := alongTarget(t.X, t.W, ax, sx, w, c.m(3)-c.m(1), c.c.w)
-	y, fy := alongTarget(t.Y, t.H, ay, sy, h, c.m(0)-c.m(2), c.c.h)
+	edge := c.windowEdge()
+	x, fx := alongTarget(t.X, t.W, ax, sx, w, c.m(3)-c.m(1), c.c.w, edge)
+	y, fy := alongTarget(t.Y, t.H, ay, sy, h, c.m(0)-c.m(2), c.c.h, edge)
 	c.placed, c.flips = c.attach.flipped(fx, fy), 0
 	if fx {
 		c.flips |= flipAcross
@@ -1360,17 +1361,26 @@ func (c *node) attachFractions() (ax, ay, sx, sy float32) {
 	return ax, ay, sx, sy
 }
 
-// windowMargin keeps what overlays place apart from the window's edges.
+// windowMargin keeps what overlays place apart from the window's edges,
+// unless the element says otherwise (AttachEdgeMargin).
 const windowMargin = 4
 
+// windowEdge returns how far AttachTo keeps c from the window's edges.
+func (c *node) windowEdge() float32 {
+	if c.edgeMarginSet {
+		return c.edgeMargin
+	}
+	return windowMargin
+}
+
 // roomAlong returns the most an element attached to target can be along
-// an axis of the window, limit long, and stay in it: the larger side of
-// target for one placed beside it, else the window. One that scrolls, as a
-// select's long list of options, is no longer.
-func roomAlong(t0, tsize float32, beside bool, margins, limit float32) float32 {
-	room := limit - 2*windowMargin - margins
+// an axis of the window, limit long, and stay in it, edge from its ends:
+// the larger side of target for one placed beside it, else the window.
+// One that scrolls, as a select's long list of options, is no longer.
+func roomAlong(t0, tsize float32, beside bool, margins, limit, edge float32) float32 {
+	room := limit - 2*edge - margins
 	if beside {
-		room = max(t0, limit-(t0+tsize)) - windowMargin - margins
+		room = max(t0, limit-(t0+tsize)) - edge - margins
 	}
 	return max(room, 0)
 }
@@ -1382,12 +1392,12 @@ func beside(at, self float32) bool { return at == 1 && self == 0 || at == 0 && s
 // alongTarget returns where an element size long goes along an axis of the
 // window, limit long, with its point at fraction self on target's point at
 // fraction at, moved by off: on the other side of target, or the other way
-// along it, where that overflows the window less (flipped), then moved
-// into the window along target.
-func alongTarget(t0, tsize, at, self, size, off, limit float32) (p float32, flipped bool) {
+// along it, where that overflows the window, less edge at each end, less
+// (flipped), then moved into it along target.
+func alongTarget(t0, tsize, at, self, size, off, limit, edge float32) (p float32, flipped bool) {
 	pos := func(at, self, off float32) float32 { return t0 + at*tsize - self*size + off }
 	over := func(p float32) float32 {
-		return max(0, windowMargin-p) + max(0, p+size-(limit-windowMargin))
+		return max(0, edge-p) + max(0, p+size-(limit-edge))
 	}
 	p = pos(at, self, off)
 	if over(p) > 0 {
@@ -1396,7 +1406,7 @@ func alongTarget(t0, tsize, at, self, size, off, limit float32) (p float32, flip
 		}
 	}
 	if !beside(at, self) && over(p) > 0 {
-		p = max(windowMargin, min(p, limit-windowMargin-size))
+		p = max(edge, min(p, limit-edge-size))
 	}
 	return p, flipped
 }
