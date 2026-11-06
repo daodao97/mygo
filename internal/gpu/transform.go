@@ -41,6 +41,9 @@ func (b *Builder) prepare(in *Instance, m scene.Affine, c *clip) bool {
 		in.Transform0 = [4]float32{m.A, m.C, m.X, 1}
 		in.Transform1 = [4]float32{m.B, m.D, m.Y, 0}
 		in.Transform2 = [4]float32{m.G, m.H, 0, 0}
+		if m.Behind {
+			in.Transform2[2] = 1 // the divisor's constant term is -1
+		}
 	}
 	in.Clip, in.ClipRadii = rect(c.rect), c.radii
 	if !c.masked {

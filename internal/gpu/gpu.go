@@ -92,7 +92,8 @@ type Instance struct {
 	// markFill): the shaders then skip computing it.
 	// Transform2 holds the projective row's g and h, the frame point of
 	// local (x, y) being Transform0's and Transform1's dot products with
-	// (x, y, 1) over g*x + h*y + 1: shaders interpolate in perspective.
+	// (x, y, 1) over g*x + h*y + 1, or g*x + h*y - 1 when Transform2.z is
+	// 1 (scene.Affine.Behind): shaders interpolate in perspective.
 	Transform0, Transform1, Transform2 [4]float32
 }
 

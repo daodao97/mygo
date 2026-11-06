@@ -76,6 +76,14 @@ func TestDrawsAsTheCPURenderer(t *testing.T) {
 			pix, stride := r.readBack(t)
 			gputest.Compare(t, "d3d11-perspective", pix, stride, s)
 		}
+		s = gputest.BehindOriginScene()
+		for range 2 {
+			if err := r.draw(s); err != nil {
+				t.Fatal(err)
+			}
+			pix, stride := r.readBack(t)
+			gputest.Compare(t, "d3d11-behind-origin", pix, stride, s)
+		}
 		for i, s := range gputest.TranslatedScenes() {
 			if err := r.draw(s); err != nil {
 				t.Fatal(err)

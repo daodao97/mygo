@@ -96,6 +96,65 @@ func TestMovedClip(t *testing.T) {
 	}
 }
 
+// A plane turned in perspective around a point far from its origin can
+// have the origin behind the viewer, past the horizon, while what is
+// drawn around that point is in front (#1406). Moving the turn there
+// keeps the sign of the divisor: what is in front stays in front, under
+// the map and under its inverse, and its bounds are its own.
+func TestAffineKeepsWhatIsInFront(t *testing.T) {
+	// Turned 75 degrees about the horizontal axis, its top toward the
+	// viewer, seen from 600: w = 1 + y·sin(75°)/600 around the turn's own
+	// origin, which (62, 650) moves to (0, 0) and back.
+	s, c := math.Sincos(-75 * math.Pi / 180)
+	turn := Projective(1, 0, 0, float32(c), 0, 0, 0, float32(-s/600))
+	m := Translation(62, 650).Mul(turn).Mul(Translation(-62, -650))
+	if !m.Behind || m.W(0, 0) >= 0 {
+		t.Fatalf("the origin, behind the viewer, has w %v (%+v)", m.W(0, 0), m)
+	}
+	card := Rect{X: 24, Y: 612, W: 76, H: 76}
+	for _, p := range [][2]float32{{24, 612}, {100, 612}, {24, 688}, {100, 688}, {62, 650}} {
+		if w := m.W(p[0], p[1]); w <= 0 {
+			t.Errorf("(%v, %v) of the card is behind the viewer: w %v", p[0], p[1], w)
+		}
+		// Where it shows: as the turn has it around its own origin.
+		x, y := m.Point(p[0], p[1])
+		wx, wy := turn.Point(p[0]-62, p[1]-650)
+		if math.Abs(float64(x-wx-62)) > 1e-3 || math.Abs(float64(y-wy-650)) > 1e-3 {
+			t.Errorf("(%v, %v) shows at %v, %v, not %v, %v", p[0], p[1], x, y, wx+62, wy+650)
+		}
+	}
+	if b := m.Bounds(card); b.W > 2*card.W || b.H > card.H || b.X < card.X-card.W || b.Y < card.Y {
+		t.Errorf("the card shows within %+v", b)
+	}
+	inv, ok := m.Inverse()
+	if !ok {
+		t.Fatal("no inverse")
+	}
+	x, y := m.Point(80, 640)
+	if w := inv.W(x, y); w <= 0 {
+		t.Errorf("the inverse puts what the card shows behind the viewer: w %v", w)
+	}
+	if lx, ly := inv.Point(x, y); math.Abs(float64(lx-80)) > 1e-2 || math.Abs(float64(ly-640)) > 1e-2 {
+		t.Errorf("there and back, (80, 640) is %v, %v", lx, ly)
+	}
+	// Composed with more, the sign holds: scaled, and in pixels.
+	if p := Scaling(2, 2).Mul(m); !p.Behind || p.W(62, 650) <= 0 {
+		t.Errorf("scaled, the card's center has w %v", p.W(62, 650))
+	}
+	if p := m.Pixels(2); !p.Behind || p.W(124, 1300) <= 0 {
+		t.Errorf("in pixels, the card's center has w %v", p.W(124, 1300))
+	}
+	// Moved back to its own origin, the origin is in front again.
+	if back := Translation(-62, -650).Mul(m).Mul(Translation(62, 650)); back.Behind || math.Abs(float64(back.H-turn.H)) > 1e-6 {
+		t.Errorf("moved back, %+v, not %+v", back, turn)
+	}
+	// All of a plane behind the viewer, w = -1 everywhere: nothing shows.
+	near := Projective(1, 0, 0, 1, 0, 0, 0, 0.001)
+	if p := near.Mul(Projective(1, 0, 0, 1, 0, -2000, 0, -0.001)); p != singular {
+		t.Errorf("all behind the viewer, %+v", p)
+	}
+}
+
 // Reshaped tells drawing a transform only moves from drawing it scales or
 // turns, its own transform or its glyphs', as of an effect masked by
 // glyphs, which draws them with their transforms too.

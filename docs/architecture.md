@@ -2999,10 +2999,16 @@ either.
   into its parent's plane as CSS's flat transform-style does, composes
   with its ancestors after layout as a projective map
   (`scene.Affine`, with G and H in perspective); boxes keep their original
-  layout space. A `scene.Affine`'s divisor is 1 at its origin, so a 3D
-  transform that puts the origin at or behind the viewer (`TranslationZ`
-  as far as `Perspective`'s distance) flattens to a singular map, which
-  shows nothing; `BackfaceHidden` tests the normal through the whole 4×4
+  layout space. A `scene.Affine`'s divisor is 1 at its origin, or -1
+  (`Behind`) when the origin is behind the viewer though what is drawn is
+  in front: a turn in perspective around an element far from the
+  window's origin puts the window's origin past the turned plane's
+  horizon (#1406). Products and inverses keep the divisor's sign, and the
+  shaders take it from the instance (`Transform2.z`). Elements and
+  `Painter.Transform` flatten a 3D transform around its own origin and
+  move it there in 2D. A transform that puts all of its plane behind the
+  viewer (`TranslationZ` as far as `Perspective`'s distance, not turned)
+  flattens to a singular map, which shows nothing; `BackfaceHidden` tests the normal through the whole 4×4
   inverse, perspective included (`facesAway`, as Chromium's
   `IsBackFaceVisible`). `TranslatePercent` stays apart from the transform
   (`translatePct`): `transformAt` resolves it from the box as laid out,

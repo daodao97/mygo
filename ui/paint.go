@@ -1741,8 +1741,12 @@ func (p *Painter) Clip(r Rect, radius float32, fn func()) {
 func (p *Painter) Transform(t Transform, ox, oy float32, fn func()) {
 	saved := p.transform
 	if t.set() {
-		m := Translation(-ox, -oy).Then(t).Then(Translation(ox, oy))
-		p.transform = saved.Mul(m.flat())
+		// Flattened around its own origin, then moved there in 2D, as an
+		// element's (transformAt): the product keeps the divisor's sign,
+		// so that a card turning over in perspective around (ox, oy) far
+		// from the window's origin is in front of the viewer, though the
+		// window's origin is behind it (#1406).
+		p.transform = saved.Mul(scene.Translation(ox, oy).Mul(t.flat()).Mul(scene.Translation(-ox, -oy)))
 	}
 	fn()
 	p.transform = saved

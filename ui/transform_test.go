@@ -605,3 +605,94 @@ func TestTranslateZShowsAndHitsInPerspective(t *testing.T) {
 		t.Error("behind the viewer, the card took a click")
 	}
 }
+
+// A turn in perspective around an origin far from the window's shows in
+// front of the viewer, though the window's origin is then behind it, past
+// the turned plane's horizon (#1406): from -89 to -70 degrees, a card 650
+// DIPs down seen from 600 had every corner behind the viewer.
+func TestTurnFarFromTheOriginStaysInFront(t *testing.T) {
+	ox, oy := float32(62), float32(650)
+	card := scene.Rect{X: 24, Y: 612, W: 76, H: 76}
+	for _, deg := range []float32{-89, -80, -70, -60, -30, 0, 30, 60, 89} {
+		tr := RotationX(deg).Then(Perspective(600))
+		own := tr.flat()
+		// Moved there in 3D, as an app may, and in 2D, as elements and
+		// Painter.Transform do.
+		for i, m := range []scene.Affine{
+			Translation(-ox, -oy).Then(tr).Then(Translation(ox, oy)).flat(),
+			scene.Translation(ox, oy).Mul(own).Mul(scene.Translation(-ox, -oy)),
+		} {
+			for _, p := range [][2]float32{{24, 612}, {100, 612}, {24, 688}, {100, 688}} {
+				if w := m.W(p[0], p[1]); w <= 1e-6 {
+					t.Errorf("%v° (%d): the corner (%v, %v) is behind the viewer, w %v", deg, i, p[0], p[1], w)
+				}
+				x, y := m.Point(p[0], p[1])
+				wx, wy := own.Point(p[0]-ox, p[1]-oy)
+				if math.Abs(float64(x-wx-ox)) > 0.05 || math.Abs(float64(y-wy-oy)) > 0.05 {
+					t.Errorf("%v° (%d): the corner (%v, %v) shows at %v, %v, not %v, %v", deg, i, p[0], p[1], x, y, wx+ox, wy+oy)
+				}
+			}
+			if b := m.Bounds(card); b.W > 2*card.W || b.H > card.H+1 {
+				t.Errorf("%v° (%d): the card shows within %+v", deg, i, b)
+			}
+		}
+	}
+}
+
+// A card near the foot of a clipped sidebar, turning over in perspective
+// around its center, shows, takes the pointer, and clips its content to
+// its own size, not the sidebar's (#1406, #1407).
+func TestTurningCardFarFromTheOriginShowsAndHits(t *testing.T) {
+	turn := float32(-75)
+	var card *node
+	clicks := 0
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(300, 800).Radius(12).Clip().Children(func() {
+			card = coreBox(c).Key("card").Absolute().Left(24).Top(612).Size(76, 76).Radius(8).Clip().
+				RotateX(turn).Perspective(600).Children(func() {
+				coreBox(c).Size(76, 76).Background(RGB(255, 0, 0))
+			})
+			if card.Clicked() {
+				clicks++
+			}
+		})
+	}, 300, 800)
+	for _, deg := range []float32{-85, -75, -65, 40} {
+		turn = deg
+		tt.Frame()
+		if b := card.Bounds(); b.W > 2*76 || b.H > 77 || b.X < 0 || b.Y < 600 {
+			t.Errorf("%v°: the card shows within %+v", deg, b)
+		}
+		clips := 0
+		for _, op := range tt.h.last.Ops {
+			if op.Kind != scene.OpPushClip || !op.Transform.Perspective() {
+				continue
+			}
+			clips++
+			if b := op.Transform.Bounds(op.Rect); b.W > 2*76 || b.H > 77 {
+				t.Errorf("%v°: the card's clip covers %+v", deg, b)
+			}
+		}
+		if clips == 0 {
+			t.Errorf("%v°: the card's clip does not turn with it", deg)
+		}
+		// Its center stays where it is.
+		if p := tt.Image().RGBAAt(62, 650); p.R < 200 || p.G > 50 {
+			t.Errorf("%v°: the card's center shows as %v", deg, p)
+		}
+		lx, ly, ok := card.WindowToLocal(62, 650)
+		if !ok || math.Abs(float64(lx-38)) > 0.05 || math.Abs(float64(ly-38)) > 0.05 {
+			t.Errorf("%v°: the card's center is at %v, %v (%v) in it", deg, lx, ly, ok)
+		}
+		before := clicks
+		tt.ClickAt(62, 650)
+		if clicks != before+1 {
+			t.Errorf("%v°: a click on the card's center missed it", deg)
+		}
+		// Above what it shows, inside its layout box, it takes nothing.
+		tt.ClickAt(62, 614)
+		if clicks != before+1 {
+			t.Errorf("%v°: a click above what the card shows hit it", deg)
+		}
+	}
+}
