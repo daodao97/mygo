@@ -3560,6 +3560,17 @@ either.
     Brackets are matched by scanning lines a batch at a time
     (`rope.Text.EachLine`), skipping strings and comments by their tokens,
     and only lines holding brackets are tokenized for it.
+  - *Snippets* (`snippet.go`). `ParseSnippet` reads the flat tab-stop and
+    placeholder subset of TextMate/LSP into an immutable template;
+    unsupported constructs return errors. Inserting a template, directly
+    or as a `Completion.Snippet`, makes each occurrence of the active
+    stop an ordinary selection. Existing typing, input methods and undo
+    handle them together. A session follows only its next local buffer
+    change, through `apply`/`sync`; external edits end it. Fields move in
+    template order, preserving ownership at adjacent boundaries, and
+    linked deletions stay separate before the editor merges overlapping
+    deletions. Tab ends the typing group and selects the next numbered
+    stop, 0 last; undo, Escape or leaving the fields ends the session.
   - *Diffs* (`internal/diff`, `diffmodel.go`). Lines are interned and
     compared with git's histogram algorithm, falling back to Myers' with
     xdiff's cost limit, then slid by git's indent heuristic; changed

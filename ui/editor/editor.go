@@ -211,6 +211,7 @@ type editor struct {
 	find     finder
 	goTo     goToLine
 	complete completions
+	snippet  *snippetSession
 	hover    hover
 	diags    []Diagnostic
 	gitDiff  *gitDiff
@@ -325,6 +326,9 @@ func (ed *editor) sync() {
 	f := &ed.find
 	searched := !f.stale && f.version == ed.view.version
 	ed.view.sync(func(cs []change) {
+		if ed.snippet != nil && !ed.snippet.moved(cs) {
+			ed.snippet = nil
+		}
 		for i := range ed.sels {
 			ed.sels[i] = mapSel(ed.sels[i], cs)
 		}
@@ -394,6 +398,7 @@ func mapSel(s sel, cs []change) sel {
 // as it shows another: its carets, folds, marks and what the app gave
 // it of the old text.
 func (ed *editor) resetForBuffer() {
+	ed.snippet = nil
 	ed.sels = []sel{{goal: -1, id: ed.nextID}}
 	ed.nextID++
 	ed.selUndo, ed.selRedo = nil, nil
@@ -410,6 +415,9 @@ func (ed *editor) resetForBuffer() {
 
 // setSels sets the selections, noting the old ones for Undo Selection.
 func (ed *editor) setSels(sels []sel, reveal reveal) {
+	if ed.snippet != nil && !ed.snippet.contains(sels) {
+		ed.snippet = nil
+	}
 	if !slices.Equal(sels, ed.sels) {
 		ed.dropSuggestion()
 		ed.selUndo = append(ed.selUndo, slices.Clone(ed.sels))

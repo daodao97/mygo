@@ -352,6 +352,57 @@ app.code.SetDiagnostics(buf.Version(), app.lsp.Diagnostics())
   suggestion, which Tab accepts, as an AI's.
 - `OnDefinition` is called for Cmd+click and F12 on a word.
 
+## Code snippets
+
+A completion's `Insert` is always plain text, even with
+`Kind: editor.CompletionSnippet` (which chooses an icon). To insert a
+code template with editable placeholders, parse one and set `Snippet`:
+
+```go
+snippet, err := editor.ParseSnippet("for ${1:index}, ${2:value} := range ${3:items} {\n\t$0\n}")
+if err != nil {
+    // Offer a plain-text completion instead when a server uses
+    // snippet syntax the editor does not support.
+    return err
+}
+code.ShowCompletions(start, []editor.Completion{{
+    Label: "forrange", Kind: editor.CompletionSnippet, Snippet: snippet,
+}})
+// Or insert at every current selection, outside the completion list:
+code.InsertSnippet(snippet)
+```
+
+Parse templates once; a `Snippet` is immutable and can be shared by
+editors. `Text()` returns its initial text. The parser supports `$1`,
+`${1}`, `${1:default}`, escaped dollars, braces and backslashes, and `$0`
+as the final stop (the end when omitted). Tab visits positive numbers in
+numeric order, with 0 last; Shift+Tab goes back, stopping at the first
+field. Repeated numbers share their default, including forward references,
+and edit together through the editor's normal multiple selections.
+Coincident empty stops of the same number coalesce as carets do.
+Scrolling and input methods follow the first occurrence at the original
+primary insertion site.
+
+A completion list takes Tab before the snippet's navigation, so a field
+can itself be completed. Escape ends the session after closing any open
+completion list or other editor overlay. Moving outside the active
+fields, editing the buffer externally, undo/redo or changing buffers
+ends the session too. Each field's typing is a separate undo group;
+undoing the insertion restores the old text and selections. Redo restores
+the text and selections without restarting snippet navigation. Input
+methods compose and commit at mirrored fields as at ordinary carets.
+A new snippet replaces the previous session.
+
+This is the tab-stop subset of TextMate/LSP syntax: nested placeholders,
+variables, choices, transformations, conflicting defaults for one number,
+and invalid UTF-8 return errors. Text keeps the template's indentation;
+CRLF is normalized to LF. `InsertSnippet` leaves a read-only editor
+unchanged. State methods, including snippet insertion, run on the UI
+thread as the rest of editor interaction does.
+
+Run `go run ./examples/code-editor`, type `funcdef` or `forrange` in a Go
+file, then press Tab to try it.
+
 ## Styling
 
 ### Themes
