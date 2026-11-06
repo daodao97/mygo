@@ -153,13 +153,14 @@ func TestDataDragResources() int { return len(gtkDataSources) }
 // it through ATK: the name of its role, its name, and its value.
 type TestAccessNode struct {
 	Role, Label, Value string
-	// Busy, Active, Selectable, Selected, Focused and
-	// SupportsAutocompletion are its ATK states of those names, and
-	// Attributes its object attributes.
-	Busy, Active, Selectable, Selected, Focused bool
-	SupportsAutocompletion                      bool
-	Attributes                                  map[string]string
-	obj                                         ptr
+	// Busy, Active, Selectable, Selected, Multiselectable, Focused and
+	// SupportsAutocompletion are its ATK states of those names,
+	// Attributes its object attributes, and Selection whether it
+	// implements AtkSelection.
+	Busy, Active, Selectable, Selected, Multiselectable, Focused bool
+	SupportsAutocompletion, Selection                            bool
+	Attributes                                                   map[string]string
+	obj                                                          ptr
 }
 
 func loadAccessTests() {
@@ -221,6 +222,8 @@ func TestAccessibility(handle uintptr) ([]TestAccessNode, bool) {
 			n.Active = atkStateSetContainsState(states, atkStates.active)
 			n.Selectable = atkStateSetContainsState(states, atkStates.selectable)
 			n.Selected = atkStateSetContainsState(states, atkStates.selected)
+			n.Multiselectable = atkStateSetContainsState(states, atkStates.multiselectable)
+			n.Selection = gTypeCheckInstanceIsA(child, atkSelectionGetType())
 			n.Focused = atkStateSetContainsState(states, atkStates.focused)
 			n.SupportsAutocompletion = atkStateSetContainsState(states, atkStates.supportsAutocompletion)
 			gObjectUnref(states)

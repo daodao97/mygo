@@ -105,7 +105,10 @@ on macOS, `"Ctrl+K"` elsewhere, several separated by spaces.
   on. Elements left out still get refs, and diffs show them.
 - `--full` adds placeholders, descriptions, ranges (`range=0..1
   step=0.1`), text selections (`selection=3,3`, in characters), levels,
-  positions in sets (`item=2/5`), actions, `bounds=x,y,wxh` and the full
+  positions in sets (`item=2/5`), the size of a table or a grid and
+  the place of a row or a cell in it as the app gave them
+  (`rowcount=10001 colcount=5`, `rowindex=4122 colindex=2`), the rows
+  and columns a cell covers (`colspan=2`), actions, `bounds=x,y,wxh` and the full
   element ID (`id=…`), and writes long text whole.
 - `--json` prints the plugin's answer as it is (IDs, keys, bounds, all
   fields) on one line. It still takes the window's elements for later
@@ -115,7 +118,7 @@ on macOS, `"Ctrl+K"` elsewhere, several separated by spaces.
 Roles are `group`, `text`, `heading`, `button`, `link`, `checkBox`,
 `radio`, `switch`, `slider`, `progress`, `meter`, `stepper`,
 `textField`, `comboBox`, `popUpButton`, `menuButton`, `toggleButton`,
-`image`, `list`, `listItem`, `table`, `row`, `cell`, `columnHeader`,
+`image`, `list`, `listItem`, `table`, `grid`, `treeGrid`, `row`, `cell`, `columnHeader`,
 `tree`, `treeItem`, `tabList`, `tab`, `scroll`, `dialog`, `alertDialog`,
 `popup`, `tooltip`, `splitter`, `status`, `toolbar`, `radioGroup`,
 `disclosure`, `colorWell`, `menu`, `menuBar`, `menuItem`,

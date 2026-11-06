@@ -181,6 +181,32 @@ func TestTreeRequest(t *testing.T) {
 	}
 }
 
+// A grid gives its size and its rows and cells their places, as the app
+// gave them, and the columns a cell covers, and says it chooses several
+// rows.
+func TestTreeGrid(t *testing.T) {
+	tree := &platform.AccessTree{Nodes: []platform.AccessNode{
+		{ID: 1, Parent: -1, Role: platform.RoleGrid, Label: "Sheet", RowCount: 10001, ColCount: 5, States: platform.AccessSelectable | platform.AccessMultiselectable},
+		{ID: 2, Parent: 0, Role: platform.RoleRow, RowIndex: 4122},
+		{ID: 3, Parent: 1, Role: platform.RoleCell, Label: "B4121", ColIndex: 2, ColSpan: 2},
+	}}
+	m := do(t, &fakeDriver{access: tree}, `{"id": 1, "method": "tree"}`)
+	nodes := m["result"].(map[string]any)["nodes"].([]any)
+	grid, row, cell := nodes[0].(map[string]any), nodes[1].(map[string]any), nodes[2].(map[string]any)
+	if grid["role"] != "grid" || grid["rowCount"] != 10001.0 || grid["colCount"] != 5.0 || !slices.Contains(grid["states"].([]any), "multiselectable") {
+		t.Errorf("grid: %v", grid)
+	}
+	if row["rowIndex"] != 4122.0 || cell["colIndex"] != 2.0 || cell["colSpan"] != 2.0 {
+		t.Errorf("row %v, cell %v", row, cell)
+	}
+	if _, ok := cell["rowIndex"]; ok {
+		t.Errorf("a cell with a row index of its own: %v", cell)
+	}
+	if _, ok := cell["rowSpan"]; ok {
+		t.Errorf("a cell covering one row with a row span: %v", cell)
+	}
+}
+
 func TestActRequest(t *testing.T) {
 	tree, keys := testTree()
 	d := &fakeDriver{access: tree, keys: keys}
@@ -321,8 +347,8 @@ func TestMenuCaptureEvalIdle(t *testing.T) {
 }
 
 func TestNames(t *testing.T) {
-	if len(roleNames) != int(platform.RoleNavigation)+1 {
-		t.Errorf("%d role names for %d roles", len(roleNames), platform.RoleNavigation+1)
+	if len(roleNames) != int(platform.RoleTreeGrid)+1 {
+		t.Errorf("%d role names for %d roles", len(roleNames), platform.RoleTreeGrid+1)
 	}
 	if platform.AccessStates(1)<<(len(stateNames)-1) != platform.AccessSortOther {
 		t.Errorf("%d state names", len(stateNames))

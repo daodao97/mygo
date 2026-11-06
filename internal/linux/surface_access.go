@@ -340,6 +340,8 @@ func loadAccessNames() {
 		platform.RoleLog: {"log", "panel"}, platform.RoleTimer: {"timer", "panel"},
 		platform.RoleAlert:     {"notification", "alert"},
 		platform.RoleSeparator: {"separator"}, platform.RoleRowHeader: {"row header", "table row header"},
+		// Tables, whose xml-roles attribute says which, as Chromium's.
+		platform.RoleGrid: {"table"}, platform.RoleTreeGrid: {"tree table", "table"},
 	} {
 		atkRoles[r] = role(names...)
 	}
@@ -363,6 +365,7 @@ func loadAccessNames() {
 var xmlRoles = map[platform.AccessRole]string{
 	platform.RoleNavigation: "navigation", platform.RoleRegion: "region", platform.RoleSearch: "search", platform.RoleLog: "log",
 	platform.RoleTimer: "timer", platform.RoleAlert: "alert", platform.RoleStatus: "status",
+	platform.RoleGrid: "grid", platform.RoleTreeGrid: "treegrid",
 }
 
 // accessTree is what assistive technology sees of a surface.
@@ -395,6 +398,32 @@ type accessNode struct {
 // outline that its list chooses.
 func chooses(n platform.AccessNode) bool {
 	return (n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleTreeItem) && n.States&platform.AccessSelectable != 0
+}
+
+// gridNames are the object attributes of gridAttributes' values, as
+// Chromium names them, and those of a cell's spans, as Gecko and Orca
+// name them.
+var gridNames = [...]string{"rowcount", "colcount", "rowindex", "colindex", "rowspan", "colspan"}
+
+// gridAttributes returns the size of a table or a grid, the place of a
+// row or a cell in it, as the app gave them, and the rows and columns a
+// cell covers when more than one (aria-rowspan, aria-colspan): 0 for
+// those not given. A cell's row index is its row's unless it has one of
+// its own.
+func (an *accessNode) gridAttributes() (v [6]int) {
+	n := &an.n
+	switch {
+	case n.Role.Tabular():
+		v[0], v[1] = n.RowCount, n.ColCount
+	case n.Role == platform.RoleRow:
+		v[2] = n.RowIndex
+	case cellRole(n.Role):
+		v[2], v[3], v[4], v[5] = n.RowIndex, n.ColIndex, n.RowSpan, n.ColSpan
+		if p := an.parent; v[2] == 0 && p != nil && p.n.Role == platform.RoleRow {
+			v[2] = p.n.RowIndex
+		}
+	}
+	return v
 }
 
 // cellRole reports whether nodes of a role are cells of a table, headers
@@ -471,7 +500,7 @@ func accessType(n platform.AccessNode) uintptr {
 		return editableType
 	case platform.RoleText:
 		return textType
-	case platform.RoleList, platform.RoleTable, platform.RoleTree:
+	case platform.RoleList, platform.RoleTable, platform.RoleTree, platform.RoleGrid, platform.RoleTreeGrid:
 		if n.States&platform.AccessSelectable != 0 {
 			return selectionType // choosing its rows
 		}
@@ -1011,8 +1040,11 @@ func initAccessCallbacks() {
 	// Object attributes: the placeholder of a text field, the place of a
 	// row among its list's, which Orca reads as "5 of 10000", which item
 	// the node is the current one of (aria-current), what a field's
-	// suggestions complete (aria-autocomplete), and the ARIA role of a
-	// landmark or a live region.
+	// suggestions complete (aria-autocomplete), the size of a grid and
+	// the place of its rows and cells as the app gave them (aria-rowcount
+	// and the like), the rows and columns a cell covers (aria-rowspan,
+	// aria-colspan), and the ARIA role of a landmark, a live region or a
+	// grid.
 	attributes := purego.NewCallback(func(obj ptr) ptr {
 		an := node(obj)
 		if an == nil {
@@ -1043,6 +1075,11 @@ func initAccessCallbacks() {
 		}
 		if c := an.n.Current; c != platform.CurrentNone {
 			add("current", c.String())
+		}
+		for i, v := range an.gridAttributes() {
+			if v > 0 {
+				add(gridNames[i], strconv.Itoa(v))
+			}
 		}
 		if a := an.n.AutoComplete; a != platform.AutoCompleteNone {
 			add("autocomplete", a.String())

@@ -29,10 +29,11 @@ type AccessInfo struct {
 	// an item of a tree with children.
 	Expanded, Expandable bool
 	// Selected is set on the tab chosen, on the items of a tree and the
-	// rows of a list or a table chosen, and on the cells of a grid chosen
-	// with Checked (aria-selected), which are Selectable where their list
-	// or table chooses them; Multiselectable is set on a list or a table
-	// choosing several.
+	// rows of a list, a table or a grid chosen, and on the cells of a
+	// table or a grid chosen with Checked (aria-selected), which are
+	// Selectable where their list, table or grid chooses them;
+	// Multiselectable is set on a list, a table or a grid choosing
+	// several.
 	Selected, Selectable, Multiselectable bool
 	// Busy is set while the element's content is about to change
 	// (aria-busy).
@@ -81,6 +82,16 @@ type AccessInfo struct {
 	// the size of the set, as a list's rows and the list have them; 0
 	// when not given.
 	PosInSet, SetSize int
+	// RowCount and ColumnCount are how many rows and columns a table or
+	// a grid has (aria-rowcount, aria-colcount), and RowIndex and
+	// ColumnIndex the place of a row or a cell among them, from 1
+	// (aria-rowindex, aria-colindex), as the app gave them; 0 when not
+	// given.
+	RowCount, ColumnCount, RowIndex, ColumnIndex int
+	// RowSpan and ColumnSpan are how many rows and columns a cell covers
+	// (aria-rowspan, aria-colspan), as its RowSpan and ColumnSpan set
+	// them; 0 for one.
+	RowSpan, ColumnSpan int
 	// Min, Max and Now are the range and the value of a slider, progress
 	// bar, meter or stepper (aria-valuemin, -valuemax and -valuenow), Now
 	// below Min for progress of unknown length; Step is how far the keys
@@ -120,7 +131,11 @@ func (t *Tester) access(match func(r Role, n *platform.AccessNode) bool) (Access
 	var walk func(e *node)
 	walk = func(e *node) {
 		if e.role > RoleNone {
-			given[e.id] = e.role
+			// But for a role the element is seen as another, as a List's
+			// rows in a grid.
+			if r, ok := e.accessRole(); ok && Role(r)+RoleGroup == e.role {
+				given[e.id] = e.role
+			}
 		}
 		for ch := e.first; ch != nil; ch = ch.next {
 			walk(ch)
@@ -210,6 +225,12 @@ func accessInfoOf(r Role, n *platform.AccessNode, focus uint64) AccessInfo {
 		Level:           n.Level,
 		PosInSet:        n.PosInSet,
 		SetSize:         n.SetSize,
+		RowCount:        n.RowCount,
+		ColumnCount:     n.ColCount,
+		RowIndex:        n.RowIndex,
+		ColumnIndex:     n.ColIndex,
+		RowSpan:         n.RowSpan,
+		ColumnSpan:      n.ColSpan,
 		Min:             n.Min,
 		Max:             n.Max,
 		Now:             n.Now,

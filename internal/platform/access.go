@@ -67,6 +67,19 @@ type AccessNode struct {
 	// all they are, whether or not the others are built, and the list how
 	// many rows it has.
 	PosInSet, SetSize int
+	// RowCount and ColCount are how many rows and columns a table, a grid
+	// or a tree grid has, built or not, as ARIA's aria-rowcount and
+	// aria-colcount; RowIndex and ColIndex are the place of a row or a
+	// cell among them, from 1, header rows counted (aria-rowindex,
+	// aria-colindex). 0 when the app gives none: a row's PosInSet and its
+	// table's SetSize then tell its place, and the rows and cells built
+	// the rest.
+	RowCount, ColCount, RowIndex, ColIndex int
+	// RowSpan and ColSpan are how many rows and columns of its table a
+	// cell covers, as ARIA's aria-rowspan and aria-colspan: 0 for one.
+	// The cell after one spanning columns in its row is in the column
+	// after those it covers.
+	RowSpan, ColSpan int
 	// Actions are the actions the element takes in AccessAction events.
 	Actions AccessActions
 	// RoleDescription is what screen readers read for the element's role
@@ -205,7 +218,19 @@ const (
 	// or a document, as a breadcrumb trail or a navigation bar: ARIA's
 	// navigation.
 	RoleNavigation
+	// RoleGrid is a table whose cells take the focus and the arrow keys,
+	// as a spreadsheet's, and RoleTreeGrid one whose rows open and close
+	// as a tree's items do: ARIA's grid and treegrid. Their rows and
+	// cells are RoleRow, RoleCell and RoleColumnHeader, as a table's.
+	RoleGrid
+	RoleTreeGrid
 )
+
+// Tabular reports whether nodes of a role hold rows of cells: tables,
+// grids and tree grids.
+func (r AccessRole) Tabular() bool {
+	return r == RoleTable || r == RoleGrid || r == RoleTreeGrid
+}
 
 // Ranged reports whether nodes of a role have a value in a range (Min,
 // Max and Now).
@@ -249,8 +274,8 @@ const (
 	// AccessOffscreen is set on elements built but out of view, as the
 	// rows a list builds beyond its edges.
 	AccessOffscreen
-	// AccessMultiselectable is set on a list or a table whose user
-	// chooses several rows.
+	// AccessMultiselectable is set on a list, a table, a grid or a tree
+	// whose user chooses several rows (aria-multiselectable).
 	AccessMultiselectable
 	// AccessSegment is set on the segments of a segmented control or a
 	// group of toggles, as AppKit's subrole AXSegment says.

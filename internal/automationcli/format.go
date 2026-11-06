@@ -84,6 +84,18 @@ func line(n *node, focus string, full bool) string {
 	if n.SetSize != 0 {
 		fmt.Fprintf(&b, " item=%d/%d", n.PosInSet, n.SetSize)
 	}
+	// A table's or a grid's size and the place of a row or a cell in it,
+	// as the app gave them (aria-rowcount and the like), and the rows and
+	// columns a cell covers (aria-rowspan, aria-colspan).
+	for _, v := range [...]struct {
+		name string
+		n    int
+	}{{"rowcount", n.RowCount}, {"colcount", n.ColCount}, {"rowindex", n.RowIndex}, {"colindex", n.ColIndex},
+		{"rowspan", n.RowSpan}, {"colspan", n.ColSpan}} {
+		if v.n != 0 {
+			fmt.Fprintf(&b, " %s=%d", v.name, v.n)
+		}
+	}
 	if len(n.Actions) > 0 {
 		b.WriteString(" actions=" + strings.Join(n.Actions, ","))
 	}

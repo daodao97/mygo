@@ -526,6 +526,9 @@ type node struct {
 	// keyShortcuts are the keys that press or focus the element, as the
 	// platform writes them (KeyShortcuts).
 	keyShortcuts string
+	// accGrid is the element's RowCount, ColumnCount, RowIndex and
+	// ColumnIndex, 0 for those not given.
+	accGrid [4]int32
 
 	// Layout results, in DIPs relative to the window.
 	x, y, w, h float32
@@ -615,8 +618,9 @@ type node struct {
 	// marks one with children.
 	level      int
 	expandable bool
-	// chooseMany marks a GridView choosing several items, and gridFit is
-	// how many columns its items took.
+	// chooseMany marks a GridView choosing several items, or an element
+	// whose items are (Multiselectable), and gridFit is how many columns
+	// a GridView's items took.
 	chooseMany bool
 	gridFit    *gridFit
 	// roleDescription names the element's role to assistive technology

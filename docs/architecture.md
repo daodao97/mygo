@@ -2730,7 +2730,29 @@ either.
   native select's popup: assistive technology focusing one
   (`focusHighlights`) notes it on its state (`focusAsked`), which the
   select highlights as it builds it, rather than clicking it, which
-  would choose it.
+  would choose it. Grids and tree grids (`RoleGrid`, `RoleTreeGrid`)
+  are tables to the backends (`AccessRole.Tabular`), whose rows a `List`
+  shown as one makes rows rather than list items; a row of an app's own
+  saying whether it is chosen (`Checked`, `Selected`) is
+  `AccessSelectable`, as is the table or grid holding it, which holds
+  its cells' choice too. The counts and indexes an app gives a grid built only where it shows (`RowCount`,
+  `ColCount`, `RowIndex`, `ColIndex`, ARIA's aria-rowcount and the like)
+  go to WebKit's `AXARIARowCount` and the like, and the rows' `AXIndex`
+  and the table's `AXRowCount` where `PosInSet` and `SetSize` say
+  nothing; to ATK's `rowcount`, `colcount`, `rowindex` and `colindex`
+  attributes beside `xml-roles` `grid` or `treegrid`, as Chromium's; and
+  to UI Automation's `Grid`, `GridItem`, `Table` and `TableItem`
+  patterns of tables and their cells (`uia_grid.go`), which count from 0
+  as the app gave them, else as rows say which of all they are after the
+  header rows above them, else by what is built, found as a client asks;
+  their `RowHeader`s are the `Table` pattern's row headers. A cell's
+  `ColumnSpan` and `RowSpan` (`node.cellSpan`, from the layout's
+  `gridCell`, whether or not its row is a grid) are `AccessNode.ColSpan`
+  and `RowSpan` (aria-colspan, aria-rowspan): the lengths of its
+  `AXColumnIndexRange` and `AXRowIndexRange` (`placeCells`, which puts
+  the next cell after the columns it covers), ATK's `colspan` and
+  `rowspan` attributes, and `GridItem`'s `ColumnSpan` and `RowSpan`,
+  `Grid.GetItem` finding the cell at each place it covers.
 - **The connection.** `content.go` attaches the content to its window
   through `internal/surface.Conn`, which carries the surface and, as
   functions, what the content needs of the app (the clipboard, dragging

@@ -70,6 +70,10 @@ ui.Row(c).Role(ui.RoleColumnHeader).Children(func() { // named "Sort Options"
 })
 ```
 
+`ui.RoleGrid` and `ui.RoleTreeGrid` are tables of your own whose cells
+take the focus and the arrow keys, as a spreadsheet's, where
+`ui.RoleTable` is one to read: see [Grids](#grids).
+
 `ui.RoleListBox` is a list of options to choose from, and `ui.RoleOption`
 one of its options, selected with `Checked`, as ARIA's `listbox`, `option`
 and `aria-selected`: a list box on Windows (UI Automation's List, with
@@ -122,6 +126,9 @@ your own tells it with these, as ARIA's states do on the web:
 | `Controls(e)` | that it controls the content or presence of `e`, as a disclosure button the region it opens; once for each |
 | `HasPopup(kind)` | the kind of popup it opens: `ui.PopupMenu`, `PopupListBox`, `PopupTree`, `PopupGrid` or `PopupDialog` |
 | `Sort(dir)` | the order a table's rows are sorted in by the column whose header it is: `ui.SortAscending`, `SortDescending`, `SortOther` or `SortNone` |
+| `Multiselectable(on)` | that the user chooses several of the items of a list, grid, tree or tree grid of your own |
+| `RowCount(n)`, `ColumnCount(n)` | how many rows and columns a table or grid has, built or not |
+| `RowIndex(i)`, `ColumnIndex(i)` | which of all the rows a row or a cell is in, and which of all the columns a cell is in, from 1 |
 
 ```go
 all := ui.CheckboxBase(c, &app.all).Label("Select all")
@@ -166,7 +173,8 @@ A cell of a grid says whether it is chosen with `Checked`, as ARIA's
 days or the cells of a spreadsheet of your own; `Selected` paints it in
 the accent color too. Cells (`RoleCell`, `RoleColumnHeader`,
 `RoleRowHeader`) that call neither are not chosen among others, and a
-table (`RoleTable`) holding cells that do chooses them. A carousel, a
+table or a [grid](#grids) (`RoleTable`, `RoleGrid`, `RoleTreeGrid`)
+holding cells that do chooses them. A carousel, a
 disclosure and a button opening a list box, built on the others:
 
 ```go
@@ -310,7 +318,99 @@ named by the text inside them, and each says which of all the rows it is,
 its rows gives assistive technology the focus on the row chosen: Up and
 Down are read as they move the choice, and focusing a row chooses it. A
 screen reader moving out of view asks the list to scroll there, which
-builds the rows it reaches. `Label` names a list or a table.
+builds the rows it reaches. `Label` names a list or a table. A table of
+your own, or one whose cells take the arrow keys, is a
+[grid](#grids).
+
+## Grids
+
+A grid is a table whose cells take the focus and move it with the arrow
+keys, as a spreadsheet's or a data grid's, where `ui.RoleTable` is one to
+read; `ui.RoleTreeGrid` is a grid whose rows open and close as a tree's
+items do, with `Level` and `Expanded` on its rows. Their rows, cells and
+headers are `ui.RoleRow`, `ui.RoleCell`, `ui.RoleColumnHeader` and
+`ui.RoleRowHeader`, as a table's: build the rows directly inside the
+grid (an element without a role between them is left out), and the
+cells directly inside the rows.
+
+One of thousands of rows builds only those in view, so it tells screen
+readers how many it has, `RowCount` and `ColumnCount` (ARIA's
+`aria-rowcount` and `aria-colcount`, header rows counted), and each row
+which of all it is, `RowIndex` from 1 (`aria-rowindex`); a cell of a
+column not built, or after one left out, says its column with
+`ColumnIndex` (`aria-colindex`), and the cells after it follow it.
+Screen readers then read "row 4,121 of 10,000". A cell covering several
+columns or rows, as a total under two columns, says so with
+`ColumnSpan` and `RowSpan` (`aria-colspan`, `aria-rowspan`), which also
+lay it out across them where its row is a [Grid](grid.md): the cell after
+it in its row is in the column after those it covers, and the cells of
+the rows below one spanning rows say their columns with `ColumnIndex`
+where they follow it. `Multiselectable(true)`
+says that the user chooses several rows (`aria-multiselectable`), and
+each row says whether it is chosen with `Selected`, or `Checked`, which
+does not paint it:
+
+```go
+ui.Column(c).Role(ui.RoleGrid).Label("Sheet").RowCount(len(app.rows)+1).ColumnCount(len(cols)).Multiselectable(true).Children(func() {
+	ui.Row(c).Role(ui.RoleRow).RowIndex(1).Children(func() {
+		for _, col := range cols {
+			ui.Box(c).Role(ui.RoleColumnHeader).Children(func() { ui.Text(c, col.Title) })
+		}
+	})
+	for _, r := range app.visibleRows() { // 4120 to 4160
+		ui.Row(c).Role(ui.RoleRow).RowIndex(r + 2).Selected(app.chosen[r]).Children(func() {
+			for j, col := range cols {
+				ui.Box(c).Role(ui.RoleCell).Focusable().Children(func() { ui.Text(c, app.cell(r, j)) })
+			}
+		})
+	}
+})
+```
+
+A [List](list.md) shown as a grid builds only the rows in view itself:
+`Role(ui.RoleGrid)` makes its rows rows rather than list items, which
+already say which of all they are, as its `Selection` chooses several:
+
+```go
+ui.List(c, &app.rows, len(app.data), func(i int) {
+	ui.Row(c).Children(func() {
+		for j := range cols {
+			ui.Box(c).Role(ui.RoleCell).Children(func() { ui.Text(c, app.cell(i, j)) })
+		}
+	})
+}).Role(ui.RoleGrid).Label("Sheet").ColumnCount(len(cols))
+```
+
+A cell across two columns of a hand-built data grid, whose rows lay out
+their cells in the grid's columns:
+
+```go
+ui.Grid(c).Role(ui.RoleRow).ColumnTracks(ui.Fixed(120), ui.Fr(1), ui.Fr(1), ui.Fr(1)).Children(func() {
+	ui.Box(c).Role(ui.RoleRowHeader).Children(func() { ui.Text(c, "Design") })
+	ui.Box(c).Role(ui.RoleCell).ColumnSpan(2).Children(func() { ui.Text(c, "First half: 9") })
+	ui.Box(c).Role(ui.RoleCell).Children(func() { ui.Text(c, "Total: 14") }) // the fourth column
+})
+```
+
+A [Table](table.md)'s rows say which of all they are themselves, and so
+does a list's: the counts and indexes are for grids and tables of your
+own. A grid is AppKit's `AXTable`, its rows and cells telling the counts
+and indexes in `AXARIARowCount`, `AXARIAColumnCount`, `AXARIARowIndex`
+and `AXARIAColumnIndex` as WebKit's do, and its rows `AXIndex` from them;
+ATK's table (a tree grid's tree table) with the `xml-roles` attribute
+`grid` (`treegrid`) and the `rowcount`, `colcount`, `rowindex` and
+`colindex` attributes, as Chromium gives them; and UI Automation's
+DataGrid, whose `Grid` and `Table` patterns, and its cells' `GridItem`
+and `TableItem`, say where each cell is among all, from 0, and which
+column and row headers name it, as tables' do. A cell's spans are the
+lengths of its `AXColumnIndexRange` and `AXRowIndexRange` on macOS, its
+`colspan` and `rowspan` attributes on Linux, and `GridItem`'s
+`ColumnSpan` and `RowSpan` on Windows, where the grid finds the cell at
+each place it covers. Cells say whether they
+are chosen with [`Checked`](#states) too, the grid holding their
+choice, as a table's do. A grid choosing several rows is
+`multiselectable` on Linux and `CanSelectMultiple` on Windows, its rows
+`selectable` and `selected` there, and in its `AXSelectedRows` on macOS.
 
 ## Unavailable, still reachable
 

@@ -5,6 +5,7 @@ package windows
 import (
 	"slices"
 	"testing"
+	"unsafe"
 
 	"github.com/egoist/mygo/internal/platform"
 )
@@ -227,6 +228,163 @@ func TestUIARangeValueText(t *testing.T) {
 		if got := e.supports(ifaceValue); got != c.want {
 			t.Errorf("value %q: Value pattern %v, want %v", c.value, got, c.want)
 		}
+	}
+}
+
+// A grid built only where it shows gives Narrator its size and its
+// cells' places as the app gave them, a table as its rows say which of
+// all they are after its header: the Grid, GridItem, Table and TableItem
+// patterns, through their vtables as UI Automation calls them.
+func TestUIAGrid(t *testing.T) {
+	tree := newTestTree(t, false)
+	grid := &platform.AccessTree{Nodes: []platform.AccessNode{
+		{ID: 1, Parent: -1, Role: platform.RoleGrid, Label: "Sheet", RowCount: 10001, ColCount: 3, States: platform.AccessSelectable | platform.AccessMultiselectable},
+		{ID: 2, Parent: 0, Role: platform.RoleRow, RowIndex: 1},
+		{ID: 3, Parent: 1, Role: platform.RoleColumnHeader, Label: "A"},
+		{ID: 4, Parent: 1, Role: platform.RoleColumnHeader, Label: "B"},
+		{ID: 5, Parent: 1, Role: platform.RoleColumnHeader, Label: "C"},
+		{ID: 6, Parent: 0, Role: platform.RoleRow, RowIndex: 4122, States: platform.AccessSelectable | platform.AccessChecked},
+		{ID: 7, Parent: 5, Role: platform.RoleCell, Label: "A4121"},
+		{ID: 8, Parent: 5, Role: platform.RoleCell, Label: "C4121", ColIndex: 3},
+	}}
+	tree.update(grid)
+	g, b, c := tree.nodes[1], tree.nodes[4], tree.nodes[8]
+	for i, want := range map[int]bool{ifaceGrid: true, ifaceTable: true, ifaceSelection: true, ifaceGridItem: false} {
+		if g.supports(i) != want {
+			t.Errorf("the grid supports interface %d: %v", i, !want)
+		}
+	}
+	if !c.supports(ifaceGridItem) || !c.supports(ifaceTableItem) || tree.nodes[6].supports(ifaceGridItem) {
+		t.Error("cells and rows have the wrong patterns")
+	}
+	var v variant
+	g.property(uiaControlTypeProperty, &v)
+	if v.Val != 50028 {
+		t.Errorf("the grid's control type %d", v.Val)
+	}
+	get := func(e *uiaElement, iface, method int, args ...uintptr) int32 {
+		var n int32
+		if hr := comCall(e.ptr(iface), method, append(args, uintptr(unsafe.Pointer(&n)))...); hr != sOK {
+			t.Errorf("method %d of interface %d: %#x", method, iface, hr)
+		}
+		return n
+	}
+	// IUnknown's three methods come first.
+	if rows, cols := get(g, ifaceGrid, 4), get(g, ifaceGrid, 5); rows != 10001 || cols != 3 {
+		t.Errorf("the grid has %d rows and %d columns", rows, cols)
+	}
+	if row, col := get(c, ifaceGridItem, 3), get(c, ifaceGridItem, 4); row != 4121 || col != 2 {
+		t.Errorf("C4121 is at row %d, column %d", row, col)
+	}
+	if row, col := get(b, ifaceGridItem, 3), get(b, ifaceGridItem, 4); row != 0 || col != 1 {
+		t.Errorf("B is at row %d, column %d", row, col)
+	}
+	var item uintptr
+	if hr := comCall(g.ptr(ifaceGrid), 3, 4121, 0, uintptr(unsafe.Pointer(&item))); hr != sOK || item != tree.nodes[7].ptr(ifaceSimple) {
+		t.Errorf("GetItem(4121, 0): %#x, %#x", hr, item)
+	}
+	tree.nodes[7].release()
+	if hr := comCall(g.ptr(ifaceGrid), 3, 9, 0, uintptr(unsafe.Pointer(&item))); hr != sOK || item != 0 {
+		t.Errorf("GetItem of a row not built: %#x, %#x", hr, item)
+	}
+	if hr := comCall(g.ptr(ifaceGrid), 3, 10001, 0, uintptr(unsafe.Pointer(&item))); hr != eInvalidArg {
+		t.Errorf("GetItem past the last row: %#x", hr)
+	}
+	if heads := ids(g.columnHeaders(-1, 0)); !slices.Equal(heads, []uint64{3, 4, 5}) {
+		t.Errorf("the column headers %v", heads)
+	}
+	if heads := ids(g.columnHeaders(2, 1)); !slices.Equal(heads, []uint64{5}) {
+		t.Errorf("C4121's column header %v", heads)
+	}
+	if chosen := ids(g.chosen()); !slices.Equal(chosen, []uint64{6}) {
+		t.Errorf("the rows chosen %v", chosen)
+	}
+
+	// A table whose rows say which of all they are, below its header.
+	tree.update(&platform.AccessTree{Nodes: []platform.AccessNode{
+		{ID: 10, Parent: -1, Role: platform.RoleTable, SetSize: 500},
+		{ID: 11, Parent: 0, Role: platform.RoleRow},
+		{ID: 12, Parent: 1, Role: platform.RoleColumnHeader, Label: "Name"},
+		{ID: 13, Parent: 1, Role: platform.RoleColumnHeader, Label: "Size"},
+		{ID: 14, Parent: 0, Role: platform.RoleRow, PosInSet: 41, SetSize: 500},
+		{ID: 15, Parent: 4, Role: platform.RoleCell, Label: "notes.txt"},
+		{ID: 16, Parent: 4, Role: platform.RoleCell, Label: "2 KB"},
+	}})
+	table := tree.nodes[10]
+	if rows, cols := table.rowCount(), table.colCount(); rows != 501 || cols != 2 {
+		t.Errorf("the table has %d rows and %d columns", rows, cols)
+	}
+	if row, col := tree.nodes[16].place(); row != 41 || col != 1 {
+		t.Errorf("2 KB is at row %d, column %d", row, col)
+	}
+	if e := table.cellAt(41, 0); e == nil || e.n.ID != 15 {
+		t.Errorf("the cell at row 41, column 0: %v", e)
+	}
+}
+
+// A cell covering two columns, and a row header covering two rows, give
+// their spans in GridItem, and the cells after them their columns: the
+// grid finds a spanning cell at each place it covers, and its headers
+// are those of its columns and rows.
+func TestUIAGridSpans(t *testing.T) {
+	tree := newTestTree(t, false)
+	tree.update(&platform.AccessTree{Nodes: []platform.AccessNode{
+		{ID: 1, Parent: -1, Role: platform.RoleGrid, Label: "Budget"},
+		{ID: 2, Parent: 0, Role: platform.RoleRow},
+		{ID: 3, Parent: 1, Role: platform.RoleColumnHeader, Label: "Team"},
+		{ID: 4, Parent: 1, Role: platform.RoleColumnHeader, Label: "Q1"},
+		{ID: 5, Parent: 1, Role: platform.RoleColumnHeader, Label: "Q2"},
+		{ID: 6, Parent: 1, Role: platform.RoleColumnHeader, Label: "Total"},
+		{ID: 7, Parent: 0, Role: platform.RoleRow},
+		{ID: 8, Parent: 6, Role: platform.RoleRowHeader, Label: "Design", RowSpan: 2},
+		{ID: 9, Parent: 6, Role: platform.RoleCell, Label: "First half", ColSpan: 2},
+		{ID: 10, Parent: 6, Role: platform.RoleCell, Label: "9"},
+		{ID: 11, Parent: 0, Role: platform.RoleRow},
+		{ID: 12, Parent: 10, Role: platform.RoleCell, Label: "4", ColIndex: 2},
+		{ID: 13, Parent: 10, Role: platform.RoleCell, Label: "5"},
+	}})
+	g, half, design := tree.nodes[1], tree.nodes[9], tree.nodes[8]
+	get := func(e *uiaElement, iface, method int) int32 {
+		var n int32
+		if hr := comCall(e.ptr(iface), method, uintptr(unsafe.Pointer(&n))); hr != sOK {
+			t.Errorf("method %d of interface %d: %#x", method, iface, hr)
+		}
+		return n
+	}
+	// Row, Column, RowSpan and ColumnSpan, after IUnknown's methods.
+	for _, c := range []struct {
+		e    *uiaElement
+		want [4]int32
+	}{
+		{half, [4]int32{1, 1, 1, 2}},
+		{design, [4]int32{1, 0, 2, 1}},
+		{tree.nodes[10], [4]int32{1, 3, 1, 1}},
+		{tree.nodes[13], [4]int32{2, 2, 1, 1}},
+	} {
+		got := [4]int32{get(c.e, ifaceGridItem, 3), get(c.e, ifaceGridItem, 4), get(c.e, ifaceGridItem, 5), get(c.e, ifaceGridItem, 6)}
+		if got != c.want {
+			t.Errorf("%q: row, column and spans %v, want %v", c.e.n.Label, got, c.want)
+		}
+	}
+	if cols := g.colCount(); cols != 4 {
+		t.Errorf("the grid has %d columns", cols)
+	}
+	for _, at := range [][2]int{{1, 1}, {1, 2}} {
+		if e := g.cellAt(at[0], at[1]); e != half {
+			t.Errorf("the cell at %v: %v", at, e)
+		}
+	}
+	if e := g.cellAt(2, 0); e != design {
+		t.Errorf("the cell at row 2, column 0: %v", e)
+	}
+	if heads := ids(g.columnHeaders(1, 2)); !slices.Equal(heads, []uint64{4, 5}) {
+		t.Errorf("the first half's column headers %v", heads)
+	}
+	if heads := ids(g.rowHeaders(2, 1)); !slices.Equal(heads, []uint64{8}) {
+		t.Errorf("the second row's row headers %v", heads)
+	}
+	if heads := ids(g.rowHeaders(-1, 0)); !slices.Equal(heads, []uint64{8}) {
+		t.Errorf("the grid's row headers %v", heads)
 	}
 }
 

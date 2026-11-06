@@ -168,7 +168,7 @@ func (e *node) labels(ctrl *node) {
 func fieldControl(e *node) *node {
 	for ch := e.first; ch != nil; ch = ch.next {
 		switch ch.role {
-		case RoleRadioGroup, RoleToolbar, RoleList, RoleListBox, RoleTable, RoleTree, RoleTabList:
+		case RoleRadioGroup, RoleToolbar, RoleList, RoleListBox, RoleTable, RoleTree, RoleTabList, RoleGrid, RoleTreeGrid:
 			return ch
 		}
 		if ch.flags&(flagFocusable|flagEditable) != 0 {

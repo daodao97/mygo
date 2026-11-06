@@ -634,6 +634,10 @@ func roleName(r Role) string {
 		return "Heading"
 	case RoleNavigation:
 		return "Navigation"
+	case RoleGrid:
+		return "Grid"
+	case RoleTreeGrid:
+		return "TreeGrid"
 	case RoleListBox:
 		return "ListBox"
 	case RoleOption:

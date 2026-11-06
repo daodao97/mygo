@@ -131,6 +131,12 @@ type node struct {
 	Level       int             `json:"level,omitempty"`
 	PosInSet    int             `json:"posInSet,omitempty"`
 	SetSize     int             `json:"setSize,omitempty"`
+	RowCount    int             `json:"rowCount,omitempty"`
+	ColCount    int             `json:"colCount,omitempty"`
+	RowIndex    int             `json:"rowIndex,omitempty"`
+	ColIndex    int             `json:"colIndex,omitempty"`
+	RowSpan     int             `json:"rowSpan,omitempty"`
+	ColSpan     int             `json:"colSpan,omitempty"`
 	Current     string          `json:"current,omitempty"`
 	Complete    string          `json:"autoComplete,omitempty"`
 	WebView     bool            `json:"webView,omitempty"`

@@ -37,6 +37,11 @@ func TestLine(t *testing.T) {
 			`[textField] "Name" value="Ada" placeholder="Your name" description="Who" selection=1,3 actions=focus,setValue bounds=20,90.5,360x32 id=18446744073709551615`,
 		},
 		{node{ID: "8", Role: "treeItem", Label: "src", Level: 2, PosInSet: 1, SetSize: 3, States: []string{"expandable", "expanded"}}, true, `[treeItem] "src" expandable expanded level=2 item=1/3 bounds=0,0,0x0 id=8`},
+		// A grid's size and a row's place in it, as the app gave them.
+		{node{ID: "10", Role: "grid", Label: "Sheet", RowCount: 10001, ColCount: 5, States: []string{"multiselectable"}}, true, `[grid] "Sheet" multiselectable rowcount=10001 colcount=5 bounds=0,0,0x0 id=10`},
+		{node{ID: "11", Role: "row", RowIndex: 4122}, true, `[row] rowindex=4122 bounds=0,0,0x0 id=11`},
+		{node{ID: "11", Role: "row", RowIndex: 4122}, false, `[row]`},
+		{node{ID: "12", Role: "cell", Label: "Total", ColSpan: 2}, true, `[cell] "Total" colspan=2 bounds=0,0,0x0 id=12`},
 	} {
 		if got := line(&c.n, "3", c.full); got != c.want {
 			t.Errorf("line(%+v, full %v)\n got %s\nwant %s", c.n, c.full, got, c.want)

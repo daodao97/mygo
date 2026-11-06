@@ -1316,7 +1316,10 @@ type TestAccessNode struct {
 	Focused  bool
 	Depth    int
 	Children int
-	obj      id
+	// Index is a row's place among its table's rows, from 0, and
+	// RowCount how many rows a table has, through the newer API.
+	Index, RowCount int
+	obj             id
 }
 
 // TestAccessibility reads the elements of a window showing native UI as
@@ -1340,6 +1343,10 @@ func TestAccessibility(handle uintptr) []TestAccessNode {
 					Depth:    depth,
 					Children: len(kids),
 					obj:      obj,
+				}
+				// Ours, not a page's elements, which may not answer them.
+				if theBackend.byAccess[obj] != nil {
+					n.Index, n.RowCount = sendInt(obj, "accessibilityIndex"), sendInt(obj, "accessibilityRowCount")
 				}
 				if v := send(obj, "accessibilityValue"); v != 0 {
 					n.Value = goString(send(v, "description"))

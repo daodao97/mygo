@@ -59,7 +59,10 @@ or `Fixed`, takes none of it.
 `ColumnSpan` and `RowSpan` make a child span tracks, a negative span every
 track to the last, and `ColumnStart` and `RowStart` put it in a given column
 and row, counting from 1. `RowTracks` and `Rows` set the first rows, which
-`Fr` makes share the grid's height.
+`Fr` makes share the grid's height. A cell of a table or a grid of your
+own that spans tracks tells screen readers it covers them too
+(`aria-colspan`, `aria-rowspan`): see
+[Grids](accessibility.md#grids).
 
 ## Sizing children
 
