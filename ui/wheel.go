@@ -76,12 +76,27 @@ func (rt *engine) wheelScroll(s *state, dx, dy float32) {
 	g.x.advance(now)
 	g.y.advance(now)
 	if dx != 0 {
-		g.x.retarget(g.x.target+float64(dx), wheelAnimation)
+		g.x.retarget(wheelTurn(&g.x, dx, float64(s.scrollX), &g.doneX), wheelAnimation)
 	}
 	if dy != 0 {
-		g.y.retarget(g.y.target+float64(dy), wheelAnimation)
+		g.y.retarget(wheelTurn(&g.y, dy, float64(s.scrollY), &g.doneY), wheelAnimation)
 	}
 	rt.requestFrame()
+}
+
+// wheelTurn returns the target for a notch of d on ch, scrolled to actual:
+// when the notch goes the other way than the remaining travel, the
+// remaining travel stops, and the notch starts over from where the content
+// is, so that reversing the wheel at the end of the content turns at once
+// instead of being absorbed by the notches still on their way.
+func wheelTurn(ch *channel, d float32, actual float64, done *float64) float64 {
+	if ch.moving && (d > 0) != (ch.target > ch.value) {
+		ch.value = actual
+		ch.velocity = 0
+		*done = actual
+		return actual + float64(d)
+	}
+	return ch.target + float64(d)
 }
 
 // glideWheels moves the containers that notches of a wheel scroll, or
