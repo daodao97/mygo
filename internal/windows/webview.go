@@ -963,6 +963,44 @@ func (w *window) ProcessID() int {
 	return int(pid)
 }
 
+// GPUProcessID returns the GPU process of the web view's environment,
+// which its web views share, from ICoreWebView2Environment8's
+// GetProcessInfos; 0 before the web view is made, on runtimes older than
+// it, and while the environment runs no GPU process.
+func (w *window) GPUProcessID() int {
+	if w.webview == 0 {
+		return 0
+	}
+	env8 := queryInterface(w.b.env, &iidICoreWebView2Environment8)
+	if env8 == 0 {
+		return 0
+	}
+	defer release(env8)
+	var infos uintptr
+	if failed(comCall(env8, env8GetProcessInfos, uintptr(unsafe.Pointer(&infos)))) || infos == 0 {
+		return 0
+	}
+	defer release(infos)
+	var n uint32
+	if failed(comCall(infos, procInfosGetCount, uintptr(unsafe.Pointer(&n)))) {
+		return 0
+	}
+	for i := range n {
+		var info uintptr
+		if failed(comCall(infos, procInfosGetValueAtIndex, uintptr(i), uintptr(unsafe.Pointer(&info)))) || info == 0 {
+			continue
+		}
+		var kind, pid int32
+		ok := !failed(comCall(info, procInfoGetKind, uintptr(unsafe.Pointer(&kind)))) && kind == processKindGPU &&
+			!failed(comCall(info, procInfoGetProcessId, uintptr(unsafe.Pointer(&pid))))
+		release(info)
+		if ok {
+			return int(pid)
+		}
+	}
+	return 0
+}
+
 // webView8 returns the web view's ICoreWebView2_8, which the caller
 // releases, or 0 before the web view is made and on runtimes older than
 // it.

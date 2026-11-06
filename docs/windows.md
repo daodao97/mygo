@@ -1250,6 +1250,29 @@ pid := win.Page().ProcessID()
 It is 0 too before the web view has started a process, after the window
 closed, and for a window showing native UI.
 
+`GPUProcessID` returns the ID of the process that does the page's graphics
+and media. On macOS that is where the page's sound comes out, so an app
+that shows what a page plays (a music player's visualizer, say) can capture
+it with a Core Audio process tap (`CATapDescription`, macOS 14.2 and
+later), which needs the process's ID:
+
+```go
+pid := win.Page().GPUProcessID()
+```
+
+| Platform | The process |
+|---|---|
+| macOS | WebKit's GPU process (`com.apple.WebKit.GPU`), which plays the page's audio and video, from WebKit's private `_gpuProcessIdentifier`; 0 if WebKit doesn't answer it or hasn't started the process yet, which it does once a page first needs it, to play media or draw with the GPU |
+| Windows | WebView2's GPU process (`msedgewebview2.exe --type=gpu-process`), a child of `ProcessID`'s browser process, from `ICoreWebView2Environment8`'s `GetProcessInfos`; 0 on runtimes without it. WebView2 plays sound from its audio service, a utility process, not this one: capture the tree of `ProcessID`'s process for it (process loopback) |
+| Linux | none: WebKitGTK has no API for its GPU process, so it is always 0 |
+| Browsers | none: always 0 |
+
+It is 0 too before the web view has started a process, after the window
+closed, and for a window showing native UI. The app's web views may share
+the process, and it gets a new ID each time the app runs and whenever the
+web view starts it again, after it crashed or exited, so ask again rather
+than keep the ID.
+
 ## Finding windows
 
 - `mygo.Windows()` lists the open windows, `mygo.FocusedWindow()` returns

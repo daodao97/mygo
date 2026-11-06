@@ -232,6 +232,7 @@ func (w *window) OpenDevTools()                                            {}
 func (w *window) CloseDevTools()                                           {}
 func (w *window) IsDevToolsOpened() bool                                   { return false }
 func (w *window) ProcessID() int                                           { return 0 }
+func (w *window) GPUProcessID() int                                        { return 0 }
 func (w *window) IsAudible() bool                                          { return false }
 func (w *window) SetAudioMuted(bool)                                       {}
 func (w *window) IsAudioMuted() bool                                       { return false }

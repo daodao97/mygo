@@ -1751,6 +1751,16 @@ func (w *window) ProcessID() int {
 	return int(int32(send(w.web, "_webProcessIdentifier")))
 }
 
+// GPUProcessID returns WebKit's GPU process from its private
+// -[WKWebView _gpuProcessIdentifier] (a pid_t), 0 when WebKit doesn't
+// answer it or hasn't started the process yet.
+func (w *window) GPUProcessID() int {
+	if !respondsTo(w.web, "_gpuProcessIdentifier") {
+		return 0
+	}
+	return int(int32(send(w.web, "_gpuProcessIdentifier")))
+}
+
 // IsAudible reports WebKit's private -[WKWebView _isPlayingAudio]
 // (macOS 10.13.4+), false when WebKit doesn't answer it.
 func (w *window) IsAudible() bool {

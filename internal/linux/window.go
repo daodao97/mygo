@@ -1296,6 +1296,9 @@ func (w *window) UserAgent() string {
 // view (webkit_web_view_get_page_id is WebKit's own page identifier).
 func (w *window) ProcessID() int { return 0 }
 
+// GPUProcessID is 0: WebKitGTK has no API for its GPU process.
+func (w *window) GPUProcessID() int { return 0 }
+
 // IsAudible reports webkit_web_view_is_playing_audio, which
 // notify::is-playing-audio tells the changes of.
 func (w *window) IsAudible() bool {

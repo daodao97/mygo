@@ -679,6 +679,10 @@ type Page interface {
 	// the backend reports for the page (see Page.ProcessID in package
 	// mygo for which one), 0 when it reports none.
 	ProcessID() int
+	// GPUProcessID returns the ID of the operating system's process that
+	// does the page's graphics and media (see Page.GPUProcessID in
+	// package mygo), 0 when the backend reports none.
+	GPUProcessID() int
 	// IsAudible reports whether the page plays sound, from any of its
 	// frames, as WindowHandler.AudibleChanged reports its changes; false
 	// where the backend cannot tell.

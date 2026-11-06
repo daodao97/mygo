@@ -269,6 +269,10 @@ func TestWebViewPage(t *testing.T) {
 	if got := v.Page().ProcessID(); got != 31 {
 		t.Errorf("ProcessID %d, want 31", got)
 	}
+	fv.SetGPUProcessID(32)
+	if got := v.Page().GPUProcessID(); got != 32 {
+		t.Errorf("GPUProcessID %d, want 32", got)
+	}
 	v.Page().SetAudioMuted(true)
 	if !fv.IsAudioMuted() || !v.Page().IsAudioMuted() {
 		t.Errorf("SetAudioMuted: the web view's %v, the page's %v", fv.IsAudioMuted(), v.Page().IsAudioMuted())

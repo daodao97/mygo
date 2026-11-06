@@ -1620,6 +1620,31 @@ func (p *Page) UserAgent() string { return pageGet(p.w, platform.Window.UserAgen
 //   - Linux: always 0, WebKitGTK has no API for the web process of a page.
 func (p *Page) ProcessID() int { return pageGet(p.w, platform.Window.ProcessID) }
 
+// GPUProcessID returns the ID of the operating system's process that does
+// the page's graphics and media, which on macOS is where its sound comes
+// out (to capture it with a Core Audio process tap, for instance), 0 when
+// it is unknown: before the web view started one, after the window
+// closed, for a window showing native UI, and on Linux and in browsers.
+// Which process it is depends on the platform:
+//
+//   - macOS: WebKit's GPU process (com.apple.WebKit.GPU), which plays the
+//     page's audio and video, from WebKit's private
+//     -[WKWebView _gpuProcessIdentifier]; 0 when WebKit doesn't answer it
+//     or hasn't started the process yet, which it does once a page first
+//     needs it, to play media or draw with the GPU.
+//   - Windows: WebView2's GPU process (msedgewebview2.exe
+//     --type=gpu-process), a child of ProcessID's browser process, from
+//     ICoreWebView2Environment8's GetProcessInfos; 0 on runtimes without
+//     it. Sound on Windows comes out of WebView2's audio service, a
+//     utility process, not this one: capture the tree of ProcessID's
+//     process for it.
+//   - Linux: always 0, WebKitGTK has no API for its GPU process.
+//
+// The app's web views may share the process. It gets a new ID each time
+// the app runs and whenever the web view starts it again, after it
+// crashed or exited, so ask again rather than keep it.
+func (p *Page) GPUProcessID() int { return pageGet(p.w, platform.Window.GPUProcessID) }
+
 // OpenDevTools opens the web inspector (unless disabled with
 // PageOptions.DevTools).
 func (p *Page) OpenDevTools() { p.w.page(platform.Window.OpenDevTools) }

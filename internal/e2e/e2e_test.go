@@ -1369,6 +1369,51 @@ func TestPageProcessID(t *testing.T) {
 	}
 }
 
+// gpuPage draws on a canvas with 2D and WebGL contexts and loads a second
+// of silence in an audio element, which WebKit does in its GPU process,
+// starting it.
+const gpuPage = `<canvas id=c width=64 height=64></canvas><script>
+const g = c.getContext('2d'); g.fillStyle = 'red'; g.fillRect(0, 0, 64, 64);
+const gl = document.createElement('canvas').getContext('webgl'); if (gl) gl.clear(gl.COLOR_BUFFER_BIT);
+const n = 8000, wav = new Uint8Array(44 + n).fill(128), v = new DataView(wav.buffer);
+const tag = (at, s) => [...s].forEach((ch, i) => v.setUint8(at + i, ch.charCodeAt(0)));
+tag(0, 'RIFF'); v.setUint32(4, 36 + n, true); tag(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+v.setUint16(32, 1, true); v.setUint16(34, 8, true); tag(36, 'data'); v.setUint32(40, n, true);
+const a = new Audio(URL.createObjectURL(new Blob([wav], {type: 'audio/wav'}))); a.load(); document.body.append(a);
+</script>`
+
+// GPUProcessID is WebKit's GPU process on macOS (com.apple.WebKit.GPU) and
+// WebView2's GPU process on Windows, one of WebView2's processes, neither
+// the app's own nor ProcessID's; Linux has none.
+func TestPageGPUProcessID(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200})
+	w.Page().LoadHTML(gpuPage, "")
+	waitFor(t, w, "document.readyState === 'complete'")
+	if runtime.GOOS == "linux" {
+		if pid := w.Page().GPUProcessID(); pid != 0 {
+			t.Errorf("GPUProcessID = %d on Linux, want 0", pid)
+		}
+		return
+	}
+	var pid int
+	wait.Until(t, "a GPU process", func() bool { pid = w.Page().GPUProcessID(); return pid != 0 })
+	if pid < 0 || pid == os.Getpid() || pid == w.Page().ProcessID() {
+		t.Errorf("GPUProcessID = %d, want another process than the app's (%d) and ProcessID's (%d)", pid, os.Getpid(), w.Page().ProcessID())
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		out, err := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(pid)).Output()
+		if err != nil || !strings.Contains(string(out), "com.apple.WebKit.GPU") {
+			t.Errorf("GPUProcessID %d is %q (%v), want com.apple.WebKit.GPU", pid, strings.TrimSpace(string(out)), err)
+		}
+	case "windows":
+		if procs := webViewProcesses(); !slices.Contains(procs, pid) {
+			t.Errorf("GPUProcessID %d is none of WebView2's processes %v", pid, procs)
+		}
+	}
+}
+
 // ContentBounds is where the page is on the screen: inside Bounds, below
 // the title bar and borders of a window manager's frame and below a menu
 // bar. SetContentBounds puts the page there.
