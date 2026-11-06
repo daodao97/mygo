@@ -579,3 +579,37 @@ func TestTableCellMenu(t *testing.T) {
 		t.Fatalf("a menu built without items opened: %q (row %d, col %d)", m, gotRow, gotCol)
 	}
 }
+
+// HeaderCell gets each column's header cell as the table builds it: what
+// it builds goes in the cell after the title, and col is the column's
+// index in the columns given to Table.
+func TestTableHeaderCell(t *testing.T) {
+	hovered := -1
+	s := ListState{}
+	cols := []TableColumn{{Title: "Name"}, {Title: "Kind", Width: 100}, {Title: "Size", Width: 80}}
+	tt := coreNewTester(func(c *context) {
+		s.HeaderCell = func(cell Element, col int) {
+			coreTextf(c, "mark %d", col)
+			if cell.Hovered() {
+				hovered = col
+			}
+		}
+		coreColumn(c).Fill().Padding(10).Children(func() {
+			coreTable(c, &s, cols, 1, func(row, col int) { coreText(c, "a.txt") }).Grow(1)
+		})
+	}, 500, 300)
+	if !tt.HasText("mark 0") || !tt.HasText("mark 2") {
+		t.Fatalf("marks: %q", tt.Texts())
+	}
+	name, _ := tt.Find("Name")
+	mark, _ := tt.Find("mark 0")
+	if mark.X < name.X+name.W || mark.Y > name.Y+name.H {
+		t.Errorf("the mark at %+v, not after the title at %+v", mark, name)
+	}
+	size, _ := tt.Find("Size")
+	tt.Move(size.X+2, size.Y+size.H/2)
+	tt.Frame()
+	if hovered != 2 {
+		t.Fatalf("hovered %d", hovered)
+	}
+}

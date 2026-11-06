@@ -43,7 +43,7 @@ func TestTouchReadOnlyTextRequiresLongPress(t *testing.T) {
 			t.Fatalf("shared=%v: long press did not select a word: %+v", shared, tt.h.ime)
 		}
 		// The native recognizer and scheduled frame can arrive in either order.
-		tt.send(platform.SurfaceEvent{Kind: platform.PointerLongPress, PointerType: platform.PointerTouch, PointerID: 3, X: 30, Y: 15})
+		tt.send(platform.SurfaceEvent{Kind: platform.PointerLongPress, Pointer: platform.PointerTouch, PointerID: 3, X: 30, Y: 15})
 		touch(tt, platform.PointerUp, 3, 30, 15)
 		tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "copy"})
 		if tt.Clipboard() != "Hello" {
@@ -81,7 +81,7 @@ func TestTouchTextScrollingAndCancellationDoNotSelect(t *testing.T) {
 			touch(tt, kind, 1, 50, 10)
 		}
 		tt.Advance(time.Second)
-		tt.send(platform.SurfaceEvent{Kind: platform.PointerLongPress, PointerType: platform.PointerTouch, PointerID: 1, X: 50, Y: 10})
+		tt.send(platform.SurfaceEvent{Kind: platform.PointerLongPress, Pointer: platform.PointerTouch, PointerID: 1, X: 50, Y: 10})
 		if tt.h.ime.Active {
 			t.Fatalf("%v became accidental selection", kind)
 		}
@@ -98,7 +98,7 @@ func TestNativeLongPressCanPrecedeScheduledFrame(t *testing.T) {
 	// Advance the clock without delivering a display frame: UIKit can recognize
 	// its hold before the Go deadline's frame gets to draw.
 	tt.now = tt.now.Add(500 * time.Millisecond)
-	accepted := tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerLongPress, PointerType: platform.PointerTouch, PointerID: 7, X: 30, Y: 15})
+	accepted := tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerLongPress, Pointer: platform.PointerTouch, PointerID: 7, X: 30, Y: 15})
 	tt.Frame()
 	if !accepted || !tt.h.ime.Active || tt.h.ime.Start == tt.h.ime.End {
 		t.Fatalf("native long press accepted=%v ime=%+v touch=%+v", accepted, tt.h.ime, tt.rt.touch)
@@ -146,7 +146,7 @@ func TestNativeLongPressKeepsSelectionAcrossKeyboardResize(t *testing.T) {
 	touch(tt, platform.PointerDown, 9, 30, 15)
 	tt.Advance(500 * time.Millisecond)
 	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceResize})
-	accepted := tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerLongPress, PointerType: platform.PointerTouch, PointerID: 9, X: 30, Y: 15})
+	accepted := tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerLongPress, Pointer: platform.PointerTouch, PointerID: 9, X: 30, Y: 15})
 	if !accepted {
 		t.Fatal("keyboard resize lost the completed native long press")
 	}
@@ -155,7 +155,7 @@ func TestNativeLongPressKeepsSelectionAcrossKeyboardResize(t *testing.T) {
 	if tt.Clipboard() != "Hello" {
 		t.Fatal("keyboard resize cleared the copied word")
 	}
-	if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerLongPress, PointerType: platform.PointerTouch, PointerID: 8, X: 30, Y: 15}) {
+	if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerLongPress, Pointer: platform.PointerTouch, PointerID: 8, X: 30, Y: 15}) {
 		t.Fatal("stale contact inherited another contact's selection")
 	}
 }

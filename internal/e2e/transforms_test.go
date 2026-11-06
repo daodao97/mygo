@@ -178,3 +178,47 @@ func TestContentWindowTransitionBlur(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// TestContentWindowGroupOpacity presents two boxes overlapping in a column
+// at half opacity on the real surface, drawn by the GPU where the window
+// has one: they fade as one group, as CSS's opacity, the same where they
+// overlap as where they do not.
+func TestContentWindowGroupOpacity(t *testing.T) {
+	red := ui.RGB(255, 0, 0)
+	view := func(c *ui.Context) {
+		ui.Box(c).Fill().Background(ui.RGB(255, 255, 255)).Children(func() {
+			ui.Box(c).Absolute().Left(40).Top(40).Size(120, 80).Children(func() {
+				ui.Box(c).Absolute().Left(0).Top(0).Size(80, 80).Background(red)
+				ui.Box(c).Absolute().Left(40).Top(0).Size(80, 80).Background(red)
+			}).Opacity(0.5)
+		})
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Group opacity", Width: 340, Height: 240, Content: ui.View(view)})
+	scale := deviceScale(w)
+	deadline := time.Now().Add(wait.Guard)
+	for {
+		data, ok := surfaceOnScreen(w)
+		if !ok {
+			t.Skip("surface capture unavailable")
+		}
+		img, err := png.Decode(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := func(x, y float64) (uint32, uint32) {
+			r, g, _, _ := img.At(int(x*scale), int(y*scale)).RGBA()
+			return r >> 8, g >> 8
+		}
+		// Where they overlap, at 100, and where one is alone, at 60.
+		r, g := at(100, 80)
+		or, og := at(60, 80)
+		near := func(a, b uint32) bool { return a+6 >= b && b+6 >= a }
+		if r > 240 && near(g, 127) && or > 240 && near(og, 127) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the group was not presented at its opacity: overlapping %d %d, alone %d %d", r, g, or, og)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

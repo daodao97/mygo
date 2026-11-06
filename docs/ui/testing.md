@@ -37,9 +37,12 @@ panics where the second key was given, as apps only log it.
 - **Pointer.** `tt.Click`, `tt.ClickAt`, `tt.ClickWith(ui.Shift, "Row 3")`,
   `tt.Press`, `tt.Move` and `tt.Release`, `tt.PressButton` and
   `tt.ReleaseButton` for another button, as `tt.PressButton(1, x, y)` for
-  a right-button drag, `tt.Scroll`, which scrolls at
+  a right-button drag, `tt.CancelPress`, which ends the press as the
+  system cancels one, with no click, `tt.Scroll`, which scrolls at
   once as a touchpad does, and `tt.Wheel`, a notch of a mouse wheel, which
   glides there as the clock advances (`tt.Advance`).
+  `tt.UsePointer(ui.PointerPen, 0.6)` has the presses and moves after it
+  come from a pen pressing that hard, or a finger (`ui.PointerTouch`).
 - **Keyboard.** `tt.Key(ui.Cmd, ui.KeyS)` presses a key, `tt.KeyRepeat` presses
   it again as its auto-repeat does while it is held, `tt.TypeKey` a key
   with the text it types, and `tt.Type` types text into the focused
@@ -47,21 +50,33 @@ panics where the second key was given, as apps only log it.
   `tt.Command` performs an edit command of the menus, such as `"copy"`, and
   `tt.TextCaret` returns where input methods would compose.
 - **Menus.** `tt.RightClick` opens a context menu, which `tt.Menu` lists and
-  `tt.ChooseMenuItem("Move to", "Archive")` chooses from.
+  `tt.ChooseMenuItem("Move to", "Archive")` chooses from, and `tt.CloseMenu`
+  closes: the system's, or one [drawn in the
+  window](context-menu.md#drawn-in-the-window), so a test passes with
+  either.
 - **The window.** `tt.SetSize`, `tt.SetScale`, `tt.SetZoom` (the content's
   [zoom](windows.md#zoom), as `Context.SetZoom`; the tester's coordinates,
   of `Find`, `ClickAt`, `Move` and `TextCaret`, stay the window's), `tt.SetDark`,
   `tt.SetPreferences` and `tt.SetDirection` (lay it out
   [right to left](right-to-left.md)) change the window and the desktop's
-  settings;
+  settings; `ui.NewTesterWith(view, w, h, ui.TesterOptions{Preferences: p,
+  Dark: true})` starts with the desktop's, which the first frame follows,
+  as Media Queries 5 has the user's preferences apply from the first time
+  styles resolve: a view mounted under reduced motion starts no animation
+  in its first frames, which `NewTester` settles before a `SetPreferences`
+  can come;
   `tt.SetFocused` takes the keyboard from the window and gives it back,
   and `tt.SetWindowActive` draws it as inactive and active again, as
   another window taking the user's input does
-  ([inactive windows](windows.md#active-and-inactive-windows)).
+  ([inactive windows](windows.md#active-and-inactive-windows)), and
+  `tt.SetWindowHidden` hides all of it from sight and shows it again
+  ([hidden windows](windows.md#hidden-windows)).
 - **What it shows.** `tt.Texts`, `tt.HasText`, `tt.Find` (the box of a
   text), `tt.Focused`, `tt.Cursor`, `tt.Clipboard`, `tt.OpenedURLs` and
   `tt.Announcements`, what the view asked screen readers to read out;
-  `tt.FailOpenURL` makes the links it opens fail, as those no app opens.
+  `tt.FailOpenURL` makes the links it opens fail, as those no app opens,
+  and `tt.FailClipboard` its writes of text to the clipboard, as a
+  browser refuses them (`WriteClipboardThen`).
 - **What assistive technology sees.** `tt.Access` and `tt.AccessByRole`
   read an element's role, name, value and states
   ([below](#what-assistive-technology-sees)).
@@ -101,13 +116,24 @@ first element of the last frame with that role and accessible name (any
 name for `""`), as Testing Library's `getByRole(role, { name })` and
 Playwright's find it, and `tt.Access(name)` the first with that name
 whatever its role. The `ui.AccessInfo` they return has the role, the
-name, the value and the description, and the states, as
-[accessibility](accessibility.md#states) lists them: `Checked` and
-`Mixed` (`aria-checked`, `aria-pressed`), `Selected` (`aria-selected`,
-the tab, tree item or row chosen), `Expanded`, `Busy`, `Current`,
-`Disabled`, `Invalid`, `Focused` (the element or option the focus is
-on, `ActiveDescendant` included), `Level`, `PosInSet` and `SetSize`,
-`Min`, `Max` and `Now` of a range, and its `Bounds`. So a test checks
+name, the value, the description and the `RoleDescription`, and the
+states, as [accessibility](accessibility.md#states) lists them:
+`Checked` and `Mixed` (`aria-checked`, `aria-pressed`), `Selected`
+(`aria-selected`, the tab, tree item, row or grid cell chosen, with
+`Selected` or `AccessSelected`),
+`Expanded`, `HasPopup`, `Busy`, `Current`,
+`AutoComplete` (`aria-autocomplete`), `Sort` (a column header's
+`ui.SortDirection`), `Disabled`, `Invalid`, `Focused` (the element or
+option the focus is on, `ActiveDescendant` included), `Controls` (the
+names of the elements it controls, which `Access` finds), `DescribedBy`
+and `ErrorMessage` (the names of the elements describing it and holding
+its error), `Vertical` and `Horizontal` (`aria-orientation`), `Level`,
+`PosInSet` and `SetSize` (`aria-posinset`, `aria-setsize`, as
+`PositionInSet` gives them), `Multiselectable`, `RowCount`,
+`ColumnCount`, `RowIndex` and `ColumnIndex` (of a
+[grid](accessibility.md#grids)), `RowSpan` and `ColumnSpan` (of its
+cells), `Min`, `Max` and `Now` of a range, and its `Bounds`. So a test
+checks
 that a state reaches assistive technology, not only that the view set
 it:
 

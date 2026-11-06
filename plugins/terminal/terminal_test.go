@@ -1541,6 +1541,65 @@ func TestOptionAsAltDropsText(t *testing.T) {
 	}
 }
 
+// TestAltGrTypesText: on Windows, where AltGr is Control and Alt, the
+// characters AltGr types on a German layout go as text, not as Control
+// sequences of them (#1203). Control, Alt and a key that types nothing
+// still go as the key with both.
+func TestAltGrTypesText(t *testing.T) {
+	loadLib(t)
+	defer func(was string) { goos = was }(goos)
+	goos = "windows"
+	conn := newPipe()
+	term, err := New(Options{Conn: conn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.Frame()
+	v := term.v
+	// press presses key with mods as Windows does, the text it types, if
+	// any, coming as WM_CHAR between the key's press and its release.
+	press := func(mods ui.Modifiers, key ui.Key, text string) {
+		t.Helper()
+		v.input(ui.InputEvent{Kind: ui.InputKeyDown, Mods: mods, Key: key})
+		if text != "" {
+			v.input(ui.InputEvent{Kind: ui.InputText, Text: text})
+		}
+		v.input(ui.InputEvent{Kind: ui.InputKeyUp, Mods: mods, Key: key})
+	}
+	altGr := ui.Ctrl | ui.Alt
+	for _, c := range []struct {
+		name string
+		key  ui.Key
+		text string
+	}{
+		{"AltGr+Q", ui.KeyQ, "@"},
+		{"AltGr+E", ui.KeyE, "€"},
+		{"AltGr+7", ui.Key7, "{"},
+		{"AltGr+ß", ui.KeyMinus, `\`},
+	} {
+		press(altGr, c.key, c.text)
+		if got := conn.take(term); got != c.text {
+			t.Errorf("%s sent %q, want %q", c.name, got, c.text)
+		}
+	}
+	press(altGr, ui.KeyA, "")
+	if got, want := conn.take(term), "\x1b\x01"; got != want {
+		t.Errorf("Control, Alt and A sent %q, want %q", got, want)
+	}
+	// The Kitty keyboard protocol's disambiguation.
+	term.Feed([]byte("\x1b[>1u"))
+	press(altGr, ui.KeyQ, "@")
+	if got, want := conn.take(term), "@"; got != want {
+		t.Errorf("AltGr+Q with the Kitty keyboard protocol sent %q, want %q", got, want)
+	}
+	press(altGr, ui.KeyA, "")
+	if got, want := conn.take(term), "\x1b[97;7u"; got != want {
+		t.Errorf("Control, Alt and A with the Kitty keyboard protocol sent %q, want %q", got, want)
+	}
+}
+
 func TestCloseKillsWhatIgnoresHangups(t *testing.T) {
 	loadLib(t)
 	term := shell(t, Options{Command: []string{"/bin/sh", "-c", "trap '' HUP; echo ready; sleep 30"}})
@@ -1730,6 +1789,33 @@ func TestOnPasteTakesAPaste(t *testing.T) {
 // TestOnKeyTakesAKey: Options.OnKey sees a key press before the terminal
 // encodes it, in order with the keys after it; a true result sends
 // nothing, not even the text the key types.
+// A modifier on its own is no key to the terminal: nothing goes to the shell
+// or to OnKey, and Alt is left to the menu bar.
+func TestModifierKeyAlone(t *testing.T) {
+	loadLib(t)
+	conn := newPipe()
+	var seen []ui.Key
+	term, err := New(Options{Conn: conn, OnKey: func(mods ui.Modifiers, key ui.Key) bool {
+		seen = append(seen, key)
+		return true
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.Frame()
+	tt.CodeDown(ui.Shift, ui.CodeShiftLeft)
+	tt.CodeUp(0, ui.CodeShiftLeft)
+	tt.Frame()
+	if len(seen) != 0 {
+		t.Errorf("OnKey saw %v", seen)
+	}
+	if got := conn.take(term); got != "" {
+		t.Errorf("the shell got %q", got)
+	}
+}
+
 func TestOnKeyTakesAKey(t *testing.T) {
 	loadLib(t)
 	conn := newPipe()

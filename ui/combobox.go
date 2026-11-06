@@ -48,7 +48,9 @@ type comboboxParts struct {
 // as the user types, clicks it or presses Down. Up and Down move among the
 // options, Enter or a click chooses one, which Chosen reports, and
 // Escape, or the input losing the focus, closes the popup. Assistive
-// technology sees a combo box, and follows the option the arrows are on.
+// technology sees a combo box, and follows the option the arrows are on;
+// tell it with AutoComplete when the options are those matching what was
+// typed (AutoCompleteList).
 //
 //	cb := ui.ComboboxBase(c, &app.query)
 //	cb.Input.Padding(6, 10).Border(1, gray).Label("Font")
@@ -387,6 +389,7 @@ func coreCombobox(c *context, selected *string, options []string) *node {
 		text = coreLocal(c.parent, "combobox", func() string { return *selected })
 		p = comboboxBase(c, text, true)
 		p.Input.Grow(1).MinWidth(t.Space(25))
+		p.Input.autoComplete = AutoCompleteList // typing filters the options
 		arrow := chevronDown(c)
 		arrow.flags |= flagClickable | flagKeepFocus
 		arrow.afterInput(func() {
@@ -444,6 +447,7 @@ func coreCombobox(c *context, selected *string, options []string) *node {
 func coreAutocomplete(c *context, value *string, suggestions []string) *node {
 	p := comboboxBase(c, value, false)
 	in := p.Input
+	in.autoComplete = AutoCompleteList
 	t := c.theme
 	in.Padding(t.Space(1.5), t.Space(2.5)).Radius(t.Radius).Background(t.Surface).Border(1, t.Border)
 	in.styleFn = func(e *node) { inputBorder(t, e, e) }
@@ -593,6 +597,8 @@ func coreTokenField(c *context, tokens *[]string, suggestions []string) *node {
 			in = p.Input
 			if len(suggestions) == 0 {
 				in.role = RoleAuto // a text field
+			} else {
+				in.autoComplete = AutoCompleteList
 			}
 			in.st.editor.leaveEmptyBackspace = true
 			in.afterInput(func() {

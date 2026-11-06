@@ -42,6 +42,13 @@ notes it, for the change once the loop is done (see
   item toggles, and `Radio(on)` shows it as one of a group choosing one
   setting, marked as the one chosen when on is true.
 - `Disabled(d)` grays it out: it cannot be chosen.
+- `Tooltip(s)` shows `s` as the pointer rests on it, to say what it does.
+  The system's menus show it on macOS and Linux, and `PopoverMenu` on
+  every platform, also as the keys rest on it.
+- `Icon(icon)` shows an image beside its label, made once with
+  [`mygo.NewMenuIcon`](../menus.md#icons). The system's menus show it as
+  they show the icons of `mygo.MenuItem`, browsers show none, and
+  `PopoverMenu` draws it on every platform.
 - `Shortcut(mods, key)` shows a key by it, as the shortcut that does the
   same. It only shows the key: handle it with `Shortcut` on the context or
   an element.
@@ -128,13 +135,41 @@ menu of menu items, check box items and radio items, checked or not, as
 it sees the system's.
 
 A drawn menu's items are elements: in tests, `tt.RightClick` opens it,
-`tt.HasText` finds its items and `tt.Click` chooses one, while `tt.Menu`
-lists only the system's menus.
+`tt.HasText` finds its items and `tt.Click` chooses one. `tt.Menu`,
+`tt.ChooseMenuItem` and `tt.CloseMenu` work on it as on the system's, so a
+test passes with either.
 
 `PopoverMenuButton` draws the menu of a [menu
 button](menu-button.md#drawn-in-the-window) so, below the button, and takes
 the same function: a row's right-click and its ⋯ button can share one
 menu, drawn alike.
+
+### Every menu of a window
+
+`Context.SetMenuPresentation(ui.PopoverMenus)` draws every popup menu of
+the window so, not only those given with `PopoverMenu`: the menus of
+`ContextMenu` and `Menu`, the ones MyGo's widgets build with them (a
+[table](table.md)'s header and cell menus, a toolbar's overflow menu, the
+code editor's), and the editing menu of text inputs and selectable text.
+An app with a look of its own then shows no menu of the desktop's beside
+its own, and its menu functions do not change. It stays until set again,
+so the view can follow a setting of the app's:
+
+```go
+func (app *App) View(c *ui.Context) {
+	if app.settings.systemMenus {
+		c.SetMenuPresentation(ui.SystemMenus) // the default
+	} else {
+		c.SetMenuPresentation(ui.PopoverMenus)
+	}
+	// ...
+}
+```
+
+`PopoverMenu` and `PopoverMenuButton` draw their menus in the window
+whatever it is. Only the menus MyGo builds follow it: the menu bar, the
+tray's menu and the Dock's stay the system's, and a [web
+view](web-view.md)'s are the web view's own.
 
 ## Without a look
 

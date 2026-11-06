@@ -8,8 +8,14 @@ import (
 	"github.com/egoist/mygo/internal/platform"
 )
 
+// touch sends a finger's event. send gives a press, move or release the
+// Tester's pointer (UsePointer), a finger for this event only; other kinds,
+// as a cancel, keep the one the event names.
 func touch(tt *Tester, kind platform.SurfaceEventKind, id uint64, x, y float32) {
-	tt.send(platform.SurfaceEvent{Kind: kind, PointerType: platform.PointerTouch, PointerID: id, X: float64(x), Y: float64(y), Clicks: 1})
+	pointer, pressure := tt.pointer, tt.pressure
+	tt.UsePointer(PointerTouch, 0)
+	tt.send(platform.SurfaceEvent{Kind: kind, Pointer: platform.PointerTouch, PointerID: id, X: float64(x), Y: float64(y), Clicks: 1})
+	tt.UsePointer(pointer, pressure)
 }
 
 func TestTouchScrollCustomWidgetDefersKeyboardAndSelection(t *testing.T) {

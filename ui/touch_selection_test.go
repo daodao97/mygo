@@ -123,11 +123,11 @@ func TestNativeTouchPanDismissesKeyboardOnlyInOnDragMode(t *testing.T) {
 		tt := NewTester(func(c *Context) {
 			Box(c).Fill().AutoFocus().TextCaret(Rect{W: 1, H: 20}).InputOptions(InputOptions{Dismiss: mode}).HandleInput(func(ev InputEvent) bool { return true })
 		}, 320, 240)
-		tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerMouse, X: 120, Y: 100, DY: 20, Precise: true})
+		tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 120, Y: 100, DY: 20, Precise: true})
 		if !tt.h.ime.Active {
 			t.Fatal("mouse/trackpad scroll dismissed software keyboard")
 		}
-		tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerTouch, X: 120, Y: 100, DY: 20, Precise: true})
+		tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, Pointer: platform.PointerTouch, X: 120, Y: 100, DY: 20, Precise: true})
 		if tt.h.ime.Active != (mode != KeyboardDismissOnDrag) {
 			t.Fatalf("unexpected keyboard state for %s", mode)
 		}

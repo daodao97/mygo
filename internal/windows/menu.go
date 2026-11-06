@@ -151,9 +151,9 @@ func (b *Backend) buildMenu(m *platform.Menu, bar bool, owner int, accels map[ac
 		}
 		if it.Submenu != nil {
 			sub := b.buildMenu(it.Submenu, false, owner, accels, dpi)
-			procAppendMenuW.Call(h, flags|mfPopup, sub, uintptr(unsafe.Pointer(u16(it.Label))))
+			procAppendMenuW.Call(h, flags|mfPopup, sub, uintptr(unsafe.Pointer(u16(menuLabel(it)))))
 			bitmap(it, uint32(pos), true)
-			look(&menuLook{label: it.Label, submenu: true, icon: it.Icon})
+			look(&menuLook{label: menuLabel(it), submenu: true, icon: it.Icon})
 			continue
 		}
 		if it.Checked {
@@ -164,7 +164,7 @@ func (b *Backend) buildMenu(m *platform.Menu, bar bool, owner int, accels map[ac
 			e.dpi = dpi
 		}
 		cmd := b.menus.add(e)
-		label := it.Label
+		label := menuLabel(it)
 		if it.Native != 0 {
 			// WebView2's item shows its shortcut as WebView2 words it, and
 			// WebView2 hears its key.
@@ -181,7 +181,7 @@ func (b *Backend) buildMenu(m *platform.Menu, bar bool, owner int, accels map[ac
 		}
 		procAppendMenuW.Call(h, flags, uintptr(cmd), uintptr(unsafe.Pointer(u16(label))))
 		e.bmp = bitmap(it, uint32(cmd), false)
-		e.look = look(&menuLook{label: it.Label, accel: e.accel, radio: e.radio, icon: it.Icon})
+		e.look = look(&menuLook{label: menuLabel(it), accel: e.accel, radio: e.radio, icon: it.Icon})
 		if e.radio && e.look == nil {
 			setItemInfo(h, cmd, label, it.Enabled, it.Checked, true, false)
 		}
@@ -300,7 +300,7 @@ func (w *window) popupMenuBar(key uintptr) {
 		w.menuKey = menuKey{popup: popup, key: key}
 		postMessage(w.hwnd, wmChar, key, 0)
 	}
-	cmd := w.b.trackPopup(popup, w.hwnd, pt, 0)
+	cmd := w.b.trackPopup(popup, w.hwnd, pt, 0, nil)
 	w.menuKey = menuKey{}
 	for i := count - 1; i >= 0; i-- {
 		procRemoveMenu.Call(popup, uintptr(i), mfByPosition)
@@ -351,12 +351,12 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 		if e.uid != it.ID {
 			continue
 		}
-		label := it.Label
+		label := menuLabel(it)
 		if e.accel != "" {
 			label += "\t" + e.accel
 		}
 		if e.look != nil {
-			e.look.label, e.look.icon = it.Label, it.Icon
+			e.look.label, e.look.icon = menuLabel(it), it.Icon
 			if it.Icon != nil && !e.look.icons {
 				b.menus.iconColumn(e.menu)
 			}
@@ -515,22 +515,32 @@ func (b *Backend) PopupMenu(m *platform.Menu, pw platform.Window, pos *platform.
 		// Its right edge at the point, laid out from the right.
 		flags = tpmRightAlign | tpmLayoutRTL
 	}
-	cmd := b.trackPopup(menu, owner, pt, flags)
+	cmd := b.trackPopup(menu, owner, pt, flags, nil)
 	if cmd != 0 {
 		b.menuCommand(cmd, w)
 	}
 }
 
 // trackPopup shows a popup menu, with TrackPopupMenuEx's flags besides
-// those it always gives, and returns the chosen command, or 0.
-func (b *Backend) trackPopup(menu, owner uintptr, pt point, flags uintptr) uint16 {
+// those it always gives, out of the rectangle exclude unless it is nil,
+// and returns the chosen command, or 0.
+func (b *Backend) trackPopup(menu, owner uintptr, pt point, flags uintptr, exclude *rect) uint16 {
 	// The owner must be in the foreground, or the menu does not close
 	// when the user clicks elsewhere.
 	procSetForegroundWindow.Call(owner)
 	// Windows creates the menu's window before WM_ENTERMENULOOP.
 	b.hookMenus(true)
 	defer b.hookMenus(false)
-	cmd, _, _ := procTrackPopupMenuEx.Call(menu, tpmReturnCmd|tpmRightButton|flags, uintptr(pt.X), uintptr(pt.Y), owner, 0)
+	// The windows the loop creates meanwhile are a popup's, which stays
+	// open on Alt (menuProc).
+	b.popups++
+	defer func() { b.popups-- }()
+	var params *tpmParams
+	if exclude != nil {
+		params = &tpmParams{Exclude: *exclude}
+		params.Size = uint32(unsafe.Sizeof(*params))
+	}
+	cmd, _, _ := procTrackPopupMenuEx.Call(menu, tpmReturnCmd|tpmRightButton|flags, uintptr(pt.X), uintptr(pt.Y), owner, uintptr(unsafe.Pointer(params)))
 	postMessage(owner, 0, 0, 0) // WM_NULL, as the documentation asks
 	return uint16(cmd)
 }
@@ -634,4 +644,14 @@ func atoi(s string) int {
 		n = n*10 + int(c-'0')
 	}
 	return n
+}
+
+// menuLabel is the text of an item's menu entry: its label, in which an
+// ampersand marks the mnemonic, and its subtitle after it, in which it is
+// an ampersand.
+func menuLabel(it *platform.MenuItem) string {
+	if it.Subtitle == "" {
+		return it.Label
+	}
+	return it.Label + " — " + strings.ReplaceAll(it.Subtitle, "&", "&&")
 }

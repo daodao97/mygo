@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"bytes"
+	"image"
 	"runtime"
 	"slices"
 	"strings"
@@ -162,15 +164,13 @@ type menuLevel struct {
 
 type menuKey struct{}
 
-// openAt opens the menu of e where the engine was asked to (askMenu): below
-// it, or at the point it was right-clicked, on its first item when the
-// keyboard opened it.
-func (s *menuShown) openAt(rt *engine, e *node) {
+// openAt opens the menu of an element where the engine was asked to
+// (askMenu): below it, or at the point it was right-clicked, on its first
+// item when the keyboard opened it. b is the element's whole box, which the
+// menu attaches to, not its visible part: one scrolled partly out of view
+// would put it off the point by as much (#894).
+func (s *menuShown) openAt(rt *engine, b Rect) {
 	mr := &rt.menu
-	// From the element's whole box, which the menu attaches to, not its
-	// visible part: one scrolled partly out of view would put it off the
-	// point by as much (#894).
-	b := e.Bounds()
 	*s = menuShown{below: mr.below, dx: mr.x - b.X, dy: mr.y - b.Y, opened: rt.frame,
 		levels: append(s.levels[:0], menuLevel{first: mr.key, last: mr.last}), pointer: [2]float32{rt.pointerX, rt.pointerY}}
 }
@@ -250,7 +250,7 @@ func newMenu(c *context, e *node, open *bool, button bool) *menuParts {
 			*open = false
 		default:
 			*open = true
-			s.openAt(rt, e)
+			s.openAt(rt, e.Bounds())
 		}
 		rt.consumed = true
 	}
@@ -463,8 +463,10 @@ func (m *menuParts) item(role Role, sub bool) *node {
 	}
 	if m.moved && row.Hovered() {
 		// The pointer moved onto it: it is highlighted, and its submenu
-		// opens while those of the others close. The keys go on from it.
+		// opens while those of the others close. The keys go on from it,
+		// and the focus is the pointer's again, as it shows no ring.
 		m.moved = false
+		rt.focusVisible = false
 		s.pointer = [2]float32{rt.pointerX, rt.pointerY}
 		switch {
 		case sub && !open:
@@ -627,6 +629,8 @@ func (m *menuParts) keys(level int, panel *node, choices []*node, groups, stops 
 		if n > 0 {
 			m.highlight(level, choices[(i%n+n)%n].id)
 			s.levels[level].reveal = true
+			// Moved by the keys: the focus shows, and the item's tip with it.
+			rt.focusVisible = true
 		}
 	}
 	// The stop of the item highlighted: its own, or its group's.
@@ -731,6 +735,69 @@ type drawnMenu struct {
 	built uint64
 	pass  int
 	menu  menuShown
+	// items is the menu as last built; choose, when not 0, is an item the
+	// Tester chose, which the next build takes.
+	items  *platform.Menu
+	choose int
+	// edit is set for the editing menu of a text input or selectable text
+	// (drawEditMenu).
+	edit bool
+	// icons are the bitmaps of its items' icons, by image and tint, as the
+	// menu builds in every frame it shows.
+	icons map[drawnIcon]*Bitmap
+}
+
+// drawnIcon is an icon of a drawn menu in a color: the color of the text
+// for a template image, whose items change it as they are highlighted.
+type drawnIcon struct {
+	icon *platform.MenuIcon
+	tint Color
+}
+
+// icon returns the bitmap of an item's icon in the color of its text, or
+// nil for an image that cannot be decoded.
+func (d *drawnMenu) icon(ic *platform.MenuIcon, text Color) *Bitmap {
+	k := drawnIcon{icon: ic}
+	if ic.Template {
+		k.tint = text
+	}
+	b, ok := d.icons[k]
+	if !ok {
+		b = menuIconBitmap(ic, text)
+		if d.icons == nil {
+			d.icons = map[drawnIcon]*Bitmap{}
+		}
+		d.icons[k] = b
+	}
+	return b
+}
+
+// menuIconBitmap decodes an icon: a template image in the color tint, with
+// the image's alpha, and others in their own colors.
+func menuIconBitmap(ic *platform.MenuIcon, tint Color) *Bitmap {
+	if !ic.Template {
+		b, err := DecodeBitmap(ic.PNG)
+		if err != nil {
+			return nil
+		}
+		return b
+	}
+	img, _, err := image.Decode(bytes.NewReader(ic.PNG))
+	if err != nil {
+		return nil
+	}
+	r := img.Bounds()
+	out := image.NewNRGBA(r)
+	i := 0
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			_, _, _, a := img.At(x, y).RGBA()
+			out.Pix[i], out.Pix[i+1], out.Pix[i+2] = tint.R, tint.G, tint.B
+			out.Pix[i+3] = uint8((a >> 8) * uint32(tint.A) / 255)
+			i += 4
+		}
+	}
+	return NewBitmap(out)
 }
 
 // openDrawnMenu opens the drawn menu of e, at the point asked for.
@@ -739,7 +806,7 @@ func (rt *engine) openDrawnMenu(e *node) {
 		return
 	}
 	d := &drawnMenu{id: e.id, text: rt.menu.text}
-	d.menu.openAt(rt, e)
+	d.menu.openAt(rt, e.Bounds())
 	rt.menu.drawn = d
 }
 
@@ -763,6 +830,14 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 		rt.menu.drawn = nil
 		return
 	}
+	d.items = pm
+	if id := d.choose; id != 0 {
+		rt.menu.drawn = nil
+		if it := menuItemByID(pm.Items, id); it != nil {
+			rt.drawnChoice(d, run, build, it)
+		}
+		return
+	}
 	c := e.c
 	t := c.theme
 	open := true
@@ -778,6 +853,7 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 		marks := slices.ContainsFunc(list, func(it *platform.MenuItem) bool {
 			return it.Type == platform.MenuItemCheckbox || it.Type == platform.MenuItemRadio
 		})
+		icons := slices.ContainsFunc(list, func(it *platform.MenuItem) bool { return it.Icon != nil })
 		for _, it := range list {
 			if !it.Visible {
 				continue
@@ -786,7 +862,7 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 				coreBox(c).Height(1).Margin(t.Space(1), t.Space(2)).Background(t.Border).Shrink(0)
 				continue
 			}
-			row := m.drawnItem(it, marks)
+			row := m.drawnItem(d, it, marks, icons)
 			if sub := it.Submenu; it.Type == platform.MenuItemSubmenu && sub != nil {
 				m.Submenu(row, func(panel *node) {
 					style(panel)
@@ -812,23 +888,46 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 	} else if d.menu.below {
 		e.expanded = true
 	}
-	if it := chosen; it != nil {
-		if name := run.commands[it.ID-1]; name != "" {
-			target := d.text
-			if target == 0 {
-				target = d.id
-			}
-			rt.menuCommand(target, name)
-			rt.requestFrame()
-		} else {
-			rt.menuChoice(build, it.ID, it.Label, d.text)
-		}
+	if chosen != nil {
+		rt.drawnChoice(d, run, build, chosen)
 	}
 }
 
-// drawnItem builds item it of the menu being drawn, with room for the
-// marks of check box and radio items when marks is set.
-func (m *menuParts) drawnItem(it *platform.MenuItem, marks bool) *node {
+// drawnChoice does what item it, chosen from the drawn menu d that build
+// built in run, does: its editing command on the text, or the item's Chosen
+// in build.
+func (rt *engine) drawnChoice(d *drawnMenu, run *menuRun, build func(m *Menu), it *platform.MenuItem) {
+	if name := run.commands[it.ID-1]; name != "" {
+		target := d.text
+		if target == 0 {
+			target = d.id
+		}
+		rt.menuCommand(target, name)
+		rt.requestFrame()
+	} else {
+		rt.menuChoice(build, it.ID, it.Label, d.text)
+	}
+}
+
+// menuItemByID returns the item id of items or of their submenus, or nil.
+func menuItemByID(items []*platform.MenuItem, id int) *platform.MenuItem {
+	for _, it := range items {
+		if it.ID == id {
+			return it
+		}
+		if it.Submenu != nil {
+			if found := menuItemByID(it.Submenu.Items, id); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
+}
+
+// drawnItem builds item it of the menu d being drawn, with room for the
+// marks of check box and radio items when marks is set, and for the icons
+// of the items around it when icons is, so that their labels line up.
+func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, marks, icons bool) *node {
 	c := m.c
 	t := c.theme
 	sub := it.Type == platform.MenuItemSubmenu && it.Submenu != nil
@@ -845,8 +944,13 @@ func (m *menuParts) drawnItem(it *platform.MenuItem, marks bool) *node {
 	}
 	row.AlignItems(Center).Gap(t.Space(2)).Padding(t.Space(1.5), t.Space(2)).Radius(t.Radius).Shrink(0)
 	row.Label(it.Label).Disabled(!it.Enabled)
+	if it.ToolTip != "" {
+		row.Tooltip(it.ToolTip)
+	}
+	// Assistive technology reads the shortcut as the item's keys and its
+	// tooltip, if any, as its description.
 	keys := shortcutText(it.Accelerator)
-	row.description = keys
+	row.keyShortcuts = keys
 	color, muted := t.Text, t.TextMuted
 	switch {
 	case !it.Enabled:
@@ -873,6 +977,20 @@ func (m *menuParts) drawnItem(it *platform.MenuItem, marks bool) *node {
 						p.StrokePath(checkPath(r), 1.5, color)
 					}
 				})
+			}
+		}
+		if icons {
+			var b *Bitmap
+			if it.Icon != nil {
+				b = d.icon(it.Icon, color)
+			}
+			if b == nil {
+				coreBox(c).Size(platform.MenuIconSize, platform.MenuIconSize).Shrink(0)
+			} else {
+				img := coreImage(c, b).Size(platform.MenuIconSize, platform.MenuIconSize).Fit(Contain).Shrink(0)
+				if !it.Enabled && !it.Icon.Template {
+					img.Opacity(0.4)
+				}
 			}
 		}
 		coreText(c, it.Label).SingleLine().Grow(1)

@@ -325,6 +325,7 @@ func formatCompact(f *NumberFormatter, n *Notation, neg bool, intPart, frac stri
 	// The affixes: those of the form, with the sign, else of the decimal
 	// pattern (or that of amounts); a percent's around them, or the name
 	// of a currency, in the plural form of the number with its exponent.
+	neg, plus := f.sign(neg, zero)
 	var outerPrefix, outerSuffix, prefix, suffix string
 	switch {
 	case form != nil && neg:
@@ -337,6 +338,10 @@ func formatCompact(f *NumberFormatter, n *Notation, neg bool, intPart, frac stri
 		prefix, suffix = base.negPrefix, base.negSuffix
 	case !f.o.Percent:
 		prefix, suffix = base.prefix, base.suffix
+	}
+	if plus {
+		// Where a minus goes, as "%+50" of a percent in Turkish.
+		prefix = f.sys.plus + prefix
 	}
 	if f.o.Percent {
 		outerPrefix, outerSuffix = f.pat.prefix, f.pat.suffix

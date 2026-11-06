@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math/bits"
 	"runtime"
 	"slices"
 	"time"
@@ -22,7 +23,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	// A touch contact is arbitrated before the pointer path: it may become
 	// a scroll of a container, which the pointer path would have made a
 	// press of a row (touch.go).
-	if ev.PointerType == platform.PointerTouch && rt.touchEvent(ev) {
+	if ev.Pointer == platform.PointerTouch && rt.touchEvent(ev) {
 		if ev.Kind == platform.PointerLongPress {
 			focus := rt.states[rt.focused]
 			// Keyboard dismissal can resize the viewport after Go selects
@@ -39,7 +40,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.redraw = false
 	}
 	switch ev.Kind {
-	case platform.SurfaceFrame, platform.SurfaceResize, platform.SurfaceShown:
+	case platform.SurfaceFrame, platform.SurfaceResize, platform.SurfaceShown, platform.SurfaceHidden:
 	default:
 		// Input, which the next frame builds even out of sight.
 		rt.input = true
@@ -48,6 +49,18 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	if ev.Kind == platform.PointerDown || ev.Kind == platform.WebViewPress {
 		// A press is of no element until countPress finds it one.
 		rt.lastPress.prev, rt.lastPress.id = rt.lastPress.id, 0
+	}
+	held := rt.buttons
+	switch ev.Kind {
+	case platform.PointerMove, platform.PointerUp:
+		rt.pointerDevice(ev)
+	case platform.PointerDown:
+		// It presses once it came where it presses (pointerDevice).
+		rt.pointerType = PointerType(ev.Pointer)
+	case platform.SurfaceBlur, platform.PointerCancel:
+		// Buttons let go of elsewhere, or whose press the system took,
+		// never come back up here.
+		rt.buttons, rt.pressure = 0, 0
 	}
 	if rt.insp.pointer(rt, ev, x, y) {
 		return true
@@ -75,9 +88,16 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.SurfaceShown:
 		// A video goes on from where it stood out of sight.
 		rt.shown = rt.now()
-		if rt.held {
+		if rt.held || rt.hiddenAsked {
 			// What moves goes on from where the time puts it.
 			rt.held = false
+			rt.requestFrame()
+		}
+	case platform.SurfaceHidden:
+		if rt.hiddenAsked {
+			// A view that asks builds once more, out of sight, to stop
+			// what it does while none of the window shows.
+			rt.input = true
 			rt.requestFrame()
 		}
 	case platform.PointerMove:
@@ -85,11 +105,12 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.PointerDown:
 		previousFocus := rt.focused
 		rt.pointerMove(x, y)
+		rt.pointerDevice(ev)
 		rt.pointerDown(x, y, ev.Button, Modifiers(ev.Mods), ev.Clicks)
 		// UIKit must keep its first responder while deciding whether a contact
 		// is an interactive keyboard pan. A completed tap still blurs on Up;
 		// a native pan cancels the tap and keeps the editor until UIKit resigns it.
-		if ev.PointerType == platform.PointerTouch && rt.ime.state.Active && rt.ime.state.Options.Dismiss == "interactive" && rt.focused != previousFocus {
+		if ev.Pointer == platform.PointerTouch && rt.ime.state.Active && rt.ime.state.Options.Dismiss == "interactive" && rt.focused != previousFocus {
 			next := rt.states[rt.focused]
 			if next == nil || next.editor == nil {
 				rt.focused = previousFocus
@@ -98,9 +119,14 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		}
 	case platform.PointerUp:
 		rt.pointerMove(x, y)
-		rt.pointerUp(ev.Button, ev.Clicks)
+		rt.pointerUp(ev.Button, ev.Clicks, false)
 	case platform.PointerCancel:
-		rt.cancelPointer()
+		// Where the pointer went the system may not tell: it stays.
+		button := -1
+		if held != 0 {
+			button = bits.TrailingZeros8(held)
+		}
+		rt.pointerCancel(button)
 	case platform.WebViewPress:
 		rt.webViewPress(x, y, ev.Button)
 	case platform.PointerLeave:
@@ -114,18 +140,18 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.PointerScroll:
 		// Native momentum belongs to the contact that picked the axis.
 		// Editor/keyboard pans have no contact ID and keep their own policy.
-		if ev.PointerType == platform.PointerTouch && ev.Momentum && ev.PointerID != 0 && ev.PointerID == rt.touch.id {
+		if ev.Pointer == platform.PointerTouch && ev.Momentum && ev.PointerID != 0 && ev.PointerID == rt.touch.id {
 			if rt.touch.scrollAxis == 1 {
 				ev.DY = 0
 			} else if rt.touch.scrollAxis == 2 {
 				ev.DX = 0
 			}
 		}
-		if ev.PointerType == platform.PointerTouch && abs32(float32(ev.DY)) > abs32(float32(ev.DX)) {
+		if ev.Pointer == platform.PointerTouch && abs32(float32(ev.DY)) > abs32(float32(ev.DX)) {
 			rt.dismissKeyboardOnDrag()
 		}
 		rt.pointerMove(x, y)
-		if ev.PointerType == platform.PointerTouch {
+		if ev.Pointer == platform.PointerTouch {
 			switch ev.Phase {
 			case "begin":
 				rt.holdElastic()
@@ -142,9 +168,13 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.zoom(float32(ev.Scale), Modifiers(ev.Mods))
 	case platform.KeyPressed:
 		rt.modsChanged(Modifiers(ev.Mods))
-		taken = rt.keyDownPhysical(Modifiers(ev.Mods), Key(ev.Key), Key(ev.PhysicalKey), ev.Repeat)
+		rt.holdKey(Modifiers(ev.Mods), Key(ev.Key), Key(ev.PhysicalKey))
+		taken = rt.keyDownPhysical(Modifiers(ev.Mods), Key(ev.Key), Key(ev.PhysicalKey), KeyCode(ev.Code), ev.Repeat)
 	case platform.ModifiersChanged:
 		rt.modsChanged(Modifiers(ev.Mods))
+	case platform.RawKeyPressed, platform.RawKeyReleased:
+		rt.modsChanged(Modifiers(ev.Mods))
+		taken = rt.rawKey(ev)
 	case platform.KeyReleased:
 		rt.modsChanged(Modifiers(ev.Mods))
 		key, physical := Key(ev.Key), Key(ev.PhysicalKey)
@@ -152,9 +182,10 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 			key = physical
 		}
 		delete(rt.byPosition, physical)
-		rt.observeFocus(InputEvent{Kind: InputKeyUp, Key: key, PhysicalKey: physical, Mods: Modifiers(ev.Mods)})
+		rt.releaseKey(key, physical)
+		rt.observeFocus(InputEvent{Kind: InputKeyUp, Key: key, PhysicalKey: physical, Code: KeyCode(ev.Code), Mods: Modifiers(ev.Mods)})
 		if h := rt.focusHandler(); h != nil {
-			rt.deliver(h, InputEvent{Kind: InputKeyUp, Key: key, PhysicalKey: physical, Mods: Modifiers(ev.Mods)})
+			rt.deliver(h, InputEvent{Kind: InputKeyUp, Key: key, PhysicalKey: physical, Code: KeyCode(ev.Code), Mods: Modifiers(ev.Mods)})
 		}
 	case platform.TextInput:
 		rt.ime.compositionID = 0
@@ -204,6 +235,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		// Keys let go of elsewhere never come back up here.
 		rt.modsChanged(0)
 		clear(rt.byPosition)
+		rt.releaseKeys()
 		if p := rt.pressed; p != nil {
 			x, y := p.local(rt.pointerX, rt.pointerY)
 			rt.endPress(p.input, x, y)
@@ -226,7 +258,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.AccessAction:
 		rt.accessAction(ev)
 	}
-	if ev.PointerType == platform.PointerTouch && (ev.Kind == platform.PointerUp || ev.Kind == platform.PointerCancel) {
+	if ev.Pointer == platform.PointerTouch && (ev.Kind == platform.PointerUp || ev.Kind == platform.PointerCancel) {
 		// The finger left the surface: nothing hovers under it.
 		rt.pointerIn = false
 		rt.setHover(nil)
@@ -323,6 +355,44 @@ func (rt *engine) rehover() {
 	}
 }
 
+// unhoverGone makes what the pointer is over hover in place of the
+// element it hovered, gone in the pass just built, as a menu's backdrop
+// closing over a button, and reports whether that changes what an
+// element looking at its hover sees, for the pass to be built again: the
+// button shows hovering in the frame the menu goes, rather than not
+// until the next (rehover). What it is over is told from the last
+// frame's layout, leaving out what the pass did not build.
+func (rt *engine) unhoverGone() bool {
+	if len(rt.hover) == 0 || !rt.pointerIn || rt.pressed != nil || rt.scrollDrag.st != nil {
+		return false
+	}
+	built := func(s *state) bool { return s.seen == rt.frame && s.pass == rt.pass }
+	if s := rt.states[rt.hover[0]]; s != nil && built(s) {
+		return false
+	}
+	chain := rt.chain[:0]
+	for i := len(rt.hits) - 1; i >= 0; i-- {
+		h := &rt.hits[i]
+		if !built(h.st) || !rt.contains(h.st, h.r, rt.pointerX, rt.pointerY) {
+			continue
+		}
+		for s := h.st; s != nil; s = rt.states[s.parent] {
+			chain = append(chain, s.id)
+			if s.parent == 0 {
+				break
+			}
+		}
+		break
+	}
+	old := rt.hover
+	if slices.Equal(chain, old) {
+		rt.chain = chain[:0]
+		return false
+	}
+	rt.hover, rt.chain = chain, old[:0]
+	return rt.watchHover(chain) || rt.watchHover(old)
+}
+
 func (rt *engine) pointerMove(x, y float32) {
 	if d := &rt.scrollDrag; d.st != nil {
 		s := d.st
@@ -358,7 +428,9 @@ func (rt *engine) pointerMove(x, y float32) {
 		}
 		rt.dragMove(x, y)
 	}
-	moved := x != rt.pointerX || y != rt.pointerY
+	// A pen pressing harder or softer where it stands moves too.
+	moved := x != rt.pointerX || y != rt.pointerY || rt.pressureMoved
+	rt.pressureMoved = false
 	rt.pointerX, rt.pointerY, rt.pointerIn = x, y, true
 	if rt.selection.dragging && rt.pressed != nil {
 		rt.moveTextSelection(x, y)
@@ -393,6 +465,33 @@ func (rt *engine) pointerMove(x, y float32) {
 				break
 			}
 		}
+	}
+}
+
+// pointerDevice keeps the device of a pointer event, the buttons it
+// leaves down and how hard it presses, as Pointer Events have it: a
+// device that tells no pressure, as a mouse, presses 0.5 while a button
+// is down, and none presses while no button is.
+func (rt *engine) pointerDevice(ev platform.SurfaceEvent) {
+	if b := ev.Button; b >= 0 && b < 8 {
+		switch ev.Kind {
+		case platform.PointerDown:
+			rt.buttons |= 1 << b
+		case platform.PointerUp:
+			rt.buttons &^= 1 << b
+		}
+	}
+	p := float32(min(max(ev.Pressure, 0), 1))
+	switch {
+	case rt.buttons == 0:
+		p = 0
+	case p == 0:
+		p = 0.5
+	}
+	rt.pressureMoved = ev.Kind == platform.PointerMove && p != rt.pressure
+	rt.pointerType, rt.pressure = PointerType(ev.Pointer), p
+	if s := rt.pressed; s != nil && ev.Kind == platform.PointerMove {
+		s.pressPointer, s.pressPressure = rt.pointerType, p
 	}
 }
 
@@ -458,6 +557,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 		// It takes the moves and the release.
 		rt.pressed, rt.pressButton, rt.pressClicks = h, button, clicks
 		h.pressed, h.pressButton = true, button
+		h.pressPointer, h.pressPressure = rt.pointerType, rt.pressure
 		h.pressPending = true
 		h.pressX, h.pressY = h.local(x, y)
 		h.drag.reset(rt.now(), x, y)
@@ -487,6 +587,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 	rt.pressed, rt.pressButton, rt.pressClicks = target, button, clicks
 	rt.pressDragger = pressDragger(rt, chain, target)
 	target.pressed, target.pressButton, target.pressMods = true, button, mods
+	target.pressPointer, target.pressPressure = rt.pointerType, rt.pressure
 	target.pressPending = true
 	target.pressX, target.pressY = target.local(x, y)
 	target.drag.reset(rt.now(), x, y)
@@ -510,11 +611,11 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 // a main loop the handler runs nested, is the next press's.
 func (rt *engine) endPress(input func(InputEvent) bool, x, y float32) {
 	p := rt.pressed
-	p.pressed = false
+	p.pressed, p.canceled = false, true
 	rt.pressed = nil
 	rt.requestFrame()
 	if input != nil {
-		input(InputEvent{Kind: InputPointerUp, X: x, Y: y, Button: rt.pressButton, Mods: rt.mods, Clicks: rt.pressClicks, Time: rt.now()})
+		input(InputEvent{Kind: InputPointerUp, X: x, Y: y, Button: rt.pressButton, Mods: rt.mods, Clicks: rt.pressClicks, Canceled: true, Pointer: rt.pointerType, Time: rt.now()})
 	}
 }
 
@@ -527,8 +628,44 @@ func (rt *engine) endDown() {
 	for len(rt.ups) > 0 {
 		up := rt.ups[0]
 		rt.ups = rt.ups[1:]
-		rt.pointerUp(up[0], up[1])
+		if up.canceled {
+			rt.pointerCancel(up.button)
+		} else {
+			rt.pointerUp(up.button, up.clicks, false)
+		}
 	}
+}
+
+// pendingUp is a release that came while pointerDown handled a press
+// (engine.ups): of button, with its count of clicks, or, canceled, the
+// system taking the press, of button the lowest of those held then, -1
+// for none.
+type pendingUp struct {
+	button, clicks int
+	canceled       bool
+}
+
+// pointerCancel ends the press the system took (platform.PointerCancel)
+// as a release of its button that commits nothing: no click, no drop,
+// no end of a drag, no context menu. button is the lowest of the buttons
+// held as it came, for observers and the menus when no element is
+// pressed, or -1 when none was: then nothing is pressed, and nothing
+// happens.
+func (rt *engine) pointerCancel(button int) {
+	if rt.downing > 0 {
+		rt.ups = append(rt.ups, pendingUp{button: button, canceled: true})
+		return
+	}
+	switch {
+	case rt.scrollDrag.st != nil:
+		button = 0
+	case rt.pressed != nil:
+		button = rt.pressButton
+	}
+	if button < 0 {
+		return
+	}
+	rt.pointerUp(button, 0, true)
 }
 
 // countPress counts the backend's n-th quick press from the first on the
@@ -551,12 +688,15 @@ func (rt *engine) countPress(chain []uint64, target, h *state, n int) int {
 	return n - lp.base
 }
 
-func (rt *engine) pointerUp(button, clicks int) {
+// pointerUp releases button, counting clicks; canceled, the system took
+// the press (pointerCancel), which the release then ends without
+// committing what it would.
+func (rt *engine) pointerUp(button, clicks int, canceled bool) {
 	if rt.downing > 0 {
-		rt.ups = append(rt.ups, [2]int{button, clicks})
+		rt.ups = append(rt.ups, pendingUp{button: button, clicks: clicks})
 		return
 	}
-	rt.observePointer(InputEvent{Kind: InputPointerUp, Button: button, Mods: rt.mods, Clicks: max(clicks, 1)})
+	rt.observePointer(InputEvent{Kind: InputPointerUp, Button: button, Mods: rt.mods, Clicks: max(clicks, 1), Canceled: canceled})
 	if button == rt.pressButton {
 		clicks = rt.pressClicks // the engine's, which may have started over
 	}
@@ -572,17 +712,32 @@ func (rt *engine) pointerUp(button, clicks int) {
 		rt.requestFrame()
 		return
 	}
-	if s := rt.pressed; s != nil && button == rt.pressButton && rt.dragEnd() {
-		// A drag ended, dropping its value: no click.
-		rt.pressed = nil
-		s.pressed = false
-		rt.setHover(rt.hitChain(rt.pointerX, rt.pointerY))
-		return
+	if s := rt.pressed; s != nil && button == rt.pressButton {
+		if d := rt.drag; canceled && d != nil && !d.native {
+			// Given up, as with Escape: dropped nowhere, and not missed. A
+			// native drag's session has the pointer, and ends it.
+			d.canceled, d.over = true, 0
+		}
+		if rt.dragEnd() {
+			// A drag ended, dropping its value: no click.
+			rt.pressed = nil
+			s.pressed = false
+			if canceled {
+				s.canceled = true
+			}
+			rt.setHover(rt.hitChain(rt.pointerX, rt.pointerY))
+			return
+		}
 	}
 	if p := rt.pressed; p != nil && p.input != nil {
-		rt.deliver(p, InputEvent{Kind: InputPointerUp, Button: button, Mods: rt.mods, Clicks: max(clicks, 1)})
+		rt.deliver(p, InputEvent{Kind: InputPointerUp, Button: button, Mods: rt.mods, Clicks: max(clicks, 1), Canceled: canceled})
 	}
-	if button == 1 && rt.menuRelease() {
+	if button == 1 && canceled && rt.menu.release != 0 {
+		// The menu waiting for the release opens for none.
+		rt.menu.release, rt.menu.releaseText = 0, 0
+		return
+	}
+	if button == 1 && !canceled && rt.menuRelease() {
 		return
 	}
 	s := rt.pressed
@@ -597,8 +752,9 @@ func (rt *engine) pointerUp(button, clicks int) {
 	r := &s.releaseLater
 	r.due, r.x, r.y = true, rt.pointerX, rt.pointerY
 	// A press of the primary button that moved ends a drag; a click does
-	// not.
-	r.released = button == 0 && s.drag.n > 1
+	// not, nor does a press the system took.
+	r.released = button == 0 && s.drag.n > 1 && !canceled
+	r.canceled = canceled
 	v := s.drag.velocities(rt.now())
 	s.releaseVX, s.releaseVY, s.releaseWX, s.releaseWY = v[0], v[1], v[2], v[3]
 	if ed := s.editor; ed != nil {
@@ -610,7 +766,7 @@ func (rt *engine) pointerUp(button, clicks int) {
 		ed.release()
 	}
 	inside := rt.contains(s, Rect{s.x, s.y, s.w, s.h}, rt.pointerX, rt.pointerY)
-	if inside && s.flags&flagDisabled == 0 {
+	if inside && s.flags&flagDisabled == 0 && !canceled {
 		switch button {
 		case 0:
 			if s.dragRec.dragged(rt, s) {
@@ -639,13 +795,13 @@ func (rt *engine) pointerUp(button, clicks int) {
 func (rt *engine) applyRelease(s *state) {
 	r := &s.releaseLater
 	s.pressed = rt.pressed == s
-	s.released = r.released
+	s.released, s.canceled = r.released, r.canceled
 	s.clicks += r.clicks
 	s.rightClicks += r.rightClicks
 	if r.clicks > 0 {
 		s.clickMods = r.clickMods
 	}
-	r.due, r.clicks, r.rightClicks = false, 0, 0
+	r.due, r.canceled, r.clicks, r.rightClicks = false, false, 0, 0
 	if rt.pressEnded == s {
 		rt.pressEnded = nil
 	}
@@ -897,13 +1053,13 @@ func (rt *engine) claimedBy(k keyEvent, window bool) bool {
 // keyDown handles a key pressed, and reports whether an element took it as
 // it came (HandleInput).
 func (rt *engine) keyDown(mods Modifiers, key Key, repeat bool) bool {
-	return rt.keyDownPhysical(mods, key, KeyUnknown, repeat)
+	return rt.keyDownPhysical(mods, key, KeyUnknown, CodeUnknown, repeat)
 }
 
 // keyDownPhysical is keyDown with the key by position (InputEvent.PhysicalKey).
 // A chord of a key the layout does not type as a US key, as S on a Cyrillic
 // layout, matches shortcuts by that position; plain typing is untouched.
-func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, repeat bool) bool {
+func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCode, repeat bool) bool {
 	if platform.KeyByPosition(platform.Key(key), platform.Key(physical), platform.Modifiers(mods)) {
 		if rt.byPosition == nil {
 			rt.byPosition = map[Key]bool{}
@@ -916,12 +1072,12 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, repeat bool
 	if rt.inspectKey(mods, key) {
 		return true
 	}
-	rt.observeFocus(InputEvent{Kind: InputKeyDown, Key: key, PhysicalKey: physical, Mods: mods, Repeat: repeat})
+	rt.observeFocus(InputEvent{Kind: InputKeyDown, Key: key, PhysicalKey: physical, Code: code, Mods: mods, Repeat: repeat})
 	k := keyEvent{mods, key, repeat}
 	if key == KeyEscape && mods == 0 && rt.dragCancel() {
 		return true
 	}
-	if h := rt.focusHandler(); h != nil && !rt.claimed(k) && rt.deliver(h, InputEvent{Kind: InputKeyDown, Key: key, PhysicalKey: physical, Mods: mods, Repeat: repeat}) {
+	if h := rt.focusHandler(); h != nil && !rt.claimed(k) && rt.deliver(h, InputEvent{Kind: InputKeyDown, Key: key, PhysicalKey: physical, Code: code, Mods: mods, Repeat: repeat}) {
 		rt.blinkStart = rt.now()
 		return true
 	}
@@ -1679,6 +1835,25 @@ func (e *node) PressedButton() (button int, ok bool) {
 	return s.pressButton, true
 }
 
+// PressedPointer returns the device pressing the element and how hard it
+// presses, from 0 to 1, as of the press's last move, while the press
+// lasts, as PressedButton; ok is false while nothing presses it, or it is
+// disabled. As InputEvent.Pressure, a device that tells no pressure, as a
+// mouse, presses 0.5. A signature pad widens its stroke with a pen's
+// pressure, and goes by the pointer's speed for a mouse. Elements asking
+// for it get a frame whenever the pointer moves or the pressure changes.
+func (e *node) PressedPointer() (pointer PointerType, pressure float32, ok bool) {
+	if !e.hasState() {
+		return 0, 0, false
+	}
+	e.flags |= flagClickable | flagTrackPointer
+	s := e.st
+	if !s.pressed || e.disabled() {
+		return 0, 0, false
+	}
+	return s.pressPointer, s.pressPressure, true
+}
+
 // pressedPrimary reports whether the pointer's primary button presses s:
 // what Pressed and Dragged report, and what moves sliders, drags and the
 // like. Another button's press only clicks (RightClicked) or opens a
@@ -1837,7 +2012,8 @@ func (e *node) DragVelocity() (vx, vy float32) {
 // primary button, and moving, let go since the last frame, with how fast
 // it moved then, as DragVelocity: a spring taking over
 // (SpringOptions.Velocity) keeps the fling going. A click, which does not
-// move, ends no drag, nor does a drag with another button.
+// move, ends no drag, nor does a drag with another button, nor a press
+// the system canceled (PressCanceled).
 func (e *node) DragEnded() (vx, vy float32, ok bool) {
 	if !e.hasState() {
 		return 0, 0, false
@@ -1849,6 +2025,32 @@ func (e *node) DragEnded() (vx, vy float32, ok bool) {
 	}
 	e.c.rt.consumed = true
 	return s.releaseVX, s.releaseVY, true
+}
+
+// PressCanceled reports whether the press of the element ended since the
+// last frame without the pointer letting go, as Pointer Events'
+// pointercancel: the system took it (a browser turning a touch into the
+// page's scrolling, the window losing the mouse capture or the pointer's
+// grab, a menu taking the release), or the window lost the keyboard. Such
+// a press clicks nothing (Clicked) and ends no drag (DragEnded), and
+// Pressed turns false: undo what the press began, as a preview a drag
+// showed, rather than commit it.
+//
+//	dx, _, held := handle.Dragged()
+//	switch {
+//	case held:
+//		app.preview += dx
+//	case handle.PressCanceled():
+//		app.preview = 0
+//	case app.preview != 0:
+//		app.width, app.preview = app.width+app.preview, 0
+//	}
+func (e *node) PressCanceled() bool {
+	if !e.hasState() || !e.st.canceled || e.st.pressed {
+		return false
+	}
+	e.c.rt.consumed = true
+	return true
 }
 
 // dragTrack keeps the last moves of a press, to tell how fast it goes: in
@@ -2157,4 +2359,99 @@ func (rt *engine) contextSnapshot(s *state, text string, caret int, modifiedDele
 		rt.deliver(s, InputEvent{Kind: InputTextReplace, Text: string(after[a:z]), From: a, To: b, Caret: caret})
 	}
 	return true
+}
+
+// heldKey is a key held in the window: the key as shortcuts take it, and
+// its position, KeyUnknown where the platform tells none.
+type heldKey struct{ key, physical Key }
+
+// heldIndex returns the index in keysHeld of the key at physical, or of
+// key where either position is unknown, or -1.
+func (rt *engine) heldIndex(key, physical Key) int {
+	for i, h := range rt.keysHeld {
+		if h.physical != KeyUnknown && physical != KeyUnknown {
+			if h.physical == physical {
+				return i
+			}
+		} else if h.key == key {
+			return i
+		}
+	}
+	return -1
+}
+
+// holdKey notes a key pressed, whichever element has the focus or takes
+// it, as shortcuts take it: by position for a chord of a key the layout
+// types no US key for (keyDownPhysical).
+func (rt *engine) holdKey(mods Modifiers, key, physical Key) {
+	if platform.KeyByPosition(platform.Key(key), platform.Key(physical), platform.Modifiers(mods)) {
+		key = physical
+	}
+	if key == KeyUnknown || rt.heldIndex(key, physical) >= 0 {
+		return // a key no shortcut names, or held already: a repeat
+	}
+	rt.keysHeld = append(rt.keysHeld, heldKey{key, physical})
+	rt.keysChanged()
+}
+
+// releaseKey notes a key let go of.
+func (rt *engine) releaseKey(key, physical Key) {
+	if i := rt.heldIndex(key, physical); i >= 0 {
+		rt.keysHeld = slices.Delete(rt.keysHeld, i, i+1)
+		rt.keysChanged()
+	}
+}
+
+// releaseKeys lets go of every key held, as the window loses the
+// keyboard: their releases go to the window that has it.
+func (rt *engine) releaseKeys() {
+	if len(rt.keysHeld) > 0 {
+		rt.keysHeld = rt.keysHeld[:0]
+		rt.keysChanged()
+	}
+}
+
+// keysChanged draws a frame after the keys held changed, when the last
+// frame read them.
+func (rt *engine) keysChanged() {
+	if rt.keysRead {
+		rt.requestFrame()
+	}
+}
+
+// KeyDown reports whether key is held down in the window, whichever
+// element has the focus and whether or not one took the key, without
+// taking it from them: a cheat sheet of shortcuts lights the keys held
+// while its search field has the focus. A frame that reads it is drawn
+// again as the keys held change. Keys count as shortcuts take them (a
+// chord of a key the layout types no US key for, as S on a Cyrillic
+// layout, by its position); the modifier keys are Modifiers'. A key whose
+// press ran a menu item's shortcut went to the menu, not the window. The
+// window lets go of every key as it loses the keyboard, whose releases go
+// elsewhere.
+func (c *context) KeyDown(key Key) bool {
+	c.rt.keysRead = true
+	return key != KeyUnknown && c.rt.heldIndex(key, KeyUnknown) >= 0
+}
+
+// KeysDown returns the keys held down in the window, as KeyDown tells
+// them, in the order they were pressed; nil while none is. A cheat sheet
+// fades the rows of shortcuts that use none of them:
+//
+//	held := c.KeysDown()
+//	for _, s := range app.shortcuts {
+//		row := shortcutRow(c, s)
+//		if len(held) > 0 && !s.usesAny(held) {
+//			row.Opacity(0.4)
+//		}
+//	}
+func (c *context) KeysDown() []Key {
+	c.rt.keysRead = true
+	var keys []Key
+	for _, h := range c.rt.keysHeld {
+		if !slices.Contains(keys, h.key) {
+			keys = append(keys, h.key)
+		}
+	}
+	return keys
 }

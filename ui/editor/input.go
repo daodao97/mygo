@@ -20,7 +20,8 @@ const scrollbarWidth = 10
 func (ed *editor) input(ev ui.InputEvent) bool {
 	// The key after the first of a chord is the chord's, as VS Code's
 	// keybindings resolve chords before an extension's type command.
-	chord := ed.chord != nil && ev.Kind == ui.InputKeyDown
+	// A key of no name, as the modifier the second key is held with, is not it.
+	chord := ed.chord != nil && ev.Kind == ui.InputKeyDown && ev.Key != ui.KeyUnknown
 	if !chord && ed.offer(ev) {
 		return true
 	}
@@ -55,7 +56,7 @@ func (ed *editor) dispatch(ev ui.InputEvent) bool {
 	ed.frameNow = ev.Time
 	switch ev.Kind {
 	case ui.InputKeyDown:
-		return ed.key(ev)
+		return ev.Key != ui.KeyUnknown && ed.key(ev)
 	case ui.InputCommand:
 		cmd := map[string]Command{"copy": Copy, "cut": Cut, "paste": Paste, "pasteAndMatchStyle": Paste, "selectAll": SelectAll,
 			"undo": Undo, "redo": Redo, "delete": Backspace}[ev.Text]
@@ -384,7 +385,7 @@ func (ed *editor) pointerMove(ev ui.InputEvent) bool {
 			changed = true
 		}
 	}
-	if off >= 0 && (ed.o.onHover != nil || len(ed.diags) > 0) && off != h.restOff {
+	if off >= 0 && !ed.o.noPointerHover && (ed.o.onHover != nil || len(ed.diags) > 0) && off != h.restOff {
 		h.restOff, h.restAt, h.pending = off, ed.frameNow, true
 		changed = true
 	}

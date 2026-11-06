@@ -74,8 +74,8 @@ UI as they read other apps (see [Accessibility](accessibility.md)).
   and fonts.
 - [Styling and themes](styling.md): backgrounds, borders, shadows and
   gradients, and the theme that follows the desktop.
-- [Input](input.md): the pointer, the keyboard focus, shortcuts, input
-  methods, dropped files, and widgets that take every key.
+- [Input](input.md): the pointer, the keyboard focus, shortcuts, the keys
+  held, input methods, dropped files, and widgets that take every key.
 - [Drag and drop](drag-and-drop.md): values dragged within the window, and
   rows reordered by dragging.
 - [Pages and navigation](navigation.md): a router of pages with a history,
@@ -124,7 +124,9 @@ UI as they read other apps (see [Accessibility](accessibility.md)).
 - [Menu button](menu-button.md): a button opening a menu below it, the
   system's or one MyGo draws in the window with the theme's look.
 - [Context menu](context-menu.md): a menu of the system's for any element,
-  on a right click, or one MyGo draws in the window with the theme's look.
+  on a right click, or one MyGo draws in the window with the theme's look;
+  [every menu of a window](context-menu.md#every-menu-of-a-window) drawn so,
+  text inputs' and tables' too.
 - [Toggle](toggle.md): a button that stays pressed, and toggles joined in a
   group.
 - [Segmented control](segmented.md): segments choosing one of a few views.

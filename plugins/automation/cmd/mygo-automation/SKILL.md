@@ -88,8 +88,10 @@ announced "Saved"
 A line is the element's ref, `[role]`, its label in quotes, then what
 it has of `value=`, `placeholder=` (when it has no label), `key=` (the
 app's own name for it), its states, `current=` (what it is the current
-one of, as the last crumb of a breadcrumb trail is the `page`) and
-`focused`. Empty fields are left
+one of, as the last crumb of a breadcrumb trail is the `page`),
+`autocomplete=` (what a field's suggestions complete as you type: `list`
+for a popup of them, `inline` for the text completed in place, or
+`both`), `haspopup=`, `roledescription=` and `focused`. Empty fields are left
 out, and so is `focusable`, which every control is. `webview` marks a web
 view inside native UI: its page has no elements here. `announced` lines
 are what the app announced to screen readers. Labels and values longer
@@ -103,7 +105,10 @@ on macOS, `"Ctrl+K"` elsewhere, several separated by spaces.
   on. Elements left out still get refs, and diffs show them.
 - `--full` adds placeholders, descriptions, ranges (`range=0..1
   step=0.1`), text selections (`selection=3,3`, in characters), levels,
-  positions in sets (`item=2/5`), actions, `bounds=x,y,wxh` and the full
+  positions in sets (`item=2/5`), the size of a table or a grid and
+  the place of a row or a cell in it as the app gave them
+  (`rowcount=10001 colcount=5`, `rowindex=4122 colindex=2`), the rows
+  and columns a cell covers (`colspan=2`), actions, `bounds=x,y,wxh` and the full
   element ID (`id=…`), and writes long text whole.
 - `--json` prints the plugin's answer as it is (IDs, keys, bounds, all
   fields) on one line. It still takes the window's elements for later
@@ -113,16 +118,20 @@ on macOS, `"Ctrl+K"` elsewhere, several separated by spaces.
 Roles are `group`, `text`, `heading`, `button`, `link`, `checkBox`,
 `radio`, `switch`, `slider`, `progress`, `meter`, `stepper`,
 `textField`, `comboBox`, `popUpButton`, `menuButton`, `toggleButton`,
-`image`, `list`, `listItem`, `table`, `row`, `cell`, `columnHeader`,
+`image`, `list`, `listItem`, `table`, `grid`, `treeGrid`, `row`, `cell`, `columnHeader`,
 `tree`, `treeItem`, `tabList`, `tab`, `scroll`, `dialog`, `alertDialog`,
 `popup`, `tooltip`, `splitter`, `status`, `toolbar`, `radioGroup`,
 `disclosure`, `colorWell`, `menu`, `menuBar`, `menuItem`,
-`menuItemCheckBox`, `menuItemRadio` and `navigation`. States are `disabled`, `checked`,
+`menuItemCheckBox`, `menuItemRadio`, `region`, `log`, `timer`, `alert`,
+`separator`, `rowHeader`, `search`, `article`, `navigation`, `deletion`
+and `insertion`. States are `disabled`, `checked`,
 `mixed`, `selected`, `expanded`, `expandable`, `multiline`, `password`,
 `readOnly`, `selectable`, `multiselectable`, `offscreen`, `segment`,
-`search`, `invalid`, `sortAscending`, `sortDescending`, `vertical` and
-`busy`. `current=` is `true`, `page`, `step`, `location`, `date` or
-`time`.
+`search`, `invalid`, `sortAscending`, `sortDescending`, `sortOther`,
+`vertical`, `horizontal` and `busy`. `current=` is `true`, `page`, `step`, `location`,
+`date` or `time`; `haspopup=` the kind of popup the element opens
+(`menu`, `listbox`, `tree`, `grid` or `dialog`), and `roledescription=`
+what the app calls its role.
 Only what assistive technology reads is there: rows and columns that
 only lay out others have no line.
 

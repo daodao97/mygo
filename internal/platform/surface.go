@@ -69,7 +69,8 @@ type DamageSurface interface {
 // frames: the content then draws nothing that moves until it shows again.
 type OccludableSurface interface {
 	// Occluded reports whether nothing of the surface shows on screen. The
-	// surface sends SurfaceShown once some of it shows again.
+	// surface sends SurfaceHidden as none of it shows any more, and
+	// SurfaceShown once some of it shows again.
 	Occluded() bool
 }
 
@@ -358,6 +359,15 @@ const (
 	// its press's.
 	PointerDown
 	PointerUp
+	// PointerCancel reports that the system ended the pointer's press
+	// without a release, as Pointer Events' pointercancel: every button
+	// held is let go of, and no PointerUp follows for them. The content
+	// commits nothing a release would. Backends send it when they lose the
+	// press to the system (a browser's pointercancel, a window losing the
+	// mouse capture or a pointer grab while a button is down, a menu's
+	// loop taking the release), and the content ignores one while nothing
+	// is pressed.
+	PointerCancel
 	// PointerLeave reports the pointer left the surface.
 	PointerLeave
 	// PointerScroll scrolls by DX, DY DIPs at X, Y: positive DY moves the
@@ -373,6 +383,14 @@ const (
 	// ModifiersChanged reports the modifier keys held, Mods, as one of
 	// them goes down or up on its own.
 	ModifiersChanged
+	// RawKeyPressed and RawKeyReleased report a key by its position, Code,
+	// that KeyPressed and KeyReleased leave out: a modifier, a lock key, or
+	// one the layout types no Key for. PhysicalKey is set where it can be,
+	// Key never is. The content reports whether it took the press or the
+	// release, which then goes no further in the system, as Alt opening
+	// the window's menu bar.
+	RawKeyPressed
+	RawKeyReleased
 	// TextInput inserts Text, typed or committed by an input method.
 	TextInput
 	// TextComposition shows Text as the input method's composition, its
@@ -407,15 +425,14 @@ const (
 	// tree, with Text the value of AccessSetValue.
 	AccessAction
 	// SurfaceShown reports that some of an OccludableSurface shows again
-	// after none did.
+	// after none did, and SurfaceHidden that none of it shows any more.
 	SurfaceShown
+	SurfaceHidden
 	// DataDragOver queries a destination; DataDrop commits a transfer.
 	// DataDragLeave clears its hover state. Drag carries the query/result.
 	DataDragOver
 	DataDragLeave
 	DataDrop
-	// PointerCancel aborts a press without activating the element.
-	PointerCancel
 	// TextSelectionChanged changes the selection in the last TextInputState.Text.
 	TextSelectionChanged
 	// SurfaceMemoryPressure asks the renderer to release disposable buffers.
@@ -457,15 +474,6 @@ const (
 // SurfacePresented on the UI thread once, also for direct CPU presentation.
 type DrawableSurface interface{ WatchDrawable(drawable uintptr) }
 
-// PointerType identifies the device producing a pointer event.
-type PointerType uint8
-
-const (
-	PointerMouse PointerType = iota
-	PointerTouch
-	PointerPen
-)
-
 // EditCommands are the menu roles of edit commands, which native UI takes as
 // a SurfaceCommand and answers SurfaceCommandEnabled for.
 var EditCommands = map[string]bool{
@@ -478,11 +486,10 @@ type SurfaceEvent struct {
 	Gesture string
 	// Phase is a SurfaceGesture phase, or begin/end/cancel for a native
 	// touch PointerScroll pan. Empty scroll phases carry movement only.
-	Phase       string
-	Rotation    float64
-	Kind        SurfaceEventKind
-	PointerID   uint64
-	PointerType PointerType
+	Phase     string
+	Rotation  float64
+	Kind      SurfaceEventKind
+	PointerID uint64
 	// X and Y locate the pointer in DIPs relative to the surface.
 	X, Y float64
 	// Button is 0 for the primary button, 1 the secondary, 2 the middle.
@@ -496,15 +503,25 @@ type SurfaceEvent struct {
 	Momentum bool
 	// Scale is PointerZoom's factor or SurfaceGesture's cumulative scale.
 	Scale float64
-	Key   Key
+	// Pointer is the device of PointerMove, PointerDown and PointerUp, as
+	// Pointer Events' pointerType, and Pressure how hard a pen or a finger
+	// presses, from 0 to 1, where the device tells: 0 where it does not,
+	// as a mouse, which the content takes for Pointer Events' default.
+	Pointer  PointerKind
+	Pressure float64
+	Key      Key
 	// PhysicalKey is the key by its position on an ANSI US keyboard,
 	// whatever the active layout types; KeyUnknown where the backend does
 	// not report it. Key and PhysicalKey agree on a US layout.
 	PhysicalKey Key
-	Mods        Modifiers
-	Repeat      bool
-	Text        string
-	Caret       int
+	// Code is the key by its position, on any keyboard and with the sides
+	// of the modifiers told apart; CodeUnknown where the backend does not
+	// report it. KeyPressed, KeyReleased and the raw keys have it.
+	Code   KeyCode
+	Mods   Modifiers
+	Repeat bool
+	Text   string
+	Caret  int
 	// Snapshot places the caret at From + Caret after a TextInput replacement.
 	// UIKit sends snapshots of its surrounding-text proxy this way.
 	Snapshot bool
@@ -532,6 +549,19 @@ type SurfaceEvent struct {
 	// SurfaceEvent; the refreshes go on meanwhile.
 	Paced bool
 }
+
+// PointerKind is the kind of device of a pointer event.
+type PointerKind uint8
+
+const (
+	// PointerMouse is a mouse, or a touchpad, which moves the pointer as
+	// one does.
+	PointerMouse PointerKind = iota
+	// PointerPen is a pen on a tablet or a screen, its eraser too.
+	PointerPen
+	// PointerTouch is a finger on a touchscreen.
+	PointerTouch
+)
 
 // Modifiers are the modifier keys held during an event.
 type Modifiers uint8
@@ -727,4 +757,12 @@ const (
 	CursorAlias
 	CursorContextMenu
 	CursorNone
+	CursorProgress
+	CursorWait
+	CursorHelp
+	CursorCell
+	CursorZoomIn
+	CursorZoomOut
+	CursorAllScroll
+	CursorNoDrop
 )

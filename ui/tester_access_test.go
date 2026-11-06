@@ -1,6 +1,8 @@
 package ui_test
 
 import (
+	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -42,6 +44,12 @@ func TestTesterAccess(t *testing.T) {
 				ui.Link(c, "Home", "/")
 				ui.Link(c, "Docs", "/docs").Current(ui.CurrentPage)
 			})
+			ui.Row(c).Role(ui.RoleSearch).Label("Site search").Children(func() {
+				ui.Button(c, "Go")
+			})
+			ui.Column(c).Role(ui.RoleArticle).Label("Post by Ann").Children(func() {
+				ui.Text(c, "Shipped the beta")
+			})
 			ui.Collapsible(c, "More", &open, func() { ui.Text(c, "Hidden") })
 			ui.Button(c, "Save").Disabled(true)
 			ui.Box(c).Size(24, 24).Label("Error").Description("Disk full")
@@ -52,7 +60,7 @@ func TestTesterAccess(t *testing.T) {
 	if !reply.Busy || reply.Role != ui.RoleStatus {
 		t.Errorf("Reply: %+v", reply)
 	}
-	if a, ok := tt.Access("Reply"); !ok || a != reply {
+	if a, ok := tt.Access("Reply"); !ok || !reflect.DeepEqual(a, reply) {
 		t.Errorf("Access(Reply) = %+v, %v; AccessByRole found %+v", a, ok, reply)
 	}
 	streaming = false
@@ -102,6 +110,10 @@ func TestTesterAccess(t *testing.T) {
 		t.Errorf("Settings: %+v", h)
 	}
 	accessOf(t, tt, ui.RoleNavigation, "Main")
+	if a, ok := tt.Access("Site search"); !ok || a.Role != ui.RoleSearch {
+		t.Errorf("Site search: %+v, %v", a, ok)
+	}
+	accessOf(t, tt, ui.RoleArticle, "Post by Ann")
 	if docs := accessOf(t, tt, ui.RoleLink, "Docs"); docs.Current != ui.CurrentPage {
 		t.Errorf("Docs: %+v", docs)
 	}
@@ -171,4 +183,96 @@ func TestTesterAccessRows(t *testing.T) {
 	if plums := accessOf(t, tt, ui.RoleListItem, "Plums"); plums.Selected {
 		t.Errorf("Plums: %+v", plums)
 	}
+}
+
+// TestTesterAccessStates checks the states built on the others: a role
+// description, a popup, what an element controls, a column's sort and a
+// grid's cell chosen without painting it.
+func TestTesterAccessStates(t *testing.T) {
+	open := true
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Children(func() {
+			ui.Column(c).Role(ui.RoleGroup).Label("Highlights").RoleDescription("carousel")
+			ui.Button(c, "Fruit").HasPopup(ui.PopupListBox)
+			toggle := ui.Button(c, "Details").Expanded(open)
+			if open {
+				toggle.Controls(ui.Column(c).Role(ui.RoleRegion).Label("More details").Children(func() {
+					ui.Text(c, "Hidden")
+				}))
+			}
+			ui.Column(c).Role(ui.RoleTable).Label("November").Children(func() {
+				ui.Row(c).Role(ui.RoleRow).Children(func() {
+					ui.Text(c, "Day").Role(ui.RoleColumnHeader).Sort(ui.SortDescending)
+					ui.Text(c, "Note").Role(ui.RoleColumnHeader).Sort(ui.SortOther)
+				})
+				ui.Row(c).Role(ui.RoleRow).Children(func() {
+					ui.Text(c, "1").Role(ui.RoleCell).Checked(false)
+					ui.Text(c, "2").Role(ui.RoleCell).Checked(true)
+				})
+			})
+		})
+	}, 400, 400)
+
+	if h := accessOf(t, tt, ui.RoleGroup, "Highlights"); h.RoleDescription != "carousel" {
+		t.Errorf("Highlights: %+v", h)
+	}
+	if f := accessOf(t, tt, ui.RoleButton, "Fruit"); f.HasPopup != ui.PopupListBox || f.RoleDescription != "" {
+		t.Errorf("Fruit: %+v", f)
+	}
+	if d := accessOf(t, tt, ui.RoleButton, "Details"); !slices.Equal(d.Controls, []string{"More details"}) {
+		t.Errorf("Details controls %q", d.Controls)
+	}
+	if day := accessOf(t, tt, ui.RoleColumnHeader, "Day"); day.Sort != ui.SortDescending {
+		t.Errorf("Day: %+v", day)
+	}
+	if note := accessOf(t, tt, ui.RoleColumnHeader, "Note"); note.Sort != ui.SortOther {
+		t.Errorf("Note: %+v", note)
+	}
+	if two := accessOf(t, tt, ui.RoleCell, "2"); !two.Selected || !two.Selectable || two.Checked {
+		t.Errorf("cell 2: %+v", two)
+	}
+	if one := accessOf(t, tt, ui.RoleCell, "1"); one.Selected || !one.Selectable {
+		t.Errorf("cell 1: %+v", one)
+	}
+	if nov := accessOf(t, tt, ui.RoleTable, "November"); !nov.Selectable {
+		t.Errorf("November: %+v", nov)
+	}
+
+	open = false
+	tt.Frame()
+	if d := accessOf(t, tt, ui.RoleButton, "Details"); d.Controls != nil {
+		t.Errorf("Details, closed, controls %q", d.Controls)
+	}
+}
+
+// TestTesterAccessRelations checks, through the public API, what a field
+// is described by, its error read while invalid, an orientation given, a
+// search field of the app's own, and content deleted and inserted.
+func TestTesterAccessRelations(t *testing.T) {
+	card, query := "", ""
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Children(func() {
+			hint := ui.Text(c, "16 digits")
+			msg := ui.Text(c, "Required")
+			ui.TextInput(c, &card).Label("Card").DescribedBy(hint).Invalid(card == "").ErrorMessage(msg)
+			ui.TextInput(c, &query).Label("Search mail").Search()
+			ui.Column(c).Role(ui.RoleToolbar).Label("Tools").Orientation(ui.Vertical)
+			ui.Row(c).Children(func() {
+				ui.Text(c, "$40").Strikethrough().Role(ui.RoleDeletion)
+				ui.Text(c, "$30").Role(ui.RoleInsertion)
+			})
+		})
+	}, 400, 400)
+	f := accessOf(t, tt, ui.RoleTextField, "Card")
+	if !f.Invalid || f.Description != "Required\n16 digits" || !slices.Equal(f.DescribedBy, []string{"16 digits"}) || !slices.Equal(f.ErrorMessage, []string{"Required"}) {
+		t.Errorf("Card: %+v", f)
+	}
+	if s := accessOf(t, tt, ui.RoleTextField, "Search mail"); !s.Search {
+		t.Errorf("Search mail: %+v", s)
+	}
+	if b := accessOf(t, tt, ui.RoleToolbar, "Tools"); !b.Vertical || b.Horizontal {
+		t.Errorf("Tools: %+v", b)
+	}
+	accessOf(t, tt, ui.RoleDeletion, "$40")
+	accessOf(t, tt, ui.RoleInsertion, "$30")
 }

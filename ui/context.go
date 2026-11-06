@@ -562,8 +562,34 @@ func (c *context) After(d time.Duration) { c.rt.scheduleAt(c.now.Add(d)) }
 // ReadClipboard returns the text on the clipboard, and WriteClipboard
 // puts text there, for widgets that copy and paste themselves. Call them
 // on the main thread: in the view, or in an input handler.
+// WriteClipboardThen tells whether the text got there.
 func (c *context) ReadClipboard() string   { return c.rt.host.readClipboard() }
 func (c *context) WriteClipboard(s string) { c.rt.host.writeClipboard(s) }
+
+// WriteClipboardThen puts text on the clipboard as WriteClipboard does,
+// and done, unless nil, gets what came of it a moment later, before a
+// frame builds anew with what it changed, as navigator.clipboard's
+// writeText resolves or rejects: an error when the text did not get
+// there, as when another app holds the clipboard, or a browser refuses
+// a write the user did not act for (a press or a key, a moment before).
+// A copy button shows "Copied" or "Failed" with it:
+//
+//	if ui.Button(c, "Copy").Clicked() {
+//		c.WriteClipboardThen(link, func(err error) {
+//			app.copied, app.copyFailed = err == nil, err != nil
+//		})
+//	}
+func (c *context) WriteClipboardThen(s string, done func(err error)) {
+	rt := c.rt
+	if done == nil {
+		rt.host.writeClipboard(s)
+		return
+	}
+	rt.host.writeClipboardThen(s, func(err error) {
+		done(err)
+		rt.requestFrame()
+	})
+}
 
 // Announce asks screen readers to read text out once, after what they
 // are reading, for news the keyboard focus does not bring, as a search
@@ -688,6 +714,9 @@ type state struct {
 	// not choose again.
 	rowPressed, pressChose bool
 
+	// hitFn is where in its box the element takes the pointer (HitTest).
+	hitFn func(x, y float32, r Rect) bool
+
 	world scene.Affine
 	clips bool
 	// lifted tells that it was an element flying with a Match, which
@@ -733,17 +762,33 @@ type state struct {
 	flags          uint64
 	// ignoreInput tells that the element, or one around it, ignores the
 	// pointer and the keyboard (IgnoreInput); accessHidden, that it is
-	// out of what assistive technology reads (AccessHidden, or inert).
-	ignoreInput, accessHidden bool
-	cursor                    Cursor
+	// out of what assistive technology reads (AccessHidden, or inert);
+	// accessDisabled, that assistive technology reads it as unavailable
+	// (AccessDisabled).
+	ignoreInput, accessHidden, accessDisabled bool
+	// activeDescendant is the element that has the keyboard focus while
+	// this one does (ActiveDescendant), 0 for none.
+	activeDescendant uint64
+	cursor           Cursor
 	// tip marks an element with a tooltip (TooltipBase), which shows once
 	// the pointer has rested on it for tipDelay, or at once within tipWarm
 	// of another going: its theme's TooltipDelay.
 	tip               bool
 	tipDelay, tipWarm time.Duration
 	// effectLayer is what the element and its children render into for
-	// its Effect, kept from frame to frame.
+	// its Effect, its blur, its Cache or its opacity as a group
+	// (paintGroup), kept from frame to frame. grouped tells that, faded
+	// with what is inside it, what it painted last overlapped, so that it
+	// paints into the layer at once rather than flat first (checkFlat).
 	effectLayer *Canvas
+	grouped     bool
+	// ink is what the element and those inside it painted into its layer
+	// in frame inkFrame, in its own space, and lastInk what they painted
+	// in a frame before (keepInk): the layer of a frame holds lastInk, as
+	// far as a blur or a shadow inside it reached, the same however many
+	// times the frame paints.
+	ink, lastInk Rect
+	inkFrame     uint64
 	// webView is the web view the element shows (WebView).
 	webView NativeWebView
 
@@ -765,11 +810,16 @@ type state struct {
 	// pressButton is the button pressing the element: 0 the primary, 1
 	// the secondary, 2 the middle (pressedPrimary).
 	pressButton int
+	// pressPointer and pressPressure are the device pressing the element
+	// and its pressure as of the press's last move (PressedPointer).
+	pressPointer  PointerType
+	pressPressure float32
 	// drag follows the press's moves; released tells that it ended since
 	// the last frame, going at releaseVX and releaseVY in the element's
-	// axes, releaseWX and releaseWY in the window's.
+	// axes, releaseWX and releaseWY in the window's, and canceled that it
+	// ended without the pointer letting go (PressCanceled).
 	drag                 dragTrack
-	released             bool
+	released, canceled   bool
 	releaseVX, releaseVY float32
 	releaseWX, releaseWY float32
 	pressPending         bool // the press began since the last build pass
@@ -777,10 +827,11 @@ type state struct {
 	// kept when it came with moves no pass had read for the pass that
 	// reads them to apply as it ends (forgetInput): where the pointer let
 	// go, which the element sees as the pointer meanwhile (pointer),
-	// whether it ended a drag, and the clicks since, the release's own
-	// first (click).
+	// whether it ended a drag or was canceled, and the clicks since, the
+	// release's own first (click).
 	releaseLater struct {
 		due, released       bool
+		canceled            bool
 		x, y                float32
 		clicks, rightClicks int
 		clickMods           Modifiers
@@ -826,8 +877,11 @@ type state struct {
 	// input, as Shift going back in a find bar.
 	submitMods Modifiers
 	// expand is what assistive technology asked of an item of a tree: 1
-	// to open it, -1 to close it.
-	expand int8
+	// to open it, -1 to close it. focusAsked is set as it focuses an
+	// option of a select (focusHighlights, of the last frame), which
+	// the select highlights as it builds it.
+	expand                      int8
+	focusHighlights, focusAsked bool
 	// role is the element's Role in the last frame.
 	role Role
 	// holding is set while a stepper's arrow is held, since holdStart, and
@@ -839,13 +893,16 @@ type state struct {
 	// dragValue is the value the element drags (Drag), or dragFn returns
 	// it as the drag starts; accepts reports whether it takes a value
 	// dragged (Drop), and droppedValue is the value dropped on it, while
-	// hasDropped, at (dropX, dropY).
+	// hasDropped, at (dropX, dropY). dragMissed is set on the source when
+	// its value was let go over no element taking it, at (missX, missY).
 	dragValue    any
 	dragFn       func() any
 	accepts      func(any) bool
 	droppedValue any
 	hasDropped   bool
 	dropX, dropY float32
+	dragMissed   bool
+	missX, missY float32
 	dataSource   *dataSource
 	dataTarget   *transfer.DropOptions
 	dataDropped  *transfer.Drop

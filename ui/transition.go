@@ -162,6 +162,7 @@ const defaultDuration = 200 * time.Millisecond
 func (e *node) Transition(t ElementTransition) *node {
 	e.c.transitions = append(e.c.transitions, transitionUse{e: e, t: t})
 	linkShadows.Do(func() { animateShadows = (*engine).animateShadows })
+	linkGroups() // its fades
 	if t.Match != nil || t.ScaleContent {
 		e.c.rt.linkMatches()
 	}
@@ -1006,6 +1007,9 @@ func ghostOf(e *node) *node {
 	*g = *e
 	st := *e.st
 	st.trec = nil
+	// Its layer too (effectLayer), as an element taking the state in its
+	// place paints into its own: a canvas shows one content a frame.
+	st.effectLayer = nil
 	// Its spans, and the styles they paint with, are its own: another
 	// element taking its state in its place, in this frame, made the
 	// state's its own already. A paragraph's spans are in a buffer of the
@@ -1020,6 +1024,7 @@ func ghostOf(e *node) *node {
 	g.shadows, g.cols, g.rows, g.frags = slices.Clone(e.shadows), slices.Clone(e.cols), slices.Clone(e.rows), slices.Clone(e.frags)
 	g.track, g.popover, g.list, g.rowsOf, g.overflow = nil, nil, nil, nil, nil
 	g.activeDescendant, g.nameFrom, g.focusTo, g.field, g.form = nil, nil, nil, nil, nil
+	g.describedBy, g.errorMessage = nil, nil
 	g.followX, g.colFit, g.gridFit = nil, nil, nil
 	// It no longer flies (Fly), if it did: it goes as its parent's copy.
 	g.inputFn, g.observeFn, g.ghosts, g.lift = nil, nil, false, false

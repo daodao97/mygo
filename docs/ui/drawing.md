@@ -78,6 +78,41 @@ box.Draw(func(p *ui.Painter, r ui.Rect) {
 })
 ```
 
+## Fill rules and hits
+
+A path fills, and clips, the points its subpaths wind around (SVG's
+`nonzero`), so a subpath inside another one leaves a hole only when it
+goes the other way round. `Path.FillRule(ui.EvenOdd)` fills the points
+its subpaths go around an odd number of times instead, as SVG's
+`fill-rule` and `clip-rule: evenodd` do, which makes a ring or a donut of
+two circles, and a shape with a cut-out, whichever way their path data
+draws them:
+
+```go
+box.Draw(func(p *ui.Painter, r ui.Rect) {
+	cx, cy := r.X+r.W/2, r.Y+r.H/2
+	donut := (&ui.Path{}).Circle(cx, cy, r.W/2).Circle(cx, cy, r.W/4).FillRule(ui.EvenOdd)
+	p.FillPath(donut, c.Theme().Accent)
+})
+```
+
+`Path.Contains(x, y)` reports whether a point is inside a path as it
+fills, by its rule, as the web's `isPointInPath`: a view's handler can
+tell which segment of a pie a press is in. `HitTest` makes an element
+take the pointer only where a function says, given the pointer in the
+coordinates `Draw` paints in, so a pie's segments, a map's regions or a
+ring take presses, hover and the cursor only where they paint, as SVG's
+`pointer-events: visiblePainted`, and the pointer reaches what is under
+them elsewhere:
+
+```go
+seg := func(r ui.Rect) *ui.Path { return slice(r, from, to) } // a segment's outline
+ui.Box(c).Absolute().Fill().
+	Draw(func(p *ui.Painter, r ui.Rect) { p.FillPath(seg(r), color) }).
+	HitTest(func(x, y float32, r ui.Rect) bool { return seg(r).Contains(x, y) }).
+	OnClick(func() { app.pick(i) })
+```
+
 ## Paths from SVG data
 
 `ui.ParsePath(d)` reads the path data of an SVG `<path d="…">` (all of
@@ -105,7 +140,7 @@ The path is in the data's own units; a transform scales it to the box.
 
 `Painter.Clip(r, radius, fn)` clips what `fn` draws to a rounded
 rectangle. `Painter.ClipPath(path, fn)` clips it to the inside of any
-path (non-zero winding), with smooth edges, as SVG's and CSS's
+path (by its `FillRule`), with smooth edges, as SVG's and CSS's
 `clip-path`: a chart drawn into a polygon, or a picture cut to a star.
 
 ```go

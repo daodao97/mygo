@@ -31,16 +31,10 @@ type Toast struct {
 	Type string
 	// Timeout is how long the toast shows: 4 seconds when zero, until it
 	// is closed when negative. The time stops while the pointer rests on
-	// the toasts, the keyboard focus is in them, or the window is in the
-	// background, unless RunInBackground.
+	// the toasts or the keyboard focus is in them, and runs on while the
+	// window is in the background or hidden: a toast whose time is over by
+	// the time the window shows again closes before it shows.
 	Timeout time.Duration
-	// RunInBackground keeps the time of the toast running while the window
-	// is in the background or hidden, for news that goes stale, as a
-	// download that finished while the window of a tray app was hidden:
-	// a toast whose time is over by then closes before it shows. The
-	// pointer resting on the toasts and the keyboard focus in them still
-	// stop it.
-	RunInBackground bool
 	// Action labels a button that runs OnAction, as Undo after deleting,
 	// and closes the toast.
 	Action   string
@@ -159,37 +153,29 @@ func (rt *engine) toastIndex(id string) int {
 	return -1
 }
 
-// toastStopped reports whether the time of ts stops: the user holds the
-// toasts, or the window is in the background and ts does not run there.
-func (rt *engine) toastStopped(ts *toast) bool {
-	return rt.toastsPaused || rt.toastsBackground && !ts.RunInBackground
-}
-
 // toastAge returns how long ts has shown.
 func (rt *engine) toastAge(ts *toast, now time.Time) time.Duration {
-	if rt.toastStopped(ts) {
+	if rt.toastsPaused {
 		return ts.spent
 	}
 	return ts.spent + now.Sub(ts.at)
 }
 
 // pauseToasts stops the time of the toasts, or lets it run again, while
-// held, as the pointer rests on them, or while the window is in the
-// background.
-func (rt *engine) pauseToasts(held, background bool, now time.Time) {
-	if held == rt.toastsPaused && background == rt.toastsBackground {
+// held, as the pointer rests on them.
+func (rt *engine) pauseToasts(held bool, now time.Time) {
+	if held == rt.toastsPaused {
 		return
 	}
 	for i := range rt.toasts {
 		ts := &rt.toasts[i]
-		was := rt.toastStopped(ts)
-		if stops := held || background && !ts.RunInBackground; stops && !was {
+		if held {
 			ts.spent += now.Sub(ts.at)
-		} else if !stops && was {
+		} else {
 			ts.at = now
 		}
 	}
-	rt.toastsPaused, rt.toastsBackground = held, background
+	rt.toastsPaused = held
 }
 
 // ToastViewportBase builds the window's toasts without a look, in place of
@@ -211,9 +197,9 @@ func (rt *engine) pauseToasts(held, background bool, now time.Time) {
 //		}
 //	})
 //
-// The time of the toasts stops while the pointer rests on viewport, the
-// keyboard focus is in it, or the window is in the background, for those
-// without RunInBackground. viewport stays while no toast shows, for the
+// The time of the toasts stops while the pointer rests on viewport or the
+// keyboard focus is in it with the window's, and runs on while the window
+// is in the background. viewport stays while no toast shows, for the
 // last one to go with an exit transition. It returns viewport.
 func coreToastViewportBase(c *context, fn func(viewport *node, toasts []Toast)) *node {
 	return toastViewport(c, true, fn)
@@ -249,7 +235,7 @@ func toastViewport(c *context, keep bool, fn func(viewport *node, toasts []Toast
 		fn()
 	}
 	if len(rt.toasts) == 0 {
-		rt.toastsPaused, rt.toastsBackground = false, false
+		rt.toastsPaused = false
 		if !keep {
 			return nil
 		}
@@ -268,17 +254,16 @@ func toastViewport(c *context, keep bool, fn func(viewport *node, toasts []Toast
 		// them, until the pointer moved.
 		viewport = coreColumn(c).Key(toastViewportKey).Absolute().Left(0).Top(0).Right(0).Bottom(0).Justify(End).PassThrough()
 		// The keyboard focus in the toasts holds them only while the
-		// window has it, which is the same for toasts that stop in the
-		// background, and lets those that run there run.
-		focused := rt.windowFocus()
-		rt.pauseToasts(viewport.Hovered() || viewport.FocusWithin() && focused, !focused, now)
+		// window has it: left there as the window goes to the background,
+		// it would hold them until the user came back.
+		rt.pauseToasts(viewport.Hovered() || viewport.FocusWithin() && rt.windowFocus(), now)
 		viewport.Children(func() { fn(viewport, list) })
 	})
 	// A frame closes the toast whose time is over next.
 	var next time.Duration
 	for i := range rt.toasts {
 		ts := &rt.toasts[i]
-		if life := ts.life(); life > 0 && !rt.toastStopped(ts) {
+		if life := ts.life(); life > 0 && !rt.toastsPaused {
 			if left := life - rt.toastAge(ts, now); next == 0 || left < next {
 				next = left
 			}
@@ -312,7 +297,7 @@ func coreToastBase(c *context, t Toast) toastParts {
 	var key any = t.ID
 	if i := rt.toastIndex(t.ID); i >= 0 {
 		ts := &rt.toasts[i]
-		key, p.age, p.stopped = ts.key, rt.toastAge(ts, c.now), rt.toastStopped(ts)
+		key, p.age, p.stopped = ts.key, rt.toastAge(ts, c.now), rt.toastsPaused
 		if life := ts.life(); life > 0 {
 			p.left = life - p.age
 		}

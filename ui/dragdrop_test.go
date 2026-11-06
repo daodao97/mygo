@@ -362,3 +362,36 @@ func TestGridReorder(t *testing.T) {
 		t.Errorf("moves %v", fmt.Sprint(moves))
 	}
 }
+
+// A value let go over no element taking it, as past the window's edge,
+// tells its source where, once; one given up with Escape does not.
+func TestDragMissed(t *testing.T) {
+	var missed []Point
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Gap(20).Padding(20).Children(func() {
+			src := coreBox(c).Size(100, 40).Label("Source").Drag("hello")
+			if at, ok := src.DragMissed(); ok {
+				missed = append(missed, at)
+			}
+			if _, ok := coreDrop[string](coreBox(c).Size(200, 100).Label("Target")); ok {
+				t.Error("the target took a value let go elsewhere")
+			}
+		})
+	}, 400, 400)
+	src, _ := tt.Find("Source")
+	drag(tt, src.X+10, src.Y+10, 450, -30)
+	tt.Frame()
+	if !slices.Equal(missed, []Point{{450, -30}}) {
+		t.Fatalf("let go past the edge: missed %v", missed)
+	}
+	missed = nil
+	tt.Press(src.X+10, src.Y+10)
+	tt.Move(src.X+40, src.Y+40)
+	tt.Move(450, 200)
+	tt.Key(0, KeyEscape)
+	tt.Release(450, 200)
+	tt.Frame()
+	if len(missed) != 0 {
+		t.Fatalf("given up with Escape: missed %v", missed)
+	}
+}

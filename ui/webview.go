@@ -282,7 +282,7 @@ func (rt *engine) webViewKey(v NativeWebView, mods Modifiers, key, physical Key,
 		rt.focused = id
 		rt.focusVisible = false
 	}
-	rt.keyDownPhysical(mods, key, physical, repeat)
+	rt.keyDownPhysical(mods, key, physical, CodeUnknown, repeat)
 	rt.updateTextInput()
 }
 

@@ -8,6 +8,23 @@ import (
 	"unicode/utf8"
 )
 
+// A SignDisplay is how NumberOptions.SignDisplay writes the sign of a
+// number, as ECMA-402's signDisplay does. SignAuto, the zero value,
+// writes the minus of a negative number and none of a positive one;
+// SignNegative does too, but no minus before a negative zero;
+// SignAlways writes a plus before a positive number, zero included, and
+// SignExceptZero too, but not before a number that rounds to zero;
+// SignNever writes no sign at all.
+type SignDisplay int
+
+const (
+	SignAuto SignDisplay = iota
+	SignNegative
+	SignAlways
+	SignExceptZero
+	SignNever
+)
+
 // NumberOptions are how FormatNumber writes a number. The zero value
 // writes it as Intl.NumberFormat does by default: grouped, with up to
 // three fraction digits, rounded half away from zero.
@@ -34,6 +51,13 @@ type NumberOptions struct {
 	// ICU's MessageFormat does ("2.5" is "2"), rather than away from zero
 	// ("3"), as Intl.NumberFormat does.
 	HalfEven bool
+	// SignDisplay writes the sign of the number, as Intl.NumberFormat's
+	// signDisplay: SignAlways writes "+1,234" where it writes "-1,234",
+	// SignExceptZero leaves the plus out of a number that rounds to zero
+	// ("+0" is "0" then), SignNever writes neither a plus nor a minus.
+	// SignAuto, the zero value, writes the minus of a negative number
+	// only; SignNegative does too, but no minus before a negative zero.
+	SignDisplay SignDisplay
 	// Notation, when CompactShort or CompactLong, writes the number in
 	// the locale's compact notation, as Intl.NumberFormat's notation
 	// "compact": "1.2K" and "1.2 thousand" in English, "1,2 k" and "1,2
@@ -158,6 +182,29 @@ func (f *NumberFormatter) Format(n any) string {
 	return f.formatDecimal(num.decimal)
 }
 
+// sign returns whether a number is written as negative, and whether a
+// plus goes before it, as the formatter's sign display says for one that
+// is negative or not and zero or not once rounded.
+func (f *NumberFormatter) sign(neg, zero bool) (neg2, plus bool) {
+	switch f.o.SignDisplay {
+	case SignAlways:
+		return neg, !neg
+	case SignExceptZero:
+		if zero {
+			return false, false
+		}
+		return neg, !neg
+	case SignNegative:
+		if zero {
+			return false, false
+		}
+		return neg, false
+	case SignNever:
+		return false, false
+	}
+	return neg, false
+}
+
 // special writes NaN and the infinities.
 func (f *NumberFormatter) special(v float64) (string, bool) {
 	p := f.pat
@@ -167,13 +214,42 @@ func (f *NumberFormatter) special(v float64) (string, bool) {
 	switch {
 	case math.IsNaN(v):
 		// In the pattern's affixes, as ICU writes it: "NaN%", "%NaN".
-		return p.prefix + f.sys.nan + p.suffix, true
+		return f.withSign(p, f.sys.nan, false), true
 	case math.IsInf(v, 1):
-		return p.prefix + f.sys.infinity + p.suffix, true
+		return f.withSign(p, f.sys.infinity, false), true
 	case math.IsInf(v, -1):
-		return p.negPrefix + f.sys.infinity + p.negSuffix, true
+		return f.withSign(p, f.sys.infinity, true), true
 	}
 	return "", false
+}
+
+// affixes returns the affixes of p around a number that is negative or
+// not, and a plus when one goes with it, in the place the locale puts
+// its minus: "€ +1.234,00" rather than "+€ 1.234,00" in Dutch, whose
+// negative pattern is "€ -", as ICU swaps the minus for the plus. A
+// locale whose negative pattern holds no minus gets the plus before its
+// prefix, as Intl does.
+func (f *NumberFormatter) affixes(p *numberPattern, neg, plus bool) (prefix, suffix string) {
+	if neg {
+		return p.negPrefix, p.negSuffix
+	}
+	if !plus {
+		return p.prefix, p.suffix
+	}
+	if strings.Contains(p.negPrefix, f.sys.minus) || strings.Contains(p.negSuffix, f.sys.minus) {
+		return strings.Replace(p.negPrefix, f.sys.minus, f.sys.plus, 1),
+			strings.Replace(p.negSuffix, f.sys.minus, f.sys.plus, 1)
+	}
+	return f.sys.plus + p.prefix, p.suffix
+}
+
+// withSign writes sym in the affixes of p, as the sign display has a
+// number that is negative or not: "+NaN", "-∞", "∞" for one written
+// without a sign.
+func (f *NumberFormatter) withSign(p *numberPattern, sym string, neg bool) string {
+	neg, plus := f.sign(neg, false)
+	prefix, suffix := f.affixes(p, neg, plus)
+	return prefix + sym + suffix
 }
 
 // formatDecimal writes a decimal number, "-1234.5".
@@ -186,6 +262,7 @@ func (f *NumberFormatter) formatDecimal(decimal string) string {
 		return f.o.Notation.format(f, f.o.Notation, neg, intPart, frac)
 	}
 	intPart, frac = f.round(intPart, frac, f.max)
+	neg, plus := f.sign(neg, intPart == "0" && strings.Trim(frac, "0") == "")
 	var b strings.Builder
 	b.Grow(len(intPart) + len(frac) + 16)
 	p := f.pat
@@ -193,21 +270,14 @@ func (f *NumberFormatter) formatDecimal(decimal string) string {
 		// The name of the currency of the plural form of the amount.
 		p = &f.cur.forms[f.cur.plural(f, intPart, frac, 0)]
 	}
-	if neg {
-		b.WriteString(p.negPrefix)
-	} else {
-		b.WriteString(p.prefix)
-	}
+	prefix, suffix := f.affixes(p, neg, plus)
+	b.WriteString(prefix)
 	f.sys.writeInteger(&b, intPart, p, !f.o.NoGrouping, f.o.MinIntegerDigits)
 	if frac != "" {
 		b.WriteString(f.sys.decimalSep)
 		f.sys.writeDigits(&b, frac)
 	}
-	if neg {
-		b.WriteString(p.negSuffix)
-	} else {
-		b.WriteString(p.suffix)
-	}
+	b.WriteString(suffix)
 	return b.String()
 }
 

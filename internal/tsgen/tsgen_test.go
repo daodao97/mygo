@@ -65,6 +65,7 @@ func TestGenerate(t *testing.T) {
 		`import { call, event, type Channel } from "mygo-runtime";`,
 		`export type Status = "todo" | "done";`,
 		`export type Priority = 0 | 1 | 2;`,
+		"export interface FixtureChannel {\n  name: string;\n}",
 		"/** Task is a unit of work. */\nexport interface Task {",
 		"  id: number;\n",
 		"  /** Title of the task. */\n  title: string;\n",
@@ -74,6 +75,7 @@ func TestGenerate(t *testing.T) {
 		"  due: string | null;\n",
 		"  meta?: Record<string, unknown>;\n",
 		"  parent?: Task;\n",
+		"  channel?: FixtureChannel;\n",
 		"  count: string;\n",
 		"  countPtr: string | null;\n",
 		"  raw: unknown;\n",
@@ -137,10 +139,12 @@ func TestGeneratedCodeTypeChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	usage := `import { Channel, runtime } from "mygo-runtime";
-import { Tasks, events, type Task, type Status } from "./client";
+import { Tasks, events, type Task, type Status, type FixtureChannel } from "./client";
 const s: Status = "todo";
 const page = await Tasks.list(s, 10);
 const first: Task | undefined = page.items[0];
+const channel: FixtureChannel | undefined = first?.channel;
+channel?.name.toUpperCase();
 await Tasks.add({ id: 1, title: "x", status: "done", priority: 2, tags: [], due: null, count: "1", countPtr: "9007199254740993", raw: null, data: "", scores: {}, matrix: [], children: [], extra: { A: true }, NoTag: "", createdAt: "" });
 const off = events.taskAdded.on((t) => t.title.toUpperCase());
 off();
@@ -164,6 +168,19 @@ Tasks.list("nope", 1);
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("tsc failed: %v\n%s", err, out)
+	}
+}
+
+// Without streaming parameters, an app's Channel keeps its original name.
+func TestChannelNameWithoutStreaming(t *testing.T) {
+	out, err := Generate(Model{Events: []Event{{Name: "channel", Type: reflect.TypeFor[fixture.Channel]()}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"export interface Channel {", `channel: event<Channel>("channel")`} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("client lacks %s:\n%s", want, out)
+		}
 	}
 }
 

@@ -30,7 +30,10 @@ held for the last click, as Shift for a Shift-click. `c.Modifiers()` returns the
 keys held now, as one goes down or up on its own too, and the view draws
 again as they change: a list showing each row's Cmd+1–9 while Cmd is held
 reads it. `PassThrough` lets the
-pointer through the element to what is below; `IgnoreInput` lets the
+pointer through the element to what is below; `HitTest` lets it through
+where a function of the pointer's position says, as a ring's hole or the
+gaps between a pie's segments (see
+[Drawing](drawing.md#fill-rules-and-hits));  `IgnoreInput` lets the
 pointer through it and those inside it, and keeps the keyboard focus away
 from them; with
 [`AccessHidden`](accessibility.md#out-of-assistive-technologys-way), which
@@ -38,6 +41,17 @@ hides them from assistive technology, they are inert.
 
 Elements that take the pointer give it to the innermost under it: a button
 in a clickable row takes its own clicks.
+
+`PressedInside` reports a press on an element or inside it without the
+element taking the pointer, where `Pressed` and `Clicked` make it take
+it: a table's cell notices an Alt-click while its row still chooses:
+
+```go
+cell := ui.Box(c).Children(func() { ui.Text(c, value) })
+if cell.PressedInside() && c.Modifiers()&ui.Alt != 0 {
+	app.inspect(row, col)
+}
+```
 
 `Pressed` stays true while the pointer is held inside the element. A
 release that comes with moves no build has read leaves the element
@@ -76,6 +90,86 @@ Every press comes from the primary pointer: the mouse, or the first finger
 on a touchscreen; a second finger presses nothing, in browsers too
 (`isPrimary`). [`HandleInput`](#every-key-as-it-comes) hears every
 button go down and up, with `InputEvent.Button`.
+
+`PressedPointer` tells what presses the element, and how hard, as
+Pointer Events' `pointerType` and `pressure`: `PointerMouse` (a mouse or
+a touchpad), `PointerPen` (a pen on a tablet or a screen) or
+`PointerTouch` (a finger on a touchscreen), and a pressure from 0 to 1
+as of the press's last move. A device that tells no pressure, as a
+mouse, presses 0.5 while a button is down. `HandleInput` gets the same
+on every `InputPointerDown`, `InputPointerMove` and `InputPointerUp`
+(`InputEvent.Pointer` and `Pressure`), every move as it comes rather
+than once a frame, and a pen pressing harder or softer where it stands
+comes as a move too. A signature pad widens its stroke with a pen's
+pressure, and goes by the pointer's speed for a mouse:
+
+```go
+ui.Box(c).Grow(1).Draw(app.paint).HandleInput(func(ev ui.InputEvent) bool {
+	switch {
+	case ev.Kind == ui.InputPointerDown, ev.Kind == ui.InputPointerMove && ev.Button == 0:
+		width := app.widthBySpeed(ev.X, ev.Y, ev.Time) // a mouse's, or a finger's
+		if ev.Pointer == ui.PointerPen {
+			width = 1 + 5*ev.Pressure
+		}
+		app.stroke = append(app.stroke, stroke{ev.X, ev.Y, width})
+		return true
+	}
+	return ev.Kind == ui.InputPointerUp
+})
+```
+
+The systems tell the device of each press and move: AppKit's tablet
+events on macOS (a mouse event's subtype and `pressure`, and
+`tabletPoint:` between moves), the `WM_POINTER` messages of pens and
+fingers on Windows, which Windows turns into the mouse messages it
+marks as theirs, GDK's source device and pressure axis on Linux, and
+`PointerEvent` in browsers. A `Tester` presses as a pen or a finger
+after `UsePointer(ui.PointerPen, 0.6)`.
+
+### A press the system cancels
+
+The system can end a press without the pointer letting go, as Pointer
+Events' `pointercancel`: a browser turning a touch into the page's
+scrolling, a menu or another window taking the mouse while a button is
+down, a pen or a finger Windows gives up on. The window losing the
+keyboard ends a press the same way. Such a press commits nothing a release
+would: it clicks nothing (`Clicked`, `RightClicked`), drops no value it
+drags (`Drop`), ends no drag (`DragEnded`), opens no context menu, and a
+`Draggable` element goes back to where the press took it. `PressCanceled`
+reports it, in the frame after, for a gesture to undo what it began:
+
+```go
+dx, _, held := handle.Dragged()
+switch {
+case held:
+	app.preview += dx
+case handle.PressCanceled():
+	app.preview = 0 // as it was
+case app.preview != 0:
+	app.width, app.preview = app.width+app.preview, 0
+}
+```
+
+`HandleInput` still gets the press's `InputPointerUp`, so that what it
+holds lets go, with `InputEvent.Canceled` set: roll back rather than
+commit.
+
+```go
+ui.Box(c).Size(120, 40).HandleInput(func(ev ui.InputEvent) bool {
+	switch ev.Kind {
+	case ui.InputPointerDown:
+		app.armed = true
+	case ui.InputPointerUp:
+		if app.armed && !ev.Canceled {
+			app.fire()
+		}
+		app.armed = false
+	}
+	return true
+})
+```
+
+A `Tester` cancels a press with `CancelPress`.
 
 While the pointer presses an element, the elements it was over as the
 press began, as the row around a button, stay `Hovered` as long as it is
@@ -116,6 +210,25 @@ field of a dialog, and `Focus` keeps it there while you call it; `Focused`,
 button, and Space toggles a focused check box, switch, toggle or radio
 button. A focused link, or an element with `Role(ui.RoleLink)`, takes Enter
 alone, as in a web page: Space scrolls the container around it.
+
+`TabStop(false)` makes an element focusable but out of Tab's order, as
+HTML's `tabindex="-1"`: it takes the focus from a click, from `Focus` and
+`AutoFocus`, and from assistive technology, while Tab and Shift+Tab pass
+over it, on to the controls inside it and after it. A card or a panel
+takes the focus so to hold its keys without coming before its own
+buttons; `TabStop(true)` puts it back in the order. In a [focus
+group](#focus-groups), Tab enters at a member it stops at, while the
+arrows still reach the others.
+
+```go
+card := ui.Column(c).Padding(12).TabStop(false).Children(func() {
+	ui.Text(c, item.Title)
+	ui.Button(c, "Open") // Tab goes here, past the card
+})
+if card.Shortcut(0, ui.KeyDelete) {
+	app.remove(item)
+}
+```
 
 `FocusLeft` reports that the focus left an element since the last frame:
 it was on the element or inside it, and is now outside it, or nowhere, as
@@ -309,6 +422,38 @@ func shortcutHint(c *ui.Context, key ui.Key, label string, run func()) {
 }
 ```
 
+## Keys held
+
+`c.KeyDown(ui.KeyK)` reports whether a key is held down in the window, and
+`c.KeysDown()` lists the keys held, in the order they went down, whichever
+element has the focus and whether or not it took them: they only watch,
+so the focused field still types. A view that reads them draws again as
+they change. A cheat sheet of shortcuts lights the key caps held while its
+search field has the focus, and fades the rows that use none of them:
+
+```go
+ui.SearchField(c, &app.query).Label("Search shortcuts").AutoFocus()
+held, mods := c.KeysDown(), c.Modifiers()
+for _, s := range app.shortcuts {
+	row := shortcutRow(c, s, held, mods) // lights the caps held
+	if (len(held) > 0 || mods != 0) && !s.uses(held, mods) {
+		row.Opacity(0.4)
+	}
+}
+```
+
+Keys count as shortcuts take them, so Cmd+ы on a Russian layout holds
+`ui.KeyS`; the modifier keys are `c.Modifiers()`'s. A key whose press runs
+a menu item's shortcut goes to the menu, not the window. The window lets
+go of every key as it loses the keyboard to another window or app, where
+their releases go, and of each key whose release the system keeps from
+it: on macOS, and in a Mac's browsers, one let go of while Command is
+held; on Windows, one held as a menu opens, as with Alt and a letter or
+Alt and Space, whose release the menu takes; and one whose release an
+input method takes, as it begins composing while the key is held. A
+`Tester` holds keys with `KeyDown` and `KeyUp`, and `SetFocused(false)`
+lets go of them.
+
 ## Input methods
 
 Text inputs take text composed with input methods, which see the text
@@ -427,7 +572,12 @@ except in browsers, which cannot. `c.ReadClipboard`,
 `c.WriteClipboard` and `c.OpenURL` copy, paste and open links for them;
 `c.OpenURLThen` opens a link too, and its function gets what came of it a
 moment later, as the system opens it, with an error when no app could,
-and the view builds a frame anew. `Services.ReadClipboardData` and
+and the view builds a frame anew. `c.WriteClipboardThen` copies text the
+same way, as `navigator.clipboard.writeText` resolves or rejects: its
+function gets an error when the text did not get there, as when
+another app holds the clipboard, or a browser refuses a write the user
+did not act for, so that a copy button can show "Copied" or "Failed"
+(a `Tester` refuses them after `FailClipboard`). `Services.ReadClipboardData` and
 `WriteClipboardData` read and write several formats at once, as a rich
 text editor copies its own, HTML and plain text, and
 `ClipboardFormats` lists the clipboard's without reading them, as a
@@ -455,6 +605,12 @@ c.OpenURLThen(url, func(err error) {
 		c.Toast("No app opens " + url)
 	}
 })
+
+if ui.Button(c, "Copy").Clicked() {
+	c.WriteClipboardThen(link, func(err error) {
+		app.copied, app.copyFailed = err == nil, err != nil
+	})
+}
 ```
 
 When a custom drawing computes its cursor during painting, use
@@ -472,6 +628,61 @@ Use `.TouchSelection()` instead when the widget also selects text. Holding
 still for 500 ms delivers `InputLongPress`, followed by captured pointer
 moves and Up/Cancel if the handler takes it. The hold does not focus the
 widget or open the keyboard. Movement before the hold still scrolls.
+
+### Every key of the keyboard
+
+`InputEvent.Code` is the key by its position on any keyboard, a `ui.KeyCode`:
+it tells the sides of the modifiers (`ui.CodeShiftLeft`, `ui.CodeAltRight`,
+`ui.CodeSuperLeft`) and names the keys `ui.Key` has no name for, as
+`ui.CodeNumpad5` or `ui.CodeIntlBackslash`, the 102nd key beside the left
+Shift. Its values are USB HID usage IDs of the keyboard page and its names
+those of `KeyboardEvent.code`, with Super for Meta, so one table turns them
+into a guest's scancodes.
+
+`HandleInput` and `ObserveInput` get every key the system tells the window
+of, as a web page's listeners do. That includes modifiers pressed and released
+on their own, a lone tap of Super among them, Caps Lock, Num Lock, Scroll Lock,
+Print Screen and Pause, and the keys whose press the layout types no `Key` for,
+as a key held with AltGr. Those come as `ui.InputKeyDown` and `ui.InputKeyUp`
+with `Key` being `ui.KeyUnknown`, and only `Code` names them. `Mods` includes
+the modifier a press brings and leaves out the one a release takes. A handler
+that picks its keys with a `switch` never notices them; one that reacts to any
+key should check that `Key` is not `ui.KeyUnknown`.
+
+```go
+ui.Box(c).Grow(1).Focusable().AutoFocus().Bind(&app.screen).HandleInput(func(ev ui.InputEvent) bool {
+	switch ev.Kind {
+	case ui.InputKeyDown:
+		return app.guest.press(ev.Code)
+	case ui.InputKeyUp:
+		return app.guest.release(ev.Code)
+	}
+	return false
+})
+if !app.screen.Focused(c) {
+	app.guest.releaseAll() // what is let go of elsewhere never comes up here
+}
+```
+
+What the function takes goes no further, as Alt, which otherwise opens the
+menu bar on Windows and Linux, so return false for keys you don't use;
+shortcuts keep working either way. `Tester.CodeDown` and `Tester.CodeUp` press
+and let go of such keys in tests.
+
+What a system tells has limits:
+
+- Keys the desktop takes for itself never come, as Super where a launcher
+  opens with it, or combinations a window manager binds.
+- On macOS Caps Lock comes as a press and a release together as its lock
+  changes, not as the key moves. Fn has no code.
+- On Windows AltGr comes as `ui.CodeControlLeft` then `ui.CodeAltRight`, as
+  Windows makes up the left Control, and `Mods` holds Ctrl and Alt. Print
+  Screen comes only as a release, as Windows keeps its press. With both Shifts
+  held, only the last one's release comes. The Windows key's release still
+  opens the Start menu.
+- In browsers the page gets what the browser leaves it: `Code` is the
+  event's `code`.
+- `WebView`s take the keys while they have the focus.
 
 ## Input inside a region
 

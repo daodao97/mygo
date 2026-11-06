@@ -314,12 +314,17 @@ func (in *inspector) noteKey(id uint64, k any) {
 	}
 }
 
+// holds reports whether the element id is in the panel while it shows.
+func (in *inspector) holds(rt *engine, id uint64) bool {
+	return in.open && in.panel != 0 && rt.within(id, in.panel)
+}
+
 // pointer takes the pointer over the content while picking: moving
 // outlines the element under it, and a press chooses it. It reports
 // whether it took ev.
 func (in *inspector) pointer(rt *engine, ev platform.SurfaceEvent, x, y float32) bool {
 	switch {
-	case in.swallow && ev.Kind == platform.PointerUp:
+	case in.swallow && (ev.Kind == platform.PointerUp || ev.Kind == platform.PointerCancel):
 		in.swallow = false
 		return true
 	case !in.picking || x >= in.appW:
@@ -344,7 +349,7 @@ func (in *inspector) pointer(rt *engine, ev platform.SurfaceEvent, x, y float32)
 		in.picking, in.hovered, in.swallow = false, 0, true
 		rt.requestFrame()
 		return true
-	case platform.PointerUp:
+	case platform.PointerUp, platform.PointerCancel:
 		return true
 	}
 	return false
@@ -609,10 +614,38 @@ func roleName(r Role) string {
 		return "MenuItemCheckbox"
 	case RoleMenuItemRadio:
 		return "MenuItemRadio"
+	case RoleRegion:
+		return "Region"
+	case RoleLog:
+		return "Log"
+	case RoleTimer:
+		return "Timer"
+	case RoleAlert:
+		return "Alert"
+	case RoleSeparator:
+		return "Separator"
+	case RoleRowHeader:
+		return "RowHeader"
+	case RoleSearch:
+		return "Search"
+	case RoleArticle:
+		return "Article"
 	case RoleHeading:
 		return "Heading"
 	case RoleNavigation:
 		return "Navigation"
+	case RoleGrid:
+		return "Grid"
+	case RoleTreeGrid:
+		return "TreeGrid"
+	case RoleListBox:
+		return "ListBox"
+	case RoleOption:
+		return "Option"
+	case RoleDeletion:
+		return "Deletion"
+	case RoleInsertion:
+		return "Insertion"
 	}
 	return ""
 }
@@ -623,6 +656,16 @@ func accessibleRole(e *node) (string, bool) {
 	r, ok := e.accessRole()
 	if !ok {
 		return "none", false
+	}
+	switch e.role {
+	case RoleListBox:
+		return "listbox", true
+	case RoleOption:
+		return "option", true
+	case RoleDeletion:
+		return "deletion", true
+	case RoleInsertion:
+		return "insertion", true
 	}
 	switch role := Role(r) + RoleGroup; role {
 	case RoleGroup:

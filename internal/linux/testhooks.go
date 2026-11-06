@@ -4,6 +4,9 @@ package linux
 
 import (
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -214,6 +217,8 @@ var xtest struct {
 	button func(dpy ptr, button uint32, press bool, delay uint64) int32
 	motion func(dpy ptr, screen int32, x, y int32, delay uint64) int32
 	sync   func(dpy ptr, discard bool) int32
+
+	queryPointer func(dpy ptr, window uint64, root, child *uint64, rootX, rootY, winX, winY *int32, mask *uint32) bool
 }
 
 // gdkEventsPending reports whether GDK has events it has yet to handle.
@@ -230,7 +235,8 @@ func loadXTest() ptr {
 		x, xerr := open("libX11.so.6")
 		if err != nil || xerr != nil || !bind(lib, &xtest.button, "XTestFakeButtonEvent") ||
 			!bind(lib, &xtest.motion, "XTestFakeMotionEvent") || !bind(x, &xtest.sync, "XSync") ||
-			!bind(libGDK, &gdkEventsPending, "gdk_events_pending") || !bind(lib, &xtest.key, "XTestFakeKeyEvent") {
+			!bind(libGDK, &gdkEventsPending, "gdk_events_pending") || !bind(lib, &xtest.key, "XTestFakeKeyEvent") ||
+			!bind(x, &xtest.queryPointer, "XQueryPointer") {
 			return 0
 		}
 	}
@@ -276,15 +282,103 @@ func TestPressKeys(names ...string) bool {
 // TestHoldKey presses the key of X keysym name and holds it, or releases
 // it, through the XTEST extension: held, the X server's auto-repeat
 // presses it again until it is released. It reports false without an X
-// server.
+// server, or without that key in the keyboard's layout.
 func TestHoldKey(name string, press bool) bool {
 	dpy := loadXTest()
 	if dpy == 0 {
 		return false
 	}
-	xtest.key(dpy, uint32(x11.keysymToKeycode(dpy, x11.stringToKeysym(cs(name)))), press, 0)
+	code := x11.keysymToKeycode(dpy, x11.stringToKeysym(cs(name)))
+	if code == 0 {
+		return false // the keyboard's layout has no such key, for now
+	}
+	xtest.key(dpy, uint32(code), press, 0)
 	sent(dpy)
+	if press {
+		testHeld[name] = true
+	} else {
+		delete(testHeld, name)
+	}
 	return true
+}
+
+// testHeld holds the X keysym names of the keys TestHoldKey holds. It keeps
+// them itself rather than ask the server, whose keys down may be a person's
+// on a desktop.
+var testHeld = map[string]bool{}
+
+// testLockKeys are the keys that lock a modifier for the keys after them, by
+// the modifier's bit in the X state, as the keyboard layouts X servers start
+// with have them.
+var testLockKeys = []struct {
+	mask uint32
+	key  string
+}{
+	{0x02, "Caps_Lock"}, // LockMask
+	{0x10, "Num_Lock"},  // Mod2Mask
+}
+
+// TestKeyboard is what the X server keeps of a keyboard from one test to the
+// next, as all of a package's tests share it.
+type TestKeyboard struct {
+	Locks uint32 // the bits of testLockKeys on
+	Held  string // the keys TestHoldKey holds, sorted
+}
+
+func (k TestKeyboard) String() string {
+	var on []string
+	for _, l := range testLockKeys {
+		if k.Locks&l.mask != 0 {
+			on = append(on, l.key)
+		}
+	}
+	if len(on) == 0 {
+		on = append(on, "no lock key")
+	}
+	s := strings.Join(on, " and ") + " on"
+	if k.Held != "" {
+		s += ", holding " + k.Held
+	}
+	return s
+}
+
+// TestKeyboardState returns the keyboard's state, and false without an X
+// server.
+func TestKeyboardState() (TestKeyboard, bool) {
+	dpy := loadXTest()
+	if dpy == 0 {
+		return TestKeyboard{}, false
+	}
+	var root, child uint64
+	var rootX, rootY, winX, winY int32
+	var mask uint32
+	xtest.queryPointer(dpy, x11.defaultRoot(dpy), &root, &child, &rootX, &rootY, &winX, &winY, &mask)
+	k := TestKeyboard{Held: strings.Join(slices.Sorted(maps.Keys(testHeld)), " ")}
+	for _, l := range testLockKeys {
+		k.Locks |= mask & l.mask
+	}
+	return k, true
+}
+
+// TestRestoreKeyboard puts the keyboard back in state k, which held no key
+// that it doesn't hold now, pressing the lock keys that differ.
+func TestRestoreKeyboard(k TestKeyboard) {
+	held := strings.Fields(k.Held)
+	for name := range testHeld {
+		if !slices.Contains(held, name) {
+			TestHoldKey(name, false)
+		}
+	}
+	now, ok := TestKeyboardState()
+	if !ok {
+		return
+	}
+	for _, l := range testLockKeys {
+		if (now.Locks^k.Locks)&l.mask != 0 {
+			TestHoldKey(l.key, true)
+			TestHoldKey(l.key, false)
+		}
+	}
 }
 
 // TestMovePointer moves the pointer to a point of the screen through the

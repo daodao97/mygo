@@ -96,8 +96,8 @@ func (s *Surface) Press(x, y float64) *WebView {
 		v.Focus()
 		return v
 	}
-	s.Send(platform.SurfaceEvent{Kind: platform.PointerDown, PointerType: platform.PointerMouse, X: x, Y: y, Clicks: 1})
-	s.Send(platform.SurfaceEvent{Kind: platform.PointerUp, PointerType: platform.PointerMouse, X: x, Y: y, Clicks: 1})
+	s.Send(platform.SurfaceEvent{Kind: platform.PointerDown, X: x, Y: y, Clicks: 1})
+	s.Send(platform.SurfaceEvent{Kind: platform.PointerUp, X: x, Y: y, Clicks: 1})
 	return nil
 }
 

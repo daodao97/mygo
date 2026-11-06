@@ -42,6 +42,9 @@ type host interface {
 	updateAccessibility(tree *platform.AccessTree)
 	readClipboard() string
 	writeClipboard(string)
+	// writeClipboardThen puts text on the clipboard as writeClipboard
+	// does, and done gets what came of it on the main thread, later.
+	writeClipboardThen(text string, done func(error))
 	// readClipboardData reads the representations of formats on the
 	// clipboard, all for nil; writeClipboardData puts data there;
 	// clipboardFormats lists them.
@@ -148,6 +151,9 @@ type engine struct {
 	// zoomChanged tells that it changed since the frame's size was read.
 	contentZoom float32
 	zoomChanged bool
+	// menuPresentation is how the window shows its popup menus
+	// (Context.SetMenuPresentation).
+	menuPresentation MenuPresentation
 
 	// building counts the public constructors under way: input queued
 	// while more were under way than now belongs to controls built since,
@@ -311,7 +317,15 @@ type engine struct {
 
 	pointerX, pointerY float32
 	pointerIn          bool
-	hover              []uint64
+	// pointerType and pressure are the device of the last pointer event
+	// and how hard it pressed (InputEvent.Pressure), buttons the buttons
+	// down as the events tell, and pressureMoved that the last move
+	// changed the pressure alone, which moves as the pointer moving does.
+	pointerType   PointerType
+	pressure      float32
+	buttons       uint8
+	pressureMoved bool
+	hover         []uint64
 	// chain is a buffer for the elements under the pointer.
 	chain       []uint64
 	pressed     *state
@@ -346,10 +360,10 @@ type engine struct {
 	pressLost              func(InputEvent) bool
 	pressLostX, pressLostY float32
 	// downing counts the presses pointerDown is handling, and ups holds the
-	// releases (button, clicks) that came meanwhile, through a main loop
-	// a handler ran nested, for it to apply once the press is recorded.
+	// releases and cancels that came meanwhile, through a main loop a
+	// handler ran nested, for it to apply once the press is recorded.
 	downing int
-	ups     [][2]int
+	ups     []pendingUp
 	// listMenu and listDrag are the parts of lists a right-click and a
 	// drag reach, set as the first list builds, and cellClick and
 	// cellInBlock the parts of tables choosing cells a click and a press
@@ -384,6 +398,11 @@ type engine struct {
 	// drawn as active (windowActive), so that a change of it draws a
 	// frame.
 	activeRead bool
+	// keysHeld are the keys held in the window (Context.KeyDown); keysRead
+	// tells that the last frame read them, so that a change of them draws
+	// a frame.
+	keysHeld []heldKey
+	keysRead bool
 	// withinRead tells that the frame read FocusWithin, which follows the
 	// parents its last layout committed: the focus moving as it builds, to
 	// an element it builds for the first time or after the read, draws
@@ -391,16 +410,14 @@ type engine struct {
 	withinRead bool
 	// toasts are the toasts the window holds, oldest first, and
 	// toastList those showing, as ToastViewportBase gives them; their time
-	// stops while toastsPaused, as the user holds them, and, but for those
-	// that RunInBackground, while toastsBackground. A viewport of them was
-	// built in the pass toastPass of the frame toastFrame.
-	toasts           []toast
-	nextToast        uint64
-	toastList        []Toast
-	toastsPaused     bool
-	toastsBackground bool
-	toastFrame       uint64
-	toastPass        int
+	// stops while toastsPaused, as the user holds them. A viewport of them
+	// was built in the pass toastPass of the frame toastFrame.
+	toasts       []toast
+	nextToast    uint64
+	toastList    []Toast
+	toastsPaused bool
+	toastFrame   uint64
+	toastPass    int
 	// mods are the modifiers of the last pointer event.
 	mods Modifiers
 
@@ -424,8 +441,11 @@ type engine struct {
 	held       bool
 	shown      time.Time
 	input      bool
-	painted    [3]float32
-	gen        uint64
+	// hiddenAsked tells that a view asked whether the window shows
+	// (WindowHidden), which builds it again as that changes.
+	hiddenAsked bool
+	painted     [3]float32
+	gen         uint64
 	// repaintRate is the most frames a second the drawings that move ask
 	// for with Painter.AnimationFrameRate, repaintFull whether one asked
 	// for the display's with Painter.AnimationFrame. paceEvery is how many
@@ -508,6 +528,8 @@ type engine struct {
 	// announcements are the texts for assistive technology to read out
 	// (Context.Announce).
 	announcements []string
+	// live is what the live regions of the last frame's tree held.
+	live liveState
 	// stats measures frames for MYGO_FRAME_STATS, nil when it is unset.
 	stats *frameStats
 	// dropOver is the element files are dragged over; access is true once
@@ -677,7 +699,7 @@ func (rt *engine) runFrame() {
 
 	rt.frame++
 	rt.input = false
-	rt.focusRead, rt.activeRead, rt.withinRead = false, false, false
+	rt.focusRead, rt.activeRead, rt.withinRead, rt.keysRead = false, false, false, false
 	rt.stats.begin(rt)
 	now := rt.frameTime()
 	rt.zoomChanged = false
@@ -746,6 +768,9 @@ func (rt *engine) runFrame() {
 			return
 		}
 		rt.buildToasts(&rt.c)
+		if d := rt.menu.drawn; d != nil && d.edit && rt.drawsMenus() {
+			menusInWindow.drawEditMenu(rt)
+		}
 		if rt.overlayExits {
 			// Copies of the elements gone from the layer leave in it
 			// (animateExits), empty as it is otherwise: it lets the
@@ -772,7 +797,7 @@ func (rt *engine) runFrame() {
 		if rt.closing {
 			return // an action closed it
 		}
-		if !rt.consumed && !rt.zoomChanged {
+		if !rt.consumed && !rt.zoomChanged && !rt.unhoverGone() {
 			break
 		}
 	}
@@ -860,7 +885,9 @@ func (rt *engine) runFrame() {
 	rt.updateTextInput()
 	rt.updateCursor()
 	if rt.access {
-		rt.host.updateAccessibility(rt.windowAccess(rt.accessTree()))
+		t := rt.accessTree()
+		rt.liveRegions(t, true)
+		rt.host.updateAccessibility(rt.windowAccess(t))
 	}
 	if h, ok := rt.host.(*headless); ok {
 		// For tests, whether assistive technology reads the window or not.
@@ -1069,10 +1096,13 @@ func (rt *engine) repaintFrame(w, h, scale float32) {
 	rt.c.now = rt.frameTime()
 	rt.text.BeginFrame()
 	rt.repainting, rt.repaintAt = false, time.Time{}
+	// What the last frame painted outside Draw callbacks that asked to be
+	// painted again, as a content transition, moves only painted whole.
+	whole := rt.untracked
 	rt.repaintRate, rt.repaintFull, rt.untracked = 0, false, false
 	root := rt.c.root
 	rt.repose()
-	if !rt.repaintParts() {
+	if whole || !rt.repaintParts() {
 		rt.paint(root, w, h, scale)
 	}
 	for try := 0; try < 2 && rt.text.Full(); try++ {
@@ -1129,9 +1159,10 @@ func (rt *engine) forgetInput() {
 		s.pressPending = false
 		s.dragX, s.dragY = 0, 0
 		s.gestures = nil
-		s.released = false
+		s.released, s.canceled = false, false
 		s.dropped = nil
 		s.droppedValue, s.hasDropped = nil, false
+		s.dragMissed = false
 		s.dataDropped = nil
 		if s.releaseLater.due {
 			// The pass read the moves of a press that ended: the next
@@ -1409,6 +1440,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		s.clipRect, s.clipRadii = e.clipRect()
 	}
 	s.selfClip, s.selfRadius, s.selfClips = e.selfClip()
+	s.hitFn = e.hitFn
 	if len(rt.liftHits) > 0 && (e == e.c.overlay || e.parent != nil && e.parent == e.c.overlay) {
 		// The elements flying in the layer before, the window's content
 		// or an overlay, go over it, under this one.
@@ -1441,9 +1473,14 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	}
 	s.ignoreInput = e.ignoreInput || e.parent != nil && e.parent.st.ignoreInput
 	s.accessHidden = e.accessHidden || e.flags&flagInert != 0 || e.parent != nil && e.parent.st.accessHidden
+	s.accessDisabled = e.accessDisabled || e.parent != nil && e.parent.st.accessDisabled
+	s.activeDescendant = 0
+	if d := e.activeDescendant; d != nil {
+		s.activeDescendant = d.id
+	}
 	s.cursor, s.tip = e.cursor, e.tip
 	s.webView = e.webView
-	s.role = e.role
+	s.role, s.focusHighlights = e.role, e.focusHighlights
 	// The element asks for gestures for this frame only, so an element that
 	// stops calling Gestures stops receiving: what is left in s.gestures is
 	// what this frame's build will read (gesture.go's updateGestures).
@@ -1519,8 +1556,8 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		rt.hits = append(rt.hits, hit{s, Rect{e.x, e.y, e.w, e.h}, e.flags})
 	}
 	label := e.label
-	if f := e.nameFrom; label == "" && f != nil {
-		label = f.nameOf() // an input, named by its field
+	if f := e.nameFrom; f != nil && (label == "" || e.labelledBy && f.nameOf() != "") {
+		label = f.nameOf() // an input, named by its field or its label
 	}
 	if (label != "" || e.kind == kindText) && !invisible {
 		if label == "" {

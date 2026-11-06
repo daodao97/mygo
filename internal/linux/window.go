@@ -1743,6 +1743,14 @@ func initWindowCallbacks() {
 			} else {
 				w.h.Restored()
 			}
+			// Nothing of a minimized window shows (Surface.Occluded).
+			if s := w.surface; s != nil {
+				kind := platform.SurfaceShown
+				if state&stateIconified != 0 {
+					kind = platform.SurfaceHidden
+				}
+				s.send(platform.SurfaceEvent{Kind: kind})
+			}
 		}
 		if changed&stateMaximized != 0 {
 			if state&stateMaximized != 0 {
@@ -1779,6 +1787,8 @@ func initWindowCallbacks() {
 				w.layoutControls()
 			}
 		}
+		// Theme.WindowButtons too.
+		theBackend.h.ThemeChanged()
 	})
 	cbButtonPress = purego.NewCallback(func(widget, event, data ptr) bool {
 		w := b().window(data)

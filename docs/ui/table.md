@@ -157,6 +157,19 @@ app.files.HeaderMenu = func(m *ui.Menu, col int) {
 }
 ```
 
+## Header cells
+
+`ListState.HeaderCell` is called as the table builds each column's header
+cell, with the cell and the column's index, as `HeaderMenu`'s: what it
+builds goes in the cell after the title and the sort arrow, and it may
+give the cell a tooltip or a card of its own:
+
+```go
+app.files.HeaderCell = func(cell ui.Element, col int) {
+	cell.Tooltip(app.columnTypes[col])
+}
+```
+
 ## Cell menu
 
 `ListState.CellMenu` gives the cells a context menu over the whole cell,
@@ -191,7 +204,8 @@ ui.Table(c, &app.files, cols, len(files), func(row, col int) {
 
 Assistive technology sees a table, named by its `Label`, of rows named by
 the text inside them, each saying which of all the rows it is, with column
-headers that say the order the rows are sorted in. With `CellSelect`, the
-cells of the block say they are chosen.
+headers that say the order the rows are sorted in, and the cells of a
+`RowHeader` column naming their rows as row headers. With `CellSelect`,
+the cells of the block say they are chosen.
 
 For a tree of rows in columns, see [Outline](outline.md#in-columns).

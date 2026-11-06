@@ -147,9 +147,19 @@ func (rt *engine) showTooltip(c *context) uint64 {
 	if hover != t.hover {
 		t.hover, t.hoverSince = hover, now
 	}
+	// The element with the keyboard focus, or the one it gives it to (as
+	// a menu's highlighted item, an ActiveDescendant), whose tip shows as a
+	// focused element's does.
 	var focus uint64
-	if rt.focusVisible && rt.windowFocus() && tipped(rt.focused) {
-		focus = rt.focused
+	if rt.focusVisible && rt.windowFocus() {
+		if f := rt.states[rt.focused]; f != nil {
+			switch {
+			case tipped(f.activeDescendant):
+				focus = f.activeDescendant
+			case tipped(rt.focused):
+				focus = rt.focused
+			}
+		}
 	}
 	if focus != t.focus {
 		t.focus, t.focusSince = focus, now

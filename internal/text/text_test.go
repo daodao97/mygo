@@ -13,6 +13,9 @@ import (
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/wait"
 	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/goitalic"
+	"golang.org/x/image/font/gofont/gomedium"
+	"golang.org/x/image/font/gofont/gomediumitalic"
 	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/image/font/gofont/goregular"
 )
@@ -636,6 +639,78 @@ func TestRegisterFont(t *testing.T) {
 	system := font("")
 	if font("MyGo Test Sans") == system || font("Go") == system {
 		t.Error("text does not use the registered font")
+	}
+}
+
+// TestRegisterFontUnderGivenFamilies tells apart faces of one family
+// registered under families the app gives, as two that declare the same
+// weight need: each family the app gives holds only the files registered
+// under it, matched by weight and style among them, and the font's own
+// family, which the app gives none, holds them all (#1224).
+func TestRegisterFontUnderGivenFamilies(t *testing.T) {
+	s := newSystem()
+	for _, f := range []struct {
+		data   []byte
+		family string
+	}{
+		{goregular.TTF, "MyGo Test Given Upright"},
+		{goitalic.TTF, "MyGo Test Given Other"},
+		{gobold.TTF, "MyGo Test Given Other"},
+	} {
+		if err := s.RegisterFont(f.data, f.family); err != nil {
+			t.Fatal(err)
+		}
+	}
+	width := func(family string, weight int, italic bool) float32 {
+		return s.Layout(Params{Text: "The quick brown fox jumps over the lazy dog 0123456789", Style: Style{Size: 40, Family: family, Weight: weight, Italic: italic}}).Width
+	}
+	// The faces, in their own family Go.
+	regular, italic, bold := width("Go", 400, false), width("Go", 400, true), width("Go", 700, false)
+	if regular == italic || regular == bold || italic == bold {
+		t.Fatalf("Go's faces are alike: regular %v, italic %v, bold %v", regular, italic, bold)
+	}
+	for _, c := range []struct {
+		family string
+		weight int
+		italic bool
+		want   float32
+	}{
+		{"MyGo Test Given Upright", 400, false, regular},
+		{"MyGo Test Given Other", 400, true, italic},
+		{"MyGo Test Given Other", 700, false, bold},
+	} {
+		if got := width(c.family, c.weight, c.italic); got != c.want {
+			t.Errorf("%s at %d, italic %v: width %v, want %v (regular %v, italic %v, bold %v)", c.family, c.weight, c.italic, got, c.want, regular, italic, bold)
+		}
+	}
+	// Regular is Go's face at 400, but not one of this family's.
+	if got := width("MyGo Test Given Other", 400, false); got != italic && got != bold {
+		t.Errorf("MyGo Test Given Other at 400: width %v, not one of its faces (regular %v, italic %v, bold %v)", got, regular, italic, bold)
+	}
+}
+
+// TestRegisterFontUnderOwnFamily gives a font's own family name to some
+// of its faces, after another face of the family was registered under a
+// family of its own: the own name then holds only the faces registered
+// under it, whichever came first, as Selawik's Light and Semilight need
+// (#1224).
+func TestRegisterFontUnderOwnFamily(t *testing.T) {
+	s := newSystem()
+	if err := s.RegisterFont(gomediumitalic.TTF, "MyGo Test Given Medium Italic"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RegisterFont(gomedium.TTF, "Go Medium"); err != nil {
+		t.Fatal(err)
+	}
+	width := func(family string, italic bool) float32 {
+		return s.Layout(Params{Text: "The quick brown fox jumps over the lazy dog 0123456789", Style: Style{Size: 40, Family: family, Weight: 500, Italic: italic}}).Width
+	}
+	upright, italic := width("Go Medium", false), width("MyGo Test Given Medium Italic", true)
+	if upright == italic {
+		t.Fatalf("Go Medium's faces are alike: %v", upright)
+	}
+	if got := width("Go Medium", true); got == italic {
+		t.Errorf("Go Medium, italic: width %v, the face registered under another family (upright %v)", got, upright)
 	}
 }
 

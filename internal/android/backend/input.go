@@ -30,7 +30,7 @@
 //
 // # What the contract cannot carry
 //
-// platform.SurfaceEvent carries one pointer at a time — its PointerType and
+// platform.SurfaceEvent carries one pointer at a time — its Pointer and
 // its PointerID — but has no pointer list (see internal/platform/surface.go),
 // so a MotionEvent's whole pointer set cannot be delivered in the flat
 // stream. This file therefore produces two things from every touch:
@@ -420,14 +420,14 @@ func (d *Decoder) Touch(in TouchInput) TouchResult {
 		d.downButton = button
 		res.Pointers[at].Action = PointerPressed
 		res.Events = []platform.SurfaceEvent{{
-			Kind:        platform.PointerDown,
-			PointerID:   uint64(res.Pointers[at].ID),
-			PointerType: platform.PointerTouch,
-			X:           res.Pointers[at].X,
-			Y:           res.Pointers[at].Y,
-			Button:      button,
-			Clicks:      d.countClick(button, in.EventTimeMs, true),
-			Mods:        mods,
+			Kind:      platform.PointerDown,
+			PointerID: uint64(res.Pointers[at].ID),
+			Pointer:   platform.PointerTouch,
+			X:         res.Pointers[at].X,
+			Y:         res.Pointers[at].Y,
+			Button:    button,
+			Clicks:    d.countClick(button, in.EventTimeMs, true),
+			Mods:      mods,
 		}}
 	case actUp:
 		if at < 0 {
@@ -438,14 +438,14 @@ func (d *Decoder) Touch(in TouchInput) TouchResult {
 		button := d.downButton
 		res.Pointers[at].Action = PointerReleased
 		res.Events = []platform.SurfaceEvent{{
-			Kind:        platform.PointerUp,
-			PointerID:   uint64(res.Pointers[at].ID),
-			PointerType: platform.PointerTouch,
-			X:           res.Pointers[at].X,
-			Y:           res.Pointers[at].Y,
-			Button:      button,
-			Clicks:      d.countClick(button, in.EventTimeMs, false),
-			Mods:        mods,
+			Kind:      platform.PointerUp,
+			PointerID: uint64(res.Pointers[at].ID),
+			Pointer:   platform.PointerTouch,
+			X:         res.Pointers[at].X,
+			Y:         res.Pointers[at].Y,
+			Button:    button,
+			Clicks:    d.countClick(button, in.EventTimeMs, false),
+			Mods:      mods,
 		}}
 	case actPointerDown:
 		// A second finger (or a third): the contract has nowhere to say
@@ -466,12 +466,12 @@ func (d *Decoder) Touch(in TouchInput) TouchResult {
 			break
 		}
 		res.Events = []platform.SurfaceEvent{{
-			Kind:        platform.PointerMove,
-			PointerID:   uint64(res.Pointers[at].ID),
-			PointerType: platform.PointerTouch,
-			X:           res.Pointers[at].X,
-			Y:           res.Pointers[at].Y,
-			Mods:        mods,
+			Kind:      platform.PointerMove,
+			PointerID: uint64(res.Pointers[at].ID),
+			Pointer:   platform.PointerTouch,
+			X:         res.Pointers[at].X,
+			Y:         res.Pointers[at].Y,
+			Mods:      mods,
 		}}
 	case actHoverMove, actHoverEnter:
 		// A pointer that is over the surface but not touching it is a mouse
@@ -481,11 +481,10 @@ func (d *Decoder) Touch(in TouchInput) TouchResult {
 			break
 		}
 		res.Events = []platform.SurfaceEvent{{
-			Kind:        platform.PointerMove,
-			PointerType: platform.PointerMouse,
-			X:           res.Pointers[at].X,
-			Y:           res.Pointers[at].Y,
-			Mods:        mods,
+			Kind: platform.PointerMove,
+			X:    res.Pointers[at].X,
+			Y:    res.Pointers[at].Y,
+			Mods: mods,
 		}}
 	case actHoverExit, actOutside:
 		// The pointer is no longer over the surface. ACTION_OUTSIDE can
@@ -513,14 +512,13 @@ func (d *Decoder) Touch(in TouchInput) TouchResult {
 		// not from a finger on the screen, so it is not a touch and stays
 		// PointerMouse, the zero value.
 		res.Events = []platform.SurfaceEvent{{
-			Kind:        platform.PointerScroll,
-			PointerType: platform.PointerMouse,
-			X:           res.Pointers[at].X,
-			Y:           res.Pointers[at].Y,
-			DX:          d.dip(in.ScrollX),
-			DY:          -d.dip(in.ScrollY),
-			Precise:     true,
-			Mods:        mods,
+			Kind:    platform.PointerScroll,
+			X:       res.Pointers[at].X,
+			Y:       res.Pointers[at].Y,
+			DX:      d.dip(in.ScrollX),
+			DY:      -d.dip(in.ScrollY),
+			Precise: true,
+			Mods:    mods,
 		}}
 	case actButtonPress, actButtonRelease:
 		// A mouse's button press and release arrive around the

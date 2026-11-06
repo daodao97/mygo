@@ -42,6 +42,19 @@ outlined in the background's color:
 ui.Text(c, "42%").TextColor(t.Text).TextStroke(3, t.Background)
 ```
 
+`TextShadow(x, y, blur, color)` casts a shadow of the text, as CSS's
+`text-shadow`: the shapes of its glyphs, offset by `x` and `y` DIPs and
+blurred by `blur`, under its glyphs and their strokes, so a caption over a
+photo stands out from it. The text of the elements inside casts it too,
+or their own; a transparent color casts none. A `Span`'s `Shadow` casts
+one for its text, made by `NewTextShadow`. Underlines and strikethroughs cast no shadow, and only
+one shadow paints, where CSS takes a list:
+
+```go
+ui.Text(c, "Golden hour").TextColor(ui.RGB(255, 255, 255)).TextShadow(0, 1, 4, ui.RGBA(0, 0, 0, 0.6))
+ui.RichText(c, ui.Span{Text: "Sale", Shadow: ui.NewTextShadow(0, 2, 3, t.Accent)})
+```
+
 `TabSize(n)` puts tab stops every `n` spaces of the font from the start of
 each line, as CSS's `tab-size`, so a code block's tabs indent 2 or 4
 columns; without it, tabs stop where the system's text stack puts them,
@@ -73,6 +86,14 @@ headings, captions, labels on cards.
 ```go
 ui.Text(c, "Everything you need to ship a desktop app").FontSize(28).Bold().Balance()
 ```
+
+`Pretty` keeps the last line of each paragraph from holding a single
+word, as CSS's `text-wrap: pretty` does at least: the line before gives it
+a word, wrapped as wide as that leaves the two, and the lines before stay
+as they are, so body text ends on more than one word at no cost to the
+rest of the paragraph. A line before with no word to spare, as one long
+word, stays as it is. `TextShape.Pretty` does the same for
+`ShapeRichTextWith`.
 
 `Selectable` lets the user select a text with the pointer, Shift and the
 arrows, and copy it, as an error message or an identifier to paste
@@ -115,6 +136,9 @@ for an element and the text inside it, as text on a colored bubble needs
 one that shows on it. A right-click on selectable text shows Copy and
 Select All; a `ContextMenu` on the text or its `Selectable` container
 replaces that menu, and `Menu.EditItems` puts Copy and Select All in it.
+
+The caret of a text input is the theme's `Accent`; `CaretColor` sets another
+for an input and the inputs inside an element, as CSS's `caret-color` does.
 
 ## Rich text
 
@@ -269,9 +293,16 @@ func init() {
 ```
 
 Then `Font("Inter")` uses it, or set it for every element in the theme's
-`Font`. A list of families, as `Font("Inter, Noto Sans JP")`, draws with
-the first the system or the app has, and what it lacks with the next that
-has it, before the system's own choice.
+`Font`. The fonts registered under a family make it up, apart from other
+fonts of their own family: on the desktop its weight and style are matched
+among them, whichever was registered first. A font's own family name still
+finds it, unless the app registers other fonts under that name. So two
+faces that declare the same weight, as a font's Light and Semilight, are
+told apart by registering one under a family of its own.
+
+A list of families, as `Font("Inter, Noto Sans JP")`, draws with the first
+the system or the app has, and what it lacks with the next that has it,
+before the system's own choice.
 
 `ui.FontFamilies()` lists the families text can use, as a font setting
 offers them: the app's registered ones first, under the names it gave them

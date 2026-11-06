@@ -298,6 +298,49 @@ func TestColumnHeaderShowsItsChildren(t *testing.T) {
 	}
 }
 
+// TestHeadingShowsItsChildren checks that a heading exposes the button
+// inside it, as an accordion header does, while keeping its name and level.
+func TestHeadingShowsItsChildren(t *testing.T) {
+	open := false
+	label := ""
+	tt := coreNewTester(func(c *context) {
+		coreRow(c).Role(RoleHeading).Level(3).Label(label).Children(func() {
+			if coreButton(c, "Privacy").Expanded(open).Clicked() {
+				open = !open
+			}
+		})
+	}, 300, 200)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tree := tt.h.access
+	heading := accessNode(t, tree, platform.RoleHeading, "Privacy")
+	if heading.Label != "Privacy" || heading.Level != 3 {
+		t.Errorf("heading: %+v", heading)
+	}
+	button := accessNode(t, tree, platform.RoleButton, "Privacy")
+	if button.Parent < 0 || tree.Nodes[button.Parent].ID != heading.ID {
+		t.Error("the button is not inside the heading")
+	}
+	if button.States&platform.AccessFocusable == 0 || button.Actions&platform.ActionPress == 0 {
+		t.Errorf("button: %+v", button)
+	}
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessAction, ID: button.ID, Action: platform.AccessPress})
+	if !open {
+		t.Error("pressing the button did not open the section")
+	}
+	// An explicit name replaces the content's name without hiding it.
+	label = "Privacy settings"
+	tt.Frame()
+	tree = tt.h.access
+	heading = accessNode(t, tree, platform.RoleHeading, label)
+	if heading.Label != label || heading.Level != 3 {
+		t.Errorf("named heading: %+v", heading)
+	}
+	button = accessNode(t, tree, platform.RoleButton, "Privacy")
+	if button.States&platform.AccessExpanded == 0 {
+		t.Error("the button is not expanded after opening the section")
+	}
+}
+
 func TestAccessibilityOfOverlays(t *testing.T) {
 	open := true
 	tt := coreNewTester(func(c *context) {

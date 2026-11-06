@@ -609,6 +609,9 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 		}
 	case wmEnterMenuLoop:
 		w.inMenu = true
+		if w.surface != nil {
+			w.surface.liftKeys()
+		}
 	case wmExitMenuLoop:
 		w.inMenu = false
 	case wmMenuChar:
@@ -653,6 +656,7 @@ func (w *window) sized(kind uintptr) {
 	if w.vibrancy != "" && kind != sizeMinimized {
 		w.extendGlass(false)
 	}
+	was := w.state
 	switch kind {
 	case sizeMinimized:
 		if w.state != sizeMinimized {
@@ -676,6 +680,14 @@ func (w *window) sized(kind uintptr) {
 			w.h.Unmaximized()
 		}
 		w.state = sizeRestored
+	}
+	// Nothing of a minimized window shows (Surface.Occluded).
+	if s := w.surface; s != nil && (was == sizeMinimized) != (w.state == sizeMinimized) {
+		ev := platform.SurfaceEvent{Kind: platform.SurfaceShown}
+		if w.state == sizeMinimized {
+			ev.Kind = platform.SurfaceHidden
+		}
+		s.send(ev)
 	}
 	w.h.Resized()
 }

@@ -77,7 +77,13 @@ type window struct {
 	// the system's window color, which a layer cannot follow: it is
 	// resolved again when the appearance changes (fillSystemBacking).
 	systemBacking bool
-	parent        *window
+	// glassClear tells that the glass made the window clear
+	// (clearForGlass), an opaque one or the content view of a rounded one,
+	// whose color waits in backing, retained, for the glass to go: 0 for
+	// the system's (systemBacking).
+	glassClear bool
+	backing    id
+	parent     *window
 	// hiddenWithParent tells that a child window was ordered out as its
 	// parent hid or miniaturized (hideChildren), at hiddenRank among its
 	// siblings, front to back, to show again with it; orderPending that
@@ -255,10 +261,11 @@ func (w *window) create() {
 	// A child window takes its parent's level when that is higher.
 	w.onTop = o.AlwaysOnTop
 	w.applyLevel()
-	w.fillWindow(content)
+	radius := 0
 	if o.Frameless {
-		w.roundContent(o.CornerRadius)
+		radius = o.CornerRadius
 	}
+	w.fillWindow(content, radius)
 
 	if o.Center {
 		send(w.win, "center")
@@ -310,8 +317,7 @@ func (w *window) createFlyout() {
 		// Over the windows of other apps, as the menus of the menu bar.
 		send(w.win, "setLevel:", nsPopUpMenuWindowLevel)
 	}
-	w.fillWindow(content)
-	w.roundContent(w.flyout.Radius)
+	w.fillWindow(content, w.flyout.Radius)
 	w.register()
 	w.PlaceFlyout(w.flyout, w.flyoutSize)
 }
@@ -367,7 +373,7 @@ func (b *Backend) refreshSystemBackings() {
 		if w.popover != 0 {
 			send(w.popover, "setAppearance:", uintptr(send(b.app, "effectiveAppearance")))
 		}
-		if w.systemBacking {
+		if w.systemBacking && !w.glassClear {
 			w.fillSystemBacking()
 		}
 	}
@@ -390,8 +396,9 @@ func (w *window) roundEffect() {
 	send(el, "setMasksToBounds:", 1)
 }
 
-// fillWindow gives a new window its look and its web view or surface.
-func (w *window) fillWindow(content NSRect) {
+// fillWindow gives a new window its look, its corners of radius
+// (roundContent) and its web view or surface.
+func (w *window) fillWindow(content NSRect, radius int) {
 	o := w.opts
 	send(w.win, "setHasShadow:", boolArg(o.HasShadow))
 	if o.Opacity < 1 {
@@ -409,6 +416,8 @@ func (w *window) fillWindow(content NSRect) {
 		send(w.win, "makeFirstResponder:", uintptr(w.surface.view))
 	}
 	send(w.win, "setContentView:", uintptr(w.view))
+	// Before the material: the glass clears the color roundContent moves.
+	w.roundContent(radius)
 	if o.Vibrancy != "" {
 		w.SetVibrancy(o.Vibrancy)
 	}
@@ -734,6 +743,7 @@ func (w *window) cleanup() {
 		w.surface.destroy()
 	}
 	release(w.effect)
+	release(w.backing)
 	release(w.web)
 	release(w.view)
 	// AppKit is still closing the window; let the pool release it.
@@ -1237,6 +1247,11 @@ func (w *window) SetBackgroundColor(c platform.Color) {
 		case w.host != nil:
 			// A web view's window is its host's.
 			w.clipBackground(c)
+		case w.glassClear:
+			// The glass shows what is behind the window, the color once it goes.
+			w.systemBacking = false
+			release(w.backing)
+			w.backing = retain(nsColor(c))
 		case w.radius > 0:
 			// The window stays clear, its corners cut off (roundContent).
 			w.systemBacking = false
@@ -1357,6 +1372,9 @@ func (w *window) SetVibrancy(material string) {
 			send(w.view, "addSubview:positioned:relativeTo:", uintptr(w.effect), ^uintptr(0), 0) // NSWindowBelow
 			send(w.web, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("drawsBackground")))
 			w.roundEffect()
+			if glass {
+				w.clearForGlass()
+			}
 		}
 		if glass {
 			send(w.effect, "setStyle:", g.style)
@@ -1428,7 +1446,53 @@ func (w *window) removeEffect() {
 		send(w.effect, "removeFromSuperview")
 		release(w.effect)
 		w.effect, w.glass = 0, false
+		w.restoreBacking()
 	}
+}
+
+// clearForGlass makes a window that is not transparent clear while it
+// shows the glass. NSGlassEffectView draws what is behind it in the
+// window, which is the window's own color in an opaque one, where
+// NSVisualEffectView blends with what is behind the window. The color of
+// a rounded window is on its content view (roundContent). A popover's
+// window is AppKit's.
+func (w *window) clearForGlass() {
+	if w.glassClear || w.opts.Transparent || w.popover != 0 {
+		return
+	}
+	w.glassClear = true
+	if w.radius > 0 {
+		layer := send(w.view, "layer")
+		if c := send(layer, "backgroundColor"); c != 0 && !w.systemBacking {
+			w.backing = retain(send(class("NSColor"), "colorWithCGColor:", uintptr(c)))
+		}
+		send(layer, "setBackgroundColor:", 0)
+	} else {
+		w.backing = retain(send(w.win, "backgroundColor"))
+		send(w.win, "setOpaque:", 0)
+		send(w.win, "setBackgroundColor:", uintptr(send(class("NSColor"), "clearColor")))
+	}
+	send(w.win, "invalidateShadow")
+}
+
+// restoreBacking gives the window back the color clearForGlass took.
+func (w *window) restoreBacking() {
+	if !w.glassClear {
+		return
+	}
+	w.glassClear = false
+	switch {
+	case w.radius > 0 && w.systemBacking:
+		w.fillSystemBacking()
+	case w.radius > 0:
+		send(send(w.view, "layer"), "setBackgroundColor:", uintptr(send(w.backing, "CGColor")))
+	default:
+		send(w.win, "setBackgroundColor:", uintptr(w.backing))
+		send(w.win, "setOpaque:", 1)
+	}
+	release(w.backing)
+	w.backing = 0
+	send(w.win, "invalidateShadow")
 }
 
 func (w *window) SetMenu(*platform.Menu) {}
@@ -2336,8 +2400,12 @@ func registerWindowClasses() {
 				}
 			}),
 			method("windowDidChangeOcclusionState:", func(self id, _ objc.SEL, n id) {
-				if w := b().windowFor(self); w != nil && w.surface != nil && w.surface.visible() {
-					w.surface.send(platform.SurfaceEvent{Kind: platform.SurfaceShown})
+				if w := b().windowFor(self); w != nil && w.surface != nil {
+					kind := platform.SurfaceShown
+					if !w.surface.visible() {
+						kind = platform.SurfaceHidden
+					}
+					w.surface.send(platform.SurfaceEvent{Kind: kind})
 				}
 			}),
 			method("windowDidMiniaturize:", func(self id, _ objc.SEL, n id) {

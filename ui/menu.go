@@ -41,8 +41,12 @@ import (
 //		m.EditItems()
 //	})
 //
-// PopoverMenu draws the same menu in the window, with the theme's look.
+// PopoverMenu draws the same menu in the window, with the theme's look, as
+// ContextMenu does while the window draws its menus (SetMenuPresentation).
 func (e *node) ContextMenu(build func(m *Menu)) *node {
+	if e.c.rt.drawsMenus() {
+		return menusInWindow.contextMenu(e, build)
+	}
 	e.flags |= flagContextMenu
 	e.buildMenu(false, false, build)
 	return e
@@ -64,8 +68,12 @@ func (e *node) ContextMenu(build func(m *Menu)) *node {
 //	})
 //
 // PopoverMenuButton draws the same menu in the window, with the theme's
-// look.
+// look, as Menu does while the window draws its menus
+// (SetMenuPresentation).
 func (e *node) Menu(build func(m *Menu)) *node {
+	if e.c.rt.drawsMenus() {
+		return menusInWindow.menuButton(e, build)
+	}
 	e.flags |= flagMenuButton | flagClickable | flagFocusable
 	if e.role == RoleAuto || e.role == RoleButton {
 		e.role = RoleMenuButton
@@ -247,6 +255,41 @@ func (it *MenuItem) Checked(on bool) *MenuItem {
 func (it *MenuItem) Radio(on bool) *MenuItem {
 	if it.p != nil && !it.sub {
 		it.p.Type, it.p.Checked = platform.MenuItemRadio, on
+	}
+	return it
+}
+
+// MenuIcon is the image of a menu item, as mygo.NewMenuIcon makes it.
+type MenuIcon interface {
+	PlatformMenuIcon() *platform.MenuIcon
+}
+
+// Icon shows an image beside the item's label, one mygo.NewMenuIcon made:
+// make each once, not as the menu builds, and give it to the items that
+// show it. A template image takes the color of the item's text. nil shows
+// none. The system's menus show it as package mygo's items do (see
+// NewMenuIcon), and browsers show none; PopoverMenu draws it on every
+// platform.
+//
+//	if m.Item("Archive").Icon(archiveIcon).Chosen() {
+//		app.archive(msg)
+//	}
+func (it *MenuItem) Icon(icon MenuIcon) *MenuItem {
+	if it.p != nil && icon != nil {
+		it.p.Icon = icon.PlatformMenuIcon()
+	}
+	return it
+}
+
+// Tooltip shows s as the pointer rests on the item, as Element.Tooltip
+// does, to say what it does. The system's menus show it on macOS and Linux,
+// as package mygo's items' ToolTip, and those of Windows and browsers show
+// none; PopoverMenu shows it on every platform.
+//
+//	m.Item("Run").Shortcut(ui.Cmd, ui.KeyEnter).Tooltip("Runs the query under the caret")
+func (it *MenuItem) Tooltip(s string) *MenuItem {
+	if it.p != nil {
+		it.p.ToolTip = s
 	}
 	return it
 }
@@ -528,7 +571,11 @@ func (rt *engine) resolveMenu() {
 	}
 	mr.asked = 0
 	if s := rt.states[id]; s != nil && s.seen == rt.frame && s.editor != nil && !mr.button {
-		rt.editMenu(s)
+		if rt.drawsEditMenuOf(s) {
+			menusInWindow.openEditMenu(rt, s)
+		} else {
+			rt.editMenu(s)
+		}
 	}
 }
 

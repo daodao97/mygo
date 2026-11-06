@@ -147,6 +147,13 @@ func roundedBacking(w *mygo.Window) (opaque bool, alpha, red float64, supported 
 	return opaque, alpha, red, true
 }
 
+// windowBacking reports whether the window is opaque, and the alpha of its
+// background color.
+func windowBacking(w *mygo.Window) (opaque bool, alpha float64, supported bool) {
+	mygo.RunOnMain(func() { opaque, alpha = darwin.TestWindowBacking(w.NativeHandle()) })
+	return opaque, alpha, true
+}
+
 func dockDevTools(w *mygo.Window) (ok bool) {
 	mygo.RunOnMain(func() { ok = darwin.TestDockInspector(w.NativeHandle()) })
 	return ok
@@ -457,3 +464,7 @@ func nativeGlassTint(w *mygo.Window) (red, green, blue, alpha float64) {
 }
 
 func activateApp() { mygo.RunOnMain(darwin.TestActivate) }
+
+// Only X servers keep a keyboard's state for the tests after a test: see
+// left_behind_linux_test.go.
+func keyboardState() (state string, restore func()) { return "", func() {} }

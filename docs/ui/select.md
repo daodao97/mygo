@@ -101,5 +101,9 @@ See [custom widgets](custom-widgets.md).
 ## Accessibility
 
 Assistive technology sees a pop-up button whose value is the choice, named
-by its `Label`, and, while it is open, its options, following the one the
-arrows are on.
+by its `Label`, and, while it is open, a list box of its options
+(`ui.RoleListBox`, `ui.RoleOption`), each saying which of how many it is.
+As in a native select's popup, the option the arrows or the pointer are on
+is the one selected, which the focus follows while the select keeps it;
+assistive technology focusing an option highlights it, as the arrows do,
+and pressing one chooses it, as a click does.

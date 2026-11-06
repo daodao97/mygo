@@ -322,6 +322,8 @@ func ownStyles(rt *engine, e *node) []inspDecl {
 	}
 	if e.flags&flagPassThrough != 0 || e.ignoreInput {
 		add("pointer-events", "none")
+	} else if e.hitFn != nil {
+		add("pointer-events", "visiblePainted")
 	}
 	if e.cursor != 0 {
 		add("cursor", cursorText(e.cursor-1))
@@ -435,11 +437,18 @@ func textStyles(ts *textStyle, set uint32) []inspDecl {
 	if set&setSelection != 0 {
 		ds = append(ds, inspDecl{name: "selection-color", value: colorText(ts.selection), color: ts.selection, swatch: true})
 	}
+	if set&setCaret != 0 {
+		ds = append(ds, inspDecl{name: "caret-color", value: colorText(ts.caret), color: ts.caret, swatch: true})
+	}
 	if set&setStroke != 0 {
 		ds = append(ds, inspDecl{name: "-webkit-text-stroke", value: pxText(ts.strokeWidth) + " " + colorText(ts.strokeColor), color: ts.strokeColor, swatch: true})
 	}
 	if set&setTabSize != 0 {
 		add("tab-size", num(ts.tabSize))
+	}
+	if set&setShadow != 0 {
+		sh := ts.shadow
+		ds = append(ds, inspDecl{name: "text-shadow", value: pxText(sh.x) + " " + pxText(sh.y) + " " + pxText(sh.blur) + " " + colorText(sh.color), color: sh.color, swatch: true})
 	}
 	return ds
 }
@@ -554,6 +563,11 @@ func properties(rt *engine, e *node) []inspSection {
 		{name: "keyboard-focusable", value: yes(e.flags&flagFocusable != 0 && !e.IsDisabled() && !e.st.ignoreInput)},
 		{name: "ignored", value: yes(!seen || e.flags&(flagInvisible|flagInert) != 0 || e.inHidden() || e.st.accessHidden)},
 	}}
+	// Unavailable to assistive technology alone, focusable still
+	// (AccessDisabled), as aria-disabled.
+	if e.st.accessDisabled && !e.IsDisabled() {
+		acc.rows = append(acc.rows, inspDecl{name: "disabled", value: "true"})
+	}
 	if e.description != "" {
 		acc.rows = append(acc.rows, inspDecl{name: "description", value: strconv.Quote(e.description)})
 	}
@@ -565,6 +579,46 @@ func properties(rt *engine, e *node) []inspSection {
 	}
 	if e.current != CurrentNone {
 		acc.rows = append(acc.rows, inspDecl{name: "current", value: platform.AccessCurrent(e.current).String()})
+	}
+	if e.chooseMany {
+		acc.rows = append(acc.rows, inspDecl{name: "multiselectable", value: "true"})
+	}
+	for i, name := range [...]string{"rowcount", "colcount", "rowindex", "colindex"} {
+		if v := e.accGrid[i]; v > 0 {
+			acc.rows = append(acc.rows, inspDecl{name: name, value: strconv.Itoa(int(v))})
+		}
+	}
+	for i, name := range [...]string{"posinset", "setsize"} {
+		if v := e.accSet[i]; v > 0 {
+			acc.rows = append(acc.rows, inspDecl{name: name, value: strconv.Itoa(int(v))})
+		}
+	}
+	if e.autoComplete != AutoCompleteNone {
+		acc.rows = append(acc.rows, inspDecl{name: "autocomplete", value: platform.AccessAutoComplete(e.autoComplete).String()})
+	}
+	if e.roleDescription != "" {
+		acc.rows = append(acc.rows, inspDecl{name: "roledescription", value: strconv.Quote(e.roleDescription)})
+	}
+	if e.hasPopup != PopupNone {
+		acc.rows = append(acc.rows, inspDecl{name: "haspopup", value: platform.AccessPopup(e.hasPopup).String()})
+	}
+	if len(e.controls) > 0 {
+		acc.rows = append(acc.rows, inspDecl{name: "controls", value: strconv.Itoa(len(e.controls)) + " elements"})
+	}
+	if len(e.describedBy) > 0 {
+		acc.rows = append(acc.rows, inspDecl{name: "describedby", value: strconv.Itoa(len(e.describedBy)) + " elements"})
+	}
+	if e.invalid {
+		acc.rows = append(acc.rows, inspDecl{name: "invalid", value: "true"})
+	}
+	if len(e.errorMessage) > 0 {
+		acc.rows = append(acc.rows, inspDecl{name: "errormessage", value: strconv.Itoa(len(e.errorMessage)) + " elements"})
+	}
+	switch e.orient {
+	case Horizontal:
+		acc.rows = append(acc.rows, inspDecl{name: "orientation", value: "horizontal"})
+	case Vertical:
+		acc.rows = append(acc.rows, inspDecl{name: "orientation", value: "vertical"})
 	}
 	return []inspSection{el, state, acc}
 }
@@ -664,6 +718,22 @@ func cursorText(c Cursor) string {
 		return "grabbing"
 	case CursorNone:
 		return "none"
+	case CursorProgress:
+		return "progress"
+	case CursorWait:
+		return "wait"
+	case CursorHelp:
+		return "help"
+	case CursorCell:
+		return "cell"
+	case CursorZoomIn:
+		return "zoom-in"
+	case CursorZoomOut:
+		return "zoom-out"
+	case CursorAllScroll:
+		return "all-scroll"
+	case CursorNoDrop:
+		return "no-drop"
 	}
 	return "default"
 }

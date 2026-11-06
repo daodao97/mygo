@@ -78,7 +78,7 @@ func TestTouchElasticMomentumStopsAtTableEdge(t *testing.T) {
 	}, 320, 240)
 	inner.X = inner.MaxX
 	tt.Frame()
-	ev := platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerTouch, Precise: true, Momentum: true, X: 160, Y: 50, DX: 50}
+	ev := platform.SurfaceEvent{Kind: platform.PointerScroll, Pointer: platform.PointerTouch, Precise: true, Momentum: true, X: 160, Y: 50, DX: 50}
 	if tt.rt.event(ev) {
 		t.Fatal("native momentum was not stopped at the edge")
 	}
@@ -99,7 +99,7 @@ func TestTouchElasticMomentumStopsAtTableEdge(t *testing.T) {
 
 func TestNativePanElasticReleaseAndReduceMotion(t *testing.T) {
 	tt, scroll := elasticFixture()
-	ev := platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerTouch, Precise: true, X: 150, Y: 100, DY: -60, Phase: "begin"}
+	ev := platform.SurfaceEvent{Kind: platform.PointerScroll, Pointer: platform.PointerTouch, Precise: true, X: 150, Y: 100, DY: -60, Phase: "begin"}
 	tt.send(ev)
 	if tt.rt.elastic == nil || tt.rt.elastic.released {
 		t.Fatal("native drag did not hold displacement")

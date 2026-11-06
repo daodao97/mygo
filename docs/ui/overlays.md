@@ -5,7 +5,8 @@ dimmed window, [alert dialogs](alert-dialog.md), [popovers](popover.md)
 below an element, the popups of [selects](select.md) and
 [comboboxes](combobox.md), menus drawn in the window
 ([`PopoverMenu`](context-menu.md#drawn-in-the-window) and
-[`PopoverMenuButton`](menu-button.md#drawn-in-the-window)),
+[`PopoverMenuButton`](menu-button.md#drawn-in-the-window), and every menu
+of a window that [draws its menus](context-menu.md#every-menu-of-a-window)),
 [tooltips](tooltip.md) and [toasts](toast.md).
 They share how they treat the keyboard and what is behind them. Though
 they show above the window, they take the theme of where they were asked
@@ -74,6 +75,10 @@ menus, are built from what those are made of:
   vertically is no taller than the room on the target's larger side, and
   scrolls. Its margins keep it apart from the target. It is the target's popover: its elements follow
   the target as Tab moves.
+- `AttachEdgeMargin(v)` keeps such an element `v` DIPs from the window's
+  edges, where it keeps 4 unless set: `AttachEdgeMargin(12)` for a wide
+  panel that must not touch the edges of a narrow window, as the insets of
+  CSS Anchor Positioning's containing block.
 - `AttachedAnchors` returns the anchors it ended on, as Floating UI's
   placement: `ui.AnchorTop, ui.AnchorBottom` for a panel asked below its
   button that went above it. The view reads the last frame's, and a
@@ -105,9 +110,10 @@ menus, are built from what those are made of:
   })
   ```
 - `PressedOutside` reports a press outside an element, its target and the
-  popovers of what is inside it, as a popover closes for. A press before
-  the element showed is not outside it: an overlay that a right-click
-  opens stays open, the press opening it in the same frame.
+  popovers of what is inside it, as a popover closes for; `PressedInside`
+  one inside them, without taking the pointer. A press before the element
+  showed is not outside it: an overlay that a right-click opens stays open,
+  the press opening it in the same frame.
 - `OverlayShortcut` takes the keys the focused element and those around it
   leave, wherever the focus is, the overlay built last first, as Escape
   closing the one on top.

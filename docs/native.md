@@ -46,6 +46,21 @@ mygo.Dialog.Error("Import failed", err.Error())
 `OpenDialogOptions` also pick directories (`Directory`), show hidden files
 and, on macOS, a message and a New Folder button.
 
+A filter takes files by type too, as HTML's `accept`: `MIMETypes` such as
+`"application/pdf"`, or all of a kind, `"image/*"`, which the system's
+picker matches as it knows them, rather than a list of every extension:
+
+```go
+mygo.FileFilter{Name: "Pictures", MIMETypes: []string{"image/*"}}
+```
+
+macOS 11 and later take them as types of files (`UTType`), the kinds
+`image/*`, `audio/*`, `video/*`, `text/*` and `font/*` as theirs
+(`public.image` and the others), which is all earlier versions take; GTK
+matches them, wildcards too; Windows filters by the extensions its
+registry gives the type, or every type of the kind and every file its
+`PerceivedType` says is of it.
+
 In message dialogs Enter activates `DefaultButton` and Escape
 `CancelButton`, also when they are one button, as Cancel above. On macOS
 Cmd+. cancels too, and a `DefaultButton` of -1 leaves Enter to no button.

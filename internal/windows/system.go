@@ -407,6 +407,7 @@ const (
 	textScaleFactor           = "TextScaleFactor"
 	settingImmersiveColorSet  = "ImmersiveColorSet"
 	settingWindowMetrics      = "WindowMetrics"
+	settingSlateMode          = "ConvertibleSlateMode"
 	// settingIntl is the lParam of WM_SETTINGCHANGE when the display
 	// languages or the regional formats changed.
 	settingIntl = "intl"
@@ -426,8 +427,8 @@ func highContrastOn() bool {
 }
 
 // Preferences reads the accent of the title bars and the Start menu, the
-// settings of animation and transparency effects and contrast themes, and
-// the size of text of Accessibility.
+// settings of animation and transparency effects and contrast themes, the
+// size of text of Accessibility, and the pointing devices.
 func (t theme) Preferences() platform.Preferences {
 	var p platform.Preferences
 	if v, ok := regDWORD(hkeyCurrentUser, dwmKey, "AccentColor"); ok { // 0xAABBGGRR
@@ -447,12 +448,59 @@ func (t theme) Preferences() platform.Preferences {
 	if v, ok := regDWORD(hkeyCurrentUser, accessibilityKey, textScaleFactor); ok && v >= 100 && v <= 500 {
 		p.TextScale = float64(v) / 100
 	}
+	p.Pointer, p.AnyPointer, p.NoHover, p.NoAnyHover = pointingDevices()
 	return p
 }
 
+// GetSystemMetrics' metrics of the pointing devices, and the bits of
+// SM_DIGITIZER's.
+const (
+	smMousePresent     = 19
+	smDigitizer        = 94
+	smConvertibleSlate = 0x2003
+	nidIntegratedTouch = 0x01
+	nidExternalTouch   = 0x02
+	nidIntegratedPen   = 0x04
+	nidExternalPen     = 0x08
+	nidReady           = 0x80
+	nidTouch           = nidIntegratedTouch | nidExternalTouch
+	nidPen             = nidIntegratedPen | nidExternalPen
+)
+
+// pointingDevices returns how accurate the primary pointing device is and
+// the most accurate of all, and whether they cannot hover, as Chromium
+// tells them on Windows: a mouse (SM_MOUSEPRESENT, which a virtual one
+// sets too) and a pen point finely and hover, a touch screen coarsely,
+// without hovering; with a touch screen, the primary device is the finest
+// but in tablet mode (SM_CONVERTIBLESLATEMODE 0), where it is the touch
+// screen.
+func pointingDevices() (primary, finest platform.PointerAccuracy, noHover, noneHover bool) {
+	mouse, _, _ := procGetSystemMetrics.Call(smMousePresent)
+	digitizer, _, _ := procGetSystemMetrics.Call(smDigitizer)
+	if digitizer&nidReady == 0 {
+		digitizer = 0
+	}
+	fine, touch := mouse != 0 || digitizer&nidPen != 0, digitizer&nidTouch != 0
+	switch {
+	case fine:
+		finest = platform.PointerFine
+	case touch:
+		finest, noneHover = platform.PointerCoarse, true
+	default:
+		finest, noneHover = platform.PointerNone, true
+	}
+	primary, noHover = finest, noneHover
+	if touch && fine {
+		if slate, _, _ := procGetSystemMetrics.Call(smConvertibleSlate); slate == 0 {
+			primary, noHover = platform.PointerCoarse, true
+		}
+	}
+	return primary, finest, noHover, noneHover
+}
+
 // preferencesChanged reports whether a WM_SETTINGCHANGE is about the
-// preferences: the colors, animation effects, contrast themes or the size
-// of text.
+// preferences: the colors, animation effects, contrast themes, the size
+// of text or tablet mode.
 func preferencesChanged(wp, lp uintptr) bool {
 	switch wp {
 	case spiSetClientAreaAnimation, spiSetHighContrast:
@@ -462,7 +510,7 @@ func preferencesChanged(wp, lp uintptr) bool {
 		return false
 	}
 	switch wstr(lp) {
-	case settingImmersiveColorSet, settingWindowMetrics, textScaleFactor:
+	case settingImmersiveColorSet, settingWindowMetrics, textScaleFactor, settingSlateMode:
 		return true
 	}
 	return false

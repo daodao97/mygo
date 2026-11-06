@@ -17,3 +17,4 @@ mygo.ts
 /android/app/src/main/jniLibs/**/*.so
 # c-shared 同时产出这个头（Go 侧导出的 C 声明），同样是构建产物
 /android/app/src/main/jniLibs/**/*.h
+benchmarks/*/target/

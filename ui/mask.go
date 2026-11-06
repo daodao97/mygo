@@ -84,9 +84,9 @@ func (e *node) ClipInsetPercent(top, right, bottom, left, radius float32) *node 
 //	fade := []ui.GradientStop{{ui.Transparent, 0}, {black, 0.1}, {black, 0.9}, {ui.Transparent, 1}}
 //	list.MaskLinearGradient(ui.LinearGradient{Angle: 180, Stops: fade})
 //
-// Each thing drawn is masked on its own, as Opacity fades each, rather
-// than the element drawn into a layer first: where the mask lets a part
-// through, a row's background shows what is under it too.
+// Each thing drawn is masked on its own, rather than the element drawn
+// into a layer first, as Opacity fades a group: where the mask lets a
+// part through, a row's background shows what is under it too.
 func (e *node) MaskLinearGradient(g LinearGradient) *node {
 	k := e.clippings()
 	k.mask, k.linear, k.layers = maskLinear, g, nil
@@ -154,8 +154,8 @@ func (p *Painter) clipSelf(e *node) {
 	p.add(op)
 }
 
-// ClipPath restricts what fn draws to the inside of a path (non-zero
-// winding), its edges smoothed: a drawing cut to a polygon or to any
+// ClipPath restricts what fn draws to the inside of a path, by its
+// FillRule (as SVG's clip-rule), its edges smoothed: a drawing cut to a polygon or to any
 // outline, as CSS's and SVG's clip-path. Clips nest with those of Clip,
 // and turn with a transform:
 //
@@ -252,6 +252,9 @@ func (rt *engine) clipMask(f *flatPath, x0, y0 float32, w, h int) *scene.Image {
 		}
 		hs.WriteByte(0xff)
 	}
+	if f.evenOdd {
+		hs.WriteByte(0xfe)
+	}
 	key := hs.Sum64()
 	if img := rt.keptMask(key); img != nil {
 		return img
@@ -264,7 +267,7 @@ func (rt *engine) clipMask(f *flatPath, x0, y0 float32, w, h int) *scene.Image {
 		rt.paths.pix = make([]byte, n)
 	}
 	cov := rt.paths.pix[:n]
-	z.Mask(cov, w)
+	fillMask(z, f, cov, w)
 	pix := make([]byte, 4*n)
 	for i, a := range cov {
 		pix[4*i+3] = a

@@ -23,9 +23,9 @@ c.ToastAction("Note deleted", "Undo", func() { app.restore(note) })
 
 A message already showing shows anew; others stack above it, the newest
 three showing, while older ones wait hidden, their time running. The time
-of the toasts stops while the pointer rests on them, the keyboard focus is
-in them, or the window is in the background, unless a toast runs in the
-background (`RunInBackground`). Escape closes the toast the focus is in.
+of the toasts stops while the pointer rests on them or the keyboard focus is
+in them, and runs on while the window is in the background (see
+[below](#in-the-background)). Escape closes the toast the focus is in.
 Toasts fade in and out.
 
 A toast takes the theme's `Inverse` and `InverseText` colors, its text and
@@ -54,7 +54,6 @@ c.CloseToast(id)
 | `Title`, `Description` | what it says, which screen readers read out as it shows |
 | `Type` | what kind of toast it is, as `"error"`, for the look to tell |
 | `Timeout` | how long it shows: 4 seconds when zero, until closed when negative |
-| `RunInBackground` | keeps its time running while the window is in the background or hidden |
 | `Action`, `OnAction` | a button that runs `OnAction` and closes the toast |
 | `OnClose` | runs as it closes: its time over, or the user, its action or `CloseToast` closed it |
 | `Data` | what else the look needs |
@@ -63,20 +62,14 @@ c.CloseToast(id)
 
 ## In the background
 
-A toast's time stops while the window is in the background, so that the
-user sees what they did once they come back. News that goes stale sets
-`RunInBackground`, as a tray app does whose main window stays hidden while
-a download or a restart finishes:
-
-```go
-c.AddToast(ui.Toast{Title: "Download finished", RunInBackground: true})
-```
-
-Its time runs on while the window is in the background or hidden; a toast
-whose time is over by the time the window shows again closes on that frame,
-running its `OnClose`, without showing. The pointer resting on the toasts
-still stops it, and so does the keyboard focus in them while the window has
-it.
+A toast's time runs on while the window is in the background or hidden,
+since a toast tells news that goes stale, as a tray app's whose main window
+stays hidden while a download or a restart finishes. A toast whose time is
+over by the time the window shows again closes on that frame, running its
+`OnClose`, without showing. The pointer resting on the toasts still stops
+their time, and so does the keyboard focus in them while the window has it.
+A message the user must see shows until it is closed (a negative
+`Timeout`).
 
 ## Without a look
 

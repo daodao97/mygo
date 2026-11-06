@@ -461,7 +461,7 @@ func (s *surface) forwardMouse(m uint32, wp, lp uintptr) bool {
 			procTrackMouseEvent.Call(uintptr(unsafe.Pointer(&tme)))
 			s.tracking = true
 		}
-		s.send(platform.SurfaceEvent{Kind: platform.PointerMove, PointerType: platform.PointerMouse, X: x, Y: y, Mods: mods()})
+		s.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: x, Y: y, Mods: mods()})
 	case wmLButtonDown, wmLButtonDblClk, wmRButtonDown, wmRButtonDblClk, wmMButtonDown, wmMButtonDblClk, wmXButtonDown, wmXButtonDblClk:
 		if s.webCapture == nil {
 			s.webCapture = v

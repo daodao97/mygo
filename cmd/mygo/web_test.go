@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -110,6 +111,71 @@ func TestWebDev(t *testing.T) {
 	d.broadcast("reload", "{}")
 	if e := next(); !strings.HasPrefix(e, "event: reload") {
 		t.Errorf("build %q", e)
+	}
+}
+
+func TestWebDevReloadsConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	t.Setenv("GOWORK", "off")
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"go.mod":         "module example.com/webdev\n\n" + goDirective(t) + "\n",
+		"mygo.json":      `{"name":"Before","main":"./before","icon":"before.png"}`,
+		"before/main.go": "package main\nfunc main() {}\n",
+		"before.png":     "before icon",
+	})
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	icon, err := webIcon(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &webDev{c: c, icon: icon}
+	wasm := filepath.Join(t.TempDir(), "app.wasm")
+	if !d.build(context.Background(), wasm, "") {
+		t.Fatal(d.failure)
+	}
+	writeFiles(t, dir, map[string]string{
+		"mygo.json":     `{"name":"After","main":"./after","icon":"after.svg"}`,
+		"after/main.go": "package main\nfunc main() {}\n",
+		"after.svg":     "<svg></svg>",
+	})
+	if err := os.RemoveAll(filepath.Join(dir, "before")); err != nil {
+		t.Fatal(err)
+	}
+	if !d.build(context.Background(), wasm, "mygo.json changed") {
+		t.Fatalf("rebuild did not use the new entry point: %s", d.failure)
+	}
+	get := func(path string) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		d.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		return w
+	}
+	page := get("/").Body.String()
+	if !strings.Contains(page, "<title>After</title>") || !strings.Contains(page, `href="icon.svg"`) {
+		t.Errorf("page uses stale config: %s", page)
+	}
+	if icon := get("/icon.svg"); icon.Code != http.StatusOK || icon.Body.String() != "<svg></svg>" {
+		t.Errorf("icon was not reloaded: %d %q", icon.Code, icon.Body.String())
+	}
+	if old := get("/icon.png"); old.Code != http.StatusNotFound {
+		t.Errorf("old icon still served: %d", old.Code)
+	}
+	good := get("/app.wasm").Body.Bytes()
+	if !bytes.HasPrefix(good, []byte("\x00asm")) {
+		t.Fatal("rebuild did not serve WebAssembly")
+	}
+	writeFiles(t, dir, map[string]string{"mygo.json": `{`})
+	if d.build(context.Background(), wasm, "mygo.json changed") || d.failure == "" {
+		t.Fatal("invalid config did not fail the build")
+	}
+	if get("/").Body.String() != page || !bytes.Equal(get("/app.wasm").Body.Bytes(), good) {
+		t.Error("a failed rebuild replaced the last successful build")
 	}
 }
 

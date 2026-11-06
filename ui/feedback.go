@@ -181,16 +181,21 @@ func coreAlertDialog(c *context, open *bool, title, message string, buttons ...s
 		back := coreBox(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).Center().Background(RGBA(0, 0, 0, 0.4)).Modal()
 		dismissed = back.OverlayShortcut(0, KeyEscape)
 		back.Children(func() {
-			panel := coreColumn(c).Width(t.Space(75)).MaxWidth(c.w - t.Space(10)).Padding(t.Space(5)).Gap(t.Space(3)).Radius(t.Space(2.5)).Background(t.Background).Role(RoleAlertDialog)
+			// As wide as its buttons need on one line where the window has
+			// room, whose text wraps to that width and adds nothing to it;
+			// in a narrower window the buttons wrap, and a label too long for
+			// it ends in an ellipsis.
+			room := c.w - t.Space(10)
+			panel := coreColumn(c).MinWidth(min(t.Space(75), room)).MaxWidth(room).Padding(t.Space(5)).Gap(t.Space(3)).Radius(t.Space(2.5)).Background(t.Background).Role(RoleAlertDialog)
 			panel.Label(title)
 			panel.description = message
 			panel.Shadow(0, 10, 30, 0, RGBA(0, 0, 0, 0.3))
 			panel.Children(func() {
-				coreText(c, title).Bold().FontSize(t.FontSize + 1)
+				coreText(c, title).Bold().FontSize(t.FontSize + 1).Width(0).MinWidthPercent(100)
 				if message != "" {
-					coreText(c, message).TextColor(t.TextMuted)
+					coreText(c, message).TextColor(t.TextMuted).Width(0).MinWidthPercent(100)
 				}
-				coreRow(c).Gap(t.Space(2)).Justify(End).Margin(t.Space(2), 0, 0, 0).Children(func() {
+				coreRow(c).Wrap().Gap(t.Space(2)).Justify(End).Margin(t.Space(2), 0, 0, 0).Children(func() {
 					for i, label := range buttons {
 						var b *node
 						if i == len(buttons)-1 {
@@ -198,6 +203,7 @@ func coreAlertDialog(c *context, open *bool, title, message string, buttons ...s
 						} else {
 							b = coreButton(c, label)
 						}
+						b.MaxWidthPercent(100)
 						if b.Clicked() {
 							chosen = i
 						}

@@ -284,6 +284,8 @@ the rows it is, "5 of 10,000", although the list builds only those in view.
 A list choosing its rows gives assistive technology the focus on the row
 chosen: Up and Down are read as they move the choice, and focusing a row
 chooses it. A screen reader moving out of view asks the list to scroll
-there, which builds the rows it reaches.
+there, which builds the rows it reaches. A list of rows of cells, as a
+spreadsheet's, is a [grid](accessibility.md#grids) with
+`Role(ui.RoleGrid)`: its rows are then rows of a table.
 
 For rows in columns, see [Table](table.md); for a tree, [Outline](outline.md).

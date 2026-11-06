@@ -129,12 +129,39 @@ func (e *node) RowStart(n int) *node { e.cell.row = int16(max(n, 1)); return e }
 
 // ColumnSpan makes the element span n columns of its grid, or, for a
 // negative n, every column from its start to the grid's last, as a header
-// across a grid does.
+// across a grid does. A cell of a table or a grid (RoleCell,
+// RoleColumnHeader, RoleRowHeader) tells assistive technology it covers
+// them, as ARIA's aria-colspan, whether or not its row lays it out in a
+// grid: screen readers read a cell covering two columns as one.
 func (e *node) ColumnSpan(n int) *node { e.cell.colSpan = int16(n); return e }
 
 // RowSpan makes the element span n rows of its grid, or, for a negative n,
-// every row from its start to the last the grid sets.
+// every row from its start to the last the grid sets. A cell of a table
+// or a grid tells assistive technology it covers them, as ARIA's
+// aria-rowspan: the cells of the rows below it then say their columns
+// with ColumnIndex where they follow it.
 func (e *node) RowSpan(n int) *node { e.cell.rowSpan = int16(n); return e }
+
+// cellSpan returns how many columns and rows the element spans, as
+// ColumnSpan and RowSpan set them, 0 for one: a span to the last line
+// counts those its parent's grid sets, and is 0 outside one.
+func (e *node) cellSpan() (cols, rows int) {
+	var nc, nr int
+	if p := e.parent; p != nil && p.grid {
+		nc, nr = len(p.cols), len(p.rows)
+	}
+	span := func(n, start int16, lines int) int {
+		v := int(n)
+		if v < 0 {
+			v = lines - max(int(start)-1, 0) // as layout places it
+		}
+		if v <= 1 {
+			return 0
+		}
+		return v
+	}
+	return span(e.cell.colSpan, e.cell.col, nc), span(e.cell.rowSpan, e.cell.row, nr)
+}
 
 type gridItem struct {
 	e                *node

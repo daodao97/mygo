@@ -93,6 +93,7 @@ func deactivateApp() bool                                        { return false 
 func material(*mygo.Window) (string, int, float64, bool, bool)   { return "", 0, 0, false, false }
 func materialState(*mygo.Window) (int, bool)                     { return 0, false }
 func roundedBacking(*mygo.Window) (bool, float64, float64, bool) { return false, 0, 0, false }
+func windowBacking(*mygo.Window) (bool, float64, bool)           { return false, 0, false }
 func appActive() (bool, bool)                                    { return false, false }
 
 // WebKitGTK docks the inspector inside the web view.

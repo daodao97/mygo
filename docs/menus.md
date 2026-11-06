@@ -44,6 +44,9 @@ A `MenuItem` has:
   items toggle `Checked` before `Click` runs;
 - `Disabled`, `Hidden` and `ToolTip`;
 - `Icon`, an image shown beside the label (see [icons](#icons));
+- `Subtitle`, a second, smaller line under the label. macOS 14 and browsers
+  show it so; earlier macOS, Windows and Linux show it after the label, as
+  `Label — Subtitle`;
 - `ID`, to find the item with `Menu.ItemByID`;
 - `Role`, a built-in behavior with its label and accelerator.
 
@@ -104,7 +107,7 @@ the state the app gave them. An item the app disables stays disabled.
 
 Change items of a menu in use with their methods, so that the native menu
 follows: `SetLabel`, `SetEnabled`, `SetVisible`, `SetChecked`,
-`SetAccelerator` and `SetIcon`:
+`SetAccelerator`, `SetSubtitle` and `SetIcon`:
 
 ```go
 item := menu.ItemByID("sidebar")
@@ -157,6 +160,9 @@ image included, and frees what it made of it once neither the app nor a
 menu holds the icon; the bitmaps of Windows 10's menus go with their
 menus. Apps that make no icon don't link the code that draws them.
 
+The context menus of native UI take the same icons, with
+[`Icon`](ui/context-menu.md#items) on their items.
+
 - **macOS** shows the icon (an `NSImage`) after the column of checks, on
   every menu, the menu bar's own items included, which show it in the
   menu bar.
@@ -192,7 +198,12 @@ removes the menu.
 On Windows, menu bars and menus follow the appearance, light or dark, as
 the title bar does (see [dark mode](frontend.md#dark-mode)). On Windows 11
 they look like the system's own menus, as File Explorer's: roomier items,
-highlights with rounded corners, and shortcuts in a fainter color.
+highlights with rounded corners, shortcuts smaller and in a fainter
+color, the rounder corners of the system's flyouts and, from Windows 11
+22H2, Acrylic behind popup menus, as WinUI's menus have, unless
+transparency effects are off, energy saver or a contrast theme is on, or
+the session is a remote one, when they have the solid background WinUI's
+menus fall back to, with one faint outline.
 
 A window with `AutoHideMenuBar` keeps its menu bar out of sight, and the
 room for the page. Alt pressed alone, or F10, shows the bar with the
@@ -410,7 +421,10 @@ draw()
 
 `Tray.PopUpMenu` opens the menu set with `SetMenu` programmatically. On
 macOS, AppKit places it below the status item and highlights its button
-while the menu is open. To show a menu only on right-click while keeping
+while the menu is open. On Windows 11 it opens as the system's tray menus
+do, centered on the icon a little above the taskbar (or beside it, where
+the taskbar is on another edge); on Windows 10, and for an icon in the
+taskbar's overflow, at the pointer. To show a menu only on right-click while keeping
 primary clicks available, set the menu in `OnRightClick`, call
 `PopUpMenu`, then clear it with `SetMenu(nil)` when the call returns.
 

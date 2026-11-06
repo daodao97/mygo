@@ -53,7 +53,9 @@ an app's own design, the system's menu is the one that looks out of place,
 and a right-click's drawn menu and a ⋯ button's system menu, side by
 side, look like two menus. `Element.PopoverMenuButton` gives such a menu to
 any button, as `Element.Menu` does, and takes the same function as
-`PopoverMenu`, so one function serves both:
+`PopoverMenu`, so one function serves both. To draw every menu of a
+window so, `Menu`'s included, see [every menu of a
+window](context-menu.md#every-menu-of-a-window):
 
 ```go
 menu := func(m *ui.Menu) {
@@ -92,8 +94,9 @@ as it sees the system's. In a toolbar's overflow menu, choosing the button
 opens its drawn menu below the overflow button.
 
 A drawn menu's items are elements: in tests, `tt.Click` on the button
-opens it, `tt.HasText` finds its items and `tt.Click` chooses one, while
-`tt.Menu` lists only the system's menus.
+opens it, `tt.HasText` finds its items and `tt.Click` chooses one.
+`tt.Menu`, `tt.ChooseMenuItem` and `tt.CloseMenu` work on it as on the
+system's, so a test passes with either.
 
 ## Without a look
 

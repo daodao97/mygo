@@ -443,6 +443,7 @@ func TestGoCallsAreElementMethods(t *testing.T) {
 		{"text-decoration", "underline dotted line-through", ".DottedUnderline().Strikethrough()"},
 		{"font-feature-settings", "tnum", `.FontFeatures("tnum")`},
 		{"selection-color", "#000", `.SelectionColor(ui.Hex("#000000"))`},
+		{"caret-color", "#000", `.CaretColor(ui.Hex("#000000"))`},
 		{"line-clamp", "2", ".MaxLines(2)"},
 		{"white-space", "nowrap", ".NoWrap()"},
 		{"z-index", "3", ".ZIndex(3)"},

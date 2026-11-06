@@ -15,6 +15,10 @@ type AccessInfo struct {
 	// Description is read after the name, as a tooltip or a field's
 	// error, and Placeholder is what an empty text field shows.
 	Name, Value, Description, Placeholder string
+	// RoleDescription is what the app calls the role in its place
+	// (aria-roledescription), as a "carousel" group; "" for the
+	// platform's name of Role.
+	RoleDescription string
 	// Bounds is the element's visible box, in the window's DIPs as Find's.
 	Bounds Rect
 	// Checked is set on a check box, switch, radio button or menu item
@@ -24,10 +28,12 @@ type AccessInfo struct {
 	// Expanded is set while what the element opens shows; Expandable on
 	// an item of a tree with children.
 	Expanded, Expandable bool
-	// Selected is set on the tab chosen, and on the items of a tree and
-	// the rows of a list or a table chosen (aria-selected), which are
-	// Selectable where their list chooses them; Multiselectable is set on
-	// a list or a table choosing several.
+	// Selected is set on the tab chosen, on the items of a tree and the
+	// rows of a list, a table or a grid chosen, and on the cells of a
+	// table or a grid chosen with Checked (aria-selected), which are
+	// Selectable where their list, table or grid chooses them;
+	// Multiselectable is set on a list, a table or a grid choosing
+	// several.
 	Selected, Selectable, Multiselectable bool
 	// Busy is set while the element's content is about to change
 	// (aria-busy).
@@ -42,18 +48,37 @@ type AccessInfo struct {
 	Focusable, Focused bool
 	// ReadOnly, Multiline, Password and Search tell of a text field.
 	ReadOnly, Multiline, Password, Search bool
-	// SortAscending and SortDescending are set on the header of the
-	// column a table's rows are sorted by.
-	SortAscending, SortDescending bool
-	// Vertical is set on a slider going up, and Segment on a segment of
-	// a segmented control or a group of toggles.
-	Vertical, Segment bool
+	// Sort is the order a table's rows are sorted in by the column whose
+	// header the element is (aria-sort), SortNone for others.
+	Sort SortDirection
+	// HasPopup is the kind of popup the element opens (aria-haspopup),
+	// PopupNone for none.
+	HasPopup Popup
+	// Controls are the accessible names of the elements the element
+	// controls (aria-controls), in the last frame, in the order Controls
+	// gave them: Access finds each.
+	Controls []string
+	// DescribedBy are the accessible names of the elements describing the
+	// element (aria-describedby), whose text Description holds, and
+	// ErrorMessage those of the elements holding its error
+	// (aria-errormessage), given while it is Invalid, in the order
+	// DescribedBy and ErrorMessage gave them.
+	DescribedBy, ErrorMessage []string
+	// Vertical is set on a slider going up, a separator running up and
+	// down, and an element told it is vertical (aria-orientation);
+	// Horizontal on one told it runs across (Orientation). Segment is set
+	// on a segment of a segmented control or a group of toggles.
+	Vertical, Horizontal, Segment bool
 	// Offscreen is set on an element built out of view, as the rows a
 	// list builds beyond its edges.
 	Offscreen bool
 	// Current is the item the element is the current one of
 	// (aria-current), CurrentNone for none.
 	Current Current
+	// AutoComplete is what the suggestions of a text field or a combo
+	// box complete as the user types (aria-autocomplete),
+	// AutoCompleteNone for none.
+	AutoComplete AutoComplete
 	// KeyShortcuts are the keys that press or focus the element
 	// (aria-keyshortcuts), as the platform's menus write them and
 	// separated by spaces: "⌘K" for Cmd+K on macOS, "Ctrl+K" elsewhere.
@@ -65,6 +90,16 @@ type AccessInfo struct {
 	// the size of the set, as a list's rows and the list have them; 0
 	// when not given.
 	PosInSet, SetSize int
+	// RowCount and ColumnCount are how many rows and columns a table or
+	// a grid has (aria-rowcount, aria-colcount), and RowIndex and
+	// ColumnIndex the place of a row or a cell among them, from 1
+	// (aria-rowindex, aria-colindex), as the app gave them; 0 when not
+	// given.
+	RowCount, ColumnCount, RowIndex, ColumnIndex int
+	// RowSpan and ColumnSpan are how many rows and columns a cell covers
+	// (aria-rowspan, aria-colspan), as its RowSpan and ColumnSpan set
+	// them; 0 for one.
+	RowSpan, ColumnSpan int
 	// Min, Max and Now are the range and the value of a slider, progress
 	// bar, meter or stepper (aria-valuemin, -valuemax and -valuenow), Now
 	// below Min for progress of unknown length; Step is how far the keys
@@ -104,7 +139,12 @@ func (t *Tester) access(match func(r Role, n *platform.AccessNode) bool) (Access
 	var walk func(e *node)
 	walk = func(e *node) {
 		if e.role > RoleNone {
-			given[e.id] = e.role
+			// But for a List's rows in a table or a grid, which are seen
+			// as its rows. Roles the node's roles do not follow in order,
+			// as RoleListBox and RoleDeletion, stay as they were given.
+			if r, ok := e.accessRole(); ok && !(e.role == RoleListItem && r == platform.RoleRow) {
+				given[e.id] = e.role
+			}
 		}
 		for ch := e.first; ch != nil; ch = ch.next {
 			walk(ch)
@@ -123,7 +163,21 @@ func (t *Tester) access(match func(r Role, n *platform.AccessNode) bool) (Access
 			r = Role(n.Role) + RoleGroup
 		}
 		if match(r, n) {
-			return accessInfoOf(r, n, tree.Focus), true
+			a := accessInfoOf(r, n, tree.Focus)
+			names := func(ids []uint64) []string {
+				var out []string
+				for _, id := range ids {
+					for j := range tree.Nodes {
+						if tree.Nodes[j].ID == id {
+							out = append(out, tree.Nodes[j].Label)
+							break
+						}
+					}
+				}
+				return out
+			}
+			a.Controls, a.DescribedBy, a.ErrorMessage = names(n.Controls), names(n.DescribedBy), names(n.ErrorMessage)
+			return a, true
 		}
 	}
 	return AccessInfo{}, false
@@ -133,12 +187,22 @@ func (t *Tester) access(match func(r Role, n *platform.AccessNode) bool) (Access
 // whose focus is focus.
 func accessInfoOf(r Role, n *platform.AccessNode, focus uint64) AccessInfo {
 	s, b := n.States, n.Bounds
-	// The choice among tabs, a tree's items and the rows of a list is
-	// AccessChecked, which screen readers read as selected.
+	// The choice among tabs, a tree's items, the rows of a list and the
+	// cells of a grid is AccessChecked, which screen readers read as
+	// selected.
 	chosen := false
 	switch n.Role {
-	case platform.RoleTab, platform.RoleTreeItem, platform.RoleRow, platform.RoleListItem:
+	case platform.RoleTab, platform.RoleTreeItem, platform.RoleRow, platform.RoleListItem, platform.RoleCell, platform.RoleColumnHeader, platform.RoleRowHeader:
 		chosen = s&platform.AccessChecked != 0
+	}
+	sort := SortNone
+	switch {
+	case s&platform.AccessSortAscending != 0:
+		sort = SortAscending
+	case s&platform.AccessSortDescending != 0:
+		sort = SortDescending
+	case s&platform.AccessSortOther != 0:
+		sort = SortOther
 	}
 	return AccessInfo{
 		Role:            r,
@@ -146,6 +210,7 @@ func accessInfoOf(r Role, n *platform.AccessNode, focus uint64) AccessInfo {
 		Value:           n.Value,
 		Description:     n.Description,
 		Placeholder:     n.Placeholder,
+		RoleDescription: n.RoleDescription,
 		Bounds:          Rect{float32(b.X), float32(b.Y), float32(b.W), float32(b.H)},
 		Checked:         s&platform.AccessChecked != 0 && !chosen,
 		Mixed:           s&platform.AccessMixed != 0,
@@ -163,16 +228,24 @@ func accessInfoOf(r Role, n *platform.AccessNode, focus uint64) AccessInfo {
 		Multiline:       s&platform.AccessMultiline != 0,
 		Password:        s&platform.AccessPassword != 0,
 		Search:          s&platform.AccessSearch != 0,
-		SortAscending:   s&platform.AccessSortAscending != 0,
-		SortDescending:  s&platform.AccessSortDescending != 0,
+		Sort:            sort,
+		HasPopup:        Popup(n.HasPopup),
 		Vertical:        s&platform.AccessVertical != 0,
+		Horizontal:      s&platform.AccessHorizontal != 0,
 		Segment:         s&platform.AccessSegment != 0,
 		Offscreen:       s&platform.AccessOffscreen != 0,
 		Current:         Current(n.Current),
+		AutoComplete:    AutoComplete(n.AutoComplete),
 		KeyShortcuts:    n.KeyShortcuts,
 		Level:           n.Level,
 		PosInSet:        n.PosInSet,
 		SetSize:         n.SetSize,
+		RowCount:        n.RowCount,
+		ColumnCount:     n.ColCount,
+		RowIndex:        n.RowIndex,
+		ColumnIndex:     n.ColIndex,
+		RowSpan:         n.RowSpan,
+		ColumnSpan:      n.ColSpan,
 		Min:             n.Min,
 		Max:             n.Max,
 		Now:             n.Now,

@@ -31,7 +31,7 @@ func TestNestedTouchScrollLocksDirectionThroughMomentum(t *testing.T) {
 			touch(tt, platform.PointerMove, 1, 130, -40)
 			touch(tt, platform.PointerUp, 1, 130, -40)
 		}
-		tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerTouch, PointerID: 1,
+		tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, Pointer: platform.PointerTouch, PointerID: 1,
 			X: 200, Y: 60, DX: 30, DY: 40, Precise: true, Momentum: true})
 		if horizontal && (inner.X != 130 || outer.Y != 0) || !horizontal && (inner.X != 0 || outer.Y != 140) || clicks != 0 {
 			t.Fatalf("horizontal=%v: inner=%v outer=%v clicks=%d", horizontal, inner.X, outer.Y, clicks)
@@ -39,7 +39,7 @@ func TestNestedTouchScrollLocksDirectionThroughMomentum(t *testing.T) {
 		if horizontal {
 			inner.X = inner.MaxX
 			tt.Frame()
-			tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerTouch, PointerID: 1,
+			tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, Pointer: platform.PointerTouch, PointerID: 1,
 				X: 200, Y: 60, DX: 30, DY: 40, Precise: true, Momentum: true})
 			if outer.Y != 0 {
 				t.Fatal("horizontal momentum moved the conversation at the table edge")
@@ -65,7 +65,7 @@ func TestCustomTouchScrollKeepsTwoAxes(t *testing.T) {
 	touch(tt, platform.PointerDown, 2, 200, 80)
 	touch(tt, platform.PointerMove, 2, 160, 60)
 	touch(tt, platform.PointerUp, 2, 160, 60)
-	tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, PointerType: platform.PointerTouch, PointerID: 2,
+	tt.send(platform.SurfaceEvent{Kind: platform.PointerScroll, Pointer: platform.PointerTouch, PointerID: 2,
 		X: 200, Y: 80, DX: 10, DY: 20, Precise: true, Momentum: true})
 	if dx != 50 || dy != 40 {
 		t.Fatalf("custom two-axis input was constrained: %v, %v", dx, dy)

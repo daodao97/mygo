@@ -6,7 +6,9 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"log"
+	"maps"
 	"math"
 	"runtime"
 	"slices"
@@ -422,6 +424,16 @@ type coreText struct {
 	// attrs are the attributes of strings in a font of primary, in each
 	// direction, without tracking or kerning, owned.
 	attrs map[attrsKey]uintptr
+	// typesetters are those of text wrapped lately (shape), owned, and frame
+	// counts the frames.
+	typesetters map[typesetterKey]*keptTypesetter
+	// textSeed seeds the hashes of their keys.
+	textSeed maphash.Seed
+	// numbers holds what fonts shape numbers into (shapeNumber).
+	numbers map[numberKey]*numberFont
+	// wrapFonts holds what wrapping keeps for fonts (wrapKept).
+	wrapFonts map[uintptr]*wrapFont
+	frame     uint64
 	// seg and breaks find where lines may break (lineBreaks).
 	seg    segmenter.Segmenter
 	breaks []bool
@@ -437,19 +449,15 @@ type coreText struct {
 	runAdvances  []cgSize
 	runIndices   []int
 
-	registered map[string][]registeredFace // by lowercased family
+	// registered holds the faces of each family, by lowercased name:
+	// the faces the app gave it, or else the faces of their own family
+	// that the app gave another (registerFaces).
+	registered map[string][]registeredFace
+	gaveFaces  map[string][]registeredFace
+	ownFaces   map[string][]registeredFace
 	// names are the families the app's fonts are listed under, one per
 	// face: the name it gave them, or their own.
 	names []string
-}
-
-// releaseScratch drops Core Text's UTF-16 and per-run copies as well as the
-// shaped glyphs. Keep them while editing, so long paragraphs reuse their room.
-func (e *coreText) releaseScratch() {
-	e.shapeScratch.releaseScratch()
-	e.u16, e.index, e.at = nil, nil, nil
-	e.runIDs, e.runPoints, e.runAdvances, e.runIndices = nil, nil, nil, nil
-	e.breaks, e.seg = nil, segmenter.Segmenter{}
 }
 
 type attrsKey struct {
@@ -470,15 +478,21 @@ func newCoreText() (*coreText, error) {
 		return nil, err
 	}
 	e := &coreText{
-		primary:    map[Style]uintptr{},
-		fonts:      map[uint][]*Font{},
-		native:     map[uintptr]*Font{},
-		oblique:    map[*Font]*Font{},
-		attrs:      map[attrsKey]uintptr{},
-		tabStyles:  map[tabStyleKey]uintptr{},
-		registered: map[string][]registeredFace{},
-		bands:      map[bandKey][2]float32{},
-		italic:     cfString("MyGoItalic"),
+		primary:     map[Style]uintptr{},
+		fonts:       map[uint][]*Font{},
+		native:      map[uintptr]*Font{},
+		oblique:     map[*Font]*Font{},
+		attrs:       map[attrsKey]uintptr{},
+		typesetters: map[typesetterKey]*keptTypesetter{},
+		textSeed:    maphash.MakeSeed(),
+		numbers:     map[numberKey]*numberFont{},
+		wrapFonts:   map[uintptr]*wrapFont{},
+		tabStyles:   map[tabStyleKey]uintptr{},
+		registered:  map[string][]registeredFace{},
+		gaveFaces:   map[string][]registeredFace{},
+		ownFaces:    map[string][]registeredFace{},
+		bands:       map[bandKey][2]float32{},
+		italic:      cfString("MyGoItalic"),
 	}
 	for i, dir := range [2]int8{0, 1} { // kCTWritingDirectionLeftToRight, RightToLeft
 		d := dir
@@ -951,14 +965,109 @@ func (e *coreText) fontOf(font uintptr) *Font {
 }
 
 func (e *coreText) shape(text []rune, style Style, spans []Span, width float32, rtl, wholeWords bool) []shapedLine {
+	if lines := e.shapeNumber(text, style, spans, width, rtl); lines != nil {
+		return lines
+	}
+	return e.shapeText(text, style, spans, width, rtl, wholeWords)
+}
+
+// shapeText has Core Text shape text.
+func (e *coreText) shapeText(text []rune, style Style, spans []Span, width float32, rtl, wholeWords bool) []shapedLine {
 	font := e.ctFont(style)
 	if font == 0 || len(text) == 0 {
 		return nil
 	}
+	lang := style.Lang
+	if ct.languageName == 0 || !languageShapes(text, lang) {
+		lang = ""
+	}
+	// A typesetter holds the shaping of its text, whatever the width, so a
+	// text wrapped again at another width needs only new line breaks.
+	// Keeping it is for text wrapping: a line that does not wrap has one
+	// layout, and the text of a list or a dashboard comes and goes.
+	keep := width > 0 && len(spans) == 0 && style.tabStop <= 0
+	var key typesetterKey
+	var kept *keptTypesetter
+	var typesetter uintptr
+	if keep {
+		key = typesetterKey{font, rtl, lang, style.LetterSpacing, noKerning(style.Features), textHash(e.textSeed, text)}
+		// Texts of one hash are rare: one takes the other's place.
+		if t, ok := e.typesetters[key]; ok {
+			if slices.Equal(t.text, text) {
+				t.used = e.frame
+				kept, typesetter = t, t.typesetter
+			} else {
+				e.dropTypesetter(key, t)
+			}
+		}
+	}
+	if kept == nil {
+		e.u16, e.index = appendUTF16(e.u16[:0], e.index[:0], text)
+		typesetter = e.newTypesetter(font, e.u16, text, style, spans, rtl, lang)
+		if typesetter == 0 {
+			return nil
+		}
+		if keep {
+			// The font's address is in the key: held, no other font takes it.
+			kept = &keptTypesetter{typesetter: typesetter, font: ct.retain(font), used: e.frame, text: slices.Clone(text), latin: plainLatin(text)}
+			e.typesetters[key] = kept
+		} else {
+			defer ct.release(typesetter)
+		}
+	}
+	if kept != nil && kept.latin && !wholeWords && !rtl && lang == "" && style.LetterSpacing == 0 && style.Features == "" {
+		if lines := e.wrapKept(kept, text, style, width); lines != nil {
+			return lines
+		}
+	}
 	e.u16, e.index = appendUTF16(e.u16[:0], e.index[:0], text)
 	u16, index := e.u16, e.index
 	n := len(u16)
-	str := ct.stringWithCharacters(0, &u16[0], n)
+	var breaks []bool
+	if wholeWords && width > 0 {
+		e.breaks = lineBreaks(&e.seg, e.breaks, text)
+		breaks = e.breaks
+	}
+	return e.typesetLines(typesetter, n, width, breaks, index, style.Italic)
+}
+
+// typesetLines has Core Text break a typesetter's text of n UTF-16 units into
+// lines, carrying on to the next of breaks when given, and shape them.
+func (e *coreText) typesetLines(typesetter uintptr, n int, width float32, breaks []bool, index []int, italic bool) []shapedLine {
+	var lines []shapedLine
+	mark := len(e.shapeScratch.lines)
+	for start := 0; start < n; {
+		count := n - start
+		if width > 0 {
+			// A width measured by Layout sums advances in float32, which
+			// may round below Core Text's own line width and wrap the
+			// last word; allow a 1/1024 point, as Pango's units do.
+			count = max(ct.suggestLineBreak(typesetter, start, float64(width)+1.0/1024), 1)
+			// Core Text breaks a word that does not fit a line; carry
+			// on to the next break instead.
+			if breaks != nil {
+				end := min(start+count, n)
+				for end < n && (index[end] == index[end-1] || !breaks[index[end]]) {
+					end++
+				}
+				count = end - start
+			}
+		}
+		line := ct.typesetterCreateLine(typesetter, cfRange{start, count})
+		if line == 0 {
+			break
+		}
+		lines = e.addLine(mark, e.line(line, index, n, italic))
+		ct.release(line)
+		start += count
+	}
+	return lines
+}
+
+// newTypesetter shapes a text, without its line breaks, into a typesetter the
+// caller owns, or 0.
+func (e *coreText) newTypesetter(font uintptr, u16 []uint16, text []rune, style Style, spans []Span, rtl bool, lang string) uintptr {
+	str := ct.stringWithCharacters(0, &u16[0], len(u16))
 	defer ct.release(str)
 	paragraph := e.styles[0]
 	if rtl {
@@ -967,10 +1076,6 @@ func (e *coreText) shape(text []rune, style Style, spans []Span, width float32, 
 	tabbed := style.tabStop > 0
 	if tabbed {
 		paragraph = e.tabStyle(rtl, style.tabStop)
-	}
-	lang := style.Lang
-	if ct.languageName == 0 {
-		lang = ""
 	}
 	key := attrsKey{font, rtl, lang}
 	attrs, cached := e.attrs[key]
@@ -1018,44 +1123,67 @@ func (e *coreText) shape(text []rune, style Style, spans []Span, width float32, 
 		defer ct.release(styled)
 		attributed = styled
 	}
-	typesetter := ct.typesetterCreate(attributed)
-	if typesetter == 0 {
-		return nil
-	}
-	defer ct.release(typesetter)
-	var breaks []bool
-	if wholeWords && width > 0 {
-		e.breaks = lineBreaks(&e.seg, e.breaks, text)
-		breaks = e.breaks
-	}
-	var lines []shapedLine
-	mark := len(e.shapeScratch.lines)
-	for start := 0; start < n; {
-		count := n - start
-		if width > 0 {
-			// A width measured by Layout sums advances in float32, which
-			// may round below Core Text's own line width and wrap the
-			// last word; allow a 1/1024 point, as Pango's units do.
-			count = max(ct.suggestLineBreak(typesetter, start, float64(width)+1.0/1024), 1)
-			// Core Text breaks a word that does not fit a line; carry
-			// on to the next break instead.
-			if breaks != nil {
-				end := min(start+count, n)
-				for end < n && (index[end] == index[end-1] || !breaks[index[end]]) {
-					end++
-				}
-				count = end - start
-			}
+	return ct.typesetterCreate(attributed)
+}
+
+// typesetterKey is all that makes a typesetter of a text in a font, but for
+// its spans and tab stops, which typesetters kept do not have.
+type typesetterKey struct {
+	font    uintptr
+	rtl     bool
+	lang    string
+	spacing float32
+	noKern  bool
+	text    uint64
+}
+
+// textHash is what a text comes to in a typesetterKey, its own rather than
+// a string of it, which would take making one for each text at each width.
+func textHash(seed maphash.Seed, text []rune) uint64 {
+	return maphash.Bytes(seed, unsafe.Slice((*byte)(unsafe.Pointer(&text[0])), len(text)*4))
+}
+
+// keptTypesetter is a typesetter kept across frames, with the font it holds
+// on to, owned, and the frame that last used it.
+type keptTypesetter struct {
+	typesetter, font uintptr
+	used             uint64
+	// text is its text, whose key holds a hash, and latin tells that it is
+	// plain Latin text (plainLatin).
+	text  []rune
+	latin bool
+	// whole is the text shaped into one line, once shaped tells that it was
+	// tried (wrapKept).
+	whole  *shapedWhole
+	shaped bool
+}
+
+// keptTypesetterFrames is how many frames a typesetter stays unused:
+// windows take turns, so a text wrapping again in each frame of its window
+// may wait for the others'.
+const keptTypesetterFrames = 8
+
+// endFrame lets go of the typesetters of text that stopped wrapping again.
+func (e *coreText) endFrame() {
+	e.frame++
+	for k, t := range e.typesetters {
+		if e.frame-t.used > keptTypesetterFrames {
+			e.dropTypesetter(k, t)
 		}
-		line := ct.typesetterCreateLine(typesetter, cfRange{start, count})
-		if line == 0 {
-			break
-		}
-		lines = e.addLine(mark, e.line(line, index, n, style.Italic))
-		ct.release(line)
-		start += count
 	}
-	return lines
+}
+
+// releaseShaping lets go of all typesetters kept, as windows go idle.
+func (e *coreText) releaseShaping() {
+	for k, t := range e.typesetters {
+		e.dropTypesetter(k, t)
+	}
+}
+
+func (e *coreText) dropTypesetter(k typesetterKey, t *keptTypesetter) {
+	ct.release(t.typesetter)
+	ct.release(t.font)
+	delete(e.typesetters, k)
 }
 
 type tabStyleKey struct {
@@ -1591,16 +1719,23 @@ func (e *coreText) register(data []byte, family string) error {
 			face.mono = ct.fontGetSymbolicTraits(font)&ctFontMonoSpaceTrait != 0
 			ct.release(font)
 		}
-		for _, f := range []string{name, family} {
-			if f != "" {
-				key := strings.ToLower(f)
-				e.registered[key] = append(e.registered[key], face)
+		// A family the app gives holds only the faces it gave it, apart
+		// from their own family's, so the faces of a family that declare
+		// the same weight, as Selawik's Light and Semilight, are told
+		// apart whichever the app registers first (#1224).
+		if gave := strings.ToLower(cmp.Or(family, name)); gave != "" {
+			e.gaveFaces[gave] = append(e.gaveFaces[gave], face)
+			if own := strings.ToLower(name); own != "" && own != gave {
+				e.ownFaces[own] = append(e.ownFaces[own], face)
 			}
 		}
 		// Listed under the name the app gave it, which is the one it
 		// uses, or its own.
 		e.names = append(e.names, cmp.Or(family, name))
 	}
+	clear(e.registered)
+	maps.Copy(e.registered, e.ownFaces)
+	maps.Copy(e.registered, e.gaveFaces)
 	e.forgetPrimary()
 	return nil
 }
@@ -1615,6 +1750,9 @@ func (e *coreText) forgetPrimary() {
 		ct.release(a)
 	}
 	clear(e.attrs)
+	e.releaseShaping()
+	clear(e.numbers)
+	clear(e.wrapFonts)
 }
 
 func (e *coreText) fontCount() int {
@@ -1633,6 +1771,8 @@ func (e *coreText) forgetFonts() {
 	clear(e.native)
 	clear(e.oblique)
 	clear(e.bands)
+	clear(e.numbers)
+	clear(e.wrapFonts)
 	e.dropScratch()
 }
 

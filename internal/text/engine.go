@@ -72,8 +72,6 @@ type engine interface {
 	// resetScratch frees the room shape took from the engine's scratch,
 	// as a layout starts.
 	resetScratch()
-	// releaseScratch drops temporary storage when no window is shaping.
-	releaseScratch()
 }
 
 // shapeScratch is room engines take the glyphs, runs and lines shape returns
@@ -95,8 +93,6 @@ func (s *shapeScratch) resetScratch() {
 	}
 	s.glyphs, s.runs, s.lines = s.glyphs[:0], s.runs[:0], s.lines[:0]
 }
-
-func (s *shapeScratch) releaseScratch() { *s = shapeScratch{} }
 
 // dropScratch lets go of the room, and of the Fonts its glyphs and runs
 // still refer to past their lengths, so that those can be released.

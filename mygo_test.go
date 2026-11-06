@@ -1923,6 +1923,30 @@ func TestThemeGTKCSS(t *testing.T) {
 	}
 }
 
+// Theme.WindowButtons reports the desktop's layout, which is empty under a
+// tiling window manager.
+func TestThemeWindowButtons(t *testing.T) {
+	defer onMain(func() { fb.StartButtons, fb.EndButtons = nil, nil })
+	onMain(func() { fb.StartButtons, fb.EndButtons = []string{"close"}, []string{"minimize", "maximize"} })
+	b := Theme.WindowButtons()
+	if !slices.Equal(b.Start, []string{"close"}) || !slices.Equal(b.End, []string{"minimize", "maximize"}) {
+		t.Errorf("WindowButtons = %+v, want the backend's layout", b)
+	}
+	if b.Empty() || !b.Has("close") || !b.Has("maximize") {
+		t.Errorf("Empty, Has of %+v", b)
+	}
+	onMain(func() { fb.StartButtons, fb.EndButtons = nil, nil })
+	if b := Theme.WindowButtons(); !b.Empty() || b.Has("close") {
+		t.Errorf("WindowButtons with none = %+v, want empty", b)
+	}
+	if b := defaultWindowButtons("windows"); !slices.Equal(b.End, []string{"minimize", "maximize", "close"}) || len(b.Start) != 0 {
+		t.Errorf("defaultWindowButtons(windows) = %+v", b)
+	}
+	if b := defaultWindowButtons("darwin"); !slices.Equal(b.Start, []string{"close", "minimize", "maximize"}) {
+		t.Errorf("defaultWindowButtons(darwin) = %+v", b)
+	}
+}
+
 func TestThemePreferencesJSON(t *testing.T) {
 	for _, tt := range []struct {
 		p    ThemePreferences
