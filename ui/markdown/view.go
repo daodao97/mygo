@@ -131,6 +131,38 @@ func Stream(c *ui.Context, src string, o *Options) ui.Element {
 	return build(c, src, o, true)
 }
 
+// Revealed reports whether el, a view View or Stream returned this frame,
+// shows all of its source, done fading in. A chat shows a reply's time
+// and actions once its reply is complete and Revealed, not as its last
+// bytes arrive, while words still come in:
+//
+//	var md ui.Element
+//	if msg.done {
+//		md = markdown.View(c, msg.text, &app.md)
+//	} else {
+//		md = markdown.Stream(c, msg.text, &app.md)
+//	}
+//	if msg.done && markdown.Revealed(md) {
+//		ui.Text(c, msg.time)
+//	}
+//
+// It tells what this frame shows, so call it after View or Stream, and
+// build what it decides after them. The view asks for a frame each
+// refresh while it reveals or fades, so a caller that reads it every
+// frame sees it turn true without other input, once the last unit shows
+// and its fade ends. Text that shows at once (AtOnce, a View given text
+// no Stream left to reveal, an edit) is revealed in the frame it comes;
+// without a fade (Reveal.Fade negative, or the desktop's Reduce Motion),
+// text is revealed once its last unit shows. It turns false again when
+// more text comes. Of a Stream, it tells only that the text that came so
+// far shows: whether more is coming is the caller's to know, and text
+// held back for a sentence, a line or a paragraph to end keeps it false
+// until View shows it. It is false for an element neither returned.
+func Revealed(el ui.Element) bool {
+	st := ui.Local(el, stateKey{}, func() *viewState { return nil })
+	return st != nil && *st != nil && (*st).reveal.revealed()
+}
+
 // stateKey keys a view's state among its root's.
 type stateKey struct{}
 

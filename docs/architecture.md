@@ -3710,7 +3710,10 @@ either.
   the document in its root's local state and the spans of each paragraph
   by block, links as inline `Link` elements, a code block's tokens by line
   and its text in chunks of 32 lines; it reveals text at a pace, fading it
-  by span colors and element opacity, which only paint. A `Selectable`
+  by span colors and element opacity, which only paint, and `Revealed`
+  reads from the root's state whether the frame showed all of the source
+  with no fade left, a query rather than a callback, as the frames
+  that change it are those the reveal already asks for. A `Selectable`
   root's `CopyData` and `SelectedTexts` map paragraphs' runes back to
   source offsets, to copy text with block separators, Markdown, and the
   HTML of that Markdown parsed again, which `ui/richtext` pastes with its
