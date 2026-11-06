@@ -270,6 +270,15 @@ const (
 	// its press's.
 	PointerDown
 	PointerUp
+	// PointerCancel reports that the system ended the pointer's press
+	// without a release, as Pointer Events' pointercancel: every button
+	// held is let go of, and no PointerUp follows for them. The content
+	// commits nothing a release would. Backends send it when they lose the
+	// press to the system (a browser's pointercancel, a window losing the
+	// mouse capture or a pointer grab while a button is down, a menu's
+	// loop taking the release), and the content ignores one while nothing
+	// is pressed.
+	PointerCancel
 	// PointerLeave reports the pointer left the surface.
 	PointerLeave
 	// PointerScroll scrolls by DX, DY DIPs at X, Y: positive DY moves the

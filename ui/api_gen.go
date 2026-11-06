@@ -4602,7 +4602,8 @@ func (_handle Element) DragDataFrom(data func() transfer.Data, options ...transf
 // primary button, and moving, let go since the last frame, with how fast
 // it moved then, as DragVelocity: a spring taking over
 // (SpringOptions.Velocity) keeps the fling going. A click, which does not
-// move, ends no drag, nor does a drag with another button.
+// move, ends no drag, nor does a drag with another button, nor a press
+// the system canceled (PressCanceled).
 func (_handle Element) DragEnded() (float32, float32, bool) {
 	_node := _handle.node()
 	if _node == nil {
@@ -4683,8 +4684,10 @@ func (_handle Element) DragWindow() Element {
 // building the view, as AnimatePose moves it. Dragging reports that the
 // pointer drags it, once the pointer moved a few DIPs, Transitioning that
 // it moves, and DragOffset where it shows. A press dragging it is no
-// click; a press catches it as it moves. While the desktop asks for less
-// motion (Preferences.ReduceMotion), it goes to rest at once.
+// click; a press catches it as it moves. A press the system cancels
+// (PressCanceled) throws nothing, and the element goes back to where the
+// press took it. While the desktop asks for less motion
+// (Preferences.ReduceMotion), it goes to rest at once.
 //
 //	sheet.Draggable(&app.sheet, ui.DraggableOptions{
 //		Axis:   ui.Vertical,
@@ -6593,6 +6596,34 @@ func (_handle Element) PreserveSpaces() Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.PreserveSpaces())
+}
+
+// PressCanceled reports whether the press of the element ended since the
+// last frame without the pointer letting go, as Pointer Events'
+// pointercancel: the system took it (a browser turning a touch into the
+// page's scrolling, the window losing the mouse capture or the pointer's
+// grab, a menu taking the release), or the window lost the keyboard. Such
+// a press clicks nothing (Clicked) and ends no drag (DragEnded), and
+// Pressed turns false: undo what the press began, as a preview a drag
+// showed, rather than commit it.
+//
+//	dx, _, held := handle.Dragged()
+//	switch {
+//	case held:
+//		app.preview += dx
+//	case handle.PressCanceled():
+//		app.preview = 0
+//	case app.preview != 0:
+//		app.width, app.preview = app.width+app.preview, 0
+//	}
+func (_handle Element) PressCanceled() bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.PressCanceled()
 }
 
 // Pressed reports whether the element is being pressed with the pointer's

@@ -126,6 +126,51 @@ marks as theirs, GDK's source device and pressure axis on Linux, and
 `PointerEvent` in browsers. A `Tester` presses as a pen or a finger
 after `UsePointer(ui.PointerPen, 0.6)`.
 
+### A press the system cancels
+
+The system can end a press without the pointer letting go, as Pointer
+Events' `pointercancel`: a browser turning a touch into the page's
+scrolling, a menu or another window taking the mouse while a button is
+down, a pen or a finger Windows gives up on. The window losing the
+keyboard ends a press the same way. Such a press commits nothing a release
+would: it clicks nothing (`Clicked`, `RightClicked`), drops no value it
+drags (`Drop`), ends no drag (`DragEnded`), opens no context menu, and a
+`Draggable` element goes back to where the press took it. `PressCanceled`
+reports it, in the frame after, for a gesture to undo what it began:
+
+```go
+dx, _, held := handle.Dragged()
+switch {
+case held:
+	app.preview += dx
+case handle.PressCanceled():
+	app.preview = 0 // as it was
+case app.preview != 0:
+	app.width, app.preview = app.width+app.preview, 0
+}
+```
+
+`HandleInput` still gets the press's `InputPointerUp`, so that what it
+holds lets go, with `InputEvent.Canceled` set: roll back rather than
+commit.
+
+```go
+ui.Box(c).Size(120, 40).HandleInput(func(ev ui.InputEvent) bool {
+	switch ev.Kind {
+	case ui.InputPointerDown:
+		app.armed = true
+	case ui.InputPointerUp:
+		if app.armed && !ev.Canceled {
+			app.fire()
+		}
+		app.armed = false
+	}
+	return true
+})
+```
+
+A `Tester` cancels a press with `CancelPress`.
+
 While the pointer presses an element, the elements it was over as the
 press began, as the row around a button, stay `Hovered` as long as it is
 over them, as in CSS, and the others hover no more: dragging over other

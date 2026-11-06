@@ -800,6 +800,23 @@ func (s *surface) send(ev platform.SurfaceEvent) bool {
 	return s.w.h.SurfaceEvent(ev)
 }
 
+// grabBroken handles a GdkEventGrabBroken (GDK_GRAB_BROKEN, 35: type 0,
+// keyboard 20): the pointer's grab of a press, implicit or not, went to
+// another window, as a menu popping up, or ended as the window hid, and
+// the release will not come here. The press ends with none
+// (platform.PointerCancel), unless it starts a data drag (StartDataDrag),
+// whose end ends it.
+func (s *surface) grabBroken(event ptr) {
+	if field[int32](event, 20) != 0 || s.dragRequest != nil {
+		return // the keyboard's grab, or the drag's
+	}
+	if s.lastPointer != 0 {
+		gdkEventFree(s.lastPointer)
+		s.lastPointer = 0
+	}
+	s.send(platform.SurfaceEvent{Kind: platform.PointerCancel})
+}
+
 // touchEvent gives a GdkEventTouch (GDK_TOUCH_BEGIN 37, UPDATE 38, END
 // 39, CANCEL 40) to the surface's gesture and sends what it does.
 // GdkEventTouch, as GdkEventButton up to state: type 0, time 20, x 24,
@@ -1290,10 +1307,17 @@ func initSurfaceCallbacks() {
 		s.send(scrollEvent(event, 0, 0))
 		return true
 	})
-	// The touchscreen's touches, before GTK's touch-event handler, and the
-	// touchpad's pinches, which have no signal of their own in GTK 3.
+	// The touchscreen's touches, before GTK's touch-event handler, the
+	// touchpad's pinches, which have no signal of their own in GTK 3, and
+	// the pointer's grab broken.
 	cbSurfaceGesture = purego.NewCallback(func(widget, event, data ptr) bool {
 		typ := field[int32](event, 0)
+		if typ == 35 {
+			if s := b().surfaceOf(data); s != nil {
+				s.grabBroken(event)
+			}
+			return false
+		}
 		if typ < 37 || typ > 40 && typ != 42 {
 			return false
 		}

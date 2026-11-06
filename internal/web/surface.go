@@ -211,13 +211,16 @@ func (s *surface) listen() {
 		pointer, _ := device(e)
 		s.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: x, Y: y, Button: buttonOf(button), Mods: s.mods(e), Pointer: pointer})
 	})
+	// The browser took the pointer, as a touch it scrolls or zooms the
+	// page with, or one the system took: its buttons go up with no
+	// release, and the press commits nothing.
 	s.on(c, "pointercancel", true, func(e js.Value) {
 		if !primary(e) {
 			return
 		}
 		x, y := s.point(e)
 		pointer, _ := device(e)
-		s.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: x, Y: y, Button: buttonOf(e.Get("button").Int()), Mods: s.mods(e), Pointer: pointer})
+		s.send(platform.SurfaceEvent{Kind: platform.PointerCancel, X: x, Y: y, Mods: s.mods(e), Pointer: pointer})
 	})
 	s.on(c, "pointerleave", true, func(e js.Value) {
 		if !primary(e) {

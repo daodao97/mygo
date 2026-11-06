@@ -44,7 +44,8 @@ const (
 	// the pointer's moves and its release come to it wherever they are,
 	// and the release comes when the window loses the keyboard too, or
 	// once a frame builds the element no more, as when the press moved it
-	// into another container.
+	// into another container, or when the system cancels the press: those
+	// releases are Canceled.
 	InputPointerDown
 	InputPointerUp
 	// InputPointerMove reports the pointer at X, Y, with Button held, or
@@ -94,6 +95,18 @@ type InputEvent struct {
 	// middle.
 	Button int
 	Clicks int
+	// Canceled marks an InputPointerUp that ends the press without the
+	// pointer letting go, as Pointer Events' pointercancel: the system
+	// took the press (a browser's pointercancel, as a touch turns into
+	// the page's scrolling, the window losing the mouse capture or the
+	// pointer's grab, a menu taking the release), the window lost the
+	// keyboard, or a frame built the element no more. The release still
+	// comes, so that what the press holds lets go, but it is no
+	// completed gesture: undo what the press began rather than commit it,
+	// as a tap, a drop or the end of a scrub. Elements that ask about
+	// their input as they are built get no click of it (Clicked,
+	// RightClicked), no drop (Drop) and no end of a drag (DragEnded).
+	Canceled bool
 	// Pointer is the device of InputPointerDown, InputPointerUp and
 	// InputPointerMove, and Pressure how hard it presses, from 0 to 1, as
 	// Pointer Events' pointerType and pressure: a pen's or a finger's

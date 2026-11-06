@@ -324,7 +324,7 @@ func (in *inspector) holds(rt *engine, id uint64) bool {
 // whether it took ev.
 func (in *inspector) pointer(rt *engine, ev platform.SurfaceEvent, x, y float32) bool {
 	switch {
-	case in.swallow && ev.Kind == platform.PointerUp:
+	case in.swallow && (ev.Kind == platform.PointerUp || ev.Kind == platform.PointerCancel):
 		in.swallow = false
 		return true
 	case !in.picking || x >= in.appW:
@@ -349,7 +349,7 @@ func (in *inspector) pointer(rt *engine, ev platform.SurfaceEvent, x, y float32)
 		in.picking, in.hovered, in.swallow = false, 0, true
 		rt.requestFrame()
 		return true
-	case platform.PointerUp:
+	case platform.PointerUp, platform.PointerCancel:
 		return true
 	}
 	return false

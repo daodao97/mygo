@@ -826,6 +826,13 @@ func (t *Tester) ReleaseButton(button int, x, y float32) {
 	t.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: float64(x), Y: float64(y), Button: button})
 }
 
+// CancelPress has the system take the pointer's press, as a browser's
+// pointercancel does: every button held goes up without a release, which
+// clicks nothing (InputEvent.Canceled, PressCanceled).
+func (t *Tester) CancelPress() {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerCancel})
+}
+
 // WebViewAt returns the web view (WebView) that takes the pointer at
 // (x, y), as the window shows it: where the last frame showed it and
 // painted nothing over it that takes the pointer; nil for none.

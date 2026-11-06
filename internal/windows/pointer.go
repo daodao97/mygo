@@ -24,6 +24,10 @@ const (
 	wmPointerDown   = 0x0246
 	wmPointerUp     = 0x0247
 
+	// pointerMessageFlagCanceled is POINTER_MESSAGE_FLAG_CANCELED, in the
+	// high word of a WM_POINTER message's wParam.
+	pointerMessageFlagCanceled = 0x8000
+
 	ptTouch = 2
 	ptPen   = 3
 
@@ -121,6 +125,18 @@ func (s *surface) pointerMessage(m uint32, wp uintptr) {
 		s.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: s.toDIP(pt.X), Y: s.toDIP(pt.Y), Mods: mods(), Pointer: kind, Pressure: pressure})
 	}
 	s.pressure, s.pointerAt = pressure, at
+}
+
+// pointerCanceled reports whether a WM_POINTER message's pointer was
+// canceled (IS_POINTER_CANCELED_WPARAM): the system took it, and it ends
+// with no release.
+func pointerCanceled(wp uintptr) bool { return hiword(wp)&pointerMessageFlagCanceled != 0 }
+
+// cancelPress ends the press of the buttons held with no release
+// (platform.PointerCancel).
+func (s *surface) cancelPress() {
+	s.buttons = 0
+	s.send(platform.SurfaceEvent{Kind: platform.PointerCancel, Mods: mods()})
 }
 
 // mouseDevice returns the device of the mouse message being handled, as

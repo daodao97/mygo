@@ -336,10 +336,10 @@ type engine struct {
 	pressLost              func(InputEvent) bool
 	pressLostX, pressLostY float32
 	// downing counts the presses pointerDown is handling, and ups holds the
-	// releases (button, clicks) that came meanwhile, through a main loop
-	// a handler ran nested, for it to apply once the press is recorded.
+	// releases and cancels that came meanwhile, through a main loop a
+	// handler ran nested, for it to apply once the press is recorded.
 	downing int
-	ups     [][2]int
+	ups     []pendingUp
 	// listMenu and listDrag are the parts of lists a right-click and a
 	// drag reach, set as the first list builds, and cellClick and
 	// cellInBlock the parts of tables choosing cells a click and a press
@@ -1084,7 +1084,7 @@ func (rt *engine) forgetInput() {
 		s.clicks, s.rightClicks, s.doubleClicks = 0, 0, 0
 		s.pressPending = false
 		s.dragX, s.dragY = 0, 0
-		s.released = false
+		s.released, s.canceled = false, false
 		s.dropped = nil
 		s.droppedValue, s.hasDropped = nil, false
 		s.dragMissed = false

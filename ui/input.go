@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math/bits"
 	"runtime"
 	"slices"
 	"time"
@@ -33,14 +34,16 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		// A press is of no element until countPress finds it one.
 		rt.lastPress.prev, rt.lastPress.id = rt.lastPress.id, 0
 	}
+	held := rt.buttons
 	switch ev.Kind {
 	case platform.PointerMove, platform.PointerUp:
 		rt.pointerDevice(ev)
 	case platform.PointerDown:
 		// It presses once it came where it presses (pointerDevice).
 		rt.pointerType = PointerType(ev.Pointer)
-	case platform.SurfaceBlur:
-		// Buttons let go of elsewhere never come back up here.
+	case platform.SurfaceBlur, platform.PointerCancel:
+		// Buttons let go of elsewhere, or whose press the system took,
+		// never come back up here.
 		rt.buttons, rt.pressure = 0, 0
 	}
 	if rt.insp.pointer(rt, ev, x, y) {
@@ -78,7 +81,14 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.pointerDown(x, y, ev.Button, Modifiers(ev.Mods), ev.Clicks)
 	case platform.PointerUp:
 		rt.pointerMove(x, y)
-		rt.pointerUp(ev.Button, ev.Clicks)
+		rt.pointerUp(ev.Button, ev.Clicks, false)
+	case platform.PointerCancel:
+		// Where the pointer went the system may not tell: it stays.
+		button := -1
+		if held != 0 {
+			button = bits.TrailingZeros8(held)
+		}
+		rt.pointerCancel(button)
 	case platform.WebViewPress:
 		rt.webViewPress(x, y, ev.Button)
 	case platform.PointerLeave:
@@ -465,11 +475,11 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 // a main loop the handler runs nested, is the next press's.
 func (rt *engine) endPress(input func(InputEvent) bool, x, y float32) {
 	p := rt.pressed
-	p.pressed = false
+	p.pressed, p.canceled = false, true
 	rt.pressed = nil
 	rt.requestFrame()
 	if input != nil {
-		input(InputEvent{Kind: InputPointerUp, X: x, Y: y, Button: rt.pressButton, Mods: rt.mods, Clicks: rt.pressClicks, Pointer: rt.pointerType, Time: rt.now()})
+		input(InputEvent{Kind: InputPointerUp, X: x, Y: y, Button: rt.pressButton, Mods: rt.mods, Clicks: rt.pressClicks, Canceled: true, Pointer: rt.pointerType, Time: rt.now()})
 	}
 }
 
@@ -482,8 +492,44 @@ func (rt *engine) endDown() {
 	for len(rt.ups) > 0 {
 		up := rt.ups[0]
 		rt.ups = rt.ups[1:]
-		rt.pointerUp(up[0], up[1])
+		if up.canceled {
+			rt.pointerCancel(up.button)
+		} else {
+			rt.pointerUp(up.button, up.clicks, false)
+		}
 	}
+}
+
+// pendingUp is a release that came while pointerDown handled a press
+// (engine.ups): of button, with its count of clicks, or, canceled, the
+// system taking the press, of button the lowest of those held then, -1
+// for none.
+type pendingUp struct {
+	button, clicks int
+	canceled       bool
+}
+
+// pointerCancel ends the press the system took (platform.PointerCancel)
+// as a release of its button that commits nothing: no click, no drop,
+// no end of a drag, no context menu. button is the lowest of the buttons
+// held as it came, for observers and the menus when no element is
+// pressed, or -1 when none was: then nothing is pressed, and nothing
+// happens.
+func (rt *engine) pointerCancel(button int) {
+	if rt.downing > 0 {
+		rt.ups = append(rt.ups, pendingUp{button: button, canceled: true})
+		return
+	}
+	switch {
+	case rt.scrollDrag.st != nil:
+		button = 0
+	case rt.pressed != nil:
+		button = rt.pressButton
+	}
+	if button < 0 {
+		return
+	}
+	rt.pointerUp(button, 0, true)
 }
 
 // countPress counts the backend's n-th quick press from the first on the
@@ -506,12 +552,15 @@ func (rt *engine) countPress(chain []uint64, target, h *state, n int) int {
 	return n - lp.base
 }
 
-func (rt *engine) pointerUp(button, clicks int) {
+// pointerUp releases button, counting clicks; canceled, the system took
+// the press (pointerCancel), which the release then ends without
+// committing what it would.
+func (rt *engine) pointerUp(button, clicks int, canceled bool) {
 	if rt.downing > 0 {
-		rt.ups = append(rt.ups, [2]int{button, clicks})
+		rt.ups = append(rt.ups, pendingUp{button: button, clicks: clicks})
 		return
 	}
-	rt.observePointer(InputEvent{Kind: InputPointerUp, Button: button, Mods: rt.mods, Clicks: max(clicks, 1)})
+	rt.observePointer(InputEvent{Kind: InputPointerUp, Button: button, Mods: rt.mods, Clicks: max(clicks, 1), Canceled: canceled})
 	if button == rt.pressButton {
 		clicks = rt.pressClicks // the engine's, which may have started over
 	}
@@ -527,17 +576,32 @@ func (rt *engine) pointerUp(button, clicks int) {
 		rt.requestFrame()
 		return
 	}
-	if s := rt.pressed; s != nil && button == rt.pressButton && rt.dragEnd() {
-		// A drag ended, dropping its value: no click.
-		rt.pressed = nil
-		s.pressed = false
-		rt.setHover(rt.hitChain(rt.pointerX, rt.pointerY))
-		return
+	if s := rt.pressed; s != nil && button == rt.pressButton {
+		if d := rt.drag; canceled && d != nil && !d.native {
+			// Given up, as with Escape: dropped nowhere, and not missed. A
+			// native drag's session has the pointer, and ends it.
+			d.canceled, d.over = true, 0
+		}
+		if rt.dragEnd() {
+			// A drag ended, dropping its value: no click.
+			rt.pressed = nil
+			s.pressed = false
+			if canceled {
+				s.canceled = true
+			}
+			rt.setHover(rt.hitChain(rt.pointerX, rt.pointerY))
+			return
+		}
 	}
 	if p := rt.pressed; p != nil && p.input != nil {
-		rt.deliver(p, InputEvent{Kind: InputPointerUp, Button: button, Mods: rt.mods, Clicks: max(clicks, 1)})
+		rt.deliver(p, InputEvent{Kind: InputPointerUp, Button: button, Mods: rt.mods, Clicks: max(clicks, 1), Canceled: canceled})
 	}
-	if button == 1 && rt.menuRelease() {
+	if button == 1 && canceled && rt.menu.release != 0 {
+		// The menu waiting for the release opens for none.
+		rt.menu.release, rt.menu.releaseText = 0, 0
+		return
+	}
+	if button == 1 && !canceled && rt.menuRelease() {
 		return
 	}
 	s := rt.pressed
@@ -552,8 +616,9 @@ func (rt *engine) pointerUp(button, clicks int) {
 	r := &s.releaseLater
 	r.due, r.x, r.y = true, rt.pointerX, rt.pointerY
 	// A press of the primary button that moved ends a drag; a click does
-	// not.
-	r.released = button == 0 && s.drag.n > 1
+	// not, nor does a press the system took.
+	r.released = button == 0 && s.drag.n > 1 && !canceled
+	r.canceled = canceled
 	v := s.drag.velocities(rt.now())
 	s.releaseVX, s.releaseVY, s.releaseWX, s.releaseWY = v[0], v[1], v[2], v[3]
 	if ed := s.editor; ed != nil {
@@ -565,7 +630,7 @@ func (rt *engine) pointerUp(button, clicks int) {
 		ed.release()
 	}
 	inside := rt.contains(s, Rect{s.x, s.y, s.w, s.h}, rt.pointerX, rt.pointerY)
-	if inside && s.flags&flagDisabled == 0 {
+	if inside && s.flags&flagDisabled == 0 && !canceled {
 		switch button {
 		case 0:
 			if s.dragRec.dragged(rt, s) {
@@ -594,13 +659,13 @@ func (rt *engine) pointerUp(button, clicks int) {
 func (rt *engine) applyRelease(s *state) {
 	r := &s.releaseLater
 	s.pressed = rt.pressed == s
-	s.released = r.released
+	s.released, s.canceled = r.released, r.canceled
 	s.clicks += r.clicks
 	s.rightClicks += r.rightClicks
 	if r.clicks > 0 {
 		s.clickMods = r.clickMods
 	}
-	r.due, r.clicks, r.rightClicks = false, 0, 0
+	r.due, r.canceled, r.clicks, r.rightClicks = false, false, 0, 0
 	if rt.pressEnded == s {
 		rt.pressEnded = nil
 	}
@@ -1651,7 +1716,8 @@ func (e *node) DragVelocity() (vx, vy float32) {
 // primary button, and moving, let go since the last frame, with how fast
 // it moved then, as DragVelocity: a spring taking over
 // (SpringOptions.Velocity) keeps the fling going. A click, which does not
-// move, ends no drag, nor does a drag with another button.
+// move, ends no drag, nor does a drag with another button, nor a press
+// the system canceled (PressCanceled).
 func (e *node) DragEnded() (vx, vy float32, ok bool) {
 	if !e.hasState() {
 		return 0, 0, false
@@ -1663,6 +1729,32 @@ func (e *node) DragEnded() (vx, vy float32, ok bool) {
 	}
 	e.c.rt.consumed = true
 	return s.releaseVX, s.releaseVY, true
+}
+
+// PressCanceled reports whether the press of the element ended since the
+// last frame without the pointer letting go, as Pointer Events'
+// pointercancel: the system took it (a browser turning a touch into the
+// page's scrolling, the window losing the mouse capture or the pointer's
+// grab, a menu taking the release), or the window lost the keyboard. Such
+// a press clicks nothing (Clicked) and ends no drag (DragEnded), and
+// Pressed turns false: undo what the press began, as a preview a drag
+// showed, rather than commit it.
+//
+//	dx, _, held := handle.Dragged()
+//	switch {
+//	case held:
+//		app.preview += dx
+//	case handle.PressCanceled():
+//		app.preview = 0
+//	case app.preview != 0:
+//		app.width, app.preview = app.width+app.preview, 0
+//	}
+func (e *node) PressCanceled() bool {
+	if !e.hasState() || !e.st.canceled || e.st.pressed {
+		return false
+	}
+	e.c.rt.consumed = true
+	return true
 }
 
 // dragTrack keeps the last moves of a press, to tell how fast it goes: in

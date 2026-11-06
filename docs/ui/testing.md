@@ -37,7 +37,8 @@ panics where the second key was given, as apps only log it.
 - **Pointer.** `tt.Click`, `tt.ClickAt`, `tt.ClickWith(ui.Shift, "Row 3")`,
   `tt.Press`, `tt.Move` and `tt.Release`, `tt.PressButton` and
   `tt.ReleaseButton` for another button, as `tt.PressButton(1, x, y)` for
-  a right-button drag, `tt.Scroll`, which scrolls at
+  a right-button drag, `tt.CancelPress`, which ends the press as the
+  system cancels one, with no click, `tt.Scroll`, which scrolls at
   once as a touchpad does, and `tt.Wheel`, a notch of a mouse wheel, which
   glides there as the clock advances (`tt.Advance`).
   `tt.UsePointer(ui.PointerPen, 0.6)` has the presses and moves after it

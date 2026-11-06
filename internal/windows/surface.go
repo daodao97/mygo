@@ -140,6 +140,10 @@ type surface struct {
 	// pointerAt is where on the screen the last WM_POINTER message's
 	// pointer was, in pixels (pointerMessage).
 	pointerAt point
+	// canceledUp tells that the system took the press of the pen or the
+	// finger (cancelPress): the mouse button's release that follows is
+	// its, and goes nowhere.
+	canceledUp bool
 
 	// keyTaken tells that the content took the key down, whose
 	// WM_SYSCHAR then opens no menu.
@@ -745,6 +749,15 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 	case wmPointerDown, wmPointerUpdate, wmPointerUp:
 		// A pen or a finger, whose mouse messages DefWindowProc makes.
 		s.pointerMessage(m, wp)
+		if m == wmPointerUp && pointerCanceled(wp) && s.buttons != 0 {
+			// The system took the pen or the finger, as for an edge's
+			// gesture: the press ends with no release, and the button
+			// up DefWindowProc may make of it goes nowhere. The capture
+			// goes after the buttons, so that losing it cancels no more.
+			s.cancelPress()
+			s.canceledUp = true
+			procReleaseCapture.Call()
+		}
 		return 0, false
 	case wmMouseMove:
 		if !s.tracking {
@@ -778,6 +791,7 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 			procSetCapture.Call(hwnd)
 		}
 		s.buttons |= 1 << button
+		s.canceledUp = false
 		s.pointer(platform.PointerDown, lp, button)
 		return 0, true
 	case wmLButtonUp, wmRButtonUp, wmMButtonUp:
@@ -787,6 +801,12 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 			button = 1
 		case wmMButtonUp:
 			button = 2
+		}
+		if s.canceledUp && s.buttons == 0 {
+			// The release of a press the system took (cancelPress),
+			// which opens no context menu either.
+			s.canceledUp = false
+			return 0, true
 		}
 		s.buttons &^= 1 << button
 		if s.buttons == 0 {
@@ -826,6 +846,14 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		s.send(platform.SurfaceEvent{Kind: platform.KeyReleased, Key: k, Mods: mods()})
 		return 1, true
 	case wmCaptureChanged:
+		// Another window took the mouse while a button was down, as a
+		// menu, or WM_CANCELMODE released it: the press ends with no
+		// release. OLE's drag loop takes it too (StartDataDrag), and
+		// the drag's end ends the press. The capture is gone already:
+		// releasing it would take another window's.
+		if s.buttons != 0 && lp != hwnd && s.dragSource == nil {
+			s.cancelPress()
+		}
 		s.buttons = 0
 		if lp != hwnd {
 			s.webCapture = nil
