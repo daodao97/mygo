@@ -722,7 +722,10 @@ type state struct {
 	// accessDisabled, that assistive technology reads it as unavailable
 	// (AccessDisabled).
 	ignoreInput, accessHidden, accessDisabled bool
-	cursor                                    Cursor
+	// activeDescendant is the element that has the keyboard focus while
+	// this one does (ActiveDescendant), 0 for none.
+	activeDescendant uint64
+	cursor           Cursor
 	// tip marks an element with a tooltip (TooltipBase), which shows once
 	// the pointer has rested on it for tipDelay, or at once within tipWarm
 	// of another going: its theme's TooltipDelay.

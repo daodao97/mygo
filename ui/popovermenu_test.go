@@ -413,7 +413,7 @@ func TestPopoverMenuAccessibility(t *testing.T) {
 		t.Errorf("focus on %q, not the menu, which the pointer opened", f.Label)
 	}
 	open := accessNode(t, tree, platform.RoleMenuItem, "Open")
-	if open.Label != "Open" || open.Description == "" || open.PosInSet != 1 || open.SetSize != 5 {
+	if open.Label != "Open" || open.KeyShortcuts == "" || open.PosInSet != 1 || open.SetSize != 5 {
 		t.Errorf("Open: %+v", open)
 	}
 	if n := tree.Nodes[open.Parent]; n.ID != menu.ID {

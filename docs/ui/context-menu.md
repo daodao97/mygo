@@ -44,7 +44,7 @@ notes it, for the change once the loop is done (see
 - `Disabled(d)` grays it out: it cannot be chosen.
 - `Tooltip(s)` shows `s` as the pointer rests on it, to say what it does.
   The system's menus show it on macOS and Linux, and `PopoverMenu` on
-  every platform.
+  every platform, also as the keys rest on it.
 - `Icon(icon)` shows an image beside its label, made once with
   [`mygo.NewMenuIcon`](../menus.md#icons). The system's menus show it as
   they show the icons of `mygo.MenuItem`, browsers show none, and

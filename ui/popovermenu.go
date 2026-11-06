@@ -463,8 +463,10 @@ func (m *menuParts) item(role Role, sub bool) *node {
 	}
 	if m.moved && row.Hovered() {
 		// The pointer moved onto it: it is highlighted, and its submenu
-		// opens while those of the others close. The keys go on from it.
+		// opens while those of the others close. The keys go on from it,
+		// and the focus is the pointer's again, as it shows no ring.
 		m.moved = false
+		rt.focusVisible = false
 		s.pointer = [2]float32{rt.pointerX, rt.pointerY}
 		switch {
 		case sub && !open:
@@ -627,6 +629,8 @@ func (m *menuParts) keys(level int, panel *node, choices []*node, groups, stops 
 		if n > 0 {
 			m.highlight(level, choices[(i%n+n)%n].id)
 			s.levels[level].reveal = true
+			// Moved by the keys: the focus shows, and the item's tip with it.
+			rt.focusVisible = true
 		}
 	}
 	// The stop of the item highlighted: its own, or its group's.
@@ -943,8 +947,10 @@ func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, marks, icons 
 	if it.ToolTip != "" {
 		row.Tooltip(it.ToolTip)
 	}
+	// Assistive technology reads the shortcut as the item's keys and its
+	// tooltip, if any, as its description.
 	keys := shortcutText(it.Accelerator)
-	row.description = keys
+	row.keyShortcuts = keys
 	color, muted := t.Text, t.TextMuted
 	switch {
 	case !it.Enabled:
