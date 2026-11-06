@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/egoist/mygo/internal/update"
 )
 
 type buildOptions struct {
@@ -386,6 +388,12 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		for _, e := range all {
 			installed = append(installed, e.Name())
 		}
+		// The list of what this version installs, from which the update to
+		// the next one knows what to remove.
+		if err := update.WriteFileList(stage, installed); err != nil {
+			return nil, err
+		}
+		installed = append(installed, update.FileList)
 	}
 	if goos == "windows" && !opts.skipInstaller {
 		setup, err := writeInstaller(c, stage, opts.work, name+".exe", goarch, installed)

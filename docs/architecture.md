@@ -1797,7 +1797,17 @@ as in Tauri:
   directories and relative links only) and swaps it in: the bundle is
   renamed on macOS, the entries of the app directory on Linux and Windows,
   where the running executable is renamed away and removed at the next
-  launch. `App.Relaunch` then starts the new version from the path the app
+  launch. There the app directory holds `update.FileList` (`.mygo-files`),
+  its top-level entries as installed, one per line: `mygo build` writes it
+  into the app (so the archive, installer and packages have it), and
+  `swapFiles` rewrites it in the update with the update's entries before
+  swapping it in with them. The entries that the installed list names and
+  the update lacks are renamed aside first, as replaced ones are, and
+  deleted once the swap succeeds, so a failed swap puts them back; entries
+  that no list names (the user's, the uninstaller) and all of an app
+  without a list stay, and so does the running executable. Deltas never
+  make the list from the installed one, which the updater rewrote.
+  `App.Relaunch` then starts the new version from the path the app
   started from. Development builds are never updated. Delta updates work
   as Sparkle's (`internal/update/delta.go`): `mygo build` fetches the
   published manifest of the target, downloads the archives of up to
