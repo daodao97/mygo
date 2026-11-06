@@ -356,6 +356,8 @@ func popupItemEnabled(label string) (enabled, ok bool) {
 // composition the test makes up does not show.
 func pressKey(*mygo.Window, uint16, string) bool { return false }
 
+func pressKeyComposing(*mygo.Window, uint16, string, string, string) bool { return false }
+
 // dragFiles drags files from another application to (x, y) of a window of
 // native UI and drops them, as OLE does, waiting for the target to answer.
 func dragFiles(w *mygo.Window, x, y float64, paths []string) (dropped, ok bool) {

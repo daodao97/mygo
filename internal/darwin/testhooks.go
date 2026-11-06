@@ -1200,6 +1200,34 @@ func TestComposeOver(handle uintptr, text string, caret int, commit bool, from, 
 	return true
 }
 
+// TestKeyComposing presses the key of virtual key code code, typing chars,
+// in a window showing native UI, with the test standing in for the input
+// method that interprets it: the input method inserts commit, unless it
+// is empty, then asks for the key's command (doCommandBySelector:), unless
+// command is empty. The Korean input method takes Return so while it
+// composes: it commits the syllable and asks for insertNewline:. The
+// Japanese one commits the candidate and asks for nothing. It reports
+// false for a window showing a web page.
+func TestKeyComposing(handle uintptr, code uint16, chars, commit, command string) bool {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil || w.surface == nil {
+		return false
+	}
+	loadTestInput()
+	interpret := interpretKeys
+	defer func() { interpretKeys = interpret }()
+	interpretKeys = func(view, ev id) {
+		if commit != "" {
+			msgInsertText(view, sel("insertText:replacementRange:"), nsString(commit), nsRange{Location: nsNotFound})
+		}
+		if command != "" {
+			send(view, "doCommandBySelector:", uintptr(sel(command)))
+		}
+	}
+	sendKeyToWindow(w, code, chars, false)
+	return true
+}
+
 // TestInputClient returns what a window's surface tells input methods: the
 // selected range and the whole text of their document.
 func TestInputClient(handle uintptr) (selected [2]int, document string) {

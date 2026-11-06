@@ -200,6 +200,13 @@ func (s *surface) unmarkText() {
 	}
 }
 
+// interpretKeys has the input method interpret a key the surface's view
+// got; it answers with the view's NSTextInputClient methods. The GUI tests
+// stand in for an input method here (TestKeyComposing).
+var interpretKeys = func(view, ev id) {
+	send(view, "interpretKeyEvents:", uintptr(nsArray(ev)))
+}
+
 // typedChars returns the text of a key's characters, without the control
 // characters of Return, Tab, Escape and Delete, nor the private-use ones
 // AppKit gives the arrows and function keys (NSUpArrowFunctionKey…),

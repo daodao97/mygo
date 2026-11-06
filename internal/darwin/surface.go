@@ -176,6 +176,11 @@ type surface struct {
 	marked    string
 	markedSel nsRange
 	keyDown   bool // in interpretKeyEvents: text typed with the key
+	// withheld is the key keyDown: kept from the content while the input
+	// method composed, during interpretKeyEvents: doCommandBySelector:
+	// sends it if the input method ends the composition and passes the
+	// key on.
+	withheld *platform.SurfaceEvent
 	// refused: the content left the composition set in
 	// interpretKeyEvents, given up once it returns.
 	refused bool
@@ -1328,11 +1333,14 @@ func registerSurfaceClass() {
 			text := s.input.Active && mods&(platform.ModSuper|platform.ModCtrl) == 0
 			ime := text && !s.input.NoInputMethod
 			// A key typed while the input method composes is the input
-			// method's alone, as Enter choosing a candidate or Escape
-			// giving the composition up, as GTK's and IMM32's filtering
-			// keeps them on Linux and Windows.
-			if !ime || !s.hasMarkedText() {
-				s.send(platform.SurfaceEvent{Kind: platform.KeyPressed, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Code: eventKeyCode(ev), Mods: mods, Repeat: sendBool(ev, "isARepeat")})
+			// method's, as Enter choosing a candidate or Escape giving the
+			// composition up, as GTK's and IMM32's filtering keeps them on
+			// Linux and Windows, unless the input method passes it on
+			// (doCommandBySelector:).
+			key := platform.SurfaceEvent{Kind: platform.KeyPressed, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Code: eventKeyCode(ev), Mods: mods, Repeat: sendBool(ev, "isARepeat")}
+			withheld := ime && s.hasMarkedText()
+			if !withheld {
+				s.send(key)
 			}
 			// Input methods see the key while a text input has the focus;
 			// they answer with insertText: or setMarkedText:.
@@ -1346,8 +1354,11 @@ func registerSurfaceClass() {
 				}
 			} else if ime {
 				s.keyDown = true
-				send(self, "interpretKeyEvents:", uintptr(nsArray(ev)))
-				s.keyDown = false
+				if withheld {
+					s.withheld = &key
+				}
+				interpretKeys(self, ev)
+				s.keyDown, s.withheld = false, nil
 				if s.refused {
 					s.refused = false
 					s.discardComposition()
@@ -1462,7 +1473,23 @@ func registerSurfaceClass() {
 			screen := msgRectToRect(s.w.win, sel("convertRectToScreen:"), inWindow)
 			return cgRect{X: screen.Origin.X, Y: screen.Origin.Y, W: screen.Size.Width, H: screen.Size.Height}
 		}),
-		method("doCommandBySelector:", func(self id, _ objc.SEL, cmd objc.SEL) {}),
+		// The input method passes on the key it was given (insertNewline:
+		// for Return, moveLeft: for the left arrow…), as the Korean one
+		// does once Return or an arrow committed the syllable it composed:
+		// the content gets the key it held back, as a text view acts on
+		// the command. Input methods that keep the key, as Return choosing
+		// a candidate in Japanese or Chinese, do not ask for its command,
+		// or still compose; a key the content got already, or a command
+		// outside keyDown:, sends nothing.
+		method("doCommandBySelector:", func(self id, _ objc.SEL, cmd objc.SEL) {
+			s := b().surfaceOf(self)
+			if s == nil || s.withheld == nil || s.hasMarkedText() {
+				return
+			}
+			key := *s.withheld
+			s.withheld = nil
+			s.send(key)
+		}),
 	}...))
 }
 

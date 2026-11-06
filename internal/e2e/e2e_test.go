@@ -3889,6 +3889,66 @@ func TestContentWindowComposingKeys(t *testing.T) {
 	eventually(t, "Escape closing the dialog", func() bool { o, _, _ := state(); return !o })
 }
 
+// TestContentWindowComposingReturn presses Return in a chat box while an
+// input method composes. The Korean one commits the syllable and passes
+// Return on (doCommandBySelector:): the box sends the message on that
+// press, as a text view acts on it. The Japanese one commits the
+// candidate and keeps Return: nothing is sent. A command asked for while
+// the input method still composes, or for a key the content got already,
+// sends no key.
+func TestContentWindowComposingReturn(t *testing.T) {
+	var frames atomic.Int32
+	draft := ""
+	var sent []string
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		ui.TextArea(c, &draft).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
+			if k.Key == ui.KeyEnter && k.Mods == 0 {
+				sent = append(sent, k.Text())
+				k.SetText("")
+				return true
+			}
+			return false
+		})
+	}
+	state := func() (d string, s []string) {
+		mygo.RunOnMain(func() { d, s = draft, slices.Clone(sent) })
+		return
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Composing Return", Width: 400, Height: 200, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 1 })
+
+	// Korean: Return commits 한 and sends it.
+	compose(w, "한", 1, false)
+	if !pressKeyComposing(w, 36, "\r", "한", "insertNewline:") {
+		t.Skip("input method automation not available on this platform")
+	}
+	eventually(t, "Return sending the committed syllable", func() bool { _, s := state(); return len(s) == 1 })
+	if d, s := state(); s[0] != "한" || d != "" {
+		t.Fatalf("sent %q, the draft %q", s, d)
+	}
+
+	// Japanese: Return commits 日本 and is the input method's.
+	compose(w, "にほん", 3, false)
+	pressKeyComposing(w, 36, "\r", "日本", "")
+	eventually(t, "the committed candidate", func() bool { d, _ := state(); return d == "日本" })
+
+	// The input method asks for the command while it still composes.
+	compose(w, "ㄱ", 1, false)
+	pressKeyComposing(w, 36, "\r", "", "insertNewline:")
+	compose(w, "가", 0, true)
+	eventually(t, "the composition committed", func() bool { d, _ := state(); return d == "日本가" })
+
+	// No composition: the key goes to the content once, not again for its
+	// command.
+	pressKeyComposing(w, 36, "\r", "", "insertNewline:")
+	compose(w, "x", 0, true)
+	eventually(t, "the text typed after Return", func() bool { d, _ := state(); return d == "x" })
+	if _, s := state(); len(s) != 2 || s[1] != "日本가" {
+		t.Fatalf("sent %q, want [한 日本가]", s)
+	}
+}
+
 // TestContentWindowTextKeys has a composer's OnTextKey take Return and
 // Tab as the platform delivers them, reading the text typed before them:
 // the text area inserts no newline, and the focus stays.
