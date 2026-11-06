@@ -295,6 +295,12 @@ func (p *Painter) element(e *node) {
 	var flat groupMark
 	grouped := false
 	if paintGroup != nil && e.first != nil && !e.effecting && e.fade() < 1 {
+		if p.opacity*e.fade() <= 0.001 {
+			// Faded out, as an Exit or a pose's Fade ends: nothing shows,
+			// and its layer drawn at an opacity of 0 would show whole, as
+			// an op's 0 means 1.
+			return
+		}
 		if flat, grouped = paintGroup(p, e); !grouped {
 			return
 		}

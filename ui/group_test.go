@@ -197,3 +197,28 @@ func TestOpacityGroupTurned(t *testing.T) {
 	nearPixel(t, img, 100, 60, [3]int{255, 127, 127})
 	nearPixel(t, img, 5, 5, [3]int{255, 255, 255})
 }
+
+// TestOpacityGroupFadedOut checks that a group painting into its layer
+// shows nothing once faded out, as an Exit or a pose's Fade ends. It drew
+// its layer at an opacity of 0, which an op takes for 1: the copy of a
+// popup closing, or a page fading away, came back whole at the end.
+func TestOpacityGroupFadedOut(t *testing.T) {
+	white, red := RGB(255, 255, 255), RGB(255, 0, 0)
+	opacity := float32(0.5)
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Background(white).Size(100, 80).Children(func() {
+			coreBox(c).Size(60, 40).Children(func() {
+				coreBox(c).Absolute().Left(0).Top(0).Size(40, 40).Background(red)
+				coreBox(c).Absolute().Left(20).Top(0).Size(40, 40).Background(red)
+			}).Opacity(opacity)
+		})
+	}, 100, 80)
+	tt.Frame()
+	if !layered(tt) {
+		t.Fatal("overlapping boxes painted flat")
+	}
+	opacity = 0
+	tt.Frame()
+	nearPixel(t, tt.Image(), 25, 20, [3]int{255, 255, 255})
+	nearPixel(t, tt.Image(), 5, 20, [3]int{255, 255, 255})
+}
