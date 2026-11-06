@@ -70,7 +70,11 @@ behaves and to move it:
   does; scrolling back to the end follows it again. `FollowAnimation`
   makes it glide there, as a spring (`&ui.Smooth`) or a curve, rather
   than show the end at once: what is added comes up from below, as the
-  chat apps scroll, and the user scrolling stops it.
+  chat apps scroll, and the user scrolling stops it. Each layout reads
+  `FollowEnd` as it is then, and `HoldPlace` keeps the list where it is
+  for the next layout alone: call it in the frame a click opens a fold in
+  the last message, and the line clicked stays under the pointer rather
+  than following the end as the row grows.
 - `Header` names the rows heading sections: the header of the section at
   the top stays pinned there while its rows scroll under it, until the next
   header pushes it away. Give headers a background.
