@@ -5303,7 +5303,8 @@ renderer's (`gputest.Compare`).
   the `/Applications` link, the volume icon and a `.DS_Store` written in
   pure Go (`dsstore.go`, byte-identical to dmgbuild's `ds_store` package)
   that lays out the Finder window in a folder, `hdiutil` creates a writable
-  HFS+ image of it, as large as its files need, the CLI sets the volume's
+  HFS+ image of it, as large as its files need (APFS where HFS+ fails, as
+  on macOS 26.7.1), the CLI sets the volume's
   Finder flags, then `hdiutil convert` compresses it with LZMA.
   No AppleScript or Finder automation is involved, so it works headless and
   in CI. The image is signed with a real identity and, with `macos.notarize`,
