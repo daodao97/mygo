@@ -740,7 +740,7 @@ func (rt *engine) runFrame() {
 		if rt.closing {
 			return // an action closed it
 		}
-		if !rt.consumed && !rt.zoomChanged {
+		if !rt.consumed && !rt.zoomChanged && !rt.unhoverGone() {
 			break
 		}
 	}

@@ -257,6 +257,44 @@ func (rt *engine) rehover() {
 	}
 }
 
+// unhoverGone makes what the pointer is over hover in place of the
+// element it hovered, gone in the pass just built, as a menu's backdrop
+// closing over a button, and reports whether that changes what an
+// element looking at its hover sees, for the pass to be built again: the
+// button shows hovering in the frame the menu goes, rather than not
+// until the next (rehover). What it is over is told from the last
+// frame's layout, leaving out what the pass did not build.
+func (rt *engine) unhoverGone() bool {
+	if len(rt.hover) == 0 || !rt.pointerIn || rt.pressed != nil || rt.scrollDrag.st != nil {
+		return false
+	}
+	built := func(s *state) bool { return s.seen == rt.frame && s.pass == rt.pass }
+	if s := rt.states[rt.hover[0]]; s != nil && built(s) {
+		return false
+	}
+	chain := rt.chain[:0]
+	for i := len(rt.hits) - 1; i >= 0; i-- {
+		h := &rt.hits[i]
+		if !built(h.st) || !rt.contains(h.st, h.r, rt.pointerX, rt.pointerY) {
+			continue
+		}
+		for s := h.st; s != nil; s = rt.states[s.parent] {
+			chain = append(chain, s.id)
+			if s.parent == 0 {
+				break
+			}
+		}
+		break
+	}
+	old := rt.hover
+	if slices.Equal(chain, old) {
+		rt.chain = chain[:0]
+		return false
+	}
+	rt.hover, rt.chain = chain, old[:0]
+	return rt.watchHover(chain) || rt.watchHover(old)
+}
+
 func (rt *engine) pointerMove(x, y float32) {
 	if d := &rt.scrollDrag; d.st != nil {
 		s := d.st
