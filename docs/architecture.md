@@ -290,7 +290,11 @@ purego gives three primitives, used everywhere:
   web view and, with vibrancy, an `NSVisualEffectView` behind it. WebKit
   docks the inspector next to the web view in its superview; were that the
   window's frame view, AppKit would draw a broken legacy title bar from then
-  on.
+  on. Liquid Glass is an `NSGlassEffectView` there instead, which shows
+  what is under it in the window rather than behind it: an opaque window
+  is made clear while it shows one, and so is the content view a rounded
+  window's color went to (`clearForGlass`), the color given back once the
+  glass goes.
 - **Memory is managed by hand.** Objects created with `alloc`/`init` are owned
   (+1) and must be released; convenience constructors return autoreleased
   objects. Code that creates temporary objects runs inside `withPool`,

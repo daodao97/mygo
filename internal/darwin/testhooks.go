@@ -882,6 +882,23 @@ func TestRoundedBacking(handle uintptr) (opaque bool, alpha, red float64) {
 	return opaque, alpha, red
 }
 
+// TestWindowBacking reports whether a window is opaque, and the alpha of
+// its background color, in sRGB.
+func TestWindowBacking(handle uintptr) (opaque bool, alpha float64) {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil {
+		return false, 0
+	}
+	opaque = sendBool(w.win, "isOpaque")
+	withPool(func() {
+		c := send(send(w.win, "backgroundColor"), "colorUsingColorSpace:", uintptr(send(class("NSColorSpace"), "sRGBColorSpace")))
+		if c != 0 {
+			alpha = msgFloat(c, sel("alphaComponent"))
+		}
+	})
+	return opaque, alpha
+}
+
 // TestDockInspector opens the web inspector of a window docked to it, and
 // reports whether the window has one.
 func TestDockInspector(handle uintptr) bool {

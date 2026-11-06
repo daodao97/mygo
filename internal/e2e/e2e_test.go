@@ -820,6 +820,63 @@ func TestGlass(t *testing.T) {
 	}
 }
 
+// TestGlassWithoutTransparent gives Liquid Glass to windows that are not
+// transparent (macOS 26). The glass shows what is under it in the window,
+// which is made clear while it shows, and opaque again once another
+// material or none takes its place. A rounded window's content view gives
+// its color up to the glass too, and gets it back, the color set meanwhile.
+// A transparent window stays clear.
+func TestGlassWithoutTransparent(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200, Vibrancy: mygo.VibrancyGlass})
+	class, _, _, _, ok := material(w)
+	if !ok {
+		t.Skip("the material is macOS's")
+	}
+	if class != "NSGlassEffectView" {
+		t.Skip("the system has no NSGlassEffectView")
+	}
+	wantClear := func(name string, w *mygo.Window) {
+		t.Helper()
+		if opaque, alpha, _ := windowBacking(w); opaque || alpha != 0 {
+			t.Errorf("%s: opaque %v, background alpha %v; want a clear window", name, opaque, alpha)
+		}
+	}
+	wantClear("glass", w)
+	w.SetVibrancy(mygo.VibrancyPopover)
+	if opaque, alpha, _ := windowBacking(w); !opaque || alpha == 0 {
+		t.Errorf("popover: opaque %v, background alpha %v; want the window opaque again", opaque, alpha)
+	}
+	w.SetVibrancy(mygo.VibrancyGlassClear)
+	wantClear("clear glass", w)
+	w.SetVibrancy(mygo.VibrancyNone)
+	if opaque, alpha, _ := windowBacking(w); !opaque || alpha == 0 {
+		t.Errorf("no material: opaque %v, background alpha %v; want the window opaque again", opaque, alpha)
+	}
+
+	view := ui.View(func(c *ui.Context) { c.Root().Background(ui.Transparent) })
+	r := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200, Frameless: true, CornerRadius: 12, BackgroundColor: "#ff0000",
+		Vibrancy: mygo.VibrancyGlass, Content: view})
+	if opaque, alpha, _, _ := roundedBacking(r); opaque || alpha != 0 {
+		t.Errorf("rounded glass: opaque %v, the content view's color's alpha %v; want both clear", opaque, alpha)
+	}
+	r.SetBackgroundColor("#00ff0080")
+	if _, alpha, _, _ := roundedBacking(r); alpha != 0 {
+		t.Errorf("rounded glass after SetBackgroundColor: the content view's color's alpha %v; want it clear", alpha)
+	}
+	r.SetVibrancy(mygo.VibrancyNone)
+	if opaque, alpha, _, _ := roundedBacking(r); opaque || alpha < .49 || alpha > .51 {
+		t.Errorf("rounded, no material: opaque %v, the content view's color's alpha %v; want a clear window, the new color on the content view", opaque, alpha)
+	}
+	if _, _, radius, _, _ := material(r); radius != 12 {
+		t.Errorf("rounded, no material: corners %v, want 12", radius)
+	}
+
+	tr := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200, Transparent: true, Vibrancy: mygo.VibrancyGlass})
+	wantClear("transparent glass", tr)
+	tr.SetVibrancy(mygo.VibrancyNone)
+	wantClear("transparent, no material", tr)
+}
+
 // TestNativeGlassOverWebView puts a toolbar of the system's glass over a
 // web view: NSGlassEffectView sits under the content and above the web
 // view, with the toolbar's frame, where it samples the page.
