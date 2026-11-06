@@ -16,6 +16,10 @@ import (
 
 // EditorOptions configure an Editor.
 type EditorOptions struct {
+	// OnInput can consume input before normal editing, e.g. a custom hold.
+	// Return false to retain the editor's ordinary keyboard and pointer behavior.
+	OnInput func(ui.InputEvent) bool
+
 	// Label names the editor to assistive technology; "Rich text" when
 	// empty.
 	Label string

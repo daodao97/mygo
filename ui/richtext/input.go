@@ -13,6 +13,9 @@ const scrollbarWidth = 10
 // input takes the editor's input as it comes: keys, text, edit commands,
 // the pointer and the wheel.
 func (v *view) input(ev ui.InputEvent) bool {
+	if v.opts.OnInput != nil && v.opts.OnInput(ev) {
+		return true
+	}
 	v.sync()
 	defer v.publish()
 	switch ev.Kind {

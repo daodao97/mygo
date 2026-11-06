@@ -1632,6 +1632,7 @@ func (rt *engine) updateTextInput() {
 	if !t.Active && rt.ime.state.Active && rt.windowFocused && rt.touch.active && !rt.touch.scrolling && rt.pressed != nil {
 		return
 	}
+	t.Options.PointerInput = t.Active && rt.states[rt.focused] != nil && rt.states[rt.focused].touchSelection
 	if t != rt.ime.state || base != rt.ime.base {
 		if t.Client != rt.ime.state.Client {
 			if old, ok := rt.ime.state.Client.(*textInputAdapter); ok {

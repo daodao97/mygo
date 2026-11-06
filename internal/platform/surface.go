@@ -305,6 +305,10 @@ type TextSelectionRect struct {
 // TextInputOptions are semantic keyboard hints. Backends without software
 // keyboard traits ignore them; they never restrict accepted text.
 type TextInputOptions struct {
+	// PointerInput keeps custom touch selection/holds in the shared UI.
+	// The native editor remains responsible for keyboard/IME and handles.
+	PointerInput bool
+
 	Keyboard, Return, Content, Correction, Capitalization, Dismiss string
 }
 

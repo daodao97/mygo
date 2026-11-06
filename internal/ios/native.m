@@ -840,6 +840,7 @@ static const NSUInteger MyGoAccessoryColumns = 6;
 @property(nonatomic) uint64_t caretPressField;
 @property(nonatomic) CGPoint caretPressOrigin;
 @property(nonatomic) BOOL caretPressMoved;
+@property(nonatomic) BOOL pointerInput;
 @property(nonatomic) CGSize reportedSize;
 @property(nonatomic) CGFloat reportedScale;
 @property(nonatomic) BOOL framePending;
@@ -965,10 +966,12 @@ static const NSUInteger MyGoAccessoryColumns = 6;
   if (handle) return handle;
   UIView *hit=[super hitTest:point withEvent:event];
   if (![hit isDescendantOfView:self.editor]) return hit;
+  if (self.pointerInput) return self;
   if (!self.editor.fieldID || !self.editor.isFirstResponder || self.editor.secureTextEntry || point.x<24 || !self.editor.editable) return self;
   return hit;
 }
 - (void)selectText:(UILongPressGestureRecognizer *)gesture {
+  if (self.pointerInput) return;
   if (self.caretPressField && gesture.state != UIGestureRecognizerStateBegan) {
     CGPoint p=[gesture locationInView:self];
     self.caretPressMoved |= fabs(p.x-self.caretPressOrigin.x)>8 || fabs(p.y-self.caretPressOrigin.y)>8;
@@ -1060,6 +1063,7 @@ static const NSUInteger MyGoAccessoryColumns = 6;
  // Restrict our editor-scroll decision to this surface's own recognizers.
  if (gesture.view != self) return [super gestureRecognizerShouldBegin:gesture];
  if ([gesture isKindOfClass:UILongPressGestureRecognizer.class]) {
+  if (self.pointerInput) return NO;
   CGPoint p=[gesture locationInView:self];
   // Never let a surface hold compete with a selection handle drag.
   if ([self.editor selectionHandleAtPoint:[self convertPoint:p toView:self.editor]]) return NO;
@@ -1940,6 +1944,7 @@ void mygo_ios_input_options(uintptr_t view, const char *json) {
                                                         options:0 error:nil];
  MyGoController *controller=(MyGoController *)hostWindow.rootViewController;
  controller.keyboardDismiss=options[@"Dismiss"] ?: @"";
+ s.pointerInput=[options[@"PointerInput"] boolValue];
   NSDictionary *keyboards = @{@"text": @(UIKeyboardTypeDefault), @"ascii": @(UIKeyboardTypeASCIICapable),
     @"number": @(UIKeyboardTypeNumberPad), @"decimal": @(UIKeyboardTypeDecimalPad),
     @"phone": @(UIKeyboardTypePhonePad), @"email": @(UIKeyboardTypeEmailAddress), @"url": @(UIKeyboardTypeURL)};
