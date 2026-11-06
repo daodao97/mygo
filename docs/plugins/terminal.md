@@ -304,8 +304,11 @@ term, err := terminal.New(terminal.Options{
   exited]".
 - `OpenLink` takes the links Command+click opens, on the main thread,
   and with it file paths printed as text too (`/abs/path`, `~/notes.md`,
-  `./a.go`, `src/app.go:12:3`, `main.go:250`), as printed: a relative
-  path is the program's, as of `Dir`. It reports whether it opened the
+  `./a.go`, `src/app.go:12:3`, `main.go:250`, `app.ts(12,3)`,
+  `app.go#L12C3`, a quoted path with spaces, a path in Chinese prose with
+  no space around it), the place in the file as `path:line:col` however
+  it was printed, and without the quotes: a relative path is the
+  program's, as of `Dir`. It reports whether it opened the
   link; a hyperlink or a URL it leaves opens with the system, as every one
   does without `OpenLink`. An app opens a remote shell's paths in a
   preview of its own this way, rather than the system opening them
