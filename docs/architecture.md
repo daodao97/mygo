@@ -3866,9 +3866,8 @@ either.
   with it. A toast keeps the time it showed (`spent`) and since when it
   runs (`at`): its time stops while the pointer rests on the toasts or
   the keyboard focus is in them with the window's (`toastsPaused`), and
-  while the window is in the background (`toastsBackground`) unless it
-  runs there (`RunInBackground`), whose time over closes it on the next
-  frame, before the toasts build.
+  runs on while the window is in the background: a toast whose time is
+  over by then closes on the next frame, before the toasts build.
 - **Dates, times and colors** (`ui/date.go`, `ui/timeinput.go`,
   `ui/colorpicker.go`). `DateInput` and `Calendar` share one month's grid,
   whose day under the keys is its active descendant. A time input's
