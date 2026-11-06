@@ -738,6 +738,13 @@ type state struct {
 	// paints into the layer at once rather than flat first (checkFlat).
 	effectLayer *Canvas
 	grouped     bool
+	// ink is what the element and those inside it painted into its layer
+	// in frame inkFrame, in its own space, and lastInk what they painted
+	// in a frame before (keepInk): the layer of a frame holds lastInk, as
+	// far as a blur or a shadow inside it reached, the same however many
+	// times the frame paints.
+	ink, lastInk Rect
+	inkFrame     uint64
 	// webView is the web view the element shows (WebView).
 	webView NativeWebView
 

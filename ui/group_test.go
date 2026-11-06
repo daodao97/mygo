@@ -222,3 +222,81 @@ func TestOpacityGroupFadedOut(t *testing.T) {
 	nearPixel(t, tt.Image(), 25, 20, [3]int{255, 255, 255})
 	nearPixel(t, tt.Image(), 5, 20, [3]int{255, 255, 255})
 }
+
+// painted reports whether some pixel of img within r is not white.
+func painted(img *image.RGBA, r image.Rectangle) bool {
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			if p := img.RGBAAt(x, y); p.R < 250 || p.G < 250 || p.B < 250 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// TestOpacityGroupHoldsBlur checks that a group's layer holds the blur of
+// what is inside it, beyond the boxes: it was cut at their edges, which
+// showed a square around a word's glow faded with it.
+func TestOpacityGroupHoldsBlur(t *testing.T) {
+	white, red := RGB(255, 255, 255), RGB(255, 0, 0)
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(200, 100).Background(white).Children(func() {
+			coreBox(c).Absolute().Left(60).Top(30).Size(80, 40).Children(func() {
+				coreBox(c).Absolute().Left(0).Top(0).Size(40, 40).Background(red)
+				coreBox(c).Absolute().Left(20).Top(0).Size(40, 40).Background(red)
+				coreBox(c).Absolute().Left(40).Top(0).Size(40, 40).Background(red).Blur(6)
+			}).Opacity(0.5)
+		})
+	}, 200, 100)
+	for range 2 {
+		tt.Frame()
+		if !layered(tt) {
+			t.Fatal("overlapping boxes painted flat")
+		}
+		// 8 DIPs right of the boxes, within the blur's 18.
+		if !painted(tt.Image(), image.Rect(146, 40, 150, 60)) {
+			t.Fatal("the blur was cut at the edge of the boxes")
+		}
+	}
+}
+
+// TestOpacityGroupHoldsTextShadow checks that a group's layer holds a text's
+// shadow cast beyond the boxes.
+func TestOpacityGroupHoldsTextShadow(t *testing.T) {
+	white, red := RGB(255, 255, 255), RGB(255, 0, 0)
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(200, 100).Background(white).Children(func() {
+			coreBox(c).Absolute().Left(20).Top(30).Size(40, 40).Children(func() {
+				coreBox(c).Absolute().Left(0).Top(0).Size(40, 40).Background(red)
+				coreText(c, "Hi").Absolute().Left(0).Top(0).FontSize(20).TextShadow(80, 0, 0, RGB(0, 0, 255))
+			}).Opacity(0.5)
+		})
+	}, 200, 100)
+	tt.Frame()
+	if !layered(tt) {
+		t.Fatal("the text over the box painted flat")
+	}
+	if !painted(tt.Image(), image.Rect(100, 30, 140, 70)) {
+		t.Fatal("the text's shadow beyond the boxes was cut")
+	}
+}
+
+// TestCacheHoldsBlur checks that a kept layer (Cache) holds the blur of what
+// is inside it, beyond the boxes.
+func TestCacheHoldsBlur(t *testing.T) {
+	white, red := RGB(255, 255, 255), RGB(255, 0, 0)
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(200, 100).Background(white).Children(func() {
+			coreBox(c).Absolute().Left(60).Top(30).Size(40, 40).Children(func() {
+				coreBox(c).Size(40, 40).Background(red).Blur(6)
+			}).Cache()
+		})
+	}, 200, 100)
+	for range 2 {
+		tt.Frame()
+		if !painted(tt.Image(), image.Rect(106, 40, 110, 60)) {
+			t.Fatal("the blur was cut at the edge of the boxes")
+		}
+	}
+}

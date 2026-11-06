@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"sync"
 
 	"github.com/egoist/mygo/internal/scene"
@@ -94,19 +95,72 @@ func (p *Painter) takeBack(m *groupMark, end int) {
 	rt.drawn = rt.drawn[:m.drawn]
 }
 
-// groupArea returns what e and those inside it paint, as Cache keeps it,
-// within what shows of the clip, in e's own space.
-func (p *Painter) groupArea(e *node) Rect {
-	from, clip := keptLayer{}.area(e), p.clip
-	if w := e.world; w.Set {
-		inv, ok := w.Inverse()
-		if !ok || w.Perspective() {
-			clip = from
-		} else {
-			clip = transformRect(inv, clip)
-		}
+// everywhere is an area holding all a window paints, and more.
+var everywhere = Rect{X: -1 << 24, Y: -1 << 24, W: 1 << 25, H: 1 << 25}
+
+// clipIn returns what shows of p's clip in e's own space: everywhere
+// where e's transform, turning in 3D or flattening, tells no area.
+func (p *Painter) clipIn(e *node) Rect {
+	w := e.world
+	if !w.Set {
+		return p.clip
 	}
-	return intersect(from, clip)
+	inv, ok := w.Inverse()
+	if !ok || w.Perspective() {
+		return everywhere
+	}
+	return transformRect(inv, p.clip)
+}
+
+// inkArea returns from, holding what e painted into its layer in the
+// frame before (keepInk).
+func (p *Painter) inkArea(e *node, from Rect) Rect {
+	st := e.st
+	if st.inkFrame == p.rt.frame {
+		return inkUnion(from, st.lastInk)
+	}
+	return inkUnion(from, st.ink)
+}
+
+// keepInk returns what the scene of e's layer, drawn from x0, y0 of its
+// pixels, paints, in e's own space, and keeps it for the layers of the
+// next frames (inkArea). A layer is as large as what its content paints
+// rather than as their boxes: a blur, a shadow or a text's shadow inside
+// it reaching out of them shows whole.
+func (p *Painter) keepInk(e *node, cv *Canvas, x0, y0 float32) Rect {
+	var r Rect
+	if b := inkBounds(cv.img.Scene); !b.Empty() {
+		s := p.scale
+		r = Rect{(b.X + x0) / s, (b.Y + y0) / s, b.W / s, b.H / s}
+	}
+	st := e.st
+	if st.inkFrame != p.rt.frame {
+		st.lastInk, st.inkFrame = st.ink, p.rt.frame
+	}
+	st.ink = r
+	return r
+}
+
+// layerHolds reports whether the w×h pixels from x0, y0, scale pixels a DIP,
+// hold r, an area in DIPs, within half a pixel.
+func layerHolds(x0, y0 float32, w, h int, scale float32, r Rect) bool {
+	if r.W <= 0 || r.H <= 0 {
+		return true
+	}
+	e := 0.5 / scale
+	return r.X >= x0/scale-e && r.Y >= y0/scale-e &&
+		r.X+r.W <= (x0+float32(w))/scale+e && r.Y+r.H <= (y0+float32(h))/scale+e
+}
+
+// inkUnion returns the area holding a and b, either of which may be empty.
+func inkUnion(a, b Rect) Rect {
+	switch {
+	case b.W <= 0 || b.H <= 0:
+		return a
+	case a.W <= 0 || a.H <= 0:
+		return b
+	}
+	return union(a, b)
 }
 
 // groupLayer paints e into its state's canvas, kept as Cache's while what
@@ -116,7 +170,10 @@ func (p *Painter) groupArea(e *node) Rect {
 // shows: then it reports false, and paints nothing more, for e to paint
 // flat, or keep what it painted so.
 func (p *Painter) groupLayer(e *node, flat *groupMark) bool {
-	from := p.groupArea(e)
+	// What e and those inside it paint, as Cache keeps it, and as far as
+	// they painted the last time (inkArea), within what shows of the clip.
+	view := p.clipIn(e)
+	from := intersect(p.inkArea(e, keptLayer{}.area(e)), view)
 	end := len(p.rt.scene.Canvases)
 	if from.W <= 0 || from.H <= 0 {
 		if flat != nil {
@@ -124,14 +181,25 @@ func (p *Painter) groupLayer(e *node, flat *groupMark) bool {
 		}
 		return true // nothing of it shows
 	}
-	cv, x0, y0, w, h := p.layer(e, from)
-	if cv == nil {
-		return false
-	}
-	// Drawn again only when what it holds changed, as Cache's, so that a
-	// group faded still, or fading, costs the GPU one image.
 	s := p.scale
-	keptLayer{}.draw(cv, p, s, w, h, layerPaint(e, -x0/s, -y0/s, p.lifting))
+	var cv *Canvas
+	var x0, y0 float32
+	var w, h int
+	for again := false; ; again = true {
+		if cv, x0, y0, w, h = p.layer(e, from); cv == nil {
+			return false
+		}
+		// Drawn again only when what it holds changed, as Cache's, so
+		// that a group faded still, or fading, costs the GPU one image.
+		keptLayer{}.draw(cv, p, s, w, h, layerPaint(e, -x0/s, -y0/s, p.lifting, view))
+		// What it painted beyond the layer, as a blur inside it, which the
+		// layer cut: drawn again, holding it.
+		more := intersect(inkUnion(from, p.keepInk(e, cv, x0, y0)), view)
+		if again || layerHolds(x0, y0, w, h, s, more) {
+			break
+		}
+		from = more
+	}
 	sc := cv.img.Scene
 	if over, keep := overlapping(sc, sc.Ops, scene.Rect{W: float32(w), H: float32(h)}); !over || keep {
 		return false
@@ -163,11 +231,44 @@ const groupOps = 32
 // counts for nothing either way.
 func overlapping(s *scene.Scene, ops []scene.Op, clip scene.Rect) (over, flat bool) {
 	var boxes [groupOps]scene.Rect
+	n := 0
+	eachPainted(s, ops, clip, func(b scene.Rect, hole bool) bool {
+		if hole {
+			over, flat = false, true
+			return false
+		}
+		if over || b.Empty() {
+			return true
+		}
+		if n == len(boxes) {
+			over = true
+			return true
+		}
+		for _, o := range boxes[:n] {
+			if b.X < o.X+o.W && o.X < b.X+b.W && b.Y < o.Y+o.H && o.Y < b.Y+b.H {
+				over = true
+				break
+			}
+		}
+		boxes[n] = b
+		n++
+		return true
+	})
+	return over, flat
+}
+
+// eachPainted calls fn with the box each op of ops, of s, paints in, as far
+// as its bounds tell, within clip and the clips the ops push, until fn
+// returns false: empty for what painting skips out of them (paintable),
+// and with hole for a hole (a web view's) or an effect reading its
+// backdrop, which would not show through a layer.
+func eachPainted(s *scene.Scene, ops []scene.Op, clip scene.Rect, fn func(b scene.Rect, hole bool) bool) {
 	var clips [8]scene.Rect
-	n, depth := 0, 0
+	depth := 0
 	for i := range ops {
 		op := &ops[i]
 		var b scene.Rect
+		hole := false
 		switch op.Kind {
 		case scene.OpPushClip:
 			// Deeper than it keeps, a clip cuts nothing more.
@@ -184,11 +285,10 @@ func overlapping(s *scene.Scene, ops []scene.Op, clip scene.Rect) (over, flat bo
 			depth = max(depth, 0)
 			continue
 		case scene.OpHole:
-			return false, true
+			hole = true
+			b = op.Transform.Bounds(op.Rect)
 		case scene.OpEffect:
-			if int(op.Start) < len(s.Effects) && s.Effects[op.Start].Effect != nil && s.Effects[op.Start].Effect.Backdrop {
-				return false, true
-			}
+			hole = int(op.Start) < len(s.Effects) && s.Effects[op.Start].Effect != nil && s.Effects[op.Start].Effect.Backdrop
 			b = op.Transform.Bounds(op.Rect)
 		case scene.OpShadow:
 			b = op.Cast
@@ -202,23 +302,34 @@ func overlapping(s *scene.Scene, ops []scene.Op, clip scene.Rect) (over, flat bo
 		default:
 			b = op.Transform.Bounds(op.Rect)
 		}
-		if b = b.Intersect(clip); over || b.Empty() {
-			continue
+		if !fn(b.Intersect(clip), hole) {
+			return
 		}
-		if n == len(boxes) {
-			over = true
-			continue
-		}
-		for _, o := range boxes[:n] {
-			if b.X < o.X+o.W && o.X < b.X+b.W && b.Y < o.Y+o.H && o.Y < b.Y+b.H {
-				over = true
-				break
-			}
-		}
-		boxes[n] = b
-		n++
 	}
-	return over, false
+}
+
+// inkBounds returns what the ops of s, a layer's scene, paint, within the
+// clips they push but for the layer's own edge (Scene.Drawn), which what
+// they paint may cross: as large as the layer has to be (keepInk).
+func inkBounds(s *scene.Scene) scene.Rect {
+	ops := s.Ops
+	if s.Drawn != (image.Point{}) && len(ops) > 0 && ops[0].Kind == scene.OpPushClip {
+		ops = ops[1:] // its pop, unmatched, pops nothing
+	}
+	var ink scene.Rect
+	all := scene.Rect{X: everywhere.X, Y: everywhere.Y, W: everywhere.W, H: everywhere.H}
+	eachPainted(s, ops, all, func(b scene.Rect, _ bool) bool {
+		switch {
+		case b.Empty():
+		case ink.Empty():
+			ink = b
+		default:
+			x0, y0 := min(ink.X, b.X), min(ink.Y, b.Y)
+			ink = scene.Rect{X: x0, Y: y0, W: max(ink.X+ink.W, b.X+b.W) - x0, H: max(ink.Y+ink.H, b.Y+b.H) - y0}
+		}
+		return true
+	})
+	return ink
 }
 
 // glyphBounds returns the box the glyphs of op cover, as the renderers draw
