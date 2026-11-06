@@ -442,7 +442,7 @@ func (m *MenuIcon) PlatformMenuIcon() *platform.MenuIcon {
 // black and transparent image shown in the color of the menu's text, white
 // in a dark menu and on the highlight, as macOS tints template images
 // (Linux shows it as it is). It returns an error for data that is not a
-// PNG image.
+// PNG image. NewMenuIconSVG makes one of an SVG document.
 //
 // The image fits a box of 16 by 16 points, keeping its aspect: give it at
 // least 32 by 32 pixels, for high-resolution displays. A checkbox or radio

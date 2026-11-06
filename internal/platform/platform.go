@@ -1046,8 +1046,11 @@ type MenuItem struct {
 	Checked     bool
 	ToolTip     string
 	// Icon is the image beside the label, nil for none.
-	Icon    *MenuIcon
-	Submenu *Menu
+	Icon *MenuIcon
+	// IconColor, when set, is the color of a template Icon in the menus
+	// package ui draws, in place of the text's; backends ignore it.
+	IconColor *Color
+	Submenu   *Menu
 	// Native is set on the web view's own items of a page's context menu
 	// (WindowHandler.ContextMenu): the backend's number for the item,
 	// from 1, which it shows where the core puts it, doing what the web

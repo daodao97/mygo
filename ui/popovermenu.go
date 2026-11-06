@@ -77,14 +77,103 @@ func (e *node) PopoverMenu(build func(m *Menu)) *node {
 // menu as PopoverMenu's. The function PopoverMenuButton is a button with
 // such a menu, as MenuButton is one with a menu of the system's, and
 // MenuBase a menu button without a look.
-func (e *node) PopoverMenuButton(build func(m *Menu)) *node {
+//
+// Its options place the menu elsewhere along the button, and let the app
+// open and close it (PopoverMenuButtonOptions): the menu of a toolbar's
+// button at the window's end lines up with the button's end, and closes
+// from an event of the app's:
+//
+//	more.PopoverMenuButton(build, ui.PopoverMenuButtonOptions{
+//		At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd, Open: &app.moreOpen,
+//	})
+func (e *node) PopoverMenuButton(build func(m *Menu), options ...PopoverMenuButtonOptions) *node {
+	if len(options) > 1 {
+		panic("ui: PopoverMenuButton takes at most one PopoverMenuButtonOptions")
+	}
+	var o PopoverMenuButtonOptions
+	if len(options) > 0 {
+		o = options[0]
+	}
 	e.flags |= flagMenuButton | flagClickable | flagFocusable
 	if e.role == RoleAuto || e.role == RoleButton {
 		e.role = RoleMenuButton
 	}
+	rt := e.c.rt
+	var synced *bool
+	if o.Open != nil && e.hasState() {
+		// What *o.Open was as the last build left it: the app changed it
+		// since where they differ.
+		synced = coreLocal(e, menuOpenKey{}, func() bool { return false })
+		if shown := rt.drawsMenuOf(e); *o.Open != *synced && *o.Open != shown {
+			if shown {
+				rt.menu.drawn = nil
+			} else if !e.disabled() {
+				rt.openDrawnMenuBelow(e)
+			}
+			// What was built before may show the menu this one took the
+			// place of: build again.
+			rt.consumed = true
+		}
+	}
 	e.buildMenu(true, true, build)
-	e.c.rt.drawMenu(e, build)
+	if d := rt.menu.drawn; d != nil && d.id == e.id {
+		d.menu.attach = 0
+		if o.At != 0 || o.Self != 0 {
+			d.menu.attach = attachment(1 + min(o.At, AnchorBottomEnd)*15 + min(o.Self, AnchorBottomEnd))
+		}
+	}
+	rt.drawMenu(e, build)
+	if synced != nil {
+		*o.Open = rt.drawsMenuOf(e)
+		*synced = *o.Open
+	}
 	return e
+}
+
+// PopoverMenuButtonOptions are how a menu button whose menu MyGo draws in
+// the window (PopoverMenuButton) shows it. The zero options show it below
+// the button, lined up with its start, opened and closed by the user
+// alone.
+type PopoverMenuButtonOptions struct {
+	// At and Self place the menu as AttachTo places an element, its point
+	// Self on the point At of the button's box: AnchorBottomEnd and
+	// AnchorTopEnd line it up with the button's end, below it;
+	// AnchorTopStart and AnchorBottomStart, or AnchorTopEnd and
+	// AnchorBottomEnd, put it above the button; AnchorTopEnd and
+	// AnchorTopStart put it after the button, beside it. Where the window
+	// has no room, it goes to the other side of the button, or the other
+	// way along it, as AttachTo's elements do, keeping its gap from the
+	// button. Both zero (AnchorTopLeft) are the default, AnchorBottomStart
+	// and AnchorTopStart. A menu opened at a point, as a toolbar's
+	// overflow menu opens its buttons' menus, shows there instead.
+	At, Self Anchor
+	// Open, when set, is whether the menu shows, as MenuBase's open: the
+	// button sets it as the menu opens and closes, and the app opens the
+	// menu by setting it to true and closes it by setting it to false
+	// before the button is built, as an event of the app's in the
+	// background does before it updates the window. A menu opened so
+	// takes the focus, with no item highlighted, and gives it back as it
+	// closes. A window shows one such menu at a time: another opening
+	// closes it, which sets *Open to false, as a disabled button, which
+	// opens none, does.
+	Open *bool
+}
+
+type menuOpenKey struct{}
+
+// drawsMenuOf reports whether the menu drawn in the window that shows is
+// that of the menu button e (PopoverMenuButton).
+func (rt *engine) drawsMenuOf(e *node) bool {
+	d := rt.menu.drawn
+	return d != nil && d.id == e.id && !d.edit
+}
+
+// openDrawnMenuBelow opens the drawn menu of the menu button e below it, as
+// the app asked (PopoverMenuButtonOptions.Open), with no item highlighted.
+func (rt *engine) openDrawnMenuBelow(e *node) {
+	d := &drawnMenu{id: e.id}
+	d.menu = menuShown{below: true, opened: rt.frame, levels: []menuLevel{{}}, pointer: [2]float32{rt.pointerX, rt.pointerY}}
+	rt.menu.drawn = d
 }
 
 // MenuParts are the parts of a menu without a look: MenuBase makes its
@@ -137,8 +226,11 @@ type submenu struct {
 type menuShown struct {
 	// below puts a menu button's menu below the button; the others open at
 	// a point, dx and dy from the top left corner of their trigger's box.
+	// attach, when not 0, puts a menu button's elsewhere along the button
+	// (PopoverMenuButtonOptions).
 	below  bool
 	dx, dy float32
+	attach attachment
 	// opened is the frame it opened in, whose presses do not close it, as
 	// the press opening it.
 	opened uint64
@@ -328,7 +420,8 @@ func (m *menuParts) panel(level int, anchor *node, fn func(panel *node)) *node {
 	panel.flags |= flagFocusable | flagClickable | flagTypeSelect | flagOwnRing | flagScrollY | flagHover
 	switch {
 	case level == 0 && s.below:
-		panel.AttachTo(anchor, AnchorBottomStart, AnchorTopStart)
+		at, self := s.buttonAnchors()
+		panel.AttachTo(anchor, at, self)
 	case level == 0:
 		panel.AttachTo(anchor, AnchorTopStart, AnchorTopStart)
 	default:
@@ -877,9 +970,9 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 	m.Popup(func(panel *node) {
 		style(panel)
 		if d.menu.below {
-			// Below the menu button, or above it where the window has no
-			// room, lined up with its start.
-			panel.Margin(t.Space(1), 0, 0, 0)
+			// Apart from the menu button, on the side it shows.
+			at, self := d.menu.buttonAnchors()
+			menuGap(panel, at, self, t.Space(1))
 		}
 		items(pm.Items)
 	})
@@ -890,6 +983,36 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 	}
 	if chosen != nil {
 		rt.drawnChoice(d, run, build, chosen)
+	}
+}
+
+// buttonAnchors returns the points of a menu button's box and of its menu
+// that the menu attaches by (PopoverMenuButtonOptions): below the button,
+// lined up with its start, unless the button asked otherwise.
+func (s *menuShown) buttonAnchors() (at, self Anchor) {
+	if s.attach == 0 {
+		return AnchorBottomStart, AnchorTopStart
+	}
+	return s.attach.anchors()
+}
+
+// menuGap gives a menu attached to its button, its point self on the
+// button's point at, the margin that keeps it gap apart from the button: a
+// top margin below it, a bottom one above it, and one on the side beside
+// it. AttachTo keeps the gap as the menu goes to the other side.
+func menuGap(panel *node, at, self Anchor, gap float32) {
+	rtl := panel.rtl()
+	ax, ay := at.physical(rtl).fractions()
+	sx, sy := self.physical(rtl).fractions()
+	switch {
+	case ay == 1 && sy == 0:
+		panel.Margin(gap, 0, 0, 0)
+	case ay == 0 && sy == 1:
+		panel.Margin(0, 0, gap, 0)
+	case ax == 1 && sx == 0:
+		panel.Margin(0, 0, 0, gap)
+	case ax == 0 && sx == 1:
+		panel.Margin(0, gap, 0, 0)
 	}
 }
 
@@ -982,7 +1105,14 @@ func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, marks, icons 
 		if icons {
 			var b *Bitmap
 			if it.Icon != nil {
-				b = d.icon(it.Icon, color)
+				tint := color
+				accent := row.highlighted && !(row.expanded && m.s.levels[m.level+1].hi != 0)
+				if ic := it.IconColor; ic != nil && it.Enabled && !accent {
+					// Its own color, but on the highlight, the highlight's
+					// text color.
+					tint = Color{R: ic.R, G: ic.G, B: ic.B, A: ic.A}
+				}
+				b = d.icon(it.Icon, tint)
 			}
 			if b == nil {
 				coreBox(c).Size(platform.MenuIconSize, platform.MenuIconSize).Shrink(0)

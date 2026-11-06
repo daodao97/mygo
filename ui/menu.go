@@ -259,14 +259,16 @@ func (it *MenuItem) Radio(on bool) *MenuItem {
 	return it
 }
 
-// MenuIcon is the image of a menu item, as mygo.NewMenuIcon makes it.
+// MenuIcon is the image of a menu item, as mygo.NewMenuIcon makes it of a
+// PNG image, and mygo.NewMenuIconSVG of an SVG document.
 type MenuIcon interface {
 	PlatformMenuIcon() *platform.MenuIcon
 }
 
-// Icon shows an image beside the item's label, one mygo.NewMenuIcon made:
-// make each once, not as the menu builds, and give it to the items that
-// show it. A template image takes the color of the item's text. nil shows
+// Icon shows an image beside the item's label, one mygo.NewMenuIcon or
+// mygo.NewMenuIconSVG made: make each once, not as the menu builds, and
+// give it to the items that show it. A template image takes the color of
+// the item's text, or its IconColor in the menus MyGo draws. nil shows
 // none. The system's menus show it as package mygo's items do (see
 // NewMenuIcon), and browsers show none; PopoverMenu draws it on every
 // platform.
@@ -277,6 +279,28 @@ type MenuIcon interface {
 func (it *MenuItem) Icon(icon MenuIcon) *MenuItem {
 	if it.p != nil && icon != nil {
 		it.p.Icon = icon.PlatformMenuIcon()
+	}
+	return it
+}
+
+// IconColor draws the item's template icon (Icon) in c rather than in the
+// color of its text, as a red trash can by a Delete item, or a status's
+// color by its name. An icon in its own colors keeps them. While the item
+// is highlighted, its icon takes the highlight's text color, as its label
+// does, and a disabled item's is dimmed as its label is.
+//
+// Only the menus MyGo draws show it: PopoverMenu's and PopoverMenuButton's,
+// and ContextMenu's and Menu's in a window that draws its menus
+// (PopoverMenus). The system's menus tint template icons themselves, in
+// the color of their text, and leave it out.
+//
+//	if m.Item("Delete").Icon(trashIcon).IconColor(t.Danger).Chosen() {
+//		app.delete(msg)
+//	}
+func (it *MenuItem) IconColor(c Color) *MenuItem {
+	if it.p != nil {
+		s := c.SRGB()
+		it.p.IconColor = &platform.Color{R: s.R, G: s.G, B: s.B, A: s.A}
 	}
 	return it
 }

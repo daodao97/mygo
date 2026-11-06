@@ -1939,13 +1939,16 @@ func PopoverBase(c *Context, anchor Element, open *bool, fn func(panel Element))
 //			}
 //		}
 //	})
-func PopoverMenuButton(c *Context, label string, build func(m *Menu)) Element {
+//
+// Its options place the menu and open it from the app, as
+// Element.PopoverMenuButton's do.
+func PopoverMenuButton(c *Context, label string, build func(m *Menu), options ...PopoverMenuButtonOptions) Element {
 	_ctx := c.build()
 	if _ctx == nil {
 		return Element{}
 	}
 	_ctx.rt.beginBuild()
-	_e := corePopoverMenuButton(_ctx, label, build)
+	_e := corePopoverMenuButton(_ctx, label, build, options...)
 	_ctx.rt.endBuild()
 	return wrapElement(_e)
 }
@@ -6737,14 +6740,23 @@ func (_handle Element) PopoverMenu(build func(m *Menu)) Element {
 // menu as PopoverMenu's. The function PopoverMenuButton is a button with
 // such a menu, as MenuButton is one with a menu of the system's, and
 // MenuBase a menu button without a look.
-func (_handle Element) PopoverMenuButton(build func(m *Menu)) Element {
+//
+// Its options place the menu elsewhere along the button, and let the app
+// open and close it (PopoverMenuButtonOptions): the menu of a toolbar's
+// button at the window's end lines up with the button's end, and closes
+// from an event of the app's:
+//
+//	more.PopoverMenuButton(build, ui.PopoverMenuButtonOptions{
+//		At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd, Open: &app.moreOpen,
+//	})
+func (_handle Element) PopoverMenuButton(build func(m *Menu), options ...PopoverMenuButtonOptions) Element {
 	_node := _handle.node()
 	if _node == nil {
 		return Element{}
 	}
 	_ctx := _node.c
 	_ = _ctx
-	return wrapElement(_node.PopoverMenuButton(build))
+	return wrapElement(_node.PopoverMenuButton(build, options...))
 }
 
 // PositionInSet tells assistive technology which item of its set the

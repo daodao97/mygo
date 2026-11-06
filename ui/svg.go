@@ -107,7 +107,25 @@ func MustParsePath(d string) *Path {
 
 // Size returns the size the SVG says it has, its width and height or
 // those of its viewBox, which Image shows as DIPs.
-func (s *SVG) Size() (w, h float32) { return s.w, s.h }
+func (s *SVG) Size() (w, h float32) { return s.imageSize() }
+
+// Image draws the SVG in its own colors to an image of w by h pixels,
+// fitting it in them as its preserveAspectRatio says, with current for
+// currentColor, black when nil: for what takes pixels rather than an
+// element, as mygo.NewMenuIconSVG draws a menu's icon. Painter.Icon and
+// Icon draw it in the window, at the display's scale.
+func (s *SVG) Image(w, h int, current color.Color) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, max(w, 0), max(h, 0)))
+	if s == nil || w <= 0 || h <= 0 {
+		return img
+	}
+	cur := color.NRGBA{A: 255}
+	if current != nil {
+		cur = color.NRGBAModel.Convert(current).(color.NRGBA)
+	}
+	s.doc.Draw(img, cur, false)
+	return img
+}
 
 func (s *SVG) imageSize() (float32, float32) {
 	if s == nil {

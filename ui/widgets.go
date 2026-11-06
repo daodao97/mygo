@@ -757,8 +757,11 @@ func coreMenuButton(c *context, label string, build func(m *Menu)) *node {
 //			}
 //		}
 //	})
-func corePopoverMenuButton(c *context, label string, build func(m *Menu)) *node {
-	return menuButton(c, label).PopoverMenuButton(build)
+//
+// Its options place the menu and open it from the app, as
+// Element.PopoverMenuButton's do.
+func corePopoverMenuButton(c *context, label string, build func(m *Menu), options ...PopoverMenuButtonOptions) *node {
+	return menuButton(c, label).PopoverMenuButton(build, options...)
 }
 
 // menuButton creates the button of a MenuButton, showing label and an

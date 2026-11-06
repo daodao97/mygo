@@ -88,6 +88,32 @@ Left open and close submenus, Enter and Space choose, and Escape, Tab and
 presses outside close it. A choice reports `Chosen` as from
 `PopoverMenu`.
 
+`ui.PopoverMenuButtonOptions`, after the function, place the menu
+elsewhere and let the app open and close it. `At` and `Self` attach the
+menu as [`AttachTo`](overlays.md#your-own-overlays) does, its point
+`Self` on the button's point `At`: `AnchorBottomEnd` and `AnchorTopEnd`
+line it up with the
+button's end, for a ⋯ button at the window's end, `AnchorTopStart` and
+`AnchorBottomStart` put it above, and `AnchorTopEnd` and `AnchorTopStart`
+after it. It still goes to the other side where the window has no room.
+`Open`, a `*bool`, is whether the menu shows, as `MenuBase`'s: the button
+sets it as the user opens and closes the menu, and the app sets it to open
+the menu, or to close it, as when what it acts on goes away in the
+background:
+
+```go
+more.PopoverMenuButton(menu, ui.PopoverMenuButtonOptions{
+	At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd, Open: &app.moreOpen,
+})
+
+// Later, on an event from elsewhere, before the window updates:
+app.moreOpen = false
+```
+
+A menu the app opens takes the focus, with no item highlighted, and gives
+it back to the element that had it as it closes. A window shows one drawn
+menu at a time: another opening closes it, setting `Open` to false.
+
 Assistive technology sees the menu button, expanded while its menu
 shows, and the menu with its menu items, check box items and radio items,
 as it sees the system's. In a toolbar's overflow menu, choosing the button

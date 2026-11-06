@@ -46,9 +46,16 @@ notes it, for the change once the loop is done (see
   The system's menus show it on macOS and Linux, and `PopoverMenu` on
   every platform, also as the keys rest on it.
 - `Icon(icon)` shows an image beside its label, made once with
-  [`mygo.NewMenuIcon`](../menus.md#icons). The system's menus show it as
-  they show the icons of `mygo.MenuItem`, browsers show none, and
-  `PopoverMenu` draws it on every platform.
+  [`mygo.NewMenuIcon`](../menus.md#icons) of a PNG image, or
+  `mygo.NewMenuIconSVG` of an SVG. The system's menus show it as they show
+  the icons of `mygo.MenuItem`, browsers show none, and `PopoverMenu`
+  draws it on every platform.
+- `IconColor(color)` draws its template icon in `color` instead of the
+  text's, as a red trash can by Delete; on the highlight it takes the
+  highlight's text color, as the label does. Only drawn menus
+  (`PopoverMenu`, `PopoverMenuButton`, and every menu of a window that
+  [draws them](#every-menu-of-a-window)) show it: the system's tint
+  template icons in the color of their text.
 - `Shortcut(mods, key)` shows a key by it, as the shortcut that does the
   same. It only shows the key: handle it with `Shortcut` on the context or
   an element.
