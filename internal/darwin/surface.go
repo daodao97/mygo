@@ -1336,7 +1336,15 @@ func registerSurfaceClass() {
 			}
 			// Input methods see the key while a text input has the focus;
 			// they answer with insertText: or setMarkedText:.
-			if ime {
+			// A held key's repeats type it again where there is no text
+			// for press and hold's accents to replace, as a terminal's
+			// input, which takes text itself (no Client): the accents
+			// menu, holding the repeats back, would type nothing there.
+			if ime && s.input.Client == nil && sendBool(ev, "isARepeat") && !s.hasMarkedText() {
+				if t := typedChars(stringOf(send(ev, "characters"))); t != "" {
+					s.insertText(t, nsRange{Location: nsNotFound})
+				}
+			} else if ime {
 				s.keyDown = true
 				send(self, "interpretKeyEvents:", uintptr(nsArray(ev)))
 				s.keyDown = false
