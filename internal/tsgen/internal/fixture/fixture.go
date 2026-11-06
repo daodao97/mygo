@@ -95,6 +95,12 @@ func (Tasks) Count() int { return 0 }
 // Delete removes a task; the parameter is unnamed on purpose.
 func (Tasks) Delete(int64) {}
 
+// Dispatch deliberately names parameters after the runtime's call function.
+func (Tasks) Dispatch(call, call_ string) {}
+
+// DispatchMany uses the runtime's call name for a variadic parameter.
+func (Tasks) DispatchMany(call ...string) {}
+
 // Watch sends the tasks with the given status as they change. The test
 // declares updates a channel of tasks.
 func (Tasks) Watch(status Status, updates Task) {}

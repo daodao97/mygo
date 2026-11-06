@@ -152,7 +152,8 @@ func Generate(m Model) ([]byte, error) {
 				}
 			}
 			var params, args []string
-			used := map[string]bool{}
+			// Parameters must not shadow the runtime function called below.
+			used := map[string]bool{"call": true}
 			for pi, pt := range meth.Params {
 				name := ""
 				if pi < len(names) {
