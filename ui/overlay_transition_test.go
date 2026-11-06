@@ -148,3 +148,76 @@ func TestTooltipEntersAndExits(t *testing.T) {
 		t.Errorf("once out, G=%d", v)
 	}
 }
+
+// TestAttachedPanelEntersWithTravel checks that the X and Y of an Enter
+// show on a panel attached to its anchor (AttachTo), as they do on one
+// placed by hand, and as a transform on the entering element would.
+func TestAttachedPanelEntersWithTravel(t *testing.T) {
+	enter := ElementTransition{Duration: time.Second, Ease: Linear, Enter: &Motion{X: 20, Y: 20}}
+	panels := map[string]func(c *context, anchor *node, open *bool){
+		"PopoverBase": func(c *context, anchor *node, open *bool) {
+			corePopoverBase(c, anchor, open, func(p *node) {
+				p.Width(60).Height(60).Label("panel").Transition(enter)
+			})
+		},
+		"Overlay": func(c *context, anchor *node, open *bool) {
+			if *open {
+				coreOverlay(c, func() {
+					coreBox(c).Absolute().Left(0).Top(20).Width(60).Height(60).Label("panel").Transition(enter)
+				})
+			}
+		},
+	}
+	for name, panel := range panels {
+		t.Run(name, func(t *testing.T) {
+			open := false
+			tt, now := clockTester(func(c *context) {
+				coreBox(c).Fill().Children(func() {
+					a := coreBox(c).Width(40).Height(20).Label("anchor")
+					panel(c, a, &open)
+				})
+			}, 200, 200)
+			tick := ticker(tt, now)
+			open = true
+			tt.Frame()
+			tick(500 * time.Millisecond)
+			half := at(t, tt, "panel")
+			tick(time.Second)
+			rest := at(t, tt, "panel")
+			if d := half.Y - rest.Y; d != 10 {
+				t.Errorf("halfway in, Y is %v from its place, want 10", d)
+			}
+			if d := half.X - rest.X; d != 10 {
+				t.Errorf("halfway in, X is %v from its place, want 10", d)
+			}
+		})
+	}
+}
+
+// TestAttachedPanelStaysOnMovingAnchor checks that a panel with an Enter
+// transition stays on its anchor as the anchor moves, once it has come in:
+// a move of the layout is not part of the Enter's travel.
+func TestAttachedPanelStaysOnMovingAnchor(t *testing.T) {
+	enter := ElementTransition{Duration: time.Second, Ease: Linear, Enter: &Motion{X: 20, Y: 20}}
+	var open bool
+	shift := float32(50)
+	tt, now := clockTester(func(c *context) {
+		coreBox(c).Fill().Children(func() {
+			a := coreBox(c).Width(40).Height(20).Margin(0, 0, 0, shift).Label("anchor")
+			corePopoverBase(c, a, &open, func(p *node) {
+				p.Width(60).Height(60).Label("panel").Transition(enter)
+			})
+		})
+	}, 300, 200)
+	tick := ticker(tt, now)
+	open = true
+	tt.Frame()
+	tick(2 * time.Second)
+	gap := at(t, tt, "panel").X - at(t, tt, "anchor").X
+	shift = 150
+	tt.Frame()
+	tick(100 * time.Millisecond)
+	if d := at(t, tt, "panel").X - at(t, tt, "anchor").X; d != gap {
+		t.Errorf("anchor moved: panel is %v from it, want %v", d, gap)
+	}
+}

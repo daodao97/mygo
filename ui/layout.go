@@ -1307,7 +1307,9 @@ func attachTo(c, e *node, pw, ph float32) {
 
 // reattach moves the elements of the overlay ov attached to others
 // (AttachTo) to where those show in this frame, after transitions. It
-// keeps their size and what is inside them, which transitions moved too.
+// keeps their size and what is inside them, which transitions moved too,
+// and the distance their own transition has them from their place, as an
+// Enter's X and Y.
 func reattach(ov *node) {
 	pw, ph := ov.w-ov.border[1]-ov.border[3], ov.h-ov.border[0]-ov.border[2]
 	for c := ov.first; c != nil; c = c.next {
@@ -1315,6 +1317,10 @@ func reattach(ov *node) {
 			continue
 		}
 		c.x, c.y = attachedAt(c, ov, laidOutVisualBox(c.popover), pw, ph, c.w, c.h)
+		if r := ov.c.rt.trans[c.id]; r != nil && r.entering&movePos != 0 {
+			c.x += r.shown.x - r.target.x
+			c.y += r.shown.y - r.target.y
+		}
 	}
 }
 
