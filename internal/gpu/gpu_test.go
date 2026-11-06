@@ -140,6 +140,63 @@ func TestIdleMasksStayWithinBudget(t *testing.T) {
 	}
 }
 
+func TestTurningCardMasksKeepWithinBudget(t *testing.T) {
+	// #1407: a card turning in a sidebar, its masks switching between
+	// the card's size and the sidebar's (or the window's, behind the
+	// viewer), a clock redrawing between turns. The masks once kept
+	// 47 MB after 15 turns, counted as 10 MB: slots kept the memory of
+	// the largest mask they held.
+	rail := scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{W: 436, H: 1484}}
+	card := scene.Rect{X: 48, Y: 1224, W: 152, H: 152}
+	pop := scene.Op{Kind: scene.OpPopClip}
+	frame := func(m scene.Affine) *scene.Scene {
+		return &scene.Scene{Width: 2560, Height: 1576, Ops: []scene.Op{
+			rail,
+			{Kind: scene.OpPushClip, Rect: card, Radii: [4]float32{16, 16, 16, 16}, Transform: m},
+			{Kind: scene.OpPushClip, Rect: card, Radii: [4]float32{16, 16, 16, 16}, Transform: m},
+			{Kind: scene.OpFill, Rect: card, Color: scene.Color{R: 200, A: 255}, Transform: m},
+			pop, pop, pop,
+		}}
+	}
+	turn := func(i, n int) scene.Affine {
+		f := float32(i) / float32(n)
+		sy := 1 - 2*min(f, 1-f)
+		cy := card.Y + card.H/2
+		if sy < 0.4 {
+			return scene.Projective(1, 0, 0, sy, 0, cy*(1-sy), 0, -0.001)
+		}
+		return scene.Projective(1, 0, 0, sy, 0, cy*(1-sy), 0, 0.0001*float32(i))
+	}
+	var b Builder
+	defer b.Release()
+	build := func(s *scene.Scene) { b.Build(s, func(*scene.Image) uintptr { return 1 }) }
+	rest := frame(scene.Affine{})
+	for range 15 {
+		for i := 1; i < 58; i++ {
+			build(frame(turn(i, 58)))
+		}
+		for range 6 {
+			build(rest)
+		}
+	}
+	var length, capacity, idle int
+	for _, m := range b.maskSlots {
+		length += len(m.image.Pix)
+		capacity += cap(m.image.Pix)
+		if m.frame != b.frame {
+			idle += cap(m.image.Pix)
+		}
+	}
+	t.Logf("%d masks, %.1f MB of pixels, %.1f MB kept; budget %d MB",
+		len(b.maskSlots), float64(length)/(1<<20), float64(capacity)/(1<<20), idleMaskBytes>>20)
+	if idle > idleMaskBytes {
+		t.Errorf("idle masks keep %.1f MB, beyond the budget of %d MB", float64(idle)/(1<<20), idleMaskBytes>>20)
+	}
+	if capacity > 2*length {
+		t.Errorf("masks keep %.1f MB for %.1f MB of pixels", float64(capacity)/(1<<20), float64(length)/(1<<20))
+	}
+}
+
 func TestTransformOutsideAClipLeavesItUnmasked(t *testing.T) {
 	// A scaled badge beside a rounded card of clipped rows: nothing in the
 	// card is transformed, so its clips stay in the shader.

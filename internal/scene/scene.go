@@ -529,16 +529,21 @@ func (m *Image) Uploaded() {
 // Resize keeps the image's texture-cache identity while changing its size.
 // Renderers replace the backing texture on a size change, so an animated
 // clip does not leave a new texture in the cache on every frame.
+//
+// It reuses the pixels' memory where they fit, unless they take up less
+// than a quarter of it: an image that shrank much doesn't keep its
+// largest size, as a clip mask that turned would (#1407).
 func (m *Image) Resize(w, h int) {
 	m.W, m.H = w, h
+	n := 4 * w * h
 	switch {
 	case m.Scene != nil && m.Pix == nil:
 		// A canvas no renderer drew in memory: its pixels are made when
 		// one does.
-	case cap(m.Pix) >= 4*w*h:
-		m.Pix = m.Pix[:4*w*h]
+	case cap(m.Pix) >= n && n >= cap(m.Pix)/4:
+		m.Pix = m.Pix[:n]
 	default:
-		m.Pix = make([]byte, 4*w*h)
+		m.Pix = make([]byte, n)
 	}
 	m.Changed()
 }

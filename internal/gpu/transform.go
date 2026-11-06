@@ -141,7 +141,9 @@ func (b *Builder) dropIdleMasks(idle int) {
 		if m.frame == b.frame {
 			continue
 		}
-		if idle -= len(m.image.Pix); idle < 0 {
+		// The memory a mask keeps, which may be more than its pixels
+		// take up: Resize reuses it for smaller ones.
+		if idle -= cap(m.image.Pix); idle < 0 {
 			clear(b.maskSlots[i:])
 			b.maskSlots = b.maskSlots[:i]
 			return
