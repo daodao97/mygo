@@ -281,6 +281,19 @@ func (it *MenuItem) Icon(icon MenuIcon) *MenuItem {
 	return it
 }
 
+// Tooltip shows s as the pointer rests on the item, as Element.Tooltip
+// does, to say what it does. The system's menus show it on macOS and Linux,
+// as package mygo's items' ToolTip, and those of Windows and browsers show
+// none; PopoverMenu shows it on every platform.
+//
+//	m.Item("Run").Shortcut(ui.Cmd, ui.KeyEnter).Tooltip("Runs the query under the caret")
+func (it *MenuItem) Tooltip(s string) *MenuItem {
+	if it.p != nil {
+		it.p.ToolTip = s
+	}
+	return it
+}
+
 // Shortcut shows a key with modifiers by the item, as the shortcut that
 // does the same; the view handles the key itself, as with
 // Context.Shortcut.

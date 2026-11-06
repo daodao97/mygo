@@ -940,6 +940,9 @@ func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, marks, icons 
 	}
 	row.AlignItems(Center).Gap(t.Space(2)).Padding(t.Space(1.5), t.Space(2)).Radius(t.Radius).Shrink(0)
 	row.Label(it.Label).Disabled(!it.Enabled)
+	if it.ToolTip != "" {
+		row.Tooltip(it.ToolTip)
+	}
 	keys := shortcutText(it.Accelerator)
 	row.description = keys
 	color, muted := t.Text, t.TextMuted

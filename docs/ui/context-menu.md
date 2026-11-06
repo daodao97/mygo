@@ -42,6 +42,9 @@ notes it, for the change once the loop is done (see
   item toggles, and `Radio(on)` shows it as one of a group choosing one
   setting, marked as the one chosen when on is true.
 - `Disabled(d)` grays it out: it cannot be chosen.
+- `Tooltip(s)` shows `s` as the pointer rests on it, to say what it does.
+  The system's menus show it on macOS and Linux, and `PopoverMenu` on
+  every platform.
 - `Icon(icon)` shows an image beside its label, made once with
   [`mygo.NewMenuIcon`](../menus.md#icons). The system's menus show it as
   they show the icons of `mygo.MenuItem`, browsers show none, and
