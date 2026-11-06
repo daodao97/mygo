@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"image"
+	"math"
 	"runtime"
 	"slices"
 	"strings"
@@ -568,7 +569,11 @@ func (m *menuParts) item(role Role, sub bool) *node {
 		case !sub && (lv.hi != row.id || len(s.levels) > level+1):
 			m.highlight(level, row.id)
 		}
-		s.focus = level
+		if rt.focused == row.id || !rt.within(rt.focused, row.id) {
+			// The menu takes the focus back, but from an element inside
+			// the item, as a text input of its content.
+			s.focus = level
+		}
 	}
 	if row.Clicked() {
 		if sub {
@@ -722,6 +727,11 @@ func (m *menuParts) keys(level int, panel *node, choices []*node, groups, stops 
 		if n > 0 {
 			m.highlight(level, choices[(i%n+n)%n].id)
 			s.levels[level].reveal = true
+			if rt.focused != panel.id {
+				// From an element in an item, as a text input of its
+				// content: the menu takes the focus back.
+				s.focus = level
+			}
 			// Moved by the keys: the focus shows, and the item's tip with it.
 			rt.focusVisible = true
 		}
@@ -828,10 +838,15 @@ type drawnMenu struct {
 	built uint64
 	pass  int
 	menu  menuShown
-	// items is the menu as last built; choose, when not 0, is an item the
-	// Tester chose, which the next build takes.
+	// items is the menu as last built, and keys its items' IDs by place
+	// (MenuItem.ID); choose, when not 0, is an item the Tester chose, which
+	// the next build takes.
 	items  *platform.Menu
+	keys   []string
 	choose int
+	// highlighted are the items highlighted as the last pass built the
+	// menu, which the next build's MenuItem.Highlighted reports.
+	highlighted []menuRef
 	// edit is set for the editing menu of a text input or selectable text
 	// (drawEditMenu).
 	edit bool
@@ -916,16 +931,21 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 		rt.menu.drawn = nil
 		return
 	}
-	run := &menuRun{collect: true}
+	run := &menuRun{collect: true, highlighted: d.highlighted}
 	pm := &platform.Menu{}
 	build(&Menu{run: run, menu: pm, rt: rt, text: rt.states[d.text]})
 	if !slices.ContainsFunc(pm.Items, func(it *platform.MenuItem) bool { return it.Visible && it.Type != platform.MenuItemSeparator }) {
 		rt.menu.drawn = nil
 		return
 	}
-	d.items = pm
+	keys := d.keys
+	d.items, d.keys = pm, run.keys
 	if id := d.choose; id != 0 {
 		rt.menu.drawn = nil
+		if id <= len(keys) && keys[id-1] != "" {
+			// The item with the ID of the one chosen, wherever it is now.
+			id = slices.Index(run.keys, keys[id-1]) + 1
+		}
 		if it := menuItemByID(pm.Items, id); it != nil {
 			rt.drawnChoice(d, run, build, it)
 		}
@@ -936,13 +956,19 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 	open := true
 	m := &menuParts{Trigger: e, c: c, open: &open, s: &d.menu, level: -1}
 	var chosen *platform.MenuItem
-	style := func(panel *node) {
+	// The item of each row, by the row's element, for the highlight.
+	refs := map[uint64]menuRef{}
+	style := func(panel *node, width float32) {
 		panel.widget = "PopoverMenu"
 		panel.MinWidth(t.Space(45)).Padding(t.Space(1)).Radius(t.Radius+2).Background(t.Background).Border(1, t.Border)
 		panel.Shadow(0, 6, 20, 0, RGBA(0, 0, 0, 0.18))
+		if width > 0 {
+			panel.MaxWidth(max(width, t.Space(45)))
+		}
 	}
-	var items func(list []*platform.MenuItem)
-	items = func(list []*platform.MenuItem) {
+	var items func(menu *platform.Menu, width float32)
+	items = func(menu *platform.Menu, width float32) {
+		list := menu.Items
 		marks := slices.ContainsFunc(list, func(it *platform.MenuItem) bool {
 			return it.Type == platform.MenuItemCheckbox || it.Type == platform.MenuItemRadio
 		})
@@ -955,12 +981,18 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 				coreBox(c).Height(1).Margin(t.Space(1), t.Space(2)).Background(t.Border).Shrink(0)
 				continue
 			}
-			row := m.drawnItem(d, it, marks, icons)
+			mi := run.items[it.ID-1]
+			row := m.drawnItem(d, it, mi, marks, icons)
+			refs[row.id] = menuRef{seq: it.ID, label: it.Label, key: mi.key}
 			if sub := it.Submenu; it.Type == platform.MenuItemSubmenu && sub != nil {
 				m.Submenu(row, func(panel *node) {
-					style(panel)
+					w, ok := run.widths[sub]
+					if !ok {
+						w = width
+					}
+					style(panel, w)
 					panel.Margin(-t.Space(1)-1, 0, 0, 0)
-					items(sub.Items)
+					items(sub, w)
 				})
 			} else if row.Clicked() {
 				chosen = it
@@ -968,18 +1000,33 @@ func (rt *engine) drawMenu(e *node, build func(m *Menu)) {
 		}
 	}
 	m.Popup(func(panel *node) {
-		style(panel)
+		width := run.widths[pm]
+		style(panel, width)
 		if d.menu.below {
 			// Apart from the menu button, on the side it shows.
 			at, self := d.menu.buttonAnchors()
 			menuGap(panel, at, self, t.Space(1))
 		}
-		items(pm.Items)
+		items(pm, width)
 	})
 	if !open {
 		rt.menu.drawn = nil
 	} else if d.menu.below {
 		e.expanded = true
+	}
+	if open {
+		// The items highlighted once built, for the next pass's build,
+		// which runs at once when they changed (MenuItem.Highlighted).
+		var hi []menuRef
+		for _, lv := range d.menu.levels {
+			if ref, ok := refs[lv.hi]; ok {
+				hi = append(hi, ref)
+			}
+		}
+		if !slices.Equal(hi, d.highlighted) {
+			d.highlighted = hi
+			rt.consumed = true
+		}
 	}
 	if chosen != nil {
 		rt.drawnChoice(d, run, build, chosen)
@@ -1028,7 +1075,7 @@ func (rt *engine) drawnChoice(d *drawnMenu, run *menuRun, build func(m *Menu), i
 		rt.menuCommand(target, name)
 		rt.requestFrame()
 	} else {
-		rt.menuChoice(build, it.ID, it.Label, d.text)
+		rt.menuChoice(build, it.ID, it.Label, run.keys[it.ID-1], d.text)
 	}
 }
 
@@ -1047,13 +1094,22 @@ func menuItemByID(items []*platform.MenuItem, id int) *platform.MenuItem {
 	return nil
 }
 
-// drawnItem builds item it of the menu d being drawn, with room for the
-// marks of check box and radio items when marks is set, and for the icons
-// of the items around it when icons is, so that their labels line up.
-func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, marks, icons bool) *node {
+// menuItemKey keys the row of an item with an ID (MenuItem.ID) in a drawn
+// menu.
+type menuItemKey struct{ id string }
+
+// drawnItem builds item it of the menu d being drawn, with what mi, the
+// item of the menu's function, adds to it, with room for the marks of
+// check box and radio items when marks is set, and for the icons of the
+// items around it when icons is, so that their labels line up.
+func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, mi *MenuItem, marks, icons bool) *node {
 	c := m.c
 	t := c.theme
 	sub := it.Type == platform.MenuItemSubmenu && it.Submenu != nil
+	if mi.key != "" {
+		// The row is the item's wherever it goes among the others.
+		c.nextKey, c.keySet = menuItemKey{mi.key}, true
+	}
 	var row *node
 	switch {
 	case sub:
@@ -1067,24 +1123,34 @@ func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, marks, icons 
 	}
 	row.AlignItems(Center).Gap(t.Space(2)).Padding(t.Space(1.5), t.Space(2)).Radius(t.Radius).Shrink(0)
 	row.Label(it.Label).Disabled(!it.Enabled)
+	// Assistive technology reads the subtitle, the trailing text and the
+	// tooltip, if any, as the item's description, and the shortcut as its
+	// keys.
+	row.description = joinDescription(joinDescription(it.Subtitle, mi.trailing), it.ToolTip)
 	if it.ToolTip != "" {
 		row.Tooltip(it.ToolTip)
 	}
-	// Assistive technology reads the shortcut as the item's keys and its
-	// tooltip, if any, as its description.
 	keys := shortcutText(it.Accelerator)
 	row.keyShortcuts = keys
 	color, muted := t.Text, t.TextMuted
+	if mi.danger {
+		color = t.Danger
+	}
 	switch {
 	case !it.Enabled:
 		color = t.TextMuted
 		row.TextColor(color)
 	case row.highlighted && row.expanded && m.s.levels[m.level+1].hi != 0:
 		// The way to the item highlighted in the submenu.
-		row.Background(t.SurfaceHover)
+		row.Background(t.SurfaceHover).TextColor(color)
 	case row.highlighted:
 		color, muted = t.AccentText, t.AccentText
+		if mi.danger && legibleOn(t.Danger, t.Accent, t.AccentText) {
+			color = t.Danger
+		}
 		row.Background(t.Accent).TextColor(color)
+	case mi.danger:
+		row.TextColor(color)
 	}
 	rtl := row.rtl()
 	row.Children(func() {
@@ -1123,9 +1189,27 @@ func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, marks, icons 
 				}
 			}
 		}
-		coreText(c, it.Label).SingleLine().Grow(1)
+		// The label and the subtitle, or the content, take the room left,
+		// down to none, so that a menu of a MaxWidth ends them with an
+		// ellipsis.
+		label := coreColumn(c).Grow(1).Shrink(1).MinWidth(0)
+		label.Children(func() {
+			if mi.content != nil {
+				mi.drawn, mi.hi = true, row.highlighted
+				mi.content(MenuItemContent{Context: makeContext(c), Highlighted: row.highlighted, Disabled: !it.Enabled, Text: color, Muted: muted})
+				mi.drawn = false
+				return
+			}
+			coreText(c, it.Label).SingleLine()
+			if it.Subtitle != "" {
+				coreText(c, it.Subtitle).SingleLine().TextColor(muted).FontSize(t.FontSize - 1)
+			}
+		})
+		if mi.trailing != "" {
+			coreText(c, mi.trailing).SingleLine().TextColor(muted).Shrink(0).MarginStart(t.Space(4))
+		}
 		if keys != "" {
-			coreText(c, keys).SingleLine().TextColor(muted).MarginStart(t.Space(4))
+			coreText(c, keys).SingleLine().TextColor(muted).Shrink(0).MarginStart(t.Space(4))
 		}
 		if sub {
 			coreBox(c).Size(t.Space(4), t.Space(4)).Shrink(0).Draw(func(p *Painter, r Rect) {
@@ -1134,6 +1218,35 @@ func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, marks, icons 
 		}
 	})
 	return row
+}
+
+// legibleOn reports whether text in color fg is legible on bg: its
+// contrast with bg is at least WCAG's 4.5:1, or that of the color text on
+// bg takes, when that is less.
+func legibleOn(fg, bg, text Color) bool {
+	return contrastRatio(fg, bg) >= min(4.5, contrastRatio(text, bg))
+}
+
+// contrastRatio returns WCAG's contrast ratio of two opaque colors, from
+// 1 to 21.
+func contrastRatio(a, b Color) float64 {
+	l1, l2 := relativeLuminance(a), relativeLuminance(b)
+	if l1 < l2 {
+		l1, l2 = l2, l1
+	}
+	return (l1 + 0.05) / (l2 + 0.05)
+}
+
+// relativeLuminance returns WCAG's relative luminance of c, from 0 to 1.
+func relativeLuminance(c Color) float64 {
+	ch := func(v uint8) float64 {
+		s := float64(v) / 255
+		if s <= 0.04045 {
+			return s / 12.92
+		}
+		return math.Pow((s+0.055)/1.055, 2.4)
+	}
+	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
 }
 
 // shortcutText writes an accelerator (accelerator) as a menu shows it by

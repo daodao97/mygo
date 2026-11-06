@@ -4125,9 +4125,10 @@ either.
   next frame runs its `ContextMenu` function to collect a `platform.Menu`;
   after the frame, package mygo shows it with `Menu.popup`, posted to the
   main loop, since native menus wait in a loop of their own. A choice
-  comes back as the item's place and label, which the next frame's run of
-  the function matches to report `Chosen`; text inputs' menus queue their
-  editing commands instead. `PopoverMenu` opens the same way and draws
+  comes back as the item's place and label, and its ID when the view gave
+  it one (`MenuItem.ID`, `menuRun.keys`), which the next frame's run of
+  the function matches to report `Chosen`, by the ID alone when there is
+  one; text inputs' menus queue their editing commands instead. `PopoverMenu` opens the same way and draws
   the menu in the window instead (`ui/popovermenu.go`): the frame that
   would show it notes it (`menuState.drawn`, whose `menuShown` holds where
   it opened, from the element's corner, and the submenus open with their
@@ -4183,6 +4184,18 @@ either.
   The `Tester` reads a drawn menu's items as last built (`drawnMenu.items`)
   and chooses one by its ID (`drawnMenu.choose`), which the next build
   takes as a click, so its menu helpers work on either.
+  What a drawn item shows beyond its `platform.MenuItem` (`Danger`,
+  `Trailing`, `Content`) stays on the `MenuItem` of the run collecting
+  it (`menuRun.items`), which `drawnItem` reads, so that the system's
+  menus and their backends never see it. An item with an ID keys its row
+  (`menuItemKey`), whose highlight then follows it as items around it
+  come and go. Once a pass built the menu, the items its levels highlight
+  (`drawnMenu.highlighted`, by ID or else place and label) go to the
+  next run of the function, whose `MenuItem.Highlighted` reports them;
+  when they changed, the pass asks for another, so the function sees the
+  highlight it built. `Menu.MaxWidth` (`menuRun.widths`, by
+  `platform.Menu`) caps a panel's width, its rows' labels shrinking to an
+  ellipsis.
 - **Scenes** are flat lists of operations in device pixels: rounded
   rectangles with borders of a width per side, solid or dashed, filled
   with a color, a linear gradient mixed in sRGB or Oklab, a gradient of
