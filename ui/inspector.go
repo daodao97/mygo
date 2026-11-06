@@ -642,6 +642,10 @@ func roleName(r Role) string {
 		return "ListBox"
 	case RoleOption:
 		return "Option"
+	case RoleDeletion:
+		return "Deletion"
+	case RoleInsertion:
+		return "Insertion"
 	}
 	return ""
 }
@@ -658,6 +662,10 @@ func accessibleRole(e *node) (string, bool) {
 		return "listbox", true
 	case RoleOption:
 		return "option", true
+	case RoleDeletion:
+		return "deletion", true
+	case RoleInsertion:
+		return "insertion", true
 	}
 	switch role := Role(r) + RoleGroup; role {
 	case RoleGroup:

@@ -58,9 +58,17 @@ type AccessInfo struct {
 	// controls (aria-controls), in the last frame, in the order Controls
 	// gave them: Access finds each.
 	Controls []string
-	// Vertical is set on a slider going up, and Segment on a segment of
-	// a segmented control or a group of toggles.
-	Vertical, Segment bool
+	// DescribedBy are the accessible names of the elements describing the
+	// element (aria-describedby), whose text Description holds, and
+	// ErrorMessage those of the elements holding its error
+	// (aria-errormessage), given while it is Invalid, in the order
+	// DescribedBy and ErrorMessage gave them.
+	DescribedBy, ErrorMessage []string
+	// Vertical is set on a slider going up, a separator running up and
+	// down, and an element told it is vertical (aria-orientation);
+	// Horizontal on one told it runs across (Orientation). Segment is set
+	// on a segment of a segmented control or a group of toggles.
+	Vertical, Horizontal, Segment bool
 	// Offscreen is set on an element built out of view, as the rows a
 	// list builds beyond its edges.
 	Offscreen bool
@@ -131,9 +139,10 @@ func (t *Tester) access(match func(r Role, n *platform.AccessNode) bool) (Access
 	var walk func(e *node)
 	walk = func(e *node) {
 		if e.role > RoleNone {
-			// But for a role the element is seen as another, as a List's
-			// rows in a grid.
-			if r, ok := e.accessRole(); ok && Role(r)+RoleGroup == e.role {
+			// But for a List's rows in a table or a grid, which are seen
+			// as its rows. Roles the node's roles do not follow in order,
+			// as RoleListBox and RoleDeletion, stay as they were given.
+			if r, ok := e.accessRole(); ok && !(e.role == RoleListItem && r == platform.RoleRow) {
 				given[e.id] = e.role
 			}
 		}
@@ -155,14 +164,19 @@ func (t *Tester) access(match func(r Role, n *platform.AccessNode) bool) (Access
 		}
 		if match(r, n) {
 			a := accessInfoOf(r, n, tree.Focus)
-			for _, id := range n.Controls {
-				for j := range tree.Nodes {
-					if tree.Nodes[j].ID == id {
-						a.Controls = append(a.Controls, tree.Nodes[j].Label)
-						break
+			names := func(ids []uint64) []string {
+				var out []string
+				for _, id := range ids {
+					for j := range tree.Nodes {
+						if tree.Nodes[j].ID == id {
+							out = append(out, tree.Nodes[j].Label)
+							break
+						}
 					}
 				}
+				return out
 			}
+			a.Controls, a.DescribedBy, a.ErrorMessage = names(n.Controls), names(n.DescribedBy), names(n.ErrorMessage)
 			return a, true
 		}
 	}
@@ -217,6 +231,7 @@ func accessInfoOf(r Role, n *platform.AccessNode, focus uint64) AccessInfo {
 		Sort:            sort,
 		HasPopup:        Popup(n.HasPopup),
 		Vertical:        s&platform.AccessVertical != 0,
+		Horizontal:      s&platform.AccessHorizontal != 0,
 		Segment:         s&platform.AccessSegment != 0,
 		Offscreen:       s&platform.AccessOffscreen != 0,
 		Current:         Current(n.Current),

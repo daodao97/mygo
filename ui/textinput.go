@@ -298,6 +298,24 @@ func (e *node) Password() *node {
 	return e
 }
 
+// Search makes a text input one for searching, in the frames that call
+// it, as ARIA's searchbox and HTML's <input type=search>: assistive
+// technology reads it as a search field, as it reads a SearchField's
+// input, while the view draws it as it likes, with an icon and a clear
+// button of its own, and handles its keys. Name it with Label.
+//
+//	ui.TextInput(c, &app.query).Placeholder("Search").Label("Search mail").Search()
+func (e *node) Search() *node {
+	in := e
+	if in.flags&flagEditable == 0 && in.focusTo != nil {
+		in = in.focusTo // the input of the field around it
+	}
+	if in.flags&flagEditable != 0 {
+		in.search = true
+	}
+	return e
+}
+
 // Selectable lets the user select and copy text by dragging, double-clicking
 // a word, triple-clicking a line, or using Shift with the arrows. Its context
 // menu has Copy and Select All; Cmd+C copies the selection.

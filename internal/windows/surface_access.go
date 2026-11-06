@@ -149,6 +149,7 @@ const (
 	uiaLandmarkTypeProperty     = 30157
 	uiaLocalizedLandmarkType    = 30158
 	uiaControllerForProperty    = 30104
+	uiaDescribedByProperty      = 30105
 
 	uiaFocusChangedEvent                = 20005
 	uiaElementAddedToSelectionEvent     = 20010
@@ -193,6 +194,7 @@ var uiaControlTypes = map[platform.AccessRole]int32{
 	platform.RoleRegion: 50026, platform.RoleLog: 50026, platform.RoleTimer: 50026, platform.RoleAlert: 50026,
 	platform.RoleSeparator: 50038, platform.RoleRowHeader: 50035, platform.RoleSearch: 50026,
 	platform.RoleArticle: 50026, platform.RoleGrid: 50028, platform.RoleTreeGrid: 50028, // DataGrid
+	platform.RoleDeletion: 50020, platform.RoleInsertion: 50020,
 }
 
 // ariaRoles are the ARIA roles of nodes whose control type does not say
@@ -203,6 +205,7 @@ var ariaRoles = map[platform.AccessRole]string{
 	platform.RoleTimer: "timer", platform.RoleAlert: "alert", platform.RoleSeparator: "separator",
 	platform.RoleRowHeader: "rowheader", platform.RoleSearch: "search", platform.RoleArticle: "article",
 	platform.RoleGrid: "grid", platform.RoleTreeGrid: "treegrid",
+	platform.RoleDeletion: "deletion", platform.RoleInsertion: "insertion",
 }
 
 // variant is VARIANT, with the value of the types used here.
@@ -646,6 +649,14 @@ func (e *uiaElement) notifyChanges(prev platform.AccessNode) {
 	}
 	if prev.States&platform.AccessDisabled != n.States&platform.AccessDisabled {
 		changed(uiaIsEnabledProperty, boolVariant(prev.States&platform.AccessDisabled == 0), boolVariant(n.States&platform.AccessDisabled == 0))
+	}
+	// A field marked invalid as the user leaves it, and what describes
+	// it, as its message showing.
+	if prev.States&platform.AccessInvalid != n.States&platform.AccessInvalid {
+		changed(uiaIsDataValidProperty, boolVariant(prev.States&platform.AccessInvalid == 0), boolVariant(n.States&platform.AccessInvalid == 0))
+	}
+	if prev.Description != n.Description {
+		str(uiaFullDescriptionProperty, prev.Description, n.Description)
 	}
 	switch {
 	case e.supports(ifaceToggle):
@@ -1191,10 +1202,15 @@ func (e *uiaElement) property(id int, v *variant) {
 			str("popup")
 		case platform.RoleHeading:
 			str("heading")
-		case platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleArticle:
+		case platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleArticle,
+			platform.RoleDeletion, platform.RoleInsertion:
 			str(ariaRoles[n.Role])
 		case platform.RoleRowHeader:
 			str("row header")
+		case platform.RoleTextField:
+			if n.States&platform.AccessSearch != 0 {
+				str("search box") // as Core-AAM's searchbox
+			}
 		}
 	case uiaNameProperty:
 		str(n.Label)
@@ -1228,10 +1244,20 @@ func (e *uiaElement) property(id int, v *variant) {
 		case n.States&platform.AccessSortOther != 0:
 			str("other")
 		}
-	case uiaControllerForProperty:
-		// What the element controls (aria-controls), of this tree.
+	case uiaControllerForProperty, uiaDescribedByProperty:
+		// What the element controls (aria-controls) and, while it is
+		// invalid, the elements holding its error (aria-errormessage), as
+		// Core-AAM maps both; or those describing it (aria-describedby).
+		// Of this tree.
+		ids := n.DescribedBy
+		if id == uiaControllerForProperty {
+			ids = n.Controls
+			if n.States&platform.AccessInvalid != 0 {
+				ids = append(slices.Clip(ids), n.ErrorMessage...)
+			}
+		}
 		var targets []*uiaElement
-		for _, id := range n.Controls {
+		for _, id := range ids {
 			if t := e.tree.nodes[id]; t != nil {
 				targets = append(targets, t)
 			}
@@ -1255,13 +1281,10 @@ func (e *uiaElement) property(id int, v *variant) {
 	case uiaIsOffscreenProperty:
 		*v = boolVariant(n.States&platform.AccessOffscreen != 0)
 	case uiaOrientationProperty:
-		// OrientationType_Horizontal or Vertical, of a slider or a rule.
-		if n.Role == platform.RoleSlider || n.Role == platform.RoleSeparator {
-			o := uint64(1)
-			if n.States&platform.AccessVertical != 0 {
-				o = 2
-			}
-			*v = variant{VT: vtI4, Val: o}
+		// OrientationType_Horizontal or Vertical (aria-orientation), a
+		// slider and a rule across unless told.
+		if o := orientation(n); o != 0 {
+			*v = variant{VT: vtI4, Val: uint64(o)}
 		}
 	case uiaHeadingLevelProperty:
 		// HeadingLevel1 to HeadingLevel9, as Chromium's headings.
@@ -1304,10 +1327,27 @@ func (e *uiaElement) property(id int, v *variant) {
 			str("region")
 		}
 	case uiaAriaRoleProperty:
+		if n.Role == platform.RoleTextField && n.States&platform.AccessSearch != 0 {
+			str("searchbox")
+			break
+		}
 		str(ariaRoles[n.Role])
 	case uiaAriaPropertiesProperty:
 		str(ariaProperties(n))
 	}
+}
+
+// orientation returns the OrientationType of a node: Vertical (2) or
+// Horizontal (1) where it says, else Horizontal for a slider or a rule,
+// None (0) for others.
+func orientation(n platform.AccessNode) int32 {
+	switch {
+	case n.States&platform.AccessVertical != 0:
+		return 2
+	case n.States&platform.AccessHorizontal != 0, n.Role == platform.RoleSlider || n.Role == platform.RoleSeparator:
+		return 1
+	}
+	return 0
 }
 
 // ariaProperties returns the ARIA states of a node that UI Automation has

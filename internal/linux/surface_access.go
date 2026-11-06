@@ -95,6 +95,10 @@ var (
 	atkRelationSetAdd                                 func(set, relation ptr)
 	atkRelationTypeForName                            func(name *byte) int32
 	atkRelationControllerFor, atkRelationControlledBy int32
+	// The relations of descriptions (aria-describedby) and errors
+	// (aria-errormessage), each with the one back.
+	atkRelationDescribedBy, atkRelationDescriptionFor int32
+	atkRelationErrorMessage, atkRelationErrorFor      int32
 
 	cbAreaClassInit, cbRootClassInit, cbNodeClassInit, cbRootComponent     ptr
 	cbComponentInit, cbActionInit, cbValueInit, cbTextInit, cbEditableInit ptr
@@ -314,6 +318,10 @@ func loadAccessNames() {
 	atkRole.listBox = role("list box")
 	atkRelationControllerFor = atkRelationTypeForName(cs("controller-for"))
 	atkRelationControlledBy = atkRelationTypeForName(cs("controlled-by"))
+	atkRelationDescribedBy = atkRelationTypeForName(cs("described-by"))
+	atkRelationDescriptionFor = atkRelationTypeForName(cs("description-for"))
+	atkRelationErrorMessage = atkRelationTypeForName(cs("error-message")) // ATK 2.26
+	atkRelationErrorFor = atkRelationTypeForName(cs("error-for"))
 	for r, names := range map[platform.AccessRole][]string{
 		platform.RoleGroup: {"panel"}, platform.RoleText: {"label"}, platform.RoleButton: {"push button", "button"},
 		platform.RoleLink: {"link"}, platform.RoleCheckBox: {"check box"}, platform.RoleRadio: {"radio button"},
@@ -342,6 +350,8 @@ func loadAccessNames() {
 		platform.RoleSeparator: {"separator"}, platform.RoleRowHeader: {"row header", "table row header"},
 		// Tables, whose xml-roles attribute says which, as Chromium's.
 		platform.RoleGrid: {"table"}, platform.RoleTreeGrid: {"tree table", "table"},
+		// Content removed and added (ATK 2.34), as Chromium's del and ins.
+		platform.RoleDeletion: {"content deletion", "panel"}, platform.RoleInsertion: {"content insertion", "panel"},
 	} {
 		atkRoles[r] = role(names...)
 	}
@@ -366,6 +376,7 @@ var xmlRoles = map[platform.AccessRole]string{
 	platform.RoleNavigation: "navigation", platform.RoleRegion: "region", platform.RoleSearch: "search", platform.RoleLog: "log",
 	platform.RoleTimer: "timer", platform.RoleAlert: "alert", platform.RoleStatus: "status",
 	platform.RoleGrid: "grid", platform.RoleTreeGrid: "treegrid",
+	platform.RoleDeletion: "deletion", platform.RoleInsertion: "insertion",
 }
 
 // accessTree is what assistive technology sees of a surface.
@@ -728,10 +739,8 @@ func stateList(n platform.AccessNode, focused bool) []int32 {
 	case platform.RolePopUpButton:
 		list = append(list, st.expandable)
 	case platform.RoleSlider, platform.RoleSeparator:
-		// As GtkScale's and GtkSeparator's.
-		if n.States&platform.AccessVertical != 0 {
-			list = append(list, st.vertical)
-		} else {
+		// As GtkScale's and GtkSeparator's, across unless told.
+		if n.States&(platform.AccessVertical|platform.AccessHorizontal) == 0 {
 			list = append(list, st.horizontal)
 		}
 	case platform.RoleDisclosure:
@@ -780,6 +789,13 @@ func stateList(n platform.AccessNode, focused bool) []int32 {
 	}
 	if n.States&platform.AccessInvalid != 0 {
 		list = append(list, st.invalidEntry)
+	}
+	// Which way it runs, as aria-orientation.
+	switch {
+	case n.States&platform.AccessVertical != 0:
+		list = append(list, st.vertical)
+	case n.States&platform.AccessHorizontal != 0:
+		list = append(list, st.horizontal)
 	}
 	if n.States&platform.AccessBusy != 0 {
 		list = append(list, st.busy)
@@ -1008,7 +1024,11 @@ func initAccessCallbacks() {
 		return set
 	})
 	// Relations: the nodes a node controls (controller-for), and those
-	// controlling it (controlled-by), as ARIA's aria-controls.
+	// controlling it (controlled-by), as ARIA's aria-controls; those
+	// describing it (described-by) and those it describes
+	// (description-for), as aria-describedby; and those holding its error
+	// while it is invalid (error-message) and those whose error it holds
+	// (error-for), as aria-errormessage.
 	relations := purego.NewCallback(func(obj ptr) ptr {
 		set := atkRelationSetNew()
 		an := node(obj)
@@ -1022,19 +1042,29 @@ func initAccessCallbacks() {
 				gObjectUnref(r) // the set holds it
 			}
 		}
-		var controls, controlledBy []ptr
-		for _, id := range an.n.Controls {
-			if c := an.tree.nodes[id]; c != nil {
-				controls = append(controls, c.obj)
+		both := func(of func(n platform.AccessNode) []uint64, to, back int32) {
+			var targets, from []ptr
+			for _, id := range of(an.n) {
+				if c := an.tree.nodes[id]; c != nil {
+					targets = append(targets, c.obj)
+				}
 			}
-		}
-		for _, o := range an.tree.nodes {
-			if slices.Contains(o.n.Controls, an.n.ID) {
-				controlledBy = append(controlledBy, o.obj)
+			for _, o := range an.tree.nodes {
+				if slices.Contains(of(o.n), an.n.ID) {
+					from = append(from, o.obj)
+				}
 			}
+			add(targets, to)
+			add(from, back)
 		}
-		add(controls, atkRelationControllerFor)
-		add(controlledBy, atkRelationControlledBy)
+		both(func(n platform.AccessNode) []uint64 { return n.Controls }, atkRelationControllerFor, atkRelationControlledBy)
+		both(func(n platform.AccessNode) []uint64 { return n.DescribedBy }, atkRelationDescribedBy, atkRelationDescriptionFor)
+		both(func(n platform.AccessNode) []uint64 {
+			if n.States&platform.AccessInvalid == 0 {
+				return nil
+			}
+			return n.ErrorMessage
+		}, atkRelationErrorMessage, atkRelationErrorFor)
 		return set
 	})
 	// Object attributes: the placeholder of a text field, the place of a
@@ -1086,6 +1116,11 @@ func initAccessCallbacks() {
 		}
 		if r := xmlRoles[an.n.Role]; r != "" {
 			add("xml-roles", r)
+		}
+		// A search field, as Chromium's searchbox.
+		if an.n.Role == platform.RoleTextField && an.n.States&platform.AccessSearch != 0 {
+			add("xml-roles", "searchbox")
+			add("text-input-type", "search")
 		}
 		// How a live region and what is inside it are read, as
 		// Chromium's say aria-live, aria-atomic and aria-relevant.

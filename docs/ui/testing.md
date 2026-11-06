@@ -124,12 +124,14 @@ states, as [accessibility](accessibility.md#states) lists them:
 `AutoComplete` (`aria-autocomplete`), `Sort` (a column header's
 `ui.SortDirection`), `Disabled`, `Invalid`, `Focused` (the element or
 option the focus is on, `ActiveDescendant` included), `Controls` (the
-names of the elements it controls, which `Access` finds), `Level`,
+names of the elements it controls, which `Access` finds), `DescribedBy`
+and `ErrorMessage` (the names of the elements describing it and holding
+its error), `Vertical` and `Horizontal` (`aria-orientation`), `Level`,
 `PosInSet` and `SetSize`, `Multiselectable`, `RowCount`,
 `ColumnCount`, `RowIndex` and `ColumnIndex` (of a
 [grid](accessibility.md#grids)), `RowSpan` and `ColumnSpan` (of its
-cells), `Min`, `Max` and `Now` of a range, and
-its `Bounds`. So a test checks
+cells), `Min`, `Max` and `Now` of a range, and its `Bounds`. So a test
+checks
 that a state reaches assistive technology, not only that the view set
 it:
 

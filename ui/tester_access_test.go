@@ -244,3 +244,35 @@ func TestTesterAccessStates(t *testing.T) {
 		t.Errorf("Details, closed, controls %q", d.Controls)
 	}
 }
+
+// TestTesterAccessRelations checks, through the public API, what a field
+// is described by, its error read while invalid, an orientation given, a
+// search field of the app's own, and content deleted and inserted.
+func TestTesterAccessRelations(t *testing.T) {
+	card, query := "", ""
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Children(func() {
+			hint := ui.Text(c, "16 digits")
+			msg := ui.Text(c, "Required")
+			ui.TextInput(c, &card).Label("Card").DescribedBy(hint).Invalid(card == "").ErrorMessage(msg)
+			ui.TextInput(c, &query).Label("Search mail").Search()
+			ui.Column(c).Role(ui.RoleToolbar).Label("Tools").Orientation(ui.Vertical)
+			ui.Row(c).Children(func() {
+				ui.Text(c, "$40").Strikethrough().Role(ui.RoleDeletion)
+				ui.Text(c, "$30").Role(ui.RoleInsertion)
+			})
+		})
+	}, 400, 400)
+	f := accessOf(t, tt, ui.RoleTextField, "Card")
+	if !f.Invalid || f.Description != "Required\n16 digits" || !slices.Equal(f.DescribedBy, []string{"16 digits"}) || !slices.Equal(f.ErrorMessage, []string{"Required"}) {
+		t.Errorf("Card: %+v", f)
+	}
+	if s := accessOf(t, tt, ui.RoleTextField, "Search mail"); !s.Search {
+		t.Errorf("Search mail: %+v", s)
+	}
+	if b := accessOf(t, tt, ui.RoleToolbar, "Tools"); !b.Vertical || b.Horizontal {
+		t.Errorf("Tools: %+v", b)
+	}
+	accessOf(t, tt, ui.RoleDeletion, "$40")
+	accessOf(t, tt, ui.RoleInsertion, "$30")
+}

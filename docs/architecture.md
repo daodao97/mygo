@@ -2620,7 +2620,31 @@ either.
   LocalizedControlType; `Controls` (`AccessNode.Controls`, the IDs of
   the elements, aria-controls) is `AXLinkedUIElements`, ATK's
   `controller-for` relation and `controlled-by` back, from the nodes'
-  `ref_relation_set`, and UIA's ControllerFor; `HasPopup`
+  `ref_relation_set`, and UIA's ControllerFor; `DescribedBy`
+  (`AccessNode.DescribedBy`, aria-describedby) adds the text of the
+  elements to `Description` (their Label, else the texts inside them,
+  hidden or not, joined by spaces, after the element's own), and is
+  ATK's `described-by` relation with `description-for` back, and UIA's
+  DescribedBy beside FullDescription; AX API has no relation for it,
+  only the text in `AXHelp`. `ErrorMessage` (`AccessNode.ErrorMessage`,
+  aria-errormessage) is given only while the element is invalid
+  (`Invalid` sets `AccessInvalid` alone, or `Error`), puts the text
+  first in `Description`, as `Error` does its message, and is WebKit's
+  `AXErrorMessageElements`, answered as `AXInvalid` is, ATK's
+  `error-message` relation with `error-for` back, and UIA's
+  ControllerFor, as Core-AAM maps it; UIA also raises
+  IsDataValidForForm and FullDescription changing, as a field turns
+  invalid as it blurs. `Orientation` (aria-orientation) sets
+  `AccessVertical` or `AccessHorizontal` on any element: `AXOrientation`,
+  ATK's vertical or horizontal state and UIA's Orientation, a slider and
+  a separator across unless told, others without one. `Search` on a
+  text input sets `AccessSearch`: `AXSearchField`, ATK's
+  `xml-roles:searchbox` and `text-input-type:search`, UIA's Edit with
+  "search box" and the searchbox AriaRole. `RoleDeletion` and
+  `RoleInsertion` (ARIA's deletion and insertion) are `AXGroup` with
+  `AXDeleteStyleGroup` and `AXInsertStyleGroup`, ATK's content deletion
+  and content insertion with `xml-roles`, and UIA's Text named
+  "deletion" and "insertion"; `HasPopup`
   (`AccessNode.HasPopup`, aria-haspopup) is `AXPopupValue`, answered as
   `AXInvalid` is, with `AXShowMenu` pressing the element, ATK's
   has-popup state and `haspopup` attribute, and UIA's ExpandCollapse

@@ -597,6 +597,21 @@ func properties(rt *engine, e *node) []inspSection {
 	if len(e.controls) > 0 {
 		acc.rows = append(acc.rows, inspDecl{name: "controls", value: strconv.Itoa(len(e.controls)) + " elements"})
 	}
+	if len(e.describedBy) > 0 {
+		acc.rows = append(acc.rows, inspDecl{name: "describedby", value: strconv.Itoa(len(e.describedBy)) + " elements"})
+	}
+	if e.invalid {
+		acc.rows = append(acc.rows, inspDecl{name: "invalid", value: "true"})
+	}
+	if len(e.errorMessage) > 0 {
+		acc.rows = append(acc.rows, inspDecl{name: "errormessage", value: strconv.Itoa(len(e.errorMessage)) + " elements"})
+	}
+	switch e.orient {
+	case Horizontal:
+		acc.rows = append(acc.rows, inspDecl{name: "orientation", value: "horizontal"})
+	case Vertical:
+		acc.rows = append(acc.rows, inspDecl{name: "orientation", value: "vertical"})
+	}
 	return []inspSection{el, state, acc}
 }
 

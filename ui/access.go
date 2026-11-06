@@ -143,6 +143,19 @@ const (
 	// are list boxes.
 	RoleListBox
 	RoleOption
+	// RoleDeletion and RoleInsertion hold content removed from or added
+	// to a document, as HTML's del and ins, ARIA's deletion and
+	// insertion: the removed and added lines of a diff, or an old price
+	// struck out beside the new one. Screen readers read their text with
+	// "deletion" or "insertion" rather than as plain text. They take no
+	// Label: the text inside them is what they hold.
+	//
+	//	ui.Row(c).Gap(6).Children(func() {
+	//		ui.Text(c, "$40").Strikethrough().Role(ui.RoleDeletion)
+	//		ui.Text(c, "$30").Role(ui.RoleInsertion)
+	//	})
+	RoleDeletion
+	RoleInsertion
 )
 
 // tabular reports whether elements of a role hold rows of cells: tables,
@@ -278,6 +291,30 @@ func (e *node) Range(lo, hi, value float64) *node {
 // highest, or how deep an item of a tree is, from 1 at the top.
 func (e *node) Level(n int) *node {
 	e.level = max(n, 0)
+	return e
+}
+
+// Orientation tells assistive technology which way the element runs, as
+// ARIA's aria-orientation: Vertical for a slider, separator, splitter,
+// toolbar, tab list or menu of your own going up and down, which screen
+// readers then read as vertical, Horizontal for one going across. It only tells it: the view lays the element out and
+// handles its keys itself (FocusGroup). A slider or a separator told
+// neither runs across, a separator taller than wide up and down; other
+// elements have no orientation. A SliderBase going up says so itself
+// (Vertical).
+//
+//	ui.Box(c).Size(4, 200).Draw(drawTrack).
+//		Role(ui.RoleSlider).Label("Volume").Range(0, 100, app.volume).
+//		Focusable().Orientation(ui.Vertical)
+//
+// Any other value, as Horizontal|Vertical, takes it back.
+func (e *node) Orientation(o Orientation) *node {
+	switch o {
+	case Horizontal, Vertical:
+		e.orient = o
+	default:
+		e.orient = 0
+	}
 	return e
 }
 
@@ -457,6 +494,10 @@ func (e *node) accessRole() (platform.AccessRole, bool) {
 		return platform.RoleList, true // choosing its items (accessDetails)
 	case RoleOption:
 		return platform.RoleListItem, true
+	case RoleDeletion:
+		return platform.RoleDeletion, true
+	case RoleInsertion:
+		return platform.RoleInsertion, true
 	default:
 		return platform.AccessRole(e.role - RoleGroup), true
 	}
@@ -496,7 +537,7 @@ func leafRole(r platform.AccessRole) bool {
 		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleColumnHeader, platform.RoleRowHeader, platform.RoleTree,
 		platform.RoleListItem, platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleHeading, platform.RoleNavigation,
 		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleSearch,
-		platform.RoleArticle, platform.RoleGrid, platform.RoleTreeGrid:
+		platform.RoleArticle, platform.RoleGrid, platform.RoleTreeGrid, platform.RoleDeletion, platform.RoleInsertion:
 		return false
 	}
 	return true
@@ -548,6 +589,14 @@ func (t *innerTexts) walk(e *node) {
 	for ch := e.first; ch != nil; ch = ch.next {
 		t.walk(ch)
 	}
+}
+
+// String returns the texts joined.
+func (t *innerTexts) String() string {
+	if t.b.Len() == 0 {
+		return t.first
+	}
+	return t.b.String()
 }
 
 func (t *innerTexts) add(s string) {
@@ -730,9 +779,12 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.segment {
 		n.States |= platform.AccessSegment
 	}
-	if e.vertical || n.Role == platform.RoleSeparator && e.h > e.w {
+	switch {
+	case e.orient == Vertical, e.orient == 0 && n.Role == platform.RoleSeparator && e.h > e.w:
 		// A slider going up, or a rule running up and down.
 		n.States |= platform.AccessVertical
+	case e.orient == Horizontal:
+		n.States |= platform.AccessHorizontal
 	}
 	if e.search {
 		n.States |= platform.AccessSearch
@@ -749,6 +801,9 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 		n.States |= platform.AccessSortOther
 	}
 	n.Description = e.description
+	if len(e.describedBy) > 0 || len(e.errorMessage) > 0 {
+		accessRelations(e, n)
+	}
 	n.RoleDescription, n.HasPopup = e.roleDescription, platform.AccessPopup(e.hasPopup)
 	for _, c := range e.controls {
 		n.Controls = append(n.Controls, c.id)
@@ -892,6 +947,46 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.st.accessDisabled {
 		n.Actions &= platform.ActionFocus | platform.ActionScrollIntoView
 	}
+}
+
+// accessRelations fills in what describes a node: the elements whose
+// text describes it (DescribedBy), after its own description, and while
+// it is invalid, those holding its error (ErrorMessage), first, as Error
+// puts its message.
+func accessRelations(e *node, n *platform.AccessNode) {
+	var desc innerTexts
+	for _, d := range e.describedBy {
+		n.DescribedBy = append(n.DescribedBy, d.id)
+		desc.add(d.describes())
+	}
+	n.Description = joinDescription(n.Description, desc.String())
+	if !e.invalid {
+		return
+	}
+	var msg innerTexts
+	for _, m := range e.errorMessage {
+		n.ErrorMessage = append(n.ErrorMessage, m.id)
+		msg.add(m.describes())
+	}
+	n.Description = joinDescription(msg.String(), n.Description)
+}
+
+// describes returns the text an element gives another it describes
+// (DescribedBy, ErrorMessage): its Label, or the texts inside it, as
+// ARIA computes a description from the elements it references, hidden
+// from assistive technology or not.
+func (e *node) describes() string {
+	if e.label != "" {
+		return e.label
+	}
+	if e.kind == kindText {
+		return e.accessText()
+	}
+	var t innerTexts
+	for ch := e.first; ch != nil; ch = ch.next {
+		t.walk(ch)
+	}
+	return t.String()
 }
 
 // accessibilityOn starts describing frames for assistive technology,

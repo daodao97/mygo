@@ -4464,6 +4464,29 @@ func (_handle Element) DecorationThickness(v float32) Element {
 	return wrapElement(_node.DecorationThickness(v))
 }
 
+// DescribedBy has desc, an element the view draws, as a hint below a
+// field or a help text beside it, describe the element to assistive
+// technology, as ARIA's aria-describedby does: screen readers read desc's
+// text after the element's name and value, as a Description, which it
+// follows. The text is desc's Label, else the texts inside it, as a
+// sentence with a link in it, read as one; it counts even when desc is
+// hidden from assistive technology (AccessHidden). Call it once both are
+// built, before or after the element, once for each element describing
+// it, in the order to read them. On a Field, it describes the field's
+// control.
+//
+//	hint := ui.Text(c, "16 digits, no spaces").TextColor(t.TextMuted)
+//	ui.TextInput(c, &app.card).Label("Card number").DescribedBy(hint)
+func (_handle Element) DescribedBy(desc Element) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.DescribedBy(desc.nodeFor(_ctx.rt)))
+}
+
 // Description tells assistive technology more about the element than its
 // name, as help text it reads after it. On a Field, the text shows below
 // the control, and describes it.
@@ -4886,6 +4909,29 @@ func (_handle Element) Error(msg string) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Error(msg))
+}
+
+// ErrorMessage has msg, an element the view draws holding the message of
+// the element's error, tell assistive technology why its value is not
+// valid, as ARIA's aria-errormessage does: while the element is invalid
+// (Invalid, Error), screen readers read msg's text with it, first in its
+// description, and those that follow the relation go to msg. While it is
+// valid, msg says nothing of it, so the view may keep msg built, empty or
+// hidden. Call it once both are built, once for each element holding a
+// message. On a Field, it is the field's control's message.
+//
+//	in := ui.TextInput(c, &app.email).Label("Email").Invalid(app.emailError != "")
+//	if app.emailError != "" {
+//		in.ErrorMessage(ui.Text(c, app.emailError).TextColor(t.Danger))
+//	}
+func (_handle Element) ErrorMessage(msg Element) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ErrorMessage(msg.nodeFor(_ctx.rt)))
 }
 
 // Expanded tells assistive technology whether what the element opens
@@ -5546,6 +5592,28 @@ func (_handle Element) InsetShadow(x float32, y float32, blur float32, spread fl
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.InsetShadow(x, y, blur, spread, c))
+}
+
+// Invalid marks the element's value as not valid, as ARIA's aria-invalid,
+// without a message: assistive technology reads the element as invalid,
+// and a text input draws its border in the theme's Danger color, but its
+// description stays as it is. It suits a required field marked as the
+// user leaves it empty, whose message waits for the form to be submitted,
+// or a control whose message is an element of its own (ErrorMessage). On
+// a Field, it marks the field's control. false leaves the element as it
+// is: valid, unless Error, or the control's own check of what is typed
+// into it, marks it.
+//
+//	ui.TextInput(c, &app.card).Label("Card number").
+//		Invalid(app.cardTouched && app.card == "")
+func (_handle Element) Invalid(on bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Invalid(on))
 }
 
 // Invisible hides the element and its children, which keep their room in
@@ -6395,6 +6463,30 @@ func (_handle Element) Opacity(o float32) Element {
 	return wrapElement(_node.Opacity(o))
 }
 
+// Orientation tells assistive technology which way the element runs, as
+// ARIA's aria-orientation: Vertical for a slider, separator, splitter,
+// toolbar, tab list or menu of your own going up and down, which screen
+// readers then read as vertical, Horizontal for one going across. It only tells it: the view lays the element out and
+// handles its keys itself (FocusGroup). A slider or a separator told
+// neither runs across, a separator taller than wide up and down; other
+// elements have no orientation. A SliderBase going up says so itself
+// (Vertical).
+//
+//	ui.Box(c).Size(4, 200).Draw(drawTrack).
+//		Role(ui.RoleSlider).Label("Volume").Range(0, 100, app.volume).
+//		Focusable().Orientation(ui.Vertical)
+//
+// Any other value, as Horizontal|Vertical, takes it back.
+func (_handle Element) Orientation(o Orientation) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Orientation(o))
+}
+
 // OverlayShortcut reports whether the key with exactly the modifiers mods
 // was pressed for the element, an overlay, which gets the keys the focused
 // element and those around it leave, wherever the focus is: the overlay
@@ -7189,6 +7281,23 @@ func (_handle Element) Scrollbars(visible bool) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Scrollbars(visible))
+}
+
+// Search makes a text input one for searching, in the frames that call
+// it, as ARIA's searchbox and HTML's <input type=search>: assistive
+// technology reads it as a search field, as it reads a SearchField's
+// input, while the view draws it as it likes, with an icon and a clear
+// button of its own, and handles its keys. Name it with Label.
+//
+//	ui.TextInput(c, &app.query).Placeholder("Search").Label("Search mail").Search()
+func (_handle Element) Search() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Search())
 }
 
 // Selectable lets the user select and copy text by dragging, double-clicking

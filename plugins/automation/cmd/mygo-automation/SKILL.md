@@ -123,11 +123,12 @@ Roles are `group`, `text`, `heading`, `button`, `link`, `checkBox`,
 `popup`, `tooltip`, `splitter`, `status`, `toolbar`, `radioGroup`,
 `disclosure`, `colorWell`, `menu`, `menuBar`, `menuItem`,
 `menuItemCheckBox`, `menuItemRadio`, `region`, `log`, `timer`, `alert`,
-`separator`, `rowHeader`, `search`, `article` and `navigation`. States are `disabled`, `checked`,
+`separator`, `rowHeader`, `search`, `article`, `navigation`, `deletion`
+and `insertion`. States are `disabled`, `checked`,
 `mixed`, `selected`, `expanded`, `expandable`, `multiline`, `password`,
 `readOnly`, `selectable`, `multiselectable`, `offscreen`, `segment`,
 `search`, `invalid`, `sortAscending`, `sortDescending`, `sortOther`,
-`vertical` and `busy`. `current=` is `true`, `page`, `step`, `location`,
+`vertical`, `horizontal` and `busy`. `current=` is `true`, `page`, `step`, `location`,
 `date` or `time`; `haspopup=` the kind of popup the element opens
 (`menu`, `listbox`, `tree`, `grid` or `dialog`), and `roledescription=`
 what the app calls its role.

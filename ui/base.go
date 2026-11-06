@@ -216,7 +216,7 @@ func (e *node) Step(step float64) *node {
 func (e *node) Vertical() *node {
 	if e.widget == "SliderBase" {
 		coreLocal(e, sliderKey{}, func() sliderSettings { return sliderSettings{} }).now.vertical = true
-		e.vertical = true
+		e.orient = Vertical
 	}
 	return e
 }

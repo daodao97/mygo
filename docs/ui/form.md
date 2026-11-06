@@ -76,8 +76,28 @@ ui.Row(c).Gap(8).Children(func() {
 })
 ```
 
+## Hints and errors of your own
+
+A hint or an error message the view draws as an element of its own, away
+from the field's `Description` and `Error`, reaches assistive technology
+with `DescribedBy` and `ErrorMessage`, as `aria-describedby` and
+`aria-errormessage`. `Invalid` marks a value as not valid without a
+message, as a required field the user left empty, whose message shows
+once the form is submitted:
+
+```go
+hint := ui.Text(c, "As printed on the card").TextColor(t.TextMuted)
+ui.Field(c, "Name", func() {
+	ui.TextInput(c, &app.name).Invalid(app.nameTouched && app.name == "")
+}).DescribedBy(hint)
+```
+
+On a field, they go to its control, as `Description` and `Error` do
+([Accessibility](accessibility.md#descriptions-and-errors)).
+
 ## Accessibility
 
 Assistive technology reads a control by its field's label, with the
 description and the error after it, and the value invalid while there is an
-error; a fieldset is a group named by its legend.
+error, or while `Invalid` says so; a fieldset is a group named by its
+legend.

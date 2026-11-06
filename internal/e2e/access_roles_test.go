@@ -87,3 +87,41 @@ func TestAccessLandmarksAndLiveRegions(t *testing.T) {
 		})
 	}
 }
+
+// TestAccessDeletionInsertion reads, as screen readers do, the roles
+// Core-AAM gives ARIA's deletion and insertion, an old price struck out
+// and the new one, on each platform.
+func TestAccessDeletionInsertion(t *testing.T) {
+	var frames atomic.Int32
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		ui.Row(c).Fill().Padding(20).Gap(6).Children(func() {
+			ui.Text(c, "$40").Strikethrough().Role(ui.RoleDeletion)
+			ui.Text(c, "$30").Role(ui.RoleInsertion)
+		})
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Deletion and insertion", Width: 300, Height: 200, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	if _, ok := accessibility(w); !ok {
+		t.Skip("accessibility automation not available on this platform")
+	}
+	want := map[string]map[string]string{
+		"darwin":  {"$40": "AXGroup/AXDeleteStyleGroup", "$30": "AXGroup/AXInsertStyleGroup"},
+		"linux":   {"$40": "content deletion", "$30": "content insertion"},
+		"windows": {"$40": "Text", "$30": "Text"},
+	}[runtime.GOOS]
+	if want == nil {
+		t.Skipf("no roles to expect on %s", runtime.GOOS)
+	}
+	for label, role := range want {
+		eventually(t, label+" as "+role, func() bool {
+			nodes, _ := accessibility(w)
+			for _, n := range nodes {
+				if n.label == label && n.role == role {
+					return true
+				}
+			}
+			return false
+		})
+	}
+}

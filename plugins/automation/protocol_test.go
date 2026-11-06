@@ -347,10 +347,10 @@ func TestMenuCaptureEvalIdle(t *testing.T) {
 }
 
 func TestNames(t *testing.T) {
-	if len(roleNames) != int(platform.RoleTreeGrid)+1 {
-		t.Errorf("%d role names for %d roles", len(roleNames), platform.RoleTreeGrid+1)
+	if len(roleNames) != int(platform.RoleInsertion)+1 {
+		t.Errorf("%d role names for %d roles", len(roleNames), platform.RoleInsertion+1)
 	}
-	if platform.AccessStates(1)<<(len(stateNames)-1) != platform.AccessSortOther {
+	if platform.AccessStates(1)<<(len(stateNames)-1) != platform.AccessHorizontal {
 		t.Errorf("%d state names", len(stateNames))
 	}
 	if platform.AccessActions(1)<<(len(actionNames)-1) != platform.ActionExpand {

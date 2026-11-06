@@ -155,6 +155,28 @@ var accessRoles = map[platform.AccessRole][2]string{
 	// Grids and tree grids are tables, as WebKit's.
 	platform.RoleGrid:     {"AXTable", ""},
 	platform.RoleTreeGrid: {"AXTable", ""},
+	// Content removed and added, as WebKit's del and ins.
+	platform.RoleDeletion:  {"AXGroup", "AXDeleteStyleGroup"},
+	platform.RoleInsertion: {"AXGroup", "AXInsertStyleGroup"},
+}
+
+// orientation returns the NSAccessibilityOrientation of a node, as
+// aria-orientation: Vertical (1) or Horizontal (2) where the node says,
+// else Horizontal for a slider or a rule, Unknown (0) for others.
+func orientation(n platform.AccessNode) int {
+	switch {
+	case n.States&platform.AccessVertical != 0:
+		return 1
+	case n.States&platform.AccessHorizontal != 0, n.Role == platform.RoleSlider || n.Role == platform.RoleSeparator:
+		return 2
+	}
+	return 0
+}
+
+// errorMessages reports whether a node points at the elements holding its
+// error (AXErrorMessageElements, aria-errormessage): only while invalid.
+func errorMessages(n platform.AccessNode) bool {
+	return len(n.ErrorMessage) > 0 && n.States&platform.AccessInvalid != 0
 }
 
 // menuItem reports whether nodes of a role are items of a menu.
@@ -422,12 +444,7 @@ func (el *accessElement) apply(n platform.AccessNode, fresh bool) (valueChanged 
 			send(obj, "setAccessibilityExpanded:", boolArg(n.States&platform.AccessExpanded != 0))
 		}
 	}
-	if (n.Role == platform.RoleSlider || n.Role == platform.RoleSeparator) && (fresh || n.Role != o.Role || n.States&platform.AccessVertical != o.States&platform.AccessVertical) {
-		// NSAccessibilityOrientationVertical or Horizontal.
-		orient := 2
-		if n.States&platform.AccessVertical != 0 {
-			orient = 1
-		}
+	if orient := orientation(n); orient != 0 && fresh || !fresh && orient != orientation(o) {
 		send(obj, "setAccessibilityOrientation:", uintptr(orient))
 	}
 	if n.Role.Ranged() {
@@ -886,6 +903,11 @@ func registerAccessClass() {
 			if el.node.States&platform.AccessInvalid != 0 {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXInvalid")))
 			}
+			// The elements holding its error, as WebKit's say
+			// aria-errormessage.
+			if errorMessages(el.node) {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXErrorMessageElements")))
+			}
 			if menuItem(el.node.Role) {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXMenuItemMarkChar")))
 			}
@@ -923,6 +945,12 @@ func registerAccessClass() {
 			}
 			if el.node.RoleDescription != "" {
 				more = append(more, "AXRoleDescription")
+			}
+			// What describes it (Description, DescribedBy, ErrorMessage),
+			// which the older API neither lists nor answers for what
+			// setAccessibilityHelp: set, as it does AXEnabled.
+			if el.node.Description != "" {
+				more = append(more, "AXHelp")
 			}
 			for _, name := range more {
 				if a := nsString(name); !sendBool(names, "containsObject:", uintptr(a)) {
@@ -966,6 +994,16 @@ func registerAccessClass() {
 					if el.node.States&platform.AccessInvalid != 0 {
 						return nsString("true")
 					}
+				case "AXErrorMessageElements":
+					if errorMessages(el.node) {
+						objs := make([]id, 0, len(el.node.ErrorMessage))
+						for _, mid := range el.node.ErrorMessage {
+							if m := el.s.elements[mid]; m != nil {
+								objs = append(objs, m.obj)
+							}
+						}
+						return nsArray(objs...)
+					}
 				case "AXMenuItemMarkChar":
 					if m := markChar(el.node); m != "" {
 						return nsString(m)
@@ -981,6 +1019,14 @@ func registerAccessClass() {
 					return nsBool(el.node.States&platform.AccessBusy != 0)
 				case "AXEnabled":
 					return nsBool(el.node.States&platform.AccessDisabled == 0)
+				// What describes it, as the newer API's accessibilityHelp:
+				// its error first while invalid, then its description, a
+				// line each.
+				case "AXHelp":
+					if el.node.Description != "" {
+						return nsString(el.node.Description)
+					}
+					return 0
 				// The role and subrole the newer API was given, so that
 				// both APIs agree: AppKit's answer here missed a header
 				// made a sort button, and a grid's table.

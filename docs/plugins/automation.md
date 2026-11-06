@@ -134,9 +134,11 @@ rows and columns a cell covers, when more than one: `aria-rowspan` and
 a text field's or a combo box's suggestions complete, as ARIA's
 `aria-autocomplete`: `inline`, `list` or `both`), `roleDescription` (as
 `aria-roledescription`), `hasPopup` (the kind of popup it opens, as
-`aria-haspopup`: `menu`, `listbox`, `tree`, `grid` or `dialog`) and
-`controls` (the IDs of the elements it controls, as `aria-controls`)
-that it has.
+`aria-haspopup`: `menu`, `listbox`, `tree`, `grid` or `dialog`),
+`controls` (the IDs of the elements it controls, as `aria-controls`),
+`describedBy` (the IDs of the elements describing it, as
+`aria-describedby`) and `errorMessage` (those holding its error while it
+is `invalid`, as `aria-errormessage`) that it has.
 IDs are strings of digits: they are 64-bit, which JavaScript's numbers
 would round. `keyShortcuts` is the keys that press or focus the element,
 as ARIA's `aria-keyshortcuts`, written as the platform's menus write
@@ -165,11 +167,12 @@ a column that lays others out has no node, keyed or not. Roles are
 `comboBox`, `disclosure`, `meter`, `stepper`, `colorWell`,
 `alertDialog`, `menu`, `menuBar`, `menuItem`, `menuItemCheckBox`,
 `menuItemRadio`, `heading`, `region`, `log`, `timer`, `alert`,
-`separator`, `rowHeader`, `search`, `article`, `navigation`, `grid` and `treeGrid`. States are `focusable`, `disabled`,
+`separator`, `rowHeader`, `search`, `article`, `navigation`, `grid`,
+`treeGrid`, `deletion` and `insertion`. States are `focusable`, `disabled`,
 `checked`, `mixed`, `selected`, `expanded`, `multiline`, `password`,
 `readOnly`, `selectable`, `offscreen`, `multiselectable`, `segment`,
 `search`, `invalid`, `sortAscending`, `sortDescending`, `expandable`,
-`vertical`, `busy` and `sortOther`.
+`vertical`, `busy`, `sortOther` and `horizontal`.
 
 A web view in native UI shows as a node marked `webView`, without the
 elements of its page. A window showing a web page has no tree: `tree`

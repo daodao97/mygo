@@ -90,6 +90,12 @@ type AccessNode struct {
 	// element controls, as the region a disclosure button opens: ARIA's
 	// aria-controls.
 	Controls []uint64
+	// DescribedBy are the IDs of the nodes whose text describes the
+	// element, as a hint below a field, which Description holds: ARIA's
+	// aria-describedby. ErrorMessage are those of the nodes holding the
+	// message of an element that is AccessInvalid, whose text Description
+	// starts with: ARIA's aria-errormessage, given only while invalid.
+	DescribedBy, ErrorMessage []uint64
 	// HasPopup is the kind of popup the element opens, as ARIA's
 	// aria-haspopup.
 	HasPopup AccessPopup
@@ -224,6 +230,11 @@ const (
 	// cells are RoleRow, RoleCell and RoleColumnHeader, as a table's.
 	RoleGrid
 	RoleTreeGrid
+	// RoleDeletion and RoleInsertion hold content removed from or added
+	// to a document, as the lines of a diff or a price struck out:
+	// ARIA's deletion and insertion, HTML's del and ins.
+	RoleDeletion
+	RoleInsertion
 )
 
 // Tabular reports whether nodes of a role hold rows of cells: tables,
@@ -292,7 +303,9 @@ const (
 	// AccessExpandable is set on an item of a tree with children, which
 	// AccessExpanded shows.
 	AccessExpandable
-	// AccessVertical is set on a slider going up.
+	// AccessVertical is set on a slider going up, a separator running up
+	// and down, and an element the app says runs up and down, as ARIA's
+	// aria-orientation="vertical".
 	AccessVertical
 	// AccessBusy is set on an element whose content is about to change,
 	// as a region loading, which assistive technology waits for before
@@ -301,6 +314,11 @@ const (
 	// AccessSortOther is set on the header of the column a table's rows
 	// are sorted by in an order neither ascending nor descending.
 	AccessSortOther
+	// AccessHorizontal is set on an element the app says runs across, as
+	// ARIA's aria-orientation="horizontal". A slider or a separator that
+	// is neither AccessVertical nor AccessHorizontal runs across; other
+	// elements then have no orientation.
+	AccessHorizontal
 )
 
 // AccessPopup is the kind of popup an element opens, as ARIA's

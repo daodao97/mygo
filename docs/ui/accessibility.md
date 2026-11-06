@@ -126,6 +126,8 @@ your own tells it with these, as ARIA's states do on the web:
 | `Controls(e)` | that it controls the content or presence of `e`, as a disclosure button the region it opens; once for each |
 | `HasPopup(kind)` | the kind of popup it opens: `ui.PopupMenu`, `PopupListBox`, `PopupTree`, `PopupGrid` or `PopupDialog` |
 | `Sort(dir)` | the order a table's rows are sorted in by the column whose header it is: `ui.SortAscending`, `SortDescending`, `SortOther` or `SortNone` |
+| `Orientation(o)` | which way a slider, separator, splitter, toolbar, tab list or menu of your own runs: `ui.Vertical` or `ui.Horizontal` ([below](#orientation)) |
+| `DescribedBy(e)`, `Invalid(on)`, `ErrorMessage(e)` | the element `e` whose text describes it, that its value is not valid, and the element holding its error ([below](#descriptions-and-errors)) |
 | `Multiselectable(on)` | that the user chooses several of the items of a list, grid, tree or tree grid of your own |
 | `RowCount(n)`, `ColumnCount(n)` | how many rows and columns a table or grid has, built or not |
 | `RowIndex(i)`, `ColumnIndex(i)` | which of all the rows a row or a cell is in, and which of all the columns a cell is in, from 1 |
@@ -269,6 +271,63 @@ place of ARIA's properties UI Automation has none of. A
 [tooltip](tooltip.md) does, and `Error` marks a value as invalid, for a
 message read with it; a [field](form.md) gives its control the texts below
 it.
+
+A hint or a help text the view draws as an element of its own describes a
+control with `DescribedBy`, as ARIA's `aria-describedby`: screen readers
+read its text after the control's name and value, after the control's
+`Description`, and a sentence with a link in it reads as one text. It
+counts even when hidden from assistive technology, so the hint can be left
+out of the reading order and still be read with the field:
+
+```go
+hint := ui.Text(c, "16 digits, no spaces").TextColor(t.TextMuted)
+ui.TextInput(c, &app.card).Label("Card number").DescribedBy(hint)
+```
+
+`Invalid` marks a value as invalid without a message, as `aria-invalid`
+alone: a required field marked as the user leaves it empty, whose message
+waits for the form to be submitted. A text input then draws its border in
+the theme's `Danger` color, and its description stays as it is.
+`ErrorMessage` points at the element holding the message, as
+`aria-errormessage`: while the control is invalid, its text is read first,
+before the description, and screen readers that follow the relation go to
+it; while the control is valid, it says nothing:
+
+```go
+in := ui.TextInput(c, &app.email).Label("Email").Invalid(app.emailTouched && app.email == "")
+if app.submitted && app.email == "" {
+	in.ErrorMessage(ui.Text(c, "Enter your email").TextColor(t.Danger))
+}
+```
+
+The description is AppKit's `AXHelp`, ATK's description with the
+`described-by` relation (and `description-for` on the hint), and UI
+Automation's `FullDescription` with `DescribedBy`. The message is WebKit's
+`AXErrorMessageElements`, ATK's `error-message` relation (and `error-for`
+on the message), and UI Automation's `ControllerFor`, as Core-AAM maps
+them; invalid is `AXInvalid`, ATK's `invalid-entry` state and UI
+Automation's `IsDataValidForForm`.
+
+## Orientation
+
+`Orientation` tells which way an element of your own runs, as
+`aria-orientation`: a slider, separator, splitter, toolbar, tab list or
+menu drawn up and down, whose keys go Up and Down, is `ui.Vertical`, which
+screen readers read with it. It only tells it: the view lays the element
+out and takes its keys ([`FocusGroup`](input.md#focus-groups) moves the focus
+with the arrows). A slider or a separator told nothing runs across, a
+separator taller than wide up and down, and a
+[`SliderBase`](slider.md) going up (`Vertical`) says so itself:
+
+```go
+ui.Box(c).Size(6, 160).Draw(drawTrack).Focusable().
+	Role(ui.RoleSlider).Label("Volume").Range(0, 100, app.volume).
+	Orientation(ui.Vertical)
+ui.Column(c).Role(ui.RoleToolbar).Label("Tools").Orientation(ui.Vertical).Children(tools)
+```
+
+It is AppKit's `AXOrientation`, ATK's vertical or horizontal state, and UI
+Automation's `Orientation`.
 
 ## Keyboard shortcuts
 
@@ -548,6 +607,8 @@ WAI-ARIA's Core Accessibility API Mappings say:
 | `ui.RoleAlert` | a live region of important news, as a field's error, read at once | `AXGroup`, `AXApplicationAlert` | notification | Group "alert", `LiveSetting` assertive |
 | `ui.RoleSeparator` | a rule between groups of content or controls, running up and down when taller than wide | `AXSplitter` | separator, vertical or horizontal | Separator, with `Orientation` |
 | `ui.RoleRowHeader` | the cell naming its row of a table, named by its content, whose buttons and other elements stay reachable, as a cell's | `AXCell` | row header | HeaderItem "row header" |
+| `ui.RoleDeletion` | content removed from a document, as a diff's removed lines or an old price struck out, as HTML's `<del>`; its text is inside it | `AXGroup`, `AXDeleteStyleGroup` | content deletion, `xml-roles:deletion` | Text "deletion" |
+| `ui.RoleInsertion` | content added to a document, as a diff's added lines, as HTML's `<ins>` | `AXGroup`, `AXInsertStyleGroup` | content insertion, `xml-roles:insertion` | Text "insertion" |
 
 Live regions say how they are read (`AXARIALive`, ATK's `live` and
 `container-live` attributes, `LiveSetting`), and MyGo reads them out as
@@ -606,6 +667,16 @@ for _, p := range app.posts {
 		ui.Text(c, p.Body)
 	})
 }
+```
+
+Content removed and added, as the lines of a diff or an old price beside
+the new one, says so, rather than being read as plain text:
+
+```go
+ui.Row(c).Gap(6).Children(func() {
+	ui.Text(c, "$40").Strikethrough().TextColor(t.TextMuted).Role(ui.RoleDeletion)
+	ui.Text(c, "$30").Role(ui.RoleInsertion)
+})
 ```
 
 Each component's page says what assistive technology sees of it.

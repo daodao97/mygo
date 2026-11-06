@@ -433,3 +433,86 @@ func TestUIAStates(t *testing.T) {
 		t.Errorf("the table chose %v", ids(chosen))
 	}
 }
+
+var procSafeArrayGetUBound = oleaut32.NewProc("SafeArrayGetUBound")
+
+// TestUIARelationsOrientationSearch reads, as Narrator does, a search
+// field described by its hint (DescribedBy, FullDescription) and pointing
+// at its error while invalid (ControllerFor, as Core-AAM maps
+// aria-errormessage), content deleted and inserted (Text named
+// "deletion" and "insertion"), and the orientation the app gives.
+func TestUIARelationsOrientationSearch(t *testing.T) {
+	tree := newTestTree(t, false)
+	tree.update(&platform.AccessTree{Nodes: []platform.AccessNode{
+		{ID: 1, Parent: -1, Role: platform.RoleTextField, Label: "Card", States: platform.AccessInvalid | platform.AccessSearch,
+			Description: "Required 16 digits", DescribedBy: []uint64{2, 99}, ErrorMessage: []uint64{3}},
+		{ID: 2, Parent: -1, Role: platform.RoleText, Label: "16 digits"},
+		{ID: 3, Parent: -1, Role: platform.RoleText, Label: "Required"},
+		{ID: 4, Parent: -1, Role: platform.RoleDeletion, Label: "$40"},
+		{ID: 5, Parent: -1, Role: platform.RoleInsertion, Label: "$30"},
+		{ID: 6, Parent: -1, Role: platform.RoleToolbar, Label: "Tools", States: platform.AccessVertical},
+		{ID: 7, Parent: -1, Role: platform.RoleSlider, Label: "Volume"},
+		{ID: 8, Parent: -1, Role: platform.RoleSeparator, States: platform.AccessHorizontal},
+		{ID: 9, Parent: -1, Role: platform.RoleGroup, Label: "Panel"},
+		{ID: 10, Parent: -1, Role: platform.RoleTextField, Label: "Email", ErrorMessage: []uint64{3}},
+	}})
+	text := func(id uint64, property int) string {
+		var v variant
+		tree.nodes[id].property(property, &v)
+		if v.VT != vtBSTR {
+			return ""
+		}
+		return bstrString(uintptr(v.Val))
+	}
+	count := func(id uint64, property int) int {
+		var v variant
+		if tree.nodes[id].property(property, &v); v.VT != vtArray|vtUnknown || v.Val == 0 {
+			return 0
+		}
+		var ub int32
+		procSafeArrayGetUBound.Call(uintptr(v.Val), 1, uintptr(unsafe.Pointer(&ub)))
+		return int(ub) + 1
+	}
+	if got := text(1, uiaFullDescriptionProperty); got != "Required 16 digits" {
+		t.Errorf("the field's description %q", got)
+	}
+	if n := count(1, uiaDescribedByProperty); n != 1 {
+		t.Errorf("the field is described by %d elements, want its hint", n)
+	}
+	if n := count(1, uiaControllerForProperty); n != 1 {
+		t.Errorf("the invalid field points at %d elements, want its error", n)
+	}
+	if n := count(10, uiaControllerForProperty); n != 0 {
+		t.Errorf("the valid field points at %d elements", n)
+	}
+	var v variant
+	if tree.nodes[1].property(uiaIsDataValidProperty, &v); v != boolVariant(false) {
+		t.Errorf("the invalid field's IsDataValidForForm %+v", v)
+	}
+	if got, role := text(1, uiaLocalizedControlProperty), text(1, uiaAriaRoleProperty); got != "search box" || role != "searchbox" {
+		t.Errorf("the search field's control type %q, ARIA role %q", got, role)
+	}
+	if got := text(10, uiaLocalizedControlProperty); got != "" {
+		t.Errorf("a text field's control type %q", got)
+	}
+	for id, want := range map[uint64]string{4: "deletion", 5: "insertion"} {
+		v = variant{}
+		if tree.nodes[id].property(uiaControlTypeProperty, &v); v.Val != 50020 {
+			t.Errorf("the %s's control type %d, want Text", want, v.Val)
+		}
+		if got, role := text(id, uiaLocalizedControlProperty), text(id, uiaAriaRoleProperty); got != want || role != want {
+			t.Errorf("the %s's control type %q, ARIA role %q", want, got, role)
+		}
+	}
+	for id, want := range map[uint64]variant{
+		6: {VT: vtI4, Val: 2}, // OrientationType_Vertical
+		7: {VT: vtI4, Val: 1}, // a slider, across
+		8: {VT: vtI4, Val: 1},
+		9: {}, // none
+	} {
+		v = variant{}
+		if tree.nodes[id].property(uiaOrientationProperty, &v); v != want {
+			t.Errorf("node %d's orientation %+v, want %+v", id, v, want)
+		}
+	}
+}

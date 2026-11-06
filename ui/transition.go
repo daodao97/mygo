@@ -1024,6 +1024,7 @@ func ghostOf(e *node) *node {
 	g.shadows, g.cols, g.rows, g.frags = slices.Clone(e.shadows), slices.Clone(e.cols), slices.Clone(e.rows), slices.Clone(e.frags)
 	g.track, g.popover, g.list, g.rowsOf, g.overflow = nil, nil, nil, nil, nil
 	g.activeDescendant, g.nameFrom, g.focusTo, g.field, g.form = nil, nil, nil, nil, nil
+	g.describedBy, g.errorMessage = nil, nil
 	g.followX, g.colFit, g.gridFit = nil, nil, nil
 	// It no longer flies (Fly), if it did: it goes as its parent's copy.
 	g.inputFn, g.observeFn, g.ghosts, g.lift = nil, nil, false, false

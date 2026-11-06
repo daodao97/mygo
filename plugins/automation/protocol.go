@@ -405,6 +405,14 @@ func treeJSON(window int, t *platform.AccessTree, keys map[uint64]any) treeResul
 		for _, c := range n.Controls {
 			j.Controls = append(j.Controls, nodeID(c))
 		}
+		for _, d := range n.DescribedBy {
+			j.DescribedBy = append(j.DescribedBy, nodeID(d))
+		}
+		if n.States&platform.AccessInvalid != 0 {
+			for _, m := range n.ErrorMessage {
+				j.ErrorMessage = append(j.ErrorMessage, nodeID(m))
+			}
+		}
 		if n.Parent >= 0 && n.Parent < len(t.Nodes) {
 			j.Parent = nodeID(t.Nodes[n.Parent].ID)
 		}
@@ -486,6 +494,11 @@ type nodeJSON struct {
 	RoleDescription string   `json:"roleDescription,omitempty"`
 	HasPopup        string   `json:"hasPopup,omitempty"`
 	Controls        []nodeID `json:"controls,omitempty"`
+	// DescribedBy are the elements whose text describes the element, as
+	// ARIA's aria-describedby, and ErrorMessage those holding its error
+	// while it is invalid, as aria-errormessage.
+	DescribedBy  []nodeID `json:"describedBy,omitempty"`
+	ErrorMessage []nodeID `json:"errorMessage,omitempty"`
 	// WebView marks the node of a web view's page, whose elements the
 	// tree leaves out.
 	WebView bool `json:"webView,omitempty"`

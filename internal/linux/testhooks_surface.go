@@ -24,6 +24,7 @@ var (
 	atkObjectGetRole              func(obj ptr) int32
 	atkRoleGetName                func(role int32) ptr
 	atkObjectGetName              func(obj ptr) ptr
+	atkObjectGetDescription       func(obj ptr) ptr
 	atkObjectRefStateSet          func(obj ptr) ptr
 	atkStateSetContainsState      func(set ptr, state int32) bool
 	atkActionGetNActions          func(obj ptr) int32
@@ -150,9 +151,10 @@ func TestCancelDataDrag(handle uintptr) {
 func TestDataDragResources() int { return len(gtkDataSources) }
 
 // TestAccessNode is an element of native UI as assistive technology reads
-// it through ATK: the name of its role, its name, and its value.
+// it through ATK: the name of its role, its name, its value, and its
+// description.
 type TestAccessNode struct {
-	Role, Label, Value string
+	Role, Label, Value, Description string
 	// Busy, Active, Selectable, Selected, Multiselectable, Focused and
 	// SupportsAutocompletion are its ATK states of those names,
 	// Attributes its object attributes, and Selection whether it
@@ -171,6 +173,7 @@ func loadAccessTests() {
 	mustBind(a, &atkObjectGetRole, "atk_object_get_role")
 	mustBind(a, &atkRoleGetName, "atk_role_get_name")
 	mustBind(a, &atkObjectGetName, "atk_object_get_name")
+	mustBind(a, &atkObjectGetDescription, "atk_object_get_description")
 	mustBind(a, &atkObjectRefStateSet, "atk_object_ref_state_set")
 	mustBind(a, &atkStateSetContainsState, "atk_state_set_contains_state")
 	mustBind(a, &atkActionGetNActions, "atk_action_get_n_actions")
@@ -200,7 +203,8 @@ func TestAccessibility(handle uintptr) ([]TestAccessNode, bool) {
 			if child == 0 {
 				continue
 			}
-			n := TestAccessNode{Role: goStr(atkRoleGetName(atkObjectGetRole(child))), Label: goStr(atkObjectGetName(child)), obj: child}
+			n := TestAccessNode{Role: goStr(atkRoleGetName(atkObjectGetRole(child))), Label: goStr(atkObjectGetName(child)),
+				Description: goStr(atkObjectGetDescription(child)), obj: child}
 			if n.Role == "push button" {
 				n.Role = "button" // as older versions of ATK name it
 			}

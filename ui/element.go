@@ -503,8 +503,10 @@ type node struct {
 	busy         bool
 	current      Current
 	autoComplete AutoComplete
-	// vertical marks a slider going up (Vertical).
-	vertical bool
+	// orient is the way the element runs for assistive technology:
+	// Vertical for a slider going up (Vertical), or what Orientation
+	// says; 0 to find it from the element.
+	orient Orientation
 	// tip marks an element with a tooltip (TooltipBase).
 	tip bool
 	// highlighted is set on the option of a select the pointer or the
@@ -597,9 +599,14 @@ type node struct {
 	choosesItems    bool
 	search          bool
 	// description tells assistive technology more than the name, and
-	// invalid marks a value that is not valid (Description, Error).
-	description string
-	invalid     bool
+	// invalid marks a value that is not valid (Description, Error,
+	// Invalid). describedBy are the elements whose text describes it too
+	// (DescribedBy), and errorMessage those holding its error, read while
+	// it is invalid (ErrorMessage).
+	description  string
+	invalid      bool
+	describedBy  []*node
+	errorMessage []*node
 	// field is set on a Field, form on a Form, whose layout makes its
 	// labels as wide as the widest.
 	field *fieldParts
