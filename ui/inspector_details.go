@@ -585,6 +585,11 @@ func properties(rt *engine, e *node) []inspSection {
 			acc.rows = append(acc.rows, inspDecl{name: name, value: strconv.Itoa(int(v))})
 		}
 	}
+	for i, name := range [...]string{"posinset", "setsize"} {
+		if v := e.accSet[i]; v > 0 {
+			acc.rows = append(acc.rows, inspDecl{name: name, value: strconv.Itoa(int(v))})
+		}
+	}
 	if e.autoComplete != AutoCompleteNone {
 		acc.rows = append(acc.rows, inspDecl{name: "autocomplete", value: platform.AccessAutoComplete(e.autoComplete).String()})
 	}

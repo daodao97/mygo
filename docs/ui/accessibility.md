@@ -114,10 +114,12 @@ your own tells it with these, as ARIA's states do on the web:
 | Method | What it tells |
 |---|---|
 | `Checked(on)`, `Mixed()` | whether a check box, switch, radio button, toggle or menu item is on, or partly on, or whether an option is selected |
+| `AccessSelected(on)` | whether a tab, option, row, cell or tree item is selected, without the accent `Selected` paints ([below](#selected-without-the-look)) |
 | `Expanded(open)` | whether what the element opens shows, as a popup or a section |
 | `Value(s)` | its value, as the choice a button opening a popup shows |
 | `Range(lo, hi, value)`, `Step(step)` | the range and value of a slider, progress bar, meter or stepper, and how far the keys move it |
 | `Level(n)` | the rank of a heading, or how deep an item of a tree is |
+| `PositionInSet(pos, size)` | which item of how many an item of a list, tree, menu or tab list is, from 1, where what is built does not say ([below](#place-in-a-set)) |
 | `ActiveDescendant(e)` | the option that has the focus while the element keeps it, as the one the arrows are on in a menu or a list |
 | `Busy(on)` | that the element's content is about to change, as a region loading: screen readers wait for it before reading it |
 | `Current(kind)` | that the element is the current one of the items around it: `ui.CurrentPage` (the page the user is on), `CurrentStep`, `CurrentLocation`, `CurrentDate`, `CurrentTime` or `CurrentItem` |
@@ -170,10 +172,10 @@ ATK's busy state and UI Automation's `AriaProperties` (`busy=true`);
 `Current` is AppKit's `AXARIACurrent`, ATK's `current` attribute with the
 active state, and `AriaProperties` (`current=page`).
 
-A cell of a grid says whether it is chosen with `Checked`, as ARIA's
-`aria-selected` on a `gridcell`, without painting it, as a calendar's
-days or the cells of a spreadsheet of your own; `Selected` paints it in
-the accent color too. Cells (`RoleCell`, `RoleColumnHeader`,
+A cell of a grid says whether it is chosen with `AccessSelected`, or
+`Checked`, as ARIA's `aria-selected` on a `gridcell`, without painting
+it, as a calendar's days or the cells of a spreadsheet of your own;
+`Selected` paints it in the accent color too. Cells (`RoleCell`, `RoleColumnHeader`,
 `RoleRowHeader`) that call neither are not chosen among others, and a
 table or a [grid](#grids) (`RoleTable`, `RoleGrid`, `RoleTreeGrid`)
 holding cells that do chooses them. A carousel, a
@@ -195,7 +197,7 @@ if app.open {
 ui.ButtonBase(c).Role(ui.RolePopUpButton).Label("Fruit").Value(app.fruit).
 	HasPopup(ui.PopupListBox).Expanded(app.picking)
 
-day := ui.Box(c).Role(ui.RoleCell).Label(d.Format("January 2")).Checked(d.Equal(app.picked))
+day := ui.Box(c).Role(ui.RoleCell).Label(d.Format("January 2")).AccessSelected(d.Equal(app.picked))
 ```
 
 They reach each platform as WAI-ARIA's Core Accessibility API Mappings
@@ -380,6 +382,77 @@ screen reader moving out of view asks the list to scroll there, which
 builds the rows it reaches. `Label` names a list or a table. A table of
 your own, or one whose cells take the arrow keys, is a
 [grid](#grids).
+
+## Place in a set
+
+Screen readers read an item with its place, "3 of 50", which they count
+from the items around it. A list, list box, tree, menu or tab list of
+your own whose items are not all built, as one showing only those in
+view, or whose items are not siblings, as a tree laid out flat in one
+column, tells each item's place with `PositionInSet(pos, size)`, as
+ARIA's `aria-posinset` and `aria-setsize`: `pos` from 1, `size` how many
+the set has, built or not. Either at 0 or less is not given.
+
+```go
+ui.Column(c).Role(ui.RoleListBox).Label("Results").Children(func() {
+	for i := app.first; i < app.last; i++ { // only those in view
+		ui.Row(c).Role(ui.RoleOption).PositionInSet(i+1, len(app.results)).
+			Children(func() { ui.Text(c, app.results[i]) })
+	}
+})
+
+ui.Column(c).Role(ui.RoleTree).Label("Files").Children(func() {
+	for _, f := range app.flat { // each item at its depth, one below the other
+		ui.Row(c).Role(ui.RoleTreeItem).Label(f.Name).Level(f.Depth+1).PositionInSet(f.Index+1, f.Siblings)
+	}
+})
+```
+
+The place the app gives wins over the one a `ComboboxBase`,
+`SelectBase`, `MenuBase`, `Tree` or `GridView` gives its items, which
+count those they build, as for a combobox showing the first 50 of 1,000
+results; a [List](list.md)'s and a [Table](table.md)'s rows keep theirs,
+which already say which of all their rows they are. The rows and cells
+of a [grid](#grids) of your own say their place with `RowIndex` and
+`ColumnIndex`. It is ATK's `posinset` and `setsize` attributes on Linux,
+UI Automation's `PositionInSet` and `SizeOfSet` on Windows, and AppKit's
+`AXIndex` on macOS, where a list's `AXRowCount` is the size its items
+give when it has none of its own. A
+[test](testing.md#what-assistive-technology-sees) reads them as
+`PosInSet` and `SetSize`.
+
+## Selected, without the look
+
+`Selected(true)` shows an element as chosen in the accent color, with
+the accent's text color, and tells assistive technology it is selected.
+A tab, an option, a row, a cell or an item of a tree that shows its
+choice its own way, underlined, bold or with a check mark, tells only
+the state with `AccessSelected(on)`, ARIA's `aria-selected`:
+
+```go
+ui.Row(c).Role(ui.RoleTabList).Label("Views").Children(func() {
+	for i, name := range views {
+		tab := ui.ButtonBase(c).Role(ui.RoleTab).Label(name).AccessSelected(i == app.view)
+		if tab.Clicked() {
+			app.view = i
+		}
+		tab.Children(func() {
+			label := ui.Text(c, name)
+			if i == app.view {
+				label.Bold()
+			}
+		})
+	}
+})
+```
+
+It sets the state `Selected` sets, which `Checked` also sets on these
+roles, so it reaches every platform as `Selected` does: a row or a cell
+saying whether it is selected, `false` or `true`, is one its table or
+grid chooses among others, the table or grid holding the choice. It
+only tells: the view shows the choice and changes it as the element is
+clicked. A [test](testing.md#what-assistive-technology-sees) reads it
+as `Selected`.
 
 ## Grids
 

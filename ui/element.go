@@ -529,8 +529,10 @@ type node struct {
 	// platform writes them (KeyShortcuts).
 	keyShortcuts string
 	// accGrid is the element's RowCount, ColumnCount, RowIndex and
-	// ColumnIndex, 0 for those not given.
+	// ColumnIndex, and accSet its place in its set and the set's size
+	// (PositionInSet), 0 for those not given.
 	accGrid [4]int32
+	accSet  [2]int32
 
 	// Layout results, in DIPs relative to the window.
 	x, y, w, h float32

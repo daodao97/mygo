@@ -2597,7 +2597,16 @@ either.
   Statuses, as toasts, are polite live regions too (`LiveSetting`).
   Widgets of an app's own set what the bases set with element methods
   (`Checked`, `Mixed`, `Expanded`, `Value`, `Range`, `Level`,
-  `ActiveDescendant`, `Busy`, `Current`, `AutoComplete`). `Busy`
+  `ActiveDescendant`, `Busy`, `Current`, `AutoComplete`,
+  `PositionInSet`). `AccessSelected` is `Selected` without its accent
+  background and text color: it sets the same state (`checked`, which
+  is `AccessChecked`, read as selected on tabs, options, rows, cells and
+  tree items), so every bridge, a table's or a grid's choice of cells
+  and rows included, reads it as it reads `Selected`'s. `PositionInSet`
+  (`accSet`, aria-posinset and aria-setsize, each 0 for not given) wins
+  over the `setPos` and `setSize` the bases give their items, which
+  count those built, but not over a List's rows, whose place among all
+  its rows also places them in their table on macOS and Windows. `Busy`
   (`AccessBusy`, ARIA's aria-busy) is WebKit's `AXElementBusy`, with `AXElementBusyChanged`, on
   macOS, ATK's busy state, and `busy=true` in UI Automation's
   AriaProperties; `Current` (`AccessNode.Current`, aria-current's
@@ -2732,11 +2741,13 @@ either.
   focusing a row chooses it, as screen readers expect of an active
   descendant. On macOS, lists are tables (`AXTable`) of rows
   (`AXTableRow`), as AppKit's, with `AXIndex`, `AXRowCount`,
-  `AXVisibleRows`, `AXSelectedRows` and `AXSelectedRowsChanged`, and
+  `AXVisibleRows`, `AXSelectedRows` and `AXSelectedRowsChanged` (a
+  list without a `SetSize` or `RowCount` of its own counting as many rows as its
+  items' `SetSize` says, if more than it holds), and
   `AXScrollToVisible`, an action of AppKit's older API, which elements
   then answer for all their actions; on Linux, a list choosing rows is a
   list box with `AtkSelection` and `selection-changed`, rows carry the
-  `posinset` and `setsize` object attributes, and `AtkComponent`'s
+  `posinset` and `setsize` object attributes (as any item's), and `AtkComponent`'s
   `scroll_to` (ATK 2.30) scrolls; on Windows, rows have `PositionInSet`,
   `SizeOfSet`, `IsOffscreen`, `SelectionItem` (raising `ElementSelected`)
   in their list's `Selection`, and `ScrollItem`. A list choosing several

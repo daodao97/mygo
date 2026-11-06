@@ -380,6 +380,51 @@ func (e *node) ColumnIndex(i int) *node {
 	return e
 }
 
+// PositionInSet tells assistive technology which item of its set the
+// element is, pos from 1, and how many items the set has, size, as ARIA's
+// aria-posinset and aria-setsize: for an item of a list, list box, tree,
+// menu or tab list of your own whose set is not what is built around it,
+// as one built only where it shows, or a tree laid out flat in one
+// column (with Level), so that screen readers read "3 of 50". Either at
+// 0 or less is not given: the place the element's widget gives it, if
+// any, stands.
+//
+//	for i := app.first; i < app.last; i++ { // only those in view
+//		ui.Row(c).Role(ui.RoleOption).PositionInSet(i+1, len(app.results)).
+//			Children(func() { ui.Text(c, app.results[i]) })
+//	}
+//
+// It wins over the place a ComboboxBase, SelectBase, MenuBase, Tree or
+// GridView gives its items, which counts those it builds, as for a
+// combobox showing the first 50 of 1,000 results. A List's rows keep
+// theirs, which say which of all its rows they are, built or not, and
+// place the rows of its table on macOS and Windows; a row or a cell of a
+// grid of your own says its place with RowIndex and ColumnIndex.
+func (e *node) PositionInSet(pos, size int) *node {
+	e.accSet = [2]int32{int32(max(pos, 0)), int32(max(size, 0))}
+	return e
+}
+
+// AccessSelected tells assistive technology whether the element, a tab,
+// an option, a row, a cell or an item of a tree of your own, is
+// selected, as ARIA's aria-selected, without the accent background and
+// text color Selected paints: for one that shows its choice its own way,
+// as a tab underlined or a row with a check mark.
+//
+//	tab := ui.ButtonBase(c).Role(ui.RoleTab).Label(name).AccessSelected(i == app.tab)
+//	if i == app.tab {
+//		tab.Bold()
+//	}
+//
+// It sets the state Selected sets, which Checked also sets on these
+// roles, so every platform reads it as Selected's: a row or a cell saying
+// whether it is selected, false or true, is one its table or grid
+// chooses among others (Selectable). It only tells: the view shows the
+// choice, and changes it as the element is clicked.
+func (e *node) AccessSelected(on bool) *node {
+	return e.Checked(on)
+}
+
 // Multiselectable tells assistive technology whether the user chooses
 // several of the items of the element, a list, grid, tree or tree grid
 // of your own, as ARIA's aria-multiselectable: screen readers offer to
@@ -818,6 +863,14 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	}
 	if e.setSize > 0 {
 		n.PosInSet, n.SetSize = e.setPos, e.setSize
+	}
+	// The app's own place in the set wins over its widget's, but for a
+	// List's rows below.
+	if pos := e.accSet[0]; pos > 0 {
+		n.PosInSet = int(pos)
+	}
+	if size := e.accSet[1]; size > 0 {
+		n.SetSize = int(size)
 	}
 	if e.choosesItems || e.role == RoleListBox {
 		n.States |= platform.AccessSelectable

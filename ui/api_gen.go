@@ -3388,6 +3388,32 @@ func (_handle Element) AccessHidden(hide bool) Element {
 	return wrapElement(_node.AccessHidden(hide))
 }
 
+// AccessSelected tells assistive technology whether the element, a tab,
+// an option, a row, a cell or an item of a tree of your own, is
+// selected, as ARIA's aria-selected, without the accent background and
+// text color Selected paints: for one that shows its choice its own way,
+// as a tab underlined or a row with a check mark.
+//
+//	tab := ui.ButtonBase(c).Role(ui.RoleTab).Label(name).AccessSelected(i == app.tab)
+//	if i == app.tab {
+//		tab.Bold()
+//	}
+//
+// It sets the state Selected sets, which Checked also sets on these
+// roles, so every platform reads it as Selected's: a row or a cell saying
+// whether it is selected, false or true, is one its table or grid
+// chooses among others (Selectable). It only tells: the view shows the
+// choice, and changes it as the element is clicked.
+func (_handle Element) AccessSelected(on bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.AccessSelected(on))
+}
+
 // ActiveDescendant tells assistive technology that d has the keyboard
 // focus while the element does: the option the arrows are on in a list or
 // a menu that keeps the focus itself, as a combobox's input does. Call it
@@ -6719,6 +6745,36 @@ func (_handle Element) PopoverMenuButton(build func(m *Menu)) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.PopoverMenuButton(build))
+}
+
+// PositionInSet tells assistive technology which item of its set the
+// element is, pos from 1, and how many items the set has, size, as ARIA's
+// aria-posinset and aria-setsize: for an item of a list, list box, tree,
+// menu or tab list of your own whose set is not what is built around it,
+// as one built only where it shows, or a tree laid out flat in one
+// column (with Level), so that screen readers read "3 of 50". Either at
+// 0 or less is not given: the place the element's widget gives it, if
+// any, stands.
+//
+//	for i := app.first; i < app.last; i++ { // only those in view
+//		ui.Row(c).Role(ui.RoleOption).PositionInSet(i+1, len(app.results)).
+//			Children(func() { ui.Text(c, app.results[i]) })
+//	}
+//
+// It wins over the place a ComboboxBase, SelectBase, MenuBase, Tree or
+// GridView gives its items, which counts those it builds, as for a
+// combobox showing the first 50 of 1,000 results. A List's rows keep
+// theirs, which say which of all its rows they are, built or not, and
+// place the rows of its table on macOS and Windows; a row or a cell of a
+// grid of your own says its place with RowIndex and ColumnIndex.
+func (_handle Element) PositionInSet(pos int, size int) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.PositionInSet(pos, size))
 }
 
 // PreserveSpaces keeps the spaces the element's text ends its lines with,

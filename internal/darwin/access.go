@@ -639,6 +639,7 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 			el.headers = headers
 			var rows, shown, chosen []id
 			var chosenIDs []uint64
+			itemsSet := 0
 			for _, cid := range children[i] {
 				c := s.elements[cid]
 				if !rowRole(c.node.Role) || n.SetSize > 0 && c.node.PosInSet == 0 && c.node.RowIndex == 0 {
@@ -657,6 +658,11 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 					send(c.obj, "setAccessibilityIndex:", uintptr(index))
 				}
 				rows = append(rows, c.obj)
+				if n.Role == platform.RoleList {
+					// The set the items of a list of the app's own say
+					// they are in (aria-setsize).
+					itemsSet = max(itemsSet, c.node.SetSize)
+				}
 				if c.node.States&platform.AccessOffscreen == 0 {
 					shown = append(shown, c.obj)
 				}
@@ -678,7 +684,7 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				count = n.RowCount
 			}
 			if count == 0 {
-				count = len(rows)
+				count = max(itemsSet, len(rows))
 			}
 			if count != el.count {
 				el.count = count

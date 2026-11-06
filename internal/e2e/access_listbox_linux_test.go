@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"strconv"
 	"sync/atomic"
 	"testing"
 
@@ -15,10 +16,14 @@ import (
 // hand (RoleListBox, RoleOption) and a SelectBase's popup: list boxes of
 // selectable list items, the option chosen or highlighted selected.
 // Focusing an option of the select highlights it without choosing it,
-// and pressing one chooses it (#1172).
+// and pressing one chooses it (#1172). Options of a list box built only
+// where it shows say which of all they are (posinset, setsize), and
+// options and tabs showing their choice their own way are selected
+// (AccessSelected, #1181).
 func TestAccessListBox(t *testing.T) {
 	var frames atomic.Int32
 	size, own := "b", 0
+	result := func(i int) string { return "Result " + strconv.Itoa(i) }
 	view := func(c *ui.Context) {
 		frames.Add(1)
 		ui.Column(c).Fill().Padding(20).Gap(10).Children(func() {
@@ -31,6 +36,18 @@ func TestAccessListBox(t *testing.T) {
 					opt.Children(func() { ui.Text(c, name) })
 				}
 			})
+			ui.Column(c).Role(ui.RoleListBox).Label("Results").Children(func() {
+				for i := 11; i <= 13; i++ {
+					ui.Row(c).Role(ui.RoleOption).Label(result(i)).PositionInSet(i, 50).AccessSelected(i == 12).
+						Children(func() { ui.Text(c, result(i)) })
+				}
+			})
+			ui.Row(c).Role(ui.RoleTabList).Label("Views").Gap(8).Children(func() {
+				for i, name := range []string{"List", "Board"} {
+					ui.ButtonBase(c).Role(ui.RoleTab).Label(name).AccessSelected(i == 1).
+						Children(func() { ui.Text(c, name) })
+				}
+			})
 			sel := ui.SelectBase(c, &size)
 			sel.Trigger.Label("Size").Padding(4).Children(func() { ui.Text(c, "Size "+size) })
 			sel.Popup(func(panel ui.Element) {
@@ -41,7 +58,7 @@ func TestAccessListBox(t *testing.T) {
 			})
 		})
 	}
-	w := newWindow(t, mygo.WindowOptions{Title: "List boxes", Width: 400, Height: 400, Content: ui.View(view)})
+	w := newWindow(t, mygo.WindowOptions{Title: "List boxes", Width: 400, Height: 500, Content: ui.View(view)})
 	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
 	if _, ok := accessibility(w); !ok {
 		t.Skip("accessibility automation not available on this platform")
@@ -73,6 +90,19 @@ func TestAccessListBox(t *testing.T) {
 		n, ok := find("People")
 		return ok && n.Role == "list box"
 	})
+	eventually(t, "Result 12 of 50 selected", func() bool {
+		n, ok := find("Result 12")
+		return ok && n.Role == "list item" && n.Selectable && n.Selected && n.Attributes["posinset"] == "12" && n.Attributes["setsize"] == "50"
+	})
+	if n, _ := find("Result 11"); n.Selected || n.Attributes["posinset"] != "11" || n.Attributes["setsize"] != "50" {
+		t.Errorf("Result 11: %+v", n)
+	}
+	if n, _ := find("Board"); n.Role != "page tab" || !n.Selected {
+		t.Errorf("the tab chosen: %+v", n)
+	}
+	if n, _ := find("List"); n.Role != "page tab" || n.Selected {
+		t.Errorf("the tab not chosen: %+v", n)
+	}
 	eventually(t, "Ada selected", option("Ada", true))
 	eventually(t, "Grace not selected", option("Grace", false))
 	if !accessPerform(w, "Grace", "press", "") {

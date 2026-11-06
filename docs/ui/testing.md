@@ -119,7 +119,8 @@ whatever its role. The `ui.AccessInfo` they return has the role, the
 name, the value, the description and the `RoleDescription`, and the
 states, as [accessibility](accessibility.md#states) lists them:
 `Checked` and `Mixed` (`aria-checked`, `aria-pressed`), `Selected`
-(`aria-selected`, the tab, tree item, row or grid cell chosen),
+(`aria-selected`, the tab, tree item, row or grid cell chosen, with
+`Selected` or `AccessSelected`),
 `Expanded`, `HasPopup`, `Busy`, `Current`,
 `AutoComplete` (`aria-autocomplete`), `Sort` (a column header's
 `ui.SortDirection`), `Disabled`, `Invalid`, `Focused` (the element or
@@ -127,7 +128,8 @@ option the focus is on, `ActiveDescendant` included), `Controls` (the
 names of the elements it controls, which `Access` finds), `DescribedBy`
 and `ErrorMessage` (the names of the elements describing it and holding
 its error), `Vertical` and `Horizontal` (`aria-orientation`), `Level`,
-`PosInSet` and `SetSize`, `Multiselectable`, `RowCount`,
+`PosInSet` and `SetSize` (`aria-posinset`, `aria-setsize`, as
+`PositionInSet` gives them), `Multiselectable`, `RowCount`,
 `ColumnCount`, `RowIndex` and `ColumnIndex` (of a
 [grid](accessibility.md#grids)), `RowSpan` and `ColumnSpan` (of its
 cells), `Min`, `Max` and `Now` of a range, and its `Bounds`. So a test

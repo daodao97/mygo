@@ -16,7 +16,8 @@ import (
 // carousel's role description, a disclosure button controlling the region
 // it opens (controller-for, and controlled-by back), a button opening a
 // list box (has-popup), a column sorted in another order, and a grid's
-// day chosen without painting it (selected, not checked).
+// day chosen without painting it (selected, not checked), with Checked
+// or AccessSelected.
 func TestAccessControlsPopupSortSelected(t *testing.T) {
 	var frames atomic.Int32
 	view := func(c *ui.Context) {
@@ -36,6 +37,8 @@ func TestAccessControlsPopupSortSelected(t *testing.T) {
 				ui.Row(c).Role(ui.RoleRow).Gap(8).Children(func() {
 					ui.Text(c, "1").Role(ui.RoleCell).Checked(false)
 					ui.Text(c, "2").Role(ui.RoleCell).Checked(true)
+					ui.Text(c, "3").Role(ui.RoleCell).AccessSelected(true)
+					ui.Text(c, "4").Role(ui.RoleCell).AccessSelected(false)
 				})
 			})
 		})
@@ -81,7 +84,12 @@ func TestAccessControlsPopupSortSelected(t *testing.T) {
 		_, states, _, ok := read("2")
 		return ok && slices.Contains(states, "selectable") && slices.Contains(states, "selected") && !slices.Contains(states, "checked")
 	})
-	if _, states, _, _ := read("1"); !slices.Contains(states, "selectable") || slices.Contains(states, "selected") {
-		t.Errorf("the day not chosen: %v", states)
+	for _, day := range []string{"1", "4"} {
+		if _, states, _, _ := read(day); !slices.Contains(states, "selectable") || slices.Contains(states, "selected") {
+			t.Errorf("the day %s not chosen: %v", day, states)
+		}
+	}
+	if _, states, _, _ := read("3"); !slices.Contains(states, "selectable") || !slices.Contains(states, "selected") || slices.Contains(states, "checked") {
+		t.Errorf("the day 3 chosen with AccessSelected: %v", states)
 	}
 }
