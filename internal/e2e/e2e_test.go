@@ -130,6 +130,10 @@ func TestMain(m *testing.M) {
 		cookiesWhileOpening()
 		return
 	}
+	if os.Getenv("MYGO_E2E_WEBVIEW_OFF_MAIN") == "1" {
+		webViewOffMain()
+		return
+	}
 	if os.Getenv("MYGO_E2E_COOKIE_VIEW") == "1" {
 		cookieViewApp()
 		return

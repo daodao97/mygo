@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -865,6 +866,9 @@ func load() error {
 var (
 	webKitOnce sync.Once
 	errWebKit  error
+	// webKitLoaded reports, from any thread, that webKit loaded the
+	// libraries and bound their functions.
+	webKitLoaded atomic.Bool
 )
 
 // webKit loads WebKitGTK, JavaScriptCore and libsoup, the first time a
@@ -872,9 +876,18 @@ var (
 // did not load. Windows that show Content need GTK alone: an app whose
 // windows all do never loads them, which saves it some 75 libraries, 7 MB
 // and 20 ms of startup.
+//
+// Loading only opens the libraries and binds functions, which any thread
+// may do (WebViewAvailable). WebKitGTK takes the first thread that calls
+// into it for its UI thread, and aborts when another calls later: the
+// first call, persistCookies, waits for the main thread, whose users of
+// WebKit all call webKit first.
 func webKit() error {
-	webKitOnce.Do(func() { errWebKit = loadWebKit() })
-	if errWebKit == nil && theBackend != nil {
+	webKitOnce.Do(func() {
+		errWebKit = loadWebKit()
+		webKitLoaded.Store(errWebKit == nil)
+	})
+	if errWebKit == nil && theBackend != nil && theBackend.IsMainThread() {
 		cookiesOnce.Do(persistCookies)
 	}
 	return errWebKit
