@@ -2931,7 +2931,12 @@ either.
   into its parent's plane as CSS's flat transform-style does, composes
   with its ancestors after layout as a projective map
   (`scene.Affine`, with G and H in perspective); boxes keep their original
-  layout space. `TranslatePercent` stays apart from the transform
+  layout space. A `scene.Affine`'s divisor is 1 at its origin, so a 3D
+  transform that puts the origin at or behind the viewer (`TranslationZ`
+  as far as `Perspective`'s distance) flattens to a singular map, which
+  shows nothing; `BackfaceHidden` tests the normal through the whole 4×4
+  inverse, perspective included (`facesAway`, as Chromium's
+  `IsBackFaceVisible`). `TranslatePercent` stays apart from the transform
   (`translatePct`): `transformAt` resolves it from the box as laid out,
   after the transform and before the pose, as a pose's percents
   (`showPose`) and a `Motion`'s (`tbox.moved`) are. Painting stores the composed transform on scene

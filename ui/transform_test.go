@@ -467,3 +467,141 @@ func TestTranslatePercent(t *testing.T) {
 		t.Errorf("after Transform, it is moved by %v", m.X)
 	}
 }
+
+// TranslationZ and Translation3D move content along Z, which Perspective
+// after them shows nearer or farther, scaled about the origin by
+// distance/(distance-z), as CSS's translateZ() and translate3d().
+func TestTranslationAlongZ(t *testing.T) {
+	if z := TranslationZ(0); z != (Transform{}) || z.set() {
+		t.Errorf("TranslationZ(0) is %+v, not identity", z)
+	}
+	if m := Translation3D(3, 4, 0); m != Translation(3, 4) {
+		t.Errorf("Translation3D(3, 4, 0) is %+v, not Translation(3, 4)", m)
+	}
+	want := identity4()
+	want[3], want[7], want[11] = 5, 6, 7
+	if m := Translation3D(5, 6, 7).mat4(); m != want {
+		t.Errorf("Translation3D(5, 6, 7) is %v, not %v", m, want)
+	}
+	want = identity4()
+	want[11] = -120
+	if m := TranslationZ(-120).mat4(); m != want {
+		t.Errorf("TranslationZ(-120) is %v, not %v", m, want)
+	}
+	// Without perspective, Z shows nothing: the plane only moves in x and y.
+	if f := TranslationZ(50).flat(); f.Set {
+		t.Errorf("TranslationZ(50) flattens to %+v, not identity", f)
+	}
+	if f := Translation3D(5, 6, 50).flat(); f != scene.Translation(5, 6) {
+		t.Errorf("Translation3D(5, 6, 50) flattens to %+v", f)
+	}
+	near := func(got, want float32) bool {
+		return math.Abs(float64(got-want)) <= 1e-5*max(1, math.Abs(float64(want)))
+	}
+	for _, c := range []struct{ x, y, z, d float32 }{{0, 0, -120, 800}, {0, 0, 200, 800}, {30, -10, -400, 600}, {12, 8, 100, 400}} {
+		f := Translation3D(c.x, c.y, c.z).Then(Perspective(c.d)).flat()
+		s := c.d / (c.d - c.z)
+		if f.Perspective() || !near(f.A, s) || !near(f.D, s) || f.B != 0 || f.C != 0 || !near(f.X, c.x*s) || !near(f.Y, c.y*s) {
+			t.Errorf("Translation3D(%v, %v, %v) seen from %v: %+v, not scaled by %v", c.x, c.y, c.z, c.d, f, s)
+		}
+		if x, y := f.Point(10, 20); !near(x, (10+c.x)*s) || !near(y, (20+c.y)*s) {
+			t.Errorf("Translation3D(%v, %v, %v) seen from %v takes (10, 20) to %v, %v", c.x, c.y, c.z, c.d, x, y)
+		}
+	}
+	// At or past the viewer, nothing shows.
+	for _, z := range []float32{800, 900} {
+		if f := TranslationZ(z).Then(Perspective(800)).flat(); f != (scene.Affine{Set: true}) {
+			t.Errorf("TranslationZ(%v) seen from 800 flattens to %+v, not nothing", z, f)
+		}
+	}
+	// Turned as well, there and back.
+	f := TranslationZ(-150).Then(RotationY(30)).Then(RotationX(-20)).Then(Perspective(700)).flat()
+	inv, ok := f.Inverse()
+	if !ok {
+		t.Fatal("no inverse")
+	}
+	if x, y := inv.Point(f.Point(37, -21)); !near(x, 37) || !near(y, -21) {
+		t.Errorf("there and back, (37, -21) is %v, %v", x, y)
+	}
+	// On a carousel, items pushed out along Z and turned round face the
+	// viewer by where they are seen from, as in CSS: one turned 80 degrees
+	// on a ring of 300 seen from 800 shows its back, though it turns less
+	// than a quarter turn.
+	ring := func(deg float32) Transform { return TranslationZ(300).Then(RotationY(deg)).Then(Perspective(800)) }
+	if !ring(80).facesAway() || ring(30).facesAway() || ring(0).facesAway() || RotationY(80).Then(Perspective(800)).facesAway() {
+		t.Error("the items of a carousel that face away are not those whose backs the viewer sees")
+	}
+	if TranslationZ(-100).Then(Perspective(800)).facesAway() || TranslationZ(100).facesAway() {
+		t.Error("moved along Z, the plane faces away")
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("an infinite Z accepted")
+			}
+		}()
+		TranslationZ(float32(math.Inf(1)))
+	}()
+}
+
+// An element moved back along Z in perspective shows and takes the
+// pointer smaller about its origin, and one moved past the viewer neither
+// shows nor takes it.
+func TestTranslateZShowsAndHitsInPerspective(t *testing.T) {
+	z := float32(-200)
+	var card *node
+	clicks := 0
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(400, 300).Children(func() {
+			card = coreBox(c).Key("card").Absolute().Left(100).Top(100).Size(200, 100).Background(RGB(255, 0, 0)).
+				TranslateZ(z).Perspective(800)
+			if card.Clicked() {
+				clicks++
+			}
+		})
+	}, 400, 300)
+	// 800/1000 its size, about its center, (200, 150).
+	if b := card.Bounds(); math.Abs(float64(b.X-120)) > 1e-3 || math.Abs(float64(b.Y-110)) > 1e-3 ||
+		math.Abs(float64(b.W-160)) > 1e-3 || math.Abs(float64(b.H-80)) > 1e-3 {
+		t.Fatalf("200 back, seen from 800, the card shows within %+v", b)
+	}
+	if card.LayoutBounds() != (Rect{100, 100, 200, 100}) {
+		t.Errorf("Z changed layout: %v", card.LayoutBounds())
+	}
+	x, y := card.LocalToWindow(0, 0)
+	closeFloat(t, x, 120)
+	closeFloat(t, y, 110)
+	lx, ly, ok := card.WindowToLocal(card.LocalToWindow(150, 60))
+	if !ok || math.Abs(float64(lx-150)) > 1e-2 || math.Abs(float64(ly-60)) > 1e-2 {
+		t.Fatalf("there and back, %v, %v", lx, ly)
+	}
+	img := tt.Image()
+	if p := img.RGBAAt(200, 150); p.R < 200 || p.G > 50 {
+		t.Errorf("its center shows as %v", p)
+	}
+	// Inside its layout box, outside what it shows.
+	if p := img.RGBAAt(105, 105); p.G < 200 {
+		t.Errorf("the card shows at its layout's corner: %v", p)
+	}
+	tt.ClickAt(105, 105)
+	if clicks != 0 {
+		t.Error("the card took a click outside what it shows")
+	}
+	tt.ClickAt(125, 115)
+	if clicks != 1 {
+		t.Errorf("a click inside what it shows: %d clicks", clicks)
+	}
+	// Moved as far as the viewer, it shows nothing and takes nothing.
+	z = 800
+	tt.Frame()
+	if _, _, ok := card.WindowToLocal(200, 150); ok {
+		t.Error("behind the viewer, the card has an inverse")
+	}
+	if p := tt.Image().RGBAAt(200, 150); p.G < 200 {
+		t.Errorf("behind the viewer, the card shows as %v", p)
+	}
+	tt.ClickAt(200, 150)
+	if clicks != 1 {
+		t.Error("behind the viewer, the card took a click")
+	}
+}

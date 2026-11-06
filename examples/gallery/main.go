@@ -1675,22 +1675,24 @@ func (g *gallery) motion(c *ui.Context) {
 
 	ui.Grid(c).Columns(2).Gap(16).Children(func() {
 		card(c, "Cards that turn over", func() {
-			ui.Text(c, "Turned in 3D and seen in perspective, each face hides while it is turned away.").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "Turned in 3D and seen in perspective, each face hides while it is turned away, and the card lifts toward you as it turns.").FontSize(12).TextColor(t.TextMuted)
 			stage := ui.Box(c).Key("flip-stage").Height(150).Center()
 			turn := float32(0)
 			if g.cardFlipped {
 				turn = 180
 			}
 			turn = stage.AnimateTo("turn", turn, ui.Animation{Spring: ui.SpringOptions{Duration: 600 * time.Millisecond, Bounce: 0.15}})
+			// Nearer the viewer halfway over, as a card picked up to turn.
+			lift := 60 * float32(math.Abs(math.Sin(float64(turn)*math.Pi/180)))
 			stage.Children(func() {
 				ui.Box(c).Key("flip-card").Size(200, 120).Children(func() {
 					front := ui.Column(c).Key("front").Absolute().Fill().Center().Gap(4).Radius(14).Background(t.Surface).Border(1, t.Border).Shadow(0, 4, 16, 0, ui.RGBA(0, 0, 0, 0.12))
-					front.RotateY(turn).Perspective(800).BackfaceHidden().Children(func() {
+					front.RotateY(turn).TranslateZ(lift).Perspective(800).BackfaceHidden().Children(func() {
 						ui.Text(c, "Front").Bold()
 						ui.Text(c, "Click to turn over").FontSize(12).TextColor(t.TextMuted)
 					})
 					back := ui.Column(c).Key("back").Absolute().Fill().Center().Radius(14).Background(t.Accent)
-					back.RotateY(turn + 180).Perspective(800).BackfaceHidden().Children(func() {
+					back.RotateY(turn + 180).TranslateZ(lift).Perspective(800).BackfaceHidden().Children(func() {
 						ui.Text(c, "Back").Bold().TextColor(t.AccentText)
 					})
 					if front.Clicked() || back.Clicked() {

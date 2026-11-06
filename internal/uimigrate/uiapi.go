@@ -374,6 +374,7 @@ var elementChains = map[string]bool{
 	"Transition":           true,
 	"Translate":            true,
 	"TranslatePercent":     true,
+	"TranslateZ":           true,
 	"Underline":            true,
 	"UnderlineOffset":      true,
 	"Unselectable":         true,

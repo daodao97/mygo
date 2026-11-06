@@ -7819,6 +7819,21 @@ func (_handle Element) TranslatePercent(x float32, y float32) Element {
 	return wrapElement(_node.TranslatePercent(x, y))
 }
 
+// TranslateZ moves the element z DIPs toward the viewer after its
+// existing transform, as TranslationZ: follow it with Perspective to see
+// it nearer or farther. A card lifting toward the viewer as it turns over:
+//
+//	card.RotateY(turn).TranslateZ(lift).Perspective(800)
+func (_handle Element) TranslateZ(z float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.TranslateZ(z))
+}
+
 // Underline underlines text.
 func (_handle Element) Underline() Element {
 	_node := _handle.node()

@@ -1065,6 +1065,8 @@ func TestMixTransform3D(t *testing.T) {
 		Scaling(2, 3).Then(Skewing(10, 0)).Then(RotationX(20)),
 		Scaling(-1, 1).Then(RotationY(30)),
 		RotationY(150).Then(Translation(5, -5)).Then(Perspective(400)),
+		TranslationZ(-120).Then(RotationY(30)).Then(Perspective(800)),
+		Translation3D(10, -20, 60).Then(RotationX(15)),
 	} {
 		d, ok := decompose3(tr.mat4())
 		if got, want := recompose3(d), normal(tr.mat4()); !ok || !near(got, want) {
@@ -1081,6 +1083,8 @@ func TestMixTransform3D(t *testing.T) {
 		{Rotation(0), RotationY(90), 0.5, RotationY(45), "from 2D"},
 		{RotationX(0).Then(Perspective(800)), RotationX(60).Then(Perspective(800)), 0.5, RotationX(30).Then(Perspective(800)), "in perspective"},
 		{RotationY(170), RotationY(-170), 0.5, RotationY(180), "the short way round"},
+		{TranslationZ(0), TranslationZ(-200), 0.5, TranslationZ(-100), "along Z"},
+		{Translation3D(10, 20, -40), Translation3D(30, 0, 40), 0.25, Translation3D(15, 15, -20), "in 3D"},
 		{RotationY(30), in3D(mat4{}), 0.4, RotationY(30), "flattened, before halfway"},
 		{RotationY(30), in3D(mat4{}), 0.6, in3D(mat4{}), "flattened, after halfway"},
 	} {
@@ -1091,6 +1095,16 @@ func TestMixTransform3D(t *testing.T) {
 		if !near(got, want) {
 			t.Errorf("%s: %v, not %v", c.label, got, want)
 		}
+	}
+	// Seen in perspective, a move along Z goes from one size to the other.
+	from, to := TranslationZ(0).Then(Perspective(800)), TranslationZ(-200).Then(Perspective(800))
+	last := float32(1)
+	for _, k := range []float32{0.25, 0.5, 0.75, 1} {
+		f := mixTransform(from, to, k).flat()
+		if f.Perspective() || f.A >= last || f.A < 0.8-1e-5 || math.Abs(float64(f.A-f.D)) > 1e-5 {
+			t.Errorf("%v of the way back along Z: %+v, after a scale of %v", k, f, last)
+		}
+		last = f.A
 	}
 }
 
