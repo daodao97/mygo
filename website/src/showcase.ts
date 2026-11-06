@@ -276,4 +276,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/screenpin.png",
   },
+  {
+    name: "Sotto",
+    description:
+      "A lightweight, unobtrusive desktop translator built for Windows users and developers.",
+    url: "https://github.com/doyuli/sotto",
+    author: "doyuli",
+    mode: "web",
+    image: "/showcase/sotto.png",
+  },
 ]
