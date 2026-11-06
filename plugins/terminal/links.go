@@ -16,10 +16,17 @@ var urlPattern = regexp.MustCompile(`(?:https?|ftp|file)://[^\s"'<>` + "`" + `\x
 // puts no space around it; a quoted path may hold them.
 const proseDelimiters = "，。；：！？、（）【】《》「」『』"
 
-// pathToken finds what may be a file path programs print as text: a quoted
-// path, which may hold spaces, or a run of anything but spaces, quotes and
-// proseDelimiters.
-var pathToken = regexp.MustCompile(`"[^"\r\n]+"(?::\d+(?::\d+)?)?|'[^'\r\n]+'(?::\d+(?::\d+)?)?|[^\s"'<>` + "`" + proseDelimiters + `]+`)
+// pathToken finds what may be a file path programs print as text, unquoted:
+// a run of anything but spaces, quotes and proseDelimiters.
+var pathToken = regexp.MustCompile(`[^\s"'<>` + "`" + proseDelimiters + `]+`)
+
+// pathInToken finds a path inside a token that is not one as a whole, as
+// main.go:12 in grep's main.go:12:code, build/app.js in --out=build/app.js
+// or /usr/bin in PATH=/usr/bin:/bin.
+var pathInToken = regexp.MustCompile(`(?:(?:~|\.{1,2})?/[^\s:]+|[\p{L}\p{N}_.@+-]+(?:/[\p{L}\p{N}_.@+-]+)+/?)(?::\d+(?::\d+)?)?|[\p{L}\p{N}_@+-][\p{L}\p{N}_.@+-]*\.[\p{L}\p{N}_]+(?::\d+(?::\d+)?)?`)
+
+// quotedPlace finds the place after a quoted path, as "main.py":12.
+var quotedPlace = regexp.MustCompile(`^:\d+(?::\d+)?`)
 
 // pathPlace finds the place in the file a path ends with: :line or
 // :line:col (compilers, grep), (line,col) (TypeScript, MSBuild), or #Lline
@@ -32,22 +39,82 @@ var pathPlace = regexp.MustCompile(`:(\d+)(?::(\d+))?:?$|\((\d+)(?:,(\d+))?\)$|#
 // however it was printed, and a quoted path loses its quotes.
 func pathAt(text []rune, cols []int, col int) (path string, x0, x1 int) {
 	s := string(text)
-	for _, m := range pathToken.FindAllStringIndex(s, -1) {
-		p, a, b := pathOf(s[m[0]:m[1]])
+	span := func(a, b int) (int, int, bool) {
+		start := utf8.RuneCountInString(s[:a])
+		end := start + utf8.RuneCountInString(s[a:b])
+		if end > start && end <= len(cols) && cols[start] <= col && col <= cols[end-1] {
+			return cols[start], cols[end-1] + 1, true
+		}
+		return 0, 0, false
+	}
+	// A quoted path first, as it may hold spaces and what the tokens below
+	// end at.
+	for i := 0; i < len(s); i++ {
+		a, b := quotedAt(s, i)
+		if b < 0 {
+			continue
+		}
+		p, pa, pb := pathOf(s[a:b])
 		if p == "" {
 			continue
 		}
-		start := utf8.RuneCountInString(s[:m[0]+a])
-		end := start + utf8.RuneCountInString(s[m[0]+a:m[0]+b])
-		if end <= len(cols) && cols[start] <= col && col <= cols[end-1] {
-			return p, cols[start], cols[end-1] + 1
+		if x0, x1, ok := span(a+pa, a+pb); ok {
+			return p, x0, x1
+		}
+		i = b - 1
+	}
+	for _, m := range pathToken.FindAllStringIndex(s, -1) {
+		tok := s[m[0]:m[1]]
+		if p, a, b := pathOf(tok); p != "" {
+			if x0, x1, ok := span(m[0]+a, m[0]+b); ok {
+				return p, x0, x1
+			}
+			continue
+		}
+		for _, n := range pathInToken.FindAllStringIndex(tok, -1) {
+			if p, a, b := pathOf(tok[n[0]:n[1]]); p != "" {
+				if x0, x1, ok := span(m[0]+n[0]+a, m[0]+n[0]+b); ok {
+					return p, x0, x1
+				}
+			}
 		}
 	}
 	return "", 0, 0
 }
 
-// pathOf returns the path a token of pathToken prints, and the bytes of the
-// token it shows in, a up to b, or "".
+// quotedAt returns the bytes of s, a up to b, of a quoted run that opens at
+// byte i and the place after it, or b < 0. A quote between letters or digits,
+// as in don't, is an apostrophe and opens or closes nothing, and the inside
+// of a quoted path neither starts nor ends with a space.
+func quotedAt(s string, i int) (a, b int) {
+	q := s[i]
+	if q != '"' && q != '\'' || i > 0 && isAlnum(s[i-1]) {
+		return 0, -1
+	}
+	j := strings.IndexByte(s[i+1:], q)
+	if j < 0 {
+		return 0, -1
+	}
+	j += i + 1
+	inner := s[i+1 : j]
+	if inner == "" || strings.ContainsAny(inner, "\r\n") || strings.TrimSpace(inner) != inner {
+		return 0, -1
+	}
+	b = j + 1
+	b += len(quotedPlace.FindString(s[b:]))
+	if b < len(s) && isAlnum(s[b]) {
+		return 0, -1
+	}
+	return i, b
+}
+
+// isAlnum reports whether c is an ASCII letter or digit.
+func isAlnum(c byte) bool {
+	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9'
+}
+
+// pathOf returns the path a token of pathToken, or a quoted run, prints,
+// and the bytes of the token it shows in, a up to b, or "".
 func pathOf(tok string) (path string, a, b int) {
 	a, b = 0, len(tok)
 	quoted := tok[0] == '"' || tok[0] == '\''
@@ -56,6 +123,11 @@ func pathOf(tok string) (path string, a, b int) {
 		// the call a path is the argument of, as write(notes.md); a bracket
 		// the path opens is, as icon_(copy).png.
 		a = len(tok) - len(strings.TrimLeft(tok, "([{*"))
+		// The name of an option or a variable the path is the value of,
+		// as --out=build/app.js or PATH=/usr/bin, is not part of it.
+		if i := strings.IndexByte(tok[a:], '='); i >= 0 && !strings.Contains(tok[a:a+i], "/") {
+			a += i + 1
+		}
 		b = a + len(balanced(tok[a:]))
 		if strings.HasSuffix(tok[a:b], ")") && !pathPlace.MatchString(tok[a:b]) {
 			if i := opening(tok[a:b]); i > 0 {
