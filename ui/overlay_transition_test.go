@@ -194,6 +194,47 @@ func TestAttachedPanelEntersWithTravel(t *testing.T) {
 	}
 }
 
+// TestAttachedPanelEntersEachAxis checks that an Enter's X alone moves a
+// panel attached to its anchor (AttachTo) along X, and its Y alone along
+// Y, ending at its place.
+func TestAttachedPanelEntersEachAxis(t *testing.T) {
+	axes := []struct {
+		name   string
+		motion Motion
+		dx, dy float32
+	}{
+		{"X", Motion{X: 20}, 10, 0},
+		{"Y", Motion{Y: 20}, 0, 10},
+	}
+	for _, tc := range axes {
+		t.Run(tc.name, func(t *testing.T) {
+			enter := ElementTransition{Duration: time.Second, Ease: Linear, Enter: &tc.motion}
+			var open bool
+			tt, now := clockTester(func(c *context) {
+				coreBox(c).Fill().Children(func() {
+					a := coreBox(c).Width(40).Height(20).Label("anchor")
+					corePopoverBase(c, a, &open, func(p *node) {
+						p.Width(60).Height(60).Label("panel").Transition(enter)
+					})
+				})
+			}, 200, 200)
+			tick := ticker(tt, now)
+			open = true
+			tt.Frame()
+			tick(500 * time.Millisecond)
+			half := at(t, tt, "panel")
+			tick(time.Second)
+			rest := at(t, tt, "panel")
+			if d := half.X - rest.X; d != tc.dx {
+				t.Errorf("halfway in, X is %v from its place, want %v", d, tc.dx)
+			}
+			if d := half.Y - rest.Y; d != tc.dy {
+				t.Errorf("halfway in, Y is %v from its place, want %v", d, tc.dy)
+			}
+		})
+	}
+}
+
 // TestAttachedPanelStaysOnMovingAnchor checks that a panel with an Enter
 // transition stays on its anchor as the anchor moves, once it has come in:
 // a move of the layout is not part of the Enter's travel.

@@ -139,6 +139,11 @@ type ListState struct {
 	CellSelect bool
 	// Cells are the columns of the block CellSelect chooses.
 	Cells ColumnRange
+	// CellsStyle paints the block of cells CellSelect chooses and the
+	// rows chosen instead of the accent, as a spreadsheet's: the chosen
+	// cells in a color of their own, the rest of their rows in a lighter
+	// one, and every other row striped. Its zero value keeps the accent.
+	CellsStyle CellsStyle
 	// Sort, when set, is the column a Table's rows are sorted by: a click
 	// on the header of a Sortable column sorts by it, ascending, and
 	// another reverses the order, which the header shows. Sort the rows as
@@ -718,8 +723,16 @@ func (f *listFrame) build(i int) *node {
 		w.onValueInput(listRowValueInput)
 		on := f.chosen(i, key)
 		if f.choosesCells() {
-			// Its cells in the block show the choice (Table).
+			// Its cells in the block show the choice (Table); CellsStyle
+			// paints its row here, behind them.
 			w.checked = 1 + int8(b2f(on))
+			st := s.CellsStyle
+			switch {
+			case on && st.Row != Transparent:
+				w.Background(st.Row)
+			case !on && st.Stripe != Transparent && i%2 == 1:
+				w.Background(st.Stripe)
+			}
 		} else {
 			w.Selected(on)
 		}
