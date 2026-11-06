@@ -106,7 +106,6 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 ## 已知问题
 
-- `GOOS=android CGO_ENABLED=0 go build .` 失败：`linkDMABUFProbe`、`linkNotificationImages` 未定义。合并上游前就已存在，fork 的 Android CI 会失败。
 - `android/jni/jni_textinput.go` 没有经过 gofmt。
 - 指针取消有两套：上游用 `InputEvent.Canceled`（`pointerUp(..., canceled=true)`），fork 的触摸手势（`ui/touch.go`、`ui/gesture.go`）还在用 `cancelPointer()` 发 fork 独有的 `InputPointerCancel`。按规则 1 应改成上游的 `pointerCancel`/`Canceled`，并迁移 Miya 等使用 `InputPointerCancel` 的地方，但要连同选区拖动、滚动拖动和 hover 的清理一起处理，没有在同步中顺手改。
 - 上游 macOS 的 GUI 测试不稳定（`TestPanel`、`TestContentWindowResizeRightAfterFrame` 等待超时），上游 `main` 本身也会失败；PR 中 macOS 任务失败时先对照上游 `main`。
