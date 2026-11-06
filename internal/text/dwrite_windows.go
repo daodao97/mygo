@@ -166,6 +166,7 @@ const (
 	layoutSetLocaleName        = 41
 	layoutDraw                 = 58
 	layoutGetLineMetrics       = 59
+	layoutGetClusterMetrics    = 62
 	layoutHitTestTextPosition  = 65
 	layout1SetCharacterSpacing = 69
 	typographyAddFontFeature   = 3
@@ -267,6 +268,13 @@ type (
 		length, trailingWhitespaceLength, newlineLength uint32
 		height, baseline                                float32
 		isTrimmed                                       int32
+	}
+	// DWRITE_CLUSTER_METRICS, its flags canWrapLineAfter, isWhitespace,
+	// isNewline, isSoftHyphen and isRightToLeft from the lowest bit.
+	dwClusterMetrics struct {
+		width  float32
+		length uint16
+		flags  uint16
 	}
 	dwHitTestMetrics struct {
 		textPosition, length     uint32
@@ -854,6 +862,11 @@ func (e *dwrite) shape(text []rune, style Style, spans []Span, width float32, rt
 	if failed(call(layout, layoutGetLineMetrics, uintptr(unsafe.Pointer(&metrics[0])), uintptr(count), uintptr(unsafe.Pointer(&count)))) {
 		return nil
 	}
+	if count > 1 && keepsAnyWords(style.Lang, spans) {
+		if lines := e.keepWords(layout, text, style, spans, wrapAt, rtl, wholeWords, metrics, index); lines != nil {
+			return lines
+		}
+	}
 
 	drawMu.Lock()
 	drawing = drawing[:0]
@@ -907,6 +920,104 @@ func (e *dwrite) shape(text []rune, style Style, spans []Span, width float32, rt
 			}
 		}
 		objectRuns(layout, lines, ends, spans, units, index)
+	}
+	return lines
+}
+
+// Cluster metrics' flags.
+const (
+	clusterCanWrapLineAfter = 1 << iota
+	clusterIsWhitespace
+	clusterIsNewline
+)
+
+// keepWords breaks text, which layout laid out in lines of metrics, at
+// most wrapAt DIPs wide, into lines between words, where it is in a
+// language that keeps them whole (keepWordsWhole) and DirectWrite broke a
+// line within a word: as DirectWrite breaks lines, at the breaks it finds
+// but those, a word too long for a line within it unless wholeWords. It
+// shapes each line apart. It returns nil when every line of the layout
+// ends where the language lets it.
+func (e *dwrite) keepWords(layout uintptr, text []rune, style Style, spans []Span, wrapAt float32, rtl, wholeWords bool, metrics []dwLineMetrics, index []int) []shapedLine {
+	var count uint32
+	if hr := call(layout, layoutGetClusterMetrics, 0, 0, uintptr(unsafe.Pointer(&count))); failed(hr) && uint32(hr) != errNotSufficientBuffer || count == 0 {
+		return nil
+	}
+	clusters := make([]dwClusterMetrics, count)
+	if failed(call(layout, layoutGetClusterMetrics, uintptr(unsafe.Pointer(&clusters[0])), uintptr(count), uintptr(unsafe.Pointer(&count)))) {
+		return nil
+	}
+	clusters = clusters[:count]
+	n := len(index) - 1
+	// The code unit each cluster starts at, and where DirectWrite may
+	// break lines, by rune, but those the language takes out.
+	starts := make([]int, len(clusters)+1)
+	breaks := make([]bool, len(text)+1)
+	for k, c := range clusters {
+		u := min(starts[k]+int(c.length), n)
+		starts[k+1] = u
+		breaks[index[u]] = c.flags&(clusterCanWrapLineAfter|clusterIsNewline) != 0
+	}
+	if !keepWordsWhole(breaks, text, style.Lang, spans) {
+		return nil
+	}
+	within := false
+	u := 0
+	for _, m := range metrics[:len(metrics)-1] {
+		u += int(m.length)
+		if u <= 0 || u >= n || !breakAt(breaks, index, u) {
+			within = true
+			break
+		}
+	}
+	if !within {
+		return nil
+	}
+	// after reports whether a line may break after cluster k.
+	after := func(k int) bool {
+		u := starts[k+1]
+		return u >= n || clusters[k].flags&clusterIsNewline != 0 || breakAt(breaks, index, u)
+	}
+	var lines []shapedLine
+	for k0 := 0; k0 < len(clusters); {
+		end := len(clusters) // the cluster after the line
+		last := -1           // the cluster after the last break in the line
+		w := float32(0)
+		for k := k0; k < len(clusters); k++ {
+			c := clusters[k]
+			// Whitespace ending a line hangs past it.
+			if k > k0 && c.flags&clusterIsWhitespace == 0 && w+c.width > wrapAt {
+				switch {
+				case last > k0:
+					end = last
+				case !wholeWords:
+					end = k
+				default:
+					// A word kept whole overflows the line.
+					end = k
+					for end < len(clusters) && !after(end-1) {
+						end++
+					}
+				}
+				break
+			}
+			w += c.width
+			if c.flags&clusterIsNewline != 0 {
+				end = k + 1
+				break
+			}
+			if after(k) {
+				last = k + 1
+			}
+		}
+		start, stop := index[starts[k0]], index[starts[end]]
+		if stop <= start {
+			break
+		}
+		line := e.shape(text[start:stop], style, spansIn(spans, start, stop), 0, rtl, false)
+		offsetLines(line, start)
+		lines = append(lines, line...)
+		k0 = end
 	}
 	return lines
 }

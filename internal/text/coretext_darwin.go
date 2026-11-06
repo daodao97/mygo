@@ -1005,16 +1005,23 @@ func (e *coreText) shapeText(text []rune, style Style, spans []Span, width float
 	u16, index := e.u16, e.index
 	n := len(u16)
 	var breaks []bool
-	if wholeWords && width > 0 {
+	keepWords := false
+	if width > 0 && (wholeWords || keepsAnyWords(style.Lang, spans)) {
 		e.breaks = lineBreaks(&e.seg, e.breaks, text)
-		breaks = e.breaks
+		keepWords = keepWordsWhole(e.breaks, text, style.Lang, spans)
+		if wholeWords || keepWords {
+			breaks = e.breaks
+		}
 	}
-	return e.typesetLines(typesetter, n, width, breaks, index, style.Italic)
+	return e.typesetLines(typesetter, n, width, breaks, wholeWords, keepWords, index, style.Italic)
 }
 
 // typesetLines has Core Text break a typesetter's text of n UTF-16 units into
-// lines, carrying on to the next of breaks when given, and shape them.
-func (e *coreText) typesetLines(typesetter uintptr, n int, width float32, breaks []bool, index []int, italic bool) []shapedLine {
+// lines, and shape them. Where Core Text breaks a line elsewhere than at one
+// of breaks, when given, the line goes back to the last of them in it when
+// keepWords (keepWordsWhole), or carries on to the next of them when
+// wholeWords and there is none to go back to.
+func (e *coreText) typesetLines(typesetter uintptr, n int, width float32, breaks []bool, wholeWords, keepWords bool, index []int, italic bool) []shapedLine {
 	var lines []shapedLine
 	mark := len(e.shapeScratch.lines)
 	for start := 0; start < n; {
@@ -1024,12 +1031,21 @@ func (e *coreText) typesetLines(typesetter uintptr, n int, width float32, breaks
 			// may round below Core Text's own line width and wrap the
 			// last word; allow a 1/1024 point, as Pango's units do.
 			count = max(ct.suggestLineBreak(typesetter, start, float64(width)+1.0/1024), 1)
-			// Core Text breaks a word that does not fit a line; carry
-			// on to the next break instead.
-			if breaks != nil {
-				end := min(start+count, n)
-				for end < n && (index[end] == index[end-1] || !breaks[index[end]]) {
-					end++
+			// Core Text breaks a Korean word, and a word that does not
+			// fit a line: the line ends at the last break before it, or
+			// a whole word carries on to the next break instead.
+			if end := min(start+count, n); breaks != nil && end < n && !breakAt(breaks, index, end) {
+				back := end
+				for keepWords && back > start && !breakAt(breaks, index, back) {
+					back--
+				}
+				switch {
+				case keepWords && back > start:
+					end = back
+				case wholeWords:
+					for end < n && !breakAt(breaks, index, end) {
+						end++
+					}
 				}
 				count = end - start
 			}

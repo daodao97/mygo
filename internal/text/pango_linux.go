@@ -20,6 +20,7 @@ import (
 
 	"github.com/ebitengine/purego"
 	"github.com/egoist/mygo/internal/scene"
+	"github.com/go-text/typesetting/segmenter"
 )
 
 // Pango lays out paragraphs: fontconfig finds the fonts and the fallbacks
@@ -178,6 +179,7 @@ var pangoLib struct {
 	attrStyleNew              func(style int32) uintptr
 	attrShapeNew              func(ink, logical *pangoRectangle) uintptr
 	attrLanguageNew           func(language uintptr) uintptr
+	attrAllowBreaksNew        func(allow int32) uintptr // Pango 1.44
 	languageFromString        func(tag string) uintptr
 	languageGetDefault        func() uintptr
 	fontMapConfigChanged      func(fontMap uintptr)
@@ -350,6 +352,7 @@ func loadPango() error {
 	missing = nil
 	bind(pango, &l.contextSetRoundPositions, "pango_context_set_round_glyph_positions")
 	bind(pango, &l.attrFontFeaturesNew, "pango_attr_font_features_new")
+	bind(pango, &l.attrAllowBreaksNew, "pango_attr_allow_breaks_new")
 	bind(pango, &l.metricsGetHeight, "pango_font_metrics_get_height")
 	bind(pango, &l.fontGetHBFont, "pango_font_get_hb_font")
 	if hb, err := open("libharfbuzz.so.0"); err == nil {
@@ -416,6 +419,11 @@ type pangoEngine struct {
 	// hanFamilies are the families fontconfig picks for the languages
 	// writing Han, by language and generic family (hanFamily).
 	hanFamilies map[[2]string]string
+	// seg and breaks find where lines may break (lineBreaks), and kept
+	// where they may not (keptWords).
+	seg    segmenter.Segmenter
+	breaks []bool
+	kept   []bool
 }
 
 // setFontRendering takes the desktop's settings (platform.FontRendering)
@@ -697,6 +705,95 @@ func (e *pangoEngine) shape(text []rune, style Style, spans []Span, width float3
 	if len(text) == 0 {
 		return nil
 	}
+	kept := e.keptWords(text, style, spans, width)
+	if kept == nil {
+		return e.layoutLines(text, style, spans, width, rtl, wholeWords, nil)
+	}
+	// Pango does not break a kept word even when it is longer than a line,
+	// which breaks where Pango would unless the text keeps words whole
+	// anyway: the lines are laid out again from the one it overflows,
+	// without the words of that line kept.
+	var out []shapedLine
+	for pos := 0; pos < len(text); {
+		lines := e.layoutLines(text[pos:], style, spansIn(spans, pos, len(text)), width, rtl, wholeWords, keptFrom(kept, pos))
+		if len(lines) == 0 {
+			break
+		}
+		offsetLines(lines, pos)
+		over := -1
+		for i := 0; i < len(lines) && !wholeWords; i++ {
+			l := lines[i]
+			if w, _ := paddedWidth(l, text, nil); w > width+max(style.LetterSpacing, 0)+1e-2 && dropKept(kept, l.start, l.end) {
+				over = i
+				break
+			}
+		}
+		if over < 0 {
+			out = append(out, lines...)
+			break
+		}
+		out = append(out, lines[:over]...)
+		pos = lines[over].start
+	}
+	return out
+}
+
+// keptWords returns the runs of text, from start to end, within which
+// lines may not break as Pango breaks them, and as text in a language that
+// keeps words whole does not (keepWordsWhole), or nil when there are none
+// or Pango cannot keep them.
+func (e *pangoEngine) keptWords(text []rune, style Style, spans []Span, width float32) [][2]int {
+	if width <= 0 || pangoLib.attrAllowBreaksNew == nil || !keepsAnyWords(style.Lang, spans) {
+		return nil
+	}
+	e.breaks = lineBreaks(&e.seg, e.breaks, text)
+	e.kept = append(e.kept[:0], e.breaks...)
+	if !keepWordsWhole(e.kept, text, style.Lang, spans) {
+		return nil
+	}
+	// Pango keeps the breaks at the ends of a run of its attribute.
+	var out [][2]int
+	for i := 1; i < len(text); i++ {
+		if !e.breaks[i] || e.kept[i] {
+			continue
+		}
+		if n := len(out); n > 0 && out[n-1][1] == i {
+			out[n-1][1] = i + 1
+		} else {
+			out = append(out, [2]int{i - 1, i + 1})
+		}
+	}
+	return out
+}
+
+// keptFrom returns the runs of kept from rune pos on, from it, but those
+// left out (dropKept).
+func keptFrom(kept [][2]int, pos int) [][2]int {
+	var out [][2]int
+	for _, k := range kept {
+		if k[1] > pos+1 && k[1] > k[0] {
+			out = append(out, [2]int{max(k[0], pos) - pos, k[1] - pos})
+		}
+	}
+	return out
+}
+
+// dropKept leaves out the runs of kept that meet the runes from start to
+// end, and reports whether there were any.
+func dropKept(kept [][2]int, start, end int) bool {
+	dropped := false
+	for i, k := range kept {
+		if k[1] > k[0] && k[0] < end && k[1] > start {
+			kept[i] = [2]int{}
+			dropped = true
+		}
+	}
+	return dropped
+}
+
+// layoutLines has Pango shape text and break it into lines, not within the
+// runs of kept.
+func (e *pangoEngine) layoutLines(text []rune, style Style, spans []Span, width float32, rtl, wholeWords bool, kept [][2]int) []shapedLine {
 	l := &pangoLib
 	utf8, index := utf8Text(text)
 	dir := int32(pangoDirLTR)
@@ -712,7 +809,7 @@ func (e *pangoEngine) shape(text []rune, style Style, spans []Span, width float3
 	l.layoutSetAutoDir(layout, int32(gFalse))
 	l.layoutSetFontDescription(layout, e.desc(style))
 	l.layoutSetText(layout, &utf8[0], int32(len(utf8)))
-	if attrs := e.attributes(style, spans, text); attrs != 0 {
+	if attrs := e.attributes(style, spans, text, kept); attrs != 0 {
 		l.layoutSetAttributes(layout, attrs)
 		l.attrListUnref(attrs)
 	}
@@ -803,9 +900,10 @@ func (e *pangoEngine) language(tag string) uintptr {
 }
 
 // attributes returns Pango's attributes of a style's letter spacing,
-// OpenType features and language, over the whole text, and of its spans'
-// styles, over their runes; 0 without any.
-func (e *pangoEngine) attributes(style Style, spans []Span, text []rune) uintptr {
+// OpenType features and language, over the whole text, of its spans'
+// styles, over their runes, and that lines do not break within the runs
+// of kept; 0 without any.
+func (e *pangoEngine) attributes(style Style, spans []Span, text []rune, kept [][2]int) uintptr {
 	l := &pangoLib
 	var list uintptr
 	// add inserts an attribute over bytes from to to, or the whole text
@@ -855,7 +953,7 @@ func (e *pangoEngine) attributes(style Style, spans []Span, text []rune) uintptr
 	}
 	runs := langRuns(text, style.Lang, spans)
 	han := hanPunctRuns(text, style, spans)
-	if len(spans) == 0 && len(runs) == 0 && len(han) == 0 {
+	if len(spans) == 0 && len(runs) == 0 && len(han) == 0 && len(kept) == 0 {
 		return list
 	}
 	// The byte each rune starts at.
@@ -908,6 +1006,9 @@ func (e *pangoEngine) attributes(style Style, spans []Span, text []rune) uintptr
 	for _, r := range han {
 		before := func(generic string) string { return e.hanFamily(r.lang, generic) }
 		add(l.attrFamilyNew(pangoFamily(r.family, e.uiFamily, before)), at[r.start], at[r.end])
+	}
+	for _, k := range kept {
+		add(l.attrAllowBreaksNew(int32(gFalse)), at[k[0]], at[k[1]])
 	}
 	return list
 }

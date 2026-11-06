@@ -233,6 +233,12 @@ shows as a hyphen where a line breaks there, and as nothing elsewhere, as
 in browsers. When the hyphen itself does not fit and the line has no
 other place to break but within a word, the hyphen overflows the width.
 
+Text in Korean, the app's language or one `Lang("ko")` sets, breaks its
+lines between words, at spaces and after punctuation, as CSS's
+`word-break: keep-all` has it, rather than between any two syllables; a
+word longer than a line still breaks within it (see
+[Languages](../i18n.md#native-ui)).
+
 ## Elements within a sentence
 
 Text elements built in a text's `Children` continue its paragraph, as

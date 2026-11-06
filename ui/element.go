@@ -1825,8 +1825,12 @@ func (e *node) FontFeatures(features ...string) *node {
 //
 //	ui.Text(c, "直").Lang("ja")
 //
-// "" takes the language of the elements around it. Browsers draw text in
-// the page's language whatever the element's.
+// Korean text ("ko", "ko-KR") breaks its lines between words, at spaces
+// and after punctuation, as Korean is written and as CSS's word-break:
+// keep-all has it, rather than between any two syllables; a word longer
+// than a line still breaks within it. "" takes the language of the
+// elements around it. Browsers draw text in the page's language whatever
+// the element's.
 func (e *node) Lang(tag string) *node {
 	e.ts.lang = tag
 	e.ts.set |= setLang

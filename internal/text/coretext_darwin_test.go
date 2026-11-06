@@ -523,7 +523,7 @@ func TestCoreTextWrapFuzz(t *testing.T) {
 			}
 			wrapped++
 			e.u16, e.index = appendUTF16(e.u16[:0], e.index[:0], text)
-			want := e.typesetLines(typesetter, len(e.u16), width, nil, e.index, style.Italic)
+			want := e.typesetLines(typesetter, len(e.u16), width, nil, false, false, e.index, style.Italic)
 			if !sameLines(got, want) {
 				report(t, text, style, width, got, want)
 				return

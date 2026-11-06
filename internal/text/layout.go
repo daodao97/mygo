@@ -35,7 +35,8 @@ type Style struct {
 	// Lang is the language of the text, a BCP 47 tag as "ja" or
 	// "zh-Hant": the system's text stack picks the glyphs of that
 	// language, as the Han characters Chinese and Japanese write apart,
-	// and falls back to fonts for it. "" is the language of the System
+	// and falls back to fonts for it. Korean text breaks its lines
+	// between words (keepWordsWhole). "" is the language of the System
 	// (SetLanguage).
 	Lang string
 	// TabSize puts tab stops every TabSize spaces of the style's font,
