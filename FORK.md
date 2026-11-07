@@ -1,11 +1,11 @@
 # Fork 与上游的差异
 
-本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`）。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。数字为 2026-11-06 的快照，用文末的命令重新统计。
+本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`）。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。数字为 2026-11-07 的快照，用文末的命令重新统计。
 
-## 快照（2026-11-06）
+## 快照（2026-11-07）
 
-- fork `main`：`deccef93`（合并上游）；`upstream/main`：`8a07344d`；fork 落后上游 0 个提交。
-- fork 独有的非合并提交：111 个；`git diff upstream/main main` 约 58,000 行。
+- fork `main`：`d298e2d8`（合并上游）；`upstream/main`：`1dfa5a1f`；fork 落后上游 0 个提交。
+- fork 独有的非合并提交：115 个；`git diff upstream/main main` 约 62,600 行。
 - 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
 
 ## 规则
@@ -60,17 +60,16 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 | 终端：`AdaptiveColors`、`OnRenderEvent`、`CopyRawText`、`SelectedText`、`SelectAll` | `plugins/terminal` | `AdaptiveColors` 使用上游的 `contrasted`/`luminance`/`contrast` |
 | 终端：`SelectOnDrag` | `plugins/terminal` | **Miya 在用**（`view_panel.go`）；上游的做法是按住 Shift 拖动 |
 | 终端：远程固定网格（`FixedCols`、`FitToView`、`ReadScreen`、`SetInputEnabled`、`resume`） | `plugins/terminal` | 当前没有使用方 |
-| 终端：TUI 硬换行与缩进续行的路径识别（`hardWrappedFileAt`） | `plugins/terminal/links.go` | 依赖 `vt.RowsJoined`、`RowText` |
+| 终端：TUI 硬换行与缩进续行的路径识别（`hardWrappedFileAt`） | `plugins/terminal/links.go` | 依赖 `vt.RowsJoined`、`RowText`；通过适配层 `matchLink` 调用上游的 `urlAt`/`pathAt` |
+| 终端：中文标点处结束的 URL | `plugins/terminal/links.go` 的 `urlPattern`、`matchAt` | 上游 #1302 只对路径处理了 `proseDelimiters`；fork 在 `urlPattern` 里也排除它们，并在 `matchAt` 中先 `balanced`，否则 `文档（https://x.org/a），继续` 会打开 `https://x.org/a），继续` |
 | 终端：快照保留软换行和超链接目标 | `internal/vt/snapshot_links.go` | 提交 `c55486a2` |
 | `internal/probe` | 性能探针 | 主要用于 Android |
 
 ### C. 等上游合并后就会消失的差异
 
-| 差异 | 上游 PR | 本地分支 | 上游合并后 |
-|---|---|---|---|
-| 终端链接识别：Unicode 路径、带引号的路径、`(行,列)` 和 `#L行C列` | #1302 | `pr/terminal-file-links` | fork 的 `matchLink` 与上游的 `pathAt` 是同一功能，按规则 1 改用上游；硬换行续接（B 类）保留并改为调用上游 |
+目前没有进行中的上游 PR。
 
-已被上游合并的 fork 改动：#928（macOS 空闲唤醒）、#1057（CJK 强调）、#1058（链接实线下划线）、#1077（zsh shell integration，上游在其基础上做了修改）、#1305（同步更新在 1 秒后放行，2026-11-06 同步时 `view.go` 取上游，两边的测试都保留）。
+已被上游合并的 fork 改动：#928（macOS 空闲唤醒）、#1057（CJK 强调）、#1058（链接实线下划线）、#1077（zsh shell integration，上游在其基础上做了修改）、#1305（同步更新在 1 秒后放行，2026-11-06 同步时 `view.go` 取上游，两边的测试都保留）、#1302（终端链接识别：Unicode 路径、带引号的路径、`(行,列)` 和 `#L行C列`，2026-11-07 同步时改用上游，见下表）。
 
 已关闭、未合并：#1301（窗口空闲时释放文本 shaping 临时缓冲区，2026-11-06 关闭）。上游的 `01dfd8ed` 已经加了 `System.ReleaseShaping`，并在 `windowHost.idle()` 中调用，和 fork 的 `ReleaseScratch` 用的是同一个挂点。idlemem 实测这部分收益不到 1%（59.4 → 58.9 MB）。2026-11-06 同步时已删掉 fork 的 `ReleaseScratch` 和 `ui/window.go` 中的 `textLayouts`，改用上游的实现（规则 1）。Core Text 属性缓存和 `lineCarets` 的改动没有单独提交。
 
@@ -90,6 +89,7 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 | `deccef93` | 删除 fork 重复的 `platform.PointerCancel`；系统发来的取消走上游的 `pointerCancel` | fork 触摸手势内部的 `cancelPointer` 暂未迁移（见「已知问题」） |
 | `deccef93` | 窗口空闲释放文本缓冲改用上游的 `System.ReleaseShaping`；删除 `ReleaseScratch` 和各引擎的 `releaseScratch` | #1301 已关闭 |
 | `deccef93` | 终端同步更新的唤醒改用上游的 `holdDue` | #1305 已被上游合并 |
+| `d298e2d8` | 终端路径识别改用上游 #1302 的 `pathAt`/`pathOf`/`urlAt`/`matchAt`/`balanced`；删除 fork 的 `pathTokenPattern`、`pathLocationPattern`、`linkProseDelimiters`、`trimLinkToken` 和旧的 `matchLink` 主体 | `matchLink` 只剩适配层：把上游返回的列范围换回 rune 下标，从 `path:line:col` 解析出 `Line`/`Column`，`raw` 就是交给 `OpenLink` 的字符串。行为变化：`main.go:0` 现在按上游打开 `main.go` |
 
 此外，滚动条策略在更早的合并中已经采用上游的“悬停时显示”和 `KeepScrollbars`。`93e7fb70`（延迟帧计时）优化的是 fork 自己的 API，不是上游的。
 
@@ -97,7 +97,8 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 - 搜索匹配以宽字符结尾时，上游的 `viewportMatches` 少高亮最后一个单元格（fork 原来的 `Highlights` 处理过）。
 - reflow 后上游的搜索保留了匹配，但丢失了选中状态（查找栏显示“0 of 1”）。
-- `508037e1`：生成的 facade 把 nil 回调包装成非 nil，导致 `InputModifiers(mods, nil)` panic；需要先确认上游是否已修复。
+- 终端 URL 在中文标点处结束（见 B 类）：#1302 的后续，改动小，测试已在 `links_test.go`。
+- `508037e1`：生成的 facade 把 nil 回调包装成非 nil，导致 `InputModifiers(mods, nil)` panic。上游 #239 只在回调类型一致时直接转发；类型不同（需要 `makeContext` 包装）时仍会把 nil 包成非 nil，例如上游新加的 `NewTesterWith`。
 - `8256d934`：原生 popover 外观跟随应用主题（macOS）。
 - `fae3d440`：frame-why 诊断和 `LoopFPS`（提交时去掉 `AGENTS.md` 的改动）。
 - Metal 连续阴影捷径：补丁在 `~/.cache/mygo-pr/metal-continuous-shadows.patch`。和上游 #910 的 shader 一起编译后，float16 结果比完整公式差 3 ULP（测试只允许 1 ULP），不是编译器版本造成的，需要调整 shader 写法。
@@ -125,8 +126,15 @@ git merge --no-ff upstream/main -m 'Merge upstream/main through <sha>'
 # （例如 Bitmap.decode → remake）
 go build ./... && go vet . ./ui && go test . ./ui ./internal/text ./plugins/terminal/... -count=1
 (cd ../Miya && go build ./...)
+# 移动端：上游给 platform 接口加的方法（如 Window.GPUProcessID、SetVibrancyTint、
+# Shell.TypeIcon）iOS/Android 后端不会自动有，桌面编译也发现不了
+GOOS=ios GOARCH=arm64 CGO_ENABLED=1 CC="$(xcrun --sdk iphoneos -f clang) -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -arch arm64" go vet ./internal/ios/...
+bash scripts/android-build.sh --so-only
+go generate ./ui && git status --short ui/api_gen.go  # 上游新加的 facade 函数要用 fork 的生成器重新生成
 git push origin main                                # 快进推送，不用 force
 ```
+
+生成的二进制（`internal/gpu/metal/shaderlib.go`、`plugins/glass/shaders_darwin.go`）冲突时不要手工挑选：取任一侧后在 macOS 上 `go generate ./internal/gpu/metal ./plugins/glass`。
 
 合并之后，再对照上游这次改动的部分检查 fork 的新增代码：同一功能、但没有文本冲突的重叠，git 不会提示，需要人工找出来，按规则 1 处理。最后更新本文件：把上游已合并的 PR 移到“已被上游合并”，删掉已经消失的差异。
 
