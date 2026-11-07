@@ -3237,6 +3237,8 @@ func TestContentWindowTextSelection(t *testing.T) {
 	clipboard := mygo.Clipboard.ReadText()
 	defer mygo.Clipboard.WriteText(clipboard)
 	w.Focus()
+	waitOnScreen(w)
+	eventually(t, "the selection window focused", w.IsFocused)
 	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
 	var copied string
 	t.Cleanup(func() {

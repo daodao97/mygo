@@ -868,9 +868,9 @@ func (s *surface) mouse(kind platform.SurfaceEventKind, ev id, button int) {
 
 // mouseDevice returns the device of a mouse event, by its subtype, and its
 // pressure: a tablet's pen (NSEventSubtypeTabletPoint, or
-// TabletProximity as it comes near), whose pressure AppKit tells, or a
-// touch (NSEventSubtypeTouch). A mouse's pressure, 1 while a button is
-// down, and a Force Touch trackpad's, are left out: the content gives
+// TabletProximity as it comes near), whose pressure AppKit tells.
+// A mouse's pressure, 1 while a button is down, and a Force Touch
+// trackpad's are left out: the content gives
 // devices without pressure Pointer Events' 0.5.
 func mouseDevice(ev id) (platform.PointerKind, float64) {
 	switch int16(sendInt(ev, "subtype")) {
@@ -878,9 +878,10 @@ func mouseDevice(ev id) (platform.PointerKind, float64) {
 		return platform.PointerPen, float64(msgFloat32(ev, sel("pressure")))
 	case 2: // NSEventSubtypeTabletProximity
 		return platform.PointerPen, 0
-	case 3: // NSEventSubtypeTouch
-		return platform.PointerTouch, 0
 	}
+	// NSEventSubtypeTouch also marks indirect trackpad mouse events. They
+	// must retain mouse semantics: touch input waits for a long press and
+	// turns ordinary dragging into scrolling instead of text selection.
 	return platform.PointerMouse, 0
 }
 
