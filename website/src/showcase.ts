@@ -285,4 +285,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "web",
     image: "/showcase/sotto.png",
   },
+  {
+    name: "TanGit",
+    description:
+      "An open-source Git desktop client built on Lazygit. Stage individual diff lines, browse history and branch graphs, resolve conflicts, and work across repositories on macOS, Windows and Linux with keyboard-driven native UI.",
+    url: "https://github.com/FleetingEcho/TanGit",
+    author: "FleetingEcho",
+    mode: "native",
+    image: "/showcase/tangit.jpg",
+  },
 ]
