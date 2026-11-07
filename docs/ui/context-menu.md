@@ -46,12 +46,28 @@ notes it, for the change once the loop is done (see
   The system's menus show it on macOS and Linux, and `PopoverMenu` on
   every platform, also as the keys rest on it.
 - `Icon(icon)` shows an image beside its label, made once with
-  [`mygo.NewMenuIcon`](../menus.md#icons). The system's menus show it as
-  they show the icons of `mygo.MenuItem`, browsers show none, and
-  `PopoverMenu` draws it on every platform.
+  [`mygo.NewMenuIcon`](../menus.md#icons) of a PNG image, or
+  `mygo.NewMenuIconSVG` of an SVG. The system's menus show it as they show
+  the icons of `mygo.MenuItem`, browsers show none, and `PopoverMenu`
+  draws it on every platform.
+- `IconColor(color)` draws its template icon in `color` instead of the
+  text's, as a red trash can by Delete; on the highlight it takes the
+  highlight's text color, as the label does. Only drawn menus
+  (`PopoverMenu`, `PopoverMenuButton`, and every menu of a window that
+  [draws them](#every-menu-of-a-window)) show it: the system's tint
+  template icons in the color of their text.
 - `Shortcut(mods, key)` shows a key by it, as the shortcut that does the
   same. It only shows the key: handle it with `Shortcut` on the context or
   an element.
+- `Subtitle(s)` shows a second, smaller line under its label, as
+  [`mygo.MenuItem`'s](../menus.md) does: under the label on macOS 14 and
+  in browsers, after it elsewhere (`Label — Subtitle`), and under it in
+  `PopoverMenu` on every platform. Assistive technology reads it as the
+  item's description.
+- `ID(id)` gives it an identity of its own, which `Chosen` matches instead
+  of its place and label: a label that changes while the menu shows, as
+  `Sync 3 Files`, or items before it that come and go, keep the choice on
+  it.
 - `Separator()` adds a line between groups of items, and
   `Submenu(label, build)` an item opening a submenu, which `build` fills.
 
@@ -143,6 +159,64 @@ test passes with either.
 button](menu-button.md#drawn-in-the-window) so, below the button, and takes
 the same function: a row's right-click and its ⋯ button can share one
 menu, drawn alike.
+
+### Richer items
+
+A drawn menu's items take more than the system's do, without a menu of
+one's own ([without a look](#without-a-look)); the system's menus show
+those items with their label alone:
+
+```go
+more.PopoverMenuButton(func(m *ui.Menu) {
+	m.MaxWidth(320)
+	for _, f := range app.files {
+		if m.Item(f.Name).ID(f.Path).Trailing(f.Size).Chosen() {
+			app.open(f)
+		}
+	}
+	m.Separator()
+	item := m.Item("Download").ID("download")
+	item.Content(func(x ui.MenuItemContent) {
+		ui.Text(x.Context, "Downloading "+app.download.Name)
+		ui.Progress(x.Context, app.download.Progress)
+	})
+	m.Separator()
+	if m.Item("Delete…").Danger().Chosen() {
+		app.confirmDelete()
+	}
+})
+```
+
+- `Danger()` shows the item in the theme's `Danger` color, as one that
+  deletes or discards. Highlighted, it keeps the theme's highlight, its
+  label in `Danger` where that is legible on the highlight, else in
+  `AccentText`. Assistive technology hears no color: let the label say
+  what the item does.
+- `Trailing(s)` shows a value at the item's end, before its shortcut, as a
+  file's size; assistive technology reads it in the item's description.
+- `Content(fn)` builds what the item shows in place of its label and
+  subtitle, between its mark and icon and its trailing text and shortcut.
+  `fn` gets the context, whether the item is highlighted or disabled, and
+  the colors of its text (`MenuItemContent`); text in it takes the item's
+  color. The item keeps its label, which assistive technology reads as
+  its name and typing goes to. The content stays part of the item: a
+  press on it chooses the item. A control in it, as a text input
+  filtering the items after it, takes its own presses and keeps the focus
+  while the pointer moves over its item, with the keys it handles (the
+  text typed, Space, Enter, Home and End); Up and Down move the highlight
+  and give the menu the focus back, and Escape closes the menu.
+- `Highlighted()` reports, as the function builds, whether the item is
+  the one the pointer or the keys are on, or leads to it through a
+  submenu, as the menu's last pass built it: the function builds again as
+  the highlight moves, so that it can show what goes with the item, as a
+  preview of the theme highlighted. Call `ID` first, and give the items
+  IDs when the items built change with the highlight: a drawn item's ID
+  also keys its row, whose highlight then stays on it.
+- `Menu.MaxWidth(w)` keeps the menu at most `w` wide, its submenus too
+  unless they set their own: labels, subtitles and trailing texts too long
+  for it end with an ellipsis, while shortcuts, icons and marks keep their
+  room. Assistive technology, `tt.Menu` and typing see each label whole,
+  and a `Tooltip` can show it.
 
 ### Every menu of a window
 

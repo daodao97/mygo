@@ -64,7 +64,13 @@ func (c *ClipShape) Same(o *ClipShape) bool {
 // or, when G or H is set, a projective one, which shows a plane turned in
 // 3D in perspective, x and y going to
 //
-//	((A*x + C*y + X) / w, (B*x + D*y + Y) / w), with w = G*x + H*y + 1.
+//	((A*x + C*y + X) / w, (B*x + D*y + Y) / w), with w = G*x + H*y + 1,
+//
+// or, when Behind is set, with w = G*x + H*y - 1. What shows is where w is
+// positive, in front of the viewer. Behind keeps its sign for a plane whose
+// origin, (0, 0), is behind the viewer though what is drawn on it is in
+// front: a card turning over in perspective far from the origin, its
+// horizon between the card and the origin. Behind is set only with G or H.
 //
 // The zero value is identity; Set distinguishes a singular matrix
 // (including scale zero).
@@ -72,6 +78,7 @@ type Affine struct {
 	A, B, C, D, X, Y float32
 	G, H             float32
 	Set              bool
+	Behind           bool
 }
 
 func Matrix(a, b, c, d, x, y float32) Affine { return Projective(a, b, c, d, x, y, 0, 0) }
@@ -85,7 +92,7 @@ func Projective(a, b, c, d, x, y, g, h float32) Affine {
 	if a == 1 && b == 0 && c == 0 && d == 1 && x == 0 && y == 0 && g == 0 && h == 0 {
 		return Affine{}
 	}
-	return Affine{a, b, c, d, x, y, g, h, true}
+	return Affine{a, b, c, d, x, y, g, h, true, false}
 }
 
 func Translation(x, y float32) Affine { return Matrix(1, 0, 0, 1, x, y) }
@@ -182,6 +189,90 @@ func Reshaped(s *Scene, op *Op) bool {
 	return false
 }
 
+// ClipCorners follows the clips of a scene, op by op, to find those that
+// reach into the rounded corners of a clip around them (Push). The GPU's
+// renderers cut drawing with the innermost clip's shape in the shader and
+// with the scissor rectangles of the others, which cut no corners: drawing
+// in a clip that reaches into those of one around it is cut with a mask of
+// the clips instead (gpu.Builder), whose pixels at the clips' edges
+// differ from the shader's by a unit in the last place (Differ).
+type ClipCorners struct {
+	open []cornerClip
+}
+
+type cornerClip struct {
+	// area is what the clip and those around it let through, in the
+	// frame; rect its rectangle, and reach how far from its corners
+	// their curves and their antialiasing reach, zero for a square
+	// corner or a clip transformed (which is cut with a mask anyway).
+	area, rect Rect
+	reach      [4]float32
+}
+
+// contReach is how far from its corner the curve of a continuous corner
+// of radius 1 leaves the edges.
+const contReach = 1.528665
+
+// Reset forgets the clips pushed, for a new scene.
+func (c *ClipCorners) Reset() { c.open = c.open[:0] }
+
+// Push enters op, an OpPushClip, and returns the place among the clips
+// open around it (0 the outermost) of the innermost whose rounded corners
+// what op lets through reaches into, or -1 for none.
+func (c *ClipCorners) Push(op *Op) int {
+	o := MovedClipOp(op)
+	k := cornerClip{area: o.Transform.Bounds(o.Rect)}
+	if n := len(c.open); n > 0 {
+		k.area = k.area.Intersect(c.open[n-1].area)
+	}
+	at := -1
+	for j := len(c.open) - 1; j >= 0 && !k.area.Empty(); j-- {
+		if c.open[j].cuts(k.area) {
+			at = j
+			break
+		}
+	}
+	if !o.Transform.Set {
+		k.rect = o.Rect
+		ext := float32(1)
+		if o.Continuous {
+			ext = contReach
+		}
+		for i, r := range FitRadii(o.Rect, o.Radii) {
+			if r > 0 {
+				k.reach[i] = r*ext + 1
+			}
+		}
+	}
+	c.open = append(c.open, k)
+	return at
+}
+
+// Pop leaves the innermost clip, at an OpPopClip.
+func (c *ClipCorners) Pop() {
+	if n := len(c.open); n > 0 {
+		c.open = c.open[:n-1]
+	}
+}
+
+// cuts reports whether a, not empty, overlaps a box of a rounded corner
+// of the clip, where its curve cuts.
+func (k *cornerClip) cuts(a Rect) bool {
+	r, e := k.rect, k.reach
+	boxes := [4]Rect{
+		{r.X, r.Y, e[0], e[0]},
+		{r.X + r.W - e[1], r.Y, e[1], e[1]},
+		{r.X + r.W - e[2], r.Y + r.H - e[2], e[2], e[2]},
+		{r.X, r.Y + r.H - e[3], e[3], e[3]},
+	}
+	for i, b := range boxes {
+		if e[i] > 0 && a.X < b.X+b.W && b.X < a.X+a.W && a.Y < b.Y+b.H && b.Y < a.Y+a.H {
+			return true
+		}
+	}
+	return false
+}
+
 // moves reports whether m only moves what it maps, without scaling,
 // turning, skewing it or showing it in perspective.
 func (m Affine) moves() bool {
@@ -196,24 +287,43 @@ func (m Affine) matrix() [3][3]float64 {
 	return [3][3]float64{
 		{float64(m.A), float64(m.C), float64(m.X)},
 		{float64(m.B), float64(m.D), float64(m.Y)},
-		{float64(m.G), float64(m.H), 1},
+		{float64(m.G), float64(m.H), float64(m.constant())},
 	}
 }
 
-// fromMatrix returns the map of matrix p, scaled so that its last entry
-// is 1, and whether it has one.
+// constant returns the constant term of m's divisor w, 1 or, Behind, -1.
+func (m Affine) constant() float32 {
+	if m.Behind {
+		return -1
+	}
+	return 1
+}
+
+// fromMatrix returns the map of matrix p, scaled by a positive factor so
+// that its last entry is 1 or -1 (Behind), and whether it has one: the
+// sign of w, which tells what is in front of the viewer, is p's.
 func fromMatrix(p [3][3]float64) (Affine, bool) {
 	k := p[2][2]
 	if math.Abs(k) < 1e-12 || math.IsNaN(k) || math.IsInf(k, 0) {
 		return Affine{}, false
 	}
+	behind := k < 0
+	k = math.Abs(k)
 	v := [8]float64{p[0][0] / k, p[1][0] / k, p[0][1] / k, p[1][1] / k, p[0][2] / k, p[1][2] / k, p[2][0] / k, p[2][1] / k}
 	for _, x := range v {
 		if math.IsNaN(x) || math.IsInf(x, 0) || math.Abs(x) > math.MaxFloat32 {
 			return Affine{}, false
 		}
 	}
-	return Projective(float32(v[0]), float32(v[1]), float32(v[2]), float32(v[3]), float32(v[4]), float32(v[5]), float32(v[6]), float32(v[7])), true
+	m := Projective(float32(v[0]), float32(v[1]), float32(v[2]), float32(v[3]), float32(v[4]), float32(v[5]), float32(v[6]), float32(v[7]))
+	if behind {
+		if !m.Perspective() {
+			// w is -1 everywhere: all of the plane is behind the viewer.
+			return singular, true
+		}
+		m.Behind = true
+	}
+	return m, true
 }
 
 // singular is a map without an inverse, which shows nothing.
@@ -256,7 +366,7 @@ func (m Affine) W(x, y float32) float32 {
 	if !m.Set {
 		return 1
 	}
-	return m.G*x + m.H*y + 1
+	return m.G*x + m.H*y + m.constant()
 }
 
 // Point returns where m maps (x, y). A point behind the viewer of a
@@ -316,7 +426,17 @@ func (m Affine) Inverse() (Affine, bool) {
 	if math.Abs(det) < 1e-12 || math.IsNaN(det) || math.IsInf(det, 0) {
 		return Affine{}, false
 	}
-	return fromMatrix(adj) // the inverse up to a factor, which fromMatrix drops
+	// adj is the inverse times det, which fromMatrix drops but for its
+	// sign: the inverse's w is positive at the points of the frame that
+	// show what is in front of the viewer.
+	if det < 0 {
+		for i := range adj {
+			for j := range adj[i] {
+				adj[i][j] = -adj[i][j]
+			}
+		}
+	}
+	return fromMatrix(adj)
 }
 
 func (m Affine) Bounds(r Rect) Rect {

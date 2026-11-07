@@ -36,6 +36,9 @@ func (t Transform) mat4() mat4 {
 		m[0], m[1], m[3] = a.A, a.C, a.X
 		m[4], m[5], m[7] = a.B, a.D, a.Y
 		m[12], m[13] = a.G, a.H
+		if a.Behind {
+			m[15] = -1
+		}
 	}
 	return m
 }
@@ -44,27 +47,40 @@ func (t Transform) mat4() mat4 {
 func (t Transform) set() bool { return t.m.Set || t.d3 != nil }
 
 // flat returns what t makes of its plane, z = 0, seen from the front.
+// Elements and Painter.Transform flatten their transforms around their
+// own origins and move them where they act in 2D (scene.Affine.Mul).
 func (t Transform) flat() scene.Affine {
 	if t.d3 == nil {
 		return t.m
 	}
 	m := t.d3
-	// k is the origin's divisor. Not positive, the origin is at or behind
-	// the viewer, where a Z translation as far as Perspective's distance
-	// puts it, and nothing shows: as in CSS, where all of a plane not
-	// turned is then behind the viewer. scene.Affine, whose divisor is 1
-	// at the origin, has no form for such a map.
+	// k is the origin's divisor, its sign kept (scene.Affine.Behind).
+	// Negative, the origin is behind the viewer, though what the plane
+	// shows around it may be in front: a turn in perspective moved far
+	// from the window's origin puts that origin past the turned plane's
+	// horizon (#1406). With all of the plane behind the viewer, where a Z
+	// translation as far as Perspective's distance puts a plane not
+	// turned, or with the origin at the viewer, nothing shows, as in CSS.
 	k := m[15]
-	if !(k > 0) {
+	if k == 0 || math.IsNaN(float64(k)) || k < 0 && m[12] == 0 && m[13] == 0 {
 		return scene.Affine{Set: true} // singular: nothing shows
 	}
+	behind := k < 0
+	k = float32(math.Abs(float64(k)))
 	v := [8]float32{m[0] / k, m[4] / k, m[1] / k, m[5] / k, m[3] / k, m[7] / k, m[12] / k, m[13] / k}
 	for _, n := range v {
 		if math.IsInf(float64(n), 0) || math.IsNaN(float64(n)) {
 			return scene.Affine{Set: true}
 		}
 	}
-	return scene.Projective(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7])
+	a := scene.Projective(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7])
+	if behind {
+		if !a.Perspective() {
+			return scene.Affine{Set: true}
+		}
+		a.Behind = true
+	}
+	return a
 }
 
 // in3D returns m as a Transform.

@@ -1107,6 +1107,52 @@ func TestDiffSplitMinimum(t *testing.T) {
 	}
 }
 
+// A hunk's header in a split diff keeps to the old side, cut at the line
+// between the sides wherever that is dragged, though its bar spans both;
+// a unified diff shows it whole.
+func TestDiffSplitHeaderKeepsToOldSide(t *testing.T) {
+	const header = "@@ -21,6 +21,7 @@ import jakarta.servlet.AsyncContext;"
+	files, err := ParsePatch("--- a/x\n+++ b/x\n" + header + "\n a\n b\n c\n+d\n e\n f\n g\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// headerBox returns the box of the header's text, not that of the
+	// separator labeled with it.
+	headerBox := func(tt *ui.Tester) ui.Rect {
+		t.Helper()
+		a, ok := tt.AccessByRole(ui.RoleText, header)
+		if !ok {
+			t.Fatalf("no %q in %q", header, tt.Texts())
+		}
+		return a.Bounds
+	}
+	d := &DiffState{}
+	d.SetPatch(files[0])
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 901, 400)
+	tt.Frame()
+	tt.Press(450.5, 200)
+	tt.Move(0, 200)
+	tt.Release(0, 200)
+	tt.Frame()
+	old, _, _ := sideWidths(d)
+	if old > 200 {
+		t.Fatalf("dragged to the left edge, the old side is %v wide", old)
+	}
+	if r := headerBox(tt); r.X+r.W > old {
+		t.Fatalf("the header's text spans %v to %v, past the old side's right edge at %v", r.X, r.X+r.W, old)
+	}
+
+	// Unified, nothing cuts it: it is as wide as in a view twice as wide.
+	d.Layout = DiffUnified
+	tt.Frame()
+	whole := headerBox(tt)
+	tt.SetSize(1801, 400)
+	tt.Frame()
+	if r := headerBox(tt); whole.W != r.W || whole.W <= old {
+		t.Fatalf("unified, the header's text is %v wide, %v in a wider view", whole.W, r.W)
+	}
+}
+
 // Sides of different widths keep scrolling together and their lines
 // aligned, wrapped too, each wrapping at its own width.
 func TestDiffSplitAligned(t *testing.T) {

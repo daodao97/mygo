@@ -214,7 +214,7 @@ func (e *coreText) wrapKept(kept *keptTypesetter, text []rune, style Style, widt
 	f.lines++
 	if f.checked < wrapCheckedFirst || f.lines%wrapCheckedEvery == 0 {
 		e.index = runeIndex(e.index, n)
-		shaped := e.typesetLines(kept.typesetter, n, width, nil, e.index, style.Italic)
+		shaped := e.typesetLines(kept.typesetter, n, width, nil, false, false, e.index, style.Italic)
 		if !sameLines(lines, shaped) {
 			f.disagreed = true
 			return shaped

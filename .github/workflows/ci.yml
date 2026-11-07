@@ -99,6 +99,8 @@ jobs:
           go build $(go list -f '{{if .GoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/mygo)
           go vet $(go list ./... | grep -v /cmd/mygo)
           go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/web ./internal/gpu/gl
+          # The canvas engine's line breaking, with a canvas of its test's.
+          go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" -run 'TestCanvas|TestKeepWords' ./internal/text
       # The plugins' tests load the native libraries their mygo-plugin.json
       # pins, and on Windows the installer tests run the NSIS that
       # internal/nsis pins, all of which they download into the user's cache

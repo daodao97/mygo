@@ -154,6 +154,27 @@ image take the color of the menu's text, as macOS tints its template
 images: white in a dark menu and on the highlight. Linux shows template
 icons as they are.
 
+`NewMenuIconSVG` makes an icon of an SVG instead, the `*ui.SVG` that
+`ui.ParseSVG` parses, so that an app shows the icons it draws with
+`ui.Icon` in its menus too. It draws the SVG once, with native UI's
+renderer (`ui.SVG`'s `Image`), to an image of 64 pixels on its longer
+side, which stays sharp up to 400% scaling, and returns an error for a nil
+SVG or one without a size. As a template, only its shapes count, whatever
+their colors, as for `ui.Icon`:
+
+```go
+//go:embed icons/trash.svg
+var trashSVG []byte
+
+var trash = ui.MustParseSVG(trashSVG) // ui.Icon(c, trash) in the window
+
+trashIcon, err := mygo.NewMenuIconSVG(trash, true)
+```
+
+In the menus native UI draws, an item's
+[`IconColor`](ui/context-menu.md#items) gives its template icon a color
+of its own.
+
 MyGo decodes and scales each image once, however many items show it and
 however often their menus open or are made again, the icons of the same
 image included, and frees what it made of it once neither the app nor a

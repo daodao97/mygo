@@ -21,7 +21,7 @@ func TestURLAt(t *testing.T) {
 		40: "http://x.org/y",
 		58: "mailto:me@x.org",
 	} {
-		if got := urlAt(text, cols, col); got != want {
+		if got, _, _ := urlAt(text, cols, col); got != want {
 			t.Errorf("urlAt(%d) = %q, want %q", col, got, want)
 		}
 	}
@@ -51,7 +51,7 @@ func TestPathAt(t *testing.T) {
 		for i := range cols {
 			cols[i] = i
 		}
-		if got := pathAt(text, cols, c.col); got != c.want {
+		if got, _, _ := pathAt(text, cols, c.col); got != c.want {
 			t.Errorf("pathAt(%q, %d) = %q, want %q", c.row, c.col, got, c.want)
 		}
 	}
@@ -80,7 +80,7 @@ func TestFileAndURLMatches(t *testing.T) {
 		{"🙂 中文 https://example.com/a_(b)?q=1.", "example", linkTarget{URL: "https://example.com/a_(b)?q=1"}},
 		{"see file:///tmp/a%20b.go:4", "a%20", linkTarget{URL: "file:///tmp/a%20b.go:4"}},
 		{"plain words without a link", "words", linkTarget{}},
-		{"main.go:0", "main", linkTarget{}},
+		{"main.go:0", "main", linkTarget{Path: "main.go"}}, // upstream ignores a line 0
 	} {
 		t.Run(tc.text, func(t *testing.T) {
 			text := []rune(tc.text)

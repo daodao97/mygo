@@ -718,6 +718,10 @@ type Page interface {
 	// the backend reports for the page (see Page.ProcessID in package
 	// mygo for which one), 0 when it reports none.
 	ProcessID() int
+	// GPUProcessID returns the ID of the operating system's process that
+	// does the page's graphics and media (see Page.GPUProcessID in
+	// package mygo), 0 when the backend reports none.
+	GPUProcessID() int
 	// IsAudible reports whether the page plays sound, from any of its
 	// frames, as WindowHandler.AudibleChanged reports its changes; false
 	// where the backend cannot tell.
@@ -1089,8 +1093,11 @@ type MenuItem struct {
 	Checked     bool
 	ToolTip     string
 	// Icon is the image beside the label, nil for none.
-	Icon    *MenuIcon
-	Submenu *Menu
+	Icon *MenuIcon
+	// IconColor, when set, is the color of a template Icon in the menus
+	// package ui draws, in place of the text's; backends ignore it.
+	IconColor *Color
+	Submenu   *Menu
 	// Native is set on the web view's own items of a page's context menu
 	// (WindowHandler.ContextMenu): the backend's number for the item,
 	// from 1, which it shows where the core puts it, doing what the web

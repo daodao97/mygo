@@ -2032,7 +2032,17 @@ as in Tauri:
   directories and relative links only) and swaps it in: the bundle is
   renamed on macOS, the entries of the app directory on Linux and Windows,
   where the running executable is renamed away and removed at the next
-  launch. `App.Relaunch` then starts the new version from the path the app
+  launch. There the app directory holds `update.FileList` (`.mygo-files`),
+  its top-level entries as installed, one per line: `mygo build` writes it
+  into the app (so the archive, installer and packages have it), and
+  `swapFiles` rewrites it in the update with the update's entries before
+  swapping it in with them. The entries that the installed list names and
+  the update lacks are renamed aside first, as replaced ones are, and
+  deleted once the swap succeeds, so a failed swap puts them back; entries
+  that no list names (the user's, the uninstaller) and all of an app
+  without a list stay, and so does the running executable. Deltas never
+  make the list from the installed one, which the updater rewrote.
+  `App.Relaunch` then starts the new version from the path the app
   started from. Development builds are never updated. Delta updates work
   as Sparkle's (`internal/update/delta.go`): `mygo build` fetches the
   published manifest of the target, downloads the archives of up to
@@ -3237,10 +3247,16 @@ either.
   into its parent's plane as CSS's flat transform-style does, composes
   with its ancestors after layout as a projective map
   (`scene.Affine`, with G and H in perspective); boxes keep their original
-  layout space. A `scene.Affine`'s divisor is 1 at its origin, so a 3D
-  transform that puts the origin at or behind the viewer (`TranslationZ`
-  as far as `Perspective`'s distance) flattens to a singular map, which
-  shows nothing; `BackfaceHidden` tests the normal through the whole 4×4
+  layout space. A `scene.Affine`'s divisor is 1 at its origin, or -1
+  (`Behind`) when the origin is behind the viewer though what is drawn is
+  in front: a turn in perspective around an element far from the
+  window's origin puts the window's origin past the turned plane's
+  horizon (#1406). Products and inverses keep the divisor's sign, and the
+  shaders take it from the instance (`Transform2.z`). Elements and
+  `Painter.Transform` flatten a 3D transform around its own origin and
+  move it there in 2D. A transform that puts all of its plane behind the
+  viewer (`TranslationZ` as far as `Perspective`'s distance, not turned)
+  flattens to a singular map, which shows nothing; `BackfaceHidden` tests the normal through the whole 4×4
   inverse, perspective included (`facesAway`, as Chromium's
   `IsBackFaceVisible`). `TranslatePercent` stays apart from the transform
   (`translatePct`): `transformAt` resolves it from the box as laid out,
@@ -3259,7 +3275,9 @@ either.
   through the inverse. Nested
   transformed or rounded clips use cached masks, independent of content
   moving within them, once they hold content that a transform does more
-  than move (`scene.Reshaped`); hard clips in the drawing's coordinates,
+  than move (`scene.Reshaped`), or a clip reaching into their rounded
+  corners (`scene.ClipCorners`, which the scissor rectangles of outer
+  clips would not cut); hard clips in the drawing's coordinates,
   and clips around content only moved, evaluate on the GPU. Backdrop
   effects map local samples into the frame. With a GPU, every frame draws
   there, including resting changes to transformed content.
@@ -3984,7 +4002,10 @@ either.
   the document in its root's local state and the spans of each paragraph
   by block, links as inline `Link` elements, a code block's tokens by line
   and its text in chunks of 32 lines; it reveals text at a pace, fading it
-  by span colors and element opacity, which only paint. A `Selectable`
+  by span colors and element opacity, which only paint, and `Revealed`
+  reads from the root's state whether the frame showed all of the source
+  with no fade left, a query rather than a callback, as the frames
+  that change it are those the reveal already asks for. A `Selectable`
   root's `CopyData` and `SelectedTexts` map paragraphs' runes back to
   source offsets, to copy text with block separators, Markdown, and the
   HTML of that Markdown parsed again, which `ui/richtext` pastes with its
@@ -4401,9 +4422,10 @@ either.
   next frame runs its `ContextMenu` function to collect a `platform.Menu`;
   after the frame, package mygo shows it with `Menu.popup`, posted to the
   main loop, since native menus wait in a loop of their own. A choice
-  comes back as the item's place and label, which the next frame's run of
-  the function matches to report `Chosen`; text inputs' menus queue their
-  editing commands instead. `PopoverMenu` opens the same way and draws
+  comes back as the item's place and label, and its ID when the view gave
+  it one (`MenuItem.ID`, `menuRun.keys`), which the next frame's run of
+  the function matches to report `Chosen`, by the ID alone when there is
+  one; text inputs' menus queue their editing commands instead. `PopoverMenu` opens the same way and draws
   the menu in the window instead (`ui/popovermenu.go`): the frame that
   would show it notes it (`menuState.drawn`, whose `menuShown` holds where
   it opened, from the element's corner, and the submenus open with their
@@ -4459,6 +4481,18 @@ either.
   The `Tester` reads a drawn menu's items as last built (`drawnMenu.items`)
   and chooses one by its ID (`drawnMenu.choose`), which the next build
   takes as a click, so its menu helpers work on either.
+  What a drawn item shows beyond its `platform.MenuItem` (`Danger`,
+  `Trailing`, `Content`) stays on the `MenuItem` of the run collecting
+  it (`menuRun.items`), which `drawnItem` reads, so that the system's
+  menus and their backends never see it. An item with an ID keys its row
+  (`menuItemKey`), whose highlight then follows it as items around it
+  come and go. Once a pass built the menu, the items its levels highlight
+  (`drawnMenu.highlighted`, by ID or else place and label) go to the
+  next run of the function, whose `MenuItem.Highlighted` reports them;
+  when they changed, the pass asks for another, so the function sees the
+  highlight it built. `Menu.MaxWidth` (`menuRun.widths`, by
+  `platform.Menu`) caps a panel's width, its rows' labels shrinking to an
+  ellipsis.
 - **Scenes** are flat lists of operations in device pixels: rounded
   rectangles with borders of a width per side, solid or dashed, filled
   with a color, a linear gradient mixed in sRGB or Oklab, a gradient of
@@ -4644,7 +4678,15 @@ either.
   against Core Text from time to time (`numbers_darwin.go`). Latin text
   kept across widths is shaped into one line that its lines take their glyphs
   from, breaking at the spaces before plain words and asking Core Text for
-  every other break, checked in the same way (`wrap_darwin.go`). Every engine gives a line's glyphs in visual order,
+  every other break, checked in the same way (`wrap_darwin.go`). Korean text
+  breaks between words, as CSS's `word-break: keep-all` (`keepWordsWhole`
+  takes the breaks between two letters or digits out of Unicode's): Core Text
+  moves the break it suggests back to the last one left in the line; Pango
+  is told not to break within the words (`pango_attr_allow_breaks_new`), and
+  lays out again from a line a word longer than it overflows, without that
+  word kept; DirectWrite's lines, when one ends within a word, are broken
+  anew from its cluster metrics and shaped one by one; the canvas engine
+  leaves those breaks out of its own. Every engine gives a line's glyphs in visual order,
   from the left, through right-to-left runs too (DirectWrite's runs, whose
   glyphs come in logical order, are reversed), so that what walks them,
   and `ui.Shape`'s callers, rely on one order. The package assembles their
@@ -4916,7 +4958,8 @@ either.
   shader that computes the signed distance to rounded rectangles, Evan
   Wallace's blurred rounded box, gradients, stripes, the dashes of borders,
   atlas coverage and the innermost rounded clip; outer clips are scissor
-  rectangles. The builder omits operations wholly hidden by the certainly
+  rectangles, and a clip reaching into an outer one's rounded corners cuts
+  with that one's mask as well. The builder omits operations wholly hidden by the certainly
   opaque core of a later fill, keeping at most eight occluders and treating
   backdrop-reading effects as barriers. Its planner shares clipping rules
   with drawing, grows shadow support before transforming it, and skips
@@ -6177,6 +6220,7 @@ which npm allows only for packages that exist: the first release uses an
 | `FitContent` | the bridge, as elsewhere; WebKit's private `_setSizeToContentAutoSizeMaximumSize:` is not used; native UI measures itself (`ui/fit.go`) | the bridge; native UI measures itself | the bridge; native UI measures itself |
 | `Page.ThemeColor` | the bridge, as elsewhere; WKWebView's `themeColor` (macOS 12+) is not used | the bridge | the bridge |
 | `Page.ProcessID` | the web content process, `-[WKWebView _webProcessIdentifier]` (private, looked up with `respondsToSelector:`) | 0: WebKitGTK has no API for it | the browser process the app's web views share, `ICoreWebView2::get_BrowserProcessId` |
+| `Page.GPUProcessID` | WebKit's GPU process, which plays the page's sound, `-[WKWebView _gpuProcessIdentifier]` (private, looked up with `respondsToSelector:`); 0 until WebKit starts it | 0: WebKitGTK has no API for it | the GPU process of the environment, the `COREWEBVIEW2_PROCESS_KIND_GPU` entry of `ICoreWebView2Environment8`'s `GetProcessInfos`, queried for each call; 0 on runtimes without it |
 | a page's sound (`IsAudible`, `SetAudioMuted`) | private `-[WKWebView _isPlayingAudio]`, key-value observed, and `_mediaMutedState` / `_setPageMuted:` with the `_WKMediaAudioMuted` bit, the capture bits kept; looked up with `respondsToSelector:`, not audible and not muted where WebKit doesn't answer | `webkit_web_view_is_playing_audio` and `notify::is-playing-audio`; `webkit_web_view_set_is_muted` / `get_is_muted` (2.30+, bound when present) | `ICoreWebView2_8`'s `IsDocumentPlayingAudio`, `IsDocumentPlayingAudioChanged` and `IsMuted`, queried for each call; a mute set before the web view is made is put in `setUp`, before its first navigation |
 | `BackgroundThrottling: ThrottlingOff` | `inactiveSchedulingPolicy` `WKInactiveSchedulingPolicyNone` (macOS 14+) and the private `_hiddenPageDOMTimerThrottlingEnabled`, `_hiddenPageCSSAnimationSuspensionEnabled`, `_pageVisibilityBasedProcessSuppressionEnabled` off, on a copy of the preferences when `window.open()` handed over the opener's; the private `-[WKWebView _setWindowOcclusionDetectionEnabled:NO]`; all looked up with `respondsToSelector:` | the web view's settings' `HiddenPageDOMTimerThrottling` and `HiddenPageCSSAnimationSuspension` features off (`webkit_settings_set_feature_enabled`, 2.42+, bound on first use); hidden and minimized pages still stop drawing | `--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows` in the environment options' `AdditionalBrowserArguments` when the page that starts the environment asks (later ones are logged); an embedded web view's controller still goes invisible with its host, which takes its page off the desktop |
 | a page's capture (`CaptureState`, `SetCaptureState`) | `WKWebView`'s `cameraCaptureState` and `microphoneCaptureState` (macOS 12+) and private `_displayCaptureState` (macOS 13+), key-value observed, and their setters `set…CaptureState:completionHandler:` (nil handler), looked up with `respondsToSelector:`; `SetAudioMuted`'s `_setPageMuted:` has one bit for the camera and the microphone, so with only one of them muted the other is unmuted again after it | `webkit_web_view_get_camera_capture_state` and its microphone and display siblings with their `notify::` signals and setters (2.34+, bound when present); `webkit_web_view_set_is_muted` drops the capture mutes, which `SetAudioMuted` sets again | none: `CaptureNone`, setting does nothing |

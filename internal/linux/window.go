@@ -88,6 +88,9 @@ type window struct {
 	closed       bool
 	programmatic bool
 	keepAbove    bool
+	// ignoreMouse passes pointer events through the window to whatever is
+	// beneath it (SetIgnoreMouseEvents).
+	ignoreMouse bool
 	// hiding tells that the window hides once the frame that asked for
 	// that returns (Hide), unless it shows again first.
 	hiding bool
@@ -276,6 +279,8 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	connect(w.win, "window-state-event", cbWindowState, data)
 	connect(w.win, "key-press-event", cbMenuKey, data)
 	connect(w.win, "key-release-event", cbMenuKey, data)
+	connect(w.win, "realize", cbWindowRealize, data)
+	connectAfter(w.win, "map", cbWindowMap, data)
 
 	b.windows[w.id] = w
 	if w.web != 0 {
@@ -856,11 +861,39 @@ func (w *window) SetBackgroundColor(c platform.Color) {
 
 func (w *window) SetOpacity(v float64)            { gtkWidgetSetOpacity(w.win, v) }
 func (w *window) Opacity() float64                { return gtkWidgetGetOpacity(w.win) }
-func (w *window) SetIgnoreMouseEvents(bool)       {}
 func (w *window) SetContentProtection(bool)       {}
 func (w *window) SetVibrancy(string)              {}
 func (w *window) SetVibrancyTint(*platform.Color) {}
 func (w *window) SetActiveAppearance(bool)        {}
+
+func (w *window) SetIgnoreMouseEvents(v bool) {
+	w.ignoreMouse = v
+	w.applyIgnoreMouseEvents()
+}
+
+// applyIgnoreMouseEvents gives the window an empty input shape, which
+// passes the pointer through to what is beneath, or removes its shape. A
+// window not realized yet gets it as it realizes, and again as it maps.
+// Under Wayland the shape takes effect with the surface's next commit:
+// a frame is drawn for it.
+func (w *window) applyIgnoreMouseEvents() {
+	if w.closed {
+		return
+	}
+	win := gtkWidgetGetWindow(w.win)
+	if win == 0 {
+		return
+	}
+	loadWebViews() // binds the GDK and cairo region functions
+	if w.ignoreMouse {
+		region := cairoRegionCreateRectangle(&gdkRectangle{})
+		gdkWindowInputShapeCombineRegion(win, region, 0, 0)
+		cairoRegionDestroy(region)
+	} else {
+		gdkWindowInputShapeCombineRegion(win, 0, 0, 0)
+	}
+	gtkWidgetQueueDraw(w.win)
+}
 
 // SetWindowButtonsTheme does nothing: GTK's title buttons follow the
 // theme, which is the application's.
@@ -1296,6 +1329,9 @@ func (w *window) UserAgent() string {
 // view (webkit_web_view_get_page_id is WebKit's own page identifier).
 func (w *window) ProcessID() int { return 0 }
 
+// GPUProcessID is 0: WebKitGTK has no API for its GPU process.
+func (w *window) GPUProcessID() int { return 0 }
+
 // IsAudible reports webkit_web_view_is_playing_audio, which
 // notify::is-playing-audio tells the changes of.
 func (w *window) IsAudible() bool {
@@ -1567,6 +1603,7 @@ var (
 	cbDragData, cbDragDrop, cbPrintFinished, cbPrintFailed, cbPermission        ptr
 	cbMotion, cbControlsAllocated, cbDecorationLayout, cbActivationResize       ptr
 	cbCloseLater, cbHideLater, cbPlayingAudio, cbCaptureState                   ptr
+	cbWindowRealize, cbWindowMap                                                ptr
 )
 
 func field[T any](p ptr, offset uintptr) T {
@@ -1587,6 +1624,12 @@ func initWindowCallbacks() {
 			w.h.Closed()
 		}
 	})
+	cbWindowRealize = purego.NewCallback(func(widget, data ptr) {
+		if w := b().window(data); w != nil && w.ignoreMouse {
+			w.applyIgnoreMouseEvents()
+		}
+	})
+	cbWindowMap = cbWindowRealize
 	cbCloseLater = purego.NewCallback(func(data ptr) int32 {
 		if w := b().window(data); w != nil {
 			w.Close()

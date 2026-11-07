@@ -43,9 +43,11 @@ type Differ struct {
 	bounds, next []image.Rectangle
 	// encloses and encloses2 tell, for each clip of the last scene and of
 	// the one Diff was given, that it holds an op drawn under a transform
-	// that does more than move it (see opBounds).
+	// that does more than move it, or a clip reaching into rounded corners
+	// (see opBounds).
 	encloses, encloses2 []bool
 	pushes              []int
+	corners             ClipCorners
 	versions            []uint64
 	mask, color         atlasMark
 	damage              []image.Rectangle
@@ -338,6 +340,7 @@ func addRect(damage []image.Rectangle, b image.Rectangle) []image.Rectangle {
 func (d *Differ) opBounds(s *Scene, out []image.Rectangle) []image.Rectangle {
 	clip := image.Rect(0, 0, s.Width, s.Height)
 	d.clips, d.pushes = d.clips[:0], d.pushes[:0]
+	d.corners.Reset()
 	d.encloses2 = append(d.encloses2[:0], make([]bool, len(s.Ops))...)
 	reach := func(m Affine) float32 {
 		if m.Set {
@@ -348,6 +351,7 @@ func (d *Differ) opBounds(s *Scene, out []image.Rectangle) []image.Rectangle {
 	for i := range s.Ops {
 		op := &s.Ops[i]
 		var b image.Rectangle
+		corners := false
 		switch op.Kind {
 		case OpFill, OpImage, OpEffect, OpHole:
 			b = outset(op.Transform.Bounds(op.Rect), reach(op.Transform))
@@ -387,11 +391,13 @@ func (d *Differ) opBounds(s *Scene, out []image.Rectangle) []image.Rectangle {
 			d.clips = append(d.clips, clip)
 			d.pushes = append(d.pushes, i)
 			clip = clip.Intersect(b)
+			corners = d.corners.Push(op) >= 0
 		case OpPopClip:
 			if len(d.clips) > 0 {
 				clip = d.clips[len(d.clips)-1]
 				d.clips = d.clips[:len(d.clips)-1]
 				d.pushes = d.pushes[:len(d.pushes)-1]
+				d.corners.Pop()
 			}
 		}
 		// The GPU's renderers cut what a clip holds with a mask once an op
@@ -401,7 +407,10 @@ func (d *Differ) opBounds(s *Scene, out []image.Rectangle) []image.Rectangle {
 		// holding one changes all it cuts. A clip pushed under such a
 		// transform is one for the clips around it, not for itself, which
 		// it was pushed onto already (as gpu.Builder.markEnclosing has it).
-		if op.Kind != OpPopClip && Reshaped(s, op) {
+		// So does a clip that starts or stops holding one that reaches
+		// into its rounded corners, or those of a clip it is in
+		// (ClipCorners).
+		if corners || op.Kind != OpPopClip && Reshaped(s, op) {
 			j := len(d.pushes) - 1
 			if op.Kind == OpPushClip {
 				j--

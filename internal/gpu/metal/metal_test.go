@@ -74,6 +74,14 @@ func TestDrawsAsTheCPURenderer(t *testing.T) {
 		}
 		gputest.Compare(t, "metal-perspective", pix, s.Width*4, s)
 	}
+	for range 2 {
+		s = gputest.BehindOriginScene()
+		pix, err := r.renderOffscreen(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gputest.Compare(t, "metal-behind-origin", pix, s.Width*4, s)
+	}
 	for i, s := range gputest.TranslatedScenes() {
 		pix, err := r.renderOffscreen(s)
 		if err != nil {
@@ -88,6 +96,14 @@ func TestDrawsAsTheCPURenderer(t *testing.T) {
 			t.Fatal(err)
 		}
 		gputest.Compare(t, "metal-masked-clips", pix, s.Width*4, s)
+	}
+	for range 2 {
+		s = gputest.CornerClipScene()
+		pix, err := r.renderOffscreen(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gputest.Compare(t, "metal-corner-clips", pix, s.Width*4, s)
 	}
 	s = gputest.ContinuousScene()
 	pix, err := r.renderOffscreen(s)

@@ -54,7 +54,10 @@ type ListState struct {
 	// FollowEnd starts the list at its end, and keeps the end in view as
 	// rows are added or grow while it shows it, as a chat or a log does:
 	// scrolling away from the end stops following it, and scrolling back
-	// to it follows again.
+	// to it follows again. Each layout reads it as it is then, so that one
+	// turned off in the frame a click opens a fold in the last row keeps
+	// the line clicked where it is; HoldPlace does that for one layout,
+	// leaving FollowEnd on.
 	FollowEnd bool
 	// FollowAnimation, when set, makes a list following its end glide to
 	// it as rows are added or grow, as the animation says (Smooth, a
@@ -152,6 +155,11 @@ type ListState struct {
 	CellSelect bool
 	// Cells are the columns of the block CellSelect chooses.
 	Cells ColumnRange
+	// CellsStyle paints the block of cells CellSelect chooses and the
+	// rows chosen instead of the accent, as a spreadsheet's: the chosen
+	// cells in a color of their own, the rest of their rows in a lighter
+	// one, and every other row striped. Its zero value keeps the accent.
+	CellsStyle CellsStyle
 	// Sort, when set, is the column a Table's rows are sorted by: a click
 	// on the header of a Sortable column sorts by it, ascending, and
 	// another reverses the order, which the header shows. Sort the rows as
@@ -201,6 +209,9 @@ type ListState struct {
 	anchor    int
 	inset     float64
 	anchorKey any
+	// following tells that the list showed its end as the last layout left
+	// it, or was scrolled to it since: it follows the end while FollowEnd
+	// is set (follows), which each layout reads as it is then.
 	following bool
 	started   bool
 	// followLag is how far below its place the end shows as it glides
@@ -337,6 +348,14 @@ func (s *ListState) ScrollToEnd() {
 	s.req = listRequest{set: true, end: true}
 	s.scrolled = true
 }
+
+// HoldPlace keeps the list where it is in the next layout rather than
+// following its end, as a row opening a fold in the last message of a
+// chat does, for the line clicked to stay under the pointer. FollowEnd
+// stays as it is: the list follows its end again once it shows it, as
+// when the user scrolls back to it. Call it from the view, in the frame
+// that changes the rows.
+func (s *ListState) HoldPlace() { s.following = false }
 
 // Visible returns the first and the last row the list showed in the last
 // frame, last below first when it showed none: a list nearing the end of
@@ -611,7 +630,7 @@ func (s *ListState) sync(e *node, n int) {
 			s.req = listRequest{set: true, offset: true, y: max(0, st.scrollY)}
 		}
 		st.list = s
-	case st.scrollY != s.wroteY && !s.req.set && s.following && s.followLag.value > 0.5 && st.scrollY > s.wroteY:
+	case st.scrollY != s.wroteY && !s.req.set && s.follows() && s.followLag.value > 0.5 && st.scrollY > s.wroteY:
 		// Scrolled toward the end it glides to: it goes on following.
 	case st.scrollY != s.wroteY && !s.req.set:
 		// Scrolled by the wheel, the keys, the scroll bar or the app: a
@@ -627,10 +646,14 @@ func (s *ListState) sync(e *node, n int) {
 		default:
 			s.req = listRequest{set: true, offset: true, y: y}
 		}
-		s.following = s.FollowEnd && top > 0 && y >= top-0.5
+		s.following = top > 0 && y >= top-0.5
 	}
 	s.wroteY = st.scrollY
 }
+
+// follows reports whether the list follows its end: it shows it, and
+// FollowEnd, as the app has it now, says to.
+func (s *ListState) follows() bool { return s.FollowEnd && s.following }
 
 // anchorAt returns the row at the top of the view scrolled to y, and where
 // its top goes in the list's box, as the heights known put them.
@@ -677,7 +700,7 @@ func (s *ListState) plan(e *node, n int) (a, first, last int) {
 	case r.set && !r.end:
 		// Rows on both sides cover any alignment.
 		a, y, above = max(0, min(r.row, n-1)), 0, -view
-	case r.end || s.following:
+	case r.end || s.follows():
 		a = n - 1
 		y = view - hs.height(a)
 	}
@@ -735,8 +758,16 @@ func (f *listFrame) build(i int) *node {
 		w.onValueInput(listRowValueInput)
 		on := f.chosen(i, key)
 		if f.choosesCells() {
-			// Its cells in the block show the choice (Table).
+			// Its cells in the block show the choice (Table); CellsStyle
+			// paints its row here, behind them.
 			w.checked = 1 + int8(b2f(on))
+			st := s.CellsStyle
+			switch {
+			case on && st.Row != Transparent:
+				w.Background(st.Row)
+			case !on && st.Stripe != Transparent && i%2 == 1:
+				w.Background(st.Stripe)
+			}
 		} else {
 			w.Selected(on)
 		}
@@ -1402,7 +1433,7 @@ func (e *node) layoutList(w, h float32) {
 	var a int
 	var ya float64
 	switch req := s.req; {
-	case req.end || s.following && !req.set:
+	case req.end || s.follows() && !req.set:
 		a = n - 1
 		ensure(a)
 		ya = H - padBottom - ht(a)
@@ -1594,7 +1625,7 @@ func (e *node) layoutList(w, h float32) {
 // that the last, which shows, has the list's height for its content.
 func (s *ListState) glideToEnd(e *node, n, lo, hi int, H, C float64, shift func(float64)) float64 {
 	rt, now := e.c.rt, e.c.now
-	if s.FollowAnimation == nil || !s.following || s.req.set || hi != n-1 || rt.preferences().ReduceMotion || rt.instant() {
+	if s.FollowAnimation == nil || !s.follows() || s.req.set || hi != n-1 || rt.preferences().ReduceMotion || rt.instant() {
 		s.followLag, s.follow, s.followFrame = channel{}, followMark{}, 0
 		return 0
 	}
@@ -1700,7 +1731,7 @@ func (s *ListState) remember(e *node, first, last int, atEnd bool, scroll float6
 	}
 	s.laidOut, s.wroteY, s.req, s.read = true, scroll, listRequest{}, false
 	s.first, s.last, s.atEnd = first, last, atEnd
-	s.following = s.FollowEnd && atEnd
+	s.following = atEnd
 	s.anchor, s.anchorKey = max(0, first), nil
 	if n == 0 {
 		s.inset = 0

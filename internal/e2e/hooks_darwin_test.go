@@ -259,6 +259,14 @@ func pressTab(w *mygo.Window, back bool) (ok bool) {
 	return ok
 }
 
+// pressKeyComposing presses a key in a window of native UI with the test
+// standing in for the input method: it commits commit, unless empty, then
+// passes the key on as command (doCommandBySelector:), unless empty.
+func pressKeyComposing(w *mygo.Window, code uint16, chars, commit, command string) (ok bool) {
+	mygo.RunOnMain(func() { ok = darwin.TestKeyComposing(w.NativeHandle(), code, chars, commit, command) })
+	return ok
+}
+
 func compose(w *mygo.Window, text string, caret int, commit bool) (ok bool) {
 	mygo.RunOnMain(func() { ok = darwin.TestCompose(w.NativeHandle(), text, caret, commit) })
 	return ok

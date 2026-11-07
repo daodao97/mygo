@@ -308,6 +308,7 @@ func (n *webViewNative) Zoom() float64          { return n.web.Zoom() }
 func (n *webViewNative) SetUserAgent(ua string) { n.web.SetUserAgent(ua) }
 func (n *webViewNative) UserAgent() string      { return n.web.UserAgent() }
 func (n *webViewNative) ProcessID() int         { return n.web.ProcessID() }
+func (n *webViewNative) GPUProcessID() int      { return n.web.GPUProcessID() }
 func (n *webViewNative) IsAudible() bool        { return n.web.IsAudible() }
 func (n *webViewNative) SetAudioMuted(v bool)   { n.web.SetAudioMuted(v) }
 func (n *webViewNative) IsAudioMuted() bool     { return n.web.IsAudioMuted() }

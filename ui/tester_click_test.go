@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -45,6 +46,9 @@ func TestClickOffWindowElement(t *testing.T) {
 
 // A rejected named click must send no input: the empty clipped rectangle
 // can sit over another control, and a covered label still has a visible box.
+// A control without a menu of its own stays covered by one that carries
+// only a menu ("menucover", "menunested"): the right-click would open that
+// one's menu, which is not inside it or not its content's (#1414).
 func TestClickRejectsClippedOrCoveredElement(t *testing.T) {
 	actions := []struct {
 		name string
@@ -54,7 +58,7 @@ func TestClickRejectsClippedOrCoveredElement(t *testing.T) {
 		{"ClickWith", func(tt *Tester, s string) error { return tt.ClickWith(Shift, s) }},
 		{"RightClick", (*Tester).RightClick},
 	}
-	for _, fixture := range []string{"clipped", "scrolled", "covered", "ignored", "inset", "nested", "webview"} {
+	for _, fixture := range []string{"clipped", "scrolled", "covered", "ignored", "inset", "nested", "webview", "menucover", "menunested"} {
 		for _, action := range actions {
 			t.Run(fixture+"/"+action.name, func(t *testing.T) {
 				clicks, presses := 0, 0
@@ -83,12 +87,30 @@ func TestClickRejectsClippedOrCoveredElement(t *testing.T) {
 								Button(c, "cover").Absolute().Fill().OnClick(func() { clicks++ }).
 									ContextMenu(func(m *Menu) { m.Item("cover-menu") })
 							})
+					case "menucover":
+						Button(c, "target").Label("target").Absolute().Top(60).Left(0).Size(100, 40).
+							OnClick(func() { clicks++ })
+						Box(c).Absolute().Top(60).Left(0).Size(100, 40).
+							ContextMenu(func(m *Menu) { m.Item("cover-menu") })
+					case "menunested":
+						Button(c, "").Label("target").Absolute().Top(60).Left(0).Size(100, 40).
+							OnClick(func() { clicks++ }).
+							Children(func() {
+								Box(c).Absolute().Fill().
+									ContextMenu(func(m *Menu) { m.Item("cover-menu") }).
+									HandleInput(func(ev InputEvent) bool {
+										if ev.Kind == InputPointerDown {
+											presses++
+										}
+										return false
+									})
+							})
 					default:
 						target()
 					}
 					if fixture == "webview" {
 						WebView(c, &testWebView{"cover"}).Absolute().Top(60).Left(0).Size(100, 40)
-					} else if fixture != "nested" && fixture != "inset" {
+					} else if fixture != "nested" && fixture != "inset" && fixture != "menucover" && fixture != "menunested" {
 						Button(c, "cover").Absolute().Top(60).Left(0).Size(100, 40).
 							OnClick(func() { clicks++ }).
 							ContextMenu(func(m *Menu) { m.Item("cover-menu") }).
@@ -211,6 +233,43 @@ func TestNamedClickUsesTheRequestedButton(t *testing.T) {
 	if len(tt.Menu()) != 0 {
 		t.Errorf("rejected secondary click opened %v", tt.Menu())
 	}
+}
+
+// Issue #1414: an app puts its rows' context menus on the rows' own
+// content, a box as big as the row inside the list's row element. The
+// row's label names that row element, and the right-click at its center
+// opens the content's menu, as RightClickAt there does: RightClick by the
+// label must too.
+func TestRightClickRowWithMenuOnItsContent(t *testing.T) {
+	titles := []string{"Write the docs", "Add the feature", "Fix the bug"}
+	var sel Selection[int]
+	s := ListState{Selection: &sel, Label: func(i int) string { return titles[i] }}
+	menuRow := -1
+	tt := NewTester(func(c *Context) {
+		List(c, &s, len(titles), func(i int) {
+			Box(c).Height(30).Grow(1).ContextMenu(func(m *Menu) {
+				menuRow = i
+				m.Item("Delete")
+			}).Children(func() {
+				Text(c, titles[i])
+			})
+		}).Grow(1)
+	}, 300, 200)
+	defer tt.rt.close()
+	tt.Frame()
+	if err := tt.Click("Add the feature"); err != nil {
+		t.Fatal(err)
+	}
+	if got := chosenRows(&sel); !slices.Equal(got, []int{1}) {
+		t.Fatalf("click on the row: chose %v", got)
+	}
+	if err := tt.RightClick("Add the feature"); err != nil {
+		t.Fatal(err)
+	}
+	if menuRow != 1 || !slices.Equal(tt.Menu(), []string{"Delete"}) {
+		t.Fatalf("right-click on the row: menu of row %d, %v", menuRow, tt.Menu())
+	}
+	tt.CloseMenu()
 }
 
 // IgnoreInput does not stop the system from delivering pointer input to a

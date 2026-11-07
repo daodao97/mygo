@@ -80,6 +80,35 @@ desktop's Reduce Motion. Text fades by its color and the rest of blocks
 paint only: nothing is laid out again for it. What is still to reveal
 when the message switches to `View` keeps coming in.
 
+### Once a reply has shown
+
+The last bytes of a reply arrive before its last words show: the pace
+is still catching up, and they still fade in. `Revealed`, given the
+element `View` or `Stream` returned, reports whether it shows all of its
+text, done fading in, so that a chat shows a reply's time and actions
+then, not ahead of words still coming in:
+
+```go
+var md ui.Element
+if m.Done {
+	md = markdown.View(c, m.Text, &app.md)
+} else {
+	md = markdown.Stream(c, m.Text, &app.md)
+}
+if m.Done && markdown.Revealed(md) {
+	ui.Text(c, m.Time).TextColor(c.Theme().TextMuted)
+}
+```
+
+It tells what the frame shows: read it after the view, and build what it
+decides below it. The view asks for frames while it reveals and fades,
+so the time shows on its own once the fade ends. Text that shows at once
+(`AtOnce`, a `View` of text no `Stream` left to reveal) is revealed in
+its first frame, and without a fade (a negative `Fade`, Reduce Motion)
+once its last word shows. More text makes it false again. Of a `Stream`
+it tells only that what came so far shows, so check that the reply is
+complete too, as `m.Done` above.
+
 ## A chat
 
 Show each message as a row of a [list](list.md) that follows its end:

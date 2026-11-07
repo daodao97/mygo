@@ -66,6 +66,8 @@ func TestGenerate(t *testing.T) {
 		`export type Status = "todo" | "done";`,
 		`export type Priority = 0 | 1 | 2;`,
 		"export interface FixtureChannel {\n  name: string;\n}",
+		"export interface FixtureRecord {\n  values: Record<string, string>;\n}",
+		"export interface FixturePromise {\n  done: boolean;\n}",
 		"/** Task is a unit of work. */\nexport interface Task {",
 		"  id: number;\n",
 		"  /** Title of the task. */\n  title: string;\n",
@@ -76,6 +78,8 @@ func TestGenerate(t *testing.T) {
 		"  meta?: Record<string, unknown>;\n",
 		"  parent?: Task;\n",
 		"  channel?: FixtureChannel;\n",
+		"  record?: FixtureRecord;\n",
+		"  promise?: FixturePromise;\n",
 		"  count: string;\n",
 		"  countPtr: string | null;\n",
 		"  raw: unknown;\n",
@@ -93,6 +97,8 @@ func TestGenerate(t *testing.T) {
 		"  add(...tasks: Task[]): Promise<void> {\n    return call(\"Tasks.Add\", ...tasks);\n  },",
 		"  count(): Promise<number> {",
 		"  delete(arg0: number): Promise<void> {",
+		"  dispatch(call_: string, call__: string): Promise<void> {\n    return call(\"Tasks.Dispatch\", call_, call__);\n  },",
+		"  dispatchMany(...call_: string[]): Promise<void> {\n    return call(\"Tasks.DispatchMany\", ...call_);\n  },",
 		"  watch(status: Status, updates: Channel<Task>): Promise<void> {\n    return call(\"Tasks.Watch\", status, updates);\n  },",
 		`  taskAdded: event<Task>("task-added"),`,
 	} {
@@ -145,7 +151,11 @@ const page = await Tasks.list(s, 10);
 const first: Task | undefined = page.items[0];
 const channel: FixtureChannel | undefined = first?.channel;
 channel?.name.toUpperCase();
+first?.record?.values["key"]?.toUpperCase();
+const done: boolean | undefined = first?.promise?.done;
 await Tasks.add({ id: 1, title: "x", status: "done", priority: 2, tags: [], due: null, count: "1", countPtr: "9007199254740993", raw: null, data: "", scores: {}, matrix: [], children: [], extra: { A: true }, NoTag: "", createdAt: "" });
+await Tasks.dispatch("first", "second");
+await Tasks.dispatchMany("first", "second");
 const off = events.taskAdded.on((t) => t.title.toUpperCase());
 off();
 runtime().window.minimize();

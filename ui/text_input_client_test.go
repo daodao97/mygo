@@ -357,3 +357,72 @@ func TestFocusRevealsClientCaret(t *testing.T) {
 		t.Fatalf("focusing the field scrolled to %v, which doesn't show its caret at 600", s.Y)
 	}
 }
+
+// Space types a space into an app's text field in a scroll view, and
+// Shift+Space a space too, without paging the view, as in a web page's
+// field (#1410); a key that types nothing, as PageDown, still scrolls it.
+func TestSpaceInTextClientDoesNotScroll(t *testing.T) {
+	var s ScrollState
+	c := &primitiveClient{}
+	tt := coreNewTester(func(ctx *context) {
+		coreScroll(ctx).Fill().TrackScroll(&s).Children(func() {
+			coreBox(ctx).Size(250, 40).Shrink(0).HandleTextInput(c).AutoFocus()
+			coreBox(ctx).Height(2000).Shrink(0)
+		})
+	}, 300, 200)
+	defer tt.rt.close()
+	tt.TypeKey(0, KeySpace, " ")
+	tt.Frame()
+	if c.text != " " || s.Y != 0 {
+		t.Fatalf("Space typed %q and scrolled to %v", c.text, s.Y)
+	}
+	tt.Key(0, KeyPageDown)
+	tt.Frame()
+	y := s.Y
+	if y == 0 {
+		t.Fatal("PageDown did not scroll the view around the field")
+	}
+	tt.TypeKey(Shift, KeySpace, " ")
+	tt.Frame()
+	if c.text != "  " || s.Y != y {
+		t.Fatalf("Shift+Space typed %q and scrolled from %v to %v", c.text, y, s.Y)
+	}
+}
+
+// An element taking text itself (TextCaret) whose HandleInput leaves the
+// key of Space, for the text that comes after it, doesn't page the view
+// around it either; a read-only text input, which takes no text, does.
+func TestSpaceScrollsOnlyWithoutTextFocus(t *testing.T) {
+	var s ScrollState
+	typed, readOnly, value := "", false, "fixed"
+	tt := coreNewTester(func(ctx *context) {
+		coreScroll(ctx).Fill().TrackScroll(&s).Children(func() {
+			if readOnly {
+				coreTextInput(ctx, &value).ReadOnly(true).AutoFocus().Width(250)
+			} else {
+				coreBox(ctx).Size(250, 40).Shrink(0).Focusable().AutoFocus().TextCaret(Rect{W: 1, H: 16}).HandleInput(func(ev InputEvent) bool {
+					if ev.Kind == InputText {
+						typed += ev.Text
+						return true
+					}
+					return false
+				})
+			}
+			coreBox(ctx).Height(2000).Shrink(0)
+		})
+	}, 300, 200)
+	defer tt.rt.close()
+	tt.TypeKey(0, KeySpace, " ")
+	tt.Frame()
+	if typed != " " || s.Y != 0 {
+		t.Fatalf("Space typed %q and scrolled to %v", typed, s.Y)
+	}
+	readOnly = true
+	tt.Frame()
+	tt.Frame()
+	tt.TypeKey(0, KeySpace, " ")
+	tt.Frame()
+	if value != "fixed" || s.Y == 0 {
+		t.Fatalf("Space in a read-only input made it %q and scrolled to %v", value, s.Y)
+	}
+}

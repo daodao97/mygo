@@ -24,7 +24,11 @@ as an icon button: `tt.Click("Close")`, `tt.Find("Volume")`,
 `Click`, `ClickWith` and `RightClick` check the first matching element
 before sending input. They return an error if it has no visible area or
 the center of that area would reach another control or nothing. They do
-not scroll it into view or search for another uncovered point. `Find`
+not scroll it into view or search for another uncovered point. On an
+element without a context menu of its own, as a list's row, `RightClick`
+opens the menu of the content the element holds at that point, as a
+right-click there does; a control inside it that takes clicks or input
+of its own is another control. `Find`
 still returns a matching clipped box, which may have zero width or height;
 `ClickAt` sends input at the given coordinates without a named target.
 

@@ -276,4 +276,22 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/screenpin.png",
   },
+  {
+    name: "Sotto",
+    description:
+      "A lightweight, unobtrusive desktop translator built for Windows users and developers.",
+    url: "https://github.com/doyuli/sotto",
+    author: "doyuli",
+    mode: "web",
+    image: "/showcase/sotto.png",
+  },
+  {
+    name: "TanGit",
+    description:
+      "An open-source Git desktop client built on Lazygit. Stage individual diff lines, browse history and branch graphs, resolve conflicts, and work across repositories on macOS, Windows and Linux with keyboard-driven native UI.",
+    url: "https://github.com/FleetingEcho/TanGit",
+    author: "FleetingEcho",
+    mode: "native",
+    image: "/showcase/tangit.jpg",
+  },
 ]

@@ -69,6 +69,7 @@ func (w *window) Zoom() float64                              { return 1 }
 func (w *window) SetUserAgent(ua string)                     {}
 func (w *window) UserAgent() string                          { return "" }
 func (w *window) ProcessID() int                             { return 0 }
+func (w *window) GPUProcessID() int                          { return 0 }
 func (w *window) IsAudible() bool                            { return false }
 func (w *window) SetAudioMuted(bool)                         {}
 func (w *window) IsAudioMuted() bool                         { return false }

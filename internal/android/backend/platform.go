@@ -554,6 +554,9 @@ func (androidShell) Beep() {}
 // one from its own resources. There is no path-keyed icon lookup to forward.
 func (androidShell) FileIcon(string, int) ([]byte, error) { return nil, platform.ErrUnsupported }
 
+// TypeIcon reports unsupported, as FileIcon does.
+func (androidShell) TypeIcon(string, int) ([]byte, error) { return nil, platform.ErrUnsupported }
+
 // OpenApplication reports unsupported: "the application at a path" is a desktop
 // notion too (a .app bundle or an .exe). Android starts apps by package name
 // through an explicit intent, which is a different call with a different

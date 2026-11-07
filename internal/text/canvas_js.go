@@ -312,6 +312,21 @@ func (e *canvasEngine) shape(text []rune, style Style, spans []Span, width float
 		l := it.Line()
 		breaks = append(breaks, l.Offset+len(l.Text))
 	}
+	if width > 0 && keepsAnyWords(style.Lang, spans) {
+		// Korean breaks between words (keepWordsWhole).
+		at := make([]bool, len(text)+1)
+		for _, b := range breaks {
+			at[b] = true
+		}
+		if keepWordsWhole(at, text, style.Lang, spans) {
+			breaks = breaks[:0]
+			for i, ok := range at {
+				if ok {
+					breaks = append(breaks, i)
+				}
+			}
+		}
+	}
 	var bounds []int
 	for it := e.seg.GraphemeIterator(); it.Next(); {
 		g := it.Grapheme()

@@ -31,7 +31,7 @@ const (
 func (c *context) SetMenuPresentation(p MenuPresentation) {
 	if p == PopoverMenus {
 		linkMenusInWindow.Do(func() {
-			menusInWindow.contextMenu, menusInWindow.menuButton = (*node).PopoverMenu, (*node).PopoverMenuButton
+			menusInWindow.contextMenu, menusInWindow.menuButton = (*node).PopoverMenu, popoverMenuButton
 			menusInWindow.openEditMenu, menusInWindow.drawEditMenu = (*engine).openDrawnEditMenu, (*engine).drawEditMenu
 		})
 	}
@@ -51,6 +51,10 @@ var (
 	}
 	linkMenusInWindow sync.Once
 )
+
+// popoverMenuButton is PopoverMenuButton without options, for Menu's
+// buttons in a window that draws its menus.
+func popoverMenuButton(e *node, build func(m *Menu)) *node { return e.PopoverMenuButton(build) }
 
 // MenuPresentation returns how the window shows its popup menus
 // (SetMenuPresentation).

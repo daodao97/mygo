@@ -130,6 +130,10 @@ func TestMain(m *testing.M) {
 		cookiesWhileOpening()
 		return
 	}
+	if os.Getenv("MYGO_E2E_WEBVIEW_OFF_MAIN") == "1" {
+		webViewOffMain()
+		return
+	}
 	if os.Getenv("MYGO_E2E_COOKIE_VIEW") == "1" {
 		cookieViewApp()
 		return
@@ -1362,6 +1366,51 @@ func TestPageProcessID(t *testing.T) {
 	}
 	if pid <= 0 || pid == os.Getpid() {
 		t.Errorf("ProcessID = %d, want another process than the app's (%d)", pid, os.Getpid())
+	}
+}
+
+// gpuPage draws on a canvas with 2D and WebGL contexts and loads a second
+// of silence in an audio element, which WebKit does in its GPU process,
+// starting it.
+const gpuPage = `<canvas id=c width=64 height=64></canvas><script>
+const g = c.getContext('2d'); g.fillStyle = 'red'; g.fillRect(0, 0, 64, 64);
+const gl = document.createElement('canvas').getContext('webgl'); if (gl) gl.clear(gl.COLOR_BUFFER_BIT);
+const n = 8000, wav = new Uint8Array(44 + n).fill(128), v = new DataView(wav.buffer);
+const tag = (at, s) => [...s].forEach((ch, i) => v.setUint8(at + i, ch.charCodeAt(0)));
+tag(0, 'RIFF'); v.setUint32(4, 36 + n, true); tag(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+v.setUint16(32, 1, true); v.setUint16(34, 8, true); tag(36, 'data'); v.setUint32(40, n, true);
+const a = new Audio(URL.createObjectURL(new Blob([wav], {type: 'audio/wav'}))); a.load(); document.body.append(a);
+</script>`
+
+// GPUProcessID is WebKit's GPU process on macOS (com.apple.WebKit.GPU) and
+// WebView2's GPU process on Windows, one of WebView2's processes, neither
+// the app's own nor ProcessID's; Linux has none.
+func TestPageGPUProcessID(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200})
+	w.Page().LoadHTML(gpuPage, "")
+	waitFor(t, w, "document.readyState === 'complete'")
+	if runtime.GOOS == "linux" {
+		if pid := w.Page().GPUProcessID(); pid != 0 {
+			t.Errorf("GPUProcessID = %d on Linux, want 0", pid)
+		}
+		return
+	}
+	var pid int
+	wait.Until(t, "a GPU process", func() bool { pid = w.Page().GPUProcessID(); return pid != 0 })
+	if pid < 0 || pid == os.Getpid() || pid == w.Page().ProcessID() {
+		t.Errorf("GPUProcessID = %d, want another process than the app's (%d) and ProcessID's (%d)", pid, os.Getpid(), w.Page().ProcessID())
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		out, err := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(pid)).Output()
+		if err != nil || !strings.Contains(string(out), "com.apple.WebKit.GPU") {
+			t.Errorf("GPUProcessID %d is %q (%v), want com.apple.WebKit.GPU", pid, strings.TrimSpace(string(out)), err)
+		}
+	case "windows":
+		if procs := webViewProcesses(); !slices.Contains(procs, pid) {
+			t.Errorf("GPUProcessID %d is none of WebView2's processes %v", pid, procs)
+		}
 	}
 }
 
@@ -3838,6 +3887,66 @@ func TestContentWindowComposingKeys(t *testing.T) {
 	}
 	pressKey(w, 53, "\x1b")
 	eventually(t, "Escape closing the dialog", func() bool { o, _, _ := state(); return !o })
+}
+
+// TestContentWindowComposingReturn presses Return in a chat box while an
+// input method composes. The Korean one commits the syllable and passes
+// Return on (doCommandBySelector:): the box sends the message on that
+// press, as a text view acts on it. The Japanese one commits the
+// candidate and keeps Return: nothing is sent. A command asked for while
+// the input method still composes, or for a key the content got already,
+// sends no key.
+func TestContentWindowComposingReturn(t *testing.T) {
+	var frames atomic.Int32
+	draft := ""
+	var sent []string
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		ui.TextArea(c, &draft).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
+			if k.Key == ui.KeyEnter && k.Mods == 0 {
+				sent = append(sent, k.Text())
+				k.SetText("")
+				return true
+			}
+			return false
+		})
+	}
+	state := func() (d string, s []string) {
+		mygo.RunOnMain(func() { d, s = draft, slices.Clone(sent) })
+		return
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Composing Return", Width: 400, Height: 200, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 1 })
+
+	// Korean: Return commits 한 and sends it.
+	compose(w, "한", 1, false)
+	if !pressKeyComposing(w, 36, "\r", "한", "insertNewline:") {
+		t.Skip("input method automation not available on this platform")
+	}
+	eventually(t, "Return sending the committed syllable", func() bool { _, s := state(); return len(s) == 1 })
+	if d, s := state(); s[0] != "한" || d != "" {
+		t.Fatalf("sent %q, the draft %q", s, d)
+	}
+
+	// Japanese: Return commits 日本 and is the input method's.
+	compose(w, "にほん", 3, false)
+	pressKeyComposing(w, 36, "\r", "日本", "")
+	eventually(t, "the committed candidate", func() bool { d, _ := state(); return d == "日本" })
+
+	// The input method asks for the command while it still composes.
+	compose(w, "ㄱ", 1, false)
+	pressKeyComposing(w, 36, "\r", "", "insertNewline:")
+	compose(w, "가", 0, true)
+	eventually(t, "the composition committed", func() bool { d, _ := state(); return d == "日本가" })
+
+	// No composition: the key goes to the content once, not again for its
+	// command.
+	pressKeyComposing(w, 36, "\r", "", "insertNewline:")
+	compose(w, "x", 0, true)
+	eventually(t, "the text typed after Return", func() bool { d, _ := state(); return d == "x" })
+	if _, s := state(); len(s) != 2 || s[1] != "日本가" {
+		t.Fatalf("sent %q, want [한 日本가]", s)
+	}
 }
 
 // TestContentWindowTextKeys has a composer's OnTextKey take Return and
