@@ -37,6 +37,16 @@ type Channel struct {
 	Name string `json:"name"`
 }
 
+// Record has a map that uses TypeScript's Record utility type.
+type Record struct {
+	Values map[string]string `json:"values"`
+}
+
+// Promise shares its name with the return type of generated methods.
+type Promise struct {
+	Done bool `json:"done"`
+}
+
 // Task is a unit of work.
 type Task struct {
 	ID int64 `json:"id"`
@@ -49,6 +59,8 @@ type Task struct {
 	Meta     map[string]any   `json:"meta,omitempty"`
 	Parent   *Task            `json:"parent,omitzero"`
 	Channel  *Channel         `json:"channel,omitzero"`
+	Record   *Record          `json:"record,omitzero"`
+	Promise  *Promise         `json:"promise,omitzero"`
 	Secret   string           `json:"-"`
 	Count    int64            `json:"count,string"`
 	CountPtr *int64           `json:"countPtr,string"`

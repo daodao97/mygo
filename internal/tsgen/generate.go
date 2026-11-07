@@ -72,8 +72,8 @@ var runtimeTypes = map[string]string{
 	"github.com/egoist/mygo.ThemePreferences": "ThemePreferences",
 }
 
-// runtimeSentinel reserves mygo-runtime's type names in generator.taken,
-// so types of the app with those names get others.
+// runtimeSentinel reserves imported and built-in type names in
+// generator.taken, so types of the app with those names get others.
 type runtimeSentinel struct{}
 
 // Generate renders the TypeScript client.
@@ -94,6 +94,9 @@ func Generate(m Model) ([]byte, error) {
 		busy:  map[reflect.Type]bool{},
 
 		imported: map[string]bool{},
+	}
+	for _, name := range []string{"Promise", "Record"} {
+		g.taken[name] = reflect.TypeFor[runtimeSentinel]()
 	}
 	for _, name := range runtimeTypes {
 		g.taken[name] = reflect.TypeFor[runtimeSentinel]()
