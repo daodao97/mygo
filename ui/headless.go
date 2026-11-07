@@ -631,25 +631,39 @@ func (t *Tester) targetCenter(s string, button int) (float32, float32, error) {
 	if button == 1 {
 		flags |= flagContextMenu
 	}
-	receiver := func(chain []uint64) *state {
+	receiverOf := func(chain []uint64, f uint32) *state {
 		for _, id := range chain {
 			if st := t.rt.states[id]; st != nil &&
-				(st.flags&flags != 0 || st.input != nil || st.webView != nil) {
+				(st.flags&f != 0 || st.input != nil || st.webView != nil) {
 				return st
 			}
 		}
 		return nil
 	}
+	receiver := func(chain []uint64) *state { return receiverOf(chain, flags) }
 	want := receiver(named)
 	// A field's label can name its outer container, which delegates focus
 	// to an input nested inside. Clicking that input is the same target.
 	matches := slices.Contains(hit, n.id)
 	if want != nil {
-		matches = receiver(hit) == want && t.rt.handler(hit) == t.rt.handler(named) &&
+		got := receiver(hit)
+		matches = got == want && t.rt.handler(hit) == t.rt.handler(named) &&
 			(button != 1 || t.rt.menuTarget(hit) == t.rt.menuTarget(named))
+		// A control without a menu of its own, as a list's row, opens
+		// the menu of the content it holds (#1414): the press reaches the
+		// named control, nothing between takes a primary click or input,
+		// and the menu opened is that content's. A control over the named
+		// one is not inside it, and one inside with a menu of its own
+		// keeps it.
+		if i := slices.Index(hit, want.id); !matches && button == 1 && i > 0 &&
+			want.flags&flagContextMenu == 0 && got != nil && got != want &&
+			receiverOf(hit[:i], interactive) == nil && t.rt.menuTarget(hit) == got &&
+			t.rt.handler(hit) == t.rt.handler(named) {
+			matches = true
+		}
 		for i := range t.rt.c.used {
 			e := t.rt.nodeAt(uint32(i))
-			if e.id == want.id && e.focusTo != nil && receiver(hit) == e.focusTo.st && slices.Contains(hit, n.id) {
+			if e.id == want.id && e.focusTo != nil && got == e.focusTo.st && slices.Contains(hit, n.id) {
 				matches = true
 				break
 			}
@@ -701,7 +715,8 @@ func (t *Tester) ClickAtWith(mods Modifiers, x, y float32) {
 
 // RightClick clicks the center of the element showing text or labeled s
 // with the secondary button. It checks the target before sending input,
-// as Click does.
+// as Click does. On an element without a context menu of its own, as a
+// list's row, it opens the menu of the content the element holds there.
 func (t *Tester) RightClick(s string) error {
 	x, y, err := t.targetCenter(s, 1)
 	if err != nil {
