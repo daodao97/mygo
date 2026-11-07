@@ -3027,7 +3027,9 @@ either.
   through the inverse. Nested
   transformed or rounded clips use cached masks, independent of content
   moving within them, once they hold content that a transform does more
-  than move (`scene.Reshaped`); hard clips in the drawing's coordinates,
+  than move (`scene.Reshaped`), or a clip reaching into their rounded
+  corners (`scene.ClipCorners`, which the scissor rectangles of outer
+  clips would not cut); hard clips in the drawing's coordinates,
   and clips around content only moved, evaluate on the GPU. Backdrop
   effects map local samples into the frame. With a GPU, every frame draws
   there, including resting changes to transformed content.
@@ -4671,7 +4673,8 @@ either.
   shader that computes the signed distance to rounded rectangles, Evan
   Wallace's blurred rounded box, gradients, stripes, the dashes of borders,
   atlas coverage and the innermost rounded clip; outer clips are scissor
-  rectangles. The builder omits operations wholly hidden by the certainly
+  rectangles, and a clip reaching into an outer one's rounded corners cuts
+  with that one's mask as well. The builder omits operations wholly hidden by the certainly
   opaque core of a later fill, keeping at most eight occluders and treating
   backdrop-reading effects as barriers. Its planner shares clipping rules
   with drawing, grows shadow support before transforming it, and skips

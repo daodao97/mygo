@@ -99,6 +99,14 @@ func TestDrawsAsTheCPURenderer(t *testing.T) {
 			pix, stride := r.readBack(t)
 			gputest.Compare(t, "d3d11-masked-clips", pix, stride, s)
 		}
+		s = gputest.CornerClipScene()
+		for range 2 {
+			if err := r.draw(s); err != nil {
+				t.Fatal(err)
+			}
+			pix, stride := r.readBack(t)
+			gputest.Compare(t, "d3d11-corner-clips", pix, stride, s)
+		}
 		r.Release()
 	}
 }

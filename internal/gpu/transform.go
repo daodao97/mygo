@@ -54,9 +54,14 @@ func (b *Builder) prepare(in *Instance, m scene.Affine, c *clip) bool {
 	// when a text input or custom clipped drawing moves within it. Drawing
 	// that a translation of the clip's moved shares them too, folded into
 	// the frame's (scene.TranslationFolder): the clip's rectangle moves.
+	// So does drawing that nothing transforms, or that a translation only
+	// moves, in a clip in the frame's coordinates (as a clip only moved
+	// is, scene.MovedClip), whose rectangle moves the other way: as a
+	// pane reaching into the rounded corners of the frame around it
+	// (markEnclosing), which then needs no mask of its own.
 	shared, dx, dy := c.shape.Transform == m && m.Set, float32(0), float32(0)
-	if !m.Set {
-		dx, dy, shared = c.shape.Transform.Translation()
+	if tx, ty, moved := m.Translation(); !c.shape.Transform.Set && (!m.Set || moved) {
+		dx, dy, shared = -tx, -ty, true
 	}
 	if c.shape.Radii == [4]float32{} && !c.shape.Masks() && shared && len(b.stack) > 1 {
 		parent := &b.stack[len(b.stack)-2]

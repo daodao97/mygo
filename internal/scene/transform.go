@@ -189,6 +189,90 @@ func Reshaped(s *Scene, op *Op) bool {
 	return false
 }
 
+// ClipCorners follows the clips of a scene, op by op, to find those that
+// reach into the rounded corners of a clip around them (Push). The GPU's
+// renderers cut drawing with the innermost clip's shape in the shader and
+// with the scissor rectangles of the others, which cut no corners: drawing
+// in a clip that reaches into those of one around it is cut with a mask of
+// the clips instead (gpu.Builder), whose pixels at the clips' edges
+// differ from the shader's by a unit in the last place (Differ).
+type ClipCorners struct {
+	open []cornerClip
+}
+
+type cornerClip struct {
+	// area is what the clip and those around it let through, in the
+	// frame; rect its rectangle, and reach how far from its corners
+	// their curves and their antialiasing reach, zero for a square
+	// corner or a clip transformed (which is cut with a mask anyway).
+	area, rect Rect
+	reach      [4]float32
+}
+
+// contReach is how far from its corner the curve of a continuous corner
+// of radius 1 leaves the edges.
+const contReach = 1.528665
+
+// Reset forgets the clips pushed, for a new scene.
+func (c *ClipCorners) Reset() { c.open = c.open[:0] }
+
+// Push enters op, an OpPushClip, and returns the place among the clips
+// open around it (0 the outermost) of the innermost whose rounded corners
+// what op lets through reaches into, or -1 for none.
+func (c *ClipCorners) Push(op *Op) int {
+	o := MovedClipOp(op)
+	k := cornerClip{area: o.Transform.Bounds(o.Rect)}
+	if n := len(c.open); n > 0 {
+		k.area = k.area.Intersect(c.open[n-1].area)
+	}
+	at := -1
+	for j := len(c.open) - 1; j >= 0 && !k.area.Empty(); j-- {
+		if c.open[j].cuts(k.area) {
+			at = j
+			break
+		}
+	}
+	if !o.Transform.Set {
+		k.rect = o.Rect
+		ext := float32(1)
+		if o.Continuous {
+			ext = contReach
+		}
+		for i, r := range FitRadii(o.Rect, o.Radii) {
+			if r > 0 {
+				k.reach[i] = r*ext + 1
+			}
+		}
+	}
+	c.open = append(c.open, k)
+	return at
+}
+
+// Pop leaves the innermost clip, at an OpPopClip.
+func (c *ClipCorners) Pop() {
+	if n := len(c.open); n > 0 {
+		c.open = c.open[:n-1]
+	}
+}
+
+// cuts reports whether a, not empty, overlaps a box of a rounded corner
+// of the clip, where its curve cuts.
+func (k *cornerClip) cuts(a Rect) bool {
+	r, e := k.rect, k.reach
+	boxes := [4]Rect{
+		{r.X, r.Y, e[0], e[0]},
+		{r.X + r.W - e[1], r.Y, e[1], e[1]},
+		{r.X + r.W - e[2], r.Y + r.H - e[2], e[2], e[2]},
+		{r.X, r.Y + r.H - e[3], e[3], e[3]},
+	}
+	for i, b := range boxes {
+		if e[i] > 0 && a.X < b.X+b.W && b.X < a.X+a.W && a.Y < b.Y+b.H && b.Y < a.Y+a.H {
+			return true
+		}
+	}
+	return false
+}
+
 // moves reports whether m only moves what it maps, without scaling,
 // turning, skewing it or showing it in perspective.
 func (m Affine) moves() bool {

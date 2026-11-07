@@ -98,6 +98,13 @@ func TestDrawsAsTheCPURenderer(t *testing.T) {
 				}
 				gputest.Compare(t, "gl-masked-clips", read(), s.Width*4, s)
 			}
+			s = gputest.CornerClipScene()
+			for range 2 {
+				if err := r.Render(s); err != nil {
+					t.Fatal(err)
+				}
+				gputest.Compare(t, "gl-corner-clips", read(), s.Width*4, s)
+			}
 		})
 	}
 }

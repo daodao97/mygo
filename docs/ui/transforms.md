@@ -173,8 +173,10 @@ Nested rounded or transformed clips use retained coverage masks once
 content inside them is scaled, rotated, skewed or in perspective. Content
 that a transform only moves, such as a label translated by a fraction of a
 pixel, needs no mask: its clips are cut as for content that isn't
-transformed. Moving content under a stationary clip reuses that mask
-without CPU pixel work.
+transformed. A clip that reaches into the rounded corners of a clip around
+it, such as a clipped column filling the bottom of a rounded card, uses the
+rounded clip's mask too, whatever its content. Moving content under a
+stationary clip reuses that mask without CPU pixel work.
 Hard clips sharing their content's coordinates, including transformed text
 inputs, are evaluated directly in the fragment shader and reuse their
 ancestor's mask. Changing a complex clip recomputes its coverage; resizing
