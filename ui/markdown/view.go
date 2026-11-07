@@ -50,6 +50,21 @@ type Options struct {
 	// AnchorVersion scrolls to Anchor again when it changes, for the same
 	// heading asked for twice.
 	AnchorVersion uint64
+	// Resolve, when set, makes mentions (@octocat) and references to
+	// issues and pull requests (#123) links: it returns where one goes,
+	// which OnLink, or else the router or a ui.Link, opens, as a path of
+	// the app's to open it in place, or false to leave it text, as
+	// GitHub does for a person or an issue it does not know. Without it,
+	// they show as text. It is asked for each one shown whenever the view
+	// builds, so it looks up what the app has at hand, as in a map, and
+	// paragraphs follow when its answers change.
+	Resolve func(in parser.Inline) (dest string, ok bool)
+	// Preview, when set, returns what shows while the pointer rests on a
+	// link to dest, a mention's or a reference's included: a function
+	// filling the tip, as ui.TooltipBase does, or nil for the address
+	// alone. It runs as the view builds, so it shows what the app has at
+	// hand, fetching the rest in the background.
+	Preview func(c *ui.Context, dest string) func(tip ui.Element)
 	// LoadImage loads the image at url, on a goroutine of its own, for the
 	// views to show; until it has, they show its description. Without
 	// it, images show as their descriptions. FileImages loads files.
@@ -310,7 +325,8 @@ func (st *viewState) blocks(c *ui.Context, parent int, tight bool, base spanStyl
 	prevHeading := 0
 	for j := parent + 1; j < d.Block(parent).Next; j = d.Block(j).Next {
 		b := d.Block(j)
-		if b.Kind == parser.FootnoteDefinition {
+		if b.Kind == parser.FootnoteDefinition || b.Kind == parser.Paragraph && d.LineCount(j) == 0 {
+			// Footnotes show at the end, and an alert's marker not at all.
 			continue
 		}
 		top := float32(0)
@@ -407,6 +423,9 @@ func (st *viewState) defaultBlock(c *ui.Context, i int, tight bool, base spanSty
 			st.note(el.ID(), i, 0)
 		})
 	case parser.Quote:
+		if b.Alert != parser.NoAlert {
+			return st.alert(c, i, b.Alert, base)
+		}
 		s := base
 		s.color = th.QuoteText
 		// The bar on the side lines start: the right right to left.
@@ -418,6 +437,24 @@ func (st *viewState) defaultBlock(c *ui.Context, i int, tight bool, base spanSty
 		return st.table(c, i, base)
 	}
 	return ui.Box(c)
+}
+
+// alert builds a GitHub alert: a quote whose bar, icon and title take
+// its kind's color, its text the color of text.
+func (st *viewState) alert(c *ui.Context, i int, a parser.Alert, base spanStyle) ui.Element {
+	th := &st.th
+	color := th.Alerts[a-1]
+	q := ui.Column(c).BorderStartWidth(th.QuoteBarWidth).BorderColor(color).PaddingStart(th.em(0.85))
+	return q.Children(func() {
+		title := ui.Row(c).AlignItems(ui.Center).Gap(th.em(0.5)).TextColor(color).Margin(0, 0, th.em(th.ItemSpacing*2), 0)
+		title.Children(func() {
+			if icon := alertIcon(a); icon != nil {
+				ui.Icon(c, icon)
+			}
+			ui.Text(c, a.String()).FontWeight(th.StrongWeight)
+		})
+		st.blocks(c, i, false, base)
+	})
 }
 
 // fadeIn fades in a block revealed a moment ago: text fades by its
@@ -446,7 +483,7 @@ func (st *viewState) para(i int, base spanStyle) *para {
 	st.doc.Inlines(i) // their revision
 	pc := &st.paras[i]
 	fading := st.fade != nil && st.fade(max(b.End-1, b.Start)) < 1
-	if pc.ok && pc.start == b.Start && pc.end == b.End && pc.kind == b.Kind && pc.rev == b.Revision() && pc.base == base && !pc.p.fading && !fading && !b.Healed() {
+	if pc.ok && pc.start == b.Start && pc.end == b.End && pc.kind == b.Kind && pc.rev == b.Revision() && pc.base == base && !pc.p.fading && !fading && !b.Healed() && st.sameResolved(i, &pc.p) {
 		return &pc.p
 	}
 	pc.start, pc.end, pc.kind, pc.rev, pc.base, pc.ok = b.Start, b.End, b.Kind, b.Revision(), base, true
@@ -456,8 +493,35 @@ func (st *viewState) para(i int, base spanStyle) *para {
 	sb.notes = st.noteNumber
 	sb.math = st.o.InlineMath
 	sb.linkIcon = st.o.LinkIcon
+	sb.resolve = st.o.Resolve
 	sb.build(&pc.p, base)
 	return &pc.p
+}
+
+// sameResolved reports whether the mentions and references of block i
+// resolve where they did as p was built, Options.Resolve set or not
+// alike.
+func (st *viewState) sameResolved(i int, p *para) bool {
+	if len(p.refs) == 0 {
+		return true
+	}
+	if (st.o.Resolve != nil) != p.withResolve {
+		return false
+	}
+	if st.o.Resolve == nil {
+		return true
+	}
+	in := st.doc.Inlines(i)
+	for k, x := range p.refs {
+		dest, ok := st.o.Resolve(in[x])
+		if !ok {
+			dest = ""
+		}
+		if dest != p.resolved[k] {
+			return false
+		}
+	}
+	return true
 }
 
 // paragraph builds the text of block i: a paragraph, a heading or a cell.
@@ -509,6 +573,10 @@ func (st *viewState) piece(c *ui.Context, block int, pc *piece) {
 		}
 	default:
 		in := st.doc.Inlines(block)[pc.link]
+		if pc.dest != "" {
+			// A mention or a reference, which Options.Resolve made a link.
+			in.Dest, in.Auto = pc.dest, true
+		}
 		st.link(c, &in, func() { ui.RichText(c, pc.spans...) })
 	}
 }
@@ -540,11 +608,22 @@ func (st *viewState) link(c *ui.Context, in *parser.Inline, children func()) {
 	}
 	l.TextColor(st.th.Link)
 	l.Children(children)
-	switch {
-	case in.Title != "":
-		l.Tooltip(in.Title)
-	case !in.Auto && !in.Pending && dest != "" && !strings.HasPrefix(dest, "#"):
-		l.Tooltip(dest)
+	// What the tip says, which describes the link to assistive technology.
+	tip := in.Title
+	if tip == "" && !in.Auto && !in.Pending && dest != "" && !strings.HasPrefix(dest, "#") {
+		tip = dest
+	}
+	if st.o.Preview != nil && !in.Pending && dest != "" {
+		if fill := st.o.Preview(c, dest); fill != nil {
+			if tip != "" {
+				l.Description(tip)
+			}
+			ui.TooltipBase(c, l, fill)
+			return
+		}
+	}
+	if tip != "" {
+		l.Tooltip(tip)
 	}
 }
 
