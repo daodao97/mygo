@@ -37,6 +37,12 @@ Chosen and hovered rows are square from edge to edge, as in Finder's list
 view; `RoundRows` rounds their corners at the theme's `Radius`, as a list's
 rows are, for an app whose other lists are rounded.
 
+Rows are at least the theme's `Space(8)` high, and as high as their tallest
+cell. `RowHeight` makes every row exactly that high instead, as AppKit's
+`rowHeight` does, with each cell's content in the middle: a denser table,
+showing more rows, for a log or a list of branches. The header keeps its
+height.
+
 ## Choosing cells
 
 With `Selection`, `CellSelect` makes the table choose a block of cells, as a

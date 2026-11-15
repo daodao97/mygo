@@ -696,3 +696,37 @@ func TestTableHeaderCell(t *testing.T) {
 		t.Fatalf("hovered %d", hovered)
 	}
 }
+
+// With RowHeight every row is that high, a short one as a tall one would
+// be; the header keeps the theme's height.
+func TestTableRowHeight(t *testing.T) {
+	names := []string{"a.txt", "b.txt", "c.txt"}
+	cols := []TableColumn{{Title: "Name"}, {Title: "Size", Width: 80, Align: End}}
+	s := ListState{}
+	tt := coreNewTester(tableView(&s, cols, names), 500, 300)
+	r0, _ := rowBox(tt, &s, 0)
+	if want := LightTheme().Space(8); r0.H != want {
+		t.Fatalf("a row by default is %v high, want %v", r0.H, want)
+	}
+	s = ListState{RowHeight: 22}
+	tt = coreNewTester(tableView(&s, cols, names), 500, 300)
+	for i := range names {
+		r, _ := rowBox(tt, &s, i)
+		if r.H != 22 {
+			t.Errorf("row %d is %v high, want 22", i, r.H)
+		}
+		if i > 0 {
+			prev, _ := rowBox(tt, &s, i-1)
+			if r.Y != prev.Y+22 {
+				t.Errorf("row %d starts at %v, after one at %v", i, r.Y, prev.Y)
+			}
+		}
+	}
+	// The header above the first row keeps the theme's height.
+	if r, _ := rowBox(tt, &s, 0); r.Y != r0.Y {
+		t.Errorf("the first row starts at %v, not %v below the header", r.Y, r0.Y)
+	}
+	if !tt.HasText("b.txt") {
+		t.Errorf("texts %q", tt.Texts())
+	}
+}

@@ -66,19 +66,6 @@ type ListState struct {
 	// goes on from where it is as more comes, and the user scrolling stops
 	// it. It shows the end at once where the desktop asks for less motion.
 	FollowAnimation *Animation
-	// RowHeight is the height of a row, for a list whose rows are all the
-	// same height, as a GridView's are. Rows the list has not built yet are
-	// estimated at it, where a list of varied rows estimates them from the
-	// theme's spacing until the first ones are measured.
-	//
-	// A list that knows its row height should say so: the theme's spacing is
-	// a guess, and where it is smaller than the rows really are, the first
-	// frame fits more rows in the view than will show, builds them all, and
-	// the work of one frame becomes the work of the list — a grid of
-	// pictures estimated at a quarter of its row height decodes four
-	// screensful of them, and a grid whose rows are unmeasured builds up to
-	// listMaxRows of them whatever it holds.
-	RowHeight float32
 	// Selected, when set, lets a click choose a row, as Up, Down, Home and
 	// End do while the list has the keyboard focus, and Page Up and Page
 	// Down on Linux and Windows: *Selected is the chosen row, -1 for none,
@@ -195,6 +182,21 @@ type ListState struct {
 	// the theme's Radius, as a List's are, rather than leaving them square
 	// from edge to edge.
 	RoundRows bool
+	// RowHeight, when above 0, is the height of every row of a Table, as
+	// AppKit's rowHeight: the cells hold their content in the middle,
+	// without the padding above and below that keeps a row at least the
+	// theme's Space(8), so a dense table, as a source control client's or
+	// a log's, shows more rows. The header keeps the theme's height.
+	//
+	// In any list, rows not built yet are estimated at RowHeight, where a
+	// list without it estimates them from the theme's spacing until the
+	// first ones are measured. A List or GridView whose rows are all one
+	// height should say so too: it leaves them as they are built, and the
+	// theme's spacing is a guess which, smaller than the rows really are,
+	// fits more rows in the first frame than will show and builds them all
+	// — a grid of pictures estimated at a quarter of its row height decodes
+	// four screensful of them. GridView sets it itself.
+	RowHeight float32
 	// HeaderMenu, when set, gives a Table's header a context menu, built
 	// as ContextMenu's is: col is the index of the column clicked in the
 	// columns given to Table, not in the order the user moved them into,

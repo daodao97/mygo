@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -591,5 +592,88 @@ func TestPublishGitHub(t *testing.T) {
 	b, _ = os.ReadFile(calls)
 	if lines := strings.Split(strings.TrimSpace(string(b)), "\n"); len(lines) != 4 || !strings.HasPrefix(lines[1], "release create desktop-v1.2.0 --repo me/app --draft") || !strings.HasSuffix(lines[1], " --latest=false") {
 		t.Errorf("gh calls:\n%s", b)
+	}
+}
+
+// TestFetchSignedRetry retries a download that stalls, as a CDN can on a
+// file it has not cached, or loses its connection, but not one that fails
+// for good.
+func TestFetchSignedRetry(t *testing.T) {
+	stall, wait := fetchStall, updateRetryWait
+	t.Cleanup(func() { fetchStall, updateRetryWait = stall, wait })
+	fetchStall = 500 * time.Millisecond
+	waitPastStall, waits := false, 0
+	updateRetryWait = func(time.Duration) {
+		waits++
+		if waitPastStall {
+			time.Sleep(2 * fetchStall) // as a long Retry-After does
+		}
+	}
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	archive := bytes.Repeat([]byte("archive "), 10_000)
+	sum := sha256.Sum256(archive)
+	var (
+		mu        sync.Mutex
+		responses []string
+		requests  int
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		response := responses[min(requests, len(responses)-1)]
+		requests++
+		mu.Unlock()
+		switch response {
+		case "403", "404", "429", "503":
+			code, _ := strconv.Atoi(response)
+			w.WriteHeader(code)
+			return
+		case "short":
+			w.Write(archive[:1000])
+			return
+		}
+		w.Header().Set("Content-Length", strconv.Itoa(len(archive)))
+		if response == "ok" {
+			w.Write(archive)
+			return
+		}
+		w.Write(archive[:1000])
+		w.(http.Flusher).Flush()
+		if response == "drop" {
+			panic(http.ErrAbortHandler)
+		}
+		<-r.Context().Done() // stall
+	}))
+	defer srv.Close()
+	get := (&Config{Updates: &Updates{URL: srv.URL}}).archiveGetter()
+	for _, tc := range []struct {
+		responses     []string
+		requests      int
+		err           string
+		waitPastStall bool
+	}{
+		{[]string{"stall", "stall", "ok"}, 3, "", false},
+		{[]string{"stall"}, fetchAttempts, "no data for", false},
+		{[]string{"drop", "ok"}, 2, "", false},
+		{[]string{"503", "ok"}, 2, "", false},
+		{[]string{"429", "ok"}, 2, "", true},
+		{[]string{"403"}, 1, "403", false},
+		{[]string{"404"}, 1, "not published", false},
+		{[]string{"short"}, 1, "has 1000 bytes", false},
+	} {
+		mu.Lock()
+		responses, requests, waitPastStall, waits = tc.responses, 0, tc.waitPastStall, 0
+		mu.Unlock()
+		path := filepath.Join(t.TempDir(), "archive.tar.gz")
+		err := fetchSigned(get, srv.URL+"/app-1.0.0.tar.gz", int64(len(archive)), update.Sign(priv, sum[:]), pub, path)
+		if tc.err == "" && err != nil || tc.err != "" && (err == nil || !strings.Contains(err.Error(), tc.err)) {
+			t.Errorf("%v: %v, want %q", tc.responses, err, tc.err)
+		}
+		if requests != tc.requests {
+			t.Errorf("%v: %d requests, want %d", tc.responses, requests, tc.requests)
+		}
+		// A wait of get's retries is not a stall, which would add one of fetchSigned's.
+		if tc.waitPastStall && waits != tc.requests-1 {
+			t.Errorf("%v: waited %d times, want %d", tc.responses, waits, tc.requests-1)
+		}
 	}
 }

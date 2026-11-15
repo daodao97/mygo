@@ -75,3 +75,50 @@ func TestTruncateMiddle(t *testing.T) {
 		t.Errorf("narrower, the label is %v wide, as wide as %v", label.tl.Lines[0].Width, wide)
 	}
 }
+
+// TestTruncateStart cuts a path at its start in the room layout gives it
+// beside an icon, keeping its file's name and the folders nearest it,
+// again in the room a narrower window gives it, and not at all where a
+// wider one gives it room. A label that asks for its middle to be cut
+// too has its start cut alike.
+func TestTruncateStart(t *testing.T) {
+	const path = "src/components/settings/appearance/theme/picker.go"
+	var label, both *node
+	tt := coreNewTester(func(c *context) {
+		coreRow(c).Gap(8).Padding(0, 10).Children(func() {
+			coreBox(c).Width(16).Height(16)
+			label = coreText(c, path).SingleLine().TruncateStart().Shrink(1).MinWidth(0)
+		})
+		coreRow(c).Gap(8).Padding(0, 10).Children(func() {
+			coreBox(c).Width(16).Height(16)
+			both = coreText(c, path).SingleLine().TruncateMiddle().TruncateStart().Shrink(1).MinWidth(0)
+		})
+	}, 240, 100)
+	check := func(label *node, room float32) {
+		t.Helper()
+		l := label.tl
+		line := l.Lines[0]
+		first, last := line.Glyphs[0], line.Glyphs[len(line.Glyphs)-1]
+		marks := 0
+		for _, g := range line.Glyphs {
+			if g.Runes == 0 {
+				marks++
+			}
+		}
+		if !l.Truncated || l.Params.Width != room || line.Width > room || first.Runes != 0 || first.Cluster != 0 || marks != 1 || last.Cluster+last.Runes != len(path) {
+			t.Errorf("in %v (laid out in %v), truncated %v, %v wide, %d ellipsis glyphs, starting with %+v, ending with %+v", room, l.Params.Width, l.Truncated, line.Width, marks, first, last)
+		}
+	}
+	check(label, 240-2*10-16-8)
+	check(both, 240-2*10-16-8)
+	wide := label.tl.Lines[0].Width
+	tt.SetSize(180, 100)
+	check(label, 180-2*10-16-8)
+	if label.tl.Lines[0].Width >= wide {
+		t.Errorf("narrower, the label is %v wide, as wide as %v", label.tl.Lines[0].Width, wide)
+	}
+	tt.SetSize(1000, 100)
+	if l := label.tl; l.Truncated || l.Lines[0].Glyphs[0].Runes == 0 {
+		t.Errorf("with room for it all, truncated %v, starting with %+v", l.Truncated, l.Lines[0].Glyphs[0])
+	}
+}

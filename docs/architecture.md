@@ -2351,6 +2351,12 @@ as in Tauri:
   one no handler of the page cancelled (an `escape` message). `Flyout.Popover` shows one in an
   `NSPopover` (`internal/darwin/popover.go`), whose window AppKit makes
   as it shows, and whose transient behavior asks `popoverShouldClose:`.
+  A closed popover flyout's `NSPopover` waits for the next one to show
+  in (`takePopover`) instead of being released: on macOS 26 a released
+  popover that has shown leaves its material's backdrop behind, a
+  graphics surface a little larger than the popover. One still closing,
+  as Hide's animation runs, waits until it tells it closed
+  (`popoverDidClose:`, to `spareDelegate`).
   `Flyout.Tray` anchors one to a tray icon's `Bounds` instead, without a
   parent: the panel at `NSPopUpMenuWindowLevel` or an `NSPopover` shown
   from the status item's button (macOS), a topmost unowned popup
@@ -5395,7 +5401,23 @@ either.
   allocation failed or their cached mask was released, falling back to
   transient shelves when only those have room after `MakeRoom` has run
   that frame. The first lasting miss still requests recovery, so stale
-  masks cannot keep a repeated mask transient indefinitely. On the
+  masks cannot keep a repeated mask transient indefinitely. What the
+  largest atlas still has no room for, as the links of a node editor
+  under a zoom that changes every frame, whose masks take many times
+  what it holds (#1841), spills (`pathSpill`): in the frame's last paint,
+  and, the atlas at its largest, in the paints after one that spilled
+  without asking for room (`System.TryMask`), a mask that misses is drawn
+  on the CPU (`raster.Layer`) into a layer of the frame, a bitmap that
+  the scene shows (`OpImage`) where the path would draw, with the paths
+  after it until the scene adds anything else, so that they keep their
+  order, through an atlas of the layer's own drawn into it whenever it
+  fills. Only a mask's cells that are not empty are drawn, and paths
+  drawn there whole take tiles of 128 pixels. A layer composites what
+  its paths would, within the rounding of its 8 bits, and ends with a
+  part painted again by itself (`paintPart`), whose layers its next paint
+  reuses. The first spill is logged once, and so is a path that still
+  cannot draw (`pathLost`: wider than `pathSpanMax`, or more than
+  `pathTilesMax` tiles of it showing). On the
   pixel grid tiles show the pixels of one mask; under a transform off
   it, a faint line where they meet. `Path.Contains` counts the winding
   of the path flattened at four times its scale; an element's `HitTest`,

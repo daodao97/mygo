@@ -69,6 +69,7 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	defer func() { rt.painting = false }()
 	rt.paints++
 	rt.drawn = rt.drawn[:0]
+	rt.paths.spill.beginPaint()
 	s := &rt.scene
 	// The root paints the theme's background: frames start transparent, so
 	// that a transparent root shows what is behind the content, such as a
@@ -94,8 +95,8 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	}
 	rt.painter = Painter{rt: rt, s: s, scale: scale, opacity: 1, clip: Rect{0, 0, w, h}, opaque: opaque, under: under, holes: rt.holes[:0]}
 	p := &rt.painter
-	uses := rt.text.TransientUses()
-	rt.partTransient = 0
+	uses, opened := rt.text.TransientUses(), rt.paths.spill.opened
+	rt.partTransient, rt.paths.spill.inParts = 0, 0
 	p.cull = !rt.inkStale && !rt.noCull
 	p.element(root)
 	p.cull = false
@@ -103,10 +104,14 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 		rt.insp.paintHighlight(rt, p, h)
 	}
 	rt.paintDrag(p, w, h)
+	rt.finishSpills()
 	rt.under, rt.holes = p.under[:0], p.holes[:0] // kept for the next frame's
 	rt.partsBase = sceneData(s)
 	rt.atlases = atlasGenerations(s)
-	rt.transient = rt.text.TransientUses()-uses > rt.partTransient
+	// Layers of paths drawn on the CPU (pathSpill) outside the parts are
+	// reused as the parts are painted again, as masks of the transient
+	// room are.
+	rt.transient = rt.text.TransientUses()-uses > rt.partTransient || rt.paths.spill.opened-opened > rt.paths.spill.inParts
 }
 
 // atlasGenerations returns the generations of the atlases s draws glyphs

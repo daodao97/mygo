@@ -82,6 +82,9 @@ type renderer struct {
 	spanBuf []int32
 	// blurred holds, by op, the images blurred of the ops that blur theirs.
 	blurred []*blurredImage
+	// over draws the first operation over what dst holds, rather than over
+	// the scene's clear color (Layer.Over).
+	over bool
 }
 
 // Render draws s into dst, which must be s.Width×s.Height.
@@ -210,6 +213,7 @@ func (d *drawer) drawOps(dst *Image, s *scene.Scene, area image.Rectangle, bound
 	}
 	for i := range d.rs {
 		d.rs[i].blurred = d.blurred
+		d.rs[i].over = d.over
 	}
 	if n == 1 {
 		d.rs[0].render(dst, s, area, bounds, from, to, px, b)
@@ -307,7 +311,7 @@ func (r *renderer) render(dst *Image, s *scene.Scene, area image.Rectangle, boun
 	if r.area.Empty() {
 		return
 	}
-	if from == 0 {
+	if from == 0 && !r.over {
 		r.clear(s.Clear)
 	}
 	r.updateBounds()

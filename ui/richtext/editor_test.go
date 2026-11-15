@@ -482,6 +482,90 @@ func TestRichTextReplaceCRLF(t *testing.T) {
 	}
 }
 
+// TestRichTextSetMarkedEmpty checks that SetMarkedText with an empty string
+// and nil range from idle is a no-op (leaving selection and undo intact), and
+// that clearing preedit before UnmarkText and ReplaceText (GTK commit order)
+// joins the selection-replacement undo step.
+func TestRichTextSetMarkedEmpty(t *testing.T) {
+	checkCleared := func(t *testing.T, v *view, label string) {
+		t.Helper()
+		if v.composing || v.compose != "" || v.composeCaret != 0 || v.composeSelected != (ui.TextInputRange{}) {
+			t.Fatalf("%s: composition state not cleared: composing=%v compose=%q caret=%d sel=%+v",
+				label, v.composing, v.compose, v.composeCaret, v.composeSelected)
+		}
+		if mr, marked := v.MarkedRange(); marked {
+			t.Fatalf("%s: MarkedRange() = %+v, true; want false", label, mr)
+		}
+	}
+
+	t.Run("idle", func(t *testing.T) {
+		doc := NewDocument(Text{})
+		tt, _ := richTester(t, doc)
+		typeRunes(tt, "hello")
+		v := doc.shownIn.Value()
+		v.SetMarkedText(nil, "", ui.TextInputRange{})
+		tt.Frame()
+		checkCleared(t, v, "idle")
+		if got := doc.Text().String(); got != "hello" {
+			t.Fatalf("text = %q, want %q", got, "hello")
+		}
+		tt.Key(ui.Cmd, ui.KeyZ)
+		if got := doc.Text().String(); got != "" {
+			t.Fatalf("after one undo = %q, want empty", got)
+		}
+	})
+
+	t.Run("idle with active selection", func(t *testing.T) {
+		doc := NewDocument(Text{})
+		tt, _ := richTester(t, doc)
+		typeRunes(tt, "hello")
+		doc.SetSelection(1, 4)
+		tt.Frame()
+		v := doc.shownIn.Value()
+		v.SetMarkedText(nil, "", ui.TextInputRange{})
+		tt.Frame()
+		checkCleared(t, v, "idle with active selection")
+		if got := doc.Text().String(); got != "hello" {
+			t.Fatalf("text = %q, want %q", got, "hello")
+		}
+		if a, c := doc.Selection(); a != 1 || c != 4 {
+			t.Fatalf("selection = (%d, %d), want (1, 4)", a, c)
+		}
+		tt.Key(ui.Cmd, ui.KeyZ)
+		if got := doc.Text().String(); got != "" {
+			t.Fatalf("after one undo = %q, want empty", got)
+		}
+	})
+
+	t.Run("GTK commit order", func(t *testing.T) {
+		doc := NewDocument(Text{})
+		tt, _ := richTester(t, doc)
+		typeRunes(tt, "hello")
+		doc.SetSelection(1, 4)
+		tt.Frame()
+		v := doc.shownIn.Value()
+		v.SetMarkedText(nil, "ni", ui.TextInputRange{Start: 2, End: 2})
+		v.SetMarkedText(nil, "", ui.TextInputRange{})
+		v.UnmarkText()
+		v.ReplaceText(nil, "你")
+		tt.Frame()
+		checkCleared(t, v, "GTK commit order")
+		if got := doc.Text().String(); got != "h你o" {
+			t.Fatalf("text = %q, want %q", got, "h你o")
+		}
+		if a, c := doc.Selection(); a != 2 || c != 2 {
+			t.Fatalf("selection = (%d, %d), want (2, 2)", a, c)
+		}
+		tt.Key(ui.Cmd, ui.KeyZ)
+		if got := doc.Text().String(); got != "hello" {
+			t.Fatalf("after one undo = %q, want %q", got, "hello")
+		}
+		if a, c := doc.Selection(); a != 1 || c != 4 {
+			t.Fatalf("after one undo selection = (%d, %d), want (1, 4)", a, c)
+		}
+	})
+}
+
 // TestRichTextEnterAtCheckedTask checks that Enter at the start of a
 // checked task keeps it checked, with an empty item above, as Notes.
 func TestRichTextEnterAtCheckedTask(t *testing.T) {
@@ -605,6 +689,156 @@ func TestRichTextVerticalPastRoom(t *testing.T) {
 	if _, c := doc.Selection(); doc.Text().paraAt(c) != 1 {
 		t.Fatalf("up from a heading with a wide margin to %d, want paragraph 1", c)
 	}
+}
+
+// TestRichTextVerticalCollapsesSelection checks that a plain Up or Down
+// collapses a non-empty selection to its start (up) or end (down) before
+// moving vertically, while Shift+Up/Down keeps extending from the caret.
+func TestRichTextVerticalCollapsesSelection(t *testing.T) {
+	doc := NewDocument(NewText("one\ntwo\nthree\nfour"))
+	tt, _ := richTester(t, doc)
+
+	// Backward selection from paragraph 2 ("th|ree") to paragraph 0 ("o|ne"):
+	// plain Down collapses to the selection end in paragraph 2 and steps to paragraph 3.
+	doc.SetSelection(10, 1)
+	tt.Frame()
+	tt.Key(0, ui.KeyDown)
+	if a, c := doc.Selection(); a != c || doc.Text().paraAt(c) != 3 {
+		t.Fatalf("backward selection + Down = (%d, %d) in paragraph %d, want collapsed in paragraph 3", a, c, doc.Text().paraAt(c))
+	}
+
+	// Forward selection from paragraph 1 ("t|wo") to paragraph 3 ("fo|ur"):
+	// plain Up collapses to the selection start in paragraph 1 and steps to paragraph 0.
+	doc.SetSelection(5, 16)
+	tt.Frame()
+	tt.Key(0, ui.KeyUp)
+	if a, c := doc.Selection(); a != c || doc.Text().paraAt(c) != 0 {
+		t.Fatalf("forward selection + Up = (%d, %d) in paragraph %d, want collapsed in paragraph 0", a, c, doc.Text().paraAt(c))
+	}
+
+	// Same-line backward selection on a uniform line: plain Down collapses
+	// to the end of the selection so x stays at the line end, and plain
+	// Up on a forward selection collapses to the start so x stays at 0.
+	sameDoc := NewDocument(NewText("aaa\naaa\naaa"))
+	st, _ := richTester(t, sameDoc)
+	sameDoc.SetSelection(7, 4)
+	st.Frame()
+	st.Key(0, ui.KeyDown)
+	if a, c := sameDoc.Selection(); a != c || c != 11 {
+		t.Fatalf("same-line backward selection + Down = (%d, %d), want (11, 11)", a, c)
+	}
+	sameDoc.SetSelection(4, 7)
+	st.Frame()
+	st.Key(0, ui.KeyUp)
+	if a, c := sameDoc.Selection(); a != c || c != 0 {
+		t.Fatalf("same-line forward selection + Up = (%d, %d), want (0, 0)", a, c)
+	}
+
+	// Shift+Up still extends from the caret rather than collapsing.
+	doc.SetSelection(5, 16)
+	tt.Frame()
+	tt.Key(ui.Shift, ui.KeyUp)
+	if a, c := doc.Selection(); a != 5 || doc.Text().paraAt(c) != 2 {
+		t.Fatalf("forward selection + Shift+Up = (%d, %d) in paragraph %d, want anchor 5 and caret in paragraph 2", a, c, doc.Text().paraAt(c))
+	}
+
+	t.Run("soft-wrap-boundary-affinity", func(t *testing.T) {
+		// Paragraph 0 is "top"; paragraph 1 wraps across at least three visual
+		// lines in a narrow 200px viewport.
+		wrapDoc := NewDocument(NewText("top\n" + strings.Repeat("会议", 40)))
+		wt := ui.NewTester(func(c *ui.Context) {
+			Editor(c, wrapDoc).Fill()
+		}, 200, 400)
+		wt.Press(100, 380)
+		wt.Release(100, 380)
+
+		p1Start := 4 // after "top\n"
+		wrapDoc.SetSelection(p1Start, p1Start)
+		wt.Frame()
+		wt.Key(0, ui.KeyEnd)
+		_, line0End := wrapDoc.Selection()
+		wt.Key(0, ui.KeyDown)
+		_, line1End := wrapDoc.Selection()
+		wt.Key(0, ui.KeyDown)
+		_, line2End := wrapDoc.Selection()
+		if !(p1Start < line0End && line0End < line1End && line1End < line2End) {
+			t.Fatalf("expected >= 3 wrapped lines in paragraph 1, got ends (%d, %d, %d)", line0End, line1End, line2End)
+		}
+
+		// Forward selection ending at soft-wrap boundary (Home, Shift+End):
+		// v.affinity is TextUpstream on line 0; plain Down must preserve it so
+		// it steps onto line 1 instead of flipping to TextDownstream and
+		// skipping to line 2.
+		wrapDoc.SetSelection(p1Start, p1Start)
+		wt.Frame()
+		wt.Key(0, ui.KeyHome)
+		wt.Key(ui.Shift, ui.KeyEnd)
+		if a, c := wrapDoc.Selection(); a != p1Start || c != line0End {
+			t.Fatalf("Home + Shift+End = (%d, %d), want (%d, %d)", a, c, p1Start, line0End)
+		}
+		wt.Key(0, ui.KeyDown)
+		if a, c := wrapDoc.Selection(); a != c || c != line1End {
+			t.Fatalf("soft-wrap forward selection + Down = (%d, %d), want (%d, %d) on line 1 (line 2 end is %d)", a, c, line1End, line1End, line2End)
+		}
+
+		// Backward selection whose caret (start edge) sits at the soft-wrap
+		// boundary with TextUpstream: plain Up must preserve v.affinity on
+		// v.caret so it steps up into paragraph 0 ("top") instead of flipping
+		// to TextDownstream on line 1 and moving back onto line 0.
+		wrapDoc.SetSelection(line0End+1, line0End+1)
+		wt.Frame()
+		wt.Key(ui.Shift, ui.KeyLeft) // (line0End, TextDownstream) on line 1
+		wt.Key(ui.Shift, ui.KeyLeft) // (line0End, TextUpstream) on line 0
+		if a, c := wrapDoc.Selection(); a != line0End+1 || c != line0End {
+			t.Fatalf("Shift+Left across wrap = (%d, %d), want (%d, %d)", a, c, line0End+1, line0End)
+		}
+		wt.Key(0, ui.KeyUp)
+		if a, c := wrapDoc.Selection(); a != c || wrapDoc.Text().paraAt(c) != 0 {
+			t.Fatalf("soft-wrap backward selection + Up = (%d, %d) in paragraph %d, want collapsed in paragraph 0", a, c, wrapDoc.Text().paraAt(c))
+		}
+	})
+
+	t.Run("resets-stale-desired-x", func(t *testing.T) {
+		desiredDoc := NewDocument(NewText("aaaaaa\naaaaaa\naaaaaa"))
+		dt, _ := richTester(t, desiredDoc)
+
+		// Down from col 0 sets v.desiredX to col 0 and v.hasDesired = true.
+		// Shift+End selects to the end of line 1 without clearing v.hasDesired.
+		// Plain Down must collapse to line 1 end and reset v.hasDesired so it
+		// steps to the end of line 2 (20), not col 0 of line 2 (14).
+		desiredDoc.SetSelection(0, 0)
+		dt.Frame()
+		dt.Key(0, ui.KeyDown)
+		if a, c := desiredDoc.Selection(); a != 7 || c != 7 {
+			t.Fatalf("Down from 0 = (%d, %d), want (7, 7)", a, c)
+		}
+		dt.Key(ui.Shift, ui.KeyEnd)
+		if a, c := desiredDoc.Selection(); a != 7 || c != 13 {
+			t.Fatalf("Shift+End = (%d, %d), want (7, 13)", a, c)
+		}
+		dt.Key(0, ui.KeyDown)
+		if a, c := desiredDoc.Selection(); a != c || c != 20 {
+			t.Fatalf("Down after stale desiredX + Shift+End = (%d, %d), want (20, 20)", a, c)
+		}
+
+		// Symmetric upward case: Down from line 0 end sets v.desiredX to line end;
+		// Shift+Home selects backward to col 0 without clearing v.hasDesired;
+		// plain Up must collapse to col 0 and step to 0, not line 0 end (6).
+		desiredDoc.SetSelection(6, 6)
+		dt.Frame()
+		dt.Key(0, ui.KeyDown)
+		if a, c := desiredDoc.Selection(); a != 13 || c != 13 {
+			t.Fatalf("Down from 6 = (%d, %d), want (13, 13)", a, c)
+		}
+		dt.Key(ui.Shift, ui.KeyHome)
+		if a, c := desiredDoc.Selection(); a != 13 || c != 7 {
+			t.Fatalf("Shift+Home = (%d, %d), want (13, 7)", a, c)
+		}
+		dt.Key(0, ui.KeyUp)
+		if a, c := desiredDoc.Selection(); a != c || c != 0 {
+			t.Fatalf("Up after stale desiredX + Shift+Home = (%d, %d), want (0, 0)", a, c)
+		}
+	})
 }
 
 // TestRichTextLinkOpensSafely clicks links: only those ui.SafeToOpen

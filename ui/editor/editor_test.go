@@ -127,6 +127,56 @@ func TestCodeEditorTyping(t *testing.T) {
 	ct.want("([abc])")
 }
 
+func TestCodeEditorAutoPairCJK(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		lang string
+		init string
+		typ  string
+		want string
+	}{
+		// Symmetric quotes and backticks auto-pair after CJK characters.
+		{name: "double-quote-after-han", lang: "go", init: "中|", typ: `"`, want: `中"|"`},
+		{name: "single-quote-after-han", lang: "python", init: "中文|", typ: `'`, want: `中文'|'`},
+		{name: "backtick-after-han", lang: "markdown", init: "中文|", typ: "`", want: "中文`|`"},
+		{name: "quote-after-hiragana", lang: "go", init: "あ|", typ: `"`, want: `あ"|"`},
+		{name: "quote-after-katakana", lang: "go", init: "ア|", typ: `"`, want: `ア"|"`},
+		{name: "quote-after-hangul", lang: "go", init: "한|", typ: `"`, want: `한"|"`},
+		{name: "backtick-after-hiragana", lang: "markdown", init: "あ|", typ: "`", want: "あ`|`"},
+		// Brackets and quotes auto-pair before closing CJK/smart brackets and trailing punctuation.
+		{name: "paren-before-cjk-period", lang: "markdown", init: "你好|。", typ: "(", want: "你好(|)。"},
+		{name: "bracket-before-cjk-comma", lang: "markdown", init: "你好|，", typ: "[", want: "你好[|]，"},
+		{name: "paren-before-cjk-comma", lang: "markdown", init: "|，", typ: "(", want: "(|)，"},
+		{name: "paren-before-cjk-closing-paren", lang: "markdown", init: "|）", typ: "(", want: "(|)）"},
+		{name: "paren-before-cjk-closing-corner", lang: "markdown", init: "「你好|」", typ: "(", want: "「你好(|)」"},
+		{name: "quote-after-han-before-cjk-period", lang: "go", init: "你好|。", typ: `"`, want: `你好"|"。`},
+		{name: "quote-before-cjk-closing-quote", lang: "go", init: "你好|”", typ: `"`, want: `你好"|"”`},
+		{name: "paren-before-cjk-closing-single-quote", lang: "markdown", init: "‘你好|’", typ: "(", want: "‘你好(|)’"},
+		{name: "paren-before-cjk-tilde", lang: "markdown", init: "你好|～", typ: "(", want: "你好(|)～"},
+		{name: "paren-before-cjk-middle-dot", lang: "markdown", init: "你好|·", typ: "(", want: "你好(|)·"},
+		// Do not auto-pair before opening CJK/smart brackets/quotes or general fullwidth symbols.
+		{name: "no-autopair-before-fullwidth-open-paren", lang: "markdown", init: "|（a）", typ: "(", want: "(|（a）"},
+		{name: "no-autopair-before-cjk-open-corner", lang: "go", init: "|「a」", typ: `"`, want: `"|「a」`},
+		{name: "no-autopair-before-smart-open-double-quote", lang: "markdown", init: "|“a”", typ: "(", want: "(|“a”"},
+		{name: "no-autopair-before-smart-open-single-quote", lang: "markdown", init: "|‘a’", typ: "(", want: "(|‘a’"},
+		{name: "no-autopair-before-fullwidth-hash", lang: "markdown", init: "|＃a", typ: "(", want: "(|＃a"},
+		{name: "no-autopair-before-fullwidth-quote", lang: "markdown", init: "|＂a", typ: "(", want: "(|＂a"},
+		// Latin contractions and trailing word characters still do not auto-pair.
+		{name: "latin-contraction", lang: "python", init: "don|", typ: `'`, want: "don'|"},
+		{name: "latin-contraction-before-ascii-apostrophe", lang: "python", init: "don|'t", typ: `'`, want: "don'|'t"},
+		{name: "latin-contraction-before-curly-apostrophe", lang: "python", init: "don|’t", typ: `'`, want: "don'|’t"},
+		{name: "latin-double-quote", lang: "go", init: "word|", typ: `"`, want: `word"|`},
+		// Do not auto-pair immediately before another Han character.
+		{name: "before-han-char", lang: "go", init: "中|文", typ: `"`, want: `中"|文`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ct := newEditorTest(t, tc.lang, tc.init)
+			ct.typ(tc.typ)
+			ct.want(tc.want)
+		})
+	}
+}
+
 func TestCodeEditorNewline(t *testing.T) {
 	ct := newEditorTest(t, "go", "func main() {|}")
 	ct.key(0, ui.KeyEnter)

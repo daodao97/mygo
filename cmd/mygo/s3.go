@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -20,7 +21,7 @@ import (
 
 // Uploads to Amazon S3 and compatible services, such as Cloudflare R2, in
 // pure Go: objects are put with a single request signed with AWS Signature
-// Version 4.
+// Version 4, and got the same way.
 
 // S3 is a bucket of Amazon S3, or of a compatible service such as
 // Cloudflare R2. The credentials come from AWS_ACCESS_KEY_ID,
@@ -57,7 +58,7 @@ func (s *S3) validate() error {
 	return nil
 }
 
-// s3Client puts objects into a bucket.
+// s3Client puts objects into a bucket, and gets them.
 type s3Client struct {
 	bucket, prefix, region string
 	endpoint               *url.URL
@@ -143,17 +144,51 @@ func (c *s3Client) put(key, path string, header http.Header) error {
 	if resp.StatusCode/100 == 2 {
 		return nil
 	}
+	msg := s3Error(resp)
+	if region := resp.Header.Get("X-Amz-Bucket-Region"); region != "" && region != c.region {
+		msg += " (the bucket is in " + region + ": set updates.s3.region)"
+	}
+	return fmt.Errorf("uploading to s3://%s/%s: %s", c.bucket, key, msg)
+}
+
+// s3Error describes the error of resp, which S3 describes in XML.
+func s3Error(resp *http.Response) string {
 	msg := resp.Status
-	// S3 describes errors in XML.
 	var e struct{ Code, Message string }
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if xml.Unmarshal(data, &e) == nil && e.Code != "" {
 		msg += ": " + e.Code + ": " + e.Message
 	}
-	if region := resp.Header.Get("X-Amz-Bucket-Region"); region != "" && region != c.region {
-		msg += " (the bucket is in " + region + ": set updates.s3.region)"
+	return msg
+}
+
+// emptyPayloadHash is the SHA-256 of an empty payload.
+const emptyPayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+// get requests the object of key with ctx, as retryGet does. A missing
+// object is errNotPublished.
+func (c *s3Client) get(ctx context.Context, key string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.objectURL(key), nil)
+	if err != nil {
+		return nil, err
 	}
-	return fmt.Errorf("uploading to s3://%s/%s: %s", c.bucket, key, msg)
+	c.sign(req, emptyPayloadHash, time.Now())
+	req.Header.Set("User-Agent", "mygo/"+version)
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := retryGet(client, req) // within the signature's 15 minutes
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusOK {
+		return resp, nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errNotPublished
+	}
+	return nil, fmt.Errorf("reading s3://%s/%s: %s", c.bucket, key, s3Error(resp))
 }
 
 // sign signs req, which has no query, with AWS Signature Version 4 for S3,

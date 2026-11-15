@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/egoist/mygo/internal/scene"
+	"github.com/egoist/mygo/internal/text"
 	"github.com/egoist/mygo/internal/vec"
 )
 
@@ -504,6 +505,13 @@ type paths struct {
 	// Already-tiled frames keep their cached tiles so MakeRoom can pack
 	// them together instead of allocating them again in drawing order.
 	switching bool
+	// What draws the paths the atlas has no room for on the CPU (see
+	// pathSpill).
+	spill pathSpills
+	// cur is what the path being drawn spills into, and rasterized
+	// whether its job's mask was just rasterized into pix (rasterizeJob).
+	cur        spillPath
+	rasterized bool
 }
 
 // pathJob is the mask drawPath asks the text system for, which draws it
@@ -582,6 +590,7 @@ func (p *Painter) drawPathPaint(f *flatPath, width float32, c Color, g *LinearGr
 	}
 	x0, y0, _, _, ok := bounds(hw)
 	if !ok {
+		p.rt.pathLost("it is wider or taller than float32 can place its points in (pathSpanMax)")
 		return
 	}
 	// The key covers the shape relative to the pixel grid, in quarters of
@@ -600,6 +609,7 @@ func (p *Painter) drawPathPaint(f *flatPath, width float32, c Color, g *LinearGr
 	// show that the mask draws.
 	x0, y0, w, h, ok := bounds(f.reach(hw))
 	if !ok {
+		p.rt.pathLost("it is wider or taller than float32 can place its points in (pathSpanMax)")
 		return
 	}
 	key := uint64(1)
@@ -648,15 +658,41 @@ func (p *Painter) drawPathPaint(f *flatPath, width float32, c Color, g *LinearGr
 	start := int32(len(p.s.Glyphs))
 	c = c.Alpha(p.opacity)
 	tint := scene.Glyph{Color: c.scene(), Wide: p.glyphWide(c)}
-	sum, large := hs.Sum64(), w > pathTile || h > pathTile
-	tiled := w > pathMaskMax || h > pathMaskMax || large && p.rt.paths.crowded >= p.rt.paints
+	op := scene.Op{Kind: scene.OpGlyphs}
+	if g != nil || cg != nil {
+		// The gradient spans the path's bounds, and half a stroke's width
+		// beyond: what square caps and miter joins reach past it takes
+		// the color of its edge, so that they do not move the gradient.
+		op.Rect = scene.Rect{X: minX - hw, Y: minY - hw, W: maxX - minX + 2*hw, H: maxY - minY + 2*hw}
+		op.Opacity = p.opacity
+		if g != nil {
+			p.gradient(&op, *g)
+			op.Wide = p.wide(g.From, g.To, Color{})
+		} else {
+			p.conic(&op, *cg)
+		}
+	}
 	ps := &p.rt.paths
+	// The path spills into the layer of paths drawn on the CPU that the
+	// scene draws last, if any, after those drawn there before it; else
+	// what of it the atlas has no room for may spill into a new one.
+	ps.cur = spillPath{op: op, tint: tint}
+	ps.cur.tint.Wide = 0
+	if l := p.spillOnTop(); l != nil {
+		ps.cur.layer, ps.cur.into, ps.cur.start = l, true, int32(len(l.mini.Glyphs))
+	} else if spillEveryPath {
+		p.spillAll()
+	}
+	sum, large := hs.Sum64(), w > pathTile || h > pathTile
+	tiled := w > pathMaskMax || h > pathMaskMax || large && p.rt.paths.crowded >= p.rt.paints ||
+		ps.cur.into && !p.transform.Set && (w > spillTile || h > spillTile)
 	if !tiled {
-		if p.pathMask(sum, f, hw, x0, y0, w, h, false, tint) {
+		got := p.pathMask(sum, f, hw, x0, y0, w, h, false, tint)
+		if got == maskDrawn {
 			if large {
 				ps.large = append(ps.large, sum)
 			}
-		} else {
+		} else if !ps.cur.into {
 			// The atlas is full: the runtime makes room and paints the
 			// frame again, in which paths larger than a tile draw as
 			// tiles. Try them now too, in what room is left, rather than
@@ -676,54 +712,80 @@ func (p *Painter) drawPathPaint(f *flatPath, width float32, c Color, g *LinearGr
 					p.rt.text.Unkeep(ps.large)
 				}
 			}
-			tiled = large
+			// A mask drawn on the CPU (spilled) is drawn whole.
+			tiled = large && got == maskMissed
 		}
 	}
-	if tiled && !p.pathTiles(sum, f, hw, x0, y0, w, h, tint) && w <= pathMaskMax && h <= pathMaskMax {
-		// Too many tiles of it show to hold, which one mask may not be.
-		if p.pathMask(sum, f, hw, x0, y0, w, h, false, tint) {
-			ps.large = append(ps.large, sum)
-		}
-	}
-	if int32(len(p.s.Glyphs)) == start {
-		return
-	}
-	op := scene.Op{Kind: scene.OpGlyphs, Start: start, End: int32(len(p.s.Glyphs))}
-	if g != nil || cg != nil {
-		// The gradient spans the path's bounds, and half a stroke's width
-		// beyond: what square caps and miter joins reach past it takes
-		// the color of its edge, so that they do not move the gradient.
-		op.Rect = scene.Rect{X: minX - hw, Y: minY - hw, W: maxX - minX + 2*hw, H: maxY - minY + 2*hw}
-		op.Opacity = p.opacity
-		if g != nil {
-			p.gradient(&op, *g)
-			op.Wide = p.wide(g.From, g.To, Color{})
+	if tiled && !p.pathTiles(sum, f, hw, x0, y0, w, h, tint) {
+		if w <= pathMaskMax && h <= pathMaskMax {
+			// Too many tiles of it show to hold, which one mask may not be.
+			if p.pathMask(sum, f, hw, x0, y0, w, h, false, tint) == maskDrawn {
+				ps.large = append(ps.large, sum)
+			}
 		} else {
-			p.conic(&op, *cg)
+			p.rt.pathLost("more than pathTilesMax tiles of its mask show")
 		}
 	}
-	p.add(op)
+	if end := int32(len(p.s.Glyphs)); end > start {
+		op.Start, op.End = start, end
+		p.add(op)
+	}
+	p.endSpill()
 }
+
+// What pathMask did with a mask.
+const (
+	// maskMissed: the atlas had no room for it, and the frame is painted
+	// again once the runtime makes room (System.MakeRoom).
+	maskMissed = iota
+	// maskDrawn: it draws from the atlas, as a glyph of the scene.
+	maskDrawn
+	// maskSpilled: it draws on the CPU, in a layer of the scene
+	// (pathSpill).
+	maskSpilled
+)
 
 // pathMask adds the glyph of the w×h mask of the path f at (x0, y0), in
 // device pixels, cached under key, with tint's color: of all of the path,
 // or of a tile, the whole path clipped to it, or, if full, covered whole.
-// It reports false when the atlas has no room for the mask.
-func (p *Painter) pathMask(key uint64, f *flatPath, hw, x0, y0 float32, w, h int, full bool, tint scene.Glyph) bool {
-	j := &p.rt.paths.job
+// It reports maskMissed when the atlas has no room for the mask, unless
+// the mask spills into a layer drawn on the CPU (maskSpilled): as the
+// paths after one that did do, and, when the atlas is at its largest, as
+// those do that find no room in the frame's last paint (engine.makeRoom)
+// or in the paints after one that spilled (pathSpills).
+func (p *Painter) pathMask(key uint64, f *flatPath, hw, x0, y0 float32, w, h int, full bool, tint scene.Glyph) int {
+	ps := &p.rt.paths
+	j := &ps.job
 	if j.rasterize == nil {
 		j.rasterize = p.rt.rasterizePath
 	}
 	j.f, j.w, j.h, j.hw, j.x0, j.y0, j.full = f, w, h, hw, x0, y0, full
-	gi := p.rt.text.Mask(key, j.rasterize)
-	j.f = nil
-	if !gi.OK {
-		return false
+	if ps.cur.into {
+		got := p.spillMask(false)
+		j.f = nil
+		return got
 	}
+	spill, quiet := p.spills()
+	ps.rasterized = false
+	var gi text.GlyphImage
+	if quiet {
+		gi = p.rt.text.TryMask(key, j.rasterize)
+	} else {
+		gi = p.rt.text.Mask(key, j.rasterize)
+	}
+	if !gi.OK {
+		got := maskMissed
+		if spill {
+			got = p.spillMask(ps.rasterized)
+		}
+		j.f = nil
+		return got
+	}
+	j.f = nil
 	g := tint
 	g.X, g.Y, g.W, g.H, g.U, g.V, g.UW, g.VH = x0, y0, float32(gi.W), float32(gi.H), gi.X, gi.Y, gi.W, gi.H
 	p.s.Glyphs = append(p.s.Glyphs, g)
-	return true
+	return maskDrawn
 }
 
 // pathTiles draws the w×h mask of the path f at (x0, y0), too large for
@@ -738,6 +800,12 @@ func (p *Painter) pathMask(key uint64, f *flatPath, hw, x0, y0 float32, w, h int
 // could not hold the tiles that show.
 func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h int, tint scene.Glyph) bool {
 	t := pathTile
+	if p.rt.paths.cur.into && !p.transform.Set {
+		// Drawn on the CPU (pathSpill), tiles take no shelf of the atlas
+		// each: smaller ones leave out more of what a path does not reach.
+		// Under a transform, they would show more lines where they meet.
+		t = min(t, spillTile)
+	}
 	// The columns and rows of tiles that show.
 	v, s := p.Visible(), float64(p.scale)
 	span := func(from, to float32, origin float32, n int) (int, int) {
@@ -747,6 +815,11 @@ func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h in
 	}
 	c0, c1 := span(v.X, v.X+v.W, x0, (w+t-1)/t)
 	r0, r1 := span(v.Y, v.Y+v.H, y0, (h+t-1)/t)
+	if t != pathTile && (c1-c0)*(r1-r0) > pathTilesMax {
+		t = pathTile
+		c0, c1 = span(v.X, v.X+v.W, x0, (w+t-1)/t)
+		r0, r1 = span(v.Y, v.Y+v.H, y0, (h+t-1)/t)
+	}
 	cols, rows := c1-c0, r1-r0
 	if cols <= 0 || rows <= 0 {
 		return true
@@ -800,9 +873,9 @@ func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h in
 		}
 	})
 	// The tiles the path reaches are masks of their own: more than half
-	// the largest atlas of them would not fit beside the frame's glyphs.
-	// Such a path, as one of which more than pathTilesMax tiles show, is
-	// not drawn, as paths too large for a mask were not before tiles.
+	// the largest atlas of them would not fit beside the frame's glyphs,
+	// and such a path draws on the CPU (pathSpill). One of which more than
+	// pathTilesMax tiles show is not drawn.
 	room := 0
 	for i, ok := range reached {
 		if ok {
@@ -810,7 +883,9 @@ func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h in
 			room += (tw + 1) * (th + 1)
 		}
 	}
-	if room > scene.MaxAtlasSize*scene.MaxAtlasSize/2 {
+	if room > scene.MaxAtlasSize*scene.MaxAtlasSize/2 && !p.rt.paths.cur.into && !p.spillAll() {
+		// No atlas holds them, however much room the runtime makes, but
+		// a layer drawn on the CPU does, one atlas of them after another.
 		return false
 	}
 	for r := r0; r < r1; r++ {
@@ -836,7 +911,7 @@ func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h in
 			tx, tw := c*t, min(t, w-c*t)
 			if reached[(r-r0)*cols+c-c0] {
 				mask := tileKey(key, tx, ty, tw, th)
-				if p.pathMask(mask, f, hw, x0+float32(tx), y0+float32(ty), tw, th, false, tint) {
+				if p.pathMask(mask, f, hw, x0+float32(tx), y0+float32(ty), tw, th, false, tint) == maskDrawn {
 					p.rt.paths.large = append(p.rt.paths.large, mask)
 				}
 				continue
@@ -851,7 +926,7 @@ func (p *Painter) pathTiles(key uint64, f *flatPath, hw, x0, y0 float32, w, h in
 				// A mask covered whole, which tiles of its size share: the
 				// key of no path, at no place.
 				mask := tileKey(0, -1, -1, tw, th)
-				if p.pathMask(mask, f, 0, x0+float32(tx), y0+float32(ty), tw, th, true, tint) {
+				if p.pathMask(mask, f, 0, x0+float32(tx), y0+float32(ty), tw, th, true, tint) == maskDrawn {
 					p.rt.paths.large = append(p.rt.paths.large, mask)
 				}
 			}
@@ -886,6 +961,14 @@ func (rt *engine) rasterizePath() (int, int, []byte) {
 	if a := rt.text.MaskAtlas; j.w >= a.W || j.h >= a.H {
 		return j.w, j.h, nil
 	}
+	return rt.rasterizeJob()
+}
+
+// rasterizeJob draws the mask of the path job into rt.paths.pix, however
+// large, and notes that it did (paths.rasterized).
+func (rt *engine) rasterizeJob() (int, int, []byte) {
+	j := &rt.paths.job
+	rt.paths.rasterized = true
 	z := &rt.paths.raster
 	n := j.w * j.h
 	if cap(rt.paths.pix) < n {
@@ -937,6 +1020,13 @@ func (p *Painter) FillPathGradient(path *Path, g LinearGradient) {
 // StrokePath draws the outline of a path, width DIPs wide, with the
 // path's caps, joins and dashes (Path.Cap, Path.Join, Path.Dash): round
 // and whole unless it sets them.
+//
+// Each path is a coverage mask of its bounds, drawn on the GPU from an
+// atlas the frame shares: it suits icons, charts and shapes. Thousands of
+// large paths that change every frame, as the links of a node editor
+// under a zoom that changes, can take more than the atlas holds; those
+// still draw, on the CPU, more slowly, which is logged once. Opaque lines
+// of StrokePolyline draw without masks on a GPU.
 func (p *Painter) StrokePath(path *Path, width float32, c Color) {
 	f := &p.rt.paths.flat
 	path.flatten(f, p.scale)

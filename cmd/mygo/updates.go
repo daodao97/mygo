@@ -316,11 +316,12 @@ func writeDeltas(c *Config, key ed25519.PrivateKey, stage, target string, entrie
 	if strings.HasPrefix(target, "darwin-") {
 		newDir, newEntries = filepath.Join(stage, entries[0]), nil
 	}
+	get := c.archiveGetter()
 	var files []string
 	for i, base := range bases {
 		name := c.slug() + "-" + base.Version + "-to-" + c.Version + "-" + target + ".delta"
 		path := filepath.Join(stage, name)
-		d, err := writeDelta(key, base, filepath.Join(work, strconv.Itoa(i)), path, c.Version, newDir, newEntries)
+		d, err := writeDelta(get, key, base, filepath.Join(work, strconv.Itoa(i)), path, c.Version, newDir, newEntries)
 		switch {
 		case err != nil:
 			warnf("No delta update from %s for %s: %v", base.Version, target, err)
@@ -338,15 +339,15 @@ func writeDeltas(c *Config, key ed25519.PrivateKey, stage, target string, entrie
 	return files, nil
 }
 
-// writeDelta downloads the archive of base into work, checks that it is
-// signed with key, and writes the delta from it to the app of version in
-// newDir to path.
-func writeDelta(key ed25519.PrivateKey, base update.Archive, work, path, version, newDir string, newEntries []string) (update.Delta, error) {
+// writeDelta downloads the archive of base into work with get, checks that
+// it is signed with key, and writes the delta from it to the app of version
+// in newDir to path.
+func writeDelta(get archiveGetter, key ed25519.PrivateKey, base update.Archive, work, path, version, newDir string, newEntries []string) (update.Delta, error) {
 	if err := os.MkdirAll(work, 0o755); err != nil {
 		return update.Delta{}, err
 	}
 	archive := filepath.Join(work, "archive.tar.gz")
-	if err := fetchSigned(base.URL, base.Size, base.Signature, key.Public().(ed25519.PublicKey), archive); err != nil {
+	if err := fetchSigned(get, base.URL, base.Size, base.Signature, key.Public().(ed25519.PublicKey), archive); err != nil {
 		return update.Delta{}, err
 	}
 	f, err := os.Open(archive)
@@ -464,32 +465,121 @@ func fetchDeltaManifest(c *Config, target string) (*update.Manifest, error) {
 	return nil, errNotPublished
 }
 
-// fetchSigned downloads a file of an update to path and checks its size
-// and signature.
-func fetchSigned(u string, size int64, signature string, pub ed25519.PublicKey, path string) error {
-	resp, err := updateGet(u, 10*time.Minute)
+// archiveGetter requests a published file of an update by its URL, with
+// ctx.
+type archiveGetter func(ctx context.Context, u string) (*http.Response, error)
+
+// archiveGetter returns how writeDeltas downloads the archives of earlier
+// versions: from the bucket of updates.s3 when its credentials are set, as
+// a CDN in front of it, serving updates.url, can stall on a file it has
+// not cached, else from their URLs.
+func (c *Config) archiveGetter() archiveGetter {
+	get := func(ctx context.Context, u string) (*http.Response, error) {
+		return updateGetContext(ctx, u, 0)
+	}
+	if c.Updates.S3 == nil {
+		return get
+	}
+	bucket, err := newS3Client(c.Updates.S3)
 	if err != nil {
-		return err
+		logf("Downloading the archives of earlier versions from updates.url, not updates.s3: %v", err)
+		return get
+	}
+	prefix := strings.TrimSuffix(c.Updates.URL, "/") + "/"
+	return func(ctx context.Context, u string) (*http.Response, error) {
+		rest, ok := strings.CutPrefix(u, prefix)
+		name, err := url.PathUnescape(rest)
+		if !ok || err != nil || name == "" {
+			return get(ctx, u) // served from elsewhere
+		}
+		return bucket.get(ctx, bucket.key(name))
+	}
+}
+
+// Downloads of archives are retried when their body stalls: no byte for
+// fetchStall, as when a CDN hangs on a file. Each attempt, its request
+// included, takes at most fetchTimeout.
+var (
+	fetchAttempts = 3
+	fetchStall    = 30 * time.Second
+	fetchTimeout  = 10 * time.Minute
+)
+
+var errStalled = errors.New("no data")
+
+// fetchSigned downloads a file of an update to path with get, and checks
+// its size and signature. A download that stalls or loses its connection
+// is tried again; get retries its request itself.
+func fetchSigned(get archiveGetter, u string, size int64, signature string, pub ed25519.PublicKey, path string) error {
+	for attempt := 1; ; attempt++ {
+		sum, retry, err := fetchOnce(get, u, size, path)
+		switch {
+		case err == nil && update.Verify(pub, sum, signature) != nil:
+			return fmt.Errorf("%s is not signed with the key of updates.publicKey", u)
+		case err == nil || !retry || attempt == fetchAttempts:
+			return err
+		}
+		delay := time.Duration(attempt) * time.Second
+		warnf("Retrying %s in %s: %v", u, delay, err)
+		updateRetryWait(delay)
+	}
+}
+
+// fetchOnce downloads the size bytes of u to path, giving up when they
+// stall once the response has come, and returns their SHA-256, or whether trying again may succeed.
+func fetchOnce(get archiveGetter, u string, size int64, path string) ([]byte, bool, error) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	ctx, stop := context.WithTimeout(ctx, fetchTimeout)
+	defer stop()
+	resp, err := get(ctx, u)
+	if err != nil {
+		return nil, false, downloadError(u, false, err) // get retried it
 	}
 	defer resp.Body.Close()
+	// Armed only now, so it does not run through the waits of get's retries.
+	stall := time.AfterFunc(fetchStall, func() { cancel(errStalled) })
+	defer stall.Stop()
+	stalled := func() bool { return errors.Is(context.Cause(ctx), errStalled) }
 	f, err := os.Create(path)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 	sum := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, sum), io.LimitReader(resp.Body, size+1))
+	body := &progressReader{io.LimitReader(resp.Body, size+1), func() { stall.Reset(fetchStall) }}
+	n, err := io.Copy(io.MultiWriter(f, sum), body)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
 	switch {
 	case err != nil:
-		return fmt.Errorf("downloading %s: %w", u, err)
+		return nil, stalled() || networkError(ctx, err), downloadError(u, stalled(), err)
 	case n != size:
-		return fmt.Errorf("%s has %d bytes, not %d", u, n, size)
-	case update.Verify(pub, sum.Sum(nil), signature) != nil:
-		return fmt.Errorf("%s is not signed with the key of updates.publicKey", u)
+		return nil, false, fmt.Errorf("%s has %d bytes, not %d", u, n, size)
 	}
-	return nil
+	return sum.Sum(nil), false, nil
+}
+
+// downloadError describes err, of downloading u.
+func downloadError(u string, stalled bool, err error) error {
+	if stalled {
+		return fmt.Errorf("downloading %s: %w for %v", u, errStalled, fetchStall)
+	}
+	return fmt.Errorf("downloading %s: %w", u, err)
+}
+
+// progressReader calls progress after each read of r that returns bytes.
+type progressReader struct {
+	r        io.Reader
+	progress func()
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 {
+		p.progress()
+	}
+	return n, err
 }
 
 // updateRetryWait is replaced by tests so retries need not sleep.
@@ -499,7 +589,12 @@ var updateRetryWait = time.Sleep
 // times for network errors, 429 and 5xx responses. Each attempt takes at
 // most timeout.
 func updateGet(u string, timeout time.Duration) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, u, nil)
+	return updateGetContext(context.Background(), u, timeout)
+}
+
+// updateGetContext is updateGet with ctx; a timeout of 0 sets none.
+func updateGetContext(ctx context.Context, u string, timeout time.Duration) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -508,37 +603,33 @@ func updateGet(u string, timeout time.Duration) (*http.Response, error) {
 	if token := cmp.Or(os.Getenv("GH_TOKEN"), os.Getenv("GITHUB_TOKEN")); token != "" && req.URL.Host == "api.github.com" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	client := &http.Client{Timeout: timeout}
+	resp, err := retryGet(&http.Client{Timeout: timeout}, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusOK {
+		return resp, nil
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errNotPublished
+	}
+	return nil, fmt.Errorf("GET %s: %s", u, resp.Status)
+}
+
+// retryGet sends req, which has no body, with client, trying at most three
+// times for network errors, 429 and 5xx responses. It returns the last
+// response, whatever its status.
+func retryGet(client *http.Client, req *http.Request) (*http.Response, error) {
 	for attempt := 0; ; attempt++ {
 		resp, err := client.Do(req)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil, err
-			}
-			// url.Error wraps every client error, even one that is not a
-			// network failure, and itself implements net.Error.
-			cause := err
-			if e, ok := errors.AsType[*url.Error](err); ok {
-				cause = e.Err
-			}
-			if _, ok := errors.AsType[net.Error](cause); !ok && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-				return nil, err
-			}
-		} else {
-			if resp.StatusCode == http.StatusOK {
-				return resp, nil
-			}
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusNotFound {
-				return nil, errNotPublished
-			}
-			err = fmt.Errorf("GET %s: %s", u, resp.Status)
-			if resp.StatusCode != http.StatusTooManyRequests && (resp.StatusCode < 500 || resp.StatusCode >= 600) {
-				return nil, err
-			}
-		}
-		if attempt == 2 {
+		switch {
+		case err != nil && !networkError(req.Context(), err):
 			return nil, err
+		case err == nil && resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode/100 != 5:
+			return resp, nil
+		case attempt == 2:
+			return resp, err
 		}
 		delay := time.Duration(attempt+1) * time.Second
 		if resp != nil {
@@ -550,10 +641,28 @@ func updateGet(u string, timeout time.Duration) (*http.Response, error) {
 			} else if at, err := http.ParseTime(after); err == nil {
 				delay = max(delay, min(time.Until(at), 30*time.Second))
 			}
+			resp.Body.Close()
+			err = errors.New(resp.Status)
 		}
-		warnf("Retrying %s in %s: %v", u, delay, err)
+		warnf("Retrying %s in %s: %v", req.URL, delay, err)
 		updateRetryWait(delay)
 	}
+}
+
+// networkError reports whether err, of a request with ctx, is a failure of
+// the network, which may pass, rather than of the request or of ctx.
+func networkError(ctx context.Context, err error) bool {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	// url.Error wraps every client error, even one that is not a network
+	// failure, and itself implements net.Error.
+	cause := err
+	if e, ok := errors.AsType[*url.Error](err); ok {
+		cause = e.Err
+	}
+	_, ok := errors.AsType[net.Error](cause)
+	return ok || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 func runKeygen(args []string) error {

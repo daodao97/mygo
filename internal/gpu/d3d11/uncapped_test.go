@@ -413,8 +413,9 @@ func resizeWhileDWMStalls(t *testing.T, r *Renderer, shown *atomic.Int32) {
 	posted := make(chan func(), 16)
 	r.SetPost(func(f func()) { posted <- f })
 	// Two refreshes, the longest a frame waits, and time for a slow
-	// machine to draw, far below the 2 s seen.
-	tooLong := 2*r.cost.refreshPeriod() + 200*time.Millisecond
+	// machine to draw, far below the 2 s seen: WARP on a busy Windows
+	// ARM64 runner has taken 235 ms for a frame of a new size.
+	tooLong := 2*r.cost.refreshPeriod() + 500*time.Millisecond
 	colors := []scene.Color{{R: 24, G: 24, B: 27, A: 255}, {R: 250, G: 250, B: 250, A: 255}}
 	n := 0
 	// frame draws a frame of w×h, changing the background, once it can, as

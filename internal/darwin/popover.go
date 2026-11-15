@@ -68,7 +68,7 @@ func (w *window) createPopover(content NSRect) {
 	send(w.view, "setAutoresizingMask:", nsViewWidthHeightSizable)
 	w.popoverController = alloc("NSViewController")
 	send(w.popoverController, "setView:", uintptr(w.view))
-	w.popover = alloc("NSPopover")
+	w.popover = w.b.takePopover()
 	send(w.popover, "setContentViewController:", uintptr(w.popoverController))
 	msgSetSize(w.popover, sel("setContentSize:"), content.Size)
 	behavior := uintptr(popoverBehaviorApplicationDefined)
@@ -194,15 +194,65 @@ func (w *window) closePopover() {
 
 func (w *window) cleanupPopover() {
 	w.forgetPopoverWindow()
-	send(w.popover, "setDelegate:", 0)
-	if sendBool(w.popover, "isShown") {
+	p := w.popover
+	w.popover = 0
+	// A popover that Hide closes with its animation still shows (isShown),
+	// and tells it closed (popoverDidClose:) only as the animation ends,
+	// which can be after the flyout is gone.
+	closing := w.popoverClosing || sendBool(p, "isShown")
+	w.b.givePopover(p, closing)
+	if sendBool(p, "isShown") {
 		w.highlightTray(false)
-		send(w.popover, "setAnimates:", 0)
-		send(w.popover, "close")
+		send(p, "setAnimates:", 0)
+		send(p, "close")
 	}
-	send(w.popover, "setContentViewController:", 0)
-	release(w.popover)
+	send(p, "setContentViewController:", 0)
 	release(w.popoverController)
+}
+
+// takePopover returns an NSPopover for a flyout to show in: one a closed
+// flyout gave back (givePopover), or a new one.
+func (b *Backend) takePopover() id {
+	if n := len(b.sparePopovers); n > 0 {
+		p := b.sparePopovers[n-1]
+		b.sparePopovers = b.sparePopovers[:n-1]
+		send(p, "setAnimates:", 1) // closePopover turned it off
+		return p
+	}
+	return alloc("NSPopover")
+}
+
+// givePopover keeps the NSPopover of a closed flyout for the next one to
+// show in, instead of releasing it. On macOS 26 an NSPopover that has
+// shown leaves its material's backdrop behind once it is released, a
+// graphics surface a little larger than the popover (3.4 MB for one of
+// 280×230), so an app that shows a new popover flyout at each click of
+// its tray icon grew by that much at each. Reused, a popover keeps one
+// backdrop: the app holds as many as it showed at once.
+//
+// A popover still closing becomes spare once it tells it closed, to
+// spareDelegate (spareClosed): shown by another flyout before that, it
+// showed nothing, and its late popoverDidClose: closed that flyout.
+func (b *Backend) givePopover(p id, closing bool) {
+	if b.spareDelegate == 0 {
+		b.spareDelegate = alloc("MyGoWindowDelegate") // in no window: windowFor is nil
+		b.closingPopovers = map[id]bool{}
+	}
+	send(p, "setDelegate:", uintptr(b.spareDelegate))
+	if closing {
+		b.closingPopovers[p] = true
+		return
+	}
+	b.sparePopovers = append(b.sparePopovers, p)
+}
+
+// spareClosed makes a popover a closed flyout gave back while it was
+// closing spare, as it tells it closed.
+func (b *Backend) spareClosed(p id) {
+	if b.closingPopovers[p] {
+		delete(b.closingPopovers, p)
+		b.sparePopovers = append(b.sparePopovers, p)
+	}
 }
 
 func popoverDelegateMethods() []objc.MethodDef {
@@ -221,6 +271,10 @@ func popoverDelegateMethods() []objc.MethodDef {
 			return true
 		}),
 		method("popoverDidClose:", func(self id, _ objc.SEL, n id) {
+			if self == b().spareDelegate {
+				b().spareClosed(send(n, "object"))
+				return
+			}
 			w := b().windowFor(self)
 			if w == nil {
 				return

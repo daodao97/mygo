@@ -147,7 +147,7 @@ func (v *view) ReplaceText(r *ui.TextInputRange, s string) {
 	// As typed text goes in.
 	s = normalizeNewlines(s)
 	switch {
-	case r == nil && v.compose != "":
+	case r == nil && (v.compose != "" || v.composing):
 		v.compose = ""
 		v.joinStep()
 		v.replace(v.caret, v.caret, s)
@@ -177,6 +177,9 @@ func (v *view) ReplaceText(r *ui.TextInputRange, s string) {
 func (v *view) SetMarkedText(r *ui.TextInputRange, s string, selected ui.TextInputRange) {
 	v.sync()
 	if v.opts.ReadOnly {
+		return
+	}
+	if s == "" && r == nil && v.compose == "" && !v.composing {
 		return
 	}
 	if v.compose == "" || r != nil {
@@ -226,28 +229,39 @@ func (v *view) BoundsForRange(r ui.TextInputRange) (ui.Rect, ui.TextInputRange, 
 	if len(v.paras) == 0 || v.width <= 0 {
 		return ui.Rect{}, ui.TextInputRange{}, false
 	}
-	i := v.virtualRune(min(r.Start, r.End))
-	// A rune of the text and how far past it in the composition.
-	base, extra := i, 0
-	if n := utf8.RuneCountInString(v.compose); i > v.caret && n > 0 {
-		if i <= v.caret+n {
-			base, extra = v.caret, i-v.caret
-		} else {
-			base = i - n
-		}
+	start, end := v.virtualRune(min(r.Start, r.End)), v.virtualRune(max(r.Start, r.End))
+	aff := ui.TextDownstream
+	if end == start && start == v.caret && v.compose == "" {
+		aff = v.affinity
 	}
-	x, y, h := v.caretAt(base, extra, v.affinity)
+	base, extra := v.virtualCaret(start)
+	x, y, h := v.caretAt(base, extra, aff)
 	b := ui.Rect{X: v.padX + x, Y: v.padY + float32(y-v.scroll), W: 1, H: h}
-	actual := ui.TextInputRange{Start: v.virtualUnits(i), End: v.virtualUnits(i)}
-	if r.End > r.Start {
-		x2, _, _ := v.caretAt(base, extra+1, v.affinity)
-		if x2 > x {
-			b.W = x2 - x
-			actual.End = v.virtualUnits(i + 1)
+	u := v.virtualUnits(start)
+	actual := ui.TextInputRange{Start: u, End: u}
+	if end > start {
+		eb, ee := v.virtualCaret(end)
+		if x2, y2, _ := v.caretAt(eb, ee, ui.TextUpstream); y2 == y {
+			b.W = max(1, x2-x)
+			actual.End = v.virtualUnits(end)
 		}
 	}
 	visible := b.Y+b.H > 0 && b.Y < v.rect.H
 	return b, actual, visible
+}
+
+// virtualCaret maps a virtual rune index (including any active composition)
+// to a document rune and an extra rune offset within the composition.
+func (v *view) virtualCaret(i int) (int, int) {
+	n := utf8.RuneCountInString(v.compose)
+	switch {
+	case i <= v.caret || n == 0:
+		return i, 0
+	case i <= v.caret+n:
+		return v.caret, i - v.caret
+	default:
+		return i - n, 0
+	}
 }
 
 func (v *view) IndexForPoint(p ui.Point) (int, bool) {

@@ -489,6 +489,17 @@ func (s *System) leftOut(color bool, w, h int) {
 // requesting MakeRoom when that is full. A recovery paint can fall back
 // to transient room if lasting room is still full.
 func (s *System) Mask(key uint64, draw func() (w, h int, pix []byte)) GlyphImage {
+	return s.mask(key, draw, true)
+}
+
+// TryMask is Mask without asking for room: a mask that finds none is not
+// left out of the frame, which then neither reports Full nor has MakeRoom
+// make room for it, for a caller that draws it another way.
+func (s *System) TryMask(key uint64, draw func() (w, h int, pix []byte)) GlyphImage {
+	return s.mask(key, draw, false)
+}
+
+func (s *System) mask(key uint64, draw func() (w, h int, pix []byte), ask bool) GlyphImage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e, ok := s.masks[key]; ok {
@@ -534,6 +545,9 @@ func (s *System) Mask(key uint64, draw func() (w, h int, pix []byte)) GlyphImage
 	}
 	if !ok {
 		s.recent[key] = seenAt
+		if !ask {
+			return GlyphImage{}
+		}
 		s.leftOut(false, w, h)
 		if s.outMasks == nil {
 			s.outMasks = map[uint64]struct{}{}

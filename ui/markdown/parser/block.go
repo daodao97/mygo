@@ -649,6 +649,7 @@ func (p *blockParser) finalize(i int) int {
 	b.parse.open = false
 	b.Next = len(d.blocks)
 	switch {
+	case b.Kind == MathBlock && b.parse.mathDone:
 	case b.segB > b.segA:
 		b.End = int(d.segs[b.segB-1].end)
 	case b.parse.lastChild >= 0:
@@ -692,7 +693,9 @@ func (p *blockParser) finalize(i int) int {
 		}
 	case Item:
 		if b.parse.lastChild < 0 {
-			b.End = b.Start + 1
+			// A childless item spans its own line, so its end is that line's
+			// end rather than one byte into a multi-byte marker.
+			b.End = max(b.End, lineEndFrom(p.src, b.Start))
 		}
 	case Quote:
 		if b.parse.alert != NoAlert {
@@ -762,6 +765,18 @@ func (p *blockParser) firstChild(i int) int {
 		return -1
 	}
 	return i + 1
+}
+
+// lineEndFrom returns the offset of the line ending that ends the line
+// starting at from, or len(src) when that line reaches the end of src.
+func lineEndFrom(src string, from int) int {
+	from = max(0, min(from, len(src)))
+	for at := from; at < len(src); at++ {
+		if isLineEnd(src[at]) {
+			return at
+		}
+	}
+	return len(src)
 }
 
 func (p *blockParser) nextSibling(i int) int {

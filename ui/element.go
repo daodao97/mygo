@@ -334,6 +334,7 @@ type layoutStyle struct {
 	keepSpaces bool
 	ellipsis   string
 	middle     bool
+	cutStart   bool
 }
 
 // Element is a node of a frame's user interface. The functions that create
@@ -2017,10 +2018,23 @@ func (e *node) Ellipsis(s string) *node { e.ellipsis = s; return e }
 // cuts in the middle of its last line rather than at its end, so that it
 // keeps both its start and its end, about as wide each, in the room
 // layout gives it: a list of files shows "src/components/…/picker.go",
-// whose folder and file's name both show.
+// whose folder and file's name both show. TruncateStart, with it, cuts
+// the start instead.
 func (e *node) TruncateMiddle() *node {
 	e.c.rt.text.UseTruncateMiddle()
 	e.middle = true
+	return e
+}
+
+// TruncateStart puts the ellipsis of text that SingleLine or MaxLines
+// cuts at the start of its last line rather than at its end, so that it
+// keeps as much of its end as fits the room layout gives it: a list of
+// files shows "…/theme/picker.go", whose file's name and nearest folders
+// show where its start does not matter. With TruncateMiddle too, the
+// start is cut.
+func (e *node) TruncateStart() *node {
+	e.c.rt.text.UseTruncateStart()
+	e.cutStart = true
 	return e
 }
 

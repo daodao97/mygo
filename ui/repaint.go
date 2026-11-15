@@ -47,11 +47,18 @@ func (p *Painter) draw(e *node, box Rect, after bool) {
 	}
 	rt := p.rt
 	start, state, uses := len(p.s.Ops), *p, rt.text.TransientUses()
+	// Layers of paths drawn on the CPU end where a part does, which is
+	// painted again alone (pathSpill).
+	sp := &rt.paths.spill
+	sp.run++
+	opened := sp.opened
 	p.drawing, p.asked = true, false
 	fn(p, box)
 	p.drawing = false
+	sp.run++
 	if p.asked {
 		rt.partTransient += rt.text.TransientUses() - uses
+		sp.inParts += sp.opened - opened
 		rt.drawn = append(rt.drawn, paintPart{e: e, after: after, box: box, start: start, end: len(p.s.Ops), painter: state,
 			under: append([]opaqueBox(nil), state.under...), holes: append([]Rect(nil), state.holes...)})
 	}
@@ -95,6 +102,7 @@ func (rt *engine) repaintParts() bool {
 	rt.painting = true
 	defer func() { rt.painting = false }()
 	rt.partPaints++
+	rt.paths.spill.beginPaint()
 	n := len(s.Ops)
 	// The canvases the last frame drew are drawn: those the parts draw
 	// anew are this frame's.
@@ -114,7 +122,9 @@ func (rt *engine) repaintParts() bool {
 		// it painted last stays in the scene.
 		pt.from = len(s.Ops)
 		p.drawing, p.asked = true, false
+		rt.paths.spill.run++
 		fn(p, pt.box)
+		rt.paths.spill.run++
 		p.drawing = false
 		pt.to = len(s.Ops)
 		rt.under, rt.holes = p.under[:0], p.holes[:0]
@@ -130,5 +140,6 @@ func (rt *engine) repaintParts() bool {
 	ops = append(ops, s.Ops[last:n]...)
 	clear(s.Ops)
 	rt.partOps, s.Ops = s.Ops[:0], ops
+	rt.finishSpills()
 	return true
 }

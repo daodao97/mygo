@@ -151,3 +151,70 @@ func TestPublishS3(t *testing.T) {
 		t.Errorf("error %v", err)
 	}
 }
+
+// TestArchivesFromS3 gets the archives of earlier versions from the
+// bucket of updates.s3 when its credentials are set, rather than from
+// updates.url.
+func TestArchivesFromS3(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "id")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("AWS_SESSION_TOKEN", "")
+	var (
+		mu  sync.Mutex
+		got []string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		got = append(got, r.Host+r.URL.EscapedPath())
+		mu.Unlock()
+		bucket := strings.HasPrefix(r.URL.Path, "/downloads/")
+		switch {
+		case r.Method != http.MethodGet:
+			t.Errorf("%s %s", r.Method, r.URL)
+		case bucket && (r.Header.Get("X-Amz-Content-Sha256") != emptyPayloadHash || !strings.HasPrefix(r.Header.Get("Authorization"), "AWS4-HMAC-SHA256 Credential=id/")):
+			t.Errorf("%s: not signed: %v", r.URL, r.Header)
+		case r.URL.Path == "/downloads/app/missing.tar.gz":
+			w.WriteHeader(http.StatusNotFound)
+			io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><Error><Code>NoSuchKey</Code></Error>`)
+			return
+		}
+		io.WriteString(w, "archive")
+	}))
+	defer srv.Close()
+	served := srv.URL + "/app"
+	c := &Config{Updates: &Updates{URL: served, S3: &S3{Bucket: "downloads", Prefix: "app", Endpoint: srv.URL}}}
+	read := func(get archiveGetter, u string) error {
+		t.Helper()
+		resp, err := get(t.Context(), u)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if b, _ := io.ReadAll(resp.Body); string(b) != "archive" {
+			t.Errorf("%s: %q", u, b)
+		}
+		return nil
+	}
+	get := c.archiveGetter()
+	for _, u := range []string{served + "/App%201.0.0.tar.gz", srv.URL + "/elsewhere/app-0.9.0.tar.gz"} {
+		if err := read(get, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := read(get, served+"/missing.tar.gz"); err != errNotPublished {
+		t.Errorf("a missing archive: %v", err)
+	}
+	host := strings.TrimPrefix(srv.URL, "http://")
+	if want := []string{host + "/downloads/app/App%201.0.0.tar.gz", host + "/elsewhere/app-0.9.0.tar.gz", host + "/downloads/app/missing.tar.gz"}; !slices.Equal(got, want) {
+		t.Errorf("requested %v, want %v", got, want)
+	}
+	// Without credentials, from updates.url.
+	t.Setenv("AWS_ACCESS_KEY_ID", "")
+	got = nil
+	if err := read(c.archiveGetter(), served+"/app-1.0.0.tar.gz"); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{host + "/app/app-1.0.0.tar.gz"}; !slices.Equal(got, want) {
+		t.Errorf("without credentials, requested %v", got)
+	}
+}

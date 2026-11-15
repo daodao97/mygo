@@ -64,6 +64,98 @@ func TestLayoutNewlinesAndEmpty(t *testing.T) {
 	}
 }
 
+// TestLayoutTrailingLineSeparator verifies that a paragraph ending with
+// U+2028 lays out a trailing empty line matching trailing newline semantics,
+// with caret placement and hit-testing on that line.
+func TestLayoutTrailingLineSeparator(t *testing.T) {
+	s := Shared()
+	l := s.Layout(Params{Text: "alpha\u2028", Style: Style{Size: 14}})
+	if len(l.Lines) != 2 {
+		t.Fatalf("%d lines, want 2", len(l.Lines))
+	}
+	last := l.Lines[1]
+	if last.Start != len(l.Runes) || last.End != len(l.Runes) {
+		t.Errorf("empty line is %d:%d, want %d:%d", last.Start, last.End, len(l.Runes), len(l.Runes))
+	}
+	if last.Height <= 0 || last.Y < l.Lines[0].Height {
+		t.Errorf("empty line at y=%v height=%v", last.Y, last.Height)
+	}
+	if want := l.Lines[0].Height + last.Height; math.Abs(float64(l.Height-want)) > 0.5 {
+		t.Errorf("height %v, want %v", l.Height, want)
+	}
+	x, y, h := l.Caret(len(l.Runes))
+	if y != last.Y || h != last.Height {
+		t.Errorf("caret after the break at y=%v h=%v, want y=%v h=%v", y, h, last.Y, last.Height)
+	}
+	if got := l.IndexAt(x, last.Y+last.Height/2); got != len(l.Runes) {
+		t.Errorf("IndexAt on the empty line = %d, want %d", got, len(l.Runes))
+	}
+	// Wrapping reports the empty line itself: it is not added twice.
+	wide := s.Layout(Params{Text: "alpha\u2028", Style: Style{Size: 14}, Width: 1000})
+	if len(wide.Lines) != 2 || wide.Lines[1].Start != 6 || wide.Lines[1].End != 6 {
+		t.Errorf("trailing break with wrapping lines %+v", wide.Lines)
+	}
+	// A break inside the paragraph keeps two lines of text and adds none.
+	inner := s.Layout(Params{Text: "alpha\u2028beta", Style: Style{Size: 14}, Width: 1000})
+	if len(inner.Lines) != 2 || inner.Lines[1].Start != 6 || inner.Lines[1].End != 10 {
+		t.Errorf("inner break lines %+v", inner.Lines)
+	}
+}
+
+// TestLayoutTrailingLineSeparatorMaxLines verifies that MaxLines truncation
+// accounts for the trailing empty line after U+2028 just like a trailing \n.
+func TestLayoutTrailingLineSeparatorMaxLines(t *testing.T) {
+	s := Shared()
+	style := Style{Size: 14}
+	cases := []struct {
+		name      string
+		text      string
+		newline   string
+		maxLines  int
+		wantLines int
+		wantTrunc bool
+	}{
+		{
+			name:      "u2028_before_newline_max_2",
+			text:      "alpha\u2028\nbeta",
+			newline:   "alpha\n\nbeta",
+			maxLines:  2,
+			wantLines: 2,
+			wantTrunc: true,
+		},
+		{
+			name:      "trailing_u2028_max_1",
+			text:      "alpha\u2028",
+			newline:   "alpha\n",
+			maxLines:  1,
+			wantLines: 1,
+			wantTrunc: true,
+		},
+		{
+			name:      "trailing_u2028_max_2",
+			text:      "alpha\u2028",
+			newline:   "alpha\n",
+			maxLines:  2,
+			wantLines: 2,
+			wantTrunc: false,
+		},
+	}
+	for _, tc := range cases {
+		for _, width := range []float32{0, 1000} {
+			got := s.Layout(Params{Text: tc.text, Style: style, Width: width, MaxLines: tc.maxLines})
+			if len(got.Lines) != tc.wantLines || got.Truncated != tc.wantTrunc {
+				t.Errorf("%s (width=%v): got %d lines, truncated=%v; want %d lines, truncated=%v",
+					tc.name, width, len(got.Lines), got.Truncated, tc.wantLines, tc.wantTrunc)
+			}
+			nl := s.Layout(Params{Text: tc.newline, Style: style, Width: width, MaxLines: tc.maxLines})
+			if len(got.Lines) != len(nl.Lines) || got.Truncated != nl.Truncated {
+				t.Errorf("%s (width=%v): got (%d lines, truncated=%v) != newline (%d lines, truncated=%v)",
+					tc.name, width, len(got.Lines), got.Truncated, len(nl.Lines), nl.Truncated)
+			}
+		}
+	}
+}
+
 func TestCarets(t *testing.T) {
 	s := Shared()
 	l := s.Layout(Params{Text: "office files", Style: Style{Size: 20}})
@@ -480,6 +572,35 @@ func TestMakeRoomForLongMasks(t *testing.T) {
 		}
 		s.EndFrame()
 	}
+}
+
+// TestTryMaskAsksForNoRoom draws a mask too long for the initial atlas
+// with TryMask, which a caller that draws it another way uses: it misses
+// without leaving it out of the frame, which then needs no room made,
+// and finds it once room was made for it otherwise.
+func TestTryMaskAsksForNoRoom(t *testing.T) {
+	s := newSystem()
+	s.BeginFrame()
+	draw := func() (int, int, []byte) {
+		pix := make([]byte, 2000*3)
+		for i := range pix {
+			pix[i] = 123
+		}
+		return 2000, 3, pix
+	}
+	for range 2 {
+		if s.TryMask(1, draw).OK || s.Full() {
+			t.Fatal("the long mask fit the initial atlas, or asked for room")
+		}
+	}
+	if s.Mask(1, draw).OK || !s.Full() {
+		t.Fatal("Mask did not ask for room for the mask TryMask missed")
+	}
+	s.MakeRoom()
+	if g := s.TryMask(1, draw); !g.OK || s.maskPixel(g) != 123 || s.Full() {
+		t.Fatalf("the mask does not fit after making room: %+v", g)
+	}
+	s.EndFrame()
 }
 
 func TestMaskCanDeferRasterizationUntilRoom(t *testing.T) {
@@ -967,6 +1088,185 @@ func TestTruncateMiddleEnds(t *testing.T) {
 	}
 }
 
+// checkStartCut returns from where a line that TruncateStart cut keeps
+// the runes of its paragraph, checking it as checkMiddleCut does and
+// that the ellipsis, before them, keeps none of its start.
+func checkStartCut(t *testing.T, l *Layout) (resume int) {
+	t.Helper()
+	cut, resume := checkMiddleCut(t, l)
+	if cut != 0 {
+		t.Fatalf("keeps %d runes before the ellipsis", cut)
+	}
+	return resume
+}
+
+func TestTruncateStart(t *testing.T) {
+	s := newSystem()
+	s.UseTruncateStart()
+	path := "src/components/settings/appearance/theme/picker.go"
+	p := Params{Text: path, Style: Style{Size: 14}, Width: 160, MaxLines: 1, TruncateStart: true}
+	l := s.Layout(p)
+	resume := checkStartCut(t, l)
+	line := l.Lines[0]
+	if line.Width > p.Width {
+		t.Errorf("the line is %v wide in %v", line.Width, p.Width)
+	}
+	if g := line.Glyphs[0]; g.Runes != 0 {
+		t.Errorf("the line starts with %+v, not the ellipsis", g)
+	}
+	if resume > len(path)-len("theme/picker.go") {
+		t.Errorf("kept …%q", path[resume:])
+	}
+	// It keeps as much of the end as fits: one grapheme more does not.
+	width := func(text string) float32 { return s.Layout(Params{Text: text, Style: p.Style}).Width }
+	if w := width("…" + path[resume-1:]); w <= p.Width {
+		t.Errorf("…%q is %v wide, fitting %v", path[resume-1:], w, p.Width)
+	}
+	// The runes it hides, its first too, sit where the text resumes,
+	// after the ellipsis, as those an end cut hides sit before it.
+	at, _, _ := l.Caret(resume)
+	for i := 0; i < resume; i++ {
+		if x, _, _ := l.Caret(i); x != at {
+			t.Errorf("the caret before hidden rune %d is at %v, not %v", i, x, at)
+		}
+	}
+	prev := float32(-1)
+	for i := 0; i <= len(path); i++ {
+		x, _, _ := l.Caret(i)
+		if x < prev {
+			t.Errorf("the caret before rune %d is at %v, left of %v", i, x, prev)
+		}
+		prev = x
+	}
+	if i := l.IndexAt(-10, 5); i != resume {
+		t.Errorf("before the start is rune %d, not %d", i, resume)
+	}
+	if i := l.IndexAt(line.Width+10, 5); i != len(path) {
+		t.Errorf("past the end is rune %d", i)
+	}
+	// Asked for both, the start is cut.
+	p.TruncateMiddle = true
+	if r := checkStartCut(t, s.Layout(p)); r != resume {
+		t.Errorf("with TruncateMiddle too, resumes at %d, not %d", r, resume)
+	}
+}
+
+func TestTruncateStartGraphemes(t *testing.T) {
+	s := newSystem()
+	s.UseTruncateStart()
+	for _, text := range []string{strings.Repeat("é", 40), strings.Repeat("👩‍👩‍👧‍👦", 12)} {
+		l := s.Layout(Params{Text: text, Style: Style{Size: 14}, Width: 90, MaxLines: 1, TruncateStart: true})
+		resume := checkStartCut(t, l)
+		var b Boundaries
+		b.Reset(l.Runes)
+		if _, ok := slices.BinarySearch(b.graphemes, resume); !ok {
+			t.Errorf("%q resumes at rune %d, inside a grapheme", text, resume)
+		}
+	}
+}
+
+func TestTruncateStartRTL(t *testing.T) {
+	s := newSystem()
+	s.UseTruncateStart()
+	for _, text := range []string{
+		"שלום עולם זהו טקסט ארוך מאוד שצריך לקצר בהתחלה",
+		"مرحبا بالعالم هذا نص طويل جدا يجب اختصاره في البداية",
+		"docs/מדריכים/התחלה/מהירה/readme.md",
+	} {
+		p := Params{Text: text, Style: Style{Size: 14}, Width: 140, MaxLines: 1, TruncateStart: true}
+		l := s.Layout(p)
+		resume := checkStartCut(t, l)
+		line := l.Lines[0]
+		joins := strings.ContainsFunc(text, func(r rune) bool { return unicode.Is(unicode.Arabic, r) })
+		if line.Width > p.Width && !joins || resume == len(l.Runes) {
+			t.Errorf("%q: %v wide, resuming at %d", text, line.Width, resume)
+		}
+		if want := isRTL(l.Runes, false); line.RTL != want {
+			t.Errorf("%q: RTL %v", text, line.RTL)
+		}
+	}
+}
+
+func TestTruncateStartSpans(t *testing.T) {
+	s := newSystem()
+	s.UseTruncateStart()
+	// A folder in the style of the text, then a file's name larger.
+	text := "src/components/settings/theme/picker.go"
+	name := strings.Index(text, "picker")
+	spans := EncodeSpans([]Span{{End: name}, {End: len(text), Size: 20}})
+	l := s.Layout(Params{Text: text, Style: Style{Size: 12}, Spans: spans, Width: 180, MaxLines: 1, TruncateStart: true})
+	resume := checkStartCut(t, l)
+	if resume > name {
+		t.Fatalf("resumes at %d, after the name at %d", resume, name)
+	}
+	for _, g := range l.Lines[0].Glyphs {
+		want := float32(12)
+		if g.Runes > 0 && g.Cluster >= name {
+			want = 20
+		}
+		if g.Size != want {
+			t.Errorf("glyph %+v of rune %d (resuming at %d) is %v large", g, g.Cluster, resume, g.Size)
+		}
+	}
+	// Where only the name shows, the ellipsis takes its style, as it
+	// takes that of the text it ends at the end of a line.
+	l = s.Layout(Params{Text: text, Style: Style{Size: 12}, Spans: spans, Width: 80, MaxLines: 1, TruncateStart: true})
+	if resume := checkStartCut(t, l); resume < name {
+		t.Fatalf("resumes at %d, before the name at %d", resume, name)
+	}
+	for _, g := range l.Lines[0].Glyphs {
+		if g.Size != 20 {
+			t.Errorf("glyph %+v is %v large", g, g.Size)
+		}
+	}
+}
+
+func TestTruncateStartEnds(t *testing.T) {
+	s := newSystem()
+	text := "src/components/settings/appearance/theme/picker.go"
+	p := Params{Text: text, Style: Style{Size: 14}, Width: 160, MaxLines: 1, TruncateStart: true}
+	endsWithEllipsis := func(l *Layout) bool {
+		gs := l.Lines[0].Glyphs
+		return l.Truncated && gs[len(gs)-1].Runes == 0 && l.Lines[0].End < len(l.Runes)
+	}
+	// Before UseTruncateStart the ellipsis ends the line.
+	if l := s.Layout(p); !endsWithEllipsis(l) {
+		t.Errorf("without UseTruncateStart: %+v", l.Lines[0])
+	}
+	s.UseTruncateStart()
+	// So it does where the paragraph fits and only the next one is cut,
+	// and without a width.
+	for _, q := range []Params{
+		{Text: "src/a.go\nsrc/b.go", Style: p.Style, Width: 160, MaxLines: 1, TruncateStart: true},
+		{Text: text + "\n" + text, Style: p.Style, MaxLines: 1, TruncateStart: true},
+	} {
+		if l := s.Layout(q); !endsWithEllipsis(l) {
+			t.Errorf("%q in %v: %+v", q.Text, q.Width, l.Lines[0])
+		}
+	}
+	// A text that fits is not cut.
+	p.Width = 1000
+	if l := s.Layout(p); l.Truncated {
+		t.Errorf("a text that fits is cut: %+v", l.Lines[0])
+	}
+	// The last of several lines is cut at its start, keeping the end of
+	// its paragraph, and the lines before it are whole.
+	long := "The quick brown fox jumps over the lazy dog and keeps running to the end.txt"
+	whole := s.Layout(Params{Text: long, Style: p.Style, Width: 160})
+	l := s.Layout(Params{Text: long, Style: p.Style, Width: 160, MaxLines: 2, TruncateStart: true})
+	if len(l.Lines) != 2 || !l.Truncated || len(whole.Lines) < 3 {
+		t.Fatalf("%d lines, truncated %v, of %d", len(l.Lines), l.Truncated, len(whole.Lines))
+	}
+	if first := l.Lines[0]; first.Start != 0 || first.End != whole.Lines[0].End {
+		t.Errorf("the first line holds runes %d to %d, not to %d", first.Start, first.End, whole.Lines[0].End)
+	}
+	last := l.Lines[1]
+	head, tail := last.Glyphs[0], last.Glyphs[len(last.Glyphs)-1]
+	if head.Runes != 0 || head.Cluster != last.Start || last.End != len(l.Runes) || tail.Cluster+tail.Runes != len(l.Runes) || last.Width > 160 {
+		t.Errorf("the last line, runes %d to %d, starts with %+v and ends with %+v, %v wide", last.Start, last.End, head, tail, last.Width)
+	}
+}
+
 func TestColorEmoji(t *testing.T) {
 	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
 		t.Skip("emoji fonts vary")
@@ -1283,7 +1583,7 @@ func TestSpans(t *testing.T) {
 }
 
 func TestEncodeSpans(t *testing.T) {
-	spans := []Span{{End: 3, Family: "A, B", Size: 1.5, Weight: 600, Italic: true, LetterSpacing: -0.5, Features: "tnum", Lang: "ja"}, {End: 5, BaselineShift: -2.5}, {End: 7, SpacingSet: true, PaddingX: 3}, {End: 9}}
+	spans := []Span{{End: 3, Family: "A, B", Size: 1.5, Weight: 600, Italic: true, LetterSpacing: -0.5, Features: "tnum", Lang: "ja"}, {End: 5, BaselineShift: -2.5}, {End: 7, SpacingSet: true, PaddingX: 3}, {End: 8, PaddingStart: 16}, {End: 9}}
 	if got := DecodeSpans(EncodeSpans(spans)); !slices.Equal(got, spans) {
 		t.Errorf("decoded %+v, want %+v", got, spans)
 	}
@@ -1320,6 +1620,47 @@ func TestSpanZeroLetterSpacing(t *testing.T) {
 	if w := width(0, Span{End: 6}, Span{End: 8, SpacingSet: true}); w != plain {
 		t.Errorf("no spacing over none is %v wide, not %v", w, plain)
 	}
+}
+
+// TestSpanPaddingStart checks a span's padding at its start alone: in
+// left-to-right text its glyphs move in by it, and the text after it by it
+// too, not twice; in right-to-left text the room is at the span's right,
+// which is where it starts.
+func TestSpanPaddingStart(t *testing.T) {
+	s := newSystem()
+	const pad = 16
+	lay := func(text string, spans ...Span) *Layout {
+		return s.Layout(Params{Text: text, Style: Style{Size: 14}, Spans: EncodeSpans(spans)})
+	}
+	x := func(l *Layout, r int) float32 {
+		for _, g := range l.Lines[0].Glyphs {
+			if g.Cluster == r {
+				return g.X
+			}
+		}
+		t.Fatalf("no glyph of rune %d", r)
+		return 0
+	}
+	check := func(name, text string, spans []Span, moves [][2]int) {
+		t.Helper()
+		plain, padded := lay(text), lay(text, spans...)
+		if d := padded.Width - plain.Width; math.Abs(float64(d-pad)) > 0.01 {
+			t.Errorf("%s: a span padded at its start widens the text by %v, not %v", name, d, pad)
+		}
+		for _, c := range moves {
+			if d := x(padded, c[0]) - x(plain, c[0]); math.Abs(float64(d-float32(c[1]))) > 0.01 {
+				t.Errorf("%s: rune %d moves %v, not %d", name, c[0], d, c[1])
+			}
+		}
+	}
+	// "Ctrl K" padded: the room is at its left, before rune 4
+	check("left to right", "See Ctrl K now", []Span{{End: 4}, {End: 10, PaddingStart: pad}, {End: 14}},
+		[][2]int{{3, 0}, {4, pad}, {9, pad}, {10, pad}, {13, pad}})
+	// "עולם" (runes 5-8) padded, laid out right to left: the room is at its
+	// right, between it and the space and word before it, which are on its
+	// right and move; it and what follows it, on its left, stay
+	check("right to left", "שלום עולם זה", []Span{{End: 5}, {End: 9, PaddingStart: pad}, {End: 12}},
+		[][2]int{{11, 0}, {8, 0}, {5, 0}, {4, pad}, {0, pad}})
 }
 
 // TestSpanPadding checks the horizontal padding of spans: each line's

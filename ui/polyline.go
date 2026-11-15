@@ -53,6 +53,10 @@ func (p *Painter) StrokePolyline(points [][2]float32, width float32, c Color) {
 	}
 	hw := w / 2
 	wide := p.wide(c, Color{}, Color{})
+	op := scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: -hw, Y: -hw, H: w}, Radii: scene.Uniform(hw), Color: c.scene(), Wide: wide, Opacity: p.opacity}
+	// Painter.add converts this transform for each op; all segments here
+	// share it, as they share the style above.
+	transform := p.transform.Pixels(p.scale)
 	for i := range f.polys() {
 		pts := f.poly(i)
 		for j := 1; j < len(pts); j++ {
@@ -67,7 +71,12 @@ func (p *Painter) StrokePolyline(points [][2]float32, width float32, c Color) {
 				dx, dy = dx/length, dy/length
 				m = scene.Matrix(dx, dy, -dy, dx, a[0], a[1])
 			}
-			p.add(scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: -hw, Y: -hw, W: length + w, H: w}, Radii: scene.Uniform(hw), Color: c.scene(), Wide: wide, Opacity: p.opacity, Transform: m})
+			op.Rect.W = length + w
+			op.Transform = m
+			if transform.Set {
+				op.Transform = transform.Mul(m)
+			}
+			p.s.Ops = append(p.s.Ops, op)
 		}
 	}
 }

@@ -179,6 +179,23 @@ func (v *view) visual(dir int) (int, ui.TextAffinity) {
 
 // vertical moves the caret up or down lines, keeping its x.
 func (v *view) vertical(lines int, extend bool) {
+	// A plain move collapses a non-empty selection to its end in the
+	// direction of travel — the start for up, the end for down — before
+	// stepping vertically, matching KeyLeft/KeyRight and ui/editor.
+	if !extend {
+		if a, z := v.selection(); a != z {
+			edge := z
+			if lines < 0 {
+				edge = a
+			}
+			aff := ui.TextDownstream
+			if edge == v.caret {
+				aff = v.affinity
+			}
+			v.moveTo(edge, aff, false)
+			v.hasDesired = false
+		}
+	}
 	x, y, h := v.caretAt(v.caret, 0, v.affinity)
 	if !v.hasDesired {
 		v.desiredX, v.hasDesired = x, true
