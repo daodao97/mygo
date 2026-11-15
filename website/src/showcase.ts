@@ -454,4 +454,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/hua-ci-fan-yi.png",
   },
+  {
+    name: "Leafmark · 叶笺",
+    description:
+      "A lightweight WYSIWYG Markdown editor for macOS and Windows, drawn entirely with MyGo's native UI. Features multi-tab editing, folder workspaces, a leaf-vein outline, native TeX math and Mermaid diagram rendering, and HTML/PDF export.",
+    url: "https://github.com/KevinXC5/leafmark",
+    author: "KevinXC5",
+    mode: "native",
+    image: "/showcase/leafmark.jpg",
+  },
 ]
