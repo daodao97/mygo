@@ -23,6 +23,9 @@ type Backend struct {
 	name    string
 	appHwnd uintptr // hidden window receiving app level messages
 	running bool
+	// exiting is set by Exiting: the windows get only the default
+	// window procedure while they are destroyed.
+	exiting bool
 
 	signaled atomic.Bool
 	// posted are the functions post runs on the main thread.
@@ -304,7 +307,7 @@ func registerWindowMessage(name string) uint32 {
 
 func wndProc(hwnd, m, wp, lp uintptr) uintptr {
 	b := theBackend
-	if b != nil {
+	if b != nil && !b.exiting {
 		if hwnd == b.appHwnd {
 			if r, ok := b.appMessage(uint32(m), wp, lp); ok {
 				return r
@@ -329,6 +332,52 @@ func wndProc(hwnd, m, wp, lp uintptr) uintptr {
 	}
 	r, _, _ := procDefWindowProcW.Call(hwnd, m, wp, lp)
 	return r
+}
+
+// Exiting destroys the windows of MyGo's classes still there, the hidden
+// application window last, before the process exits (#1896). A window
+// left alive takes its Go window procedure into ExitProcess: a DLL that
+// destroys a child of it while it unloads (an input method's helper
+// window, a child of the application window) has Windows call that
+// procedure on the thread already inside the runtime's exit, and the
+// runtime deadlocks there, leaving the process behind. Destroyed now, the
+// children go with them while the runtime still runs. Nothing of the app
+// handles their messages anymore: the app has finished.
+func (b *Backend) Exiting() {
+	if b.exiting || b.appHwnd == 0 {
+		return
+	}
+	thread, _, _ := procGetWindowThreadProcessId.Call(b.appHwnd, 0)
+	if uint32(thread) != currentThreadID() {
+		return // a window can be destroyed only on its own thread
+	}
+	b.exiting = true
+	var hwnds []uintptr
+	enum := syscall.NewCallback(func(hwnd, _ uintptr) uintptr {
+		if hwnd != b.appHwnd && ownClass(hwnd) {
+			hwnds = append(hwnds, hwnd)
+		}
+		return 1
+	})
+	procEnumThreadWindows.Call(thread, enum, 0)
+	for _, hwnd := range append(hwnds, b.appHwnd) {
+		procDestroyWindow.Call(hwnd)
+	}
+	b.appHwnd = 0
+}
+
+// ownClass reports whether hwnd is of one of the window classes that
+// registerClasses registers.
+func ownClass(hwnd uintptr) bool {
+	var buf [64]uint16
+	n, _, _ := procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	name := syscall.UTF16ToString(buf[:n])
+	for _, c := range []string{appClass, windowClass, captionClass, flyoutShadowClass} {
+		if name == c {
+			return true
+		}
+	}
+	return false
 }
 
 // appMessage handles the messages of the application window.
