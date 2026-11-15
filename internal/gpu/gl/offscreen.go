@@ -40,6 +40,8 @@ type Offscreen struct {
 	w, h             int
 	release          func()
 	r                *Renderer
+	// scratch holds the framebuffer's rows as GL reads them (Read).
+	scratch []byte
 }
 
 // NewOffscreen makes an OpenGL 3.3 context, or with es an OpenGL ES 3.0
@@ -154,6 +156,50 @@ func (o *Offscreen) Render(s *scene.Scene) ([]byte, error) {
 		return nil, err
 	}
 	return ReadFramebuffer(o.w, o.h)
+}
+
+// Draw draws s, which must be as large as the framebuffer, with a
+// renderer of its own, without reading it back: Read does, for videos
+// (plugins/render), which build the next frame meanwhile.
+func (o *Offscreen) Draw(s *scene.Scene) error {
+	if o.r == nil {
+		r, err := New()
+		if err != nil {
+			return err
+		}
+		o.r = r
+	}
+	if err := o.r.Render(s); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Read copies the framebuffer into dst, as the CPU renderer draws:
+// premultiplied BGRA rows from the top, 4×width bytes each.
+func (o *Offscreen) Read(dst []byte) error {
+	n := 4 * o.w * o.h
+	if len(dst) < n {
+		return errors.New("gl: too small a buffer")
+	}
+	if len(o.scratch) != n {
+		o.scratch = make([]byte, n)
+	}
+	glPixelStorei(glPackAlignment, 1)
+	glReadPixels(0, 0, int32(o.w), int32(o.h), glRGBA, glUnsignedByte, unsafe.Pointer(&o.scratch[0]))
+	glPixelStorei(glPackAlignment, 4)
+	if e := glGetError(); e != glNoError {
+		return fmt.Errorf("gl: reading the framebuffer failed (error %#x)", e)
+	}
+	// GL's rows go up, and its bytes are RGBA.
+	row := 4 * o.w
+	for y := range o.h {
+		src, out := o.scratch[row*(o.h-1-y):][:row], dst[row*y:][:row]
+		for x := 0; x < row; x += 4 {
+			out[x], out[x+1], out[x+2], out[x+3] = src[x+2], src[x+1], src[x], src[x+3]
+		}
+	}
+	return nil
 }
 
 // Release deletes the context and what it holds.

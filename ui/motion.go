@@ -125,6 +125,37 @@ func (o SpringOptions) physics() (m, k, c, eps float64) {
 	return m, k, c, eps
 }
 
+// Progress returns where a spring of o going from 0 to 1 is after t: 0
+// at its start, past 1 where it overshoots, 1 once it rests. It follows
+// the trajectory of the values Spring and AnimateTo move, for values that
+// time sets rather than a target, as a video's frames do
+// (plugins/render). Velocity is the value's at the start, in units of
+// the distance a second.
+func (o SpringOptions) Progress(t time.Duration) float64 {
+	m, k, c, _ := o.physics()
+	if t <= 0 {
+		return 0
+	}
+	x, _ := solveSpring(-1, float64(o.Velocity), m, k, c, t.Seconds())
+	return 1 + x
+}
+
+// SettleTime returns how long a spring of o going from 0 to 1 takes to
+// come to rest, where the values Spring moves stop: within Precision of 1,
+// and as slow as that, to the millisecond, at most a minute.
+func (o SpringOptions) SettleTime() time.Duration {
+	m, k, c, eps := o.physics()
+	x, v := -1.0, float64(o.Velocity)
+	const step = time.Millisecond
+	for t := step; t <= time.Minute; t += step {
+		x, v = solveSpring(x, v, m, k, c, step.Seconds())
+		if math.Abs(x) <= eps && math.Abs(v) <= eps*math.Sqrt(k/m) {
+			return t
+		}
+	}
+	return time.Minute
+}
+
 // finiteMotion panics unless the values of what are finite.
 func finiteMotion(what string, v ...float64) {
 	for _, n := range v {

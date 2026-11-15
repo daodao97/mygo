@@ -101,7 +101,7 @@ func (f *frames) Rewind() error { f.next = 0; return nil }
 
 `ui.NewAPNGDecoder` 以同样的方式解码动画 PNG，每一帧按其处置方式和混合方式绘制，并让每一帧保持压缩，直到播放时才解压。不是动画的 PNG 是只有一帧的视频。
 
-如果解码器还提供 `Duration() time.Duration` 方法，它的视频长度会通过 `Duration` 报告；GIF 和 APNG 解码器就有这个方法。对解码器视频调用 `Seek` 时，会从开头解码到那一帧。
+如果解码器还提供 `Duration() time.Duration` 方法，它的视频长度会通过 `Duration` 报告；GIF 和 APNG 解码器就有这个方法。对解码器视频调用 `Seek` 时，会从开头解码到那一帧；但如果解码器是 `ui.VideoSeeker`，它的 `Seek` 会直接跳到那一帧，播放器只解码这一帧，[render 插件的播放器](../plugins/render.md#预览)就是这样。
 
 ## 系统视频
 

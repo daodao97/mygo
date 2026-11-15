@@ -136,7 +136,9 @@ framework safely. Read it before changing anything under `internal/`.
 │                       command line client for agents
 │                       (automation/cmd/mygo-automation), and
 │                       permissionflow, the system's permissions and a
-│                       guide to System Settings, after PermissionFlow
+│                       guide to System Settings, after PermissionFlow,
+│                       and render, videos of native UI drawn on the GPU
+│                       and encoded with the system's encoders
 ├── ui/                 native UI: views, layout, widgets, text editing, Tester;
 │                       ui/chart: charts without a look, on ui's public API;
 │                       ui/editor: the code editor and the diff viewer;
@@ -166,6 +168,7 @@ framework safely. Read it before changing anything under `internal/`.
 │                       looping behind a window's content, a trailer
 │                       with controls over it); permissionflow
 │                       (the permissions, asked for and guided to);
+│                       render (a promo video of native UI, and its preview);
 │                       native-module (native modules in Swift, called from native UI);
 │                       rust-native (a Rust crate the CLI builds, called
 │                       through ffi)
@@ -5845,6 +5848,71 @@ gets a test with `Tester`. A new GPU renderer draws the instances of
 `Atlas.Changes`, is created in `ui/gpu_<os>.go` behind `gpuRenderer`, and
 has a test that compares its drawing of `gputest.Scene` with the CPU
 renderer's (`gputest.Compare`).
+
+### Videos (`plugins/render`)
+
+The render plugin makes videos of native UI (see
+[the plugin's page](plugins/render.md)). Its frames come from
+`ui.Recorder` (`ui/recorder.go`), the engine of a Tester without input:
+its host keeps each scene for the caller rather than drawing it, never
+paces (`framesAtOnce`), and its clock (`engine.clock`) is the video's,
+set by each `Frame(at)`, which asks for a frame built anew
+(`engine.changed`), runs it, and runs it again at the same time while
+the view invalidated it, eight passes at most. What moves with time,
+`ui`'s animations and `After`, is where it would be on screen at that
+time. Timers are dropped: every frame is built. A Recorder's DIPs are
+the frame's pixels over the scale, nudged below by a float32 ulp where
+`engine.pixels`' ceiling would make one pixel more.
+
+A render (`run` in `render.go`) builds frame i, then reads back frame
+i−1, which the GPU drew meanwhile, and gives it to the sink, then
+submits i: one frame in flight. The drawers are the renderers' frame
+targets: `metal.Frames` (draws into its own texture, or into an
+IOSurface, and tracks its command buffers in the renderer's ring),
+`d3d11.Frames` (a hidden window's back buffer, copied into a staging
+texture kept from frame to frame) and `gl.Offscreen` (EGL's
+surfaceless platform), or `raster.Renderer`, which redraws only the
+damage. `Auto` takes the CPU renderer where the GPU's is a software
+rasterizer (llvmpipe, WARP), as it is faster there. On macOS the
+AVFoundation sink is a `sceneSink`: Metal draws each frame into a
+CVPixelBuffer of the pixel buffer adaptor's pool (retained: the adaptor
+returns it autoreleased), which is appended once the next frame's draw
+waited for it, without a copy.
+
+The system's writers take their tracks before the first frame and
+interleave the sound with the video, waiting for the sound to run ahead
+of it (AVAssetWriter holds the video until the sound input has data
+past it, or is finished). So `Video` builds every frame once before
+drawing any (`soundtrack`), mixing what `Frame.Audio` plays into one
+track, interleaved stereo 16-bit at 48 kHz, nil when nothing plays; the
+sinks feed it ahead of the frames: AVFoundation up to a second ahead and
+more while the video waits, marking the sound finished as soon as it
+is all given; Media Foundation half a second ahead; GStreamer from a
+goroutine of its own into a blocking appsrc. Sounds are decoded into
+memory and resampled with a Kaiser-windowed sinc, stateless, so that a
+frame mixes any part of any sound; a voice, a sound played from one
+start, ramps its volume across each frame.
+
+Colors: the frames are sRGB, tagged BT.709. VideoToolbox converts BGRA
+with the output's matrix and GStreamer's videoconvert with
+`colorimetry=bt709`; Media Foundation's sink writer converts RGB32 with
+BT.601's, so its frames are converted to NV12 of BT.709 in Go
+(`bgraToNV12`), on all cores. GStreamer's encoder is the first of the
+codec's list that encodes a test frame (`probe`): hardware encoders'
+elements exist without their hardware.
+
+Motion blur (`Composition.MotionBlur`) builds each frame `Samples` times
+at sub-frame times, before the frame's, earliest first, so the Recorder's
+clock still only goes forward (the earliest sample of a frame comes after
+the frame before, as the shutter is at most a frame), draws each, reads
+it back and sums it in 16 bits on all cores (`accumulator`); the
+zero-copy AVFoundation path is skipped then. `Frame.sub` carries the
+fraction to the view (`Exact`, `Seconds`, `Interpolate`, `Spring`);
+`soundtrack` builds whole frames.
+
+`NewPlayer` is a `ui.VideoSeeker`: a `ui.VideoPlayer` seeks it at once,
+and it builds the frames before the one it goes to without drawing
+them, from a new session when it goes back.
 
 ## Native modules (`native`, `internal/nativegen`)
 
