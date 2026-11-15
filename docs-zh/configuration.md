@@ -114,7 +114,7 @@ export default defineConfig({
 | `helperEntitlements` | | 资源中代码的权限属性列表，按它在资源中的路径，例如 `{ "bin/server": "server.entitlements.plist" }`；其他代码保持签署它时使用的权限。见[辅助可执行文件](distribution.md#辅助可执行文件) |
 | `infoPlist` | | 添加到应用 `Info.plist` 的键，替换 MyGo 的，例如 `NSCameraUsageDescription` |
 | `dmgTitle` | `name` | 磁盘映像的卷名 |
-| `notarize` | | 对生产磁盘映像进行公证：`keychainProfile`，即 `xcrun notarytool store-credentials` 的钥匙串描述文件，以及可选的 `keychain`，存放该描述文件的钥匙串 |
+| `notarize` | | 对生产构建的应用和磁盘映像进行公证：`keychainProfile`，即 `xcrun notarytool store-credentials` 的钥匙串描述文件，以及可选的 `keychain`，存放该描述文件的钥匙串 |
 
 见 [macOS](distribution.md#macos)。
 

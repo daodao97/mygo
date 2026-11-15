@@ -66,8 +66,8 @@ func (e *deltaEntry) isFile() bool { return !e.Dir && e.Link == "" }
 const maxDiff = 256 << 20
 
 // stapledTicket is where stapling writes the notarization ticket of an app
-// bundle. The archive's app has it, but the app installed from the disk
-// image does not (dmg.go staples the app after copying it into the image),
+// bundle. The archive's app has it, but an app installed from a disk image
+// that mygo made before stapling the app it copies in (dmg.go) does not,
 // so deltas include it whole, never as a copy or patch of the old app's.
 const stapledTicket = "Contents/CodeResources"
 

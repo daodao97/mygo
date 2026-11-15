@@ -208,7 +208,7 @@ export default defineConfig({
 xcrun notarytool store-credentials notary
 ```
 
-随后 `mygo build` 会在签名时启用强化运行时，将磁盘映像提交给公证服务，再将公证票据附加到磁盘映像和应用上；更新也会包含票据。`security find-identity -v -p codesigning` 可列出签名身份，`mygo doctor` 会统计 Developer ID 的数量。
+随后 `mygo build` 会在签名时启用强化运行时，先将应用提交给公证服务并把票据附加到应用上，再对装有该应用的磁盘映像做同样的事；更新也会包含附加了票据的应用。`security find-identity -v -p codesigning` 可列出签名身份，`mygo doctor` 会统计 Developer ID 的数量。
 
 `codesign` 缺少什么，就在这台 Mac 的屏幕上弹出对话框来要：已锁定钥匙串的密码，或者使用该身份密钥的许可。它会一直等到有人回答，所以没人看着的构建——锁屏之后、通过 SSH 或在 CI 中——就停在那里。15 秒之后，`mygo build` 和 `mygo dev` 会提示 `codesign` 可能正在等待。在没人能回答的地方，先在构建之前解锁钥匙串，并允许 `codesign` 使用密钥，就像 [GitHub Actions 的工作流](github-actions.md)那样：
 

@@ -34,6 +34,16 @@ func dmgFileName(c *Config, goarch string) string {
 // .DS_Store (see dsstore.go). Only hdiutil, which ships with macOS, is
 // needed.
 func buildDMG(c *Config, app, dir, goarch string, opts buildOptions) (_ string, err error) {
+	notary := c.MacOS.Notarize != nil && !opts.skipNotarize
+	// The app is notarized and stapled before it is copied into the image,
+	// so that the copy users drag to /Applications has its ticket, which
+	// Gatekeeper reads when it cannot ask Apple. Updates install the same
+	// stapled app.
+	if notary {
+		if err := notarizeApp(c.MacOS.Notarize, app); err != nil {
+			return "", err
+		}
+	}
 	file := dmgFileName(c, goarch)
 	t := con.start("Creating " + file)
 	defer func() { t.end(err, "Created "+file) }()
@@ -118,14 +128,8 @@ func buildDMG(c *Config, app, dir, goarch string, opts buildOptions) (_ string, 
 		}
 	}
 	t.done("Created " + file)
-	if c.MacOS.Notarize != nil && !opts.skipNotarize {
+	if notary {
 		if err := notarize(c.MacOS.Notarize, dmg); err != nil {
-			return "", err
-		}
-		// The ticket covers the app too: staple it for updates, which
-		// install the bare app. The image's copy stays without it, which
-		// deltas allow for (stapledTicket in internal/update).
-		if err := command("xcrun", "stapler", "staple", app); err != nil {
 			return "", err
 		}
 	}
@@ -256,11 +260,39 @@ func setFinderFlags(path string, flags uint16) error {
 
 // notarize submits a disk image to Apple's notary service, waits for the
 // verdict and staples the ticket to the image.
-func notarize(n *Notarize, dmg string) (err error) {
-	t := con.start("Notarizing " + filepath.Base(dmg))
+func notarize(n *Notarize, dmg string) error {
+	if err := submitNotary(n, dmg, filepath.Base(dmg)); err != nil {
+		return err
+	}
+	return command("xcrun", "stapler", "staple", dmg)
+}
+
+// notarizeApp notarizes an app bundle and staples the ticket to it. The
+// notary service takes no bundles, so a zip of it is submitted, made with
+// ditto, which keeps the bundle's signature and extended attributes.
+func notarizeApp(n *Notarize, app string) error {
+	work, err := os.MkdirTemp("", "mygo-notarize-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(work)
+	zip := filepath.Join(work, strings.TrimSuffix(filepath.Base(app), ".app")+".zip")
+	if err := command("ditto", "-c", "-k", "--keepParent", app, zip); err != nil {
+		return err
+	}
+	if err := submitNotary(n, zip, filepath.Base(app)); err != nil {
+		return err
+	}
+	return command("xcrun", "stapler", "staple", app)
+}
+
+// submitNotary submits file to Apple's notary service, as what it names,
+// and waits for the verdict.
+func submitNotary(n *Notarize, file, what string) (err error) {
+	t := con.start("Notarizing " + what)
 	t.set("usually takes a few minutes")
-	defer func() { t.end(err, "Notarized "+filepath.Base(dmg)) }()
-	args := []string{"notarytool", "submit", dmg, "--keychain-profile", n.KeychainProfile, "--wait", "--output-format", "json"}
+	defer func() { t.end(err, "Notarized "+what) }()
+	args := []string{"notarytool", "submit", file, "--keychain-profile", n.KeychainProfile, "--wait", "--output-format", "json"}
 	if n.Keychain != "" {
 		args = append(args, "--keychain", n.Keychain)
 	}
@@ -288,7 +320,7 @@ func notarize(n *Notarize, dmg string) (err error) {
 		}
 		return fmt.Errorf("%s\n%s", msg, strings.TrimSpace(string(out)))
 	}
-	return command("xcrun", "stapler", "staple", dmg)
+	return nil
 }
 
 func fileExists(path string) bool {

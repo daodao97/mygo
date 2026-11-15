@@ -178,8 +178,9 @@ export default defineConfig({
 });
 ```
 
-`mygo build` then signs the app, submits the disk image to the notary
-service and waits for it, usually a few minutes, and staples the ticket.
+`mygo build` then signs the app, submits the app and then the disk image
+to the notary service, waiting for each, usually a few minutes, and
+staples the tickets.
 An App Store Connect API key works instead of the Apple ID: give
 `notarytool store-credentials` the key's file, ID and issuer with `--key`,
 `--key-id` and `--issuer`.

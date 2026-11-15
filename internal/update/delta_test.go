@@ -168,8 +168,8 @@ func TestDelta(t *testing.T) {
 }
 
 // The archives of notarized apps hold the ticket stapled to their bundle,
-// in Contents/CodeResources, but the apps installed from their disk images
-// do not: deltas apply to both.
+// in Contents/CodeResources, but apps installed from the disk images of
+// older mygo versions do not: deltas apply to both.
 func TestDeltaStapledTicket(t *testing.T) {
 	r := rand.New(rand.NewPCG(7, 8))
 	ticket := make([]byte, 1600)
