@@ -7,8 +7,15 @@ import { parse } from "yaml"
 
 export const source = "https://raw.githubusercontent.com/egoist/mygo-showcase/main/"
 
-/** How long a copy is served before GitHub is asked again, in seconds. */
-const fresh = { list: 300, image: 86400 }
+/**
+ * How long Cloudflare serves a copy before GitHub is asked again, in seconds,
+ * and what browsers are told. The zone's Browser Cache TTL raises any lower
+ * max-age to hours, so the list makes browsers revalidate instead, as pages do.
+ */
+const fresh = {
+  list: { edge: 300, browser: "public, max-age=0, must-revalidate" },
+  image: { edge: 86400, browser: "public, max-age=86400" },
+}
 /** How long the last good copy stays to serve while GitHub fails. */
 const lastGood = 30 * 86400
 
@@ -76,36 +83,42 @@ async function screenshot(file: string, type: string): Promise<Response> {
 }
 
 /**
- * The cached response to a GET, else what make returns, cached for maxAge
+ * The cached response to a GET, else what make returns, cached for ttl.edge
  * seconds. While make fails, the last good copy is served, for lastGood.
  */
-async function cached(request: Request, ctx: Context, maxAge: number, make: () => Promise<Response>): Promise<Response> {
+async function cached(request: Request, ctx: Context, ttl: (typeof fresh)["list"], make: () => Promise<Response>): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } })
   // caches.default is Cloudflare's; there is none under Node or Bun.
   const cache = (globalThis as { caches?: { default?: Cache } }).caches?.default
   const key = new Request(new URL(request.url).origin + new URL(request.url).pathname)
   const backup = new Request(`${key.url}?last-good`)
   const hit = await cache?.match(key)
-  if (hit) return hit
+  if (hit) return forBrowser(hit, ttl)
 
   let response: Response
   try {
     response = await make()
   } catch (error) {
     const stale = await cache?.match(backup)
-    if (stale) return stale
+    if (stale) return forBrowser(stale, ttl)
     console.error(error)
     return new Response("The showcase could not be fetched from GitHub", { status: 502 })
   }
   if (!response.ok) return response
 
-  response = new Response(response.body, response)
-  response.headers.set("Cache-Control", `public, max-age=${maxAge}`)
   if (cache) {
-    const copy = response.clone()
+    const copy = new Response(response.clone().body, response)
+    copy.headers.set("Cache-Control", `public, max-age=${ttl.edge}`)
     const kept = new Response(response.clone().body, response)
     kept.headers.set("Cache-Control", `public, max-age=${lastGood}`)
     ctx.waitUntil(Promise.all([cache.put(key, copy), cache.put(backup, kept)]))
   }
-  return response
+  return forBrowser(response, ttl)
+}
+
+/** The response with the Cache-Control browsers get, not the cache's. */
+function forBrowser(response: Response, ttl: (typeof fresh)["list"]): Response {
+  const out = new Response(response.body, response)
+  out.headers.set("Cache-Control", ttl.browser)
+  return out
 }

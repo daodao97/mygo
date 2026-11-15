@@ -77,7 +77,8 @@ test("serves showcase.yaml as JSON, checked, with screenshots on this origin", a
   try {
     const response = await f.get("/api/showcase.json")
     expect(response.headers.get("Content-Type")).toBe("application/json; charset=utf-8")
-    expect(response.headers.get("Cache-Control")).toBe("public, max-age=300")
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=0, must-revalidate")
+    expect(f.store.get("https://mygo.run/api/showcase.json").headers.get("Cache-Control")).toBe("public, max-age=300")
     expect(await response.json()).toEqual([
       { name: "App", description: "Does things.", url: "https://example.com/app", author: "someone", mode: "native", image: "/api/showcase/images/app.jpg" },
       { name: "Odd", description: "Its mode and image are dropped.", url: "https://example.com/odd" },
@@ -99,6 +100,7 @@ test("answers from the cache, and from the last good copy while GitHub fails", a
     const response = await f.get("/api/showcase.json")
     expect(response.status).toBe(200)
     expect((await response.json())[0].name).toBe("App")
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=0, must-revalidate")
 
     f.store.clear()
     expect((await f.get("/api/showcase.json")).status).toBe(502)

@@ -23,7 +23,8 @@ The apps of `/showcase` live in
 [egoist/mygo-showcase](https://github.com/egoist/mygo-showcase), so adding
 one needs no new build. The Worker (`showcase.ts`) serves its `showcase.yaml`
 as `/api/showcase.json` and its screenshots under `/api/showcase/images/`,
-from Cloudflare's cache (5 minutes for the list, a day for screenshots), and
+from Cloudflare's cache (5 minutes for the list, which browsers revalidate,
+a day for screenshots), and
 keeps the last good copy to serve while GitHub fails. `vite dev` serves them
 through the same code; the page fetches the list once it opens.
 
