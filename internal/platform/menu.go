@@ -52,6 +52,25 @@ func (it *MenuItem) LabelWithSubtitle() string {
 	return it.Label + " — " + it.Subtitle
 }
 
+// LabelWithBadge is the label of a backend that shows the subtitle on a
+// line of its own, followed by the badge.
+func (it *MenuItem) LabelWithBadge() string {
+	if it.Badge == "" {
+		return it.Label
+	}
+	return it.Label + "  " + it.Badge
+}
+
+// LabelWithSubtitleAndBadge is the label of a backend that can show neither
+// the subtitle nor the badge on its own: both follow the label.
+func (it *MenuItem) LabelWithSubtitleAndBadge() string {
+	label := it.LabelWithSubtitle()
+	if it.Badge == "" {
+		return label
+	}
+	return label + "  " + it.Badge
+}
+
 // Apply gives the items of the menu that it is a snapshot of, by ID, its
 // state: a backend that keeps a snapshot to build menus from later (a
 // tray's, the application menu for new windows) keeps it current with the

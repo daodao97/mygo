@@ -52,3 +52,20 @@ func TestMenuApply(t *testing.T) {
 	}
 	(*Menu)(nil).Apply(got) // no menu, nothing to do
 }
+
+// TestLabelWithSubtitleAndBadge checks the fallback of platforms that draw
+// neither the subtitle nor the badge on its own.
+func TestLabelWithSubtitleAndBadge(t *testing.T) {
+	if got := (&MenuItem{Label: "Node"}).LabelWithBadge(); got != "Node" {
+		t.Errorf("label without badge = %q", got)
+	}
+	if got := (&MenuItem{Label: "Node", Badge: "120 ms"}).LabelWithBadge(); got != "Node  120 ms" {
+		t.Errorf("label with badge = %q", got)
+	}
+	if got := (&MenuItem{Label: "Node", Subtitle: "Hong Kong"}).LabelWithSubtitleAndBadge(); got != "Node — Hong Kong" {
+		t.Errorf("label with subtitle = %q", got)
+	}
+	if got := (&MenuItem{Label: "Node", Subtitle: "Hong Kong", Badge: "120 ms"}).LabelWithSubtitleAndBadge(); got != "Node — Hong Kong  120 ms" {
+		t.Errorf("label with subtitle and badge = %q", got)
+	}
+}

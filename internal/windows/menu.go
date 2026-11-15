@@ -684,11 +684,15 @@ func atoi(s string) int {
 }
 
 // menuLabel is the text of an item's menu entry: its label, in which an
-// ampersand marks the mnemonic, and its subtitle after it, in which it is
-// an ampersand.
+// ampersand marks the mnemonic, and its subtitle and badge after it, in
+// which it is an ampersand.
 func menuLabel(it *platform.MenuItem) string {
-	if it.Subtitle == "" {
-		return it.Label
+	label := it.Label
+	if it.Subtitle != "" {
+		label += " — " + strings.ReplaceAll(it.Subtitle, "&", "&&")
 	}
-	return it.Label + " — " + strings.ReplaceAll(it.Subtitle, "&", "&&")
+	if it.Badge != "" {
+		label += "  " + strings.ReplaceAll(it.Badge, "&", "&&")
+	}
+	return label
 }

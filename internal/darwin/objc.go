@@ -67,6 +67,7 @@ var (
 	msgKeyEvent        func(cls id, sel objc.SEL, typ uint, loc NSPoint, flags uint, ts float64, wn int, ctx id, chars, charsIgnoring id, repeat bool, keyCode uint16) id
 	msgDrawImage       func(obj id, sel objc.SEL, dst, src NSRect, op uint, fraction float64)
 	msgInitBitmap      func(obj id, sel objc.SEL, planes uintptr, width, height, bitsPerSample, samplesPerPixel int, alpha, planar bool, colorSpace id, bytesPerRow, bitsPerPixel int) id
+	msgInitTextTab     func(obj id, sel objc.SEL, alignment uint, location float64, options id) id
 	msgSetRateRange    func(obj id, sel objc.SEL, r caFrameRateRange)
 
 	blockCopy    func(block uintptr) uintptr
@@ -140,6 +141,7 @@ func load() {
 		purego.RegisterFunc(&msgSetRect, msgSendAddr)
 		purego.RegisterFunc(&msgDrawImage, msgSendAddr)
 		purego.RegisterFunc(&msgInitBitmap, msgSendAddr)
+		purego.RegisterFunc(&msgInitTextTab, msgSendAddr)
 		purego.RegisterFunc(&msgSetRateRange, msgSendAddr)
 		purego.RegisterFunc(&msgSetRectBool, msgSendAddr)
 		purego.RegisterFunc(&msgFloat, msgSendAddr)

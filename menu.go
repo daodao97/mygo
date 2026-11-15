@@ -24,6 +24,16 @@ const (
 	MenuItemRadio     MenuItemType = "radio"
 )
 
+// BadgeAlignment is where an item's badge sits in the column the badges of
+// its menu share (macOS).
+type BadgeAlignment string
+
+const (
+	BadgeAlignLeft   BadgeAlignment = "left"
+	BadgeAlignCenter BadgeAlignment = "center"
+	BadgeAlignRight  BadgeAlignment = "right" // the default
+)
+
 // MenuRole gives a menu item a predefined behavior, label and accelerator.
 type MenuRole string
 
@@ -112,7 +122,16 @@ type MenuItem struct {
 	// browsers show it so, and earlier macOS, Windows and Linux after the
 	// label, as "Label — Subtitle".
 	Subtitle string
-	Submenu  []*MenuItem
+	// Badge is text at the trailing edge of the item, such as a count or a
+	// latency. macOS puts the badges of a menu in a column after its longest
+	// label, aligned as BadgeAlign says, and draws them in a
+	// monospaced-digit font; other platforms show the badge after the label
+	// and subtitle.
+	Badge string
+	// BadgeAlign is where Badge sits in that column: BadgeAlignLeft,
+	// BadgeAlignCenter, or BadgeAlignRight (the default).
+	BadgeAlign BadgeAlignment
+	Submenu    []*MenuItem
 	// Click is called on the main thread when the item is chosen. On Linux
 	// and Windows, win is the window whose menu bar or context menu was
 	// chosen. Other menus use the focused window, which may be nil.
@@ -303,6 +322,15 @@ func (it *MenuItem) IsChecked() bool { return it.get(func() bool { return it.Che
 
 // SetLabel changes the label of the item.
 func (it *MenuItem) SetLabel(label string) { it.update(func() { it.Label = label }) }
+
+// SetBadge changes the badge of the item, empty to remove it.
+func (it *MenuItem) SetBadge(badge string) { it.update(func() { it.Badge = badge }) }
+
+// SetBadgeAlign changes where the badge sits in the menu's badge column:
+// BadgeAlignLeft, BadgeAlignCenter or BadgeAlignRight (the default).
+func (it *MenuItem) SetBadgeAlign(align BadgeAlignment) {
+	it.update(func() { it.BadgeAlign = align })
+}
 
 // SetAccelerator changes the keyboard shortcut of the item.
 func (it *MenuItem) SetAccelerator(acc string) { it.update(func() { it.Accelerator = acc }) }
@@ -543,6 +571,8 @@ func (it *MenuItem) snapshotLocked() *platform.MenuItem {
 		ID:          it.uid,
 		Label:       it.Label,
 		Subtitle:    it.Subtitle,
+		Badge:       it.Badge,
+		BadgeAlign:  platform.BadgeAlignment(it.BadgeAlign),
 		Role:        string(it.Role),
 		Accelerator: it.Accelerator,
 		Enabled:     !it.Disabled,

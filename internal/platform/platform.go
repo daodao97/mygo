@@ -1077,6 +1077,16 @@ type Menu struct {
 	RightToLeft bool
 }
 
+// BadgeAlignment is where an item's badge sits in the column the badges of
+// its menu share.
+type BadgeAlignment string
+
+const (
+	BadgeAlignLeft   BadgeAlignment = "left"
+	BadgeAlignCenter BadgeAlignment = "center"
+	BadgeAlignRight  BadgeAlignment = "right"
+)
+
 // MenuItem is a snapshot of a menu item. ID identifies the public item the
 // native item was built from.
 type MenuItem struct {
@@ -1084,6 +1094,8 @@ type MenuItem struct {
 	Type        MenuItemType
 	Label       string
 	Subtitle    string
+	Badge       string
+	BadgeAlign  BadgeAlignment
 	Role        string
 	Accelerator string
 	Enabled     bool
