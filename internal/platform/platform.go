@@ -1096,6 +1096,7 @@ type MenuItem struct {
 	Subtitle    string
 	Badge       string
 	BadgeAlign  BadgeAlignment
+	KeepOpen    bool
 	Role        string
 	Accelerator string
 	Enabled     bool
