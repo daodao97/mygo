@@ -53,7 +53,7 @@ mygo.NewWindow(mygo.WindowOptions{Title: "Inspector", Content: ui.View(app.view)
 | `Opacity` | 0 到 1 之间 |
 | `IgnoreMouseEvents` | 创建窗口时就让鼠标穿透到它背后的内容，如同之后调用 `SetIgnoreMouseEvents(true)`（见[点击穿透窗口](#点击穿透窗口)） |
 | `DisableResize`, `DisableMove`, `DisableMinimize`, `DisableMaximize`, `DisableClose`, `DisableFullScreen`, `DisableShadow` | 去掉相应能力。在 Wayland 下的 Linux 上，`DisableShadow` 让无边框窗口或隐藏式标题栏去掉 GTK 在它们周围绘制的阴影和边框 |
-| `AlwaysOnTop` | 让窗口保持在其他窗口之上 |
+| `AlwaysOnTop` | 让窗口保持在其他窗口之上；在 Wayland 下仅限不在任务栏中的无边框窗口，见[点击穿透窗口](#点击穿透窗口) |
 | `SkipTaskbar` | 让窗口不出现在任务栏中（Linux、Windows） |
 | `AutoHideMenuBar` | 只在键盘焦点进入菜单栏时（按 Alt 或 F10）显示菜单栏（Linux、Windows），见[菜单栏](menus.md#菜单栏) |
 | `Parent`, `Modal` | 子窗口，对其父窗口模态，也可以是[叠在浮出窗口上的对话框](#叠在浮出窗口上的对话框)；对于紧挨其某一部分放置的窗口，见[浮出窗口](#浮出窗口) |
@@ -440,6 +440,8 @@ pet.SetInputRegion([]mygo.Rectangle{character, {X: 10, Y: 10, Width: 220, Height
 | 区域 | 指针在矩形外时窗口让鼠标穿过（`ignoresMouseEvents`），随指针移动而切换，依据应用内和其他应用中指针移动的监听器 | 窗口的输入形状：X11 的 SHAPE 扩展、Wayland 的输入区域 | 光标在矩形外时窗口让鼠标穿过（分层，`WS_EX_TRANSPARENT`）；窗口显示期间，定时器在系统时钟的每一拍（15.6 ms）询问一次 |
 
 在 macOS 和 Windows 上，按住鼠标键时窗口保持原样：从角色上开始的拖拽在那里结束，从背后内容上开始的拖拽也在那里结束，松开后决定下一次谁接收鼠标。
+
+在会忽略置顶的 Wayland 下，这样的窗口（无边框、`AlwaysOnTop` 且 `SkipTaskbar`，没有父窗口）在合成器支持 layer shell 协议（KDE Plasma、Sway、Hyprland、COSMIC……）且已安装 `libgtk-layer-shell.so.0` 时，会像[面板](#面板)一样使用该协议的绘制表面：显示在覆盖层，位于全屏窗口之上，不出现在任务栏中，按窗口的边界定位，不受桌面面板预留区域的影响；只有被点击时才接收键盘，因此它下面的应用保持键盘焦点。它会一直保持在上层直到关闭：`SetAlwaysOnTop(false)` 无法让 layer shell 表面变回普通窗口，因此允许用户关闭置顶的应用需要重新打开一个不带 `AlwaysOnTop` 的窗口。在其他桌面上（例如没有 layer shell 的 GNOME），它与普通窗口一样，可能被其他窗口遮住；在 XWayland 下（`GDK_BACKEND=x11`），GNOME 会让它保持在其他窗口之上，全屏窗口也不例外。
 
 ## 事件
 

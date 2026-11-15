@@ -84,6 +84,9 @@ type window struct {
 	// layerAt, or centered by the compositor without it.
 	layer   bool
 	layerAt *platform.Point
+	// overlay tells that the layer surface is an always-on-top window
+	// (initOverlay), which never takes the keyboard by itself.
+	overlay bool
 
 	closed       bool
 	programmatic bool
@@ -157,6 +160,9 @@ type window struct {
 	// dragPending holds whether a window drag was requested with the last
 	// press and waits for the pointer to move; see StartDrag.
 	dragPending bool
+	// layerMove is the move or resize of a layer surface by the pointer,
+	// while its button stays down (moveLayer).
+	layerMove *layerMove
 
 	// cursor is the resize cursor shown over an edge of a frameless
 	// window, and the page's cursor it replaced.
@@ -197,6 +203,8 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	gtkWindowSetTitle(w.win, cs(o.Title))
 	if o.Panel {
 		w.initLayer() // before anything realizes the window
+	} else if overlayWindow(o) {
+		w.initOverlay()
 	}
 	if o.Center {
 		gtkWindowSetPosition(w.win, 1) // GTK_WIN_POS_CENTER
@@ -540,7 +548,12 @@ func (w *window) SetBounds(r platform.Rect) {
 }
 
 func (w *window) SetContentBounds(r platform.Rect) {
-	w.setBounds(w.frameExtents().grow(w.contentInsets().grow(r)), true)
+	r = w.contentInsets().grow(r)
+	if w.layer {
+		w.setLayerBounds(r) // no frame around it
+		return
+	}
+	w.setBounds(w.frameExtents().grow(r), true)
 }
 
 // setBounds asks for the bounds of the frame, for the size inside it when
@@ -678,13 +691,19 @@ func (w *window) SetClosable(v bool) {
 
 func (w *window) IsClosable() bool { return gtkWindowGetDeletable(w.win) }
 func (w *window) SetAlwaysOnTop(v bool) {
+	if w.overlay {
+		// gtk-layer-shell turns no layer surface back into a window: it
+		// stays above.
+		return
+	}
 	w.keepAbove = v
 	gtkWindowSetKeepAbove(w.win, v)
 }
 
 // IsAlwaysOnTop reports the requested state: only some window managers
-// reflect it in the window state.
-func (w *window) IsAlwaysOnTop() bool { return w.keepAbove || w.state&stateAbove != 0 }
+// reflect it in the window state. An overlay on a layer surface is above
+// for good.
+func (w *window) IsAlwaysOnTop() bool { return w.overlay || w.keepAbove || w.state&stateAbove != 0 }
 
 func (w *window) Show() {
 	if w.opts.Flyout != nil {
@@ -941,24 +960,32 @@ func (w *window) StartDrag() {
 }
 
 // checkDragStart starts a pending window drag once the pointer moves past
-// the drag threshold with the button still down.
-func (w *window) checkDragStart(event ptr) {
+// the drag threshold with the button still down, and reports whether the
+// pointer moves a layer surface, whose motion is not the page's.
+func (w *window) checkDragStart(event ptr) bool {
 	if !w.dragPending {
-		return
+		return false
 	}
 	// GdkEventMotion: state 48, x_root 64, y_root 72.
 	if field[uint32](event, 48)&(1<<8) == 0 {
 		// The button went up without the pointer moving.
 		w.dragPending = false
-		return
+		return false
 	}
 	const dragThreshold = 8 // pixels, as GTK's
 	dx, dy := field[float64](event, 64)-w.press.rootX, field[float64](event, 72)-w.press.rootY
 	if dx*dx+dy*dy < dragThreshold*dragThreshold {
-		return
+		return false
 	}
 	w.dragPending = false
+	if w.layer {
+		// The compositor moves toplevels only: a layer surface follows the
+		// pointer itself.
+		w.layerMove = &layerMove{edge: -1, start: w.layerBounds()}
+		return w.moveLayer(event)
+	}
 	gtkWindowBeginMoveDrag(w.win, w.press.button, int32(w.press.rootX), int32(w.press.rootY), w.press.time)
+	return false
 }
 
 // GTK gives windows without decorations no resize edges, so the outer
@@ -1105,6 +1132,9 @@ func (w *window) undecorated() bool { return w.opts.Frameless || w.hiddenTitleBa
 //   - Flyouts and panels: popups take no decorations, a panel on Wayland
 //     is a layer surface, which the compositor sizes and puts without
 //     them, and both have a look of their own (Flyout.Shadow).
+//   - Overlays on a layer surface (initOverlay), which the compositor puts
+//     without them too, and resizes through no edges of GTK's: the page's
+//     edges resize them (moveLayer).
 //   - A hidden title bar where the compositor decorates windows itself
 //     (KWin): it keeps the compositor's title bar, with the buttons.
 //   - X11, where Mutter puts its shadow around opaque undecorated windows
@@ -1113,7 +1143,7 @@ func (w *window) undecorated() bool { return w.opts.Frameless || w.hiddenTitleBa
 //     extents of the window manager (frameExtents) do not count.
 func (w *window) useCSD() bool {
 	o := w.opts
-	return !w.b.onX11 && o.HasShadow && !o.Transparent && o.Flyout == nil && !o.Panel &&
+	return !w.b.onX11 && o.HasShadow && !o.Transparent && o.Flyout == nil && !o.Panel && !w.layer &&
 		!(w.hiddenTitleBar() && w.b.compositorDecorates)
 }
 
@@ -1883,13 +1913,19 @@ func initWindowCallbacks() {
 		w.press.rootX = field[float64](event, 64)
 		w.press.rootY = field[float64](event, 72)
 		w.press.hasPressed = true
+		w.layerMove = nil
 		if w.press.event != 0 {
 			gdkEventFree(w.press.event)
 		}
 		w.press.event = gdkEventCopy(event)
 		if edge := w.resizeEdge(event); edge >= 0 {
 			// GdkEventButton: type 0; GDK_BUTTON_PRESS, not a double click.
-			if field[int32](event, 0) == 4 && w.press.button == 1 {
+			switch {
+			case field[int32](event, 0) != 4 || w.press.button != 1:
+			case w.layer:
+				// As a move: the compositor resizes toplevels only.
+				w.layerMove = &layerMove{edge: edge, start: w.layerBounds()}
+			default:
 				gtkWindowBeginResizeDrag(w.win, edge, w.press.button, int32(w.press.rootX), int32(w.press.rootY), w.press.time)
 			}
 			return true // the edges are not the page's
@@ -1901,10 +1937,13 @@ func initWindowCallbacks() {
 		if w == nil {
 			return false
 		}
+		if w.layerMove != nil && w.moveLayer(event) {
+			return true
+		}
 		edge := w.resizeEdge(event)
 		w.showResizeCursor(edge)
-		w.checkDragStart(event)
-		return edge >= 0
+		dragging := w.checkDragStart(event)
+		return dragging || edge >= 0
 	})
 	// WebKit asks for the data of a drag while it moves over the page,
 	// before the drop; the uri-list of files gives their paths.
