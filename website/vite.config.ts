@@ -6,6 +6,7 @@ import viteReact from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { docsDemo } from "./docs-demo.ts"
 import { llmsDocs } from "./llms.ts"
+import { showcase } from "./showcase.ts"
 
 const repo = (file: string) => new URL(`../${file}`, import.meta.url)
 
@@ -30,6 +31,19 @@ export default defineConfig({
   },
   resolve: { tsconfigPaths: true },
   plugins: [
+    // /api/showcase, which the Worker serves in production, during `vite dev`.
+    {
+      name: "showcase",
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          const response = await showcase(new Request(`http://localhost${req.url}`, { method: req.method }), { waitUntil() {} })
+          if (!response) return next()
+          res.statusCode = response.status
+          response.headers.forEach((value, name) => res.setHeader(name, value))
+          res.end(Buffer.from(await response.arrayBuffer()))
+        })
+      },
+    },
     llmsDocs(path.resolve(import.meta.dirname, "..")),
     docsDemo(path.resolve(import.meta.dirname, "..")),
     tailwindcss(),
