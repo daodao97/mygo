@@ -1099,6 +1099,41 @@ func TestDiffSplitDrag(t *testing.T) {
 	}
 }
 
+// The line between the sides crosses the separators, which span both:
+// it is drawn over them, and dragged from over them as from over the
+// lines.
+func TestDiffSplitLineCrossesSeparators(t *testing.T) {
+	var old strings.Builder
+	for i := range 40 {
+		old.WriteString("line " + strconv.Itoa(i) + "\n")
+	}
+	nw := strings.Replace(strings.Replace(old.String(), "line 2\n", "line two\n", 1), "line 37\n", "line thirty-seven\n", 1)
+	d := &DiffState{Old: NewBuffer(old.String()), New: NewBuffer(nw), Layout: DiffSplit}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 901, 600)
+	waitCompared(t, tt, d)
+	var sep ui.AccessInfo
+	for _, a := range tt.AccessAll() {
+		if a.Role == ui.RoleGroup && strings.HasSuffix(a.Name, "unmodified lines") {
+			sep = a
+		}
+	}
+	if sep.Bounds.H == 0 {
+		t.Fatalf("no separator in %q", tt.Texts())
+	}
+	img := tt.Image()
+	line := img.RGBAAt(450, int(d.eds[0].r.Y+d.eds[0].view.lineHeight/2))
+	y := sep.Bounds.Y + sep.Bounds.H/2
+	if got := img.RGBAAt(450, int(y)); got != line {
+		t.Fatalf("over the separator the line is drawn %v, over the lines %v", got, line)
+	}
+	tt.Press(450.5, y)
+	tt.Move(540.5, y)
+	tt.Release(540.5, y)
+	if d.SplitPercent != 60 {
+		t.Fatalf("dragged from over the separator to 540 of 900 DIPs, SplitPercent is %v", d.SplitPercent)
+	}
+}
+
 // Tab goes from the old side to the line between the sides and on to the
 // new side, and the arrows move the line.
 func TestDiffSplitKeys(t *testing.T) {

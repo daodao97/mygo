@@ -824,7 +824,11 @@ func (d *DiffState) buildDivider(c *ui.Context, ct *Theme, div ui.Element) bool 
 	}
 	// The handle the pointer drags spans a few DIPs over either side,
 	// above them. The wheel over it scrolls the diff, as over the lines.
-	handle := ui.Box(c).Key("diff divider handle").Absolute().Top(0).Bottom(0).Width(grip).
+	// The line and its handle are above the separators, which span both
+	// sides, built after them: it crosses them, as a header's text keeps
+	// short of it, and is dragged from over them too.
+	div.ZIndex(1)
+	handle := ui.Box(c).Key("diff divider handle").Absolute().Top(0).Bottom(0).Width(grip).ZIndex(1).
 		Cursor(ui.CursorResizeEW).HandleInput(d.eds[1].wheelOnly)
 	// A press there focuses the line, as a press on it would; only a move
 	// moves it.
