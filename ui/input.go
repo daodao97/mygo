@@ -17,6 +17,15 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		// A menu asking about its item changes nothing.
 		return rt.commandEnabled(ev.Text)
 	}
+	if ev.Kind >= platform.TouchDown && ev.Kind <= platform.TouchCancel {
+		// Fingers, which only views that ask follow (Touches): the
+		// pointer events the backend makes of them come on their own.
+		if rt.touchIn != nil {
+			rt.fromWindow(&ev)
+			rt.touchIn.event(rt, ev)
+		}
+		return false
+	}
 	switch ev.Kind {
 	case platform.SurfaceFrame:
 	case platform.PointerMove, platform.PointerLeave:

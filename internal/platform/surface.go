@@ -377,6 +377,21 @@ const (
 	// takes it as if the web view's element had the focus, and the
 	// keyboard stays with the page.
 	WebViewKey
+	// TouchDown, TouchMove, TouchUp and TouchCancel report a finger on a
+	// touchscreen landing, moving, lifting or taken by the system (as for
+	// an edge's gesture, where no TouchUp follows) at X, Y, with Pressure
+	// where the device tells it. ID tells the fingers down at once apart
+	// from the TouchDown to the TouchUp or TouchCancel; it may be used
+	// again after. They come besides the pointer events a backend makes of
+	// the fingers (taps, scrolls, pinches), which they leave as they are:
+	// the content tracks them only for elements that ask (ui.Element.Touches).
+	// Windows (WM_POINTER), Linux (GDK's touch sequences) and browsers
+	// (Pointer Events of pointerType touch) send them; macOS has no
+	// touchscreen, and a trackpad's fingers are not points on the screen.
+	TouchDown
+	TouchMove
+	TouchUp
+	TouchCancel
 )
 
 // EditCommands are the menu roles of edit commands, which native UI takes as
@@ -430,7 +445,8 @@ type SurfaceEvent struct {
 	// for DataDrop's legacy file-listener fallback.
 	Files []string
 	Drag  *DataDragEvent
-	// ID and Action are AccessAction's.
+	// ID and Action are AccessAction's; ID is also the finger of
+	// TouchDown, TouchMove, TouchUp and TouchCancel.
 	ID     uint64
 	Action AccessActionKind
 	// WebView is WebViewTabOut's and WebViewKey's.
