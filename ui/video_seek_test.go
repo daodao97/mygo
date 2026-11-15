@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -548,5 +549,79 @@ func TestEngineVideoBuiltOutOfSight(t *testing.T) {
 			t.Fatalf("muted %v, shown again: playing %v, showing %v", muted, e.playing, shows())
 		}
 		p.Close()
+	}
+}
+
+// seekingDecoder is a decoder of solid frames of 100 ms each that seeks
+// to a frame at once, counting the frames it decodes.
+type seekingDecoder struct {
+	colors []color.RGBA
+	next   int
+	mu     sync.Mutex
+	nexts  int
+}
+
+func (d *seekingDecoder) Next() (VideoFrame, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.next >= len(d.colors) {
+		return VideoFrame{}, io.EOF
+	}
+	d.nexts++
+	img := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	for i := 0; i < len(img.Pix); i += 4 {
+		c := d.colors[d.next]
+		img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = c.R, c.G, c.B, c.A
+	}
+	d.next++
+	return VideoFrame{Image: img, Duration: 100 * time.Millisecond}, nil
+}
+
+func (d *seekingDecoder) Rewind() error { d.mu.Lock(); d.next = 0; d.mu.Unlock(); return nil }
+
+func (d *seekingDecoder) Seek(at time.Duration) (time.Duration, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.next = min(int(at/(100*time.Millisecond)), len(d.colors)-1)
+	return time.Duration(d.next) * 100 * time.Millisecond, nil
+}
+
+func (d *seekingDecoder) Duration() time.Duration {
+	return time.Duration(len(d.colors)) * 100 * time.Millisecond
+}
+
+func (d *seekingDecoder) decoded() int { d.mu.Lock(); defer d.mu.Unlock(); return d.nexts }
+
+// TestVideoSeeker checks that a player seeks a VideoSeeker at once,
+// decoding the frame it goes to alone, rather than every frame before it.
+func TestVideoSeeker(t *testing.T) {
+	colors := make([]color.RGBA, 50)
+	for i := range colors {
+		colors[i] = videoRed
+	}
+	colors[42], colors[49] = videoGreen, videoBlue
+	d := &seekingDecoder{colors: colors}
+	p, err := NewVideoPlayer(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(p.Close)
+	tt, shows := videoTester(p, nil)
+	decodedAhead(t, p, 2)
+	p.Pause()
+	before := d.decoded()
+	p.Seek(4250 * time.Millisecond)
+	tt.Frame()
+	if got, pos := shows(), p.Position(); got != videoGreen || pos != 4250*time.Millisecond {
+		t.Fatalf("sought to 4.25s: %v at %v", got, pos)
+	}
+	if n := d.decoded() - before; n > 1 {
+		t.Errorf("seeking decoded %d frames", n)
+	}
+	p.Play()
+	p.Seek(time.Hour)
+	tt.Frame()
+	if got, pos := shows(), p.Position(); got != videoBlue || pos != 5*time.Second || !p.Ended() {
+		t.Fatalf("sought past the end: %v at %v, ended %v", got, pos, p.Ended())
 	}
 }

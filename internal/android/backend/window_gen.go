@@ -73,6 +73,8 @@ func (w *window) SetIgnoreMouseEvents(v bool) {}
 
 func (w *window) IgnoresMouseEvents() bool { return false }
 
+func (w *window) CornerRadius() float64 { return 0 }
+
 func (w *window) SetContentProtection(v bool) {}
 
 func (w *window) SetVibrancy(material string)  {}

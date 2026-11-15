@@ -76,3 +76,18 @@ func TestDirect3DBackdrop(t *testing.T) {
 		gputest.Compare(t, "ui-shader-d3d11-backdrop-"+name, pix, stride, sc)
 	}
 }
+
+// TestDirect3DInstances checks that Direct3D 11 draws the quads of one
+// draw (DrawInstances), each with its data and index, as the CPU does.
+func TestDirect3DInstances(t *testing.T) {
+	s := MustCompile(instancesSource)
+	if _, err := d3d11.CompileEffect(s.fx.HLSL.Source); err != nil {
+		t.Fatal(err)
+	}
+	sc := instancesScene(s)
+	pix, stride, err := d3d11.RenderOffscreen(sc)
+	if err != nil {
+		t.Skip("no Direct3D:", err)
+	}
+	gputest.Compare(t, "ui-shader-d3d11-instances", pix, stride, sc)
+}

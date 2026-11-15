@@ -635,6 +635,10 @@ type Window interface {
 	Focus()
 	Blur()
 	IsFocused() bool
+	// CornerRadius is the radius, in DIPs, the window's corners are
+	// rounded to on screen, or 0 when they are square or the system
+	// does not tell it.
+	CornerRadius() float64
 	Minimize()
 	IsMinimized() bool
 	Maximize()
@@ -1116,6 +1120,16 @@ type Menu struct {
 	RightToLeft bool
 }
 
+// BadgeAlignment is where an item's badge sits in the column the badges of
+// its menu share.
+type BadgeAlignment string
+
+const (
+	BadgeAlignLeft   BadgeAlignment = "left"
+	BadgeAlignCenter BadgeAlignment = "center"
+	BadgeAlignRight  BadgeAlignment = "right"
+)
+
 // MenuItem is a snapshot of a menu item. ID identifies the public item the
 // native item was built from.
 type MenuItem struct {
@@ -1123,6 +1137,8 @@ type MenuItem struct {
 	Type        MenuItemType
 	Label       string
 	Subtitle    string
+	Badge       string
+	BadgeAlign  BadgeAlignment
 	Role        string
 	Accelerator string
 	Enabled     bool

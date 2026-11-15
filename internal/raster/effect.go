@@ -20,6 +20,7 @@ type drawer struct {
 	// (blurImages).
 	blurred []*blurredImage
 	fold    scene.TranslationFolder
+	inst    instancer
 	// over draws over what the image holds (Layer.Over).
 	over bool
 }

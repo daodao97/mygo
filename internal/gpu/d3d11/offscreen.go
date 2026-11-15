@@ -3,6 +3,7 @@
 package d3d11
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"syscall"
@@ -150,4 +151,106 @@ func (o *Offscreen) Release() {
 	free(&o.disjoint)
 	o.r.Release()
 	destroyWindow(o.hwnd)
+}
+
+// Frames draws frames one after another into a window that never shows,
+// for videos (plugins/render): Draw draws one and copies it into a
+// staging texture kept from frame to frame, without waiting for the GPU;
+// Read waits for it and copies its pixels.
+type Frames struct {
+	r       *Renderer
+	hwnd    uintptr
+	staging uintptr
+	w, h    int
+}
+
+// NewFrames returns a Frames drawing frames of w×h pixels.
+func NewFrames(w, h int) (*Frames, error) {
+	hwnd, err := newHiddenWindow(w, h)
+	if err != nil {
+		return nil, err
+	}
+	r, err := New(hwnd)
+	if err != nil {
+		destroyWindow(hwnd)
+		return nil, err
+	}
+	return &Frames{r: r, hwnd: hwnd}, nil
+}
+
+// Software reports whether the frames draw with WARP, Windows' software
+// rasterizer, for a system without a GPU.
+func (f *Frames) Software() bool { return f.r.warp }
+
+// Name returns the description of the adapter, as "NVIDIA GeForce RTX 4070".
+func (f *Frames) Name() string {
+	var dxgiDev, adapter uintptr
+	if failed(call(f.r.device, 0, uintptr(unsafe.Pointer(&iidIDXGIDevice)), uintptr(unsafe.Pointer(&dxgiDev)))) {
+		return ""
+	}
+	defer free(&dxgiDev)
+	if failed(call(dxgiDev, dxgiDevGetAdapter, uintptr(unsafe.Pointer(&adapter)))) {
+		return ""
+	}
+	defer free(&adapter)
+	// DXGI_ADAPTER_DESC begins with its description, in 128 WCHARs.
+	var desc [512]byte
+	const adapterGetDesc = 8
+	if failed(call(adapter, adapterGetDesc, uintptr(unsafe.Pointer(&desc[0])))) {
+		return ""
+	}
+	return syscall.UTF16ToString(unsafe.Slice((*uint16)(unsafe.Pointer(&desc[0])), 128))
+}
+
+// Draw draws s whole, and copies it for Read.
+func (f *Frames) Draw(s *scene.Scene) error {
+	r := f.r
+	if err := r.draw(s); err != nil {
+		return err
+	}
+	if f.staging == 0 || f.w != r.bw || f.h != r.bh {
+		free(&f.staging)
+		const usageStaging, cpuAccessRead = 3, 0x20000
+		desc := texture2DDesc{Width: uint32(r.bw), Height: uint32(r.bh), MipLevels: 1, ArraySize: 1, Format: formatB8G8R8A8Unorm,
+			SampleCount: 1, Usage: usageStaging, CPUAccessFlags: cpuAccessRead}
+		if hr := call(r.device, devCreateTexture2D, uintptr(unsafe.Pointer(&desc)), 0, uintptr(unsafe.Pointer(&f.staging))); failed(hr) {
+			return fmt.Errorf("d3d11: no staging texture: %#x", uint32(hr))
+		}
+		f.w, f.h = r.bw, r.bh
+	}
+	var back uintptr
+	if hr := call(r.swapChain, scGetBuffer, 0, uintptr(unsafe.Pointer(&iidID3D11Texture2D)), uintptr(unsafe.Pointer(&back))); failed(hr) {
+		return fmt.Errorf("d3d11: no back buffer: %#x", uint32(hr))
+	}
+	defer free(&back)
+	const ctxCopyResource = 47
+	call(r.ctx, ctxCopyResource, f.staging, back)
+	call(r.ctx, ctxFlush)
+	return nil
+}
+
+// Read copies the pixels of the frame Draw drew last, w×h, into dst:
+// premultiplied BGRA rows from the top, 4×w bytes each. It waits for the
+// GPU to finish the frame.
+func (f *Frames) Read(dst []byte, w, h int) error {
+	if f.staging == 0 || w > f.w || h > f.h || len(dst) < 4*w*h {
+		return errors.New("d3d11: no frame to read, or too small a buffer")
+	}
+	const mapRead = 1
+	var m mapped
+	if hr := call(f.r.ctx, ctxMap, f.staging, 0, mapRead, 0, uintptr(unsafe.Pointer(&m))); failed(hr) {
+		return fmt.Errorf("d3d11: cannot map: %#x", uint32(hr))
+	}
+	defer call(f.r.ctx, ctxUnmap, f.staging, 0)
+	for y := range h {
+		copy(dst[y*w*4:(y+1)*w*4], unsafe.Slice((*byte)(ptr(m.Data+uintptr(y)*uintptr(m.RowPitch))), w*4))
+	}
+	return nil
+}
+
+// Release frees what the Frames hold.
+func (f *Frames) Release() {
+	free(&f.staging)
+	f.r.Release()
+	destroyWindow(f.hwnd)
 }

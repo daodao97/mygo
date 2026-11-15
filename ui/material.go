@@ -4,6 +4,8 @@ import (
 	"math"
 	"slices"
 
+	"github.com/egoist/mygo/internal/gpu"
+	"github.com/egoist/mygo/internal/raster"
 	"github.com/egoist/mygo/internal/scene"
 )
 
@@ -159,6 +161,58 @@ func (p *Painter) ShaderEffect(fx *scene.Effect, r Rect, radius float32, in Shad
 	p.add(scene.Op{Kind: scene.OpEffect, Rect: p.snap(r), Radii: p.radii([4]float32{radius, radius, radius, radius}), Continuous: continuousCorners,
 		Start: int32(len(p.s.Effects)), Opacity: p.opacity})
 	p.s.Effects = append(p.s.Effects, in.op(fx))
+}
+
+// ShaderInstances paints quads, rectangles in DIPs each rounded by
+// radius, with fx, the effect of a shader of package ui/shader reading in,
+// in one op, which the GPU's renderers draw with one instanced draw: each
+// quad as ShaderEffect paints a rectangle alone, its shader reading, for
+// quad i, stride floats of data from data[i*stride:], at most
+// scene.MaxInstanceData of them. Only this module's packages make such
+// effects.
+func (p *Painter) ShaderInstances(fx *scene.Effect, quads []Rect, data []float32, stride int, radius float32, in ShaderInput) {
+	if fx == nil || len(quads) == 0 || stride < 0 || stride > scene.MaxInstanceData || len(data) < len(quads)*stride {
+		return
+	}
+	// The renderers' code for them, which apps drawing none leave out.
+	gpu.EnableInstances()
+	raster.EnableInstances()
+	at := len(p.s.Words)
+	n := scene.InstanceHead + stride
+	words := p.EffectWords(len(quads) * n)
+	var bounds scene.Rect
+	for i, r := range quads {
+		w := words[i*n : (i+1)*n]
+		var q scene.Rect
+		if r.W > 0 && r.H > 0 {
+			q = p.snap(r)
+		}
+		for k, v := range [scene.InstanceHead]float32{q.X, q.Y, q.W, q.H, r.W, r.H} {
+			w[k] = math.Float32bits(v)
+		}
+		for k, v := range data[i*stride : (i+1)*stride] {
+			w[scene.InstanceHead+k] = math.Float32bits(v)
+		}
+		if q.Empty() {
+			continue
+		}
+		if bounds.Empty() {
+			bounds = q
+		} else {
+			x0, y0 := min(bounds.X, q.X), min(bounds.Y, q.Y)
+			x1, y1 := max(bounds.X+bounds.W, q.X+q.W), max(bounds.Y+bounds.H, q.Y+q.H)
+			bounds = scene.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+		}
+	}
+	if bounds.Empty() {
+		p.s.Words = p.s.Words[:at]
+		return
+	}
+	p.add(scene.Op{Kind: scene.OpEffect, Rect: bounds, Radii: p.radii([4]float32{radius, radius, radius, radius}), Continuous: continuousCorners,
+		Start: int32(len(p.s.Effects)), Opacity: p.opacity})
+	op := in.op(fx)
+	op.Instances, op.InstanceWords = words, int32(n)
+	p.s.Effects = append(p.s.Effects, op)
 }
 
 // ShaderFill paints the text, paths and icons that fn paints with fx, the

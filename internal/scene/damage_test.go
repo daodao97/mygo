@@ -2,6 +2,7 @@ package scene
 
 import (
 	"image"
+	"math"
 	"testing"
 )
 
@@ -118,5 +119,34 @@ func TestDamageOfMaskedClip(t *testing.T) {
 	img.Changed()
 	if damage, ok := d.Diff(build(128)); !ok || len(damage) != 1 || !image.Rect(60, 60, 64, 64).In(damage[0]) {
 		t.Errorf("the image changed: damage %v, %v", damage, ok)
+	}
+}
+
+// An effect painting quads (EffectOp.Instances) damages where it paints
+// when a quad's data changes, though the scene reuses its words next
+// frame (Words), and nothing when the quads stay the same.
+func TestDamageOfInstances(t *testing.T) {
+	fx := &Effect{Name: "quads"}
+	words := make([]uint32, 2*(InstanceHead+1))
+	build := func(data float32) *Scene {
+		for i, q := range []Rect{{X: 10, Y: 10, W: 20, H: 20}, {X: 50, Y: 40, W: 20, H: 20}} {
+			w := words[i*(InstanceHead+1):]
+			for k, v := range []float32{q.X, q.Y, q.W, q.H, q.W, q.H, data} {
+				w[k] = math.Float32bits(v)
+			}
+		}
+		return &Scene{Width: 100, Height: 100, Words: words,
+			Ops:     []Op{{Kind: OpEffect, Rect: Rect{X: 10, Y: 10, W: 60, H: 50}}},
+			Effects: []EffectOp{{Effect: fx, Instances: words, InstanceWords: InstanceHead + 1}}}
+	}
+	d := Differ{Reach: 1}
+	d.Diff(build(1))
+	d.Remember(build(1))
+	if damage, ok := d.Diff(build(1)); !ok || len(damage) != 0 {
+		t.Fatalf("the same quads: damage %v, %v", damage, ok)
+	}
+	d.Remember(build(1))
+	if damage, ok := d.Diff(build(2)); !ok || len(damage) != 1 || !image.Rect(10, 10, 70, 60).In(damage[0]) {
+		t.Errorf("other data: damage %v, %v", damage, ok)
 	}
 }

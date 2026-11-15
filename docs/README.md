@@ -171,6 +171,8 @@ components, from buttons to tables.
 - [PermissionFlow](plugins/permissionflow.md): the system's permissions,
   such as Accessibility and Screen Recording, checked and asked for, and a
   guide to System Settings with the app to drag into its list.
+- [Render](plugins/render.md): videos of native UI, its frames drawn on
+  the GPU and encoded with the system's encoders, with sound.
 
 ## Reference
 

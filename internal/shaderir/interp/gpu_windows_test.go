@@ -17,7 +17,7 @@ func TestDirect3D(t *testing.T) {
 	p, prog := compile(t, noiseSource)
 	words := noiseUniforms(p)
 	// The uniforms' constants in place of the cbuffer's members.
-	code := hlsl.Fragment(p, "shaderFragment", 2, 6)
+	code := hlsl.Fragment(p, "shaderFragment", 2, 6, "")
 	code = regexp.MustCompile(`(?s)cbuffer Uniforms : register\(b\d+\) \{\n(.*?)\n\}`).ReplaceAllString(code, "$1")
 	code = constUniforms(code, regexp.MustCompile(`(?m)^\t((?:\w+) (U\d+)(?:\[\d+\])?) : packoffset\(\w+(?:\.\w)?\);$`), p, words, true)
 	src := code + `

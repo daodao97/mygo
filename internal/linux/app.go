@@ -54,7 +54,10 @@ type Backend struct {
 	nextTray     int
 	grabs        map[int]grab    // global shortcuts on X11
 	portal       portalShortcuts // global shortcuts elsewhere
-	themeHooks   bool
+	// Whether global shortcuts go through the portal under XWayland, once
+	// asked (shortcutsThroughPortal).
+	portalAsked, portalOnX11 bool
+	themeHooks               bool
 
 	// signalable is set once Init has bound GLib and made the callbacks.
 	// A Signal before then, from a goroutine posting while the app starts,

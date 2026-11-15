@@ -28,6 +28,17 @@ type VideoDecoder interface {
 	Rewind() error
 }
 
+// A VideoSeeker is a VideoDecoder that goes to any time of its video at
+// once, rather than decoding every frame before it: a player seeking
+// takes it, where it would decode the frames from the start.
+type VideoSeeker interface {
+	VideoDecoder
+	// Seek goes to the frame showing at d from the start, or the last
+	// one when d is past the end, which Next decodes next, and returns
+	// when that frame starts.
+	Seek(d time.Duration) (time.Duration, error)
+}
+
 // A VideoFrame is a picture of a video and how long it shows.
 type VideoFrame struct {
 	// Image is the picture, of any image type: the player converts it as
@@ -509,7 +520,15 @@ func (p *VideoPlayer) seekDecoder(d time.Duration) {
 		p.resume = videoResume{rewind: true}
 	}
 	dec := p.dec.d
-	if err := dec.Rewind(); err != nil {
+	var at, dur time.Duration
+	seeker, seeks := dec.(VideoSeeker)
+	if seeks {
+		var err error
+		if at, err = seeker.Seek(d); err != nil {
+			fail(err)
+			return
+		}
+	} else if err := dec.Rewind(); err != nil {
 		fail(err)
 		return
 	}
@@ -521,7 +540,6 @@ func (p *VideoPlayer) seekDecoder(d time.Duration) {
 	case buf = <-p.dec.free:
 	default:
 	}
-	var at, dur time.Duration
 	found, end := false, false
 	for {
 		f, err := dec.Next()
@@ -537,6 +555,11 @@ func (p *VideoPlayer) seekDecoder(d time.Duration) {
 			at += dur
 		}
 		buf, dur, found = videoRGBA(buf, f.Image), videoDuration(f.Duration), true
+		if seeks {
+			// The last frame, when d is past the end.
+			end = d >= at+dur
+			break
+		}
 		if at+dur > d {
 			break
 		}

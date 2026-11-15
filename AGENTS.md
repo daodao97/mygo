@@ -142,6 +142,7 @@ go run ./examples/notes                    # the rich text editor (ui/richtext),
 go run ./examples/terminal                 # a terminal (downloads libghostty-vt once)
 go run ./examples/loading                  # loading.dev's 29 indicators (plugins/loading)
 go run ./examples/permissionflow           # the system's permissions, asked for and guided to (plugins/permissionflow)
+go run ./examples/render                   # a video of native UI, drawn on the GPU (plugins/render); -preview plays it in a window
 go run ./plugins/automation/cmd/mygo-automation skills   # the automation CLI's guide, for agents driving an app
 go run ./examples/sf-symbols               # the system's SF Symbols on macOS (plugins/sfsymbols)
 go run ./cmd/mygo native build -target host examples/rust-native  # build a package's Rust/Zig library for go run and go test (cargo)
@@ -215,6 +216,14 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   permissions through purego on macOS, with a panel of AppKit under
   System Settings to drag the app from, the consent store on Windows,
   and errors.ErrUnsupported elsewhere.
+  The render plugin is Go only too: videos of native UI, built frame by
+  frame by `ui.Recorder` at the video's times, drawn by the GPU
+  renderers' frame targets (`metal.Frames`, `d3d11.Frames`,
+  `gl.Offscreen`) or `internal/raster`, and encoded with AVFoundation,
+  Media Foundation or GStreamer through purego and syscall, or ffmpeg
+  when asked. Its tests check frames against the CPU renderer's and the
+  files' tracks; Media Foundation and GStreamer run on temp-runner and in
+  Docker.
 - The `dist/` of npm packages is not committed: run `bun run build` after
   `bun install` (CI and releases do). Commit `internal/bridge/bridge.js`
   whenever its sources change, and keep the generated clients of examples

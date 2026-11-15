@@ -86,3 +86,14 @@ func TestMetalBackdrop(t *testing.T) {
 		gputest.Compare(t, "ui-shader-metal-backdrop-"+name, pix, sc.Width*4, sc)
 	}
 }
+
+// TestMetalInstances checks that Metal draws the quads of one draw
+// (DrawInstances), each with its data and index, as the CPU does.
+func TestMetalInstances(t *testing.T) {
+	sc := instancesScene(MustCompile(instancesSource))
+	pix, err := metal.RenderOffscreen(sc)
+	if err != nil {
+		t.Skip("no Metal:", err)
+	}
+	gputest.Compare(t, "ui-shader-metal-instances", pix, sc.Width*4, sc)
+}

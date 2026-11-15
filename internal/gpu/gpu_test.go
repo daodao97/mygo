@@ -1177,6 +1177,57 @@ func TestShaderWideUniforms(t *testing.T) {
 	}
 }
 
+// A shader's effect painting quads (scene.EffectOp.Instances) builds one
+// batch, an instance for each quad that draws: its rectangle, rounded by
+// the op's radii, its data in the slots of an effect's parameters, zero
+// beyond, and its size, 2 and its index in Grad.
+func TestShaderInstances(t *testing.T) {
+	fx := &scene.Effect{Name: "shader", Shader: &scene.ShaderLayout{Lanes: []int32{0}, Size: 16}}
+	const n = scene.InstanceHead + scene.MaxInstanceData
+	var words []uint32
+	for i, q := range []scene.Rect{{X: 2, Y: 4, W: 10, H: 6}, {}, {X: 20, Y: 4, W: 8, H: 30}} {
+		vals := []float32{q.X, q.Y, q.W, q.H, q.W / 2, q.H / 2}
+		for k := range scene.MaxInstanceData {
+			vals = append(vals, float32(100*i+k))
+		}
+		for _, v := range vals {
+			words = append(words, math.Float32bits(v))
+		}
+	}
+	s := &scene.Scene{Width: 40, Height: 40,
+		Ops:     []scene.Op{{Kind: scene.OpEffect, Rect: scene.Rect{X: 2, Y: 4, W: 26, H: 30}, Radii: [4]float32{4, 4, 4, 4}, Opacity: 0.5}},
+		Effects: []scene.EffectOp{{Effect: fx, Uniforms: []uint32{1}, Instances: words, InstanceWords: n}}}
+	EnableInstances()
+	var b Builder
+	b.Build(s, func(*scene.Image) uintptr { return 1 })
+	if len(b.Batches) != 1 || b.Batches[0].Count != 2 || b.Batches[0].Effect != fx || b.Batches[0].Shader != &s.Effects[0] {
+		t.Fatalf("batches %+v, want one of the effect, of 2 instances", b.Batches)
+	}
+	for k, c := range []struct {
+		index int
+		rect  scene.Rect
+		radii float32
+	}{{0, scene.Rect{X: 2, Y: 4, W: 10, H: 6}, 3}, {2, scene.Rect{X: 20, Y: 4, W: 8, H: 30}, 4}} {
+		in := b.Instances[k]
+		if in.Rect != [4]float32{c.rect.X, c.rect.Y, c.rect.W, c.rect.H} || in.Radii != [4]float32{c.radii, c.radii, c.radii, c.radii} {
+			t.Errorf("quad %d: rect %v radii %v, want %v rounded by %v", c.index, in.Rect, in.Radii, c.rect, c.radii)
+		}
+		for j, slot := range [][4]float32{in.Inner, in.Color, in.Color2, in.Border} {
+			for l, v := range slot {
+				if want := float32(100*c.index + 4*j + l); v != want {
+					t.Errorf("quad %d: data %d is %v, want %v", c.index, 4*j+l, v, want)
+				}
+			}
+		}
+		if want := [4]float32{c.rect.W / 2, c.rect.H / 2, 2, float32(c.index)}; in.Grad != want {
+			t.Errorf("quad %d: Grad %v, want %v", c.index, in.Grad, want)
+		}
+		if in.Params != [4]float32{6, 0, 1, 0.5} {
+			t.Errorf("quad %d: Params %v, want an effect's at opacity 0.5", c.index, in.Params)
+		}
+	}
+}
+
 // Boxes that translations move build the instances and batches of the same
 // boxes placed without transforms: the shaders' own classes, not the
 // general one.

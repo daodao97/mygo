@@ -164,7 +164,10 @@ plays. A PNG that is not animated is a video of one frame.
 
 A decoder that also has a method `Duration() time.Duration` reports the
 video's length through `Duration`; GIFs' and APNGs' do. `Seek` on a
-decoder's video decodes from its start up to the frame.
+decoder's video decodes from its start up to the frame, unless the decoder
+is a `ui.VideoSeeker`, whose `Seek` goes to the frame at once: the player
+then decodes that frame alone, as [the render plugin's
+player](../plugins/render.md#previewing) does.
 
 ## System video
 

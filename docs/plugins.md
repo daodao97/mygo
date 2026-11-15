@@ -39,6 +39,9 @@ JavaScript package whose functions call them. The app uses the Go half with
   keeps for the user to give, such as Accessibility, Screen Recording and
   the microphone: checked, asked for, and a guide to System Settings with
   the app to drag into its list, after PermissionFlow. It is all Go.
+- [Render](plugins/render.md): videos of native UI, as Remotion makes
+  them of pages: a view builds each frame from its number, drawn on the
+  GPU and encoded with the system's encoders, with sound. It is all Go.
 
 ## Using plugins
 

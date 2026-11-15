@@ -134,3 +134,23 @@ func TestOpenGLBackdrop(t *testing.T) {
 		}
 	}
 }
+
+// TestOpenGLInstances checks that OpenGL draws the quads of one draw
+// (DrawInstances), each with its data and index, as the CPU does.
+func TestOpenGLInstances(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	for _, es := range []bool{false, true} {
+		sc := instancesScene(MustCompile(instancesSource))
+		o, err := gl.NewOffscreen(es, sc.Width, sc.Height)
+		if err != nil {
+			t.Skip(err)
+		}
+		pix, err := o.Render(sc)
+		o.Release()
+		if err != nil {
+			t.Fatal(err)
+		}
+		gputest.Compare(t, "ui-shader-gl-instances", pix, sc.Width*4, sc)
+	}
+}

@@ -1886,6 +1886,16 @@ func NativeView(c *Context, v PlatformView) Element {
 	return wrapElement(_e)
 }
 
+// NewRecorder returns a Recorder of view, in frames of the size o gives.
+func NewRecorder(view func(c *Context), o RecorderOptions) *Recorder {
+	return coreNewRecorder(func() func(c *context) {
+		if view == nil {
+			return nil
+		}
+		return func(c *context) { view(makeContext(c)) }
+	}(), o)
+}
+
 // NewTester starts testing view in a window of width×height DIPs. Two
 // elements given one key under one parent make it panic where the second
 // was given, as apps only log it.

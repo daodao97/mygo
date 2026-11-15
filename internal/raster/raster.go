@@ -141,6 +141,8 @@ func (d *drawer) draw(dst *Image, s *scene.Scene, area image.Rectangle, bounds [
 	// Ops that only translate draw as those without transforms do, as on
 	// the GPU (gpu.Builder).
 	s = d.fold.Fold(s)
+	// Each quad of an effect painting quads is an op of its own.
+	s, bounds = d.inst.Split(s, bounds)
 	area = area.Intersect(image.Rect(0, 0, dst.W, dst.H))
 	// An owner may have dropped an image's pixels (Bitmap.ReleasePixels)
 	// once a GPU renderer uploaded them: make them again before the bands

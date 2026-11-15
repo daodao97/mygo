@@ -172,7 +172,7 @@ func (p *popup) open(m *platform.Menu, x, y float64, level int, choose func(int)
 		}
 		label := doc.Call("createElement", "span")
 		label.Set("className", "label")
-		label.Set("textContent", strings.ReplaceAll(it.Label, "&", ""))
+		label.Set("textContent", strings.ReplaceAll(it.LabelWithBadge(), "&", ""))
 		if it.Subtitle != "" {
 			row.Get("style").Set("height", "auto")
 			sub := doc.Call("createElement", "span")

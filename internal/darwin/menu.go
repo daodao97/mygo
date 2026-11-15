@@ -5,6 +5,7 @@ package darwin
 import (
 	"runtime"
 	"slices"
+	"strings"
 
 	"github.com/ebitengine/purego/objc"
 
@@ -108,6 +109,7 @@ func (b *Backend) SetApplicationMenu(m *platform.Menu) {
 func (b *Backend) buildMenu(m *platform.Menu, title string, owner int) id {
 	menu := autorelease(send(send(class("NSMenu"), "alloc"), "initWithTitle:", uintptr(nsString(title))))
 	send(menu, "setAutoenablesItems:", boolArg(slices.ContainsFunc(m.Items, validatesItem)))
+	badgeStart, badgeWidth := badgeColumn(m)
 	for _, it := range m.Items {
 		if it.Type == platform.MenuItemSeparator {
 			item := send(class("NSMenuItem"), "separatorItem")
@@ -116,11 +118,11 @@ func (b *Backend) buildMenu(m *platform.Menu, title string, owner int) id {
 			track(owner, it.ID, item)
 			continue
 		}
-		item := b.buildItem(it, owner)
+		item := b.buildItem(it, owner, badgeStart, badgeWidth)
 		send(menu, "addItem:", uintptr(item))
 		if it.Role == "zoomIn" {
 			// Also accept Cmd+= (no shift) like other macOS apps.
-			alt := b.buildItem(&platform.MenuItem{ID: it.ID, Label: it.Label, Role: it.Role, Accelerator: "CmdOrCtrl+=", Enabled: it.Enabled}, owner)
+			alt := b.buildItem(&platform.MenuItem{ID: it.ID, Label: it.Label, Role: it.Role, Accelerator: "CmdOrCtrl+=", Enabled: it.Enabled}, owner, 0, 0)
 			send(alt, "setHidden:", 1)
 			if respondsTo(alt, "setAllowsKeyEquivalentWhenHidden:") {
 				send(alt, "setAllowsKeyEquivalentWhenHidden:", 1)
@@ -131,7 +133,7 @@ func (b *Backend) buildMenu(m *platform.Menu, title string, owner int) id {
 	return menu
 }
 
-func (b *Backend) buildItem(it *platform.MenuItem, owner int) id {
+func (b *Backend) buildItem(it *platform.MenuItem, owner int, badgeStart, badgeWidth float64) id {
 	action := sel("mygoMenuItemClicked:")
 	target := b.menuTarget
 	if s, ok := nativeRoleSel[it.Role]; ok {
@@ -149,6 +151,8 @@ func (b *Backend) buildItem(it *platform.MenuItem, owner int) id {
 	send(item, "setTarget:", uintptr(target))
 	send(item, "setTag:", uintptr(it.ID))
 	applyItemState(item, it)
+	tab := badgeTabFor(it.BadgeAlign, badgeStart, badgeWidth)
+	setItemTitle(item, itemTitle(it), itemBadge(it), tab, it.BadgeAlign)
 	if it.Submenu != nil {
 		sub := b.buildMenu(it.Submenu, it.Label, owner)
 		send(item, "setSubmenu:", uintptr(sub))
@@ -216,6 +220,236 @@ func applyItemSubtitle(item id, it *platform.MenuItem) {
 	}
 }
 
+// subtitleOnLine reports whether NSMenuItem shows a subtitle on a line of
+// its own, as macOS 14 does, rather than after the title.
+func subtitleOnLine() bool {
+	return sendBool(class("NSMenuItem"), "instancesRespondToSelector:", uintptr(sel("setSubtitle:")))
+}
+
+// itemTitle is the text of the title of it, which carries the subtitle
+// where the item cannot show one on a line of its own.
+func itemTitle(it *platform.MenuItem) string {
+	label := it.Label
+	if !subtitleOnLine() && it.Subtitle != "" {
+		label = it.LabelWithSubtitle()
+	}
+	return strings.ReplaceAll(label, "\t", " ")
+}
+
+// itemBadge is the text of the badge of it.
+func itemBadge(it *platform.MenuItem) string {
+	return strings.ReplaceAll(it.Badge, "\t", " ")
+}
+
+// menuBadgeGap is the least space between the longest title of a menu and
+// its badges' left edge.
+const menuBadgeGap = 24
+
+// badgeColumn returns where the badges of m start and how wide their column
+// is: past the menu's longest title, and as wide as its widest badge. Zero
+// when no item has one.
+func badgeColumn(m *platform.Menu) (start, width float64) {
+	found := false
+	for _, it := range m.Items {
+		if it.Visible && it.Badge != "" && it.Type != platform.MenuItemSeparator {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return 0, 0
+	}
+	labelFont, badgeFont := menuFont(), menuBadgeFont()
+	var maxLabel, maxBadge float64
+	for _, it := range m.Items {
+		if !it.Visible || it.Type == platform.MenuItemSeparator {
+			continue
+		}
+		maxLabel = max(maxLabel, textWidth(itemTitle(it), labelFont))
+		maxBadge = max(maxBadge, textWidth(itemBadge(it), badgeFont))
+	}
+	return maxLabel + menuBadgeGap, maxBadge
+}
+
+// badgeTabFor returns the tab stop location of a badge of align in a column
+// that starts at start and is width wide.
+func badgeTabFor(align platform.BadgeAlignment, start, width float64) float64 {
+	switch align {
+	case platform.BadgeAlignLeft:
+		return start
+	case platform.BadgeAlignCenter:
+		return start + width/2
+	default:
+		return start + width
+	}
+}
+
+// NSTextAlignment values. Center and right differ by architecture: arm64
+// uses UIKit's (center 1, right 2), x86_64 AppKit's original ones (right 1,
+// center 2).
+const nsTextAlignmentLeft = 0
+
+var nsTextAlignmentCenter, nsTextAlignmentRight = textAlignments(runtime.GOARCH)
+
+func textAlignments(arch string) (center, right int) {
+	if arch == "amd64" {
+		return 2, 1
+	}
+	return 1, 2
+}
+
+// tabAlignment is the NSTextTab alignment of a badge.
+func tabAlignment(align platform.BadgeAlignment) uint {
+	switch align {
+	case platform.BadgeAlignLeft:
+		return nsTextAlignmentLeft
+	case platform.BadgeAlignCenter:
+		return uint(nsTextAlignmentCenter)
+	default:
+		return uint(nsTextAlignmentRight)
+	}
+}
+
+// menuFont is the font AppKit draws menu item titles in, autoreleased.
+func menuFont() id {
+	return msgFloatID(class("NSFont"), sel("menuFontOfSize:"), 0)
+}
+
+// menuBadgeFont is the monospaced-digit font of a badge, so that latencies
+// and counts keep their width as their digits change, autoreleased.
+func menuBadgeFont() id {
+	return msgFloat2ID(class("NSFont"), sel("monospacedDigitSystemFontOfSize:weight:"), 12, 0)
+}
+
+// textWidth measures s in font, in points.
+func textWidth(s string, font id) float64 {
+	if s == "" || font == 0 {
+		return 0
+	}
+	attrs := send(class("NSMutableDictionary"), "dictionary")
+	send(attrs, "setObject:forKey:", uintptr(font), uintptr(nsString("NSFont")))
+	str := autorelease(send(send(class("NSAttributedString"), "alloc"), "initWithString:attributes:",
+		uintptr(nsString(s)), uintptr(attrs)))
+	return msgSize(str, sel("size")).Width
+}
+
+// menuTitle returns the title of a label and, at the tab stop tab aligned
+// as align says, its badge in a monospaced-digit font, autoreleased.
+func menuTitle(label, badge string, tab float64, align platform.BadgeAlignment) id {
+	attrs := send(class("NSMutableDictionary"), "dictionary")
+	if font := menuFont(); font != 0 {
+		send(attrs, "setObject:forKey:", uintptr(font), uintptr(nsString("NSFont")))
+	}
+	if badge == "" || tab <= 0 {
+		return autorelease(send(send(class("NSAttributedString"), "alloc"), "initWithString:attributes:",
+			uintptr(nsString(label)), uintptr(attrs)))
+	}
+	style := autorelease(send(send(class("NSMutableParagraphStyle"), "alloc"), "init"))
+	stop := autorelease(msgInitTextTab(send(class("NSTextTab"), "alloc"),
+		sel("initWithTextAlignment:location:options:"), tabAlignment(align), tab, 0))
+	send(style, "setTabStops:", uintptr(nsArray(stop)))
+	send(attrs, "setObject:forKey:", uintptr(style), uintptr(nsString("NSParagraphStyle")))
+	title := autorelease(send(send(class("NSMutableAttributedString"), "alloc"), "initWithString:attributes:",
+		uintptr(nsString(label+"\t"+badge)), uintptr(attrs)))
+	if font := menuBadgeFont(); font != 0 {
+		send(title, "addAttribute:value:range:",
+			uintptr(nsString("NSFont")), uintptr(font),
+			uintptr(units([]rune(label+"\t"))), uintptr(units([]rune(badge))))
+	}
+	return title
+}
+
+// setItemTitle shows label and, at the tab stop tab aligned as align says,
+// badge in a monospaced-digit font.
+func setItemTitle(item id, label, badge string, tab float64, align platform.BadgeAlignment) {
+	if badge == "" || tab <= 0 {
+		send(item, "setAttributedTitle:", 0)
+		send(item, "setTitle:", uintptr(nsString(label)))
+		return
+	}
+	send(item, "setAttributedTitle:", uintptr(menuTitle(label, badge, tab, align)))
+}
+
+// titleAlignment returns the alignment of the badge tab stop of a title.
+func titleAlignment(title id) platform.BadgeAlignment {
+	if title == 0 {
+		return platform.BadgeAlignRight
+	}
+	style := send(title, "attribute:atIndex:effectiveRange:", uintptr(nsString("NSParagraphStyle")), 0, 0)
+	if style == 0 {
+		return platform.BadgeAlignRight
+	}
+	tabs := arrayItems(send(style, "tabStops"))
+	if len(tabs) == 0 {
+		return platform.BadgeAlignRight
+	}
+	switch sendInt(tabs[0], "alignment") {
+	case nsTextAlignmentLeft:
+		return platform.BadgeAlignLeft
+	case nsTextAlignmentCenter:
+		return platform.BadgeAlignCenter
+	default:
+		return platform.BadgeAlignRight
+	}
+}
+
+// itemTitleParts returns the title and badge of a native item, as its title
+// holds them, and the alignment of its badge.
+func itemTitleParts(item id) (label, badge string, align platform.BadgeAlignment) {
+	align = platform.BadgeAlignRight
+	var title id
+	if title = send(item, "attributedTitle"); title != 0 {
+		label = goString(send(title, "string"))
+		align = titleAlignment(title)
+	} else {
+		label = goString(send(item, "title"))
+	}
+	if i := strings.IndexByte(label, '\t'); i >= 0 {
+		return label[:i], label[i+1:], align
+	}
+	return label, "", align
+}
+
+// retabMenu aligns the badges of the menu that item is in with each other
+// and with its titles: the titles of the items since a label, a badge or
+// the visibility of an item changed. label and badge are those of item,
+// which the menu's items show, in place of its title's.
+func retabMenu(item id, label, badge string, align platform.BadgeAlignment) {
+	menu := send(item, "menu")
+	if menu == 0 {
+		return
+	}
+	type row struct {
+		item  id
+		label string
+		badge string
+		align platform.BadgeAlignment
+	}
+	var rows []row
+	labelFont, badgeFont := menuFont(), menuBadgeFont()
+	var maxLabel, maxBadge float64
+	for _, x := range arrayItems(send(menu, "itemArray")) {
+		if x == 0 || sendBool(x, "isHidden") || sendBool(x, "isSeparatorItem") {
+			continue
+		}
+		l, b, a := label, badge, align
+		if x != item {
+			l, b, a = itemTitleParts(x)
+		}
+		if l == "" && b == "" {
+			continue
+		}
+		rows = append(rows, row{x, l, b, a})
+		maxLabel = max(maxLabel, textWidth(l, labelFont))
+		maxBadge = max(maxBadge, textWidth(b, badgeFont))
+	}
+	start := maxLabel + menuBadgeGap
+	for _, r := range rows {
+		tab := badgeTabFor(r.align, start, maxBadge)
+		setItemTitle(r.item, r.label, r.badge, tab, r.align)
+	}
+}
+
 // menuImage is iconImage once LinkMenuIcons links it, when the app first
 // gives a menu item an icon.
 var menuImage func(ic *platform.MenuIcon) id
@@ -258,7 +492,6 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 				continue
 			}
 			if it.Type != platform.MenuItemSeparator {
-				send(n.item, "setTitle:", uintptr(nsString(it.Label)))
 				if sub := send(n.item, "submenu"); sub != 0 {
 					send(sub, "setTitle:", uintptr(nsString(it.Label)))
 				}
@@ -266,6 +499,10 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 				send(n.item, "setKeyEquivalentModifierMask:", uintptr(mods))
 			}
 			applyItemState(n.item, it)
+			if it.Type != platform.MenuItemSeparator {
+				// The menu's widest title and badge may be this item's now.
+				retabMenu(n.item, itemTitle(it), itemBadge(it), it.BadgeAlign)
+			}
 		}
 	})
 }

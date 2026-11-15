@@ -46,7 +46,7 @@ func metalEffect(p *shaderir.Program, words []uint32) string {
 	for i := 0; i < len(buf); i += 4 {
 		lanes = append(lanes, fmt.Sprintf("%du", binary.LittleEndian.Uint32(buf[i:])))
 	}
-	return msl.Fragment(p, "shaderFragment") + fmt.Sprintf(`
+	return msl.Fragment(p, "shaderFragment", "") + fmt.Sprintf(`
 constant uint shaderUniforms[%d] = {%s};
 
 float4 effect(float2 p, Effect e, texture2d<float> backdrop) {

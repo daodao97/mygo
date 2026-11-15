@@ -38,6 +38,13 @@
 // A shader that draws into a canvas makes the input of another, as the
 // passes of an effect: one computes a field into a small canvas, the next
 // reads it to draw the window.
+//
+// DrawInstances draws many quads in one call, as node editors, strokes,
+// notes and particles need: each a rectangle with up to 16 floats of its
+// own, which its shader reads with these, 0 for Draw:
+//
+//	instanceIndex() int        // the quad's index among those drawn
+//	instanceData(i int) float  // float i of the quad's own
 package shader
 
 import (
@@ -95,23 +102,25 @@ type uniform struct {
 }
 
 // The bridge's uniforms, which Draw sets: the images' sizes, the
-// rectangle's size, the pixels a DIP and where an effect's box lies in
-// its content, the first words.
+// rectangle's size, the pixels a DIP, where an effect's box lies in its
+// content, its backdrop, and the instance drawn, which renderers set for
+// each instance (DrawInstances), the first words.
 var bridge = []string{shader.ImageSizesUniform, shader.RectSizeUniform, shader.ScaleUniform, shader.LayerInsetUniform,
-	shader.BackdropRow0Uniform, shader.BackdropRow1Uniform, shader.BackdropAreaUniform}
+	shader.BackdropRow0Uniform, shader.BackdropRow1Uniform, shader.BackdropAreaUniform, shader.InstanceUniform}
 
 // The words of the bridge's uniforms, which Compile checks.
 const (
-	scaleWord   = 2*shader.MaxImages + 2
-	insetWord   = scaleWord + 1
-	row0Word    = insetWord + 2
-	row1Word    = row0Word + 3
-	areaWord    = row1Word + 3
-	bridgeWords = areaWord + 4
+	scaleWord    = 2*shader.MaxImages + 2
+	insetWord    = scaleWord + 1
+	row0Word     = insetWord + 2
+	row1Word     = row0Word + 3
+	areaWord     = row1Word + 3
+	instanceWord = areaWord + 4
+	bridgeWords  = instanceWord + 4*(shader.MaxInstanceData/4+1)
 )
 
 // bridgeWordsAt are where the bridge's uniforms start, in its order.
-var bridgeWordsAt = []int{0, scaleWord - 2, scaleWord, insetWord, row0Word, row1Word, areaWord}
+var bridgeWordsAt = []int{0, scaleWord - 2, scaleWord, insetWord, row0Word, row1Word, areaWord, instanceWord}
 
 // readsBackdrop finds a shader reading its backdrop.
 var readsBackdrop = regexp.MustCompile(`\bbackdrop(At|Sample)\b`)
@@ -249,6 +258,49 @@ type Options struct {
 func (s *Shader) Draw(p *ui.Painter, r ui.Rect, o Options) {
 	s.must(fragment)
 	p.ShaderEffect(s.fx, r, o.Radius, s.input(p, r, r, o, ui.Point{}))
+}
+
+// MaxInstanceStride is how many floats of its own an instance gives its
+// shader at most (Instances.Stride), and MaxInstances how many instances
+// one DrawInstances draws at most.
+const (
+	MaxInstanceStride = shader.MaxInstanceData
+	MaxInstances      = 1 << 16
+)
+
+// Instances are the quads DrawInstances draws: Rects[i], in DIPs, with
+// Data[i*Stride:(i+1)*Stride], the floats instance i gives its shader
+// (instanceData), Stride from 0 to MaxInstanceStride.
+type Instances struct {
+	Rects  []ui.Rect
+	Data   []float32
+	Stride int
+}
+
+// DrawInstances draws many quads with the shader in one call: each of
+// in.Rects as Draw fills a rectangle alone, pos from its corner and
+// rectSize its size, with in.Stride floats of its own, which the shader
+// reads with instanceData(i), and its index among them, instanceIndex().
+// The GPU's renderers draw them all with one instanced draw; the CPU's
+// draws each as Draw would. o applies to every quad, Radius rounding each.
+// It panics for more than MaxInstances quads, a Stride beyond
+// MaxInstanceStride, Data of another length than len(in.Rects)*Stride, or
+// a shader reading its backdrop, which draws one rectangle (Draw).
+func (s *Shader) DrawInstances(p *ui.Painter, in Instances, o Options) {
+	s.must(fragment)
+	switch {
+	case s.backdrop:
+		panic("shader: a shader reading its backdrop draws one rectangle (Draw), not instances")
+	case in.Stride < 0 || in.Stride > MaxInstanceStride:
+		panic(fmt.Sprintf("shader: an instance's stride is %d floats, not from 0 to %d", in.Stride, MaxInstanceStride))
+	case len(in.Rects) > MaxInstances:
+		panic(fmt.Sprintf("shader: %d instances in one draw, beyond %d", len(in.Rects), MaxInstances))
+	case len(in.Data) != len(in.Rects)*in.Stride:
+		panic(fmt.Sprintf("shader: %d floats of data for %d instances of %d", len(in.Data), len(in.Rects), in.Stride))
+	case len(in.Rects) == 0:
+		return
+	}
+	p.ShaderInstances(s.fx, in.Rects, in.Data, in.Stride, o.Radius, s.input(p, ui.Rect{}, ui.Rect{}, o, ui.Point{}))
 }
 
 // Fill paints the text, paths and icons that fn paints with p with the
@@ -510,6 +562,9 @@ type pixels struct {
 	in    interp.Inputs
 	rect  scene.Rect
 	scale float32
+	// words are the uniforms' words for the quad readied, of those one
+	// draw draws, what it reads of its instance among them.
+	words []uint32
 	// backdrop tells that the shader reads its backdrop, as its image
 	// shader.BackdropImage, the texels of bd.
 	backdrop bool
@@ -531,6 +586,19 @@ func (x *pixels) Begin(op *scene.EffectOp, rect scene.Rect, radii [4]float32) {
 	x.scale = 1
 	if len(op.Uniforms) > scaleWord {
 		x.scale = math.Float32frombits(op.Uniforms[scaleWord])
+	}
+	if op.InstanceCount() > 0 && len(op.Uniforms) >= bridgeWords {
+		// A quad of those one draw draws, which the renderer readies
+		// alone (scene.EffectOp.Instance), as the GPU's instance holds it.
+		x.words = append(x.words[:0], op.Uniforms...)
+		inst := x.words[instanceWord:bridgeWords]
+		clear(inst)
+		copy(inst[:shader.MaxInstanceData], op.InstanceData(0))
+		_, size := op.InstanceRect(0)
+		for k, v := range [4]float32{float32(op.Instance), size[0], size[1], 1} {
+			inst[shader.MaxInstanceData+k] = math.Float32bits(v)
+		}
+		x.in.Uniforms = x.words
 	}
 }
 

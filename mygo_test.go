@@ -1752,6 +1752,28 @@ func TestMenuRolesAndState(t *testing.T) {
 	}
 }
 
+func TestMenuBadge(t *testing.T) {
+	menu := NewMenu([]*MenuItem{{
+		ID: "node", Label: "Node", Badge: "120 ms", BadgeAlign: BadgeAlignLeft,
+	}})
+	snap := menu.snapshot()
+	if got := snap.Items[0].Badge; got != "120 ms" {
+		t.Fatalf("badge = %q", got)
+	}
+	if got := snap.Items[0].BadgeAlign; got != platform.BadgeAlignLeft {
+		t.Fatalf("badge align = %q", got)
+	}
+	item := menu.ItemByID("node")
+	item.SetBadge("1.2s")
+	item.SetBadgeAlign(BadgeAlignCenter)
+	onMain(func() {}) // the updates reach the backend on the main thread
+	updates := fb.MenuUpdates()
+	last := updates[len(updates)-1]
+	if last.ID != item.uid || last.Badge != "1.2s" || last.BadgeAlign != platform.BadgeAlignCenter {
+		t.Errorf("SetBadge and SetBadgeAlign not propagated: %+v", last)
+	}
+}
+
 func TestDefaultMenu(t *testing.T) {
 	m := fb.AppMenu()
 	if runtime.GOOS != "darwin" {

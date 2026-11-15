@@ -5,6 +5,7 @@ package linux
 import (
 	"errors"
 	"fmt"
+	"os"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -13,7 +14,9 @@ import (
 
 // On X11, global shortcuts grab their keys on the root window, and the key
 // presses arrive through a GDK event filter. Elsewhere the desktop binds
-// them through the XDG desktop portal (hotkey_portal.go).
+// them through the XDG desktop portal (hotkey_portal.go), and so it does
+// under XWayland, where a grab gets the keys only while a window of the app
+// has the focus, when the desktop offers the portal.
 
 var (
 	x11 struct {
@@ -107,7 +110,7 @@ func (b *Backend) RegisterHotkey(id int, acc, description string) error {
 	if err != nil {
 		return err
 	}
-	if portalShortcutsOnly || !loadX11() {
+	if b.shortcutsThroughPortal() {
 		return b.bindShortcut(id, a, description)
 	}
 	display := gdkDisplayGetDefault()
@@ -137,6 +140,28 @@ func (b *Backend) RegisterHotkey(id int, acc, description string) error {
 	}
 	b.grabs[id] = g
 	return nil
+}
+
+// shortcutsThroughPortal tells whether global shortcuts go through the
+// portal rather than X11 grabs, asking the desktop for the portal once.
+func (b *Backend) shortcutsThroughPortal() bool {
+	if portalShortcutsOnly || !loadX11() {
+		return true
+	}
+	if !b.portalAsked {
+		b.portalAsked = true
+		b.portalOnX11 = portalOnX11(os.Getenv, func() bool { return portalVersion(shortcutsPortal) != 0 })
+	}
+	return b.portalOnX11
+}
+
+// portalOnX11 tells whether an app whose GDK runs on an X server binds its
+// global shortcuts through the portal: when the X server is XWayland, in a
+// Wayland session, and the desktop offers the portal. A grab there gets the
+// keys only while a window of the app has the focus on GNOME, which sends
+// XWayland no key presses meant for Wayland windows.
+func portalOnX11(getenv func(string) string, offered func() bool) bool {
+	return getenv("WAYLAND_DISPLAY") != "" && offered()
 }
 
 func (b *Backend) UnregisterHotkey(id int) {
