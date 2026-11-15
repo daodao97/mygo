@@ -187,6 +187,13 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 	if s == nil {
 		s = coreLocal(table, "rows", func() ListState { return ListState{} })
 	}
+	// With RowHeight the rows are as high as it says, every one, and
+	// their cells hold their content in the middle without the padding
+	// above and below that would keep a short row from shrinking.
+	cellPadY := t.Space(1.5)
+	if s.RowHeight > 0 {
+		cellPadY = 0
+	}
 	drag := coreLocal(table, "drag", func() tableDrag { return tableDrag{} })
 	if drag.fitted {
 		// The last frame fitted a column to its cells as it laid out.
@@ -232,7 +239,11 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 			col := &columns[j]
 			// Keyed by its column, a cell keeps its state as the columns
 			// move: a header being dragged keeps the press.
-			box := coreRow(c).Key(col.id()).Padding(t.Space(1.5), t.Space(2.5)).AlignItems(Center).Shrink(0).Clip().Role(role)
+			padY := t.Space(1.5)
+			if role != RoleColumnHeader {
+				padY = cellPadY
+			}
+			box := coreRow(c).Key(col.id()).Padding(padY, t.Space(2.5)).AlignItems(Center).Shrink(0).Clip().Role(role)
 			if role == RoleCell && col.RowHeader {
 				box.Role(RoleRowHeader) // naming its row
 			}
@@ -341,10 +352,13 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 		head.followX = list
 		buildList(c, list, table, s, n, func(i int) {
 			row := coreRow(c).MinHeight(tableRow).AlignItems(Stretch)
+			if s.RowHeight > 0 {
+				row.MinHeight(0).Height(s.RowHeight)
+			}
 			// The list's element holding the row is the row.
 			row.Role(RoleNone)
 			if s.Header != nil && s.Header(i) {
-				row.Padding(t.Space(1.5), t.Space(2.5)).AlignItems(Center).Background(t.Surface).FontWeight(600)
+				row.Padding(cellPadY, t.Space(2.5)).AlignItems(Center).Background(t.Surface).FontWeight(600)
 				row.Children(func() { cell(i, 0) })
 				return
 			}

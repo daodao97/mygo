@@ -182,6 +182,12 @@ type ListState struct {
 	// the theme's Radius, as a List's are, rather than leaving them square
 	// from edge to edge.
 	RoundRows bool
+	// RowHeight, when above 0, is the height of every row of a Table, as
+	// AppKit's rowHeight: the cells hold their content in the middle,
+	// without the padding above and below that keeps a row at least the
+	// theme's Space(8), so a dense table, as a source control client's or
+	// a log's, shows more rows. The header keeps the theme's height.
+	RowHeight float32
 	// HeaderMenu, when set, gives a Table's header a context menu, built
 	// as ContextMenu's is: col is the index of the column clicked in the
 	// columns given to Table, not in the order the user moved them into,

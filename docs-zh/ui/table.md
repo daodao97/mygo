@@ -25,6 +25,8 @@ if ui.Table(c, &app.files, cols, len(files), func(row, col int) {
 
 被选中和悬停的行从一边到另一边都是方角，就像 Finder 的列表视图；`RoundRows` 会按主题的 `Radius` 给它们加圆角，和列表的行一样，适合其他列表已经使用圆角的应用。
 
+行高至少为主题的 `Space(8)`，并随最高的单元格增高。`RowHeight` 则让每一行都恰好为该高度，就像 AppKit 的 `rowHeight`，单元格内容垂直居中：表格更紧凑，可以显示更多行，适合日志或分支列表。表头保持原有高度。
+
 ## 选择单元格
 
 配合 `Selection`，`CellSelect` 让表格像电子表格一样选择一块单元格：范围是选中的行，以及从 `Cells.Anchor` 到 `Cells.Cursor` 按显示顺序排列的列（`Cells.All` 表示所有列）。只能是一整块：像 Excel 中按住 Cmd 拖动那样添加的不连续单元格范围不会被选中。
