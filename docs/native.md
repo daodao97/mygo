@@ -755,12 +755,15 @@ by the app or, where the system tells, by another app.
 
 On Linux under X11 the app grabs the keys itself. Under Wayland, where apps
 cannot, the desktop binds shortcuts for the app through the XDG desktop
-portal, which KDE Plasma 6 and GNOME 48 and later provide: the desktop may
+portal, which KDE Plasma 6 and GNOME 48 and later provide, and so it does
+for an app that runs on XWayland in a Wayland session (`GDK_BACKEND=x11`),
+whose grabs would get the keys only while it has the focus: the desktop may
 ask the user to confirm new shortcuts and lets them pick other keys, and it
 needs the app installed, since it identifies apps by their desktop entry.
 The shortcut works shortly after `Register` returns. Windows the function
 shows or focuses take the focus with the key press's activation token where
-the desktop provides one, as GNOME does.
+the desktop provides one, as GNOME does; under XWayland they show without
+it on GNOME, which keeps the focus for the window the user is in.
 
 Such a desktop shows the app's shortcuts to the user, where it asks to
 confirm them and in its settings, and the user may decline one, which then

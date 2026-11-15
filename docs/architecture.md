@@ -501,7 +501,10 @@ by `mygo build` with `mygo_noinspector`) leave out its downloader and
   `Response` signal on a request object; `portalRequest` routes it to a
   callback by the object's path.
 - On Wayland, where apps grab no keys, global shortcuts go through the
-  `GlobalShortcuts` portal (`hotkey_portal.go`). A session binds its
+  `GlobalShortcuts` portal (`hotkey_portal.go`), and under XWayland too
+  when the desktop offers it (`portalOnX11`): GNOME sends XWayland no key
+  presses meant for Wayland windows, so a grab there fires only while a
+  window of the app has the focus. A session binds its
   shortcuts once, so every change closes the session and creates one that
   binds them all; the ids are canonical accelerators and the session token
   is named after the app, so desktops keep the keys the user picked. The
@@ -517,7 +520,10 @@ by `mygo build` with `mygo_noinspector`) leave out its downloader and
   `OnKeys` (`HotkeyBound`): none when the user declined it, which KDE
   remembers without asking again. The activation token of an `Activated` signal
   becomes the display's startup notification id while the callback runs,
-  so the window it shows or focuses may take the focus.
+  so the window it shows or focuses may take the focus. Under XWayland
+  there is no Wayland display to give it to, and GNOME does not take the
+  token as an X11 window's startup id (`_NET_STARTUP_ID`): the window shows
+  without the focus.
 
 #### Why not GTK 4
 
@@ -6743,7 +6749,7 @@ which npm allows only for packages that exist: the first release uses an
 | menu item subtitles | `NSMenuItem` `subtitle` from macOS 14; before, after the title (`Label — Subtitle`) | after the label | after the label, with its ampersands escaped |
 | auto-hide menu bar | ignored | the bar widget hides; `can-activate-accel` keeps its shortcuts; Alt alone or F10 show it and open its first menu until it deactivates | the menu is attached only for the `SC_KEYMENU` menu loop that Alt alone or F10 start; shortcuts come from the webview |
 | tray | NSStatusItem, click events (a Control-click a right-click) | AppIndicator: a menu, and activation (a double click) for an icon with an `OnClick` listener | notification area icon, click events |
-| global shortcuts | Carbon hot keys | X11: `XGrabKey` on the root window (with Caps/Num Lock variants), key presses from a GDK filter. Wayland: the XDG `GlobalShortcuts` portal (see [Linux](#linux-internallinux)) | `RegisterHotKey` |
+| global shortcuts | Carbon hot keys | X11: `XGrabKey` on the root window (with Caps/Num Lock variants), key presses from a GDK filter. Wayland, and XWayland where the desktop offers it: the XDG `GlobalShortcuts` portal (see [Linux](#linux-internallinux)) | `RegisterHotKey` |
 | notifications | UserNotifications, packaged apps only; `Group` is the `threadIdentifier`; `Image` a `UNNotificationAttachment` of a temporary file named for its format, which the system moves into its store; optional `Sender` uses communication notifications with the signed capability; the delegate is attached at launch, for the click that launched the app | org.freedesktop.Notifications over D-Bus; `Image` is the `image-data` hint, decoded by GdkPixbuf and fit to 256 pixels; ignores `Group` and `Sender` | notification-area balloons (toasts); `Image` is the balloon's large icon (`hBalloonIcon`, `NIIF_LARGE_ICON`), decoded by WIC, twice `SM_CXICON`; ignores `Group` and `Sender` |
 | notification removal | `removeDeliveredNotificationsWithIdentifiers:`; `ClearNotifications` removes all, earlier runs' too | `CloseNotification` on the bus, for those of this run | hides the balloon, which goes away by itself anyway |
 | a web view scaled and rounded with native UI (`WebViewPlacement`) | the pane's bounds scale it, its layer's corners cut it | WebKitGTK zooms the page to its view's size, which `resize`s it at the same width; `draw` clipped to the corners on whole pixels | the visual's transform scales it, a rectangle clip cuts it |
