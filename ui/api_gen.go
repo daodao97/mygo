@@ -6953,14 +6953,19 @@ func (_handle Element) PointerPosition() (float32, float32, bool) {
 // look, for items of a layout of one's own.
 //
 // PopoverMenuButton draws the menu of a menu button so.
-func (_handle Element) PopoverMenu(build func(m *Menu)) Element {
+//
+// Its options style the panel of the menu and of its submenus, and the
+// rows of their items, as a menu button's (PopoverMenuOptions): a context
+// menu that unfolds from where it opened, as the app's drawn menu buttons
+// do.
+func (_handle Element) PopoverMenu(build func(m *Menu), options ...PopoverMenuOptions) Element {
 	_node := _handle.node()
 	if _node == nil {
 		return Element{}
 	}
 	_ctx := _node.c
 	_ = _ctx
-	return wrapElement(_node.PopoverMenu(build))
+	return wrapElement(_node.PopoverMenu(build, options...))
 }
 
 // PopoverMenuButton makes the element a menu button, as Menu does, whose

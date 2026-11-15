@@ -161,6 +161,19 @@ button](menu-button.md#drawn-in-the-window) so, below the button, and takes
 the same function: a row's right-click and its ⋯ button can share one
 menu, drawn alike.
 
+`PopoverMenuOptions` style the menu as `PopoverMenuButtonOptions` style a
+menu button's: `Panel` the panel of the menu and of each submenu, after the
+theme's look, and `Item` the row of each item. A right-click menu then
+unfolds as the app's ⋯ menus do:
+
+```go
+text.PopoverMenu(app.messageMenu, ui.PopoverMenuOptions{
+	Panel: func(panel ui.Element) {
+		panel.Background(app.menuColor).Radius(12)
+	},
+})
+```
+
 ### Richer items
 
 A drawn menu's items take more than the system's do, without a menu of
