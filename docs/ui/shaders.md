@@ -61,6 +61,53 @@ stroke's width, the text's, or the one `Fill` takes), which `rectSize()`
 returns; emoji keep their own colors, and rectangles and images `Fill`'s
 function paints paint as they would.
 
+## Many quads in one draw
+
+Node editors, whiteboard strokes, MIDI notes and particles are thousands
+of small shapes that change every frame: drawn one `Draw` each, the CPU
+spends the frame building their commands. `DrawInstances` draws them all
+in one call, each quad a rectangle in DIPs with a few floats of its own
+that its shader reads:
+
+```go
+var dots = shader.MustCompile(`package main
+
+func Fragment(dst vec4, pos vec2) vec4 {
+	c := vec4(instanceData(0), instanceData(1), instanceData(2), 1)
+	d := length(pos-rectSize()/2) / (rectSize().x / 2)
+	return c * (1 - smoothstep(instanceData(3), 1, d))
+}
+`)
+
+ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
+	rects := make([]ui.Rect, 0, len(particles))
+	data := make([]float32, 0, 4*len(particles))
+	for _, pt := range particles {
+		rects = append(rects, ui.Rect{X: pt.X - 6, Y: pt.Y - 6, W: 12, H: 12})
+		data = append(data, pt.R, pt.G, pt.B, 0.6) // color, then where the glow starts
+	}
+	dots.DrawInstances(p, shader.Instances{Rects: rects, Data: data, Stride: 4}, shader.Options{})
+})
+```
+
+Each quad draws as `Draw` would draw its rectangle alone: `pos` runs from
+its corner, `rectSize()` returns its size, `Options.Radius` rounds it, and
+the options' uniforms and images are the same for all. In the shader,
+`instanceData(i)` returns float `i` of the quad's own, from
+`Data[index*Stride:]`, and `instanceIndex()` its index in `Rects`; both
+are 0 for `Draw`. A link of a node editor becomes one quad around its
+curve's box, with its four control points as data, its shader computing
+the distance to the curve; a note, a stroke's segment or a particle, one
+quad each.
+
+The GPU renderers draw them with one instanced draw (Metal, Direct3D 11,
+OpenGL and WebGL 2 alike), the data traveling in each quad's instance;
+the CPU renderer draws them one by one, as that many `Draw`s would,
+the same pixels. A call draws at most `shader.MaxInstances` quads (65,536) of at
+most `shader.MaxInstanceStride` floats each (16), and `DrawInstances`
+panics beyond, as for `Data` of another length than `len(Rects)*Stride`
+and for a shader reading its backdrop, which draws one rectangle.
+
 ## Effects on elements
 
 A shader can also draw an element from what it renders, as SwiftUI's

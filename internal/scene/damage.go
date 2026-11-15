@@ -456,22 +456,26 @@ func (d *Differ) Remember(s *Scene) {
 		clear(d.effects[len(s.Effects):])
 	}
 	d.effects = append(d.effects[:0], s.Effects...)
-	// The uniforms' words, which the scene reuses next frame (Words), kept
-	// apart.
+	// The uniforms' and the quads' words, which the scene reuses next
+	// frame (Words), kept apart.
 	d.words = d.words[:0]
 	for i := range d.effects {
 		d.words = append(d.words, d.effects[i].Uniforms...)
 		d.words = append(d.words, d.effects[i].WideUniforms...)
+		d.words = append(d.words, d.effects[i].Instances...)
 	}
 	at := 0
 	for i := range d.effects {
 		fx := &d.effects[i]
-		n, w := len(fx.Uniforms), len(fx.WideUniforms)
+		n, w, q := len(fx.Uniforms), len(fx.WideUniforms), len(fx.Instances)
 		fx.Uniforms = d.words[at : at+n : at+n]
 		if fx.WideUniforms != nil {
 			fx.WideUniforms = d.words[at+n : at+n+w : at+n+w]
 		}
-		at += n + w
+		if fx.Instances != nil {
+			fx.Instances = d.words[at+n+w : at+n+w+q : at+n+w+q]
+		}
+		at += n + w + q
 	}
 	d.bounds, d.next = d.next, d.bounds
 	d.encloses, d.encloses2 = d.encloses2, d.encloses

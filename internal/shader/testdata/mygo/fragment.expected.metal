@@ -34,17 +34,18 @@ struct Uniforms {
 	float3 U4;
 	float3 U5;
 	float4 U6;
-	uint U7;
-	int U8;
-	array<float4, 4> U9;
+	array<float4, 5> U7;
+	uint U8;
+	int U9;
+	array<float4, 4> U10;
 };
 
-uint F0(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, uint l0);
-float F2(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3);
-float4 F10(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, float2 l0);
-float4 F20(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, float4 l0, float2 l1);
+uint F0(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, thread const array<float4, 5>& shaderInstance, uint l0);
+float F4(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, thread const array<float4, 5>& shaderInstance);
+float4 F12(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, thread const array<float4, 5>& shaderInstance, float2 l0);
+float4 F22(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, thread const array<float4, 5>& shaderInstance, float4 l0, float2 l1);
 
-uint F0(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, uint l0) {
+uint F0(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, thread const array<float4, 5>& shaderInstance, uint l0) {
 	uint l1 = 0u;
 	uint l2 = 0u;
 	l1 = ((l0) * (747796405u)) + (2891336453u);
@@ -52,11 +53,11 @@ uint F0(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, t
 	return ((l2) >> (22)) ^ (l2);
 }
 
-float F2(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3) {
+float F4(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, thread const array<float4, 5>& shaderInstance) {
 	return uniforms.U2;
 }
 
-float4 F10(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, float2 l0) {
+float4 F12(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, thread const array<float4, 5>& shaderInstance, float2 l0) {
 	float2 l1 = float2(0);
 	float2 l2 = float2(0);
 	float2 l3 = float2(0);
@@ -76,20 +77,20 @@ float4 F10(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1
 	return mix(mix(l5, l6, (l3).x), mix(l7, l8, (l3).x), (l3).y);
 }
 
-float4 F20(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, float4 l0, float2 l1) {
+float4 F22(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, thread const array<float4, 5>& shaderInstance, float4 l0, float2 l1) {
 	float l2 = float(0);
 	uint l5 = 0u;
 	l2 = 0.0;
-	for (int l3 = 0; l3 < uniforms.U8; l3++) {
-		l2 = (l2) + ((((uniforms.U9)[l3]).z) / ((1.0) + (distance(l1, ((uniforms.U9)[l3]).xy))));
+	for (int l3 = 0; l3 < uniforms.U9; l3++) {
+		l2 = (l2) + ((((uniforms.U10)[l3]).z) / ((1.0) + (distance(l1, ((uniforms.U10)[l3]).xy))));
 	}
-	for (uint l4 = 0u; l4 < uniforms.U7; l4 += 2u) {
+	for (uint l4 = 0u; l4 < uniforms.U8; l4 += 2u) {
 		l2 = (l2) + (1.0000000000e-01);
 	}
-	l5 = F0(uniforms, T0, T1, T2, T3, (((uint3(static_cast<uint>(static_cast<int>((l0).x)))).z) * (2654435769u)) ^ (F0(uniforms, T0, T1, T2, T3, (static_cast<uint>(static_cast<int>((l0).y))) ^ (uniforms.U7))));
-	return (((F10(uniforms, T0, T1, T2, T3, (l1) * (F2(uniforms, T0, T1, T2, T3)))) * (static_cast<float>((l5) % (255u)))) / (255.0)) * (l2);
+	l5 = F0(uniforms, T0, T1, T2, T3, shaderInstance, (((uint3(static_cast<uint>(static_cast<int>((l0).x)))).z) * (2654435769u)) ^ (F0(uniforms, T0, T1, T2, T3, shaderInstance, (static_cast<uint>(static_cast<int>((l0).y))) ^ (uniforms.U8))));
+	return (((F12(uniforms, T0, T1, T2, T3, shaderInstance, (l1) * (F4(uniforms, T0, T1, T2, T3, shaderInstance)))) * (static_cast<float>((l5) % (255u)))) / (255.0)) * (l2);
 }
 
-float4 shaderFragment(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, float4 position, float2 v0) {
-	return F20(uniforms, T0, T1, T2, T3, position, v0);
+float4 shaderFragment(constant Uniforms& uniforms, texture2d<float> T0, texture2d<float> T1, texture2d<float> T2, texture2d<float> T3, thread const array<float4, 5>& shaderInstance, float4 position, float2 v0) {
+	return F22(uniforms, T0, T1, T2, T3, shaderInstance, position, v0);
 }

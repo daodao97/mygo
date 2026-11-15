@@ -4848,7 +4848,20 @@ either.
   (`ShaderSource`, `shader_ps`), which `ui/shader` builds, so that apps
   drawing none do not carry it. `ui` itself only has `Painter.ShaderEffect`
   and `Painter.ShaderFill`: the compiler, its package variables and
-  go/parser stay out of apps that draw no shader. A shader filling text,
+  go/parser stay out of apps that draw no shader. A shader drawing many
+  quads in one call (`DrawInstances`, through `Painter.ShaderInstances`)
+  makes one effect op whose `EffectOp.Instances` hold, in the frame's
+  words, each quad's rectangle in pixels, its size in DIPs and its data,
+  at most `scene.MaxInstanceData` floats: the builder makes an instance
+  of each in one batch (`addInstances`), one instanced draw on every
+  renderer, the data in the slots of an effect's parameters (`p0` to
+  `p3`) and the size, 2 and the index in `p4`; the CPU renderer splits
+  the op into one op a quad (`raster.instancer`), readying each alone,
+  as a `Draw` of it. The shader reads them from the bridge's
+  `__instance` uniform, which the backends read from a variable the
+  renderer's code sets (`Options.Instance` of `glsl`, a static global in
+  `hlsl`, a parameter of every function in `msl`) and the interpreter
+  from the words `ui/shader` writes for the quad readied. A shader filling text,
   paths and icons (`ShaderFill`) turns the glyph ops its function painted,
   with grayscale masks, into effect ops whose `EffectOp.Glyphs` point at
   their mask glyphs (glyphs of color stay an op of their own): the

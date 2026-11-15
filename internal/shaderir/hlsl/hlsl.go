@@ -38,6 +38,9 @@ type compileContext struct {
 
 	// library is set for a fragment library (Fragment), drawn only with front faces.
 	library bool
+	// instance is the index of the uniform read from InstanceVariable
+	// (Fragment's instance), or -1.
+	instance int
 }
 
 func (c *compileContext) structName(p *shaderir.Program, t *shaderir.Type) string {
@@ -458,6 +461,9 @@ func (c *compileContext) block(p *shaderir.Program, topBlock, block *shaderir.Bl
 		case shaderir.NumberExpr:
 			return numberLiteral(e.Const, e.Unsigned)
 		case shaderir.UniformVariable:
+			if c.library && e.Index == c.instance {
+				return InstanceVariable
+			}
 			return fmt.Sprintf("U%d", e.Index)
 		case shaderir.TextureVariable:
 			return fmt.Sprintf("T%d", e.Index)

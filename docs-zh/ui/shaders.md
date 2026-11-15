@@ -46,6 +46,35 @@ ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
 
 每个像素显示的是着色器的颜色乘以形状在该处的覆盖率，文本边缘的校正方式与该平台上针对这种颜色的文本一致。`pos` 的范围是形状的盒子（路径的盒子外扩半个描边宽度、文本的盒子，或 `Fill` 接受的盒子），`rectSize()` 返回这个尺寸；emoji 保持自己的颜色，`Fill` 的函数所绘制的矩形和图像则按它们原本的样子绘制。
 
+## 一次绘制多个四边形
+
+节点编辑器、白板笔画、MIDI 音符和粒子都是每帧都在变化的成千上万个小形状：每个形状调用一次 `Draw`，CPU 就要花掉整帧的时间来构建它们的命令。`DrawInstances` 一次调用就能绘制全部形状，每个四边形是一个以 DIP 为单位的矩形，并带有几个由其着色器读取的、属于它自己的浮点数：
+
+```go
+var dots = shader.MustCompile(`package main
+
+func Fragment(dst vec4, pos vec2) vec4 {
+	c := vec4(instanceData(0), instanceData(1), instanceData(2), 1)
+	d := length(pos-rectSize()/2) / (rectSize().x / 2)
+	return c * (1 - smoothstep(instanceData(3), 1, d))
+}
+`)
+
+ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) {
+	rects := make([]ui.Rect, 0, len(particles))
+	data := make([]float32, 0, 4*len(particles))
+	for _, pt := range particles {
+		rects = append(rects, ui.Rect{X: pt.X - 6, Y: pt.Y - 6, W: 12, H: 12})
+		data = append(data, pt.R, pt.G, pt.B, 0.6) // color, then where the glow starts
+	}
+	dots.DrawInstances(p, shader.Instances{Rects: rects, Data: data, Stride: 4}, shader.Options{})
+})
+```
+
+每个四边形的绘制方式与 `Draw` 单独绘制其矩形时相同：`pos` 从它的左上角开始，`rectSize()` 返回它的尺寸，`Options.Radius` 设置它的圆角，选项中的 uniform 变量和图像对所有四边形都相同。在着色器中，`instanceData(i)` 返回该四边形自己的第 `i` 个浮点数，取自 `Data[index*Stride:]`，`instanceIndex()` 返回它在 `Rects` 中的索引；在 `Draw` 中两者都为 0。节点编辑器中的一条连线就是围绕其曲线盒子的一个四边形，以四个控制点作为数据，由着色器计算到曲线的距离；一个音符、一段笔画或一个粒子，各是一个四边形。
+
+GPU 渲染器用一次实例化绘制来绘制它们（Metal、Direct3D 11、OpenGL 和 WebGL 2 均如此），数据随每个四边形的实例传递；CPU 渲染器则逐个绘制，与同样数量的 `Draw` 绘制出相同的像素。一次调用最多绘制 `shader.MaxInstances` 个四边形（65,536 个），每个最多带 `shader.MaxInstanceStride` 个浮点数（16 个），超出时 `DrawInstances` 会 panic；`Data` 的长度不等于 `len(Rects)*Stride` 时，或着色器读取背景时（这类着色器只绘制一个矩形），也会 panic。
+
 ## 对元素的效果
 
 着色器还可以基于元素的渲染结果来绘制该元素，如同 SwiftUI 的 `colorEffect`、`distortionEffect` 和 `layerEffect`。入口函数代替 `Fragment`，用来说明是哪一种效果：

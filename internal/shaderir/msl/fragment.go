@@ -3,10 +3,20 @@ package msl
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/internal/shaderir"
 )
+
+// InstanceVariable is the parameter that the functions read in place of
+// the uniform Fragment's instance names.
+const InstanceVariable = "shaderInstance"
+
+// instanceParam returns the declaration of the parameter InstanceVariable.
+func (c *compileContext) instanceParam(p *shaderir.Program) string {
+	return "thread const " + c.varDecl(p, &p.Uniforms[c.instance], InstanceVariable, true)
+}
 
 // Fragment returns p's fragment entry point as a Metal function named
 // name, for a renderer's fragment shader to call, after the functions it
@@ -16,12 +26,21 @@ import (
 //
 // The uniforms parameter is left out when p has none, and there is a
 // texture parameter for each of p's textures.
-func Fragment(p *shaderir.Program, name string) string {
+//
+// instance, unless empty, names a uniform of p (p.UniformNames) that the
+// renderer's code sets for each instance it draws rather than the
+// uniforms: every function, name too, takes after the textures a
+// parameter InstanceVariable of its type (thread const, by reference),
+// which they read in its place. Uniforms keeps its room for it.
+func Fragment(p *shaderir.Program, name string, instance string) string {
 	lib, entry, funcs := p.FragmentLibrary()
 	if entry == nil {
 		return ""
 	}
-	c := &compileContext{structNames: map[string]string{}, library: true}
+	c := &compileContext{structNames: map[string]string{}, library: true, instance: -1}
+	if instance != "" {
+		c.instance = slices.Index(lib.UniformNames, instance)
+	}
 
 	var lines []string
 	lines = append(lines, strings.Split(Prelude(), "\n")...)
@@ -49,6 +68,9 @@ func Fragment(p *shaderir.Program, name string) string {
 	}
 	for i := 0; i < lib.TextureCount; i++ {
 		params, args = append(params, fmt.Sprintf("texture2d<float> T%d", i)), append(args, fmt.Sprintf("T%d", i))
+	}
+	if c.instance >= 0 {
+		params, args = append(params, c.instanceParam(lib)), append(args, InstanceVariable)
 	}
 	for i, t := range entry.InParams {
 		n := "position"

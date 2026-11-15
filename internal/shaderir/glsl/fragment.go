@@ -3,6 +3,7 @@ package glsl
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/internal/shaderir"
@@ -21,7 +22,17 @@ type Options struct {
 	// which gives, for each texture, the height of an image whose rows go
 	// up, as GL's framebuffers draw them, or 0: texel reads flip those.
 	FlipRows string
+	// Instance, unless empty, names a uniform of p (p.UniformNames) that
+	// the renderer's code sets for each instance it draws rather than the
+	// uniforms: the functions read in its place the global variable
+	// InstanceVariable, of its type, which the renderer assigns before
+	// calling the function. The uniform keeps its room in the block.
+	Instance string
 }
+
+// InstanceVariable is the global variable that the functions read in
+// place of the uniform Options.Instance names.
+const InstanceVariable = "shaderInstance"
 
 // Fragment returns p's fragment entry point as a function named name of
 // GLSL 3.30 and GLSL ES 3.00, for a renderer's fragment shader to call,
@@ -37,7 +48,11 @@ func Fragment(p *shaderir.Program, name string, o Options) string {
 	if entry == nil {
 		return ""
 	}
-	c := &compileContext{version: GLSLVersionES300, projectionMatrixUniformIndex: -1, structNames: map[string]string{}, library: true, flipY: o.FlipY, flipRows: o.FlipRows}
+	c := &compileContext{version: GLSLVersionES300, projectionMatrixUniformIndex: -1, structNames: map[string]string{}, library: true, flipY: o.FlipY, flipRows: o.FlipRows,
+		instance: slices.Index(lib.UniformNames, o.Instance)}
+	if o.Instance == "" {
+		c.instance = -1
+	}
 
 	lines := []string{"{{.Structs}}", ""}
 	if o.Block != "" && len(lib.Uniforms) > 0 {
@@ -48,8 +63,13 @@ func Fragment(p *shaderir.Program, name string, o Options) string {
 		lines = append(lines, "};")
 	} else {
 		for i, t := range lib.Uniforms {
-			lines = append(lines, fmt.Sprintf("uniform %s;", c.varDecl(lib, &t, fmt.Sprintf("U%d", i))))
+			if i != c.instance {
+				lines = append(lines, fmt.Sprintf("uniform %s;", c.varDecl(lib, &t, fmt.Sprintf("U%d", i))))
+			}
 		}
+	}
+	if c.instance >= 0 {
+		lines = append(lines, fmt.Sprintf("%s;", c.varDecl(lib, &lib.Uniforms[c.instance], InstanceVariable)))
 	}
 	for i := 0; i < lib.TextureCount; i++ {
 		lines = append(lines, fmt.Sprintf("uniform sampler2D T%d;", i))

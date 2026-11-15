@@ -14,7 +14,8 @@ import (
 
 // The backends write a shader as a function for the renderers to call,
 // as the files beside testdata/mygo/fragment.go hold, which MYGO_UPDATE_SHADERS
-// writes anew.
+// writes anew, reading what it draws of an instance (InstanceUniform) from
+// the renderer's code, as ui/shader has them.
 func TestFragment(t *testing.T) {
 	src, err := os.ReadFile(filepath.Join("testdata", "mygo", "fragment.go"))
 	if err != nil {
@@ -25,9 +26,9 @@ func TestFragment(t *testing.T) {
 		t.Fatal(err)
 	}
 	for ext, got := range map[string]string{
-		"metal": msl.Fragment(p, "shaderFragment"),
-		"glsl":  glsl.Fragment(p, "shaderFragment", glsl.Options{FlipY: "flipY", FlipRows: "flipRowsOf"}),
-		"hlsl":  hlsl.Fragment(p, "shaderFragment", 2, 6),
+		"metal": msl.Fragment(p, "shaderFragment", shader.InstanceUniform),
+		"glsl":  glsl.Fragment(p, "shaderFragment", glsl.Options{FlipY: "flipY", FlipRows: "flipRowsOf", Instance: shader.InstanceUniform}),
+		"hlsl":  hlsl.Fragment(p, "shaderFragment", 2, 6, shader.InstanceUniform),
 	} {
 		name := filepath.Join("testdata", "mygo", "fragment.expected."+ext)
 		if os.Getenv("MYGO_UPDATE_SHADERS") != "" {

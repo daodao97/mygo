@@ -37,7 +37,18 @@ const (
 	BackdropRow0Uniform = "__backdropRow0"
 	BackdropRow1Uniform = "__backdropRow1"
 	BackdropAreaUniform = "__backdropArea"
+	// InstanceUniform is what a shader reads of the instance it draws,
+	// among many that one draw draws (ui/shader's DrawInstances), which
+	// renderers set for each instance rather than with the uniforms:
+	// [5]vec4, the instance's data (instanceData) in the first four, then
+	// its index, the size of its rectangle in DIPs, and 1, or zero for a
+	// draw of one rectangle.
+	InstanceUniform = "__instance"
 )
+
+// MaxInstanceData is how many floats of its own an instance gives its
+// shader, which instanceData reads.
+const MaxInstanceData = 16
 
 // BackdropImage is the image a shader reads its backdrop from, through
 // backdropAt and backdropSample: what the window drew behind it, which the
@@ -65,10 +76,30 @@ var %s vec2
 var %[8]s vec3
 var %[9]s vec3
 var %[10]s vec4
+var %[12]s [5]vec4
 
-// rectSize returns the size of the rectangle the shader fills, in DIPs.
+// rectSize returns the size of the rectangle the shader fills, in DIPs:
+// the instance's, for a shader drawing instances.
 func rectSize() vec2 {
+	if %[12]s[4].w > 0 {
+		return %[12]s[4].yz
+	}
 	return %[4]s
+}
+
+// instanceIndex returns the index of the instance the shader draws, among
+// those of one draw, or 0.
+func instanceIndex() int {
+	return int(%[12]s[4].x)
+}
+
+// instanceData returns float i of the instance's own, from 0, or 0 beyond
+// them.
+func instanceData(i int) float {
+	if i < 0 || i >= %[13]d {
+		return 0
+	}
+	return %[12]s[i/4][i%%4]
 }
 
 // pixelScale returns how many pixels of the target make a DIP.
@@ -112,7 +143,7 @@ func backdropSample(p vec2) vec4 {
 	return image%[11]dSample(__backdropTexel(p))
 }
 `, InternalRegionBegin, ImageSizesUniform, MaxImages, RectSizeUniform, ScaleUniform, LayerInsetUniform, LayerImage,
-		BackdropRow0Uniform, BackdropRow1Uniform, BackdropAreaUniform, BackdropImage)
+		BackdropRow0Uniform, BackdropRow1Uniform, BackdropAreaUniform, BackdropImage, InstanceUniform, MaxInstanceData)
 	for i := range MaxImages {
 		fmt.Fprintf(&b, `
 // image%[1]dSize returns the size of image %[1]d, in its pixels.

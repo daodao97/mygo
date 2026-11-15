@@ -44,7 +44,13 @@ type compileContext struct {
 	// library is set for a fragment library (Fragment), whose functions take no front_facing:
 	// MyGo's renderers draw only front faces.
 	library bool
+	// instance is the index of the uniform read from the parameter
+	// InstanceVariable (Fragment's instance), or -1.
+	instance int
 }
+
+// readsInstance reports whether the functions take InstanceVariable.
+func (c *compileContext) readsInstance() bool { return c.library && c.instance >= 0 }
 
 func (c *compileContext) isVertexFunc(index int) bool {
 	if c.library {
@@ -299,6 +305,9 @@ func (c *compileContext) function(p *shaderir.Program, f *shaderir.Func, prototy
 	for i := 0; i < p.TextureCount; i++ {
 		args = append(args, fmt.Sprintf("texture2d<float> T%d", i))
 	}
+	if c.readsInstance() {
+		args = append(args, c.instanceParam(p))
+	}
 	if !c.isVertexFunc(f.Index) {
 		args = append(args, "bool front_facing")
 	}
@@ -438,6 +447,9 @@ func (c *compileContext) block(p *shaderir.Program, topBlock, block *shaderir.Bl
 		case shaderir.NumberExpr:
 			return numberLiteral(e.Const, e.Unsigned)
 		case shaderir.UniformVariable:
+			if c.readsInstance() && e.Index == c.instance {
+				return InstanceVariable
+			}
 			return fmt.Sprintf("uniforms.U%d", e.Index)
 		case shaderir.TextureVariable:
 			return fmt.Sprintf("T%d", e.Index)
@@ -484,6 +496,9 @@ func (c *compileContext) block(p *shaderir.Program, topBlock, block *shaderir.Bl
 				}
 				for i := 0; i < p.TextureCount; i++ {
 					args = append(args, fmt.Sprintf("T%d", i))
+				}
+				if c.readsInstance() {
+					args = append(args, InstanceVariable)
 				}
 				if !c.isVertexFunc(callee.Index) {
 					args = append(args, "front_facing")

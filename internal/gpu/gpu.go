@@ -31,6 +31,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/egoist/mygo/internal/scene"
@@ -1117,6 +1118,12 @@ func (b *Builder) addEffect(s *scene.Scene, op *scene.Op) {
 		b.addMaskedEffect(s, op, fx, cur)
 		return
 	}
+	if fx.InstanceCount() > 0 {
+		if add := addInstances.Load(); add != nil {
+			(*add)(b, op, fx, cur)
+		}
+		return
+	}
 	p := &fx.Params
 	in := Instance{
 		Rect: rect(op.Rect), Radii: scene.Corners(op.Rect, op.Radii, op.Continuous),
@@ -1190,6 +1197,64 @@ func (b *Builder) addMaskedEffect(s *scene.Scene, op *scene.Op, fx *scene.Effect
 		if first {
 			batch.ClipMask, first = b.preparedMask, false
 		}
+		b.Instances = append(b.Instances, in)
+		batch.Count++
+	}
+	if batch.Count > 0 {
+		b.Batches = append(b.Batches, batch)
+	}
+}
+
+// addInstances is Builder.addInstances once EnableInstances was called.
+var addInstances atomic.Pointer[func(b *Builder, op *scene.Op, fx *scene.EffectOp, cur *clip)]
+
+// EnableInstances makes builders build the effects that paint quads
+// (scene.EffectOp.Instances), which they leave out before. Package ui calls
+// it as it paints one (Painter.ShaderInstances), on any goroutine: apps
+// that never do carry none of the code.
+func EnableInstances() {
+	if addInstances.Load() == nil {
+		f := (*Builder).addInstances
+		addInstances.CompareAndSwap(nil, &f)
+	}
+}
+
+// addInstances appends the quads of a shader's effect drawing instances
+// (scene.EffectOp.Instances), in a batch of their own, which renderers draw
+// with one instanced draw: each quad's instance its rectangle, rounded by
+// the op's radii, its data in the slots of an effect's parameters (Inner,
+// Color, Color2 and Border, zero beyond the data), and in Grad its size in
+// DIPs, 2 and its index, which the shader's code reads.
+func (b *Builder) addInstances(op *scene.Op, fx *scene.EffectOp, cur *clip) {
+	if fx.Effect.Shader == nil || fx.Effect.Backdrop {
+		return
+	}
+	// What every quad shares: the transform and the clip.
+	shared := Instance{Rect: rect(op.Rect), Params: [4]float32{6, 0, 1, opacity(op.Opacity)}}
+	if !b.prepare(&shared, op.Transform, cur) {
+		return
+	}
+	batch := Batch{Start: len(b.Instances), Scissor: cur.scissor, Effect: fx.Effect, ClipMask: b.preparedMask, Shader: fx, Uniforms: b.uniformsOf(fx)}
+	for i, img := range fx.Images {
+		if img != nil && img.W > 0 && img.H > 0 && b.imageTexture != nil {
+			batch.Textures[i] = b.imageTexture(img)
+		}
+	}
+	for k := range fx.InstanceCount() {
+		quad, size := fx.InstanceRect(k)
+		if quad.Empty() {
+			continue
+		}
+		in := shared
+		in.Rect, in.Radii = rect(quad), scene.Corners(quad, op.Radii, op.Continuous)
+		var data [4][4]float32
+		for j, w := range fx.InstanceData(k) {
+			if j < scene.MaxInstanceData {
+				data[j/4][j%4] = math.Float32frombits(w)
+			}
+		}
+		in.Inner, in.Color, in.Color2, in.Border = data[0], data[1], data[2], data[3]
+		in.Grad = [4]float32{size[0], size[1], 2, float32(int(fx.Instance) + k)}
 		b.Instances = append(b.Instances, in)
 		batch.Count++
 	}

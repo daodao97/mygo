@@ -7,6 +7,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/egoist/mygo/internal/gpu"
 	"github.com/egoist/mygo/internal/raster"
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/shader"
@@ -381,4 +382,59 @@ func TestBackdropEndsAtDrawn(t *testing.T) {
 			}
 		}
 	}
+}
+
+// instancesSource draws a quad of those one draw draws (DrawInstances)
+// from its data: a color, rings as many as its fifth float around its
+// center, lighter the later it is drawn. The rings shade smoothly: a hard
+// edge would flip pixels where the GPU's floats round apart from the
+// CPU's.
+const instancesSource = `package main
+
+func Fragment(dst vec4, pos vec2) vec4 {
+	c := vec4(instanceData(0), instanceData(1), instanceData(2), instanceData(3))
+	d := length(pos - rectSize()/2) / length(rectSize()/2)
+	ring := 0.8 + 0.2*cos(6.2831853*d*instanceData(4))
+	k := float(instanceIndex()) / 10
+	return vec4(mix(c.rgb*ring, vec3(1), 0.3*k), 1) * c.a
+}
+`
+
+// instancesScene returns a scene of s drawing quads in one draw
+// (DrawInstances) at scale 2, overlapping: a row as it is, rounded, and
+// one rotated and faded. It has the renderers draw such quads, as painting
+// them does.
+func instancesScene(s *Shader) *scene.Scene {
+	gpu.EnableInstances()
+	raster.EnableInstances()
+	const scale = 2
+	words := make([]uint32, s.words)
+	words[scaleWord] = math.Float32bits(scale)
+	sc := &scene.Scene{Width: 240, Height: 120, Clear: scene.Color{R: 240, G: 240, B: 240, A: 255}}
+	rotate := scene.Affine{Set: true, A: 0.99, B: 0.12, C: -0.12, D: 0.99, X: 8, Y: -12}
+	for row, m := range []scene.Affine{{}, rotate} {
+		const stride = 5
+		var quads []uint32
+		var bounds scene.Rect
+		for i := range 10 {
+			q := scene.Rect{X: 6 + float32(i*21), Y: 6 + float32(row*50), W: 34, H: 40}
+			k := float32(i) / 9
+			for _, v := range []float32{q.X, q.Y, q.W, q.H, q.W / scale, q.H / scale, k, 1 - k, 0.4, 1 - 0.05*float32(row), 2 + float32(i)} {
+				quads = append(quads, math.Float32bits(v))
+			}
+			if i == 0 {
+				bounds = q
+			}
+			bounds.W = q.X + q.W - bounds.X
+		}
+		op := scene.Op{Kind: scene.OpEffect, Rect: bounds, Transform: m, Start: int32(len(sc.Effects))}
+		if row == 0 {
+			op.Radii = [4]float32{8, 8, 8, 8}
+		} else {
+			op.Opacity = 0.8
+		}
+		sc.Ops = append(sc.Ops, op)
+		sc.Effects = append(sc.Effects, scene.EffectOp{Effect: s.fx, Uniforms: words, Instances: quads, InstanceWords: scene.InstanceHead + stride})
+	}
+	return sc
 }

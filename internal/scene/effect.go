@@ -3,6 +3,7 @@ package scene
 import (
 	"image"
 	"math"
+	"slices"
 )
 
 // Effect is a kind of drawing that a package outside the renderers
@@ -124,17 +125,61 @@ type EffectOp struct {
 	// top left corner of the box it fills.
 	Glyphs [2]int32
 	Origin [2]float32
+	// Instances, unless empty, are the quads a shader's effect paints
+	// instead of the rounded rectangle, each rounded by the op's Radii,
+	// which Rect then holds: InstanceWords words each, the bits of floats
+	// (InstanceRect), its rectangle in pixels, as Rect, from whose corner
+	// its shader's positions start, its size in DIPs, which its shader
+	// reads (rectSize), then its data (instanceData), in Scene.Words.
+	// Instance is the index of the first, which the CPU renderer, readying
+	// one quad at a time (EffectPixels), sets.
+	Instances     []uint32
+	InstanceWords int32
+	Instance      int32
 }
+
+// InstanceHead is how many words of each of EffectOp.Instances come before
+// its data: its rectangle and its size in DIPs.
+const InstanceHead = 6
+
+// MaxInstanceData is how many words of data a quad of EffectOp.Instances
+// has at most: the GPU's renderers carry them in the four float4s of an
+// effect's parameters (EffectOp.Params) that every instance has.
+const MaxInstanceData = 16
 
 // Masked reports whether op paints mask glyphs (Glyphs).
 func (op *EffectOp) Masked() bool { return op.Glyphs[1] > op.Glyphs[0] }
 
+// InstanceCount returns how many quads op paints (Instances), or 0.
+func (op *EffectOp) InstanceCount() int {
+	if op.InstanceWords < InstanceHead {
+		return 0
+	}
+	return len(op.Instances) / int(op.InstanceWords)
+}
+
+// InstanceRect returns the rectangle of quad i of op, in pixels, and its
+// size in DIPs.
+func (op *EffectOp) InstanceRect(i int) (Rect, [2]float32) {
+	w := op.Instances[i*int(op.InstanceWords):][:InstanceHead]
+	f := func(k int) float32 { return math.Float32frombits(w[k]) }
+	return Rect{f(0), f(1), f(2), f(3)}, [2]float32{f(4), f(5)}
+}
+
+// InstanceData returns the words of the data of quad i of op.
+func (op *EffectOp) InstanceData(i int) []uint32 {
+	n := int(op.InstanceWords)
+	return op.Instances[i*n+InstanceHead : (i+1)*n]
+}
+
 // Same reports whether op draws what o does: the same effect with the same
-// parameters, the same uniforms and no images, whose pixels may change.
-// Glyphs are compared by what they point at, which the caller does.
+// parameters, the same uniforms, the same quads (Instances) and no images,
+// whose pixels may change. Glyphs are compared by what they point at, which
+// the caller does.
 func (op *EffectOp) Same(o *EffectOp) bool {
 	if op.Effect != o.Effect || op.Blur != o.Blur || op.Params != o.Params || len(op.Uniforms) != len(o.Uniforms) ||
-		op.Masked() != o.Masked() || op.Glyphs[1]-op.Glyphs[0] != o.Glyphs[1]-o.Glyphs[0] || op.Origin != o.Origin {
+		op.Masked() != o.Masked() || op.Glyphs[1]-op.Glyphs[0] != o.Glyphs[1]-o.Glyphs[0] || op.Origin != o.Origin ||
+		op.InstanceWords != o.InstanceWords || op.Instance != o.Instance || !slices.Equal(op.Instances, o.Instances) {
 		return false
 	}
 	for i := range op.Images {
