@@ -278,6 +278,22 @@ func TestTrayID(t *testing.T) {
 	}
 }
 
+// TestTrayMonospacedTitle asks for the monospaced font of the titles that
+// want it, and of no others.
+func TestTrayMonospacedTitle(t *testing.T) {
+	before := fb.MonospacedTrayTitles()
+	for _, mono := range []bool{false, true, false} {
+		tray, err := NewTray(TrayOptions{Title: "1.3M", MonospacedTitle: mono})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tray.Destroy()
+	}
+	if got := fb.MonospacedTrayTitles() - before; got != 1 {
+		t.Errorf("%d titles of 3 were monospaced, want 1", got)
+	}
+}
+
 // TestTrayDark tells an icon's listeners as the bar it shows on turns
 // dark or light, and not when it stays as it was.
 func TestTrayDark(t *testing.T) {

@@ -187,6 +187,8 @@ func whiten(data []byte) ([]byte, error) {
 
 func (t *tray) SetTitle(string) {}
 
+func (t *tray) SetTitleMonospaced(bool) {}
+
 // Dark reports whether the taskbar is dark: Windows draws it in the
 // system's mode, which may differ from the apps'.
 func (t *tray) Dark() bool {

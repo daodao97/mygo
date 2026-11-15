@@ -726,6 +726,10 @@ func (t *tray) SetTitle(title string) {
 	}
 }
 
+// SetTitleMonospaced does nothing: a panel draws the label in the font
+// it chooses.
+func (t *tray) SetTitleMonospaced(bool) {}
+
 // SetToolTip sets the hover text. The title is what panels show when they
 // fall back to it, and setting it announces NewTitle alone: a host that
 // caches the ToolTip property, such as quickshell, would go on showing the

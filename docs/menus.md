@@ -421,10 +421,20 @@ func speed(mbps float64) string {
 tray.SetTitle(speed(rate))
 ```
 
-Only digits are tabular: letters keep their own widths, so a title that
-switches units (`9 KB/s`, then `1.2 MB/s`) changes width with the unit.
-Keeping that steady is the app's choice, by showing the value in one unit
-as above, for one.
+Only digits are tabular: letters and punctuation keep their own widths, so
+a title that switches units (`9 KB/s`, then `1.2 MB/s`) changes width with
+the unit. To keep that steady, show the value in one unit as above, or make
+the tray with `MonospacedTitle`: its title is drawn in the system's
+monospaced font, where every character is as wide as a digit, the figure
+space too.
+
+```go
+tray, err := mygo.NewTray(mygo.TrayOptions{Icon: icon, MonospacedTitle: true})
+
+// "↓  0B ↑ 60K", "↓1.3M ↑999M": all as wide, each rate padded to four
+// characters.
+tray.SetTitle("↓" + pad(down) + " ↑" + pad(up))
+```
 
 An app may show several icons, as a menu bar app showing its measures each
 in an item of its own. On macOS a new icon goes left of those already

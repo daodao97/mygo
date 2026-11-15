@@ -609,6 +609,8 @@ type tray struct {
 	owner  int
 	// dark is the menu bar's appearance, as last told.
 	dark bool
+	// mono draws the title in the monospaced font (SetTitleMonospaced).
+	mono bool
 	// clicked is where on screen the copy of the item that the user last
 	// clicked is, and of the frame the item's window had then. macOS 26
 	// shows a menu bar item on each display from one window, which is on
@@ -675,15 +677,7 @@ func (b *Backend) NewTray(_ string, h platform.TrayHandler) (platform.Tray, erro
 		send(t.button, "setTarget:", uintptr(trayTarget))
 		send(t.button, "setAction:", uintptr(sel("mygoTrayClicked:")))
 		send(t.button, "sendActionOn:", 1<<2|1<<4) // left and right mouse up
-		// Draw the title's digits at one width, so a changing number
-		// (a rate, a timer) doesn't resize the item and shift the icon and
-		// the items beside it. The menu bar's font at its size and weight,
-		// set on the button rather than in an attributed title, keeps
-		// AppKit's colors for light and dark bars and the highlight.
-		size := msgFloat(msgFloatID(class("NSFont"), sel("menuBarFontOfSize:"), 0), sel("pointSize"))
-		if font := msgFloat2ID(class("NSFont"), sel("monospacedDigitSystemFontOfSize:weight:"), size, 0); font != 0 { // NSFontWeightRegular
-			send(t.button, "setFont:", uintptr(font))
-		}
+		t.setTitleFont()
 		send(t.button, "addObserver:forKeyPath:options:context:", uintptr(trayTarget), uintptr(nsString("effectiveAppearance")), 0, 0)
 	})
 	b.trays[t.button] = t
@@ -733,7 +727,37 @@ func (t *tray) SetImage(png []byte, template bool) error {
 }
 
 func (t *tray) SetTitle(title string) {
+	// The monospaced font has no figure space: AppKit would draw one of
+	// another font, narrower than the digits it stands for.
+	if t.mono {
+		title = strings.ReplaceAll(title, "\u2007", " ")
+	}
 	withPool(func() { send(t.button, "setTitle:", uintptr(nsString(title))) })
+}
+
+// SetTitleMonospaced draws the titles set from here on in the system's
+// monospaced font, or in its font again.
+func (t *tray) SetTitleMonospaced(on bool) {
+	t.mono = on
+	withPool(t.setTitleFont)
+}
+
+// setTitleFont gives the button the font of its title, at the menu bar
+// font's size and weight: the system's with its digits at one width, so a
+// changing number (a rate, a timer) doesn't resize the item and shift the
+// icon and the items beside it, or the system's monospaced one, where
+// letters and punctuation have that width too. Set on the button rather
+// than in an attributed title, it keeps AppKit's colors for light and dark
+// bars and the highlight.
+func (t *tray) setTitleFont() {
+	name := "monospacedDigitSystemFontOfSize:weight:"
+	if t.mono {
+		name = "monospacedSystemFontOfSize:weight:"
+	}
+	size := msgFloat(msgFloatID(class("NSFont"), sel("menuBarFontOfSize:"), 0), sel("pointSize"))
+	if font := msgFloat2ID(class("NSFont"), sel(name), size, 0); font != 0 { // NSFontWeightRegular
+		send(t.button, "setFont:", uintptr(font))
+	}
 }
 
 func (t *tray) SetToolTip(tip string) {
