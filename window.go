@@ -1049,6 +1049,16 @@ func (w *Window) Blur() { w.do(platform.Window.Blur) }
 // IsFocused reports whether the window has keyboard focus.
 func (w *Window) IsFocused() bool { return get(w, platform.Window.IsFocused) }
 
+// CornerRadius returns the radius, in DIPs, that the window's corners are
+// rounded to on screen, for content inset from its edges to round its own
+// corners concentric with them: a card inset by d takes CornerRadius less
+// d. On macOS it is the frameless window's WindowOptions.CornerRadius, or
+// the one the system draws the window with, which depends on the system
+// and the title bar (on macOS 26, 26 with TitleBarHiddenInset's toolbar
+// and 16 without one); on Windows 11, the 8 of its rounded windows. It is 0 where the corners are square (full screen, a maximized
+// window on Windows, Linux, browsers) or the system does not tell it.
+func (w *Window) CornerRadius() float64 { return get(w, platform.Window.CornerRadius) }
+
 // Minimize minimizes the window.
 func (w *Window) Minimize() { w.do(platform.Window.Minimize) }
 

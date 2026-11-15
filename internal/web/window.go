@@ -171,6 +171,9 @@ func (w *window) Focus()          { w.s.focus() }
 func (w *window) Blur()           { w.s.input.Call("blur") }
 func (w *window) IsFocused() bool { return w.focused }
 
+// CornerRadius is 0: the window is an element of the page, square.
+func (w *window) CornerRadius() float64 { return 0 }
+
 // SetFullScreen asks the browser to show the window's element on the whole
 // screen, which it allows while the user acts.
 func (w *window) SetFullScreen(v bool) {

@@ -1196,6 +1196,20 @@ func (w *window) IsFocused() bool {
 	return fg == w.hwnd
 }
 
+// CornerRadius is the 8 DIPs Windows 11 rounds a window's corners with: a
+// window with a frame, a panel, or a frameless one given a CornerRadius
+// (which takes the system's whatever its radius). A maximized or full-screen
+// window, a child host, and every window before Windows 11 are square.
+func (w *window) CornerRadius() float64 {
+	if w.host != nil || !windows11() || w.fullScreen || w.IsMaximized() {
+		return 0
+	}
+	if w.frameless && !w.opts.Panel && w.opts.CornerRadius <= 0 {
+		return 0
+	}
+	return 8
+}
+
 func (w *window) Minimize() { procShowWindow.Call(w.hwnd, swMinimize) }
 
 func (w *window) IsMinimized() bool {

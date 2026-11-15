@@ -797,8 +797,13 @@ func (w *window) Focus() {
 	gtkWindowPresent(w.win)
 }
 
-func (w *window) Blur()             {}
-func (w *window) IsFocused() bool   { return gtkWindowIsActive(w.win) }
+func (w *window) Blur()           {}
+func (w *window) IsFocused() bool { return gtkWindowIsActive(w.win) }
+
+// CornerRadius is 0: the window manager draws the corners, and GTK does
+// not tell their radius.
+func (w *window) CornerRadius() float64 { return 0 }
+
 func (w *window) Minimize()         { gtkWindowIconify(w.win) }
 func (w *window) IsMinimized() bool { return w.state&stateIconified != 0 }
 func (w *window) Maximize()         { gtkWindowMaximize(w.win) }

@@ -603,6 +603,10 @@ type Window interface {
 	Focus()
 	Blur()
 	IsFocused() bool
+	// CornerRadius is the radius, in DIPs, the window's corners are
+	// rounded to on screen, or 0 when they are square or the system
+	// does not tell it.
+	CornerRadius() float64
 	Minimize()
 	IsMinimized() bool
 	Maximize()

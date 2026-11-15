@@ -241,6 +241,19 @@ covered by others or on another desktop. `IsMinimized` tells that it is
 minimized, and in a window of native UI,
 [`Context.WindowHidden`](ui/windows.md#hidden-windows) whether any of it shows on screen.
 
+`CornerRadius` returns the radius the window's corners are rounded to on
+screen, in DIPs, for content inset from the window's edges to round its own
+corners concentric with them: a card inset by 8 takes `CornerRadius() - 8`.
+On macOS it is a frameless window's `CornerRadius`, or the corners the system
+draws the window with, which depend on the system and the title bar (on
+macOS 26, 26 with `TitleBarHiddenInset`'s toolbar and 16 without one). On
+Windows 11 it is 8. It is 0 where the corners are square: in full screen, a
+maximized window on Windows, on Linux, in browsers.
+
+```go
+inner := max(win.CornerRadius()-8, 0) // a card 8 DIPs in from the edges
+```
+
 Sizes and positions are in the window's DIPs, whatever the zoom of its
 page (`Page.SetZoomFactor`) or of its [native UI](ui/windows.md#zoom):
 at a zoom of 1.25, a page area of 1000 DIPs shows 800 of the page's CSS
