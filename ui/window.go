@@ -1023,7 +1023,7 @@ func (h *windowHost) placeWebViews(views []placedWebView) {
 	}
 	if slices.EqualFunc(list, h.placed, func(a, b platform.WebViewPlacement) bool {
 		return a.WebView == b.WebView && a.Frame == b.Frame && a.Clip == b.Clip && a.Width == b.Width && a.Height == b.Height &&
-			a.Radii == b.Radii && slices.Equal(a.Covers, b.Covers)
+			a.Radii == b.Radii && a.Opacity == b.Opacity && slices.Equal(a.Covers, b.Covers)
 	}) {
 		return
 	}

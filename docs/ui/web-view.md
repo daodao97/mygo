@@ -92,8 +92,10 @@ the page only inside them. Scroll containers and clips around it cut it
 as they cut any element, and a web view scrolled out of view hides.
 `Opacity` fades the page with the element, as a page of a `Router` fading
 in does: the page blends over what is painted under the element. With
-nothing painted there, as in a transparent window, the page does not fade:
-the system's web view has no opacity of its own that MyGo sets.
+nothing painted there, as in a transparent window, MyGo fades the page
+itself, so it fades over what is behind the window too. A panel painted
+through, as a flyout's fading over a parent window left live, is painted
+there: the page blends with it, and fades no more.
 
 ```go
 ui.WebView(c, app.preview).Height(320).Radius(12).Border(1, t.Border)

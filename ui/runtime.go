@@ -553,6 +553,9 @@ type engine struct {
 	commitPage uint64
 	// commitHidden is set while commit is inside a Hidden element.
 	commitHidden bool
+	// commitFade is how opaque the elements being committed are, with what
+	// is inside them: what the painter fades them by as it paints them.
+	commitFade float32
 	// announcements are the texts for assistive technology to read out
 	// (Context.Announce).
 	announcements []string
@@ -1555,7 +1558,7 @@ func (rt *engine) commit(root *node, w, h float32) {
 	rt.glassPlaces = rt.glassPlaces[:0]
 	rt.maxButton = Rect{}
 	rt.focusOrder, rt.focusScopes = rt.focusOrder[:0], rt.focusScopes[:0]
-	rt.modal, rt.modalLayer, rt.commitScope, rt.commitPage = 0, 0, focusScope{}, 0
+	rt.modal, rt.modalLayer, rt.commitScope, rt.commitPage, rt.commitFade = 0, 0, focusScope{}, 0, 1
 	rt.observers = 0
 	if rt.groups == nil {
 		rt.groups = map[uint64]groupInfo{}
@@ -1579,7 +1582,10 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	savedHidden := rt.commitHidden
 	rt.commitHidden = savedHidden || e.hidden
 	saved, savedPage := rt.enterScope(e), rt.commitPage
-	defer func() { rt.commitScope, rt.commitPage, rt.commitHidden = saved, savedPage, savedHidden }()
+	savedFade := rt.commitFade
+	defer func() {
+		rt.commitScope, rt.commitPage, rt.commitHidden, rt.commitFade = saved, savedPage, savedHidden, savedFade
+	}()
 	s := e.st
 	if s == rt.pressed && s.input != nil && e.inputFn == nil {
 		// Another element took the place of the one pressed (prune), in
@@ -1594,6 +1600,10 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	if e.poseSet {
 		rt.samplePose(e)
 	}
+	// What the element fades by, with what its pose's Fade leaves, as the
+	// painter takes it: a web view noted under it shows none of its page
+	// where nothing of the element paints.
+	rt.commitFade *= e.fade()
 	e.world = e.transformAt(e.x, e.y)
 	if e.parent != nil && e != e.c.overlay {
 		e.world = e.parent.world.Mul(e.world)

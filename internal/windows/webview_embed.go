@@ -66,11 +66,18 @@ const (
 	moveFocusPrevious = 2
 
 	dcompVisualSetTransform     = 8  // IDCompositionVisual: the overload taking a D2D_MATRIX_3X2_F
+	dcompVisualSetEffect        = 10 // IDCompositionVisual
 	dcompVisualSetClipObject    = 13 // the overload taking an IDCompositionClip
 	dcompVisualSetClip          = 14 // the overload taking a D2D_RECT_F
 	dcompVisualAddVisual        = 16
 	dcompVisualRemoveVisual     = 17
 	dcompDevCreateRectangleClip = 24 // IDCompositionDevice
+	dcompDevCreateEffectGroup   = 23 // IDCompositionDevice
+
+	// IDCompositionEffectGroup: the overload taking a float, after the one
+	// taking an animation. The group's opacity blends the sub-tree of the
+	// visual it is set on with what is behind it.
+	dcompEffectGroupSetOpacity = 4
 
 	// IDCompositionRectangleClip: the overloads taking a float, each after
 	// the one taking an animation; the corners' radii, x then y, from the
@@ -119,6 +126,14 @@ func (l *webLayer) visual() uintptr {
 	var v uintptr
 	comCall(l.dcomp, dcompDevCreateVisual, uintptr(unsafe.Pointer(&v)))
 	return v
+}
+
+// effectGroup makes an effect group, whose opacity fades the sub-tree of
+// the visual it is set on over what is behind it.
+func (l *webLayer) effectGroup() uintptr {
+	var g uintptr
+	comCall(l.dcomp, dcompDevCreateEffectGroup, uintptr(unsafe.Pointer(&g)))
+	return g
 }
 
 func (l *webLayer) commit() { comCall(l.dcomp, dcompDevCommit) }
@@ -369,6 +384,21 @@ func (w *window) placeEmbedded() {
 	fx, fy := px(f.X), px(f.Y)
 	clipVisual(w.clipVis, px(c.X+c.W)-cx, px(c.Y+c.H)-cy)
 	translate(w.clipVis, cx, cy)
+	// The placement's opacity fades the page itself, over what is behind
+	// the window too, as a flyout over a parent left live: an effect group
+	// composes the clip visual's sub-tree, the page, to a surface of its
+	// own, blended by its opacity with what is behind it.
+	if o := w.placement.Opacity; o < 1 {
+		if w.effect == 0 {
+			w.effect = s.layer.effectGroup()
+		}
+		if w.effect != 0 {
+			comCallFloat32(w.effect, dcompEffectGroupSetOpacity, float32(o))
+			comCall(w.clipVis, dcompVisualSetEffect, w.effect)
+		}
+	} else if w.effect != 0 {
+		comCall(w.clipVis, dcompVisualSetEffect, 0)
+	}
 	// The page lays out at its size, which its visual shows scaled to its
 	// frame, if a transform of the content scales it.
 	width, height := px(f.X+f.W)-fx, px(f.Y+f.H)-fy
@@ -591,7 +621,8 @@ func (w *window) closeWebView() {
 	release(w.corners)
 	release(w.webVis)
 	release(w.clipVis)
-	w.corners, w.webVis, w.clipVis = 0, 0, 0
+	release(w.effect)
+	w.corners, w.webVis, w.clipVis, w.effect = 0, 0, 0, 0
 	h.webViews = slices.DeleteFunc(h.webViews, func(v *window) bool { return v == w })
 }
 

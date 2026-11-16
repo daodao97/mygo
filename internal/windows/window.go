@@ -102,10 +102,13 @@ type window struct {
 	pageAt           [2]float32
 	pageScale        [2]float32
 	corners          uintptr
-	shown, focused   bool
-	hidden           bool
-	cursor           uintptr
-	saved            struct {
+	// effect fades the page itself, where the placement says it does not
+	// show whole, which the clip visual's sub-tree is composed by.
+	effect         uintptr
+	shown, focused bool
+	hidden         bool
+	cursor         uintptr
+	saved          struct {
 		style, exStyle uintptr
 		placement      windowPlacement
 	}

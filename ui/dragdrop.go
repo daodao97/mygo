@@ -369,9 +369,11 @@ func (rt *engine) paintDrag(p *Painter, w, h float32) {
 	} else {
 		shift(e, dx, dy)
 	}
-	saved, savedClip, savedTheme, dimmed := p.opacity, p.clip, p.theme, e.opacitySet
-	// Painted alone, it takes the theme of the Themed around it.
-	p.opacity, p.clip, p.theme, e.opacitySet = 0.75, Rect{0, 0, w, h}, e.theme(), false
+	saved, savedClip, savedTheme, dimmed, copying := p.opacity, p.clip, p.theme, e.opacitySet, p.copying
+	// Painted alone, it takes the theme of the Themed around it. It is a
+	// copy: the page of a web view in it stays where the element is, so the
+	// hole the copy paints tells nothing of how opaque the page shows.
+	p.opacity, p.clip, p.theme, e.opacitySet, p.copying = 0.75, Rect{0, 0, w, h}, e.theme(), false, true
 	p.element(e)
 	p.opacity = 1
 	// How many go with it, as several rows dragged.
@@ -385,7 +387,7 @@ func (rt *engine) paintDrag(p *Painter, w, h float32) {
 		p.Fill(Rect{x, y, bw, th + 4}, t.Accent, (th+4)/2)
 		p.RichText(x+(bw-tw)/2, y+2, 0, label)
 	}
-	p.opacity, p.clip, p.theme, e.opacitySet = saved, savedClip, savedTheme, dimmed
+	p.opacity, p.clip, p.theme, e.opacitySet, p.copying = saved, savedClip, savedTheme, dimmed, copying
 	if affine {
 		restoreVisual(e)
 	} else {
