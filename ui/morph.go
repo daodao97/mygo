@@ -86,8 +86,9 @@ type morphGlyph struct {
 	alpha          float32
 }
 
-// morphCluster is a cluster of a layout's glyphs: its runes, and the pen
-// of its first glyph, its baseline and its size.
+// morphCluster is a cluster of a layout's glyphs: its runes, the pen and
+// baseline of its first glyph, as glyphsOf places that glyph (off the
+// line's for a mark that shaping moved), and its size.
 type morphCluster struct {
 	at, n int
 	x, y  float32
@@ -108,7 +109,7 @@ func clustersOf(l *text.Layout, cs []morphCluster, at []int32) ([]morphCluster, 
 				continue
 			}
 			at[g.Cluster] = int32(len(cs))
-			cs = append(cs, morphCluster{at: g.Cluster, n: min(g.Runes, len(l.Runes)-g.Cluster), x: g.X, y: line.Baseline, size: g.Size})
+			cs = append(cs, morphCluster{at: g.Cluster, n: min(g.Runes, len(l.Runes)-g.Cluster), x: g.X, y: g.Y, size: g.Size})
 		}
 	}
 	return cs, at
@@ -128,7 +129,7 @@ func glyphsOf(l *text.Layout, x, y float32, color Color, sp *spanPaint, gs []mor
 			if sp != nil {
 				c = sp.color(sp.at(g.Cluster), color)
 			}
-			mg := morphGlyph{font: g.Font, id: g.ID, fontSize: g.Size, size: g.Size, x: x + g.X, y: y + line.Baseline, color: c, alpha: 1}
+			mg := morphGlyph{font: g.Font, id: g.ID, fontSize: g.Size, size: g.Size, x: x + g.X, y: y + g.Y, color: c, alpha: 1}
 			// The glyphs of a cluster are next to each other, in visual
 			// order: clusters descend through right-to-left text.
 			if g.Runes > 0 && g.Cluster != seen && g.Cluster >= 0 && g.Cluster < len(l.Runes) {
@@ -308,7 +309,7 @@ func (pr *morphPairs) each(r *contentRec, bx, by, x, y, tx, ty float32, color Co
 				color = sp.color(sp.at(g.Cluster), color)
 			}
 			shade := text.ShadeOf(color.R, color.G, color.B)
-			gx, gy := x+g.X, y+line.Baseline
+			gx, gy := x+g.X, y+g.Y
 			ci := clusterOf(pr.curAt, g)
 			var runes []rune
 			if ci >= 0 && g.Cluster == pr.curC[ci].at && g.X == pr.curC[ci].x {

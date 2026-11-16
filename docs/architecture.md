@@ -5103,7 +5103,10 @@ either.
     aliased rendering, the nearest to the pen; GTK's whole pixels, as Pango rounds glyph
     positions. `System.Baseline` snaps baselines likewise: down to the
     next pixel on macOS (Core Graphics floors in its y-up space),
-    to the nearest on Windows, up on Linux.
+    to the nearest on Windows, up on Linux. A glyph off its line's
+    baseline (`Glyph.Y`), as a mark that shaping puts above or below its
+    base (OpenType's mark positioning) or a span's glyphs that
+    `BaselineShift` moves, sits on a baseline of its own, snapped alike.
   - *macOS.* Core Text draws with font smoothing, as AppKit does unless
     the user turned it off (`AppleFontSmoothing`, read through
     `NSUserDefaults` as AppKit does: Core Graphics' bitmap contexts ignore
@@ -5158,7 +5161,7 @@ either.
     blending it, which differs where antialiased edges of neighbors share
     a pixel. There, on Linux, package ui has the text system join them
     (`System.GlyphRun`): their coverage added and clamped, cached as one
-    bitmap.
+    bitmap, for glyphs on one baseline.
   - *Strokes.* `TextStroke` draws each glyph's stroke as a mask of its
     own (`System.StrokeGlyph`), made in Go from the glyph's coverage for
     every engine: the coverage dilated by half the width less the
