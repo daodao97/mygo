@@ -111,6 +111,18 @@ func TestOnScreen(handle uintptr) bool {
 	return sendInt(id(handle), "occlusionState")&occlusionStateVisible != 0
 }
 
+// TestOrderedIn reports whether a window is ordered in, as AppKit has it
+// at once, before the window server shows it (TestOnScreen).
+func TestOrderedIn(handle uintptr) bool {
+	return sendBool(id(handle), "isVisible")
+}
+
+// TestPerformClose closes a window as its close button does, which asks
+// the delegate first (performClose:).
+func TestPerformClose(handle uintptr) {
+	send(id(handle), "performClose:", 0)
+}
+
 // TestWindowOrder returns the app's windows on screen, panels too, front
 // to back.
 func TestWindowOrder() []uintptr {
