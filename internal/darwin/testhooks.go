@@ -189,6 +189,20 @@ func TestAppPress(handle uintptr, x, y float64, down bool) {
 // bar's items too. It reports false where the process may not post events
 // (Accessibility).
 func TestPostMouse(x, y float64, down bool) bool {
+	typ := uint32(2) // kCGEventLeftMouseUp
+	if down {
+		typ = 1 // kCGEventLeftMouseDown
+	}
+	return postMouse(x, y, typ)
+}
+
+// TestPostMouseMove moves the pointer to (x, y) on screen, as
+// TestPostMouse presses.
+func TestPostMouseMove(x, y float64) bool {
+	return postMouse(x, y, 5) // kCGEventMouseMoved
+}
+
+func postMouse(x, y float64, typ uint32) bool {
 	testPostOnce.Do(func() {
 		purego.RegisterLibFunc(&cgPreflightPostEventAccess, libCG, "CGPreflightPostEventAccess")
 		purego.RegisterLibFunc(&cgEventCreateMouseEvent, libCG, "CGEventCreateMouseEvent")
@@ -196,10 +210,6 @@ func TestPostMouse(x, y float64, down bool) bool {
 	})
 	if !cgPreflightPostEventAccess() {
 		return false
-	}
-	typ := uint32(2) // kCGEventLeftMouseUp
-	if down {
-		typ = 1 // kCGEventLeftMouseDown
 	}
 	ev := cgEventCreateMouseEvent(0, typ, NSPoint{x, y}, 0) // kCGMouseButtonLeft
 	if ev == 0 {
