@@ -110,6 +110,10 @@ func failed(hr uintptr) bool { return int32(uint32(hr)) < 0 }
 
 func cptr(a uintptr) unsafe.Pointer { return *(*unsafe.Pointer)(unsafe.Pointer(&a)) }
 
+// call calls method i of COM object obj. Pointers converted to uintptr in
+// the call stay valid until it returns (go:uintptrescapes).
+//
+//go:uintptrescapes
 func call(obj uintptr, i int, args ...uintptr) uintptr {
 	vtbl := *(*uintptr)(cptr(obj))
 	fn := *(*uintptr)(cptr(vtbl + uintptr(i)*unsafe.Sizeof(uintptr(0))))
