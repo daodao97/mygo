@@ -142,14 +142,14 @@ func TestReplaceTextCRLF(t *testing.T) {
 		}
 		s, next, changed := "", "", false
 		tt := replaceTester(&s, &next, &changed, multiline)
-		next = "one\r\ntwo\nthree"
+		next = "one\r\ntwo\rthree"
 		tt.Frame()
 		if s != want {
 			t.Errorf("multiline %v: replaced to %q, want %q", multiline, s, want)
 		}
 		ed := textAreaOrInput(tt).editor
 		steps := len(ed.undo)
-		next, changed = "one\r\ntwo\nthree", false
+		next, changed = "one\r\ntwo\rthree", false
 		tt.Frame()
 		if s != want || changed || len(ed.undo) != steps {
 			t.Errorf("multiline %v: the same text made %q, changed %v, %d steps, want %d", multiline, s, changed, len(ed.undo), steps)

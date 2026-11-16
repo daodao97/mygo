@@ -191,3 +191,25 @@ func TestPasteCommandShortcut(t *testing.T) {
 		t.Fatalf("a paste into the field made %q and ran Cmd+V %d times", text, pastes)
 	}
 }
+
+// TestPasteLoneCR pastes text whose lines end with a lone \r, as old Mac
+// text does: a TextArea takes each as a newline, as it does \r\n, and an
+// Input as a space (#1915).
+func TestPasteLoneCR(t *testing.T) {
+	area, input := "", ""
+	tt := NewTester(func(c *Context) {
+		TextArea(c, &area).Width(200).Label("area")
+		TextInput(c, &input).Width(200).Label("input")
+	}, 300, 200)
+	tt.Click("area")
+	tt.SetClipboard("1. A\r2. B\r\n3. C")
+	tt.Key(Cmd, KeyV)
+	if area != "1. A\n2. B\n3. C" {
+		t.Errorf("a TextArea pasted %q, want each line break a newline", area)
+	}
+	tt.Click("input")
+	tt.Key(Cmd, KeyV)
+	if input != "1. A 2. B 3. C" {
+		t.Errorf("a TextInput pasted %q, want each line break a space", input)
+	}
+}
