@@ -1,253 +1,207 @@
 package ui
 
 import (
+	"slices"
+
 	"github.com/egoist/mygo/internal/platform"
-	"time"
 )
 
-// touchEvent arbitrates a primary touch between a press and a scroll.
-// Extra contacts are ignored by widgets while the primary contact owns input.
-func (rt *engine) touchEvent(ev platform.SurfaceEvent) bool {
+// Touch is a finger on a touchscreen, on an element that asks about its
+// fingers (Element.Touches).
+type Touch struct {
+	// ID tells the finger apart from the others for as long as it
+	// touches, from TouchBegan to TouchEnded or TouchCanceled; the window
+	// gives no other finger the same ID.
+	ID uint64
+	// X and Y are where the finger is, and StartX and StartY where it
+	// landed, relative to the element's box.
+	X, Y           float32
+	StartX, StartY float32
+	// Phase is what the finger did since the last build.
+	Phase TouchPhase
+	// Pressure is how hard the finger presses, from 0 to 1, where the
+	// system tells it, else 0.5 while it touches, as Pointer Events'.
+	Pressure float32
+	// Width and Height are the size of the finger's contact with the
+	// screen, in the element's units (DIPs), where the system tells it,
+	// else 0: a palm presses a larger area than a fingertip. Windows and
+	// browsers tell it where the touchscreen does; Linux does not.
+	Width, Height float32
+}
+
+// TouchPhase is what a finger did since the last build (Touch.Phase).
+type TouchPhase uint8
+
+// Phases of a touch.
+const (
+	// TouchBegan is a finger that landed since the last build, and may
+	// have moved since.
+	TouchBegan TouchPhase = iota
+	// TouchMoved is a finger that moved since the last build.
+	TouchMoved
+	// TouchStationary is a finger that stayed where it was.
+	TouchStationary
+	// TouchEnded is a finger that lifted since the last build, at X, Y:
+	// the last build to see it. A finger that lands and lifts before a
+	// build comes as TouchBegan in one build and TouchEnded in the next, so
+	// that a view counting the fingers that land sees each one.
+	TouchEnded
+	// TouchCanceled is a finger the system took since the last build, as
+	// for a gesture of its own at the screen's edge: no completed gesture,
+	// and the last build to see it.
+	TouchCanceled
+)
+
+// Touches returns the fingers on a touchscreen that landed on the element
+// or on an element inside it, every one down and those that lifted or
+// were canceled since the last build, in the order they landed, unless the
+// element is disabled. Each keeps its ID for as long as it touches, so that
+// a view tells them apart and recognizes gestures of its own, as a
+// whiteboard turning the page as four fingers swipe or clearing it as five
+// tap:
+//
+//	for _, t := range canvas.Touches() {
+//		switch t.Phase {
+//		case ui.TouchBegan, ui.TouchMoved:
+//			strokes.Draw(t.ID, t.X, t.Y)
+//		case ui.TouchEnded, ui.TouchCanceled:
+//			strokes.End(t.ID)
+//		}
+//	}
+//
+// The fingers still do what they do without it, which apps that do not ask
+// see alone: a tap clicks, one finger scrolls, two pinch. The window
+// follows its fingers once a view asks: those down before, and lifting
+// later, are not told of. Windows, Linux and browsers report touches;
+// macOS has no touchscreens, and a trackpad's fingers, which are not points
+// on the screen, report none. Elements asking for them get a frame
+// whenever a finger lands, moves or lifts.
+func (e *node) Touches() []Touch {
+	if !e.hasState() || e.disabled() {
+		return nil
+	}
+	rt := e.c.rt
+	t, _ := rt.touchIn.(*touchTracker)
+	if t == nil {
+		// Set here, for apps that do not ask not to link it.
+		t = &touchTracker{}
+		rt.touchIn = t
+	}
+	s := e.st
+	var out []Touch
+	for i := range t.points {
+		p := &t.points[i]
+		if !slices.Contains(p.chain, s.id) {
+			continue
+		}
+		touch := p.Touch
+		touch.X, touch.Y = s.local(p.X, p.Y)
+		touch.StartX, touch.StartY = s.local(p.StartX, p.StartY)
+		if touch.Width != 0 || touch.Height != 0 {
+			// In the element's axes, as a scaled canvas's.
+			wx, wy := s.vector(p.X, p.Y, p.Width, 0)
+			hx, hy := s.vector(p.X, p.Y, 0, p.Height)
+			touch.Width, touch.Height = dist([2]float32{wx, wy}, [2]float32{}), dist([2]float32{hx, hy}, [2]float32{})
+		}
+		out = append(out, touch)
+	}
+	return out
+}
+
+// touchInput follows the fingers on the window's touchscreen, once a view
+// asked about them (Element.Touches), which sets it.
+type touchInput interface {
+	// event handles a TouchDown, TouchMove, TouchUp or TouchCancel, in
+	// the content's DIPs.
+	event(rt *engine, ev platform.SurfaceEvent)
+	// endPass forgets the fingers that lifted, which the pass saw.
+	endPass(rt *engine)
+}
+
+// touchTracker is the touchInput Element.Touches sets.
+type touchTracker struct {
+	// points are the fingers, in the order they landed, in the window's
+	// DIPs.
+	points []touchPoint
+	// last is the last finger's ID.
+	last uint64
+}
+
+type touchPoint struct {
+	Touch
+	// from is the platform's ID of the finger, which it may give
+	// another once it lifts.
+	from uint64
+	// chain are the elements under the finger as it landed.
+	chain []uint64
+	// lift is TouchEnded or TouchCanceled for a finger that lifted, or was
+	// taken, before a build saw it begin: it shows as TouchBegan to that
+	// build, and lifts in the next.
+	lift TouchPhase
+}
+
+func (t *touchTracker) event(rt *engine, ev platform.SurfaceEvent) {
 	x, y := float32(ev.X), float32(ev.Y)
-	t := &rt.touch
+	pressure := float32(ev.Pressure)
+	if pressure == 0 {
+		pressure = 0.5
+	}
+	w, h := float32(ev.Width), float32(ev.Height)
+	i := slices.IndexFunc(t.points, func(p touchPoint) bool { return p.from == ev.ID && p.Phase < TouchEnded && p.lift == 0 })
 	switch ev.Kind {
-	case platform.PointerDown:
-		if t.active {
-			return true
+	case platform.TouchDown:
+		if i >= 0 {
+			// Its end went unseen.
+			t.points[i].Phase = TouchCanceled
 		}
-		rt.holdElastic()
-		t.id, t.active, t.scrolling = ev.PointerID, true, false
-		t.keyboardTap = false
-		t.selecting, t.holdUntil = false, time.Time{}
-		t.scrollTarget, t.scrollAxis = 0, 0
-		if t.text != nil {
-			t.text.reset()
+		t.last++
+		t.points = append(t.points, touchPoint{
+			Touch: Touch{ID: t.last, X: x, Y: y, StartX: x, StartY: y, Phase: TouchBegan, Pressure: pressure, Width: w, Height: h},
+			from:  ev.ID, chain: rt.hitChain(x, y),
+		})
+	case platform.TouchMove:
+		if i < 0 {
+			return
 		}
-		t.x, t.y, t.lastX, t.lastY = x, y, x, y
-		t.back, t.backWidth, t.backLevel = rt.backAt(x, y)
-		t.backEntry = nil
-		if t.back != nil {
-			t.backEntry = t.back.current()
-			// Reserve the edge without blurring an editor. A stationary tap
-			// is replayed on release; vertical movement can still scroll.
-			return true
+		p := &t.points[i]
+		if p.X == x && p.Y == y && p.Pressure == pressure && p.Width == w && p.Height == h {
+			return
 		}
-		if s := rt.handler(rt.hitChain(x, y)); s != nil && s.touchScroll {
-			// Delay the press and focus until this contact becomes a tap.
-			t.scrollTarget = s.id
-			if s.touchSelection {
-				t.holdUntil = rt.now().Add(500 * time.Millisecond)
-				rt.requestFrame()
-			}
-			return true
+		p.X, p.Y, p.Pressure, p.Width, p.Height = x, y, pressure, w, h
+		if p.Phase != TouchBegan {
+			p.Phase = TouchMoved
 		}
-		if t.text != nil && t.text.reserve(x, y) {
-			return true
+	default:
+		if i < 0 {
+			return
 		}
-	case platform.PointerLongPress:
-		if t.active && ev.PointerID == t.id && !t.scrolling {
-			rt.beginTouchTextSelection()
+		p := &t.points[i]
+		phase := TouchCanceled
+		if ev.Kind == platform.TouchUp {
+			p.X, p.Y, phase = x, y, TouchEnded
 		}
-		return true
-	case platform.PointerMove:
-		if !t.active || ev.PointerID != t.id {
-			return true
-		}
-		if t.selecting {
-			return false
-		}
-		if r := t.back; r != nil {
-			if r.back != nil {
-				r.moveBack(x-t.x, rt.now())
-				return true
-			}
-			dx, dy := x-t.x, y-t.y
-			if r.current() != t.backEntry || !r.CanGoBack() {
-				return true // navigation superseded this reserved contact
-			}
-			if dx > 8 && dx > abs32(dy) {
-				r.back = &routeBack{from: r.current(), to: r.entries[r.at-1], width: t.backWidth, level: t.backLevel, moved: rt.now()}
-				rt.cancelPointer()
-				r.moveBack(dx, rt.now())
-				return true
-			}
-			if abs32(dx) <= 8 && abs32(dy) <= 8 {
-				return true
-			}
-			t.back = nil // vertical/leftward motion yields to scrolling
-		}
-		if !t.scrolling && (abs32(x-t.x) > 8 || abs32(y-t.y) > 8) {
-			t.holdUntil = time.Time{}
-			if t.scrollTarget != 0 {
-				t.scrolling = true
-				if abs32(y-t.y) > 8 && abs32(y-t.y) > abs32(x-t.x) {
-					rt.dismissKeyboardOnDrag()
-				}
-			}
-			// Custom drags and text selection keep their press. Other widgets
-			// yield to a scrollable ancestor once a finger starts moving.
-			if t.scrollTarget == 0 && (rt.pressed == nil || rt.pressed.flags&(flagDraggable|flagEditable|flagTrackPointer) == 0) {
-				horizontal := abs32(x-t.x) > abs32(y-t.y)
-				for _, id := range rt.hitChain(t.x, t.y) {
-					s := rt.states[id]
-					if s == nil {
-						continue
-					}
-					axis := uint8(0)
-					if horizontal && s.flags&flagScrollX != 0 && s.contentW > float64(s.w) {
-						axis = 1
-					} else if !horizontal && s.flags&flagScrollY != 0 && s.contentH > float64(s.h) {
-						axis = 2
-					}
-					if axis != 0 {
-						rt.cancelPointer()
-						t.scrolling, t.scrollAxis = true, axis
-						if axis == 2 {
-							rt.dismissKeyboardOnDrag()
-						}
-						break
-					}
-				}
-			}
-		}
-		if t.scrolling {
-			rt.pointerX, rt.pointerY = t.x, t.y
-			dx, dy := t.lastX-x, t.lastY-y
-			if t.scrollAxis == 1 {
-				dy = 0
-			} else if t.scrollAxis == 2 {
-				dx = 0
-			}
-			rt.scrollInput(dx, dy, 0, true, false, true)
-			t.lastX, t.lastY = x, y
-			return true
-		}
-		if t.scrollTarget != 0 || rt.pendingTouchText() {
-			return true
-		}
-		t.lastX, t.lastY = x, y
-	case platform.PointerUp, platform.PointerCancel:
-		if !t.active || ev.PointerID != t.id {
-			return true
-		}
-		if t.keyboardTap && !t.scrolling && ev.Kind == platform.PointerUp {
-			rt.focused = 0
-		}
-		t.keyboardTap = false
-		rt.releaseElastic()
-		t.active = false
-		t.holdUntil = time.Time{}
-		rt.pointerIn = false
-		if t.selecting {
-			t.selecting = false
-			return false
-		}
-		if t.text != nil && t.text.finish(ev.Kind) {
-			return true
-		}
-		if id := t.scrollTarget; id != 0 {
-			t.scrollTarget = 0
-			if !t.scrolling && ev.Kind == platform.PointerUp && rt.handler(rt.hitChain(x, y)) == rt.states[id] {
-				rt.pointerMove(t.x, t.y)
-				rt.pointerDown(t.x, t.y, ev.Button, 0, ev.Clicks)
-				return false
-			}
-			return true
-		}
-		if r := t.back; r != nil {
-			entry := t.backEntry
-			t.back = nil
-			t.backEntry = nil
-			if r.back != nil {
-				r.moveBack(x-t.x, rt.now())
-				r.endBack(ev.Kind == platform.PointerCancel, rt.now())
-			} else if ev.Kind == platform.PointerUp && r.current() == entry && abs32(x-t.x) <= 8 && abs32(y-t.y) <= 8 {
-				if rt.touchTextAt(t.x, t.y) != nil {
-					return true
-				}
-				rt.pointerMove(t.x, t.y)
-				rt.pointerDown(t.x, t.y, ev.Button, 0, ev.Clicks)
-				return false // the ordinary Up completes the reserved tap
-			}
-			return true
-		}
-		if t.scrolling {
-			rt.cancelPointer()
-			return true
+		if p.Phase == TouchBegan {
+			p.lift = phase // as it began first, for a build to see
+		} else {
+			p.Phase = phase
 		}
 	}
-	return false
-}
-
-func (rt *engine) dismissKeyboardOnDrag() {
-	if rt.ime.state.Active && rt.ime.state.Options.Dismiss == "on-drag" {
-		rt.focused = 0
-		rt.updateTextInput()
-	}
-}
-
-func (rt *engine) advanceTouch() {
-	t := &rt.touch
-	if !t.active || t.scrolling || t.holdUntil.IsZero() || rt.now().Before(t.holdUntil) {
-		return
-	}
-	if rt.pendingTouchText() {
-		rt.beginTouchTextSelection()
-		t.holdUntil = time.Time{}
-		return
-	}
-	t.holdUntil = time.Time{}
-	s := rt.states[t.scrollTarget]
-	if s == nil || !s.touchSelection || s.flags&(flagDisabled|flagInert) != 0 || rt.handler(rt.hitChain(t.x, t.y)) != s {
-		return
-	}
-	rt.pointerX, rt.pointerY = t.x, t.y
-	if rt.deliver(s, InputEvent{Kind: InputLongPress, Button: 0}) {
-		t.scrollTarget, t.selecting = 0, true
-		rt.pressed, rt.pressButton = s, 0
-		s.pressed = true
-	}
-}
-
-func (rt *engine) cancelPointer() {
-	rt.selection.dragging = false
-	if s := rt.pressed; s != nil {
-		if s.input != nil {
-			rt.deliver(s, InputEvent{Kind: InputPointerUp, Canceled: true, Button: rt.pressButton, Mods: rt.mods, Pointer: rt.pointerType, Time: rt.now()})
-		}
-		s.pressed = false
-		if s.editor != nil {
-			s.editor.dragging = false
-		}
-		rt.pressed = nil
-	}
-	rt.scrollDrag.st = nil
-	rt.dragCancel()
-	rt.setHover(nil)
+	// Input, which the next frame builds even out of sight.
+	rt.input = true
 	rt.requestFrame()
 }
 
-// Selectable installs the touch selection policy; other native views do
-// not link its hit testing, focus and word-selection implementation.
-type touchTextPolicy interface {
-	hit(float32, float32) *state
-	reset()
-	reserve(float32, float32) bool
-	begin()
-	finish(platform.SurfaceEventKind) bool
-	pending() bool
-	started() bool
-}
-
-func (rt *engine) pendingTouchText() bool { return rt.touch.text != nil && rt.touch.text.pending() }
-func (rt *engine) touchTextAt(x, y float32) *state {
-	if rt.touch.text == nil {
-		return nil
-	}
-	return rt.touch.text.hit(x, y)
-}
-func (rt *engine) beginTouchTextSelection() {
-	if rt.touch.text != nil {
-		rt.touch.text.begin()
+func (t *touchTracker) endPass(rt *engine) {
+	t.points = slices.DeleteFunc(t.points, func(p touchPoint) bool { return p.Phase >= TouchEnded })
+	for i := range t.points {
+		p := &t.points[i]
+		if p.lift != 0 {
+			// Seen to begin: it lifts in the next build.
+			p.Phase, p.lift = p.lift, 0
+			rt.input = true
+			rt.askBuild() // in a frame, where requestFrame asks none
+			continue
+		}
+		p.Phase = TouchStationary
 	}
 }

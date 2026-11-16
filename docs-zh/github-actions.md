@@ -138,7 +138,7 @@ export default defineConfig({
 });
 ```
 
-随后 `mygo build` 会给应用签名，把磁盘映像提交给公证服务并等待结果（通常几分钟），再将公证票据附加到磁盘映像。也可以用 App Store Connect API 密钥代替 Apple ID：用 `--key`、`--key-id` 和 `--issuer` 把密钥文件、ID 和颁发者提供给 `notarytool store-credentials`。
+随后 `mygo build` 会给应用签名，先后把应用和磁盘映像提交给公证服务并等待结果（每次通常几分钟），再附加公证票据。也可以用 App Store Connect API 密钥代替 Apple ID：用 `--key`、`--key-id` 和 `--issuer` 把密钥文件、ID 和颁发者提供给 `notarytool store-credentials`。
 
 ## 给 Windows 应用签名
 

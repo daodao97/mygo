@@ -324,9 +324,10 @@ Store the credentials of the notary service in the keychain once:
 xcrun notarytool store-credentials notary
 ```
 
-`mygo build` then signs the app with the hardened runtime, submits the disk
-image to the notary service, and staples the ticket to the disk image and
-to the app, which updates ship. `security
+`mygo build` then signs the app with the hardened runtime, submits the app
+to the notary service and staples its ticket to it, then does the same for
+the disk image, which holds the stapled app. Updates ship the stapled app
+too. `security
 find-identity -v -p codesigning` lists your identities, and `mygo doctor`
 counts the Developer IDs.
 

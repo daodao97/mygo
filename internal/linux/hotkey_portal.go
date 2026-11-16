@@ -143,7 +143,7 @@ func (b *Backend) syncShortcuts() error {
 // bindShortcuts binds the shortcuts in the new session.
 func (b *Backend) bindShortcuts() error {
 	p := &b.portal
-	args := []ptr{gVariantNewObjectPath(cs(p.session)), p.list(), gVariantNewString(cs(""))} // no parent window
+	args := []ptr{gVariantNewObjectPath(cs(p.session)), p.list(), gVariantNewString(cs(b.portalParent()))}
 	return portalRequest(shortcutsPortal, "BindShortcuts", args, nil, func(code uint32, results ptr) {
 		p.busy = false
 		if code != 0 {
@@ -163,6 +163,38 @@ func (b *Backend) bindShortcuts() error {
 			}
 		}
 	})
+}
+
+// portalParent identifies to a portal the window its dialog shows over: the
+// app's window that has the keyboard, else the first one that shows. GNOME
+// opens the dialog of an app that names none behind the windows in front.
+// X11 windows only (x11:XID, XWayland's too): a Wayland window would have
+// to be exported first (xdg-foreign), which this does not do.
+func (b *Backend) portalParent() string {
+	if b.x11ID == nil {
+		return ""
+	}
+	var parent *window
+	for _, w := range b.windows {
+		if w.closed || !gtkWidgetGetVisible(w.win) {
+			continue
+		}
+		if gtkWindowIsActive(w.win) {
+			parent = w
+			break
+		}
+		if parent == nil || w.id < parent.id {
+			parent = w
+		}
+	}
+	if parent == nil {
+		return ""
+	}
+	gw := gtkWidgetGetWindow(parent.win)
+	if gw == 0 {
+		return ""
+	}
+	return fmt.Sprintf("x11:%x", b.x11ID(gw))
 }
 
 // ids returns the shortcuts' ids in the order they were registered.

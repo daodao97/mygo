@@ -53,8 +53,19 @@ A `MenuItem` has:
   macOS puts that column after the menu's longest label (and subtitle,
   where that follows it), and draws the badges in a monospaced-digit font,
   so a measure keeps its width as its digits change. The column moves when
-  a label, a badge or the visibility of an item changes. Other platforms
-  show the badge after the label and subtitle;
+  a label, a badge or the visibility of an item changes. `BadgeShape` draws
+  a background behind the badge: `BadgeShapeSquare` on any macOS item, and
+  `BadgeShapeRounded` or `BadgeShapePill` on `KeepOpen` items (other items
+  show a square for any shape). `BadgeColor` (a CSS color) is the
+  background and `BadgeTextColor` the text color, with or without a
+  background. Other platforms show the badge after the label and subtitle,
+  and ignore the shape and colors;
+- `KeepOpen`, which keeps the menu open when the item is chosen on macOS.
+  MyGo draws the item itself, with its label, badge and check mark, in a
+  view that handles the click: the item's menu and the menu above it stay
+  up, so a click can show a state change or start work in place. The view
+  answers the keyboard and VoiceOver as any item does. It does not apply
+  to items with a submenu, or on other platforms;
 - `ID`, to find the item with `Menu.ItemByID`;
 - `Role`, a built-in behavior with its label and accelerator.
 
@@ -114,7 +125,8 @@ the state the app gave them. An item the app disables stays disabled.
 ### Changing items
 
 Change items of a menu in use with their methods, so that the native menu
-follows: `SetLabel`, `SetBadge`, `SetBadgeAlign`, `SetEnabled`, `SetVisible`,
+follows: `SetLabel`, `SetBadge`, `SetBadgeAlign`, `SetBadgeShape`,
+`SetBadgeColor`, `SetBadgeTextColor`, `SetEnabled`, `SetVisible`,
 `SetChecked`, `SetAccelerator`, `SetSubtitle` and `SetIcon`:
 
 ```go
@@ -123,6 +135,25 @@ item.SetChecked(false)
 ```
 
 `Menu.Append` and `Menu.Insert` add items.
+
+### Keeping a menu open
+
+A menu usually closes when the user picks an item. `KeepOpen` keeps the
+item's menu, and the menu above it, open, so a submenu of nodes can show
+which one is chosen without closing and reopening:
+
+```go
+mygo.NewMenu([]*mygo.MenuItem{
+	{Label: "Hong Kong 01", Badge: "45 ms", Type: mygo.MenuItemCheckbox, KeepOpen: true},
+	{Label: "Tokyo IEPL", Badge: "120 ms", Type: mygo.MenuItemCheckbox, KeepOpen: true},
+})
+```
+
+MyGo draws each such item in a view of its own, with its label, badge,
+check mark, and its icon and subtitle where it has them; the view has one
+line, so a subtitle follows the label. `Click` still runs, and `SetLabel`,
+`SetBadge` and `SetChecked` update the view. The item keeps the menu open
+on macOS; other platforms close the menu as they always do.
 
 ### Icons
 
@@ -421,10 +452,20 @@ func speed(mbps float64) string {
 tray.SetTitle(speed(rate))
 ```
 
-Only digits are tabular: letters keep their own widths, so a title that
-switches units (`9 KB/s`, then `1.2 MB/s`) changes width with the unit.
-Keeping that steady is the app's choice, by showing the value in one unit
-as above, for one.
+Only digits are tabular: letters and punctuation keep their own widths, so
+a title that switches units (`9 KB/s`, then `1.2 MB/s`) changes width with
+the unit. To keep that steady, show the value in one unit as above, or make
+the tray with `MonospacedTitle`: its title is drawn in the system's
+monospaced font, where every character is as wide as a digit, the figure
+space too.
+
+```go
+tray, err := mygo.NewTray(mygo.TrayOptions{Icon: icon, MonospacedTitle: true})
+
+// "↓  0B ↑ 60K", "↓1.3M ↑999M": all as wide, each rate padded to four
+// characters.
+tray.SetTitle("↓" + pad(down) + " ↑" + pad(up))
+```
 
 An app may show several icons, as a menu bar app showing its measures each
 in an item of its own. On macOS a new icon goes left of those already

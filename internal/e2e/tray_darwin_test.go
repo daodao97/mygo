@@ -140,3 +140,28 @@ func TestTrayPopoverToggle(t *testing.T) {
 	open()
 	closes("a click elsewhere after a press on the icon", clickElsewhere)
 }
+
+// TestTrayMonospacedTitle keeps a tray item's width as the letters of its
+// title change, the title keeping its length (#225): with only its digits
+// at one width, "M" is wider than "B", and a rate that changes units
+// resizes the item, which shifts its icon and the items beside it.
+func TestTrayMonospacedTitle(t *testing.T) {
+	width := func(mono bool, title string) int {
+		t.Helper()
+		tray, err := mygo.NewTray(mygo.TrayOptions{Title: title, MonospacedTitle: mono})
+		if err != nil {
+			t.Skip("no tray: ", err)
+		}
+		defer tray.Destroy()
+		waitTrayLaidOut(tray)
+		return tray.Bounds().Width
+	}
+	const busy, idle = "↓999M ↑999M", "↓\u2007\u20070B ↑\u2007\u20070B"
+	if a, b := width(true, busy), width(true, idle); a == 0 || a != b {
+		t.Errorf("monospaced, the item is %d wide with %q and %d with %q, want one width", a, busy, b, idle)
+	}
+	// What the test rests on: the system's font draws these at two widths.
+	if a, b := width(false, busy), width(false, idle); a == b {
+		t.Errorf("in the system's font the item is %d wide with both titles: they tell nothing", a)
+	}
+}

@@ -67,6 +67,8 @@ type Backend struct {
 	// wmName names its window manager.
 	onX11  bool
 	wmName func(screen ptr) ptr
+	// x11ID returns a GdkWindow's X11 window (gdk_x11_window_get_xid).
+	x11ID func(window ptr) ptr
 	// compositorDecorates reports a Wayland compositor that decorates
 	// windows itself, whose title bar shows no buttons of GTK's (titlebar.go).
 	compositorDecorates bool
@@ -146,6 +148,9 @@ func (b *Backend) Init(h platform.AppHandler, opts platform.AppOptions) error {
 	var x11Type func() uintptr
 	b.onX11 = bind(libGDK, &x11Type, "gdk_x11_display_get_type") && gTypeCheckInstanceIsA(gdkDisplayGetDefault(), x11Type()) &&
 		bind(libGDK, &b.wmName, "gdk_x11_screen_get_window_manager_name")
+	if b.onX11 {
+		bind(libGDK, &b.x11ID, "gdk_x11_window_get_xid")
+	}
 	// GTK has the compositor's default decoration mode once the display is
 	// open, and decides with it which windows it decorates.
 	var waylandType func() uintptr

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -516,6 +517,98 @@ func TestVideo(t *testing.T) {
 	}
 	if err := Video(context.Background(), boxes(320, 180, 10), filepath.Join(dir, "x.avi"), Options{}); err == nil {
 		t.Error("an .avi")
+	}
+}
+
+// mp4FrameTimes returns the time scale of the video track of an MP4 or a
+// QuickTime movie, and how long its frames last in it: the runs of its
+// stts, each a count of frames and their duration.
+func mp4FrameTimes(t *testing.T, path string) (scale uint32, runs [][2]uint32) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type track struct {
+		handler string
+		scale   uint32
+		runs    [][2]uint32
+	}
+	var walk func(b []byte, tr *track)
+	walk = func(b []byte, tr *track) {
+		for len(b) >= 8 {
+			size := int(binary.BigEndian.Uint32(b))
+			kind := string(b[4:8])
+			head := 8
+			if size == 1 && len(b) >= 16 {
+				size, head = int(binary.BigEndian.Uint64(b[8:])), 16
+			} else if size == 0 {
+				size = len(b)
+			}
+			if size < head || size > len(b) {
+				return
+			}
+			body := b[head:size]
+			switch {
+			case kind == "moov", kind == "mdia", kind == "minf", kind == "stbl":
+				walk(body, tr)
+			case kind == "trak":
+				var found track
+				walk(body, &found)
+				if found.handler == "vide" {
+					scale, runs = found.scale, found.runs
+				}
+			case tr == nil:
+			case kind == "hdlr" && len(body) >= 12 && tr.handler == "":
+				tr.handler = string(body[8:12])
+			case kind == "mdhd" && len(body) >= 24:
+				// After the times of its making, of 8 bytes each in version 1.
+				at := 12
+				if body[0] == 1 {
+					at = 20
+				}
+				tr.scale = binary.BigEndian.Uint32(body[at:])
+			case kind == "stts" && len(body) >= 8:
+				for b := body[8:]; len(b) >= 8; b = b[8:] {
+					tr.runs = append(tr.runs, [2]uint32{binary.BigEndian.Uint32(b), binary.BigEndian.Uint32(b[4:])})
+				}
+			}
+			b = b[size:]
+		}
+	}
+	walk(data, nil)
+	return scale, runs
+}
+
+// TestVideoFrameTimes checks that every frame of a video lasts what its
+// rate says: 1001/30000 s at 29.97 frames a second, which a track counted
+// in the 1/600 s of AVFoundation cannot say.
+func TestVideoFrameTimes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Media Foundation takes times in 100 ns, which 1001/30000 s is no
+		// whole number of either: what it writes is not known here.
+		t.Skip("not checked with Media Foundation")
+	}
+	dir := t.TempDir()
+	const frames = 30
+	for _, fps := range []float64{30, 29.97, 23.976, 59.94, 48, 240} {
+		for _, name := range []string{"frames.mp4", "frames.mov"} {
+			comp := boxes(320, 180, frames)
+			comp.FPS = fps
+			path := filepath.Join(dir, name)
+			err := Video(context.Background(), comp, path, Options{Renderer: CPU})
+			if errors.Is(err, errors.ErrUnsupported) {
+				t.Skip(err)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			num, den := comp.rate()
+			scale, runs := mp4FrameTimes(t, path)
+			if len(runs) != 1 || runs[0][0] != frames || int64(runs[0][1])*num != den*int64(scale) {
+				t.Errorf("%v frames a second in %s: frames last %v (count, duration) of 1/%d s, want %d of %d/%d s", fps, name, runs, scale, frames, den, num)
+			}
+		}
 	}
 }
 

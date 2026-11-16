@@ -66,10 +66,10 @@ func TestDocumentServiceTypeScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"content(): Promise<Note>",
-		": Note): Promise<void>",
-		"state(): Promise<DocumentState>",
-		"save(): Promise<void>",
+		`content: bind<[], Note>("Note.Content", () => [])`,
+		`setContent: bind<[Note], void>("Note.SetContent", (content: Note) => [content])`,
+		`state: bind<[], DocumentState>("Note.State", () => [])`,
+		`save: bind<[], void>("Note.Save", () => [])`,
 		"readOnly: boolean",
 	} {
 		if !strings.Contains(string(src), want) {

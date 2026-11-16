@@ -732,31 +732,26 @@ func hashEntitlements(w io.Writer, c *Config) error {
 	return nil
 }
 
-// placeBuild moves the executable in stage and the resources res next to
-// it into dir, and removes what an earlier build left there and this one
-// does not have.
+// placeBuild moves the executable in stage into dir, syncs the resources
+// res next to it, and removes what an earlier build left there and this
+// one does not have. Resources that did not change stay as they are, so a
+// program the running app started from them, which Windows keeps from
+// being moved, does not stop the rebuild.
 func placeBuild(stage, dir string, res []resource) error {
-	if err := copyResources(res, stage); err != nil {
-		return err
-	}
 	entries, err := os.ReadDir(stage)
 	if err != nil {
 		return err
 	}
-	placed := map[string]bool{}
+	own := map[string]bool{}
 	for _, e := range entries {
-		if err := replacePath(filepath.Join(stage, e.Name()), filepath.Join(dir, e.Name())); err != nil {
-			return err
-		}
-		placed[e.Name()] = true
+		own[e.Name()] = true
 	}
-	entries, err = os.ReadDir(dir)
-	if err != nil {
+	if err := syncResources(res, dir, stage, own); err != nil {
 		return err
 	}
 	for _, e := range entries {
-		if !placed[e.Name()] && !hiddenName(e.Name()) {
-			_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+		if err := replacePath(filepath.Join(stage, e.Name()), filepath.Join(dir, e.Name())); err != nil {
+			return err
 		}
 	}
 	return nil

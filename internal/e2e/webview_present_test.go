@@ -192,3 +192,68 @@ requestAnimationFrame(() => requestAnimationFrame(() => { window.ready = true })
 		t.Errorf("the page got %d clicks: want none in its corner cut off", n-2)
 	}
 }
+
+// TestContentWindowWebViewFades shows a red page in a web view its element
+// holds at half opacity over a transparent window, over a blue one: the
+// page itself fades, showing the window behind it through, instead of
+// covering it at full strength.
+func TestContentWindowWebViewFades(t *testing.T) {
+	newWindow(t, mygo.WindowOptions{X: 40, Y: 40, Width: 400, Height: 300, Frameless: true, Content: ui.View(func(c *ui.Context) {
+		c.Root().Background(ui.RGB(0, 0, 255))
+	})})
+	var view *mygo.WebView
+	w := newWindow(t, mygo.WindowOptions{X: 40, Y: 40, Width: 400, Height: 300, Frameless: true, Transparent: true, AlwaysOnTop: true, Content: ui.View(func(c *ui.Context) {
+		c.Root().Background(ui.Transparent)
+		if view != nil {
+			ui.Box(c).Fill().Padding(20).Opacity(0.5).Children(func() {
+				ui.WebView(c, view).Grow(1)
+			})
+		}
+	})})
+	v, err := w.NewWebView(mygo.WebViewOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Update(func() { view = v })
+	v.Page().LoadHTML(`<!doctype html><body style="margin:0;height:100vh;background:#f00">
+	<script>
+	requestAnimationFrame(() => requestAnimationFrame(() => { window.ready = true }))
+	</script></body>`, "")
+	waitForPage(t, v.Page(), "window.ready")
+	w.Focus()
+	// Only a window of Windows composites what is behind it into what the
+	// screen reads; the ARM64 runners' GDI never shows what DirectComposition
+	// composes, as in TestContentWindowTransparent.
+	noRedirect, _, onWindows := composition(w)
+	if !onWindows {
+		t.Skip("reads the screen through a window of Windows")
+	}
+	if !canCompose() {
+		t.Skip("no DirectComposition: the window keeps its bitmap")
+	}
+	if !noRedirect {
+		t.Fatal("a transparent window of native UI has a redirection bitmap")
+	}
+	// Some displays, as the Windows ARM64 runners', never show GDI what
+	// DirectComposition composes: there the page never reads, and nothing
+	// tells it apart from a page not shown yet.
+	var seen string
+	readable := false
+	for deadline := time.Now().Add(3 * time.Second); !readable && time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		r, g, b, ok := screenPixel(w, 200, 150)
+		seen = fmt.Sprintf("#%02x%02x%02x (read %v)", r, g, b, ok)
+		readable = ok && r > 90 && g < 80
+	}
+	if !readable {
+		t.Skipf("the screen does not show the page: not reading what it composites (%s)", seen)
+	}
+	if !wait.Poll(func() bool {
+		r, g, b, _ := screenPixel(w, 200, 150)
+		seen = fmt.Sprintf("#%02x%02x%02x", r, g, b)
+		// Half the red page over the blue window behind: a purple of the
+		// two, neither one's alone.
+		return r > 90 && r < 200 && g < 60 && b > 90 && b < 200
+	}) {
+		t.Fatalf("the page at half opacity shows %s: want red mixed with the blue window behind it", seen)
+	}
+}

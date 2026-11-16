@@ -151,6 +151,8 @@ export const zh: Record<string, string> = {
   "Apps the community has made with MyGo, drawing native UI or showing a web frontend.": "社区使用 MyGo 开发的应用，既有原生 UI，也有 Web 前端。",
   "Add your app": "添加你的应用",
   "Built something with MyGo? Open a pull request that adds it to": "用 MyGo 做了应用？请提交一个 Pull Request，将它添加到",
+  "in egoist/mygo-showcase": "（位于 egoist/mygo-showcase 仓库）",
+  "The apps could not be loaded. See them in": "应用列表加载失败，可以在这里查看：",
   ", with its name, a short description, a link, and whether it draws native UI or shows a web frontend. A screenshot is optional.":
     "，并注明应用名称、简短介绍、链接，以及使用的是原生 UI 还是 Web 前端，也可以附上截图。",
   "By {author}": "作者：{author}",

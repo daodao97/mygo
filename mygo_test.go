@@ -3,6 +3,7 @@
 package mygo
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -44,16 +45,14 @@ func TestMain(m *testing.M) {
 		helper := fake.New()
 		backendOnce.Do(func() { theBackend = helper })
 		packageIdentifier = os.Getenv("MYGO_TEST_IDENTIFIER")
-		App.SetName("MyGoTest")
-		if App.RequestSingleInstanceLock() {
-			fmt.Println("locked")
-			releaseSingleInstanceLock()
-		} else {
-			fmt.Println("forwarded")
-		}
-		if helper.ForegroundAllowed > 0 {
-			fmt.Println("passed the foreground on")
-		}
+		App.SetName(cmp.Or(os.Getenv("MYGO_TEST_INSTANCE_NAME"), "MyGoTest"))
+		singleInstanceTestHelper(helper)
+		os.Exit(0)
+	}
+	if os.Getenv("MYGO_TEST_INSTANCE_CHILD") == "1" {
+		// A process that an instance started, which outlives it.
+		fmt.Println("child started")
+		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	}
 	fb = fake.New()
@@ -1755,6 +1754,7 @@ func TestMenuRolesAndState(t *testing.T) {
 func TestMenuBadge(t *testing.T) {
 	menu := NewMenu([]*MenuItem{{
 		ID: "node", Label: "Node", Badge: "120 ms", BadgeAlign: BadgeAlignLeft,
+		BadgeShape: BadgeShapePill, BadgeColor: "#34c759", BadgeTextColor: "#fff",
 	}})
 	snap := menu.snapshot()
 	if got := snap.Items[0].Badge; got != "120 ms" {
@@ -1763,14 +1763,31 @@ func TestMenuBadge(t *testing.T) {
 	if got := snap.Items[0].BadgeAlign; got != platform.BadgeAlignLeft {
 		t.Fatalf("badge align = %q", got)
 	}
+	if pill := snap.Items[0]; pill.BadgeShape != platform.BadgeShapePill || pill.BadgeColor == nil ||
+		*pill.BadgeColor != (platform.Color{R: 0x34, G: 0xc7, B: 0x59, A: 255}) ||
+		pill.BadgeTextColor == nil || *pill.BadgeTextColor != (platform.Color{R: 255, G: 255, B: 255, A: 255}) {
+		t.Fatalf("badge pill = %+v", pill)
+	}
 	item := menu.ItemByID("node")
 	item.SetBadge("1.2s")
 	item.SetBadgeAlign(BadgeAlignCenter)
+	item.SetBadgeShape("")
+	item.SetBadgeColor("")
+	item.SetBadgeTextColor("#000")
 	onMain(func() {}) // the updates reach the backend on the main thread
 	updates := fb.MenuUpdates()
 	last := updates[len(updates)-1]
-	if last.ID != item.uid || last.Badge != "1.2s" || last.BadgeAlign != platform.BadgeAlignCenter {
-		t.Errorf("SetBadge and SetBadgeAlign not propagated: %+v", last)
+	if last.ID != item.uid || last.Badge != "1.2s" || last.BadgeAlign != platform.BadgeAlignCenter ||
+		last.BadgeShape != "" || last.BadgeColor != nil ||
+		last.BadgeTextColor == nil || *last.BadgeTextColor != (platform.Color{R: 0, G: 0, B: 0, A: 255}) {
+		t.Errorf("badge updates not propagated: %+v", last)
+	}
+}
+
+func TestMenuKeepOpen(t *testing.T) {
+	menu := NewMenu([]*MenuItem{{ID: "node", Label: "Node", KeepOpen: true}})
+	if !menu.snapshot().Items[0].KeepOpen {
+		t.Error("KeepOpen lost in the snapshot")
 	}
 }
 

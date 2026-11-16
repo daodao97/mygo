@@ -59,7 +59,7 @@ downloads on Windows when it is not installed; -skip-installer leaves both
 out.
 
 Set macos.signingIdentity in mygo.json (or -sign) to a Developer ID to ship
-outside the Mac App Store, and macos.notarize to notarize the disk image.
+outside the Mac App Store, and macos.notarize to notarize the app and the disk image.
 
 With updates in mygo.json and the key of mygo keygen in
 MYGO_UPDATER_PRIVATE_KEY, each platform also gets a signed update archive,

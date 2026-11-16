@@ -825,6 +825,10 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 			procReleaseCapture.Call()
 		}
 		return 0, false
+	case wmPointerCaptureChanged:
+		// A finger another window took: its touch ends there.
+		s.send(platform.SurfaceEvent{Kind: platform.TouchCancel, ID: uint64(loword(wp))})
+		return 0, false
 	case wmMouseMove:
 		if !s.tracking {
 			tme := trackMouseEvent{Flags: tmeLeaveFlag, Track: hwnd}

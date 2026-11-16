@@ -347,8 +347,27 @@ func (w *window) becomeReady() {
 	}
 }
 
+// addFilter makes WebView2 raise WebResourceRequested for the requests
+// whose URL matches pattern, of every resource context, from the page's
+// frames, those of other origins among them (#1912): an iframe of a custom
+// scheme's other host loads its scripts, styles and fetches through the
+// scheme. Runtimes without ICoreWebView2_22 only have the older filter,
+// which reaches the main frame and its same-origin iframes alone.
+//
+// Service and shared workers are left out, as with the older filter: their
+// requests reach every web view of the profile that filters them, so each
+// window would answer them, and apply its content rules to them.
 func (w *window) addFilter(pattern string) {
-	comCall(w.webview, wvAddWebResourceRequestedFilter, uintptr(unsafe.Pointer(u16(pattern))), 0) // COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL
+	const contextAll = 0 // COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL
+	uri := u16(pattern)
+	if wv22 := queryInterface(w.webview, &iidICoreWebView2_22); wv22 != 0 {
+		hr := comCall(wv22, wv22AddWebResourceRequestedFilterWithRequestSourceKinds, uintptr(unsafe.Pointer(uri)), contextAll, requestSourceDocument)
+		release(wv22)
+		if !failed(hr) {
+			return
+		}
+	}
+	comCall(w.webview, wvAddWebResourceRequestedFilter, uintptr(unsafe.Pointer(uri)), contextAll)
 }
 
 func (w *window) resizeWebView() {

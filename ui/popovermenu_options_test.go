@@ -394,3 +394,69 @@ func TestPopoverMenuButtonItem(t *testing.T) {
 		t.Errorf("Item styled %q, not the submenu's row", items)
 	}
 }
+
+// A context menu takes Panel and Item as a menu button's does (#1885).
+func TestPopoverMenuPanel(t *testing.T) {
+	red := RGB(200, 30, 30)
+	var panels, items []*node
+	o := PopoverMenuOptions{
+		Panel: func(panel Element) {
+			n := panel.node()
+			panels = append(panels, n)
+			n.Background(red).Radius(12)
+		},
+		Item: func(item Element) { items = append(items, item.node()) },
+	}
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Padding(20).Children(func() {
+			coreText(c, "Message").PopoverMenu(func(m *Menu) {
+				m.Item("Copy")
+				m.Submenu("More", func(m *Menu) { m.Item("Elsewhere") })
+			}, o)
+		})
+	}, 400, 400)
+	if err := tt.RightClick("Message"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Copy") {
+		t.Fatalf("no menu: texts %q", tt.Texts())
+	}
+	if len(panels) == 0 {
+		t.Fatal("Panel did not run for the context menu")
+	}
+	menu := panels[len(panels)-1]
+	if menu.role != RoleMenu || menu.bg != red || menu.radius != [4]float32{12, 12, 12, 12} {
+		t.Errorf("panel role %v, background %v, radius %v: Panel's did not apply", menu.role, menu.bg, menu.radius)
+	}
+	if len(items) == 0 {
+		t.Error("Item did not run for the context menu's rows")
+	}
+	panels = panels[:0]
+	tt.Key(0, KeyDown)
+	tt.Key(0, KeyDown)
+	tt.Key(0, KeyRight)
+	if !tt.HasText("Elsewhere") {
+		t.Fatalf("the submenu did not open: texts %q", tt.Texts())
+	}
+	subs := 0
+	for _, p := range panels {
+		if p.role == RoleMenu && p.bg == red && p.label == "More" {
+			subs++
+		}
+	}
+	if subs == 0 {
+		t.Error("Panel did not style the submenu's panel")
+	}
+}
+
+func TestPopoverMenuTwoOptions(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("two options did not panic")
+		}
+	}()
+	tt := coreNewTester(func(c *context) {
+		coreText(c, "Message").PopoverMenu(func(m *Menu) { m.Item("A") }, PopoverMenuOptions{}, PopoverMenuOptions{})
+	}, 200, 200)
+	tt.Frame()
+}

@@ -230,8 +230,9 @@ type MacOS struct {
 	InfoPlist map[string]any `json:"infoPlist"`
 	// DMGTitle is the volume name of the disk image (default: name).
 	DMGTitle string `json:"dmgTitle"`
-	// Notarize submits production disk images to Apple's notary service and
-	// staples the ticket. It needs a Developer ID signing identity.
+	// Notarize submits the app, then the disk image holding it, to Apple's
+	// notary service and staples the tickets to both. It needs a Developer
+	// ID signing identity.
 	Notarize *Notarize `json:"notarize"`
 }
 

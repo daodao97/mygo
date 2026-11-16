@@ -1,347 +1,252 @@
 package ui
 
 import (
-	"fmt"
-	"strings"
+	"reflect"
 	"testing"
 
 	"github.com/egoist/mygo/internal/platform"
 )
 
-// touch sends a finger's event. send gives a press, move or release the
-// Tester's pointer (UsePointer), a finger for this event only; other kinds,
-// as a cancel, keep the one the event names.
-func touch(tt *Tester, kind platform.SurfaceEventKind, id uint64, x, y float32) {
-	pointer, pressure := tt.pointer, tt.pressure
-	tt.UsePointer(PointerTouch, 0)
-	tt.send(platform.SurfaceEvent{Kind: kind, Pointer: platform.PointerTouch, PointerID: id, X: float64(x), Y: float64(y), Clicks: 1})
-	tt.UsePointer(pointer, pressure)
-}
-
-func TestTouchScrollCustomWidgetDefersKeyboardAndSelection(t *testing.T) {
-	var events []InputEvent
+// A view sees every finger on an element, by an ID that stays the same
+// while the finger moves, until it lifts or the system takes it, as a
+// whiteboard recognizing gestures of its own needs (#1879).
+func TestTouches(t *testing.T) {
+	var seen []Touch
 	tt := NewTester(func(c *Context) {
-		e := Box(c).Fill().Focusable().TouchScroll().TextCaret(Rect{W: 1, H: 20})
-		e.PointerPosition() // Pointer tracking must not steal finger scrolling.
-		e.HandleInput(func(ev InputEvent) bool { events = append(events, ev); return true })
-	}, 320, 240)
-	touch(tt, platform.PointerDown, 1, 120, 180)
-	touch(tt, platform.PointerMove, 1, 120, 177)
-	if len(events) != 0 || tt.h.ime.Active {
-		t.Fatal("a reserved contact selected text or opened the keyboard")
-	}
-	touch(tt, platform.PointerMove, 1, 120, 140)
-	touch(tt, platform.PointerMove, 1, 120, 100)
-	touch(tt, platform.PointerUp, 1, 120, 100)
-	var dy float32
-	for _, ev := range events {
-		if ev.Kind != InputScroll || !ev.Precise {
-			t.Fatalf("swipe delivered pointer selection: %+v", ev)
-		}
-		dy += ev.DY
-	}
-	if dy != 80 || tt.h.ime.Active || tt.rt.pressed != nil {
-		t.Fatalf("swipe offset=%v keyboard=%v pressed=%v", dy, tt.h.ime.Active, tt.rt.pressed)
-	}
-	events = nil
-	touch(tt, platform.PointerDown, 2, 120, 100)
-	touch(tt, platform.PointerMove, 2, 120, 102)
-	touch(tt, platform.PointerUp, 2, 120, 102)
-	downs, ups := 0, 0
-	for _, ev := range events {
-		if ev.Kind == InputPointerDown {
-			downs++
-		}
-		if ev.Kind == InputPointerUp {
-			ups++
-		}
-	}
-	if downs != 1 || ups != 1 || !tt.h.ime.Active {
-		t.Fatalf("tap did not focus and deliver a complete click: %+v", events)
-	}
-	events = nil
-	tt.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: 120, Y: 100})
-	tt.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: 120, Y: 60})
-	tt.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: 120, Y: 60})
-	for _, ev := range events {
-		if ev.Kind == InputScroll {
-			t.Fatal("mouse selection became a touch scroll")
-		}
-	}
-}
-
-func TestTouchBlurReleasesContact(t *testing.T) {
-	for _, scrolling := range []bool{false, true} {
-		t.Run(fmt.Sprint("scrolling=", scrolling), func(t *testing.T) {
-			clicks := 0
-			var scroll ScrollState
-			tt := snapshotTester(func(c *Context) {
-				Scroll(c).Fill().TrackScroll(&scroll).Children(func() {
-					for i := range 20 {
-						if Button(c, fmt.Sprint("Row ", i)).Height(48).Clicked() {
-							clicks++
-						}
-					}
-				})
-			}, 320, 240)
-			b, _ := tt.Find("Row 2")
-			x, y := b.X+b.W/2, b.Y+b.H/2
-			touch(tt, platform.PointerDown, 1, x, y)
-			if scrolling {
-				touch(tt, platform.PointerMove, 1, x, y-30)
-			}
-			offset := scroll.Y
-			tt.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
-			if tt.rt.touch.active || tt.rt.touch.scrolling || tt.rt.pointerIn || tt.rt.pressed != nil || clicks != 0 {
-				t.Fatal("blur retained the contact or activated its button")
-			}
-			tt.send(platform.SurfaceEvent{Kind: platform.SurfaceFocus})
-			// Late input from the abandoned contact must be ignored too.
-			touch(tt, platform.PointerUp, 1, x, y)
-			b, _ = tt.Find("Row 2")
-			x, y = b.X+b.W/2, b.Y+b.H/2
-			touch(tt, platform.PointerDown, 2, x, y)
-			touch(tt, platform.PointerUp, 2, x, y)
-			if clicks != 1 || scroll.Y != offset {
-				t.Fatalf("next touch: clicks=%d scroll=%v want=%v", clicks, scroll.Y, offset)
-			}
+		Column(c).Children(func() {
+			Box(c).Size(300, 20)
+			canvas := Box(c).Size(300, 200).Children(func() {
+				Box(c).Size(50, 50) // a finger landing on it lands on the canvas
+			})
+			seen = canvas.Touches()
+			Box(c).Size(300, 80)
 		})
+	}, 300, 300)
+	tt.Frame()
+	if seen != nil {
+		t.Fatalf("no finger down: %+v", seen)
 	}
+	type finger struct {
+		id    uint64
+		x, y  float32
+		phase TouchPhase
+	}
+	check := func(step string, want ...finger) {
+		t.Helper()
+		var got []finger
+		for _, f := range seen {
+			got = append(got, finger{f.ID, f.X, f.Y, f.Phase})
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s:\n got %+v\nwant %+v", step, got, want)
+		}
+	}
+
+	tt.TouchDown(1, 10, 30) // on the box in the canvas
+	check("one down", finger{1, 10, 10, TouchBegan})
+	tt.TouchDown(2, 100, 70)
+	tt.TouchDown(3, 200, 170)
+	check("three down", finger{1, 10, 10, TouchStationary}, finger{2, 100, 50, TouchStationary}, finger{3, 200, 150, TouchBegan})
+	tt.TouchDown(7, 150, 250) // below the canvas
+	check("one elsewhere", finger{1, 10, 10, TouchStationary}, finger{2, 100, 50, TouchStationary}, finger{3, 200, 150, TouchStationary})
+
+	tt.TouchMove(2, 120, 80)
+	check("moved", finger{1, 10, 10, TouchStationary}, finger{2, 120, 60, TouchMoved}, finger{3, 200, 150, TouchStationary})
+	// Moving out of the canvas, the finger is still the canvas's.
+	tt.TouchMove(2, 120, 290)
+	check("moved out", finger{1, 10, 10, TouchStationary}, finger{2, 120, 270, TouchMoved}, finger{3, 200, 150, TouchStationary})
+	if tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchMove, ID: 2, X: 120, Y: 290}); tt.FramePending() {
+		t.Error("a move to where the finger is asked for a frame")
+	}
+
+	tt.TouchUp(1, 12, 34)
+	check("lifted", finger{1, 12, 14, TouchEnded}, finger{2, 120, 270, TouchStationary}, finger{3, 200, 150, TouchStationary})
+	tt.TouchCancel(3)
+	check("canceled", finger{2, 120, 270, TouchStationary}, finger{3, 200, 150, TouchCanceled})
+	tt.Frame()
+	check("gone", finger{2, 120, 270, TouchStationary})
+
+	// The platform gives the ID of a finger that lifted to the next: the
+	// window gives it one of its own.
+	tt.TouchDown(1, 40, 40)
+	check("ID used again", finger{2, 120, 270, TouchStationary}, finger{5, 40, 20, TouchBegan})
+	if s := seen[1]; s.StartX != 40 || s.StartY != 20 || s.Pressure != 0.5 {
+		t.Errorf("start %v, %v, pressure %v, want 40, 20, 0.5", s.StartX, s.StartY, s.Pressure)
+	}
+
+	// A finger landing and moving between two builds comes as it began,
+	// where it is, with where it landed.
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 8, X: 60, Y: 60, Pressure: 0.25})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchMove, ID: 8, X: 90, Y: 100, Pressure: 0.25})
+	tt.Frame()
+	if s := seen[len(seen)-1]; s.ID != 6 || s.Phase != TouchBegan || s.X != 90 || s.Y != 80 || s.StartX != 60 || s.StartY != 40 || s.Pressure != 0.25 {
+		t.Errorf("landed and moved: %+v", s)
+	}
+	// One landing and lifting between two builds comes as it began, and
+	// lifts in the build after.
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 9, X: 60, Y: 60})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchUp, ID: 9, X: 60, Y: 60})
+	tt.Frame() // which builds twice (TestTouchesTapBetweenBuilds)
+	if s := seen[len(seen)-1]; s.ID != 7 || s.Phase != TouchEnded {
+		t.Errorf("landed and lifted, then built again: %+v", s)
+	}
+	// Unknown fingers, as those down before a view asked, do nothing.
+	tt.TouchMove(42, 10, 10)
+	tt.TouchUp(42, 10, 10)
+	check("unknown", finger{2, 120, 270, TouchStationary}, finger{5, 40, 20, TouchStationary}, finger{6, 90, 80, TouchStationary})
 }
 
-func TestTouchBlurCancelsInputHandler(t *testing.T) {
-	cancels, releases := 0, 0
-	tt := snapshotTester(func(c *Context) {
-		Box(c).Size(100, 100).HandleInput(func(ev InputEvent) bool {
-			switch ev.Kind {
-			case InputPointerUp:
-				if ev.Canceled {
-					cancels++
-				} else {
-					releases++
+// Fingers counted as they land and lift: a five-finger tap, as a
+// whiteboard clears itself with.
+func TestTouchesFiveFingerTap(t *testing.T) {
+	down, most, cleared := map[uint64]bool{}, 0, 0
+	tt := NewTester(func(c *Context) {
+		for _, f := range Box(c).Size(400, 400).Touches() {
+			switch f.Phase {
+			case TouchBegan:
+				down[f.ID] = true
+				most = max(most, len(down))
+			case TouchEnded, TouchCanceled:
+				delete(down, f.ID)
+				if len(down) == 0 && most == 5 && f.Phase == TouchEnded {
+					cleared++
+				}
+				if len(down) == 0 {
+					most = 0
 				}
 			}
-			return true
-		})
-	}, 320, 240)
-	touch(tt, platform.PointerDown, 1, 50, 50)
-	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
-	if cancels != 1 || releases != 0 {
-		t.Fatalf("interrupted handler got cancel=%d release=%d", cancels, releases)
+		}
+	}, 400, 400)
+	tt.Frame()
+	for i := range uint64(5) {
+		tt.TouchDown(i, float32(50+50*i), 200)
+	}
+	for i := range uint64(5) {
+		tt.TouchUp(i, float32(50+50*i), 200)
+	}
+	if cleared != 1 {
+		t.Errorf("five fingers tapped: cleared %d times", cleared)
 	}
 }
 
-func TestTouchScrollCancelsButton(t *testing.T) {
+// Views that ask about no fingers see no difference: touches build no
+// frame, and the taps the backend makes of them click as they did.
+func TestTouchesUnasked(t *testing.T) {
 	clicks := 0
-	var scroll ScrollState
-	tt := snapshotTester(func(c *Context) {
-		Scroll(c).Fill().TrackScroll(&scroll).Children(func() {
-			for i := range 20 {
-				if Button(c, fmt.Sprint("Row ", i)).Height(48).Clicked() {
-					clicks++
-				}
-			}
-		})
-	}, 320, 240)
-	r, _ := tt.Find("Row 2")
-	x, y := r.X+r.W/2, r.Y+r.H/2
-	touch(tt, platform.PointerDown, 1, x, y)
-	touch(tt, platform.PointerMove, 1, x, y-2)
-	if scroll.Y != 0 {
-		t.Fatal("a small movement must remain a tap")
-	}
-	touch(tt, platform.PointerUp, 1, x, y-2)
-	if clicks != 1 {
-		t.Fatalf("tap produced %d clicks", clicks)
-	}
-	touch(tt, platform.PointerDown, 2, x, y)
-	touch(tt, platform.PointerMove, 2, x, y-40)
-	touch(tt, platform.PointerUp, 2, x, y-40)
-	if scroll.Y < 30 || clicks != 1 {
-		t.Fatalf("swipe: scroll=%v clicks=%d", scroll.Y, clicks)
-	}
-	if tt.rt.pressed != nil || tt.rt.touch.active {
-		t.Fatal("swipe left a pointer pressed")
-	}
-}
-
-func TestTouchCancelAndExtraContact(t *testing.T) {
-	clicks := 0
-	tt := snapshotTester(func(c *Context) {
-		if Button(c, "Tap").Clicked() {
+	tt := NewTester(func(c *Context) {
+		if Box(c).Size(100, 100).Label("pad").Clicked() {
 			clicks++
 		}
-	}, 320, 240)
-	r, _ := tt.Find("Tap")
-	x, y := r.X+r.W/2, r.Y+r.H/2
-	touch(tt, platform.PointerDown, 1, x, y)
-	touch(tt, platform.PointerDown, 2, x, y)
-	touch(tt, platform.PointerUp, 2, x, y)
-	if tt.rt.pressed == nil {
-		t.Fatal("an extra contact released the primary touch")
+	}, 200, 200)
+	tt.Frame()
+	for _, kind := range []platform.SurfaceEventKind{platform.TouchDown, platform.TouchMove, platform.TouchUp} {
+		if tt.rt.event(platform.SurfaceEvent{Kind: kind, ID: 1, X: 50, Y: 50}); tt.FramePending() {
+			t.Errorf("touch %d nothing asked about asked for a frame", kind)
+		}
 	}
-	touch(tt, platform.PointerCancel, 1, x, y)
-	touch(tt, platform.PointerUp, 1, x, y)
-	if clicks != 0 || tt.rt.pressed != nil {
-		t.Fatal("cancelled contact produced a click or remained pressed")
+	if tt.rt.touchIn != nil {
+		t.Error("touches followed while nothing asked")
 	}
-	touch(tt, platform.PointerDown, 3, x, y)
-	touch(tt, platform.PointerUp, 3, x, y)
+	tt.UsePointer(PointerTouch, 0)
+	tt.ClickAt(50, 50)
 	if clicks != 1 {
-		t.Fatal("cancelled contact prevented the next tap")
+		t.Errorf("a tap clicked %d times", clicks)
 	}
 }
 
-func TestNativeTextSnapshotAndSelection(t *testing.T) {
-	value := "你好 👋 world"
-	tt := snapshotTester(func(c *Context) { TextInput(c, &value).Label("Message").Width(300).AutoFocus() }, 320, 240)
-	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "你好 🌏 world", Replace: true, From: 0, To: 10, Snapshot: true, Caret: 4})
-	if value != "你好 🌏 world" || tt.h.ime.Start != 4 || tt.h.ime.End != 4 {
-		t.Fatalf("snapshot: text=%q selection=%d:%d", value, tt.h.ime.Start, tt.h.ime.End)
+// A disabled element tells of no finger.
+func TestTouchesDisabled(t *testing.T) {
+	disabled := false
+	var seen []Touch
+	tt := NewTester(func(c *Context) {
+		seen = Box(c).Size(100, 100).Disabled(disabled).Touches()
+	}, 200, 200)
+	tt.Frame()
+	tt.TouchDown(1, 50, 50)
+	if len(seen) != 1 {
+		t.Fatalf("enabled: %+v", seen)
 	}
-	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: 3, To: 4})
-	tt.Type("😀")
-	if value != "你好 😀 world" {
-		t.Fatalf("rune selection split an emoji: %q", value)
+	if tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchMove, ID: 1, X: 60, Y: 50}); !tt.FramePending() {
+		t.Error("a finger moving asked for no frame")
 	}
-}
-
-func TestNativeCompositionSnapshot(t *testing.T) {
-	value := "Hello "
-	tt := snapshotTester(func(c *Context) { TextInput(c, &value).Width(300).AutoFocus() }, 320, 240)
-	tt.send(platform.SurfaceEvent{Kind: platform.TextComposition, Text: "Hello zhong", Replace: true, From: 0, To: 6, Caret: 11})
-	tt.send(platform.SurfaceEvent{Kind: platform.TextComposition, Text: "Hello 中", Replace: true, From: 0, To: len([]rune(tt.h.ime.Text)), Caret: 7})
-	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "Hello 中文👋", Replace: true, From: 0, To: len([]rune(tt.h.ime.Text)), Snapshot: true, Caret: 9})
-	if value != "Hello 中文👋" {
-		t.Fatalf("composition committed %q", value)
+	disabled = true
+	tt.Frame()
+	if seen != nil {
+		t.Errorf("disabled: %+v", seen)
 	}
 }
 
-func TestNativeMarkedTextKeepsCommittedContext(t *testing.T) {
-	value := "Before 👋 after"
-	tt := snapshotTester(func(c *Context) { TextArea(c, &value).Width(300).AutoFocus() }, 320, 240)
-	snapshot := func(text string, caret int) {
-		tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: text, Replace: true,
-			To: len([]rune(tt.h.ime.Text)), Snapshot: true, Caret: caret})
-	}
-	compose := func(text string, at, end int) {
-		tt.send(platform.SurfaceEvent{Kind: platform.TextComposition, Text: text, Replace: true, Snapshot: true,
-			To: len([]rune(tt.h.ime.Text)), MarkedStart: at, MarkedEnd: end, Caret: end})
-	}
-	for _, marked := range []string{"zhong", "中", "中文"} {
-		compose("Before 👋"+marked+" after", 8, 8+len([]rune(marked)))
-		if value != "Before 👋 after" {
-			t.Fatalf("provisional %q changed committed text: %q", marked, value)
+// A finger landing and lifting before a build, as a quick tap, or as
+// Windows sends a two-finger tap once it decided it is no gesture of its
+// own, is seen to begin in one build and to end in the next.
+func TestTouchesTapBetweenBuilds(t *testing.T) {
+	var phases []TouchPhase
+	tt := NewTester(func(c *Context) {
+		for _, f := range Box(c).Size(200, 200).Touches() {
+			phases = append(phases, f.Phase)
 		}
+	}, 200, 200)
+	tt.Frame()
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 1, X: 50, Y: 50})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 2, X: 90, Y: 50})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchUp, ID: 1, X: 50, Y: 50})
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchCancel, ID: 2})
+	// The platform gives the ID to a finger landing before the build.
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 1, X: 120, Y: 50})
+	for range 3 {
+		tt.Frame()
 	}
-	// A candidate commits while the next syllable remains marked.
-	compose("Before 👋中文shu after", 10, 13)
-	if value != "Before 👋中文 after" {
-		t.Fatalf("incremental candidate lost surrounding text: %q", value)
-	}
-	// Canceling that syllable must retain the earlier committed candidate.
-	snapshot("Before 👋中文 after", 10)
-	if value != "Before 👋中文 after" {
-		t.Fatalf("cancel changed committed text: %q", value)
-	}
-	for _, s := range tt.rt.states {
-		if ed := s.editor; ed != nil && ed.compose != "" {
-			t.Fatal("cancel retained marked text")
-		}
-	}
-	// Repeated unchanged snapshots must not add undo steps.
-	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "undo"})
-	if value != "Before 👋 after" {
-		t.Fatalf("undo did not remove only the committed candidate: %q", value)
+	want := []TouchPhase{TouchBegan, TouchBegan, TouchBegan, TouchEnded, TouchCanceled, TouchStationary}
+	if len(phases) < len(want) || !reflect.DeepEqual(phases[:len(want)], want) {
+		t.Errorf("phases %v, want %v", phases, want)
 	}
 }
 
-func TestNativeCompositionPinsLongSurroundingContext(t *testing.T) {
-	value := strings.Repeat("前", 1200) + "👋"
-	original := value
-	tt := snapshotTester(func(c *Context) { TextArea(c, &value).Width(300).AutoFocus() }, 320, 240)
-	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceCommand, Text: "selectAll"})
-	tt.send(platform.SurfaceEvent{Kind: platform.TextSelectionChanged, From: len([]rune(tt.h.ime.Text)), To: len([]rune(tt.h.ime.Text))})
-	base, context := tt.rt.ime.base, tt.h.ime.Text
-	if base == 0 {
-		t.Fatal("test did not reach a bounded surrounding context")
+// A finger's contact has its size in the element's units, where the
+// system tells it, as a whiteboard tells a palm erasing from a finger
+// drawing (#1879): a finger growing to a palm where it stands moves.
+func TestTouchesContact(t *testing.T) {
+	scale := float32(1)
+	var seen []Touch
+	tt := NewTester(func(c *Context) {
+		seen = Box(c).Size(200, 200).TransformOrigin(0, 0).Scale(scale, scale).Touches()
+	}, 400, 400)
+	tt.Frame()
+	tt.TouchDown(1, 50, 50)
+	if s := seen[0]; s.Width != 0 || s.Height != 0 {
+		t.Errorf("a finger the system tells no contact of: %v x %v, want 0 x 0", s.Width, s.Height)
 	}
-	start := len([]rune(context))
-	for _, candidate := range []string{"中", "中文", "中文书"} {
-		at := start + len([]rune(candidate))
-		tt.send(platform.SurfaceEvent{Kind: platform.TextComposition, Text: context + candidate + "pinyin", Replace: true, Snapshot: true,
-			To: len([]rune(tt.h.ime.Text)), MarkedStart: at, MarkedEnd: at + 6, Caret: at + 6})
-		if value != original+candidate || tt.rt.ime.base != base || tt.h.ime.Text != context+candidate {
-			t.Fatalf("candidate %q rebased/lost context: base=%d want=%d text=%q", candidate, tt.rt.ime.base, base, value)
-		}
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 2, X: 100, Y: 100, Width: 12, Height: 16})
+	tt.Frame()
+	if s := seen[1]; s.Width != 12 || s.Height != 16 {
+		t.Errorf("landed: %v x %v, want 12 x 16", s.Width, s.Height)
 	}
-	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: context + "中文书👋", Replace: true, Snapshot: true,
-		To: len([]rune(tt.h.ime.Text)), Caret: start + 4})
-	if value != original+"中文书👋" || tt.rt.ime.base <= base {
-		t.Fatal("commit did not release the pinned context or split Unicode text")
+	if tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchMove, ID: 2, X: 100, Y: 100, Width: 60, Height: 80}); !tt.FramePending() {
+		t.Error("a contact growing asked for no frame")
 	}
-}
+	tt.Frame()
+	if s := seen[1]; s.Phase != TouchMoved || s.Width != 60 || s.Height != 80 {
+		t.Errorf("grown: %+v, want moved, 60 x 80", s)
+	}
+	// Lifting, it keeps the last contact.
+	tt.TouchUp(2, 100, 100)
+	if s := seen[1]; s.Phase != TouchEnded || s.Width != 60 || s.Height != 80 {
+		t.Errorf("lifted: %+v, want ended, 60 x 80", s)
+	}
 
-func TestNativeEditorHistoryAvailability(t *testing.T) {
-	value := "Hello 👋"
-	tt := snapshotTester(func(c *Context) { TextInput(c, &value).AutoFocus() }, 320, 240)
-	if tt.h.ime.CanUndo || tt.h.ime.CanRedo {
-		t.Fatal("new editor advertised history")
+	// In the units of a scaled element, and of zoomed content.
+	scale = 2
+	tt.Frame()
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 3, X: 100, Y: 100, Width: 60, Height: 80})
+	tt.Frame()
+	if s := seen[len(seen)-1]; s.Width != 30 || s.Height != 40 {
+		t.Errorf("on an element scaled by 2: %v x %v, want 30 x 40", s.Width, s.Height)
 	}
-	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "中文 👋", Replace: true, Snapshot: true,
-		To: len([]rune(tt.h.ime.Text)), Caret: 4})
-	if !tt.h.ime.CanUndo || tt.h.ime.CanRedo {
-		t.Fatal("native undo availability did not follow the edit")
-	}
-	tt.Command("undo")
-	if value != "Hello 👋" || tt.h.ime.CanUndo || !tt.h.ime.CanRedo {
-		t.Fatal("native history did not follow undo")
-	}
-	tt.Command("redo")
-	if value != "中文 👋" || !tt.h.ime.CanUndo || tt.h.ime.CanRedo {
-		t.Fatal("native history did not follow redo")
-	}
-}
-
-func TestTouchKeyboardDismissDoesNotMovePressedControl(t *testing.T) {
-	for _, cancelled := range []bool{false, true} {
-		t.Run(fmt.Sprint("cancelled=", cancelled), func(t *testing.T) {
-			value, clicks := "", 0
-			tt := snapshotTester(func(c *Context) {
-				Column(c).Fill().Children(func() {
-					TextInput(c, &value).Label("Message").Height(44).AutoFocus()
-					Box(c).Grow(1)
-					if Button(c, "Navigate").Height(48).Clicked() {
-						clicks++
-					}
-				})
-			}, 320, 240) // keyboard-adjusted viewport
-			if !tt.h.ime.Active {
-				t.Fatal("editor did not activate")
-			}
-			r, _ := tt.Find("Navigate")
-			x, y := r.X+r.W/2, r.Y+r.H/2
-			touch(tt, platform.PointerDown, 1, x, y)
-			// Model a host which restores full height as soon as the input
-			// method deactivates: this previously moved the button before Up.
-			if !tt.h.ime.Active {
-				tt.SetSize(320, 480)
-			}
-			if cancelled {
-				touch(tt, platform.PointerCancel, 1, x, y)
-			} else {
-				touch(tt, platform.PointerUp, 1, x, y)
-			}
-			want := 1
-			if cancelled {
-				want = 0
-			}
-			if clicks != want {
-				t.Fatalf("touch produced %d clicks, want %d", clicks, want)
-			}
-			if tt.h.ime.Active {
-				t.Fatal("keyboard remained active after the touch ended")
-			}
-		})
+	scale = 1
+	tt.SetZoom(2)
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 4, X: 100, Y: 100, Width: 60, Height: 80})
+	tt.Frame()
+	if s := seen[len(seen)-1]; s.Width != 30 || s.Height != 40 {
+		t.Errorf("zoomed by 2: %v x %v, want 30 x 40", s.Width, s.Height)
 	}
 }

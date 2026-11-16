@@ -204,6 +204,29 @@ func TestDevice(t *testing.T) {
 	}
 }
 
+func TestContact(t *testing.T) {
+	// A PointerEvent's width and height, in CSS pixels: 1 by 1 where the
+	// browser does not tell the contact, as for a mouse, and an event of a
+	// browser without them (#1879).
+	for _, tc := range []struct {
+		props map[string]any
+		w, h  float64
+	}{
+		{map[string]any{"width": 24.5, "height": 30}, 24.5, 30},
+		{map[string]any{"width": 1, "height": 1}, 0, 0},
+		{map[string]any{"width": 1, "height": 12}, 1, 12},
+		{map[string]any{}, 0, 0},
+	} {
+		e := js.Global().Get("Object").New()
+		for k, v := range tc.props {
+			e.Set(k, v)
+		}
+		if w, h := contact(e); w != tc.w || h != tc.h {
+			t.Errorf("contact(%v) = %v, %v; want %v, %v", tc.props, w, h, tc.w, tc.h)
+		}
+	}
+}
+
 func TestCursorNames(t *testing.T) {
 	// Every cursor has its CSS name.
 	for c := platform.CursorDefault; c <= platform.CursorNoDrop; c++ {

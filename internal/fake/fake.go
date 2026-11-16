@@ -70,6 +70,7 @@ type Backend struct {
 	noSession        bool // SetNoSessionState
 	windows          []*Window
 	trayIDs          []string
+	trayMonospaced   int
 	trays            []*tray
 	trayDark         bool
 	appMenu          *platform.Menu
@@ -470,6 +471,14 @@ func (b *Backend) TrayIDs() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]string(nil), b.trayIDs...)
+}
+
+// MonospacedTrayTitles returns how many tray icons were asked to draw
+// their title in the monospaced font.
+func (b *Backend) MonospacedTrayTitles() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.trayMonospaced
 }
 
 func (b *Backend) RegisterHotkey(id int, acc, description string) error {
@@ -1570,6 +1579,14 @@ func (t *tray) SetID(id string) {
 	t.b.trayIDs = append(t.b.trayIDs, id)
 	t.b.mu.Unlock()
 }
+func (t *tray) SetTitleMonospaced(on bool) {
+	if on {
+		t.b.mu.Lock()
+		t.b.trayMonospaced++
+		t.b.mu.Unlock()
+	}
+}
+
 func (*tray) SetImage([]byte, bool) error { return nil }
 func (*tray) SetTitle(string)             {}
 func (*tray) SetToolTip(string)           {}

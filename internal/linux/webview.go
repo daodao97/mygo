@@ -253,6 +253,9 @@ func (s *surface) PlaceWebViews(views []platform.WebViewPlacement) {
 		width, height := int32(math.Round(f.X+f.W))-x, int32(math.Round(f.Y+f.H))-y
 		gtkLayoutMove(s.web, v.web, x, y)
 		gtkWidgetSetSizeRequest(v.web, width, height)
+		// The placement's opacity fades the page itself, over what is
+		// behind the window too, as a flyout over a parent left live.
+		gtkWidgetSetOpacity(v.web, p.Opacity)
 		v.present(&p, width)
 		if !gtkWidgetGetVisible(v.web) {
 			gtkWidgetShow(v.web)

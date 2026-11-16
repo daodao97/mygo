@@ -78,14 +78,16 @@ func (rt *engine) pixels(w, h, scale float32) (int, int) {
 }
 
 // fromWindow maps a surface event from the window's DIPs to the
-// content's: its position, and the distance a touchpad scrolls, which the
-// content follows; a wheel's lines scroll as far as unzoomed.
+// content's: its position, a finger's contact, and the distance a
+// touchpad scrolls, which the content follows; a wheel's lines scroll as
+// far as unzoomed.
 func (rt *engine) fromWindow(ev *platform.SurfaceEvent) {
 	if !rt.zoomed() {
 		return
 	}
 	z := float64(rt.contentZoom)
 	ev.X, ev.Y = ev.X/z, ev.Y/z
+	ev.Width, ev.Height = ev.Width/z, ev.Height/z
 	if ev.Precise {
 		ev.DX, ev.DY = ev.DX/z, ev.DY/z
 	}

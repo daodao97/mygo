@@ -135,6 +135,18 @@ card.PopoverMenu(func(m *ui.Menu) {
 [菜单按钮](menu-button.md#在窗口中绘制)的菜单，并接受同样的函数：一行的
 右键单击和它的 ⋯ 按钮可以共享一个菜单，绘制方式相同。
 
+`PopoverMenuOptions` 像 `PopoverMenuButtonOptions` 设置菜单按钮那样设置菜单的
+样式：`Panel` 在主题外观之后设置菜单及每个子菜单的面板，`Item` 设置每个菜单项
+所在的行。这样右键菜单就能像应用的 ⋯ 菜单一样展开：
+
+```go
+text.PopoverMenu(app.messageMenu, ui.PopoverMenuOptions{
+	Panel: func(panel ui.Element) {
+		panel.Background(app.menuColor).Radius(12)
+	},
+})
+```
+
 ### 更丰富的菜单项
 
 自绘菜单的菜单项比系统菜单项支持更多内容，无需自己实现菜单

@@ -1,5 +1,7 @@
+import { showcase } from "./showcase.ts"
+
 export default {
-  fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url)
     if (url.hostname === "mygo.egoist.dev") {
       url.protocol = "https:"
@@ -7,6 +9,6 @@ export default {
       url.port = ""
       return Response.redirect(url.href, 308)
     }
-    return env.ASSETS.fetch(request)
+    return (await showcase(request, ctx)) ?? env.ASSETS.fetch(request)
   },
 }

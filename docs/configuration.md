@@ -123,7 +123,7 @@ Signed [auto-updates](updates.md). `publicKey` and one of `github` and
 | `helperEntitlements` | | property lists of entitlements for code among the resources, by its path there, e.g. `{ "bin/server": "server.entitlements.plist" }`; other code keeps the entitlements it is signed with. See [helper executables](distribution.md#helper-executables) |
 | `infoPlist` | | keys added to the app's `Info.plist`, replacing MyGo's, e.g. `NSCameraUsageDescription` |
 | `dmgTitle` | `name` | the volume name of the disk image |
-| `notarize` | | notarizes production disk images: `keychainProfile`, the profile of `xcrun notarytool store-credentials`, and optionally `keychain`, the keychain holding it |
+| `notarize` | | notarizes the app and the disk image of production builds: `keychainProfile`, the profile of `xcrun notarytool store-credentials`, and optionally `keychain`, the keychain holding it |
 
 See [macOS](distribution.md#macos).
 

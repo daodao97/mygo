@@ -211,6 +211,15 @@ type WindowButtonsBackend interface {
 	WindowButtons() (start, end []string)
 }
 
+// ExitBackend releases what the native application must not take into the
+// process's exit (Windows: its windows, whose window procedure is Go's and
+// cannot run once the process exits). The app calls Exiting once, on the
+// main thread, when it has finished and is about to exit; nothing native
+// is used after it.
+type ExitBackend interface {
+	Exiting()
+}
+
 // AppOptions configures Backend.Init.
 type AppOptions struct {
 	Name string
@@ -868,6 +877,14 @@ type WebViewPlacement struct {
 	// top-left clockwise, as the hole showing it has: the page shows, and
 	// takes the pointer, inside them.
 	Radii [4]float64
+	// Opacity is how opaque the page shows, 0 to 1. Where the content
+	// painted a background under the element, opaque or through, the
+	// frames' own hole blends the page with it, and this is 1. Where none
+	// is, as in a transparent window, this is the element's opacity, and
+	// the platform fades the page itself by it, over what is behind the
+	// window, as over a parent window a flyout leaves live. A platform
+	// that cannot fades nothing (the page then shows whole).
+	Opacity float64
 	// Covers are the boxes, within Clip, of what the content painted over
 	// the web view that takes the pointer: there the pointer is the
 	// surface's, elsewhere in Clip the web view's.
@@ -1130,21 +1147,34 @@ const (
 	BadgeAlignRight  BadgeAlignment = "right"
 )
 
+// BadgeShape is the background behind a badge.
+type BadgeShape string
+
+const (
+	BadgeShapeSquare  BadgeShape = "square"
+	BadgeShapeRounded BadgeShape = "rounded"
+	BadgeShapePill    BadgeShape = "pill"
+)
+
 // MenuItem is a snapshot of a menu item. ID identifies the public item the
 // native item was built from.
 type MenuItem struct {
-	ID          int
-	Type        MenuItemType
-	Label       string
-	Subtitle    string
-	Badge       string
-	BadgeAlign  BadgeAlignment
-	Role        string
-	Accelerator string
-	Enabled     bool
-	Visible     bool
-	Checked     bool
-	ToolTip     string
+	ID             int
+	Type           MenuItemType
+	Label          string
+	Subtitle       string
+	Badge          string
+	BadgeAlign     BadgeAlignment
+	BadgeShape     BadgeShape
+	BadgeColor     *Color
+	BadgeTextColor *Color
+	KeepOpen       bool
+	Role           string
+	Accelerator    string
+	Enabled        bool
+	Visible        bool
+	Checked        bool
+	ToolTip        string
 	// Icon is the image beside the label, nil for none.
 	Icon *MenuIcon
 	// IconColor, when set, is the color of a template Icon in the menus
@@ -1506,6 +1536,10 @@ type Tray interface {
 	Dark() bool
 	SetImage(png []byte, template bool) error
 	SetTitle(title string)
+	// SetTitleMonospaced draws the title in the system's monospaced font,
+	// every character as wide as the others, where the icon has a title
+	// (macOS).
+	SetTitleMonospaced(on bool)
 	SetToolTip(tip string)
 	SetMenu(m *Menu)
 	PopUpMenu(m *Menu)

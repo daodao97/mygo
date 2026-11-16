@@ -343,7 +343,7 @@ export interface MacOSConfig {
   infoPlist?: Record<string, unknown>;
   /** The volume name of the disk image (default: the name). */
   dmgTitle?: string;
-  /** Notarizes production disk images. */
+  /** Notarizes the app and the disk image of production builds. */
   notarize?: NotarizeConfig;
 }
 

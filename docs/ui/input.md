@@ -89,7 +89,8 @@ if b, ok := canvas.PressedButton(); ok && b == 2 {
 Every press comes from the primary pointer: the mouse, or the first finger
 on a touchscreen; a second finger presses nothing, in browsers too
 (`isPrimary`). [`HandleInput`](#every-key-as-it-comes) hears every
-button go down and up, with `InputEvent.Button`.
+button go down and up, with `InputEvent.Button`, and
+[`Touches`](#fingers-on-a-touchscreen) every finger.
 
 `PressedPointer` tells what presses the element, and how hard, as
 Pointer Events' `pointerType` and `pressure`: `PointerMouse` (a mouse or
@@ -571,6 +572,115 @@ ui.Box(c).Fill().HandleInput(func(ev ui.InputEvent) bool {
 
 A `Tester` scrolls with `Scroll` (a touchpad), `Wheel` (a notch) and
 `Pinch`.
+
+## Fingers on a touchscreen
+
+`Touches` returns the fingers on a touchscreen that landed on the element
+or on an element inside it: every finger down, and those that lifted or
+that the system took since the last build, in the order they landed. Each
+`ui.Touch` keeps its `ID` from the moment the finger lands until it
+lifts, whatever the other fingers do, with where it is (`X`, `Y`) and
+where it landed (`StartX`, `StartY`) relative to the element's box, how
+hard it presses (`Pressure`, 0.5 where the system tells none), the size
+of its contact with the screen (`Width`, `Height`, in the element's units,
+0 where the system tells none) and its `Phase` since the last build: `ui.TouchBegan`, `ui.TouchMoved`,
+`ui.TouchStationary`, `ui.TouchEnded` (where it lifted) or
+`ui.TouchCanceled` (the system took it, as for its own gesture at the
+screen's edge: no completed gesture). A finger that ended or was canceled
+shows in one build, then is gone. An element asking for them gets a frame
+whenever a finger lands, moves or lifts.
+
+The fingers still do what they do without it: a tap clicks, a finger
+scrolls the content under it, two pinch, a finger held still on Linux
+right-clicks. Apps that ask for no touches see no difference, and the
+window follows its fingers only once a view asks: those down before go
+untold. With every finger, a view recognizes gestures of its own, as a
+whiteboard on a large screen draws a stroke for each finger, turns the
+page as four fingers swipe, and clears itself as five tap:
+
+```go
+canvas := ui.Box(c).Grow(1).Draw(app.paint)
+fingers := canvas.Touches()
+down, dx := 0, float32(0)
+for _, t := range fingers {
+	if t.Phase < ui.TouchEnded {
+		down++
+	}
+	dx += (t.X - t.StartX) / float32(len(fingers))
+	if app.most <= 1 && t.Phase != ui.TouchCanceled {
+		app.ink.LineTo(t.ID, t.X, t.Y) // a stroke for each finger, by its ID
+	}
+}
+if down > app.most {
+	app.most = down // the most fingers down at once in this gesture
+	if down == 1 {
+		app.began = c.Now()
+	}
+}
+if len(fingers) > 0 && down == 0 { // the last finger lifted
+	quick := c.Now().Sub(app.began) < 300*time.Millisecond
+	switch {
+	case app.most == 4 && dx < -120:
+		app.nextPage()
+	case app.most == 4 && dx > 120:
+		app.previousPage()
+	case app.most == 5 && quick && math.Abs(float64(dx)) < 10:
+		app.ink.Clear()
+	}
+	app.most = 0
+}
+```
+
+Windows (`WM_POINTER`), Linux (GDK's touch sequences) and browsers
+(Pointer Events of `pointerType` `touch`, each finger by its `pointerId`)
+report touches. macOS has no touchscreens, and a trackpad's fingers are
+not points on the screen: it reports none, and its pinches and swipes
+come as `ui.InputZoom`, `ui.InputScroll` and the history keys. A `Tester`
+puts fingers down with `TouchDown(id, x, y)`, and moves, lifts and
+cancels them with `TouchMove`, `TouchUp` and `TouchCancel`; it sends the
+touches alone, not the taps and scrolls a backend makes of them.
+
+Windows keeps three- and four-finger swipes and taps for its own gestures
+(switching apps and desktops) unless the user turns them off under
+Settings, Bluetooth & devices, Touch: until then an app sees at most two
+fingers there. A finger that lands and lifts
+before a build, as a quick tap does, comes as `TouchBegan` in one build
+and `TouchEnded` in the next, so a view counting the fingers that land
+counts each.
+
+### Palms and fingers
+
+A palm presses a larger area of the screen than a fingertip, which a
+whiteboard on a large screen tells apart by the contact's size, to erase
+with the palm and draw with a finger:
+
+```go
+for _, t := range canvas.Touches() {
+	if t.Phase == ui.TouchEnded || t.Phase == ui.TouchCanceled {
+		continue
+	}
+	if t.Width*t.Height > 40*40 { // a palm
+		app.ink.Erase(t.X, t.Y, t.Width, t.Height)
+	} else {
+		app.ink.LineTo(t.ID, t.X, t.Y)
+	}
+}
+```
+
+The size comes in the element's units: halved on an element scaled by 2,
+as `X` and `Y` are. A finger growing to a palm where it stands comes as
+`TouchMoved`. Where the system tells it:
+
+| Platform | Contact size |
+| --- | --- |
+| Windows | `rcContact` of the finger's `POINTER_TOUCH_INFO`, where the touchscreen reports it (`TOUCH_MASK_CONTACTAREA`), in DIPs |
+| Browsers | the Pointer Event's `width` and `height`; 0 where the browser reports 1 by 1, as it does when it cannot tell |
+| Linux | none: GDK tells no contact size, so `Width` and `Height` are 0 |
+| macOS | no touchscreens, so no touches |
+
+Large touchscreens made for whiteboards commonly report the contact on
+Windows. An app that needs it should tell a palm from a finger some other
+way where `Width` and `Height` are 0.
 
 ## Every key, as it comes
 

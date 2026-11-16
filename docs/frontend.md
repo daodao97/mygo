@@ -150,7 +150,11 @@ On Windows, fetch a scheme at `http://<scheme>.localhost/`, where
 WebView2 serves it, and another host at `http://<host>.<scheme>.localhost/`
 (`myapp://abc/` is `http://abc.myapp.localhost/`). Such hosts are DNS
 names (letters, digits, hyphens and dots) and are reported in lower case;
-URLs with another host or a port aren't served there.
+URLs with another host or a port aren't served there. An iframe of
+another origin, such as `http://abc.myapp.localhost/` in the frontend,
+loads its scripts, styles and fetches through the scheme too, from
+WebView2 Runtime 127 on; older runtimes serve such an iframe its
+document alone.
 
 ### Trust
 
@@ -272,9 +276,10 @@ await currentWindow.toggleMaximize();
 
 | Export | What it does |
 |---|---|
-| `call(method, ...args)`, `on(event, listener)`, `once(event, listener)`, `event<T>(name)` | untyped calls and events, see [bindings](bindings.md#without-the-generated-client) |
+| `call(method, ...args)`, `callWith(method, args, options)`, `on(event, listener)`, `once(event, listener)`, `event<T>(name)` | untyped calls and events, see [bindings](bindings.md#without-the-generated-client) |
 | `Channel` | a stream of values from a Go method, see [channels](bindings.md#channels) |
 | `isCallError(err)` | whether a rejection came from a Go error |
+| `bind(method, args)` | a bound Go method, which a call may cancel, see [canceling a call](bindings.md#canceling-a-call) |
 | `isMyGo()` | whether the page runs in a MyGo window, not in a browser tab of the dev server |
 | `runtime()` | the runtime: `platform` (`"darwin"`, `"linux"` or `"win32"`), `windowId` (the Go window's `ID()`) and `version`; throws outside MyGo |
 | `currentWindow` | the page's window: `minimize`, `maximize`, `unmaximize`, `toggleMaximize`, `isMaximized`, `toggleFullScreen`, `close` and `setTitle` |

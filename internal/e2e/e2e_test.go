@@ -166,6 +166,10 @@ func TestMain(m *testing.M) {
 		io.WriteString(w, pipPage)
 	})
 	mux.HandleFunc("/session/", sessionPage)
+	mux.HandleFunc("/cross-origin-frame", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, crossOriginFramePage)
+	})
 	mux.HandleFunc("POST /echo", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		fmt.Fprintf(w, "echo:%s", b)
@@ -185,6 +189,16 @@ func TestMain(m *testing.M) {
 	assets.HandleFunc("POST /data", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		fmt.Fprintf(w, "posted:%s", b)
+	})
+	// An iframe's document of another host, which loads its script and
+	// fetches through the scheme (TestSchemeCrossOriginFrame).
+	assets.HandleFunc("GET /frame.html", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		io.WriteString(w, `<!doctype html><script>parent.postMessage("inline", "*")</script><script src="/frame.js" onerror="parent.postMessage('no script', '*')"></script>`)
+	})
+	assets.HandleFunc("GET /frame.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript")
+		io.WriteString(w, `fetch("/data").then(r => r.text()).then(t => parent.postMessage("script, " + t, "*"), e => parent.postMessage("fetch failed: " + e, "*"))`)
 	})
 	if err := mygo.Protocol.Handle("assets", assets); err != nil {
 		panic(err)
@@ -2367,6 +2381,34 @@ func TestSchemeCORS(t *testing.T) {
 	blocked := `try { await fetch("` + data + `"); return "read" } catch (e) { return "blocked" }`
 	if got, err := mygo.EvalAs[string](other.Page(), blocked); err != nil || got != "blocked" {
 		t.Errorf("another site: %q, %v", got, err)
+	}
+}
+
+// crossOriginFramePage shows an iframe of the assets scheme's demo host,
+// another origin than the page's, and keeps what it posts.
+const crossOriginFramePage = `<!doctype html>
+<script>
+window.posted = [];
+addEventListener("message", e => posted.push(e.data));
+</script>
+<iframe></iframe>
+<script>
+// On Windows, WebView2 serves assets://demo/ at http://demo.assets.localhost/.
+document.querySelector("iframe").src = location.protocol === "http:" ? "http://demo.assets.localhost/frame.html" : "assets://demo/frame.html";
+</script>`
+
+// An iframe of another custom scheme's host, another origin than the
+// page's, loads its scripts and fetches through the scheme, not only its
+// document (#1912): WebView2's older filters reach only the main frame and
+// its same-origin iframes.
+func TestSchemeCrossOriginFrame(t *testing.T) {
+	w := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200})
+	if err := w.Page().LoadURL("app://localhost/cross-origin-frame"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, w, `window.posted && posted.length === 2`)
+	if got := mustEval(t, w, `posted.join(" | ")`); got != "inline | script, asset data" {
+		t.Errorf("the iframe posted %q, want %q", got, "inline | script, asset data")
 	}
 }
 

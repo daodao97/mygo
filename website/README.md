@@ -19,6 +19,15 @@ bun run --cwd website preview  # dist/client, served by wrangler as in productio
 bun run --cwd website deploy   # build, then wrangler deploy
 ```
 
+The apps of `/showcase` live in
+[egoist/mygo-showcase](https://github.com/egoist/mygo-showcase), so adding
+one needs no new build. The Worker (`showcase.ts`) serves its `showcase.yaml`
+as `/api/showcase.json` and its screenshots under `/api/showcase/images/`,
+from Cloudflare's cache (5 minutes for the list, which browsers revalidate,
+a day for screenshots), and
+keeps the last good copy to serve while GitHub fails. `vite dev` serves them
+through the same code; the page fetches the list once it opens.
+
 Pages of the docs are rendered from the markdown when the site is built:
 the order of the sidebar comes from the lists of `docs/README.md`, pages in
 directories keep their path (`plugins/fetch.md` is `/docs/plugins/fetch`),

@@ -263,6 +263,15 @@ func newVideoSink(spec videoSpec, d drawer) (sink, error) {
 	return s, nil
 }
 
+// mediaTimeScale is the time scale of the video's track, and of the movie,
+// for frames at num/den a second: the smallest multiple of num from
+// AVFoundation's own 600 on, in which each frame lasts a whole number of
+// units. In 1/600 s a frame at 29.97 a second, 1001/30000 s, does not.
+func mediaTimeScale(num int64) int32 {
+	const usual = 600
+	return int32(num * ((usual + num - 1) / num))
+}
+
 func (s *avSink) open() error {
 	sp := s.spec
 	url := send(class("NSURL"), "fileURLWithPath:", nsString(sp.path))
@@ -278,6 +287,7 @@ func (s *avSink) open() error {
 	if sp.container == mp4 {
 		msgSetBool(s.writer, sel("setShouldOptimizeForNetworkUse:"), true)
 	}
+	send(s.writer, "setMovieTimeScale:", mediaTimeScale(sp.num))
 	codec := map[Codec]string{H264: "AVVideoCodecTypeH264", HEVC: "AVVideoCodecTypeHEVC",
 		ProRes: "AVVideoCodecTypeAppleProRes422HQ", ProRes4444: "AVVideoCodecTypeAppleProRes4444"}[sp.codec]
 	settings := []objc.ID{
@@ -306,6 +316,7 @@ func (s *avSink) open() error {
 		return errors.New("render: AVFoundation takes no input of these settings")
 	}
 	msgSetBool(s.video, sel("setExpectsMediaDataInRealTime:"), false)
+	send(s.video, "setMediaTimeScale:", mediaTimeScale(sp.num))
 	attrs := nsDict(
 		key("kCVPixelBufferPixelFormatTypeKey"), nsInt(pixelFormatBGRA),
 		key("kCVPixelBufferWidthKey"), nsInt(int64(sp.w)),

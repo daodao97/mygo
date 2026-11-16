@@ -4,7 +4,7 @@
 
 ## 快照（2026-11-12）
 
-- fork `main` 已合并 `upstream/main`：`13a0b3e7`（0.9.1，2026-11-15）；fork 落后上游 0 个提交。
+- fork `main` 已合并 `upstream/main`：`9db28d4e`（2026-11-16）；fork 落后上游 0 个提交。
 - fork 独有的非合并提交：158 个；与上游的增删差异约 71,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
 - 2026-11-09 同步了上游 39 个提交（到 `6a730f12`）。冲突：`docs/architecture.md` 两边都保留（fork 的 iOS 段落、上游的 `ffi`）；`ui/runtime.go` 两边都保留（fork 的帧计时、上游的 `sweepVideos`）；`ui/layoutcache_test.go` 字段清单取并集；`internal/gpu/gl/load_linux.go` 只取上游新增的 `uploadElement`，`setShaderSource`/`shaderLog`/`programLog`/`infoLog` 在 fork 已移到 `load_common.go`（与 Android 共用）；终端 `urlPattern` 按规则 1 改用上游 #1481（URL 在第一个非 ASCII 字符处结束），fork 的写法删除；shader 二进制取上游后重新 `go generate`。上游 #1476 给 `platform.Clipboard.WriteData` 加了 `concealed` 参数，iOS/Android 后端已跟上签名，但还没有标记机密内容（iOS 的 `UIPasteboard` localOnly、Android 的 `EXTRA_IS_SENSITIVE`）。
@@ -33,6 +33,9 @@
   验证：macOS/Linux/Windows 的 `CGO_ENABLED=0 go build ./...`，`go vet . ./ui`、`go vet -tags mygo_noinspector ./ui`；`go test . ./ui ./ui/editor ./ui/richtext ./ui/markdown/... ./internal/text ./internal/raster ./plugins/terminal/...`（13,186 项）通过；`go generate ./ui` 无差异；iOS 后端 vet、Android `.so` 构建与 16KB 对齐、`../Miya` 的 `go build ./...` 通过。`go test -short ./cmd/mygo` 唯一的失败 `TestFetchSignedRetry` 是上游 `111c8898` 新加的测试，在干净的 `upstream/main` 上本机同样失败（请求次数比预期多一次，随子用例变化），不是 fork 引入的。
 - 2026-11-15 第二次同步上游 8 个提交（`3737de09..13a0b3e7`，含 0.9.1），无冲突。上游给 `platform.Window` 加了 `CornerRadius()`（`6fb5ce9c`，窗口圆角半径）：iOS（`window_stubs.go`）和 Android（`window_gen.go`）补成返回 0，即接口说明的「系统不告诉」。菜单项的 `Badge`/`BadgeAlign`（#738）是 `platform.MenuItem` 的字段，移动端没有用 `MenuItem` 的标签，不需要改。`ui/api_gen.go` 用 fork 的生成器重新生成，`NewRecorder` 的回调改为 nil 时保持 nil（fork 生成器的写法）。对照这批新增检查了 fork 代码：`ui.Recorder`、`plugins/render`、`ui/shader` 的实例绘制、视频 seek、窗口圆角、菜单徽标在 fork 中没有同功能实现；fork 的 `SetBadge` 是应用图标角标，与菜单项徽标不同层。
   验证：macOS/Linux/Windows 的 `CGO_ENABLED=0 go build ./...`，`go vet . ./ui`、`go vet -tags mygo_noinspector ./ui`；`go test` 覆盖根包、`ui`、`ui/editor`、`ui/richtext`、`ui/shader`、`ui/markdown/...`、`internal/text`、`internal/raster`、`internal/scene`、`internal/shader/...`、`internal/shaderir/...`、`internal/platform`、`internal/gpu`、`plugins/render`、`plugins/terminal/...`、`examples/render`，全部通过；`go test -short ./cmd/mygo` 这次全部通过（上次失败的 `TestFetchSignedRetry` 本批没有修改，属于时有时无的失败）；iOS 后端 vet、Android `.so` 构建与 16KB 对齐、`../Miya` 的 `go build ./...` 通过。
+- 2026-11-16 同步上游 21 个提交（`13a0b3e7..9db28d4e`）。冲突 5 个文件，都来自上游 #1896/#1907 的多指触点（`Element.Touches`、`Touch`、`platform.TouchDown`/`TouchMove`/`TouchUp`/`TouchCancel`、`SurfaceEvent.Width`/`Height`）：上游新建的 `ui/touch.go`、`ui/touch_test.go` 与 fork 的触摸手势引擎同名（add/add）。两者不是同一功能——上游给视图原始触点（ID、阶段、接触面积），fork 把手指仲裁成滚动、长按选择、收起键盘——都保留：文件名让给上游（以后上游改 `touch.go` 能干净合并），fork 的移到 `ui/touch_engine.go`、`ui/touch_engine_test.go`。`internal/platform/surface.go` 的事件种类取并集（fork 的 `PointerLongPress` 在前，上游的四个 `Touch*` 连续排在后面，`ui/input.go` 按区间判断它们）；`ui/input.go` 先走上游的触点分支（总是返回 false，不影响指针路径），再走 fork 的 `fromWindow` 与手势仲裁；`ui/api_gen.go` 用 fork 的生成器重建（含 `Touches`）。
+  对照这批新增检查了 fork 代码：调用的 `AbortSignal` 取消、`ListState.MoveAnimation`、菜单项 `KeepOpen` 与徽标颜色/形状、单实例锁持有到进程退出、`platform.ExitBackend`、半透明 web view 的 `Opacity`、托盘 `SetTitleMonospaced`、`PopoverMenu` 的 Panel/Item 选项在 fork 中没有同功能实现。fork 的 `Gestures`（捏合、旋转、双指平移和点按）是识别好的手势，与上游的原始触点不同层，保留。新的平台契约方法 iOS/Android 都由内层后端继承，不需要补。**缺口**：fork 的 iOS/Android 后端只发 `Pointer*`（`Pointer: PointerTouch`），不发 `TouchDown` 等，所以 `Element.Touches` 在 fork 的手机上暂时拿不到手指；需要时在 `internal/ios/backend.go`、`internal/android` 的触摸入口另外发这四种事件（#940 换后端时再看它是否发）。
+  验证：macOS/Linux/Windows 的 `go build ./...`，`go vet . ./ui`；`go test . ./ui ./ui/editor ./ui/richtext ./internal/text ./internal/platform ./internal/linux/... ./internal/windows/... ./plugins/terminal/...`（13,002 项）通过；iOS 后端 vet、Android `.so` 构建与 16KB 对齐、`../Miya` 的 `go build ./...` 通过。
 - 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
 
 ## 规则
@@ -63,7 +66,7 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 - 不在下表「有对应」的领域给 fork 加新的移动端 API。
 - fork 独有、Miya 在用的移动端功能，按 #940 的插件形状（`mygo.Native`）改写为 `plugins/<name>`，以便合并后保留。
-- `ui/touch.go`、`ui/touch_text.go`、`ui/gpu_android.go` 两边同名，#940 合并时会直接冲突。
+- `ui/touch.go`、`ui/touch_text.go`、`ui/gpu_android.go` 两边同名，#940 合并时会直接冲突。（2026-11-16 起 `ui/touch.go` 是上游 `main` 的 `Element.Touches`，fork 的手势引擎在 `ui/touch_engine.go`；#940 的 `touch.go` 届时与上游 `main` 自己的冲突由上游解决，fork 删 `touch_engine.go` 取 #940 的引擎。）
 
 用 worktree `~/.cache/mygo-pr/mobile-940`（`pr/1581`，`git fetch upstream pull/1581/head:refs/remotes/pr/1581`）对 Miya 做类型检查：Miya 用到 136 个 #940 和上游 `main` 都没有的符号，几乎都在 Miya 的 `internal/mobile`、`internal/voiceinput`。
 
@@ -201,7 +204,7 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 | `229142de` | `SecureStore` 改为上游的 `Secrets`；iOS/Android 实现 `platform.Secrets`；删除 `SecureStorage` | **钥匙串数据没有迁移**：旧数据的 service 是 `<bundleID>.mygo.<namespace>`，新数据用 `Secrets` 的 service。Miya 手机端升级后需要重新配对；Miya 桌面端已按 APNs token 去重推送注册，避免同一部手机重复收到推送 |
 | `73681819` | 删除 `Router.Pop`（等同于 `Back`），改用上游的 `Back` | — |
 | `d2a71494` | `ui/window.go` 中渲染路径的命名改回上游写法 | 上游没有“日志滞后一帧”的问题 |
-| `deccef93` | 指针设备改用上游的 `platform.PointerKind`、`SurfaceEvent.Pointer`（以及 `Pressure`）；删除 `platform.PointerType` 和 `SurfaceEvent.PointerType` | iOS/Android/桌面后端/fake 改写 `Pointer`；mouse 是零值，不用显式写。`Tester.send` 会用 `UsePointer` 的设备覆盖 Move/Down/Up 的 `Pointer`，fork 的触摸测试 helper（`ui/touch_test.go` 的 `touch`）因此先调 `UsePointer(PointerTouch, 0)`，同时在事件里写明 `Pointer`，让 Cancel 等其他 kind 也带上设备 |
+| `deccef93` | 指针设备改用上游的 `platform.PointerKind`、`SurfaceEvent.Pointer`（以及 `Pressure`）；删除 `platform.PointerType` 和 `SurfaceEvent.PointerType` | iOS/Android/桌面后端/fake 改写 `Pointer`；mouse 是零值，不用显式写。`Tester.send` 会用 `UsePointer` 的设备覆盖 Move/Down/Up 的 `Pointer`，fork 的触摸测试 helper（`ui/touch_engine_test.go` 的 `touch`）因此先调 `UsePointer(PointerTouch, 0)`，同时在事件里写明 `Pointer`，让 Cancel 等其他 kind 也带上设备 |
 | `deccef93` | 删除 fork 重复的 `platform.PointerCancel`；系统发来的取消走上游的 `pointerCancel` | fork 触摸手势内部的 `cancelPointer` 暂未迁移（见「已知问题」） |
 | `deccef93` | 窗口空闲释放文本缓冲改用上游的 `System.ReleaseShaping`；删除 `ReleaseScratch` 和各引擎的 `releaseScratch` | #1301 已关闭 |
 | `deccef93` | 终端同步更新的唤醒改用上游的 `holdDue` | #1305 已被上游合并 |

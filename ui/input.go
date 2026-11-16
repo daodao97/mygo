@@ -18,11 +18,20 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		// A menu asking about its item changes nothing.
 		return rt.commandEnabled(ev.Text)
 	}
+	if ev.Kind >= platform.TouchDown && ev.Kind <= platform.TouchCancel {
+		// Fingers, which only views that ask follow (Touches): the
+		// pointer events the backend makes of them come on their own.
+		if rt.touchIn != nil {
+			rt.fromWindow(&ev)
+			rt.touchIn.event(rt, ev)
+		}
+		return false
+	}
 	// Touch arbitration and the pointer path both hit-test content DIPs.
 	rt.fromWindow(&ev)
 	// A touch contact is arbitrated before the pointer path: it may become
 	// a scroll of a container, which the pointer path would have made a
-	// press of a row (touch.go).
+	// press of a row (touch_engine.go).
 	if ev.Pointer == platform.PointerTouch && rt.touchEvent(ev) {
 		if ev.Kind == platform.PointerLongPress {
 			focus := rt.states[rt.focused]

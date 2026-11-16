@@ -476,6 +476,22 @@ const (
 	// keyboard stays with the page.
 	WebViewKey
 	PointerLongPress
+	// TouchDown, TouchMove, TouchUp and TouchCancel report a finger on a
+	// touchscreen landing, moving, lifting or taken by the system (as for
+	// an edge's gesture, where no TouchUp follows) at X, Y, with Pressure
+	// and the size of its contact (Width, Height) where the device tells
+	// them. ID tells the fingers down at once apart
+	// from the TouchDown to the TouchUp or TouchCancel; it may be used
+	// again after. They come besides the pointer events a backend makes of
+	// the fingers (taps, scrolls, pinches), which they leave as they are:
+	// the content tracks them only for elements that ask (ui.Element.Touches).
+	// Windows (WM_POINTER), Linux (GDK's touch sequences) and browsers
+	// (Pointer Events of pointerType touch) send them; macOS has no
+	// touchscreen, and a trackpad's fingers are not points on the screen.
+	TouchDown
+	TouchMove
+	TouchUp
+	TouchCancel
 )
 
 // DrawableSurface observes native drawable presentation (Metal on iOS).
@@ -518,7 +534,11 @@ type SurfaceEvent struct {
 	// as a mouse, which the content takes for Pointer Events' default.
 	Pointer  PointerKind
 	Pressure float64
-	Key      Key
+	// Width and Height are the size of a finger's contact with the
+	// touchscreen in DIPs, of TouchDown and TouchMove, where the device
+	// tells it: 0 where it does not.
+	Width, Height float64
+	Key           Key
 	// PhysicalKey is the key by its position on an ANSI US keyboard,
 	// whatever the active layout types; KeyUnknown where the backend does
 	// not report it. Key and PhysicalKey agree on a US layout.
@@ -547,7 +567,8 @@ type SurfaceEvent struct {
 	// for DataDrop's legacy file-listener fallback.
 	Files []string
 	Drag  *DataDragEvent
-	// ID and Action are AccessAction's.
+	// ID and Action are AccessAction's; ID is also the finger of
+	// TouchDown, TouchMove, TouchUp and TouchCancel.
 	ID     uint64
 	Action AccessActionKind
 	// WebView is WebViewTabOut's and WebViewKey's.

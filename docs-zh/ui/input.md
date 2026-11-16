@@ -76,7 +76,8 @@ if b, ok := canvas.PressedButton(); ok && b == 2 {
 
 每次按下都来自主指针：鼠标，或触摸屏上的第一根手指；第二根手指不会按下任何
 东西，在浏览器中也是如此（`isPrimary`）。[`HandleInput`](#每个键随到随处理)
-能通过 `InputEvent.Button` 接收每个按钮的按下和松开事件。
+能通过 `InputEvent.Button` 接收每个按钮的按下和松开事件，
+[`Touches`](#触摸屏上的手指) 则能得到每根手指。
 
 `PressedPointer` 说明是哪种设备在按元素、按得多重，如同 Pointer Events 的
 `pointerType` 和 `pressure`：`PointerMouse`（鼠标或触摸板）、`PointerPen`
@@ -477,6 +478,101 @@ ui.Box(c).Fill().HandleInput(func(ev ui.InputEvent) bool {
 ```
 
 `Tester` 用 `Scroll`（触摸板）、`Wheel`（一格）和 `Pinch` 滚动。
+
+## 触摸屏上的手指
+
+`Touches` 返回落在元素或其内部元素上的触摸屏手指：每根按着的手指，以及自上次
+构建以来抬起或被系统接管的手指，按落下的顺序排列。每个 `ui.Touch` 从手指落下
+到抬起都保持同一个 `ID`，不受其他手指影响，并带有它相对元素盒子的当前位置
+（`X`、`Y`）和落下的位置（`StartX`、`StartY`）、按压力度（`Pressure`，系统
+不报告时为 0.5）、与屏幕接触的大小（`Width`、`Height`，以元素的单位计，系统
+不报告时为 0），以及自上次构建以来的 `Phase`：`ui.TouchBegan`、
+`ui.TouchMoved`、`ui.TouchStationary`、`ui.TouchEnded`（在它抬起的位置）或
+`ui.TouchCanceled`（被系统接管，如屏幕边缘的系统手势：不是完成的手势）。结束或
+被取消的手指只在一次构建中出现，之后就消失。请求它们的元素会在手指落下、移动
+或抬起时得到一帧。
+
+手指照常做它们原本做的事：点按会点击，一根手指滚动它下面的内容，两根手指捏合，
+在 Linux 上手指静止按住会右键点击。不请求触摸的应用看不出任何区别，窗口也只在
+有视图请求之后才跟踪手指：之前已按下的手指不会报告。有了每根手指，视图就能识别
+自己的手势，如大屏上的白板为每根手指画一笔，四指滑动翻页，五指点按清屏：
+
+```go
+canvas := ui.Box(c).Grow(1).Draw(app.paint)
+fingers := canvas.Touches()
+down, dx := 0, float32(0)
+for _, t := range fingers {
+	if t.Phase < ui.TouchEnded {
+		down++
+	}
+	dx += (t.X - t.StartX) / float32(len(fingers))
+	if app.most <= 1 && t.Phase != ui.TouchCanceled {
+		app.ink.LineTo(t.ID, t.X, t.Y) // a stroke for each finger, by its ID
+	}
+}
+if down > app.most {
+	app.most = down // the most fingers down at once in this gesture
+	if down == 1 {
+		app.began = c.Now()
+	}
+}
+if len(fingers) > 0 && down == 0 { // the last finger lifted
+	quick := c.Now().Sub(app.began) < 300*time.Millisecond
+	switch {
+	case app.most == 4 && dx < -120:
+		app.nextPage()
+	case app.most == 4 && dx > 120:
+		app.previousPage()
+	case app.most == 5 && quick && math.Abs(float64(dx)) < 10:
+		app.ink.Clear()
+	}
+	app.most = 0
+}
+```
+
+Windows（`WM_POINTER`）、Linux（GDK 的触摸序列）和浏览器（`pointerType` 为
+`touch` 的 Pointer Events，每根手指由其 `pointerId` 区分）报告触摸。macOS
+没有触摸屏，触控板上的手指也不是屏幕上的点：它不报告触摸，它的捏合和轻扫作为
+`ui.InputZoom`、`ui.InputScroll` 和历史键到来。`Tester` 用
+`TouchDown(id, x, y)` 放下手指，用 `TouchMove`、`TouchUp` 和 `TouchCancel`
+移动、抬起和取消它们；它只发送触摸，不发送后端由它们生成的点按和滚动。
+
+Windows 会把三指和四指的轻扫与点按留给它自己的手势（切换应用和桌面），除非
+用户在“设置 > 蓝牙和其他设备 > 触摸”中关闭它们：在此之前应用最多只能看到
+两根手指。在一次构建之前就落下又抬起的手指，比如快速
+点按，会在一次构建中以 `TouchBegan` 出现，在下一次构建中以 `TouchEnded`
+出现，因此统计落下手指数的视图会数到每一根。
+
+### 手掌与手指
+
+手掌按在屏幕上的面积比指尖大，大屏上的白板据接触的大小分辨二者，用手掌擦除，
+用手指书写：
+
+```go
+for _, t := range canvas.Touches() {
+	if t.Phase == ui.TouchEnded || t.Phase == ui.TouchCanceled {
+		continue
+	}
+	if t.Width*t.Height > 40*40 { // a palm
+		app.ink.Erase(t.X, t.Y, t.Width, t.Height)
+	} else {
+		app.ink.LineTo(t.ID, t.X, t.Y)
+	}
+}
+```
+
+大小以元素的单位计：在放大 2 倍的元素上减半，与 `X`、`Y` 一样。手指在原地
+变成手掌时以 `TouchMoved` 到来。系统报告它的地方：
+
+| 平台 | 接触大小 |
+| --- | --- |
+| Windows | 手指的 `POINTER_TOUCH_INFO` 的 `rcContact`，触摸屏报告时（`TOUCH_MASK_CONTACTAREA`），以 DIP 计 |
+| 浏览器 | Pointer Event 的 `width` 和 `height`；浏览器报告 1×1 时为 0，它无法得知时就这样报告 |
+| Linux | 无：GDK 不报告接触大小，`Width` 和 `Height` 为 0 |
+| macOS | 没有触摸屏，也就没有触摸 |
+
+为白板制造的大触摸屏通常会在 Windows 上报告接触大小。需要它的应用在 `Width`
+和 `Height` 为 0 时应以其他方式分辨手掌与手指。
 
 ## 每个键，随到随处理
 

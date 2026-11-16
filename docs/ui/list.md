@@ -75,6 +75,12 @@ behaves and to move it:
   for the next layout alone: call it in the frame a click opens a fold in
   the last message, and the line clicked stays under the pointer rather
   than following the end as the row grows.
+- `MoveAnimation`, with a `Key`, makes the rows glide to their places as
+  rows come, go or move around them, rather than jump there: the rows
+  below a row that went close its gap, those below rows that came open
+  theirs, and rows a `ScrollTo` in the same frame brings into view come
+  in with them, as new items sliding in at the top of a feed. Scrolling
+  moves the rows at once, as does a desktop asking for less motion.
 - `Header` names the rows heading sections: the header of the section at
   the top stays pinned there while its rows scroll under it, until the next
   header pushes it away. Give headers a background.

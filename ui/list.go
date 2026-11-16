@@ -66,6 +66,16 @@ type ListState struct {
 	// goes on from where it is as more comes, and the user scrolling stops
 	// it. It shows the end at once where the desktop asks for less motion.
 	FollowAnimation *Animation
+	// MoveAnimation, when set, with a Key, makes the rows in view glide to
+	// their places as rows come, go or move around them, as the animation
+	// says (Smooth, a spring, or a curve), rather than jump there: a row
+	// whose index changed shows where it showed, and goes on from there.
+	// The rows below a row that went close its gap, and those below rows
+	// that came open theirs; rows coming into view with them move with
+	// them, as those a ScrollTo in the same frame brings. Scrolling moves
+	// no row's index, and is not animated. Rows go to their places at once
+	// where the desktop asks for less motion.
+	MoveAnimation *Animation
 	// Selected, when set, lets a click choose a row, as Up, Down, Home and
 	// End do while the list has the keyboard focus, and Page Up and Page
 	// Down on Linux and Windows: *Selected is the chosen row, -1 for none,
@@ -245,12 +255,25 @@ type ListState struct {
 	// left it, followWas as the frame before left it, and followBase the
 	// glide as it was at the start of followFrame: the layouts of a frame
 	// all start from them.
-	followLag   channel
-	follow      followMark
-	followWas   followMark
-	followBase  channel
-	followFrame uint64
-	laidOut     bool
+	followLag channel
+	// moved are the rows as the last layout placed them with their glides
+	// (MoveAnimation), movedWas as the frame before left them, which the
+	// layouts of moveFrame start from, of moveN rows; lags are how far
+	// each row shows from its place, and moveKnown which rows movedWas
+	// placed. moveScroll is how far the user or the app scrolled the list
+	// by a step in this frame, and moveJump tells that it went elsewhere.
+	moved, movedWas []moveMark
+	moveFrame       uint64
+	moveN           int
+	lags            []float64
+	moveKnown       []bool
+	moveScroll      float64
+	moveJump        bool
+	follow          followMark
+	followWas       followMark
+	followBase      channel
+	followFrame     uint64
+	laidOut         bool
 	// wroteY is the offset the list set, to tell it from scrolling.
 	wroteY  float64
 	req     listRequest
@@ -694,6 +717,7 @@ func (s *ListState) sync(e *node, n int) {
 		s.header.ok = false
 	}
 	s.anchor = max(0, min(s.anchor, n-1))
+	s.moveScroll, s.moveJump = 0, false
 	switch {
 	case st.list != s || st.born == rt.frame || !s.laidOut:
 		// Built anew, as when its page shows again, or showing another
@@ -707,6 +731,7 @@ func (s *ListState) sync(e *node, n int) {
 	case st.scrollY != s.wroteY && !s.req.set && s.follows() && s.followLag.value > 0.5 && st.scrollY > s.wroteY:
 		// Scrolled toward the end it glides to: it goes on following.
 		s.userAt = rt.frame
+		s.moveJump = true
 	case st.scrollY != s.wroteY && !s.req.set:
 		// Scrolled by the wheel, the keys, the scroll bar or the app: a
 		// step moves the rows by as much, from the place; a jump goes
@@ -717,10 +742,13 @@ func (s *ListState) sync(e *node, n int) {
 		switch d := y - s.wroteY; {
 		case top > 0 && y >= top-0.5:
 			s.req = listRequest{set: true, end: true, user: true}
+			s.moveJump = true
 		case d >= -2*float64(st.h) && d <= 2*float64(st.h):
 			s.inset += d
+			s.moveScroll = d
 		default:
 			s.req = listRequest{set: true, offset: true, y: y, user: true}
+			s.moveJump = true
 		}
 		s.following = top > 0 && y >= top-0.5
 	}
@@ -1536,6 +1564,7 @@ func (e *node) layoutList(w, h float32) {
 		layoutAbsolute(e)
 		journalKeep(rt, &e.scrollBase)
 		e.scrollBase = 0
+		s.moved, s.movedWas, s.moveFrame = s.moved[:0], s.movedWas[:0], 0
 		s.remember(e, 0, -1, true, st.scrollY)
 		return
 	}
@@ -1671,6 +1700,7 @@ func (e *node) layoutList(w, h float32) {
 		lo--
 		yLo -= ht(lo) + gap
 	}
+	lo, hi, yLo, yHi = s.moveRows(e, n, lo, hi, yLo, yHi, top, bottom, ht, ensure)
 
 	// The offset: where the heights known put row lo's top, less where it
 	// shows.
@@ -1729,7 +1759,13 @@ func (e *node) layoutList(w, h float32) {
 	for k := range f.rows {
 		r := &f.rows[k]
 		link(r.e)
-		r.e.x, r.e.y = e.contentX(), float32(r.y)
+		// A row gliding to its place (MoveAnimation) shows away from it;
+		// the header pinned at the top stays there.
+		y := r.y
+		if r.e != pinned {
+			y += s.lagOf(r.i, lo)
+		}
+		r.e.x, r.e.y = e.contentX(), float32(y)
 		layoutBox(r.e, cw, float32(ht(r.i)))
 	}
 	for _, ch := range extras {

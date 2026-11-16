@@ -50,13 +50,22 @@ type Painter struct {
 	// owner is the state of the element painting, which keeps the scales
 	// its text rasterized at (glyphSpace).
 	owner *state
+	// copying tells that what paints is a copy of an element, as the one a
+	// drag paints under the pointer (paintDrag): the page of a web view
+	// stays where the element is, so the copy's hole tells nothing of how
+	// opaque the page shows.
+	copying bool
 }
 
-// opaqueBox is the box of an element painting an opaque background, and
-// how many holes were painted before it, which it covers.
+// opaqueBox is the box of a background an element painted, and how many
+// holes were painted before it, which it covers. opaque tells that the
+// background was painted whole: what lies under it shows through nothing,
+// where one painted through, as at an element's own opacity, still has
+// something for a web view's hole to blend its page over.
 type opaqueBox struct {
-	r     Rect
-	holes int
+	r      Rect
+	holes  int
+	opaque bool
 }
 
 // continuousCorners curves rounded corners as Apple does, on macOS, where
@@ -91,7 +100,7 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	under := rt.under[:0]
 	if opaque {
 		// Under all the window paints, as what it drags.
-		under = append(under, opaqueBox{r: Rect{0, 0, w, h}})
+		under = append(under, opaqueBox{r: Rect{0, 0, w, h}, opaque: true})
 	}
 	rt.painter = Painter{rt: rt, s: s, scale: scale, opacity: 1, clip: Rect{0, 0, w, h}, opaque: opaque, under: under, holes: rt.holes[:0]}
 	p := &rt.painter
@@ -362,8 +371,11 @@ func (p *Painter) element(e *node) {
 	}
 	box := Rect{e.x, e.y, e.w, e.h}
 	savedOpaque, under := p.opaque, len(p.under)
-	if e.fill == fillColor && e.bg.A == 255 && p.opacity >= 1 {
-		p.under = append(p.under, opaqueBox{box, len(p.holes)})
+	if e.fill == fillColor && e.bg.A > 0 {
+		// Painted whole, it covers what lies under it; painted through, as
+		// at an element's own opacity, it still has something for a web
+		// view's hole to blend its page over.
+		p.under = append(p.under, opaqueBox{box, len(p.holes), e.bg.A == 255 && p.opacity >= 1})
 	}
 	// What the element paints lands on an opaque background when all of
 	// it that shows does.
@@ -522,10 +534,27 @@ func translates(m scene.Affine) bool {
 // covered reports whether an opaque background around the element painting
 // holds all of r, when r has an area.
 func (p *Painter) covered(r Rect) bool {
+	return p.holds(r, true)
+}
+
+// blends reports whether anything painted around the element painting holds
+// all of r, when r has an area, opaque or through: the hole a web view
+// punches then blends the page with what is painted there, and the page
+// needs no fade of its own.
+func (p *Painter) blends(r Rect) bool {
+	return p.holds(r, false)
+}
+
+// holds reports whether a background painted around the element painting
+// holds all of r, when r has an area; opaque asks for one painted whole.
+func (p *Painter) holds(r Rect, opaque bool) bool {
 	if r.W <= 0 || r.H <= 0 {
 		return true
 	}
 	for _, u := range slices.Backward(p.under) {
+		if opaque && !u.opaque {
+			continue
+		}
 		if b := u.r; r.X >= b.X && r.Y >= b.Y && r.X+r.W <= b.X+b.W && r.Y+r.H <= b.Y+b.H {
 			// Unless the web view of a hole painted since shows there.
 			for _, h := range p.holes[u.holes:] {

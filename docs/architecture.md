@@ -94,7 +94,7 @@ a GUI dependency. See [APNs push](push.md#manage-live-activity-subscriptions).
 ├── document*.go        NewDocuments: documents, their saving, recovery copies, watches, menus
 ├── loop.go             main-thread queue: postMain / onMain / await
 ├── events.go           listener lists and the Preventable event types
-├── single_instance.go  RequestSingleInstanceLock over a Unix socket
+├── single_instance.go  RequestSingleInstanceLock: a lock file, command lines over a Unix socket
 ├── dev.go signal_*.go  IsDev, the `mygo dev` ready signal, quitting on SIGINT/SIGTERM
 ├── backend_*.go        picks the backend per GOOS
 ├── internal/
@@ -757,7 +757,10 @@ by `mygo build` with `mygo_noinspector`) leave out its downloader and
   and in its settings, and the keys it answers with, in `BindShortcuts`'s
   response and in later `ShortcutsChanged` signals, go to the shortcut's
   `OnKeys` (`HotkeyBound`): none when the user declined it, which KDE
-  remembers without asking again. The activation token of an `Activated` signal
+  remembers without asking again. Under X11 (XWayland) `BindShortcuts`
+  names the app's focused window, else its first shown one, as the parent
+  of the desktop's dialog (`x11:XID`), which GNOME otherwise opens behind
+  the windows in front; a Wayland window would need exporting first. The activation token of an `Activated` signal
   becomes the display's startup notification id while the callback runs,
   so the window it shows or focuses may take the focus. Under XWayland
   there is no Wayland display to give it to, and GNOME does not take the
@@ -887,7 +890,14 @@ features GTK 4 lacks become X11-only code beside it.
 - **Custom schemes** load from `http://<scheme>.localhost/`, and their
   other hosts from `http://<host>.<scheme>.localhost/` (`internal/schemehost`:
   hosts of DNS labels, lower-cased, without a port), which WebView2
-  lets the app answer through `WebResourceRequested`. Chromium treats
+  lets the app answer through `WebResourceRequested`. Its filters are
+  added with `ICoreWebView2_22`'s
+  `AddWebResourceRequestedFilterWithRequestSourceKinds` for documents
+  (iframes of every origin, and their dedicated workers), or, on runtimes
+  without it, `AddWebResourceRequestedFilter`, which reaches only the
+  main frame and its same-origin iframes. Service and shared workers are
+  left out: their requests reach every web view of the profile that
+  filters them. Chromium treats
   `*.localhost` as a secure origin, and unlike `https`, `http` blocks no
   mixed content, so pages reach `ws://` and `http://` URLs as with the
   custom schemes of the other backends. The backend maps URLs both ways, so
@@ -1220,7 +1230,8 @@ and committed, so building an app never needs Bun. The core wraps it with the
 window's configuration (`bridge.Script`) and every backend injects it at
 document start into the main frame. It installs:
 
-- `window.mygo`: `call(method, ...args)`, `on(event, fn)`, `once`, the
+- `window.mygo`: `call(method, ...args)`, `callWith(method, args, options)`,
+  `on(event, fn)`, `once`, the
   `window` controls (`minimize`, `toggleMaximize`, `close`, …), `platform`,
   `windowId`, `version`. Frozen, so pages cannot tamper with it.
 - `window.__mygo.receive(messages)`, used by Go to deliver messages.
@@ -1376,7 +1387,8 @@ Trust):
 
 | message | meaning |
 |---|---|
-| `{"t":"call","id":N,"k":token,"m":"Service.Method","a":[...]}` | call a bound method |
+| `{"t":"call","id":N,"k":token,"m":"Service.Method","a":[...]}` | call a bound method; `"cancel":true` says the page may cancel it |
+| `{"t":"cancel","id":N,"k":token}` | the page gave the call up: its context is canceled |
 | `{"t":"chan-ack","c":N,"k":token,"n":S}` | the page took the values of channel N up to the S-th |
 | `{"t":"chan-close","c":N,"k":token}` | the page closed channel N |
 | `{"t":"dom-ready"}` | DOMContentLoaded fired |
@@ -1420,7 +1432,10 @@ navigated away can never resolve a promise of the new page.
 
 Bound methods may take a `context.Context` first: it carries the calling
 window (`CallerWindow`) and is canceled when the page navigates or the window
-closes. `Bind` validates every parameter and result type up front
+closes. A call the page may cancel (`"cancel":true`) gets a context of its
+own, which the page cancels with `{"t":"cancel"}`: the window keeps the
+cancel of every such call by the page's id for it, with the page's token,
+so that only the page that made the call may cancel it. `Bind` validates every parameter and result type up front
 (`tsgen.Validate`), so unsupported types fail at startup, not at call time.
 
 `Bind` lists a service's methods with `reflect.Type.Method`, and a program
@@ -2101,6 +2116,14 @@ as in Tauri:
   ignored, then `finish`; it skips them when a quit's sequence ran or is
   running (`quitting`, `stopping`). Linux has no such path: the session's
   end arrives as SIGTERM.
+  After `OnQuit`, and in `App.Exit`, the backend gets
+  `platform.ExitBackend.Exiting`, the last native call before the process
+  exits. Windows destroys there the windows of its own classes, the hidden
+  application window last, without handing their messages to the app: a
+  window left alive takes its Go window procedure into `ExitProcess`, where
+  a DLL that destroys a child of it while unloading (an input method's
+  helper window) has Windows call the procedure on the thread already in
+  the runtime's exit, and the runtime deadlocks (#1896).
 - Taskbar state on Windows (`taskbar.go`) lives on the window and is
   applied when Explorer sends `TaskbarButtonCreated` (first show, Explorer
   restarts), so progress and a hidden button set before showing stick.
@@ -2152,8 +2175,26 @@ as in Tauri:
   `--mygo-opened-at-login`, which the package removes from `os.Args` at
   init and `WasOpenedAtLogin` reports; macOS login items are recognized by
   `keyAELaunchedAsLogInItem` in the launch Apple Event instead.
-- `Relaunch` runs the quit sequence, then (after `OnQuit`, which releases
-  the single instance lock) starts the executable again with the same
+- `RequestSingleInstanceLock` (`single_instance.go`): the system decides
+  which instance runs, with a lock on a file next to the socket (`flock`
+  on Unix, `LockFileEx` on Windows, through `lockFile`), taken before the
+  socket is touched, so two launches at the same moment cannot both win.
+  The lock is held until the process exits and released by the system
+  then, also on a crash or a kill; the file is never removed, and its
+  handle is not inherited (`O_CLOEXEC`, a handle Windows does not
+  inherit), so a process the app started cannot keep it. The holder
+  removes a stale socket and listens; the socket only carries the
+  command lines of later instances (JSON), and closes on `OnQuit`. A
+  launch first hands its command line to whoever answers the socket (the
+  holder, or an instance of an older MyGo, which takes no lock), then
+  tries the lock; while the lock is held and nobody answers (the holder
+  is starting, or quit and is ending, as for `Relaunch` and updates) it
+  tries both again until the lock is free, logging after
+  `singleInstanceWait` (10 s): a relaunch must land however long the
+  shutdown takes.
+- `Relaunch` runs the quit sequence, then (after `OnQuit`, which closes
+  the single instance socket; the new instance waits for the lock, which
+  this one holds until it exits) starts the executable again with the same
   arguments, or those passed to `Relaunch` in their place
   (`relaunchArguments`), and the working directory it started in: on macOS
   through `open -n <bundle> --args …`, or, with an update staged, through
@@ -2202,8 +2243,9 @@ as in Tauri:
   (at its path, or elsewhere for moved files), else a patch of the file at
   its path or its own bytes, whichever is smaller. The stapled ticket
   (`Contents/CodeResources`) is never made from the old app: the archives'
-  bundles are stapled, but the bundle a user copies from the disk image is
-  not, as `buildDMG` staples the app after copying it into the image.
+  bundles are stapled, but the bundle a user copied from a disk image of
+  an older mygo is not, as `buildDMG` stapled the app after copying it
+  into the image.
   Patches are bsdiff's
   (`bsdiff.go`, with the qsufsort suffix array of `suffix.go`), their
   three streams compressed apart so that they are read from the delta
@@ -4019,7 +4061,22 @@ either.
   otherwise, as Pointer Events have it, a move that changes the
   pressure alone is a move, and the element pressed keeps the device and
   pressure of its press's last move for `PressedPointer`
-  (`state.pressPointer`). Its
+  (`state.pressPointer`). Fingers also come one by one, besides the
+  pointer events a backend makes of them (`platform.TouchDown`,
+  `TouchMove`, `TouchUp`, `TouchCancel`, by `SurfaceEvent.ID`): Windows
+  sends each finger's `WM_POINTER` messages by pointer ID, with
+  `WM_POINTERCAPTURECHANGED` canceling, Linux numbers GDK's touch
+  sequences (`touchPoints` in `internal/linux/touch.go`), browsers send
+  the Pointer Events of `pointerType` `touch` by `pointerId`, and macOS,
+  without touchscreens, sends none. The size of a finger's contact
+  (`SurfaceEvent.Width`, `Height`, in DIPs) comes from Windows's
+  `POINTER_TOUCH_INFO.rcContact` (with `TOUCH_MASK_CONTACTAREA`) and the
+  Pointer Events' `width` and `height` (1 by 1, unknown, is 0); GDK has
+  none. The engine drops them until a view
+  calls `Touches`, which sets `engine.touchIn` (`ui/touch.go`), so apps
+  that ask for none link none of it: the tracker gives each finger an ID
+  of its own, keeps the hit chain where it landed, asks for a frame as one
+  changes and forgets those that ended at `endPass`. Its
   `TextCaret` turns on the input method at that caret, with no text around
   it; `InputMethod(false)` (`TextInputState.NoInputMethod`) keeps text on
   but input methods off, as winit's `set_ime_allowed(false)`: macOS skips
@@ -4198,7 +4255,14 @@ either.
   list notes where the top of its last row was placed; as rows grow or
   come, that row goes up, and the rows show as far below their place,
   which a motion channel takes back to nothing (`glideToEnd`), counted
-  as at the end. Rows are placed relative to the list, the offset
+  as at the end. With a `MoveAnimation`, a list notes the rows it
+  placed by key, with where it placed them and how far from there they
+  showed (`moveRows`); a row whose index changed since, as rows came or
+  went around it, shows where it showed, which a motion channel of its
+  own takes back to nothing, rows new to the place move with their
+  nearest neighbor, and the rows past an edge that the glide uncovers are
+  built, moving with them. Scrolling moves no index, and so no row; each
+  layout of a frame starts from the rows as the frame before left them. Rows are placed relative to the list, the offset
   they were placed at kept as `scrollBase` for placing and revealing. An
   offset the wheel, the keys, the scroll bar or the app changed moves the
   place by as much when it is a step (up to two views), so rows not
@@ -6455,6 +6519,11 @@ make it work:
   bundle-only features (notifications, URL schemes) work and its data stays
   apart from the production app's. Builds are assembled in a staging
   directory and renamed into place, so the running build keeps its files.
+  Elsewhere the resources are synced beside the executable instead
+  (`placeBuild`, `syncResources`): only files whose permissions, size or
+  modification time changed are replaced, so a program the running app
+  started from them, which Windows keeps from being moved, does not stop
+  a rebuild unless it changed (#1905).
   - Builds run with `MYGO_DEV=1`, which the core takes out of its
     environment (`dev.go`): `App.Relaunch` then exits with code 75, which
     has `mygo dev` start the same build again, with the arguments
@@ -6728,7 +6797,10 @@ make it work:
   Finder flags, then `hdiutil convert` compresses it with LZMA.
   No AppleScript or Finder automation is involved, so it works headless and
   in CI. The image is signed with a real identity and, with `macos.notarize`,
-  notarized with `notarytool` and stapled.
+  notarized with `notarytool` and stapled. Before the image is made, the
+  app itself is notarized (as a zip made by `ditto`, since `notarytool`
+  takes no bundles) and stapled, so that the copy users install from the
+  image has its ticket.
 
 - `keygen` writes the update signing keys (see Updates above).
 
