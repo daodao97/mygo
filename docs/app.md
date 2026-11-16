@@ -137,6 +137,14 @@ func main() {
 }
 ```
 
+The lock is held until the process exits, so the work an app does after
+`Run` returns (stopping the processes it started, writing its files) never
+overlaps with a new instance. From quit on, the instance takes no more
+command lines: a launch meanwhile, such as `Relaunch`'s or an update's,
+waits for it to exit, however long that takes, and then runs. The system
+releases the lock when the process ends, also when it crashes or is killed,
+and the processes the app started don't keep it.
+
 ## Deep links
 
 Apps open URLs of their own schemes, such as `myapp://open?note=42`. List

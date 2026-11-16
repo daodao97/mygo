@@ -3,6 +3,7 @@
 package mygo
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -44,16 +45,14 @@ func TestMain(m *testing.M) {
 		helper := fake.New()
 		backendOnce.Do(func() { theBackend = helper })
 		packageIdentifier = os.Getenv("MYGO_TEST_IDENTIFIER")
-		App.SetName("MyGoTest")
-		if App.RequestSingleInstanceLock() {
-			fmt.Println("locked")
-			releaseSingleInstanceLock()
-		} else {
-			fmt.Println("forwarded")
-		}
-		if helper.ForegroundAllowed > 0 {
-			fmt.Println("passed the foreground on")
-		}
+		App.SetName(cmp.Or(os.Getenv("MYGO_TEST_INSTANCE_NAME"), "MyGoTest"))
+		singleInstanceTestHelper(helper)
+		os.Exit(0)
+	}
+	if os.Getenv("MYGO_TEST_INSTANCE_CHILD") == "1" {
+		// A process that an instance started, which outlives it.
+		fmt.Println("child started")
+		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	}
 	fb = fake.New()

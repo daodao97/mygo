@@ -74,7 +74,7 @@ framework safely. Read it before changing anything under `internal/`.
 ├── document*.go        NewDocuments: documents, their saving, recovery copies, watches, menus
 ├── loop.go             main-thread queue: postMain / onMain / await
 ├── events.go           listener lists and the Preventable event types
-├── single_instance.go  RequestSingleInstanceLock over a Unix socket
+├── single_instance.go  RequestSingleInstanceLock: a lock file, command lines over a Unix socket
 ├── dev.go signal_*.go  IsDev, the `mygo dev` ready signal, quitting on SIGINT/SIGTERM
 ├── backend_*.go        picks the backend per GOOS
 ├── internal/
@@ -1918,8 +1918,26 @@ as in Tauri:
   `--mygo-opened-at-login`, which the package removes from `os.Args` at
   init and `WasOpenedAtLogin` reports; macOS login items are recognized by
   `keyAELaunchedAsLogInItem` in the launch Apple Event instead.
-- `Relaunch` runs the quit sequence, then (after `OnQuit`, which releases
-  the single instance lock) starts the executable again with the same
+- `RequestSingleInstanceLock` (`single_instance.go`): the system decides
+  which instance runs, with a lock on a file next to the socket (`flock`
+  on Unix, `LockFileEx` on Windows, through `lockFile`), taken before the
+  socket is touched, so two launches at the same moment cannot both win.
+  The lock is held until the process exits and released by the system
+  then, also on a crash or a kill; the file is never removed, and its
+  handle is not inherited (`O_CLOEXEC`, a handle Windows does not
+  inherit), so a process the app started cannot keep it. The holder
+  removes a stale socket and listens; the socket only carries the
+  command lines of later instances (JSON), and closes on `OnQuit`. A
+  launch first hands its command line to whoever answers the socket (the
+  holder, or an instance of an older MyGo, which takes no lock), then
+  tries the lock; while the lock is held and nobody answers (the holder
+  is starting, or quit and is ending, as for `Relaunch` and updates) it
+  tries both again until the lock is free, logging after
+  `singleInstanceWait` (10 s): a relaunch must land however long the
+  shutdown takes.
+- `Relaunch` runs the quit sequence, then (after `OnQuit`, which closes
+  the single instance socket; the new instance waits for the lock, which
+  this one holds until it exits) starts the executable again with the same
   arguments, or those passed to `Relaunch` in their place
   (`relaunchArguments`), and the working directory it started in: on macOS
   through `open -n <bundle> --args …`, or, with an update staged, through

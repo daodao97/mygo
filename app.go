@@ -318,7 +318,10 @@ func (a *Application) finish() {
 		fire(&a.onQuit)
 		backendExiting()
 		if a.relaunch {
-			relaunchNow() // after OnQuit, which releases the single instance lock
+			// After OnQuit, which stops taking the command lines of later
+			// instances: the new one waits for this process to exit, which
+			// holds the single instance lock until then.
+			relaunchNow()
 		}
 		loop.shutdown()
 	})

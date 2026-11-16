@@ -14,3 +14,5 @@ func fileWritable(path string) bool {
 }
 
 func lockFile(*os.File) error { return nil }
+
+func lockBusy(error) bool { return false }

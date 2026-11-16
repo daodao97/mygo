@@ -3,6 +3,7 @@
 package mygo
 
 import (
+	"errors"
 	"os"
 	"syscall"
 	"unsafe"
@@ -48,4 +49,9 @@ func lockFile(f *os.File) error {
 		return err
 	}
 	return nil
+}
+
+// lockBusy reports whether lockFile failed because the lock is held.
+func lockBusy(err error) bool {
+	return errors.Is(err, syscall.Errno(33)) // ERROR_LOCK_VIOLATION
 }
