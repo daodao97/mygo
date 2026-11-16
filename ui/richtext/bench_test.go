@@ -2,6 +2,7 @@ package richtext
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -142,5 +143,56 @@ func BenchmarkRuns(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// readsAsRuns returns a paragraph with every mark Markdown writes.
+func readsAsRuns() []Run {
+	bold := Attributes{Weight: 700}
+	italic := Attributes{Italic: true}
+	underlined := Attributes{Underline: true}
+	strike := Attributes{Strikethrough: true}
+	code := Attributes{Code: true}
+	linked := Attributes{Link: "https://example.com"}
+	attachment := &Attachment{Name: "a cat", URL: "cat.png"}
+	var runs []Run
+	for repeat := 0; repeat < 32; repeat++ {
+		runs = append(runs,
+			Run{Text: "a é "},
+			Run{Text: "bold", Attributes: bold},
+			Run{Text: " "},
+			Run{Text: "italic", Attributes: italic},
+			Run{Text: " "},
+			Run{Text: "under", Attributes: underlined},
+			Run{Text: " "},
+			Run{Text: "strike", Attributes: strike},
+			Run{Text: " "},
+			Run{Text: "code", Attributes: code},
+			Run{Text: " "},
+			Run{Text: "link", Attributes: linked},
+			Run{Text: " "},
+			Run{Text: string(ObjectReplacement), Attributes: Attributes{Attachment: attachment}},
+			Run{Text: " "},
+		)
+	}
+	runs = append(runs, Run{Text: "  "})
+	return runs
+}
+
+// BenchmarkReadsAs measures reading a written paragraph back, which
+// compares every rune and its marks.
+func BenchmarkReadsAs(bench *testing.B) {
+	runs := readsAsRuns()
+	var builder strings.Builder
+	writeMarkdownRuns(&builder, runs)
+	markdown := builder.String()
+	if !readsAs(markdown, runs) {
+		bench.Fatal("Markdown does not read back")
+	}
+	bench.ReportAllocs()
+	for bench.Loop() {
+		if !readsAs(markdown, runs) {
+			bench.Fatal("Markdown does not read back")
+		}
 	}
 }
