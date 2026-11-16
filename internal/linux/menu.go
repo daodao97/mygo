@@ -48,6 +48,7 @@ var (
 
 	cbMenuActivate   ptr
 	cbMenuDeactivate ptr
+	cbPopupRelease   ptr
 	cbMenuMap        ptr
 	cbTrayActivate   ptr
 
@@ -122,6 +123,17 @@ func initMenuCallbacks() {
 	})
 	cbMenuDeactivate = purego.NewCallback(func(menu, loop ptr) {
 		gMainLoopQuit(loop)
+	})
+	// The first release a menu hears, within GTK's MENU_SHELL_TIMEOUT
+	// (500 ms) of the press that opened it, leaves the menu open
+	// (PopupMenu); a later one, as a quick click on an item, goes to GTK.
+	// The time is a GdkEventButton's, at 20.
+	cbPopupRelease = purego.NewCallback(func(menu, event, _ ptr) bool {
+		if menu != opening.menu {
+			return false
+		}
+		opening.menu = 0
+		return field[uint32](event, 20)-opening.at <= 500
 	})
 	cbMenuMap = purego.NewCallback(func(menu, data ptr) {
 		if w := theBackend.window(data); w != nil {
@@ -476,6 +488,13 @@ func (w *window) enableEditItems() {
 	}
 }
 
+// opening is the menu shown last by a press, and when the press went
+// down, until the menu hears its first release (PopupMenu).
+var opening struct {
+	menu ptr
+	at   uint32
+}
+
 // PopupMenu shows a context menu and blocks until it is dismissed.
 func (b *Backend) PopupMenu(m *platform.Menu, pw platform.Window, pos *platform.Point) {
 	// GTK positions menus relative to a window: the given one, else the
@@ -525,6 +544,17 @@ func (b *Backend) PopupMenu(m *platform.Menu, pw platform.Window, pos *platform.
 		// GTK could not show it: there is no dismissal to wait for.
 		gtkWidgetDestroy(menu)
 		return
+	}
+	if b.onX11 && os.Getenv("WAYLAND_DISPLAY") != "" && event != 0 && field[int32](event, 0) == 4 { // GDK_BUTTON_PRESS
+		// GTK keeps a menu open on the release of the press that opened it,
+		// within MENU_SHELL_TIMEOUT, unless the pointer entered an item
+		// since. Under XWayland it enters one at the release, as the
+		// compositor gives the pointer to the menu's window, and the menu
+		// closed as soon as it opened.
+		outer := opening
+		opening.menu, opening.at = menu, field[uint32](event, 20)
+		defer func() { opening = outer }()
+		connect(menu, "button-release-event", cbPopupRelease, 0)
 	}
 	loop := gMainLoopNew(0, false)
 	connect(menu, "deactivate", cbMenuDeactivate, loop)
