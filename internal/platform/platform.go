@@ -1415,13 +1415,20 @@ const (
 	MediaNext
 	MediaPrevious
 	MediaSeek
+	// MediaRaise asks for the app's window in front, as MPRIS's Raise
+	// does. The core answers it whatever the info's Commands, which never
+	// hold it.
+	MediaRaise
 )
 
 // NowPlayingInfo is what the app plays, fully defaulted by the core.
 type NowPlayingInfo struct {
 	Title, Artist, Album string
-	Artwork              []byte // PNG or JPEG, or nil
-	Duration             time.Duration
+	// Artists are the track's artists, one each, for the systems that
+	// take a list (MPRIS); Artist is them joined with ", ".
+	Artists  []string
+	Artwork  []byte // PNG or JPEG, or nil
+	Duration time.Duration
 	// Position is where playback was when the core set the info; the
 	// system advances it at Rate while State is "playing".
 	Position time.Duration

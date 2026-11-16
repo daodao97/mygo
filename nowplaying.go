@@ -2,6 +2,7 @@ package mygo
 
 import (
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,9 @@ type NowPlayingModule struct {
 //		Commands: mygo.MediaPlay | mygo.MediaPause | mygo.MediaNext | mygo.MediaSeek,
 //	})
 //	mygo.NowPlaying.OnCommand(func(cmd mygo.MediaCommand, pos time.Duration) { … })
+//
+// When an MPRIS client raises the player, as GNOME's media controls do,
+// the window that had the keyboard last shows and takes it.
 //
 // An app playing with package audio can let NowPlaying drive the player
 // instead (Control).
@@ -72,6 +76,12 @@ const (
 // NowPlayingInfo describes what the app plays.
 type NowPlayingInfo struct {
 	Title, Artist, Album string
+	// Artists are the track's artists, one each, for a track with more
+	// than one. MPRIS clients on Linux list them, and macOS, Windows and
+	// browsers, which show one artist, show them joined with ", ".
+	// Artists, when it names any, wins over Artist; else Artist is the
+	// one artist.
+	Artists []string
 	// Artwork is the image of the album or the episode, PNG or JPEG.
 	Artwork []byte
 	// Duration is how long the track is; 0 is unknown, as for a live
@@ -105,6 +115,7 @@ type MediaPlayer interface {
 // is ready.
 func (n *NowPlayingModule) Set(info NowPlayingInfo) {
 	info.Artwork = slices.Clone(info.Artwork)
+	info.Artists = slices.Clone(info.Artists)
 	n.mu.Lock()
 	n.info, n.at, n.showing = info, time.Now(), true
 	n.syncLocked()
@@ -143,6 +154,7 @@ func (n *NowPlayingModule) Info() (NowPlayingInfo, bool) {
 	defer n.mu.Unlock()
 	info := n.info
 	info.Artwork = slices.Clone(info.Artwork)
+	info.Artists = slices.Clone(info.Artists)
 	info.Position = n.positionLocked()
 	return info, n.showing
 }
@@ -265,7 +277,7 @@ func (n *NowPlayingModule) rateLocked() float64 {
 
 // commandsLocked are the commands offered. n.mu is held.
 func (n *NowPlayingModule) commandsLocked() MediaCommand {
-	c := n.info.Commands
+	c := n.info.Commands &^ MediaCommand(platform.MediaRaise)
 	if c == 0 || n.player != nil {
 		c |= MediaPlay | MediaPause | MediaStop
 	}
@@ -273,6 +285,21 @@ func (n *NowPlayingModule) commandsLocked() MediaCommand {
 		c |= MediaSeek
 	}
 	return c
+}
+
+// artistsLocked are the artists shown: those of Artists that are named,
+// or else Artist alone. n.mu is held.
+func (n *NowPlayingModule) artistsLocked() []string {
+	var artists []string
+	for _, a := range n.info.Artists {
+		if a != "" {
+			artists = append(artists, a)
+		}
+	}
+	if len(artists) == 0 && n.info.Artist != "" {
+		artists = []string{n.info.Artist}
+	}
+	return artists
 }
 
 // apply has the backend show the latest info, once the app is ready.
@@ -283,9 +310,10 @@ func (n *NowPlayingModule) apply() {
 		var info *platform.NowPlayingInfo
 		if n.showing {
 			state := [...]string{PlaybackPlaying: "playing", PlaybackPaused: "paused", PlaybackStopped: "stopped"}[min(max(n.info.State, 0), PlaybackStopped)]
+			artists := n.artistsLocked()
 			info = &platform.NowPlayingInfo{
-				Title: n.info.Title, Artist: n.info.Artist, Album: n.info.Album,
-				Artwork:  n.info.Artwork,
+				Title: n.info.Title, Artist: strings.Join(artists, ", "), Album: n.info.Album,
+				Artists: artists, Artwork: n.info.Artwork,
 				Duration: max(n.info.Duration, 0), Position: n.positionLocked(),
 				Rate: n.rateLocked(), State: state,
 				Commands: platform.MediaCommand(n.commandsLocked()),
@@ -311,6 +339,10 @@ func (appHandler) MediaCommand(cmd platform.MediaCommand, position time.Duration
 
 // command reports a command of the backend.
 func (n *NowPlayingModule) command(cmd platform.MediaCommand, position time.Duration) {
+	if cmd == platform.MediaRaise {
+		raiseApp()
+		return
+	}
 	n.mu.Lock()
 	if !n.showing {
 		n.mu.Unlock()
@@ -338,4 +370,25 @@ func (n *NowPlayingModule) command(cmd platform.MediaCommand, position time.Dura
 	for _, fn := range n.onCommand.snapshot() {
 		fn(c, position)
 	}
+}
+
+// raiseApp brings the app to the front, as an MPRIS client raising the
+// player asks: the window that had the keyboard last shows and takes it,
+// or the first window when none had it yet. Flyouts and the pages of web
+// views are not raised; with no window left, the app is activated.
+func raiseApp() {
+	var w *Window
+	windows.Lock()
+	for _, x := range windows.list {
+		if x.flyout == nil && x.host == nil && x.native != nil && (w == nil || x.focusedAt > w.focusedAt) {
+			w = x
+		}
+	}
+	windows.Unlock()
+	if w == nil {
+		backend().App().Activate()
+		return
+	}
+	backgroundShow = false // the user asked for the window
+	w.show()
 }

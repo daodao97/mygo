@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -23,7 +24,9 @@ func (b *Backend) NowPlaying() platform.NowPlaying { return nowPlaying{b} }
 // bus, which GNOME's and KDE's media controls, their lock screens and
 // playerctl show and drive, and which the desktops send the media keys
 // to. The app owns its bus name only while it shows something, so the
-// player leaves the desktop's controls once it shows nothing.
+// player leaves the desktop's controls once it shows nothing. Raise,
+// which the desktops' controls send as the player is clicked, has the
+// core bring the app's window forward.
 type nowPlaying struct{ b *Backend }
 
 // nowPlayingSet is the code of NowPlaying, which LinkNowPlaying links:
@@ -171,7 +174,7 @@ func setNowPlaying(b *Backend, info *platform.NowPlayingInfo) {
 		return
 	}
 	expected := mprisPosition()
-	if old == nil || old.Title != info.Title || old.Artist != info.Artist || old.Album != info.Album || old.Duration != info.Duration {
+	if old == nil || old.Title != info.Title || !slices.Equal(old.Artists, info.Artists) || old.Album != info.Album || old.Duration != info.Duration {
 		mpris.track++
 	}
 	mpris.info, mpris.at = info, time.Now()
@@ -276,8 +279,10 @@ func mprisCan(cmd platform.MediaCommand) bool {
 func mprisProperty(iface, prop string) ptr {
 	info := mpris.info
 	switch prop {
-	case "CanQuit", "CanRaise", "HasTrackList":
+	case "CanQuit", "HasTrackList":
 		return gVariantNewBoolean(false)
+	case "CanRaise":
+		return gVariantNewBoolean(true)
 	case "Identity":
 		return gVariantNewString(cs(appName()))
 	case "DesktopEntry":
@@ -326,9 +331,12 @@ func mprisMetadata() ptr {
 		if info.Title != "" {
 			entries = append(entries, entry("xesam:title", gVariantNewString(cs(info.Title))))
 		}
-		if info.Artist != "" {
-			artist := gVariantNewString(cs(info.Artist))
-			entries = append(entries, entry("xesam:artist", gVariantNewArray(0, unsafe.Pointer(&artist), 1)))
+		if len(info.Artists) > 0 {
+			artists := make([]ptr, len(info.Artists))
+			for i, a := range info.Artists {
+				artists[i] = gVariantNewString(cs(a))
+			}
+			entries = append(entries, entry("xesam:artist", gVariantNewArray(0, unsafe.Pointer(&artists[0]), uintptr(len(artists)))))
 		}
 		if info.Album != "" {
 			entries = append(entries, entry("xesam:album", gVariantNewString(cs(info.Album))))
@@ -360,11 +368,14 @@ func mprisChanged(iface string, props ...string) {
 	}
 }
 
-// mprisCall answers a method call, reporting the player's commands.
+// mprisCall answers a method call, reporting the player's commands. GDBus
+// calls it on the main thread, whose main context registered the player.
 func mprisCall(iface, method string, params, inv ptr) {
 	var cmd platform.MediaCommand
 	var pos time.Duration
 	switch method {
+	case "Raise":
+		cmd = platform.MediaRaise
 	case "Play":
 		cmd = platform.MediaPlay
 	case "Pause":

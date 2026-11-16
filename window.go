@@ -324,6 +324,10 @@ type Window struct {
 	// keepActive, that SetActiveAppearance keeps it active. Main thread
 	// only.
 	active, focusKnown, keepActive bool
+	// focusedAt orders the windows by when they last had the keyboard,
+	// from focusCount, 0 for never: raiseApp shows the latest. Main
+	// thread only.
+	focusedAt uint64
 	// fit sizes a window that takes its page's size (FitContent), nil
 	// for others. Main thread only.
 	fit *fitContent
@@ -520,6 +524,10 @@ var windows struct {
 	list    []*Window
 	focused *Window
 }
+
+// focusCount counts the times a window took the keyboard
+// (Window.focusedAt). Main thread only.
+var focusCount uint64
 
 // NewWindow creates a window. It must be called after the application is
 // ready (see Application.WhenReady); when called from another goroutine it
@@ -2258,7 +2266,8 @@ func (h *windowHandler) Focused() {
 	windows.Lock()
 	windows.focused = h.w
 	windows.Unlock()
-	h.w.focusKnown = true
+	focusCount++
+	h.w.focusKnown, h.w.focusedAt = true, focusCount
 	scheduleActive()
 	fire(&h.w.onFocus)
 }
