@@ -152,6 +152,18 @@ const (
 	wv8GetIsDocumentPlayingAudio        = 87
 )
 
+// ICoreWebView2_22 (SDK 1.0.2651.64, runtime 127) follows
+// ICoreWebView2_21's methods in WebView2.h with
+// AddWebResourceRequestedFilterWithRequestSourceKinds (123) and its Remove
+// twin (124). Unlike ICoreWebView2's AddWebResourceRequestedFilter (57),
+// whose filters reach only the main frame and its same-origin iframes,
+// its filters reach iframes of other origins too.
+const (
+	wv22AddWebResourceRequestedFilterWithRequestSourceKinds = 123
+
+	requestSourceDocument = 1 // COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT
+)
+
 var (
 	iidICoreWebView2Controller2                  = guid("c979903e-d4ca-4228-92eb-47ee3fa96eab")
 	iidICoreWebView2Settings2                    = guid("ee9a0f68-f46c-4e32-ac23-ef8cac224d2a")
@@ -164,6 +176,7 @@ var (
 	iidICoreWebView2_4                           = guid("20d02d59-6df2-42dc-bd06-f98a694b1302")
 	iidICoreWebView2_8                           = guid("e9632730-6e1e-43ab-b7b8-7b2c9e62e094")
 	iidICoreWebView2_13                          = guid("f75f09a8-667e-4983-88d6-c8773f315e84")
+	iidICoreWebView2_22                          = guid("db75dfc7-a857-4632-a398-6969dde26c0a")
 	iidICoreWebView2Profile2                     = guid("fa740d4b-5eae-4344-a8ad-74be31925397")
 	iidICoreWebView2Environment8                 = guid("d6eb91dd-c3d2-45e5-bd29-6dc2bc4de9cf")
 )

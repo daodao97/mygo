@@ -150,7 +150,11 @@ On Windows, fetch a scheme at `http://<scheme>.localhost/`, where
 WebView2 serves it, and another host at `http://<host>.<scheme>.localhost/`
 (`myapp://abc/` is `http://abc.myapp.localhost/`). Such hosts are DNS
 names (letters, digits, hyphens and dots) and are reported in lower case;
-URLs with another host or a port aren't served there.
+URLs with another host or a port aren't served there. An iframe of
+another origin, such as `http://abc.myapp.localhost/` in the frontend,
+loads its scripts, styles and fetches through the scheme too, from
+WebView2 Runtime 127 on; older runtimes serve such an iframe its
+document alone.
 
 ### Trust
 

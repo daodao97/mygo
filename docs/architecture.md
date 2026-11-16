@@ -654,7 +654,14 @@ features GTK 4 lacks become X11-only code beside it.
 - **Custom schemes** load from `http://<scheme>.localhost/`, and their
   other hosts from `http://<host>.<scheme>.localhost/` (`internal/schemehost`:
   hosts of DNS labels, lower-cased, without a port), which WebView2
-  lets the app answer through `WebResourceRequested`. Chromium treats
+  lets the app answer through `WebResourceRequested`. Its filters are
+  added with `ICoreWebView2_22`'s
+  `AddWebResourceRequestedFilterWithRequestSourceKinds` for documents
+  (iframes of every origin, and their dedicated workers), or, on runtimes
+  without it, `AddWebResourceRequestedFilter`, which reaches only the
+  main frame and its same-origin iframes. Service and shared workers are
+  left out: their requests reach every web view of the profile that
+  filters them. Chromium treats
   `*.localhost` as a secure origin, and unlike `https`, `http` blocks no
   mixed content, so pages reach `ws://` and `http://` URLs as with the
   custom schemes of the other backends. The backend maps URLs both ways, so
