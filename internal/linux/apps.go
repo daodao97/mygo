@@ -23,6 +23,23 @@ var (
 	gdkDisplayGetAppLaunchContext func(d ptr) ptr
 )
 
+var (
+	launchOnce sync.Once
+
+	gAppLaunchContextGetStartupID func(ctx, info, files ptr) ptr
+	gAppLaunchContextLaunchFailed func(ctx ptr, id *byte)
+)
+
+// loadLaunch binds what launches an application with the display's launch
+// context, apart from loadApps, which Shell's openers do without.
+func loadLaunch() {
+	launchOnce.Do(func() {
+		mustBind(libGDK, &gdkDisplayGetAppLaunchContext, "gdk_display_get_app_launch_context")
+		mustBind(libGIO, &gAppLaunchContextGetStartupID, "g_app_launch_context_get_startup_notify_id")
+		mustBind(libGIO, &gAppLaunchContextLaunchFailed, "g_app_launch_context_launch_failed")
+	})
+}
+
 func loadApps() {
 	appsOnce.Do(func() {
 		loadIcons() // g_desktop_app_info_new_from_filename
@@ -32,7 +49,7 @@ func loadApps() {
 		mustBind(libGIO, &gAppInfoLaunch, "g_app_info_launch")
 		mustBind(libGIO, &gDesktopAppInfoGetFilename, "g_desktop_app_info_get_filename")
 		mustBind(libGIO, &gFileInfoGetContentType, "g_file_info_get_content_type")
-		mustBind(libGDK, &gdkDisplayGetAppLaunchContext, "gdk_display_get_app_launch_context")
+		loadLaunch()
 	})
 }
 
