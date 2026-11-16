@@ -4802,7 +4802,16 @@ either.
   it (the submenus that `Submenu` registers, built after their menu's
   panel, as its siblings). A panel keeps the focus for its items, which
   the keys and the pointer highlight (`ActiveDescendant`), by their
-  element IDs; the keys are read once the panel's items are built, which
+  element IDs. The pointer moving onto an item of a panel with a submenu
+  open leaves the highlight while it heads for the submenu (`aiming`,
+  #1916): it moved since the last pass (`menuShown.last`; the panel
+  tracks the pointer, `flagTrackPointer`, so that each move builds) into
+  the triangle from where it was to the corners of the submenu panel's
+  edge facing it, in that panel's axes as last laid out. That holds for
+  `menuAimGrace` (300 ms) after the last such move (`menuShown.aim`), a
+  frame asked for then (`scheduleAt`) letting the item under a pointer
+  that rests take the highlight. Submenus still open at once as the
+  pointer moves onto their items, as macOS's do. The keys are read once the panel's items are built, which
   they move among, and Enter clicks the item highlighted for the next
   pass (`clickLater`), which reports it as `Clicked`; an item clicked
   closes the menu once its panel is built (`finish`), unless the view
