@@ -154,9 +154,9 @@ func Generate(m Model) ([]byte, error) {
 					doc = fd.Doc.Text()
 				}
 			}
-			var params, args []string
+			var params, args, types []string
 			// Parameters must not shadow the runtime function called below.
-			used := map[string]bool{"call": true}
+			used := map[string]bool{"call": true, "bind": true}
 			for pi, pt := range meth.Params {
 				name := ""
 				if pi < len(names) {
@@ -170,6 +170,7 @@ func Generate(m Model) ([]byte, error) {
 				if meth.Variadic && pi == len(meth.Params)-1 {
 					params = append(params, "..."+name+": "+arrayOf(g.ts(pt.Elem())))
 					args = append(args, "..."+name)
+					types = append(types, "..."+arrayOf(g.ts(pt.Elem())))
 					continue
 				}
 				typ := g.ts(pt)
@@ -179,18 +180,18 @@ func Generate(m Model) ([]byte, error) {
 				}
 				params = append(params, name+": "+typ)
 				args = append(args, name)
+				types = append(types, typ)
 			}
 			result := "void"
 			if meth.Result != nil {
 				result = g.ts(meth.Result)
 			}
 			writeDoc(&services, "  ", doc)
-			call := quote(s.Name + "." + meth.Name)
-			if len(args) > 0 {
-				call += ", " + strings.Join(args, ", ")
-			}
-			fmt.Fprintf(&services, "  %s(%s): Promise<%s> {\n    return call(%s);\n  },\n",
-				name, strings.Join(params, ", "), result, call)
+			// The arguments are built at the call, so that the options of
+			// the call can be given with them.
+			fmt.Fprintf(&services, "  %s: bind<[%s], %s>(%s, (%s) => [%s]),\n",
+				name, strings.Join(types, ", "), result, quote(s.Name+"."+meth.Name),
+				strings.Join(params, ", "), strings.Join(args, ", "))
 		}
 		services.WriteString("} as const;\n\n")
 	}
@@ -217,7 +218,7 @@ func Generate(m Model) ([]byte, error) {
 	// The runtime comes from the mygo-runtime package.
 	var imports []string
 	if services.Len() > 0 {
-		imports = append(imports, "call")
+		imports = append(imports, "bind")
 	}
 	if events.Len() > 0 {
 		imports = append(imports, "event")

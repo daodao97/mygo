@@ -4,6 +4,7 @@ import type { ContextTarget } from "./context-menu";
 import type { FitLimits } from "./fit-content";
 
 export type {
+  CallOptions,
   Channel,
   Direction,
   LocaleChange,
@@ -30,7 +31,11 @@ export interface BridgeConfig {
 
 /** Messages posted from the page to Go. */
 export type Outgoing =
-  | { t: "call"; id: number; k: string; m: string; a: unknown[] }
+  /** A call of the method m, whose reply has the id; cancel tells that
+   * the page may cancel it with a signal. */
+  | { t: "call"; id: number; k: string; m: string; a: unknown[]; cancel?: boolean }
+  /** The page cancels the call with the id. */
+  | { t: "cancel"; id: number; k: string }
   /** Channel c took the values up to the n-th. */
   | { t: "chan-ack"; c: number; k: string; n: number }
   | { t: "chan-close"; c: number; k: string }

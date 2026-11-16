@@ -58,6 +58,47 @@ describe("call", () => {
   });
 });
 
+describe("canceling a call", () => {
+  type CancelMsg = Extract<Outgoing, { t: "cancel" }>;
+
+  test("a signal tells Go that the call may be canceled", async () => {
+    const { sent, runtime, internal } = setup();
+    const ac = new AbortController();
+    const p = runtime.callWith("Greeter.Greet", ["bun"], { signal: ac.signal });
+    const msg = sent[0] as CallMsg;
+    expect(msg).toMatchObject({ t: "call", id: 1, m: "Greeter.Greet", a: ["bun"], cancel: true });
+
+    internal.receive({ t: "reply", id: msg.id, k: msg.k, ok: true, v: "hello bun" });
+    expect(await p).toBe("hello bun");
+    // A call without a signal is not canceled.
+    runtime.call("Greeter.Greet", "bun");
+    expect((sent[1] as CallMsg).cancel).toBeUndefined();
+  });
+
+  test("aborting tells Go to cancel the call and rejects with the reason", async () => {
+    const { sent, runtime, internal } = setup();
+    const ac = new AbortController();
+    const p = runtime.callWith("Greeter.Greet", ["bun"], { signal: ac.signal });
+    const msg = sent[0] as CallMsg;
+
+    ac.abort("no time");
+    const cancel = sent[1] as CancelMsg;
+    expect(cancel).toMatchObject({ t: "cancel", id: msg.id, k: msg.k });
+    expect(await p.catch((e) => e)).toBe("no time");
+
+    // The reply of a canceled call is of no use.
+    internal.receive({ t: "reply", id: msg.id, k: msg.k, ok: true, v: "hello bun" });
+  });
+
+  test("a signal that is aborted already rejects without calling Go", async () => {
+    const { sent, runtime } = setup();
+    const ac = new AbortController();
+    ac.abort();
+    await expect(runtime.callWith("Greeter.Greet", ["bun"], { signal: ac.signal })).rejects.toBeDefined();
+    expect(sent.length).toBe(0);
+  });
+});
+
 describe("events", () => {
   test("on / once / unsubscribe", () => {
     const { runtime, internal } = setup();

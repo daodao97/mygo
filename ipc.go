@@ -386,7 +386,8 @@ func handleCall(w *Window, ctx context.Context, raw string, trusted bool) {
 		ID int64      `json:"id"`
 		K  string     `json:"k"`
 		M  string     `json:"m"`
-		A  []rawValue `json:"a"` // shares raw
+		A  []rawValue `json:"a"`      // shares raw
+		C  bool       `json:"cancel"` // the page may cancel the call
 	}
 	if err := json.Unmarshal(stringBytes(raw), &m); err != nil {
 		log.Printf("mygo: malformed call from window %d: %v", w.id, err)
@@ -394,6 +395,25 @@ func handleCall(w *Window, ctx context.Context, raw string, trusted bool) {
 	}
 	var result any
 	var err error
+	if m.C {
+		// The page may cancel the call with a signal: the method gets a
+		// context of its own, which the page cancels. The call is
+		// remembered before it is made, so that it is remembered as run
+		// when it ends, unless the page goes away while it runs: a cancel
+		// that comes after the reply left for the page finds the id of a
+		// call that ran, and is dropped.
+		var cancel context.CancelFunc
+		if ctx != nil {
+			ctx, cancel = context.WithCancel(ctx)
+			w.addCancel(m.ID, m.K, cancel)
+		}
+		defer func() {
+			w.removeCancel(m.ID, m.K)
+			if cancel != nil {
+				cancel()
+			}
+		}()
+	}
 	if w.untrusted {
 		err = errors.New("this page is untrusted (PageOptions.Untrusted) and may not call Go methods")
 	} else if !trusted {

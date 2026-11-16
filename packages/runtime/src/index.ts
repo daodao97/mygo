@@ -14,6 +14,7 @@
  * @module
  */
 import type {
+  CallOptions,
   Channel as ChannelType,
   Direction,
   LocaleChange,
@@ -22,7 +23,7 @@ import type {
   WindowControls,
 } from "./types";
 
-export type { Direction, LocaleChange, Platform, Runtime, ThemePreferences, WindowControls } from "./types";
+export type { CallOptions, Direction, LocaleChange, Platform, Runtime, ThemePreferences, WindowControls } from "./types";
 
 declare global {
   interface Window {
@@ -57,6 +58,53 @@ export function call<T = unknown>(method: string, ...args: unknown[]): Promise<T
   } catch (err) {
     return Promise.reject(err);
   }
+}
+
+/**
+ * Calls a bound Go method by name, with the options of the call: a signal
+ * that cancels it, as `fetch` does.
+ *
+ * ```ts
+ * await callWith("Capture.Region", [rect], { signal: AbortSignal.timeout(5000) });
+ * ```
+ *
+ * Aborting cancels the Go method's context, and rejects the promise with
+ * the signal's reason. A method that takes no context runs to its end, and
+ * its reply is of no use.
+ */
+export function callWith<T = unknown>(method: string, args: unknown[], options?: CallOptions): Promise<T> {
+  try {
+    return runtime().callWith<T>(method, args, options);
+  } catch (err) {
+    return Promise.reject(err);
+  }
+}
+
+/**
+ * A bound Go method, which a call may cancel.
+ */
+export interface Cancellable<A extends unknown[], R> {
+  (...args: A): Promise<R>;
+  /**
+   * Returns the method with the options of its calls, e.g. a signal that
+   * cancels them:
+   *
+   * ```ts
+   * await Todos.list.with({ signal: AbortSignal.timeout(1000) })("todo");
+   * ```
+   */
+  with(options: CallOptions): (...args: A) => Promise<R>;
+}
+
+/**
+ * Binds a bound Go method by name, for the client that `mygo generate`
+ * writes. The arguments are built at the call, so that the options of the
+ * call can be given with them.
+ */
+export function bind<A extends unknown[], R>(method: string, args: (...a: A) => unknown[]): Cancellable<A, R> {
+  const bound = ((...a: A) => callWith<R>(method, args(...a))) as Cancellable<A, R>;
+  bound.with = (options: CallOptions) => (...a: A) => callWith<R>(method, args(...a), options);
+  return bound;
 }
 
 /**
