@@ -105,7 +105,7 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 1. 合并上游后，删除 `internal/ios`、`internal/android`、`android/`、`native/ios` 及 `cmd/mygo` 中 fork 的 iOS 打包，改用 `internal/mobile` 和 CLI 内嵌宿主；`ui/touch.go`、`ui/touch_text.go`、`ui/gpu_android.go` 会直接冲突，取 #940 的。
 2. 插件改为 `mygo.Native`：`biometrics`、`push`、`imagepicker`、`permissionflow` 换成 #940 自带的实现（保留 fork 扩展：细分错误、`push.SetPresentation`、`NotificationOptions.Data`）；`microphone`、`speech`、`scanner`、`browser`、`network` 是 fork 独有，给它们写 Swift/Kotlin 原生端。然后删根包对应模块（`mygo.Biometrics`、`Permissions`、`Microphone`、`Speech`、`Scanner`、`OpenInAppBrowser`、`Network.Prepare`、`Dialog.Photos` 的手机实现、`App.RegisterPushNotifications`）。
-3. 触摸：删 `TouchScroll` 调用；`TouchSelection`/`InputLongPress` 的使用者（Miya `conversation_view`、`mobile_voice` 按住说话，fork 终端插件）重写或给 #940 加扩展；Miya 远程桌面的捏合缩放给 #940 加多指手势；`InteractiveBack` 改用 `Transition` 或给 #940 加开关。
+3. 触摸：删 `TouchScroll` 调用；`TouchSelection`/`InputLongPress` 的使用者（Miya `conversation_view`、`mobile_voice` 按住说话，fork 终端插件）重写或给 #940 加扩展；Miya 远程桌面的捏合缩放给 #940 加多指手势；`InteractiveBack` 改用 `Transition`、不开 `Router.SystemStack` 的 Router，或给 #940 加开关（见「2026-11-16 跟踪到 `upstream/mobile` `ea96ba60`」）。
 4. 安全区：Miya 删 `ExtendIntoSafeArea` 和自己按 `safeArea` 的内缩；`keyboardbar` 依赖「内容排在键盘之上」，在 #940 上复核（它的 `SafeArea` 计入键盘，根元素自动内缩）。
 5. 生命周期：`Lifecycle` 系列在 #940 上用 active/resign 与 `Power` 重建，或让 Miya、myclash 改用 `App.IsActive`/`Power.OnSuspend`。
 6. 验证：`go build ./...`、`go vet . ./ui`、`../Miya` 用 `GOWORK=off` 编译与测试、myclash 编译，iPhone 上装 Miya 实测（安装步骤见 Miya 的 `docs/install-and-upgrade.md`；`build-ios.sh -ios-device` 用硬件 UDID，`devicectl` 用 CoreDevice 标识符）。
@@ -127,6 +127,24 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
   - `plugins/sqlite` 上手机（`36cdb116`、`ae204203`）。
   - 手机文档（`1781b743`、`2d314c44`）。
 - **已核实无需处理**：#940 对 permissionflow 的本地化已经在上游 `main`，fork 也有。两边 permissionflow 剩下的差别只有 fork 的 `phone.go` 桥接，按第二阶段第 2 步删。
+
+#### 2026-11-16 跟踪到 `upstream/mobile` `ea96ba60`
+
+从 `2d314c44` 到 `ea96ba60`，#940 自己的提交有 4 个，期间没有再合入上游 `main`（`mobile` 落后 `main` 48 个提交）：
+
+- `3607c02e`：**`Router.SystemStack`**。手机上把 Router 到当前页为止的历史交给系统页面栈显示，带系统导航栏、每页标题和返回按钮，仍是一个窗口。
+  - iOS：每一页是窗口 `UINavigationController` 的一个 view controller，过渡和侧滑返回由 UIKit 负责。窗口只有一个 surface，移到当前显示的页面里，离开的页面留快照。
+  - Android：窗口的 `MaterialToolbar` 跟随页面栈，页面滑动和预测性返回仍由 Router 自己做。
+  - 平台契约新增可选的 `platform.StackSurface`：核心在新页面那一帧呈现前发 `SetStack` 并等待，用户在系统里返回时回传 `StackPopped`，新页面呈现后回传 `StackShown`。视图用 `Router.InSystemStack` 判断要不要自己画导航栏。桌面和浏览器没有 `StackSurface`，行为不变；counter-native 增大 288 字节，hello 不变。
+- `730d71b2` 与 `bae9c648`：iOS 第一页改成小标题，随即撤回，两者抵消。
+- `ea96ba60`：iOS 26 返回到带大标题的页面时，让大标题跟着页面移动。做法是每屏放一个透明、不接收触摸的空 scroll view 作为 `contentScrollView`，surface 的顶部内缩取它调整后的 inset。同时作用于 Router 的页面栈和 `Window.Push`。
+
+处理：
+
+- **要等第二阶段**：实现都在 #940 的宿主里（`internal/mobile/ios/Sources/MyGoHost/Navigation.swift`、`App.swift`、Android 的 `HostImpl.kt`），现在不移植。fork 的 iOS/Android 后端没有 `StackSurface`，单独移植 ui 部分也不会改变行为。
+- **换后端时要核对**：
+  - `InteractiveBack`：上表那一行写的是 #940 自动开启、没有开关。现在多了 `SystemStack`，可以按 Router 开启，开启后 iOS 的侧滑返回由 UIKit 负责。Miya 在抽屉页和 `/desktop` 关掉侧滑返回的需求，可以改用不开 `SystemStack` 的 Router 来满足，届时复核。
+  - fork 的 `Router.Reset`/`History`/`Transitioning`/JSON 持久化（B 类，Miya 用 `Transitioning`）也会改 Router 的历史。要确认它们和 `SystemStack` 的页面栈同步（`noteStack`、`syncStack`、`stackPopped`）能共存：`Reset` 和恢复持久化后，系统页面栈要跟着重建；`Transitioning` 在 UIKit 负责过渡时要有意义。
 
 ## 差异分类
 
