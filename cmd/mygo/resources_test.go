@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // resourceProject writes a project with a resources directory and extra
@@ -346,6 +347,72 @@ func TestPlaceBuild(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, "kept", "x")); string(b) != "x2" {
 		t.Errorf("kept/x = %q", b)
+	}
+}
+
+// TestPlaceBuildSyncsResources places a development build twice: the
+// second keeps the resources that did not change as they are, even one
+// that cannot be replaced, as a program the app started on Windows, and
+// replaces, adds and removes the others.
+func TestPlaceBuildSyncsResources(t *testing.T) {
+	dir, src := t.TempDir(), t.TempDir()
+	writeFiles(t, src, map[string]string{"extra/svc.exe": "service", "extra/data.txt": "v1", "extra/gone.txt": "", "extra/old/x": "", "top.txt": "top"})
+	res := []resource{{name: "extra", src: filepath.Join(src, "extra")}, {name: "top.txt", src: filepath.Join(src, "top.txt")}}
+	place := func(app string) error {
+		stage := t.TempDir()
+		writeFiles(t, stage, map[string]string{"app": app})
+		return placeBuild(stage, dir, res)
+	}
+	if err := place("1"); err != nil {
+		t.Fatal(err)
+	}
+	stat := func(name string) fs.FileInfo {
+		info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info
+	}
+	extra, svc := stat("extra"), stat("extra/svc.exe")
+
+	locked := filepath.Join(dir, "extra", "svc.exe")
+	defer func(rename func(string, string) error) { renameResource = rename }(renameResource)
+	renameResource = func(from, to string) error {
+		if to == locked {
+			return &os.LinkError{Op: "rename", Old: from, New: to, Err: fs.ErrPermission}
+		}
+		return renamePackageStage(from, to)
+	}
+	writeFiles(t, src, map[string]string{"extra/data.txt": "v2", "extra/new/y": "y"})
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(filepath.Join(src, "extra", "data.txt"), later, later); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(src, "extra", "gone.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(src, "extra", "old")); err != nil {
+		t.Fatal(err)
+	}
+	if err := place("2"); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"app": "2", "extra/svc.exe": "service", "extra/data.txt": "v2", "extra/new/y": "y", "top.txt": "top"}
+	if got := dirFiles(t, dir); !maps.Equal(got, want) {
+		t.Errorf("dir = %q, want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "extra", "old")); err == nil {
+		t.Error("the removed directory extra/old is still there")
+	}
+	if !os.SameFile(extra, stat("extra")) || !os.SameFile(svc, stat("extra/svc.exe")) {
+		t.Error("the second build replaced resources that did not change")
+	}
+
+	// A changed resource that cannot be replaced fails the build, by name.
+	writeFiles(t, src, map[string]string{"extra/svc.exe": "service 2"})
+	err := place("3")
+	if err == nil || !strings.Contains(err.Error(), locked) {
+		t.Errorf("placing a changed resource in use: err = %v, want one naming %s", err, locked)
 	}
 }
 
@@ -953,5 +1020,52 @@ func TestUniversalResources(t *testing.T) {
 		if _, err := c.resources("darwin", "universal"); err == nil || !fragments(err.Error(), tc.want...) {
 			t.Errorf("%q: err = %v, want %q", slices.Sorted(maps.Keys(tc.files)), err, tc.want)
 		}
+	}
+}
+
+// TestPlaceBuildRunningResource places a development build again while a
+// program the app started from its resources runs, as a service the app
+// launches: Windows keeps that program, and the directory it runs from,
+// from being moved, which failed the rebuild before (#1905).
+func TestPlaceBuildRunningResource(t *testing.T) {
+	dir, src := t.TempDir(), t.TempDir()
+	exe := "svc"
+	if runtime.GOOS == "windows" {
+		exe += ".exe"
+	}
+	if err := os.MkdirAll(filepath.Join(src, "extra"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyFile(os.Args[0], filepath.Join(src, "extra", exe), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFiles(t, src, map[string]string{"extra/data.txt": "v1"})
+	res := []resource{{name: "extra", src: filepath.Join(src, "extra")}}
+	place := func(app string) error {
+		stage := t.TempDir()
+		writeFiles(t, stage, map[string]string{"app": app})
+		return placeBuild(stage, dir, res)
+	}
+	if err := place("1"); err != nil {
+		t.Fatal(err)
+	}
+	svc := fakeChild(filepath.Join(dir, "extra", exe), "sleep")
+	if err := svc.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = svc.Process.Kill()
+		_ = svc.Wait()
+	}()
+	writeFiles(t, src, map[string]string{"extra/data.txt": "v2"})
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(filepath.Join(src, "extra", "data.txt"), later, later); err != nil {
+		t.Fatal(err)
+	}
+	if err := place("2"); err != nil {
+		t.Fatalf("placing a build while a resource runs: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "extra", "data.txt")); err != nil || string(b) != "v2" {
+		t.Errorf("extra/data.txt = %q, %v; want v2", b, err)
 	}
 }

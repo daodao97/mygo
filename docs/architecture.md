@@ -6171,6 +6171,11 @@ make it work:
   bundle-only features (notifications, URL schemes) work and its data stays
   apart from the production app's. Builds are assembled in a staging
   directory and renamed into place, so the running build keeps its files.
+  Elsewhere the resources are synced beside the executable instead
+  (`placeBuild`, `syncResources`): only files whose permissions, size or
+  modification time changed are replaced, so a program the running app
+  started from them, which Windows keeps from being moved, does not stop
+  a rebuild unless it changed (#1905).
   - Builds run with `MYGO_DEV=1`, which the core takes out of its
     environment (`dev.go`): `App.Relaunch` then exits with code 75, which
     has `mygo dev` start the same build again, with the arguments
