@@ -521,7 +521,10 @@ func naturalHeight(e *node, w, cbH float32) float32 {
 	// cannot change that. A leaf of a row that wraps is measured here,
 	// then given the line's height, so this returns before the measures
 	// it would be kept in, whose second read would find the same value.
-	if e.kind == kindBox && e.first == nil && e.list == nil {
+	// A box that lays out by more than what it is built with (special) may
+	// be a list with rows of its own, which contentHeight measures; the
+	// flag says so without reading the list, which lies far away.
+	if e.kind == kindBox && e.first == nil && !e.special {
 		return e.padY()
 	}
 	for i := 0; i < e.nmeasure; i++ {
@@ -689,7 +692,21 @@ type flexItem struct {
 	// lengths have resolved, byBase on those aligned by their
 	// baselines, and laidOut on those of a row, laid out to find theirs.
 	flags uint8
+	// auto are the item's automatic margins: the ones at the start and
+	// the end of its main axis, and the ones at the start and the end of
+	// its cross axis. The first walk reads them with the margins it
+	// reads the sizes of, and the passes after it read them here, in the
+	// item, and not the element again.
+	auto uint8
 }
+
+// The automatic margins of a flexItem, in bits.
+const (
+	autoMainStart uint8 = 1 << iota
+	autoMainEnd
+	autoCrossStart
+	autoCrossEnd
+)
 
 // The flags of a flexItem, in bits so that the item stays within a
 // cache line.
@@ -703,6 +720,12 @@ const (
 
 // has reports whether the item has the flag f.
 func (it *flexItem) has(f uint8) bool { return it.flags&f != 0 }
+
+// autoCross reports whether the item has an automatic margin across the
+// line, which keeps it from stretching and from lining up its baseline.
+func (it *flexItem) autoCross() bool {
+	return it.auto&(autoCrossStart|autoCrossEnd) != 0
+}
 
 type flexLine struct {
 	start, end int
@@ -862,6 +885,9 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 	}()
 	var items []flexItem
 	var lines []flexLine
+	r := b2i(row)
+	ms, me := mainMargins[r][0], mainMargins[r][1]
+	cs, ce := crossMargins[r][0], crossMargins[r][1]
 	taken, sameCh := false, false
 	if commit && e.hold != 0 && !noHold { // nothing to take for most: one compare
 		var bl bool
@@ -875,7 +901,23 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 				continue
 			}
 			it := flexItem{e: c}
-			stretch := stretches(c, align, row)
+			// The automatic margins of the item, read here with the
+			// margins the layout reads the sizes of, so that the passes
+			// after this one read them in the item and not the element
+			// again.
+			if isAuto(c.margin[ms]) {
+				it.auto |= autoMainStart
+			}
+			if isAuto(c.margin[me]) {
+				it.auto |= autoMainEnd
+			}
+			if isAuto(c.margin[cs]) {
+				it.auto |= autoCrossStart
+			}
+			if isAuto(c.margin[ce]) {
+				it.auto |= autoCrossEnd
+			}
+			stretch := stretches(c, align, it.autoCross())
 			// resolveFlexible reads the flexible lengths of every item of
 			// the line in every round: it reads the item, which it has in
 			// order, and not the element again.
@@ -1024,7 +1066,7 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		for i := range items {
 			it := &items[i]
 			c := it.e
-			stretch := stretches(c, align, row)
+			stretch := stretches(c, align, it.autoCross())
 			v, ok := c.height.resolve(base(ch))
 			it.flags &^= flagStretch
 			if stretch && !ok && c.aspect == 0 {
@@ -1070,7 +1112,7 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		for i := ln.start; i < ln.end && baselines; i++ {
 			it := &items[i]
 			c := it.e
-			if !byBaseline(c, align, e) {
+			if !byBaselineItem(c, align, e, it.autoCross()) {
 				continue
 			}
 			switch {
@@ -1166,14 +1208,22 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 	if !finite(contentCross) {
 		contentCross = usedCross
 	}
-	r := b2i(row)
-	ms, me := mainMargins[r][0], mainMargins[r][1]
-	cs, ce := crossMargins[r][0], crossMargins[r][1]
 	if flipMain {
 		ms, me = me, ms
 	}
 	if flipCross {
 		cs, ce = ce, cs
+	}
+	// The automatic margins of the items, which the first walk read of
+	// them, told by the ends they are at now that the axis may be
+	// flipped.
+	autoStart, autoEnd := uint8(autoMainStart), uint8(autoMainEnd)
+	if flipMain {
+		autoStart, autoEnd = autoEnd, autoStart
+	}
+	autoStartC, autoEndC := uint8(autoCrossStart), uint8(autoCrossEnd)
+	if flipCross {
+		autoStartC, autoEndC = autoEndC, autoStartC
 	}
 	crossPos := crossStart
 	for _, ln := range lines {
@@ -1182,7 +1232,8 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		// Automatic margins take the free space first.
 		autos := 0
 		for i := range its {
-			autos += b2i(isAuto(its[i].e.margin[ms])) + b2i(isAuto(its[i].e.margin[me]))
+			it := &its[i]
+			autos += b2i(it.auto&autoMainStart != 0) + b2i(it.auto&autoMainEnd != 0)
 		}
 		pos, between := justifyOffsets(e.justify, free, len(its))
 		auto := float32(0)
@@ -1193,10 +1244,10 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 			it := &its[i]
 			c := it.e
 			startM, endM := c.m(ms), c.m(me)
-			if isAuto(c.margin[ms]) {
+			if it.auto&autoStart != 0 {
 				startM = auto
 			}
-			if isAuto(c.margin[me]) {
+			if it.auto&autoEnd != 0 {
 				endM = auto
 			}
 			mainOff := pos + startM
@@ -1205,7 +1256,7 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 			}
 			var crossOff float32
 			free := ln.cross - it.cross - it.marginCr
-			switch autoS, autoE := isAuto(c.margin[cs]), isAuto(c.margin[ce]); {
+			switch autoS, autoE := it.auto&autoStartC != 0, it.auto&autoEndC != 0; {
 			case autoS && autoE:
 				crossOff = max(free, 0) / 2
 			case autoS:
@@ -1249,9 +1300,8 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 // stretches reports whether c stretches across the line of a row (or a
 // column), as aligning by align asks, which icons do not, as they keep
 // their size, nor elements with automatic margins across it.
-func stretches(c *node, align Align, row bool) bool {
-	m := crossMargins[b2i(row)]
-	return selfAlign(c, align) == Stretch && c.kind != kindIcon && !isAuto(c.margin[m[0]]) && !isAuto(c.margin[m[1]])
+func stretches(c *node, align Align, autoCross bool) bool {
+	return selfAlign(c, align) == Stretch && c.kind != kindIcon && !autoCross
 }
 
 // byBaseline reports whether c, a child of the row (or grid) e, lines up
@@ -1264,6 +1314,13 @@ func byBaseline(c *node, align Align, e *node) bool {
 		m = [2]int{0, 2}
 	}
 	return selfAlign(c, align) == Baseline && !isAuto(c.margin[m[0]]) && !isAuto(c.margin[m[1]]) && !e.wrapReverse
+}
+
+// byBaselineItem reports whether the element c of the item lines up its
+// baseline with its siblings', as the item's automatic margins across the
+// line say: the same as byBaseline, which reads them of the element.
+func byBaselineItem(c *node, align Align, e *node, autoCross bool) bool {
+	return selfAlign(c, align) == Baseline && !autoCross && !e.wrapReverse
 }
 
 // boxBaseline returns how far below the top of an element laid out its
@@ -1328,6 +1385,11 @@ func selfAlign(c *node, align Align) Align {
 // resolveFlexible grows or shrinks the items of a line to fill space,
 // honoring their minimum and maximum sizes (CSS flexbox §9.7).
 func resolveFlexible(its []flexItem, space float32, growing bool) {
+	// The first walk freezes the items that cannot grow or shrink, and
+	// sums what the others grow or shrink by, in one walk: the walk that
+	// freezes them is the walk that sums them, and it reads the item,
+	// which it has in order, and not the element again.
+	free, sum := space, float32(0)
 	for i := range its {
 		it := &its[i]
 		it.flags &^= flagFrozen
@@ -1338,23 +1400,13 @@ func resolveFlexible(its []flexItem, space float32, growing bool) {
 		if factor == 0 || (growing && it.base > it.hyp) || (!growing && it.base < it.hyp) {
 			it.main = it.hyp
 			it.flags |= flagFrozen
+			free -= it.main + it.marginMain
+			continue
 		}
+		free -= it.base + it.marginMain
+		sum += factor
 	}
 	for range its {
-		free := space
-		var sum float32
-		for _, it := range its {
-			if it.has(flagFrozen) {
-				free -= it.main + it.marginMain
-			} else {
-				free -= it.base + it.marginMain
-				if growing {
-					sum += it.grow
-				} else {
-					sum += it.shrink * it.inner()
-				}
-			}
-		}
 		if sum == 0 {
 			break
 		}
@@ -1384,6 +1436,20 @@ func resolveFlexible(its []flexItem, space float32, growing bool) {
 			it := &its[i]
 			if !it.has(flagFrozen) && (violation > 0 && it.violation > 0 || violation < 0 && it.violation < 0) {
 				it.flags |= flagFrozen
+			}
+		}
+		// What is left to grow or shrink, and the room left for it.
+		free, sum = space, 0
+		for _, it := range its {
+			if it.has(flagFrozen) {
+				free -= it.main + it.marginMain
+			} else {
+				free -= it.base + it.marginMain
+				if growing {
+					sum += it.grow
+				} else {
+					sum += it.shrink * it.inner()
+				}
 			}
 		}
 	}
