@@ -370,6 +370,9 @@ type Window struct {
 	destroyed atomic.Bool
 	shown     bool
 	readyShow bool
+	// loads counts the loads the app asked the page for, so that a failed
+	// load knows whether its listeners started another. Main thread only.
+	loads int
 	// showLater tells that NewWindow left showing the window of native UI
 	// to the main loop's next turn (settleShow), and framing that its
 	// content draws a frame. Main thread only.
@@ -1568,6 +1571,7 @@ func (p *Page) LoadURL(rawURL string) error {
 	}
 	p.w.page(func(n platform.Window) {
 		p.w.html = nil
+		p.w.loads++
 		n.LoadURL(resolved)
 	})
 	return nil
@@ -1586,6 +1590,7 @@ func (p *Page) LoadFile(path string) error {
 	}
 	p.w.page(func(n platform.Window) {
 		p.w.html = nil
+		p.w.loads++
 		n.LoadFile(abs, filepath.Dir(abs))
 	})
 	return nil
@@ -1664,6 +1669,7 @@ type htmlDocument struct {
 // thread only.
 func (w *Window) loadHTML(n platform.Window, html, baseURL string) {
 	w.html = &htmlDocument{html: html, baseURL: baseURL}
+	w.loads++
 	n.LoadHTML(html, baseURL)
 }
 
@@ -1682,10 +1688,12 @@ func (d *htmlDocument) isAt(url string) bool {
 }
 
 // Reload reloads the page.
-func (p *Page) Reload() { p.w.page(func(n platform.Window) { n.Reload(false) }) }
+func (p *Page) Reload() { p.w.page(func(n platform.Window) { p.w.loads++; n.Reload(false) }) }
 
 // ReloadIgnoringCache reloads the page bypassing the cache.
-func (p *Page) ReloadIgnoringCache() { p.w.page(func(n platform.Window) { n.Reload(true) }) }
+func (p *Page) ReloadIgnoringCache() {
+	p.w.page(func(n platform.Window) { p.w.loads++; n.Reload(true) })
+}
 
 // Stop stops loading the page.
 func (p *Page) Stop() { p.w.page(platform.Window.StopLoading) }
@@ -2105,7 +2113,9 @@ func (w *Window) OnHide(fn func()) (off func()) { return w.onHide.add(fn, false)
 
 // OnReadyToShow is called once, when the first page is ready to be
 // displayed. Create the window with Hidden and call Show here to avoid a
-// visual flash. A window showing Content is ready once it drew its first
+// visual flash. A page that failed to load makes the window ready too,
+// unless an OnDidFailLoad listener loaded another, which the window then
+// waits for. A window showing Content is ready once it drew its first
 // frame, which a hidden window draws while hidden.
 func (w *Window) OnReadyToShow(fn func()) (off func()) { return w.onReadyToShow.add(fn, false) }
 
@@ -2374,7 +2384,15 @@ func (h *windowHandler) LoadFinished() {
 
 func (h *windowHandler) LoadFailed(url string, code int, desc string) {
 	h.w.themeColorSettled()
+	loads := h.w.loads
 	fire1(&h.w.onDidFailLoad, &LoadError{URL: url, Code: code, Description: desc})
+	// A page that failed to load never reports DOM ready, and its load
+	// never finishes: a window shown from OnReadyToShow would stay hidden
+	// for good. A listener that loaded another page instead, as one of
+	// the app's saying what went wrong, leaves the window to that page.
+	if h.w.loads == loads {
+		h.w.readyToShow()
+	}
 }
 
 func (h *windowHandler) TitleChanged(title string) {

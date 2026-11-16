@@ -62,9 +62,10 @@ export function reporter(post: (color: string) => void) {
 /** Watches the theme color of the document: its head's metas with a
  * MutationObserver, and their media with matchMedia, so that a change of the
  * system's appearance picks the meta for it. Returns the function to call
- * when the DOM is ready, which tells Go the color it found. */
-export function watchThemeColor(post: (color: string) => void): () => void {
-  const r = reporter(post);
+ * when the DOM is ready, which tells Go the color it found: again, for a
+ * page Go took for a new one, whatever it told before. */
+export function watchThemeColor(post: (color: string) => void): (again?: boolean) => void {
+  let r = reporter(post);
   const queries = new Map<string, MediaQueryList>();
   const matches = (media: string) => {
     let q = queries.get(media);
@@ -117,7 +118,10 @@ export function watchThemeColor(post: (color: string) => void): () => void {
   observer.observe(document, { childList: true });
   observe();
   update();
-  return () => r.ready(current());
+  return (again) => {
+    if (again) r = reporter(post);
+    r.ready(current());
+  };
 }
 
 const isMeta = (n: Node) => (n as Element).localName === "meta";

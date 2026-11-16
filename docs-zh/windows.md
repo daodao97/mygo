@@ -456,7 +456,7 @@ pet.SetInputRegion([]mygo.Rectangle{character, {X: 10, Y: 10, Width: 220, Height
 | `OnResize`, `OnMove` | 它被调整大小或移动 |
 | `OnMaximize`, `OnUnmaximize`, `OnMinimize`, `OnRestore` | 其状态改变 |
 | `OnEnterFullScreen`, `OnLeaveFullScreen` | 它进入或离开全屏 |
-| `OnReadyToShow` | 其第一个页面已准备好显示，或其原生 UI 绘制了第一帧 |
+| `OnReadyToShow` | 其第一个页面已准备好显示或加载失败（除非 `OnDidFailLoad` 的监听器加载了另一个页面，那么窗口会等待该页面），或其原生 UI 绘制了第一帧 |
 | `OnFileDrop` | 文件被拖放到其页面上，见[拖放的文件](frontend.md#拖放的文件)，或拖放到未接收它们的原生 UI 上，见[拖放的文件](ui/input.md#拖入的文件) |
 
 在关闭有未保存更改的窗口之前询问：
@@ -534,7 +534,7 @@ mygo.NewWindow(mygo.WindowOptions{
 |---|---|
 | `OnWillNavigate(func(e *mygo.NavigateEvent))` | 页面即将导航，例如点击链接之后；`e.PreventDefault()` 取消它。`e.UserInitiated` 表示导航是否由用户的手势开始——点击链接，或点击后由处理器设置 `location.href`——还是页面脚本自行发起。`LoadURL` 及其同类不会调用它，页面的 iframe 也不会，除了 Linux 上 WebKitGTK 2.56 之前的版本，那里无法告知导航来自哪个框架：在那里它也会为 iframe 的导航调用，但 `srcdoc` 的除外。 |
 | `OnDidNavigate(func(url string))` | 一次导航已提交 |
-| `OnDOMReady` | 页面的 DOM 已就绪（`DOMContentLoaded`） |
+| `OnDOMReady` | 页面的 DOM 已就绪（`DOMContentLoaded`），或者 Web 视图在后退或前进时按离开时的原样再次显示该页面 |
 | `OnDidFinishLoad` | 页面完成加载 |
 | `OnDidFailLoad(func(err *mygo.LoadError))` | 页面加载失败 |
 | `OnPageTitleUpdated(func(e *mygo.TitleEvent))` | 页面的 `<title>` 改变；阻止该事件会保持窗口标题不变 |
