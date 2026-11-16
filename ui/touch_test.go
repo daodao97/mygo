@@ -201,3 +201,52 @@ func TestTouchesTapBetweenBuilds(t *testing.T) {
 		t.Errorf("phases %v, want %v", phases, want)
 	}
 }
+
+// A finger's contact has its size in the element's units, where the
+// system tells it, as a whiteboard tells a palm erasing from a finger
+// drawing (#1879): a finger growing to a palm where it stands moves.
+func TestTouchesContact(t *testing.T) {
+	scale := float32(1)
+	var seen []Touch
+	tt := NewTester(func(c *Context) {
+		seen = Box(c).Size(200, 200).TransformOrigin(0, 0).Scale(scale, scale).Touches()
+	}, 400, 400)
+	tt.Frame()
+	tt.TouchDown(1, 50, 50)
+	if s := seen[0]; s.Width != 0 || s.Height != 0 {
+		t.Errorf("a finger the system tells no contact of: %v x %v, want 0 x 0", s.Width, s.Height)
+	}
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 2, X: 100, Y: 100, Width: 12, Height: 16})
+	tt.Frame()
+	if s := seen[1]; s.Width != 12 || s.Height != 16 {
+		t.Errorf("landed: %v x %v, want 12 x 16", s.Width, s.Height)
+	}
+	if tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchMove, ID: 2, X: 100, Y: 100, Width: 60, Height: 80}); !tt.FramePending() {
+		t.Error("a contact growing asked for no frame")
+	}
+	tt.Frame()
+	if s := seen[1]; s.Phase != TouchMoved || s.Width != 60 || s.Height != 80 {
+		t.Errorf("grown: %+v, want moved, 60 x 80", s)
+	}
+	// Lifting, it keeps the last contact.
+	tt.TouchUp(2, 100, 100)
+	if s := seen[1]; s.Phase != TouchEnded || s.Width != 60 || s.Height != 80 {
+		t.Errorf("lifted: %+v, want ended, 60 x 80", s)
+	}
+
+	// In the units of a scaled element, and of zoomed content.
+	scale = 2
+	tt.Frame()
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 3, X: 100, Y: 100, Width: 60, Height: 80})
+	tt.Frame()
+	if s := seen[len(seen)-1]; s.Width != 30 || s.Height != 40 {
+		t.Errorf("on an element scaled by 2: %v x %v, want 30 x 40", s.Width, s.Height)
+	}
+	scale = 1
+	tt.SetZoom(2)
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.TouchDown, ID: 4, X: 100, Y: 100, Width: 60, Height: 80})
+	tt.Frame()
+	if s := seen[len(seen)-1]; s.Width != 30 || s.Height != 40 {
+		t.Errorf("zoomed by 2: %v x %v, want 30 x 40", s.Width, s.Height)
+	}
+}

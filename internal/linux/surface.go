@@ -844,7 +844,8 @@ func (s *surface) touchEvent(typ int32, event ptr) {
 	s.touched = true
 	seq, x, y, t := field[ptr](event, 56), field[float64](event, 24), field[float64](event, 32), field[uint32](event, 20)
 	// Each finger, for the views that follow each, besides what the
-	// gesture makes of them.
+	// gesture makes of them. GDK tells no size of their contact: Width
+	// and Height stay 0.
 	finger := platform.SurfaceEvent{Kind: platform.TouchCancel}
 	if typ == 37 && field[int32](event, 64) != 0 {
 		for _, finger.ID = range s.points.reset() {

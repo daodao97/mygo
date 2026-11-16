@@ -485,7 +485,8 @@ ui.Box(c).Fill().HandleInput(func(ev ui.InputEvent) bool {
 构建以来抬起或被系统接管的手指，按落下的顺序排列。每个 `ui.Touch` 从手指落下
 到抬起都保持同一个 `ID`，不受其他手指影响，并带有它相对元素盒子的当前位置
 （`X`、`Y`）和落下的位置（`StartX`、`StartY`）、按压力度（`Pressure`，系统
-不报告时为 0.5），以及自上次构建以来的 `Phase`：`ui.TouchBegan`、
+不报告时为 0.5）、与屏幕接触的大小（`Width`、`Height`，以元素的单位计，系统
+不报告时为 0），以及自上次构建以来的 `Phase`：`ui.TouchBegan`、
 `ui.TouchMoved`、`ui.TouchStationary`、`ui.TouchEnded`（在它抬起的位置）或
 `ui.TouchCanceled`（被系统接管，如屏幕边缘的系统手势：不是完成的手势）。结束或
 被取消的手指只在一次构建中出现，之后就消失。请求它们的元素会在手指落下、移动
@@ -541,6 +542,37 @@ Windows 会把三指和四指的轻扫与点按留给它自己的手势（切换
 两根手指。在一次构建之前就落下又抬起的手指，比如快速
 点按，会在一次构建中以 `TouchBegan` 出现，在下一次构建中以 `TouchEnded`
 出现，因此统计落下手指数的视图会数到每一根。
+
+### 手掌与手指
+
+手掌按在屏幕上的面积比指尖大，大屏上的白板据接触的大小分辨二者，用手掌擦除，
+用手指书写：
+
+```go
+for _, t := range canvas.Touches() {
+	if t.Phase == ui.TouchEnded || t.Phase == ui.TouchCanceled {
+		continue
+	}
+	if t.Width*t.Height > 40*40 { // a palm
+		app.ink.Erase(t.X, t.Y, t.Width, t.Height)
+	} else {
+		app.ink.LineTo(t.ID, t.X, t.Y)
+	}
+}
+```
+
+大小以元素的单位计：在放大 2 倍的元素上减半，与 `X`、`Y` 一样。手指在原地
+变成手掌时以 `TouchMoved` 到来。系统报告它的地方：
+
+| 平台 | 接触大小 |
+| --- | --- |
+| Windows | 手指的 `POINTER_TOUCH_INFO` 的 `rcContact`，触摸屏报告时（`TOUCH_MASK_CONTACTAREA`），以 DIP 计 |
+| 浏览器 | Pointer Event 的 `width` 和 `height`；浏览器报告 1×1 时为 0，它无法得知时就这样报告 |
+| Linux | 无：GDK 不报告接触大小，`Width` 和 `Height` 为 0 |
+| macOS | 没有触摸屏，也就没有触摸 |
+
+为白板制造的大触摸屏通常会在 Windows 上报告接触大小。需要它的应用在 `Width`
+和 `Height` 为 0 时应以其他方式分辨手掌与手指。
 
 ## 每个键，随到随处理
 

@@ -22,6 +22,11 @@ type Touch struct {
 	// Pressure is how hard the finger presses, from 0 to 1, where the
 	// system tells it, else 0.5 while it touches, as Pointer Events'.
 	Pressure float32
+	// Width and Height are the size of the finger's contact with the
+	// screen, in the element's units (DIPs), where the system tells it,
+	// else 0: a palm presses a larger area than a fingertip. Windows and
+	// browsers tell it where the touchscreen does; Linux does not.
+	Width, Height float32
 }
 
 // TouchPhase is what a finger did since the last build (Touch.Phase).
@@ -92,6 +97,12 @@ func (e *node) Touches() []Touch {
 		touch := p.Touch
 		touch.X, touch.Y = s.local(p.X, p.Y)
 		touch.StartX, touch.StartY = s.local(p.StartX, p.StartY)
+		if touch.Width != 0 || touch.Height != 0 {
+			// In the element's axes, as a scaled canvas's.
+			wx, wy := s.vector(p.X, p.Y, p.Width, 0)
+			hx, hy := s.vector(p.X, p.Y, 0, p.Height)
+			touch.Width, touch.Height = dist([2]float32{wx, wy}, [2]float32{}), dist([2]float32{hx, hy}, [2]float32{})
+		}
 		out = append(out, touch)
 	}
 	return out
@@ -135,6 +146,7 @@ func (t *touchTracker) event(rt *engine, ev platform.SurfaceEvent) {
 	if pressure == 0 {
 		pressure = 0.5
 	}
+	w, h := float32(ev.Width), float32(ev.Height)
 	i := slices.IndexFunc(t.points, func(p touchPoint) bool { return p.from == ev.ID && p.Phase < TouchEnded && p.lift == 0 })
 	switch ev.Kind {
 	case platform.TouchDown:
@@ -144,7 +156,7 @@ func (t *touchTracker) event(rt *engine, ev platform.SurfaceEvent) {
 		}
 		t.last++
 		t.points = append(t.points, touchPoint{
-			Touch: Touch{ID: t.last, X: x, Y: y, StartX: x, StartY: y, Phase: TouchBegan, Pressure: pressure},
+			Touch: Touch{ID: t.last, X: x, Y: y, StartX: x, StartY: y, Phase: TouchBegan, Pressure: pressure, Width: w, Height: h},
 			from:  ev.ID, chain: rt.hitChain(x, y),
 		})
 	case platform.TouchMove:
@@ -152,10 +164,10 @@ func (t *touchTracker) event(rt *engine, ev platform.SurfaceEvent) {
 			return
 		}
 		p := &t.points[i]
-		if p.X == x && p.Y == y && p.Pressure == pressure {
+		if p.X == x && p.Y == y && p.Pressure == pressure && p.Width == w && p.Height == h {
 			return
 		}
-		p.X, p.Y, p.Pressure = x, y, pressure
+		p.X, p.Y, p.Pressure, p.Width, p.Height = x, y, pressure, w, h
 		if p.Phase != TouchBegan {
 			p.Phase = TouchMoved
 		}

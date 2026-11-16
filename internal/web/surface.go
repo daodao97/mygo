@@ -473,15 +473,30 @@ func primary(e js.Value) bool {
 }
 
 // touch sends a finger's pointer event as a touch of kind, by its
-// pointerId, for the views that follow each finger (platform.TouchDown):
-// the primary finger is the pointer as well.
+// pointerId, with the size of its contact, for the views that follow each
+// finger (platform.TouchDown): the primary finger is the pointer as well.
 func (s *surface) touch(e js.Value, kind platform.SurfaceEventKind) {
 	if t := e.Get("pointerType"); t.Type() != js.TypeString || t.String() != "touch" {
 		return
 	}
 	x, y := s.point(e)
 	_, pressure := device(e)
-	s.send(platform.SurfaceEvent{Kind: kind, ID: uint64(e.Get("pointerId").Int()), X: x, Y: y, Mods: s.mods(e), Pressure: pressure})
+	w, h := contact(e)
+	s.send(platform.SurfaceEvent{Kind: kind, ID: uint64(e.Get("pointerId").Int()), X: x, Y: y, Mods: s.mods(e), Pressure: pressure, Width: w, Height: h})
+}
+
+// contact returns the size of a finger's contact of a pointer event, in
+// CSS pixels (width and height), or 0 where the browser does not tell it:
+// it reports 1 by 1 then, as for a mouse.
+func contact(e js.Value) (w, h float64) {
+	wv, hv := e.Get("width"), e.Get("height")
+	if wv.Type() != js.TypeNumber || hv.Type() != js.TypeNumber {
+		return 0, 0
+	}
+	if w, h = wv.Float(), hv.Float(); w <= 1 && h <= 1 {
+		return 0, 0
+	}
+	return w, h
 }
 
 // device returns the device of a pointer event (pointerType) and its

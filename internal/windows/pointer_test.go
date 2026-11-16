@@ -30,6 +30,22 @@ func TestPointerInfoLayout(t *testing.T) {
 	if o := unsafe.Offsetof(pointerTouchInfo{}.Pressure); o != 140 {
 		t.Errorf("POINTER_TOUCH_INFO's pressure at %d, want 140", o)
 	}
+	if o := unsafe.Offsetof(pointerTouchInfo{}.Contact); o != 104 {
+		t.Errorf("POINTER_TOUCH_INFO's rcContact at %d, want 104", o)
+	}
+}
+
+// A finger's contact is the size of rcContact, where the touchscreen tells
+// it (TOUCH_MASK_CONTACTAREA), as a palm erasing a whiteboard (#1879).
+func TestTouchContact(t *testing.T) {
+	info := pointerTouchInfo{Contact: rect{Left: 100, Top: 200, Right: 160, Bottom: 290}}
+	if w, h := touchContact(&info); w != 0 || h != 0 {
+		t.Errorf("no contact area in the mask: %d x %d, want 0 x 0", w, h)
+	}
+	info.Mask = touchMaskContactArea | touchMaskPressure
+	if w, h := touchContact(&info); w != 60 || h != 90 {
+		t.Errorf("contact %d x %d, want 60 x 90", w, h)
+	}
 }
 
 // The cursors Windows lacks are drawn: opaque in the middle, transparent

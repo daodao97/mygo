@@ -554,8 +554,9 @@ that the system took since the last build, in the order they landed. Each
 `ui.Touch` keeps its `ID` from the moment the finger lands until it
 lifts, whatever the other fingers do, with where it is (`X`, `Y`) and
 where it landed (`StartX`, `StartY`) relative to the element's box, how
-hard it presses (`Pressure`, 0.5 where the system tells none) and its
-`Phase` since the last build: `ui.TouchBegan`, `ui.TouchMoved`,
+hard it presses (`Pressure`, 0.5 where the system tells none), the size
+of its contact with the screen (`Width`, `Height`, in the element's units,
+0 where the system tells none) and its `Phase` since the last build: `ui.TouchBegan`, `ui.TouchMoved`,
 `ui.TouchStationary`, `ui.TouchEnded` (where it lifted) or
 `ui.TouchCanceled` (the system took it, as for its own gesture at the
 screen's edge: no completed gesture). A finger that ended or was canceled
@@ -619,6 +620,40 @@ fingers there. A finger that lands and lifts
 before a build, as a quick tap does, comes as `TouchBegan` in one build
 and `TouchEnded` in the next, so a view counting the fingers that land
 counts each.
+
+### Palms and fingers
+
+A palm presses a larger area of the screen than a fingertip, which a
+whiteboard on a large screen tells apart by the contact's size, to erase
+with the palm and draw with a finger:
+
+```go
+for _, t := range canvas.Touches() {
+	if t.Phase == ui.TouchEnded || t.Phase == ui.TouchCanceled {
+		continue
+	}
+	if t.Width*t.Height > 40*40 { // a palm
+		app.ink.Erase(t.X, t.Y, t.Width, t.Height)
+	} else {
+		app.ink.LineTo(t.ID, t.X, t.Y)
+	}
+}
+```
+
+The size comes in the element's units: halved on an element scaled by 2,
+as `X` and `Y` are. A finger growing to a palm where it stands comes as
+`TouchMoved`. Where the system tells it:
+
+| Platform | Contact size |
+| --- | --- |
+| Windows | `rcContact` of the finger's `POINTER_TOUCH_INFO`, where the touchscreen reports it (`TOUCH_MASK_CONTACTAREA`), in DIPs |
+| Browsers | the Pointer Event's `width` and `height`; 0 where the browser reports 1 by 1, as it does when it cannot tell |
+| Linux | none: GDK tells no contact size, so `Width` and `Height` are 0 |
+| macOS | no touchscreens, so no touches |
+
+Large touchscreens made for whiteboards commonly report the contact on
+Windows. An app that needs it should tell a palm from a finger some other
+way where `Width` and `Height` are 0.
 
 ## Every key, as it comes
 

@@ -36,8 +36,9 @@ const (
 	ptTouch = 2
 	ptPen   = 3
 
-	penMaskPressure   = 0x1
-	touchMaskPressure = 0x4
+	penMaskPressure      = 0x1
+	touchMaskContactArea = 0x1
+	touchMaskPressure    = 0x4
 
 	// miWpSignature marks the extra information of mouse messages that
 	// Windows makes of a pen's or a finger's (MI_WP_SIGNATURE), with
@@ -136,8 +137,9 @@ func (s *surface) pointerMessage(m uint32, wp uintptr) {
 }
 
 // touchMessage sends a finger's WM_POINTER message, at at on the screen,
-// as a touch, for the views that follow each finger (platform.TouchDown):
-// its pointer ID stays with the finger until it lifts. The mouse messages
+// with the contact of the touchInfo pointerPressure read, as a touch, for
+// the views that follow each finger (platform.TouchDown): its pointer ID
+// stays with the finger until it lifts. The mouse messages
 // Windows makes of the first finger come as before.
 func (s *surface) touchMessage(m uint32, wp uintptr, at point, pressure float64) {
 	kind := platform.TouchMove
@@ -152,7 +154,19 @@ func (s *surface) touchMessage(m uint32, wp uintptr, at point, pressure float64)
 		return // hovering over the screen, as some can tell
 	}
 	procScreenToClient.Call(s.hwnd, uintptr(unsafe.Pointer(&at)))
-	s.send(platform.SurfaceEvent{Kind: kind, ID: uint64(loword(wp)), X: s.toDIP(at.X), Y: s.toDIP(at.Y), Mods: mods(), Pressure: pressure})
+	w, h := touchContact(&touchInfo)
+	s.send(platform.SurfaceEvent{Kind: kind, ID: uint64(loword(wp)), X: s.toDIP(at.X), Y: s.toDIP(at.Y), Mods: mods(), Pressure: pressure, Width: s.toDIP(w), Height: s.toDIP(h)})
+}
+
+// touchContact returns the size of a finger's contact with the screen,
+// in pixels, from its POINTER_TOUCH_INFO: 0 where the touchscreen does
+// not tell it (TOUCH_MASK_CONTACTAREA).
+func touchContact(info *pointerTouchInfo) (w, h int32) {
+	if info.Mask&touchMaskContactArea == 0 {
+		return 0, 0
+	}
+	c := info.Contact
+	return max(c.Right-c.Left, 0), max(c.Bottom-c.Top, 0)
 }
 
 // pointerCanceled reports whether a WM_POINTER message's pointer was

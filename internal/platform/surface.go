@@ -380,7 +380,8 @@ const (
 	// TouchDown, TouchMove, TouchUp and TouchCancel report a finger on a
 	// touchscreen landing, moving, lifting or taken by the system (as for
 	// an edge's gesture, where no TouchUp follows) at X, Y, with Pressure
-	// where the device tells it. ID tells the fingers down at once apart
+	// and the size of its contact (Width, Height) where the device tells
+	// them. ID tells the fingers down at once apart
 	// from the TouchDown to the TouchUp or TouchCancel; it may be used
 	// again after. They come besides the pointer events a backend makes of
 	// the fingers (taps, scrolls, pinches), which they leave as they are:
@@ -423,7 +424,11 @@ type SurfaceEvent struct {
 	// as a mouse, which the content takes for Pointer Events' default.
 	Pointer  PointerKind
 	Pressure float64
-	Key      Key
+	// Width and Height are the size of a finger's contact with the
+	// touchscreen in DIPs, of TouchDown and TouchMove, where the device
+	// tells it: 0 where it does not.
+	Width, Height float64
+	Key           Key
 	// PhysicalKey is the key by its position on an ANSI US keyboard,
 	// whatever the active layout types; KeyUnknown where the backend does
 	// not report it. Key and PhysicalKey agree on a US layout.

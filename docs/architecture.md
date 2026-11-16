@@ -3805,7 +3805,11 @@ either.
   `WM_POINTERCAPTURECHANGED` canceling, Linux numbers GDK's touch
   sequences (`touchPoints` in `internal/linux/touch.go`), browsers send
   the Pointer Events of `pointerType` `touch` by `pointerId`, and macOS,
-  without touchscreens, sends none. The engine drops them until a view
+  without touchscreens, sends none. The size of a finger's contact
+  (`SurfaceEvent.Width`, `Height`, in DIPs) comes from Windows's
+  `POINTER_TOUCH_INFO.rcContact` (with `TOUCH_MASK_CONTACTAREA`) and the
+  Pointer Events' `width` and `height` (1 by 1, unknown, is 0); GDK has
+  none. The engine drops them until a view
   calls `Touches`, which sets `engine.touchIn` (`ui/touch.go`), so apps
   that ask for none link none of it: the tracker gives each finger an ID
   of its own, keeps the hit chain where it landed, asks for a frame as one
