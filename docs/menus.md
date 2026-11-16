@@ -53,8 +53,13 @@ A `MenuItem` has:
   macOS puts that column after the menu's longest label (and subtitle,
   where that follows it), and draws the badges in a monospaced-digit font,
   so a measure keeps its width as its digits change. The column moves when
-  a label, a badge or the visibility of an item changes. Other platforms
-  show the badge after the label and subtitle;
+  a label, a badge or the visibility of an item changes. `BadgeShape` draws
+  a background behind the badge: `BadgeShapeSquare` on any macOS item, and
+  `BadgeShapeRounded` or `BadgeShapePill` on `KeepOpen` items (other items
+  show a square for any shape). `BadgeColor` (a CSS color) is the
+  background and `BadgeTextColor` the text color, with or without a
+  background. Other platforms show the badge after the label and subtitle,
+  and ignore the shape and colors;
 - `KeepOpen`, which keeps the menu open when the item is chosen on macOS.
   MyGo draws the item itself, with its label, badge and check mark, in a
   view that handles the click: the item's menu and the menu above it stay
@@ -120,7 +125,8 @@ the state the app gave them. An item the app disables stays disabled.
 ### Changing items
 
 Change items of a menu in use with their methods, so that the native menu
-follows: `SetLabel`, `SetBadge`, `SetBadgeAlign`, `SetEnabled`, `SetVisible`,
+follows: `SetLabel`, `SetBadge`, `SetBadgeAlign`, `SetBadgeShape`,
+`SetBadgeColor`, `SetBadgeTextColor`, `SetEnabled`, `SetVisible`,
 `SetChecked`, `SetAccelerator`, `SetSubtitle` and `SetIcon`:
 
 ```go

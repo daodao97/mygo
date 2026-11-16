@@ -72,6 +72,10 @@ func dropOwner(owner int) {
 		kept := list[:0]
 		for _, n := range list {
 			if n.owner == owner {
+				if view := send(n.item, "view"); view != 0 {
+					delete(keepOpenBadges, view)
+				}
+				delete(menuBadges, n.item)
 				release(n.item)
 			} else {
 				kept = append(kept, n)
@@ -151,6 +155,11 @@ func registerMenuTarget() {
 		method("accessibilityPerformPress", func(self id, _ objc.SEL) bool {
 			return keepOpenClick(self)
 		}),
+	})
+	// A pill draws behind its text in the view, and the view handles the
+	// mouse: the badge must not take the click.
+	classDef("MyGoMenuBadge", "NSTextField", nil, []objc.MethodDef{
+		method("hitTest:", func(self id, _ objc.SEL, _ NSPoint) id { return 0 }),
 	})
 	// NSMenu keeps key events in its tracking loop: it highlights the item
 	// itself, so the view follows the highlight from the menu's delegate
@@ -345,7 +354,7 @@ func (b *Backend) buildItem(it *platform.MenuItem, owner int, metrics menuMetric
 	applyItemState(item, it)
 	if it.KeepOpen && it.Submenu == nil {
 		tab := badgeTabFor(it.BadgeAlign, metrics.keepOpenStart, metrics.keepOpenWidth)
-		view := buildKeepOpenView(it, metrics, tab)
+		view := buildKeepOpenView(it, metrics)
 		send(item, "setView:", uintptr(view))
 		// The view replaces the title, but NSMenu sizes the menu by it: it
 		// holds the same label, tab stop and badge, so the menu is wide
@@ -354,7 +363,8 @@ func (b *Backend) buildItem(it *platform.MenuItem, owner int, metrics menuMetric
 		updateKeepOpenView(view, it, tab)
 	} else {
 		tab := badgeTabFor(it.BadgeAlign, metrics.badgeStart, metrics.badgeWidth)
-		setItemTitle(item, itemTitle(it), itemBadge(it), tab, it.BadgeAlign)
+		st := setMenuBadgeStyle(item, it)
+		setItemTitleStyled(item, itemTitle(it), itemBadge(it), tab, it.BadgeAlign, st)
 	}
 	if it.Submenu != nil {
 		sub := b.buildMenu(it.Submenu, it.Label, owner)
@@ -468,14 +478,14 @@ func badgeColumn(m *platform.Menu) (start, width float64) {
 	if !found {
 		return 0, 0
 	}
-	labelFont, badgeFont := menuFont(), menuBadgeFont()
+	labelFont := menuFont()
 	var maxLabel, maxBadge float64
 	for _, it := range m.Items {
 		if !it.Visible || it.Type == platform.MenuItemSeparator || keepOpenItem(it) {
 			continue
 		}
 		maxLabel = max(maxLabel, textWidth(itemTitle(it), labelFont))
-		maxBadge = max(maxBadge, textWidth(itemBadge(it), badgeFont))
+		maxBadge = max(maxBadge, menuBadgeBoxWidth(itemBadge(it), it.BadgeShape))
 	}
 	return maxLabel + menuBadgeGap, maxBadge
 }
@@ -545,6 +555,12 @@ func textWidth(s string, font id) float64 {
 // menuTitle returns the title of a label and, at the tab stop tab aligned
 // as align says, its badge in a monospaced-digit font, autoreleased.
 func menuTitle(label, badge string, tab float64, align platform.BadgeAlignment) id {
+	return menuTitleStyled(label, badge, tab, align, menuBadgeStyle{})
+}
+
+// menuTitleStyled is menuTitle with the badge's colors and, for a shape,
+// a square background behind it. System items cannot round it.
+func menuTitleStyled(label, badge string, tab float64, align platform.BadgeAlignment, st menuBadgeStyle) id {
 	attrs := send(class("NSMutableDictionary"), "dictionary")
 	if font := menuFont(); font != 0 {
 		send(attrs, "setObject:forKey:", uintptr(font), uintptr(nsString("NSFont")))
@@ -558,25 +574,61 @@ func menuTitle(label, badge string, tab float64, align platform.BadgeAlignment) 
 		sel("initWithTextAlignment:location:options:"), tabAlignment(align), tab, 0))
 	send(style, "setTabStops:", uintptr(nsArray(stop)))
 	send(attrs, "setObject:forKey:", uintptr(style), uintptr(nsString("NSParagraphStyle")))
+	shown := badge
+	if st.shape != "" {
+		shown = menuBadgePad + badge + menuBadgePad
+	}
 	title := autorelease(send(send(class("NSMutableAttributedString"), "alloc"), "initWithString:attributes:",
-		uintptr(nsString(label+"\t"+badge)), uintptr(attrs)))
+		uintptr(nsString(label+"\t"+shown)), uintptr(attrs)))
+	start := units([]rune(label + "\t"))
+	length := units([]rune(shown))
 	if font := menuBadgeFont(); font != 0 {
 		send(title, "addAttribute:value:range:",
-			uintptr(nsString("NSFont")), uintptr(font),
-			uintptr(units([]rune(label+"\t"))), uintptr(units([]rune(badge))))
+			uintptr(nsString("NSFont")), uintptr(font), uintptr(start), uintptr(length))
+	}
+	if st.shape != "" {
+		background := send(class("NSColor"), "quaternaryLabelColor")
+		if st.hasBG {
+			background = nsColor(st.bg)
+		}
+		send(title, "addAttribute:value:range:",
+			uintptr(nsString("NSBackgroundColor")), uintptr(background), uintptr(start), uintptr(length))
+	}
+	if color := menuBadgeTextColor(st); color != 0 {
+		send(title, "addAttribute:value:range:",
+			uintptr(nsString("NSColor")), uintptr(color), uintptr(start), uintptr(length))
 	}
 	return title
+}
+
+// menuBadgeTextColor is the foreground of a styled system badge, or 0 for
+// the menu's own color.
+func menuBadgeTextColor(st menuBadgeStyle) id {
+	if st.hasFG {
+		return nsColor(st.fg)
+	}
+	if st.shape != "" && st.hasBG && st.bg.A >= 128 {
+		if keepOpenColorDark(st.bg) {
+			return send(class("NSColor"), "whiteColor")
+		}
+		return send(class("NSColor"), "blackColor")
+	}
+	return 0
 }
 
 // setItemTitle shows label and, at the tab stop tab aligned as align says,
 // badge in a monospaced-digit font.
 func setItemTitle(item id, label, badge string, tab float64, align platform.BadgeAlignment) {
+	setItemTitleStyled(item, label, badge, tab, align, menuBadgeStyle{})
+}
+
+func setItemTitleStyled(item id, label, badge string, tab float64, align platform.BadgeAlignment, st menuBadgeStyle) {
 	if badge == "" || tab <= 0 {
 		send(item, "setAttributedTitle:", 0)
 		send(item, "setTitle:", uintptr(nsString(label)))
 		return
 	}
-	send(item, "setAttributedTitle:", uintptr(menuTitle(label, badge, tab, align)))
+	send(item, "setAttributedTitle:", uintptr(menuTitleStyled(label, badge, tab, align, st)))
 }
 
 // titleAlignment returns the alignment of the badge tab stop of a title.
@@ -614,7 +666,7 @@ func itemTitleParts(item id) (label, badge string, align platform.BadgeAlignment
 		label = goString(send(item, "title"))
 	}
 	if i := strings.IndexByte(label, '\t'); i >= 0 {
-		return label[:i], label[i+1:], align
+		return label[:i], strings.Trim(label[i+1:], menuBadgePad), align
 	}
 	return label, "", align
 }
@@ -633,29 +685,31 @@ func retabMenu(item id, label, badge string, align platform.BadgeAlignment) {
 		label string
 		badge string
 		align platform.BadgeAlignment
+		style menuBadgeStyle
 	}
 	var rows []row
-	labelFont, badgeFont := menuFont(), menuBadgeFont()
+	labelFont := menuFont()
 	var maxLabel, maxBadge float64
 	for _, x := range arrayItems(send(menu, "itemArray")) {
 		if x == 0 || sendBool(x, "isHidden") || sendBool(x, "isSeparatorItem") || send(x, "view") != 0 {
 			continue
 		}
 		l, b, a := label, badge, align
+		style := menuBadges[x]
 		if x != item {
 			l, b, a = itemTitleParts(x)
 		}
 		if l == "" && b == "" {
 			continue
 		}
-		rows = append(rows, row{x, l, b, a})
+		rows = append(rows, row{x, l, b, a, style})
 		maxLabel = max(maxLabel, textWidth(l, labelFont))
-		maxBadge = max(maxBadge, textWidth(b, badgeFont))
+		maxBadge = max(maxBadge, menuBadgeBoxWidth(b, style.shape))
 	}
 	start := maxLabel + menuBadgeGap
 	for _, r := range rows {
 		tab := badgeTabFor(r.align, start, maxBadge)
-		setItemTitle(r.item, r.label, r.badge, tab, r.align)
+		setItemTitleStyled(r.item, r.label, r.badge, tab, r.align, r.style)
 	}
 }
 
@@ -676,7 +730,100 @@ const (
 	menuViewCheck          = 2
 	menuViewLabel          = 3
 	menuViewIcon           = 4
+	menuViewBadge          = 5
+	menuBadgePadX          = 6
+	menuBadgeHeight        = 16
 )
+
+// menuBadgePad is the space a system badge's background adds on each side.
+const menuBadgePad = "\u2002"
+
+// menuBadgeStyle is the badge of a system-drawn item: its shape and colors.
+type menuBadgeStyle struct {
+	shape platform.BadgeShape
+	bg    platform.Color
+	fg    platform.Color
+	hasBG bool
+	hasFG bool
+}
+
+// menuBadges holds the badge style of each system-drawn item.
+var menuBadges = map[id]menuBadgeStyle{}
+
+// setMenuBadgeStyle records the badge style of it for item.
+func setMenuBadgeStyle(item id, it *platform.MenuItem) menuBadgeStyle {
+	st := menuBadgeStyle{shape: it.BadgeShape}
+	if it.BadgeColor != nil {
+		st.bg, st.hasBG = *it.BadgeColor, true
+	}
+	if it.BadgeTextColor != nil {
+		st.fg, st.hasFG = *it.BadgeTextColor, true
+	}
+	menuBadges[item] = st
+	return st
+}
+
+// menuBadgeBoxWidth is the width a system badge takes: a background keeps
+// room for its padding.
+func menuBadgeBoxWidth(badge string, shape platform.BadgeShape) float64 {
+	w := textWidth(badge, menuBadgeFont())
+	if shape != "" && badge != "" {
+		w += 2 * textWidth(menuBadgePad, menuBadgeFont())
+	}
+	return w
+}
+
+// keepOpenBadgeStyle is the badge of a KeepOpen view: its alignment and,
+// for a pill, its colors.
+type keepOpenBadgeStyle struct {
+	shape platform.BadgeShape
+	align platform.BadgeAlignment
+	bg    platform.Color
+	fg    platform.Color
+	hasBG bool
+	hasFG bool
+}
+
+// keepOpenBadges holds the badge style of each KeepOpen view. The menu's
+// views last as long as the menu, which clears their entries when it closes.
+var keepOpenBadges = map[id]keepOpenBadgeStyle{}
+
+// setKeepOpenBadge records the badge style of it for view.
+func setKeepOpenBadge(view id, it *platform.MenuItem) keepOpenBadgeStyle {
+	s := keepOpenBadgeStyle{shape: it.BadgeShape, align: it.BadgeAlign}
+	if it.BadgeColor != nil {
+		s.bg, s.hasBG = *it.BadgeColor, true
+	}
+	if it.BadgeTextColor != nil {
+		s.fg, s.hasFG = *it.BadgeTextColor, true
+	}
+	keepOpenBadges[view] = s
+	return s
+}
+
+// keepOpenBadgeWidth is the width a badge takes in its column: a pill
+// keeps room for its text padding.
+func keepOpenBadgeWidth(badge string, shape platform.BadgeShape) float64 {
+	w := textWidth(badge, menuBadgeFont())
+	if shape != "" && badge != "" {
+		w += 2 * menuBadgePadX
+	}
+	return w
+}
+
+// keepOpenBadgeRadius is the corner radius of a badge background.
+func keepOpenBadgeRadius(shape platform.BadgeShape) float64 {
+	switch shape {
+	case platform.BadgeShapeSquare:
+		return 0
+	case platform.BadgeShapeRounded:
+		return 4
+	case platform.BadgeShapePill:
+		return menuBadgeHeight / 2
+	default:
+		return 0
+	}
+}
 
 // keepOpenItemTitle is the text of the view of it. The view has one line,
 // so the subtitle follows the label.
@@ -714,7 +861,7 @@ func keepOpenMetrics(m *platform.Menu) (start, badgeWidth, viewWidth, labelX flo
 		maxLabel = max(maxLabel, textWidth(keepOpenItemTitle(it), labelFont))
 		if it.Badge != "" {
 			hasBadge = true
-			maxBadge = max(maxBadge, textWidth(itemBadge(it), menuBadgeFont()))
+			maxBadge = max(maxBadge, keepOpenBadgeWidth(itemBadge(it), it.BadgeShape))
 		}
 	}
 	start = maxLabel
@@ -737,9 +884,10 @@ func retabKeepOpenMenu(item id, label, badge string, align platform.BadgeAlignme
 		label string
 		badge string
 		align platform.BadgeAlignment
+		style keepOpenBadgeStyle
 	}
 	var rows []row
-	labelFont, badgeFont := menuFont(), menuBadgeFont()
+	labelFont := menuFont()
 	labelX := float64(menuKeepOpenLabelX)
 	var maxLabel, maxBadge float64
 	hasBadge := false
@@ -751,18 +899,23 @@ func retabKeepOpenMenu(item id, label, badge string, align platform.BadgeAlignme
 		if icon := send(view, "viewWithTag:", menuViewIcon); icon != 0 && !sendBool(icon, "isHidden") {
 			labelX = menuKeepOpenIconLabelX
 		}
+		style := keepOpenBadges[view]
 		l, b, a := label, badge, align
 		if x != item {
-			l, b, a = keepOpenTitle(view)
+			l, b, _ = keepOpenTitle(view)
+			a = style.align
+		}
+		if a == "" {
+			a = style.align
 		}
 		if l == "" && b == "" {
 			continue
 		}
-		rows = append(rows, row{view, l, b, a})
+		rows = append(rows, row{view, l, b, a, style})
 		maxLabel = max(maxLabel, textWidth(l, labelFont))
 		if b != "" {
 			hasBadge = true
-			maxBadge = max(maxBadge, textWidth(b, badgeFont))
+			maxBadge = max(maxBadge, keepOpenBadgeWidth(b, style.shape))
 		}
 	}
 	start := maxLabel
@@ -772,15 +925,14 @@ func retabKeepOpenMenu(item id, label, badge string, align platform.BadgeAlignme
 	width := max(labelX+menuKeepOpenMinRoom, labelX+start+maxBadge+menuKeepOpenRight) + menuKeepOpenChrome
 	msgSetFloat(menu, sel("setMinimumWidth:"), width)
 	for _, r := range rows {
-		tab := badgeTabFor(r.align, start, maxBadge)
-		layoutKeepOpenView(r.view, r.label, r.badge, tab, width, labelX, r.align)
+		layoutKeepOpenView(r.view, r.label, r.badge, start, maxBadge, width, labelX, r.align, r.style)
 	}
 }
 
 // buildKeepOpenView returns the view of an item that keeps its menu open:
 // MyGo draws the check mark, label and badge, and handles the mouse itself
 // so NSMenu does not end its tracking when the item is clicked.
-func buildKeepOpenView(it *platform.MenuItem, metrics menuMetrics, tab float64) id {
+func buildKeepOpenView(it *platform.MenuItem, metrics menuMetrics) id {
 	width := metrics.keepOpenView
 	view := autorelease(msgInitRect(send(class("MyGoMenuKeepOpenView"), "alloc"),
 		sel("initWithFrame:"), NSRect{Size: NSSize{width, menuKeepOpenHeight}}))
@@ -824,22 +976,48 @@ func buildKeepOpenView(it *platform.MenuItem, metrics menuMetrics, tab float64) 
 	send(label, "setFont:", uintptr(menuFont()))
 	send(label, "setTag:", menuViewLabel)
 	send(label, "setAutoresizingMask:", 2) // NSViewWidthSizable
-	send(label, "setAttributedStringValue:", uintptr(menuTitle(keepOpenItemTitle(it), itemBadge(it), tab, it.BadgeAlign)))
 	send(view, "addSubview:", uintptr(label))
+
+	badge := autorelease(msgInitRect(send(class("MyGoMenuBadge"), "alloc"), sel("initWithFrame:"), NSRect{}))
+	send(badge, "setBezeled:", 0)
+	send(badge, "setEditable:", 0)
+	send(badge, "setSelectable:", 0)
+	send(badge, "setDrawsBackground:", 0)
+	send(badge, "setAlignment:", uintptr(nsTextAlignmentCenter))
+	send(badge, "setFont:", uintptr(menuBadgeFont()))
+	send(badge, "setTag:", menuViewBadge)
+	send(badge, "setRefusesFirstResponder:", 1)
+	send(badge, "setAccessibilityElement:", 0)
+	send(badge, "setWantsLayer:", 1)
+	if layer := send(badge, "layer"); layer != 0 {
+		send(layer, "setMasksToBounds:", 1)
+	}
+	send(badge, "setHidden:", 1)
+	send(view, "addSubview:", uintptr(badge))
 
 	const options = 0x01 | 0x80 | 0x200 // entered/exited, active always, visible rect
 	tracking := msgInitMenuTrack(send(class("NSTrackingArea"), "alloc"),
 		sel("initWithRect:options:owner:userInfo:"), NSRect{}, options, view, 0)
 	send(view, "addTrackingArea:", uintptr(tracking))
 	release(tracking)
+	style := setKeepOpenBadge(view, it)
+	layoutKeepOpenView(view, keepOpenItemTitle(it), itemBadge(it),
+		metrics.keepOpenStart, metrics.keepOpenWidth, width, metrics.keepOpenLabelX, it.BadgeAlign, style)
 	return view
 }
 
 // updateKeepOpenView follows the state of it in the view of a KeepOpen item.
 func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) {
 	send(view, "setIdentifier:", uintptr(nsString(strconv.Itoa(it.ID))))
+	style := setKeepOpenBadge(view, it)
 	if label := send(view, "viewWithTag:", menuViewLabel); label != 0 {
-		send(label, "setAttributedStringValue:", uintptr(menuTitle(keepOpenItemTitle(it), itemBadge(it), tab, it.BadgeAlign)))
+		if style.shape != "" && itemBadge(it) != "" {
+			send(label, "setAttributedStringValue:", uintptr(menuTitle(keepOpenItemTitle(it), "", 0, it.BadgeAlign)))
+		} else {
+			text := menuTitleStyled(keepOpenItemTitle(it), itemBadge(it), tab, it.BadgeAlign,
+				menuBadgeStyle{fg: style.fg, hasFG: style.hasFG})
+			send(label, "setAttributedStringValue:", uintptr(text))
+		}
 	}
 	if icon := send(view, "viewWithTag:", menuViewIcon); icon != 0 {
 		var image id
@@ -861,15 +1039,43 @@ func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) {
 	setMenuViewColors(view)
 }
 
-// layoutKeepOpenView places the label of view and makes room for the tab
-// stop tab and for width, the width the menu's views share.
-func layoutKeepOpenView(view id, label, badge string, tab, width, labelX float64, align platform.BadgeAlignment) {
+// layoutKeepOpenView places the label and badge of view in their columns
+// and makes room for width, the width the menu's views share.
+func layoutKeepOpenView(view id, label, badge string, start, badgeWidth, width, labelX float64, align platform.BadgeAlignment, style keepOpenBadgeStyle) {
+	background := style.shape != "" && badge != ""
 	if field := send(view, "viewWithTag:", menuViewLabel); field != 0 {
-		send(field, "setAttributedStringValue:", uintptr(menuTitle(label, badge, tab, align)))
+		fieldWidth := width - labelX - 4
+		if background {
+			send(field, "setAttributedStringValue:", uintptr(menuTitle(label, "", 0, align)))
+			fieldWidth = max(start-4, 0)
+		} else {
+			tab := badgeTabFor(align, start, badgeWidth)
+			text := menuTitleStyled(label, badge, tab, align, menuBadgeStyle{fg: style.fg, hasFG: style.hasFG})
+			send(field, "setAttributedStringValue:", uintptr(text))
+		}
 		msgSetRect(field, sel("setFrame:"), NSRect{
 			Origin: NSPoint{X: labelX, Y: 2},
-			Size:   NSSize{Width: width - labelX - 4, Height: menuKeepOpenHeight - 4},
+			Size:   NSSize{Width: fieldWidth, Height: menuKeepOpenHeight - 4},
 		})
+	}
+	if field := send(view, "viewWithTag:", menuViewBadge); field != 0 {
+		if background {
+			boxWidth := keepOpenBadgeWidth(badge, style.shape)
+			msgSetRect(field, sel("setFrame:"), NSRect{
+				Origin: NSPoint{X: labelX + start + keepOpenBadgeOffset(align, badgeWidth, boxWidth),
+					Y: (menuKeepOpenHeight - menuBadgeHeight) / 2},
+				Size: NSSize{Width: boxWidth, Height: menuBadgeHeight},
+			})
+			send(field, "setStringValue:", uintptr(nsString(badge)))
+			send(field, "setTextColor:", uintptr(keepOpenBadgeTextColor(style)))
+			if layer := send(field, "layer"); layer != 0 {
+				send(layer, "setBackgroundColor:", uintptr(send(keepOpenBadgeColor(style), "CGColor")))
+				msgSetFloat(layer, sel("setCornerRadius:"), keepOpenBadgeRadius(style.shape))
+			}
+			send(field, "setHidden:", 0)
+		} else {
+			send(field, "setHidden:", 1)
+		}
 	}
 	frame := msgRect(view, sel("frame"))
 	if frame.Size.Width != width {
@@ -882,6 +1088,48 @@ func layoutKeepOpenView(view id, label, badge string, tab, width, labelX float64
 			Size:   NSSize{Width: width - 8, Height: menuKeepOpenHeight - 2},
 		})
 	}
+}
+
+// keepOpenBadgeOffset is where a badge box of box sits in a column of
+// column, for its alignment.
+func keepOpenBadgeOffset(align platform.BadgeAlignment, column, box float64) float64 {
+	switch align {
+	case platform.BadgeAlignLeft:
+		return 0
+	case platform.BadgeAlignCenter:
+		return (column - box) / 2
+	default:
+		return column - box
+	}
+}
+
+// keepOpenBadgeColor is the background of a pill.
+func keepOpenBadgeColor(style keepOpenBadgeStyle) id {
+	if style.hasBG {
+		return nsColor(style.bg)
+	}
+	return send(class("NSColor"), "quaternaryLabelColor")
+}
+
+// keepOpenBadgeTextColor is the text color of a pill: the one asked for,
+// or white or black against its background.
+func keepOpenBadgeTextColor(style keepOpenBadgeStyle) id {
+	if style.hasFG {
+		return nsColor(style.fg)
+	}
+	if style.hasBG && style.bg.A >= 128 {
+		name := "blackColor"
+		if keepOpenColorDark(style.bg) {
+			name = "whiteColor"
+		}
+		return send(class("NSColor"), name)
+	}
+	return send(class("NSColor"), "labelColor")
+}
+
+func keepOpenColorDark(c platform.Color) bool {
+	l := (0.299*float64(c.R) + 0.587*float64(c.G) + 0.114*float64(c.B)) / 255
+	return l < 0.5
 }
 
 // keepOpenTitle returns the label, badge and badge alignment a KeepOpen
@@ -898,6 +1146,12 @@ func keepOpenTitle(view id) (label, badge string, align platform.BadgeAlignment)
 		align = titleAlignment(value)
 	} else {
 		text = goString(send(field, "stringValue"))
+	}
+	if badgeField := send(view, "viewWithTag:", menuViewBadge); badgeField != 0 && !sendBool(badgeField, "isHidden") {
+		if style := keepOpenBadges[view]; style.align != "" {
+			align = style.align
+		}
+		return text, goString(send(badgeField, "stringValue")), align
 	}
 	if i := strings.IndexByte(text, '\t'); i >= 0 {
 		return text[:i], text[i+1:], align
@@ -944,6 +1198,22 @@ func setMenuViewColors(view id) {
 		name = "disabledControlTextColor"
 	}
 	send(label, "setTextColor:", uintptr(send(class("NSColor"), name)))
+	setMenuBadgeColors(view)
+}
+
+// setMenuBadgeColors follows the appearance in the badge of a KeepOpen
+// view: its default background and text color are dynamic.
+func setMenuBadgeColors(view id) {
+	field := send(view, "viewWithTag:", menuViewBadge)
+	if field == 0 || sendBool(field, "isHidden") {
+		return
+	}
+	style := keepOpenBadges[view]
+	if layer := send(field, "layer"); layer != 0 && !style.hasBG {
+		color := send(send(class("NSColor"), "quaternaryLabelColor"), "CGColor")
+		send(layer, "setBackgroundColor:", uintptr(color))
+	}
+	send(field, "setTextColor:", uintptr(keepOpenBadgeTextColor(style)))
 }
 
 // menuImage is iconImage once LinkMenuIcons links it, when the app first
@@ -997,6 +1267,9 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 				view = send(n.item, "view")
 			}
 			applyItemState(n.item, it)
+			if it.Type != platform.MenuItemSeparator {
+				setMenuBadgeStyle(n.item, it)
+			}
 			switch {
 			case it.Type == platform.MenuItemSeparator:
 			case view != 0:

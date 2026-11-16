@@ -1754,6 +1754,7 @@ func TestMenuRolesAndState(t *testing.T) {
 func TestMenuBadge(t *testing.T) {
 	menu := NewMenu([]*MenuItem{{
 		ID: "node", Label: "Node", Badge: "120 ms", BadgeAlign: BadgeAlignLeft,
+		BadgeShape: BadgeShapePill, BadgeColor: "#34c759", BadgeTextColor: "#fff",
 	}})
 	snap := menu.snapshot()
 	if got := snap.Items[0].Badge; got != "120 ms" {
@@ -1762,14 +1763,24 @@ func TestMenuBadge(t *testing.T) {
 	if got := snap.Items[0].BadgeAlign; got != platform.BadgeAlignLeft {
 		t.Fatalf("badge align = %q", got)
 	}
+	if pill := snap.Items[0]; pill.BadgeShape != platform.BadgeShapePill || pill.BadgeColor == nil ||
+		*pill.BadgeColor != (platform.Color{R: 0x34, G: 0xc7, B: 0x59, A: 255}) ||
+		pill.BadgeTextColor == nil || *pill.BadgeTextColor != (platform.Color{R: 255, G: 255, B: 255, A: 255}) {
+		t.Fatalf("badge pill = %+v", pill)
+	}
 	item := menu.ItemByID("node")
 	item.SetBadge("1.2s")
 	item.SetBadgeAlign(BadgeAlignCenter)
+	item.SetBadgeShape("")
+	item.SetBadgeColor("")
+	item.SetBadgeTextColor("#000")
 	onMain(func() {}) // the updates reach the backend on the main thread
 	updates := fb.MenuUpdates()
 	last := updates[len(updates)-1]
-	if last.ID != item.uid || last.Badge != "1.2s" || last.BadgeAlign != platform.BadgeAlignCenter {
-		t.Errorf("SetBadge and SetBadgeAlign not propagated: %+v", last)
+	if last.ID != item.uid || last.Badge != "1.2s" || last.BadgeAlign != platform.BadgeAlignCenter ||
+		last.BadgeShape != "" || last.BadgeColor != nil ||
+		last.BadgeTextColor == nil || *last.BadgeTextColor != (platform.Color{R: 0, G: 0, B: 0, A: 255}) {
+		t.Errorf("badge updates not propagated: %+v", last)
 	}
 }
 

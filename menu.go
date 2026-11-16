@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"weak"
 
@@ -33,6 +34,27 @@ const (
 	BadgeAlignCenter BadgeAlignment = "center"
 	BadgeAlignRight  BadgeAlignment = "right" // the default
 )
+
+// BadgeShape is the background behind a badge.
+type BadgeShape string
+
+const (
+	BadgeShapeSquare  BadgeShape = "square"
+	BadgeShapeRounded BadgeShape = "rounded"
+	BadgeShapePill    BadgeShape = "pill"
+)
+
+// menuColor parses a badge color, nil for empty or invalid.
+func menuColor(s string) *platform.Color {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	c, err := parseColor(s)
+	if err != nil {
+		return nil
+	}
+	return &c
+}
 
 // MenuRole gives a menu item a predefined behavior, label and accelerator.
 type MenuRole string
@@ -138,7 +160,19 @@ type MenuItem struct {
 	// BadgeAlign is where Badge sits in that column: BadgeAlignLeft,
 	// BadgeAlignCenter, or BadgeAlignRight (the default).
 	BadgeAlign BadgeAlignment
-	Submenu    []*MenuItem
+	// BadgeShape draws a background behind Badge: BadgeShapeSquare,
+	// BadgeShapeRounded or BadgeShapePill. The zero value draws none.
+	// macOS system-drawn items show a square background; KeepOpen items
+	// round it as asked. Other platforms ignore it.
+	BadgeShape BadgeShape
+	// BadgeColor is the badge background, as a CSS color (see Window
+	// BackgroundColor). Empty uses the system's subtle background.
+	BadgeColor string
+	// BadgeTextColor is the badge text color, as a CSS color, with or
+	// without a background. Empty picks white or black for contrast with
+	// BadgeColor, or the menu's color when there is none.
+	BadgeTextColor string
+	Submenu        []*MenuItem
 	// Click is called on the main thread when the item is chosen. On Linux
 	// and Windows, win is the window whose menu bar or context menu was
 	// chosen. Other menus use the focused window, which may be nil.
@@ -337,6 +371,24 @@ func (it *MenuItem) SetBadge(badge string) { it.update(func() { it.Badge = badge
 // BadgeAlignLeft, BadgeAlignCenter or BadgeAlignRight (the default).
 func (it *MenuItem) SetBadgeAlign(align BadgeAlignment) {
 	it.update(func() { it.BadgeAlign = align })
+}
+
+// SetBadgeShape draws a background behind the badge: BadgeShapeSquare,
+// BadgeShapeRounded, BadgeShapePill, or "" for none.
+func (it *MenuItem) SetBadgeShape(shape BadgeShape) {
+	it.update(func() { it.BadgeShape = shape })
+}
+
+// SetBadgeColor changes the badge background, as a CSS color; "" uses the
+// system's subtle background.
+func (it *MenuItem) SetBadgeColor(color string) {
+	it.update(func() { it.BadgeColor = color })
+}
+
+// SetBadgeTextColor changes the badge text color, as a CSS color; "" picks
+// white or black for contrast with BadgeColor.
+func (it *MenuItem) SetBadgeTextColor(color string) {
+	it.update(func() { it.BadgeTextColor = color })
 }
 
 // SetAccelerator changes the keyboard shortcut of the item.
@@ -575,18 +627,21 @@ func (m *Menu) snapshotLocked() *platform.Menu {
 
 func (it *MenuItem) snapshotLocked() *platform.MenuItem {
 	p := &platform.MenuItem{
-		ID:          it.uid,
-		Label:       it.Label,
-		Subtitle:    it.Subtitle,
-		Badge:       it.Badge,
-		BadgeAlign:  platform.BadgeAlignment(it.BadgeAlign),
-		KeepOpen:    it.KeepOpen,
-		Role:        string(it.Role),
-		Accelerator: it.Accelerator,
-		Enabled:     !it.Disabled,
-		Visible:     !it.Hidden,
-		Checked:     it.Checked,
-		ToolTip:     it.ToolTip,
+		ID:             it.uid,
+		Label:          it.Label,
+		Subtitle:       it.Subtitle,
+		Badge:          it.Badge,
+		BadgeAlign:     platform.BadgeAlignment(it.BadgeAlign),
+		BadgeShape:     platform.BadgeShape(it.BadgeShape),
+		BadgeColor:     menuColor(it.BadgeColor),
+		BadgeTextColor: menuColor(it.BadgeTextColor),
+		KeepOpen:       it.KeepOpen,
+		Role:           string(it.Role),
+		Accelerator:    it.Accelerator,
+		Enabled:        !it.Disabled,
+		Visible:        !it.Hidden,
+		Checked:        it.Checked,
+		ToolTip:        it.ToolTip,
 	}
 	if it.Icon != nil {
 		p.Icon = it.Icon.p

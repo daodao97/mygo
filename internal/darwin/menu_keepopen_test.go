@@ -201,3 +201,181 @@ func TestMenuKeepOpenSubtitleAndIcon(t *testing.T) {
 		}
 	})
 }
+
+// TestMenuKeepOpenBadgePill checks that a KeepOpen badge draws as a pill
+// behind its text, with its colors, and follows updates in place.
+func TestMenuKeepOpenBadgePill(t *testing.T) {
+	load()
+	registerMenuTarget()
+	withPool(func() {
+		b := &Backend{}
+		green := &platform.Color{R: 52, G: 199, B: 89, A: 255}
+		item := &platform.MenuItem{
+			ID: 7, Label: "Node", Badge: "120 ms", KeepOpen: true,
+			BadgeShape: platform.BadgeShapePill, BadgeColor: green,
+			BadgeTextColor: &platform.Color{R: 255, G: 255, B: 255, A: 255},
+			Visible:        true, Enabled: true,
+		}
+		m := &platform.Menu{Items: []*platform.MenuItem{
+			item,
+			{Label: "Other", Badge: "1.2s", KeepOpen: true, Visible: true, Enabled: true},
+		}}
+		menu := b.buildMenu(m, "", 1)
+		defer dropOwner(1)
+
+		native := send(menu, "itemAtIndex:", 0)
+		view := send(native, "view")
+		label := send(view, "viewWithTag:", menuViewLabel)
+		badge := send(view, "viewWithTag:", menuViewBadge)
+		if label == 0 || badge == 0 {
+			t.Fatal("KeepOpen view has no label or badge")
+		}
+		if sendBool(badge, "isHidden") {
+			t.Fatal("pill badge is hidden")
+		}
+		if got := goString(send(badge, "stringValue")); got != "120 ms" {
+			t.Errorf("pill text = %q", got)
+		}
+		if got := goString(send(label, "stringValue")); got != "Node" {
+			t.Errorf("label with a pill = %q", got)
+		}
+		if width := msgRect(badge, sel("frame")).Size.Width; width <= textWidth("120 ms", menuBadgeFont()) {
+			t.Errorf("pill width %v has no padding", width)
+		}
+		if send(badge, "textColor") == 0 {
+			t.Error("pill has no text color")
+		}
+		if layer := send(badge, "layer"); layer == 0 || send(layer, "backgroundColor") == 0 {
+			t.Error("pill has no background")
+		}
+		if got := goString(send(view, "accessibilityValue")); got != "120 ms" {
+			t.Errorf("accessibility value = %q", got)
+		}
+		if got := goString(send(view, "accessibilityLabel")); got != "Node" {
+			t.Errorf("accessibility label = %q", got)
+		}
+
+		// The item without a pill keeps its badge in the label.
+		other := send(menu, "itemAtIndex:", 1)
+		otherBadge := send(send(other, "view"), "viewWithTag:", menuViewBadge)
+		otherLabel := send(send(other, "view"), "viewWithTag:", menuViewLabel)
+		if otherBadge == 0 || !sendBool(otherBadge, "isHidden") {
+			t.Error("badge of an item without a pill is shown")
+		}
+		if got := goString(send(otherLabel, "stringValue")); got != "Other\t1.2s" {
+			t.Errorf("label without a pill = %q", got)
+		}
+
+		// A badge set later updates the pill in place.
+		b.UpdateMenuItem(&platform.MenuItem{
+			ID: 7, Label: "Node", Badge: "1.2s", KeepOpen: true,
+			BadgeShape: platform.BadgeShapePill, BadgeColor: &platform.Color{R: 255, G: 59, B: 48, A: 255},
+			BadgeAlign: platform.BadgeAlignLeft, Visible: true, Enabled: true,
+		})
+		if got := goString(send(badge, "stringValue")); got != "1.2s" {
+			t.Errorf("pill text after update = %q", got)
+		}
+		if got := msgRect(badge, sel("frame")).Origin.X; got == 0 {
+			t.Error("pill did not move to the left of its column")
+		}
+	})
+}
+
+// TestMenuKeepOpenBadgePillColumn checks that the pills of a view menu
+// share their right edge, padding included.
+func TestMenuKeepOpenBadgePillColumn(t *testing.T) {
+	load()
+	registerMenuTarget()
+	withPool(func() {
+		b := &Backend{}
+		var items []*platform.MenuItem
+		for i, badge := range []string{"3 ms", "18 ms", "7 ms"} {
+			items = append(items, &platform.MenuItem{
+				ID: i + 1, Label: "Node", Badge: badge, KeepOpen: true,
+				BadgeShape: platform.BadgeShapePill, BadgeAlign: platform.BadgeAlignRight,
+				BadgeColor: &platform.Color{R: 52, G: 199, B: 89, A: 255},
+				Visible:    true, Enabled: true,
+			})
+		}
+		menu := b.buildMenu(&platform.Menu{Items: items}, "", 1)
+		defer dropOwner(1)
+		var right float64
+		for i := range items {
+			badge := send(send(send(menu, "itemAtIndex:", uintptr(i)), "view"), "viewWithTag:", menuViewBadge)
+			frame := msgRect(badge, sel("frame"))
+			if frame.Size.Width == 0 || sendBool(badge, "isHidden") {
+				t.Fatalf("item %d has no pill", i)
+			}
+			maxX := frame.Origin.X + frame.Size.Width
+			if i == 0 {
+				right = maxX
+				continue
+			}
+			if maxX != right {
+				t.Errorf("pill %d right edge = %v, want %v", i, maxX, right)
+			}
+		}
+	})
+}
+
+// TestMenuKeepOpenBadgePillAfterClose checks that closing a menu keeps the
+// badge styles of its views, which updates still use.
+func TestMenuKeepOpenBadgePillAfterClose(t *testing.T) {
+	load()
+	registerMenuTarget()
+	withPool(func() {
+		b := &Backend{}
+		m := &platform.Menu{Items: []*platform.MenuItem{
+			{ID: 1, Label: "Node", Badge: "3 ms", KeepOpen: true, BadgeShape: platform.BadgeShapePill,
+				BadgeColor: &platform.Color{R: 52, G: 199, B: 89, A: 255}, Visible: true, Enabled: true},
+			{ID: 2, Label: "Other", Badge: "18 ms", KeepOpen: true, BadgeShape: platform.BadgeShapePill,
+				BadgeColor: &platform.Color{R: 52, G: 199, B: 89, A: 255}, Visible: true, Enabled: true},
+		}}
+		menu := b.buildMenu(m, "", 1)
+		defer dropOwner(1)
+		if delegate := send(menu, "delegate"); delegate != 0 {
+			send(delegate, "menuDidClose:", uintptr(menu))
+		}
+		b.UpdateMenuItem(&platform.MenuItem{ID: 2, Label: "Other", Badge: "7 ms",
+			BadgeShape: platform.BadgeShapePill, BadgeColor: &platform.Color{R: 52, G: 199, B: 89, A: 255},
+			KeepOpen: true, Visible: true, Enabled: true})
+
+		first := send(send(menu, "itemAtIndex:", 0), "view")
+		firstBadge := send(first, "viewWithTag:", menuViewBadge)
+		if firstBadge == 0 || sendBool(firstBadge, "isHidden") {
+			t.Fatal("first pill went away after the menu closed")
+		}
+		if got := goString(send(firstBadge, "stringValue")); got != "3 ms" {
+			t.Errorf("first pill text = %q", got)
+		}
+		if layer := send(firstBadge, "layer"); layer == 0 || send(layer, "backgroundColor") == 0 {
+			t.Error("first pill lost its background")
+		}
+	})
+}
+
+// TestMenuKeepOpenBadgePillDefaultColor checks that a pill without a color
+// takes the dynamic default again when the state refreshes.
+func TestMenuKeepOpenBadgePillDefaultColor(t *testing.T) {
+	load()
+	registerMenuTarget()
+	withPool(func() {
+		b := &Backend{}
+		m := &platform.Menu{Items: []*platform.MenuItem{{
+			ID: 1, Label: "Node", Badge: "3 ms", KeepOpen: true,
+			BadgeShape: platform.BadgeShapeRounded, Visible: true, Enabled: true,
+		}}}
+		menu := b.buildMenu(m, "", 1)
+		defer dropOwner(1)
+		view := send(send(menu, "itemAtIndex:", 0), "view")
+		badge := send(view, "viewWithTag:", menuViewBadge)
+		if layer := send(badge, "layer"); layer == 0 || send(layer, "backgroundColor") == 0 {
+			t.Fatal("pill has no default background")
+		}
+		send(send(badge, "layer"), "setBackgroundColor:", 0)
+		setMenuViewColors(view)
+		if layer := send(badge, "layer"); send(layer, "backgroundColor") == 0 {
+			t.Error("default background not applied again")
+		}
+	})
+}
