@@ -880,7 +880,8 @@ type TrayOptions struct {
 	// app makes it again or makes its icons in another order. On Linux it
 	// is the icon's StatusNotifierItem ID, after the program's name, by
 	// which a panel keeps its settings for the icon, as KDE Plasma keeps
-	// whether it shows the icon or hides it.
+	// whether it shows the icon or hides it; empty, it is the program's
+	// name and the icon's number among the app's icons.
 	ID string
 	// Icon is a PNG image, ideally 16x16 points (32x32 pixels for Retina).
 	Icon []byte

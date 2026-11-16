@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
@@ -626,10 +627,11 @@ func (b *Backend) NewTray(id string, h platform.TrayHandler) (platform.Tray, err
 // named after the program and the ID, which then stays across launches,
 // and is apart from other apps' icons of that ID; an ID another of the
 // app's icons has takes a number after it. An icon of no ID is named
-// after the process and its number.
+// after the program and its number among the app's icons, which stays
+// too as the app makes its icons in the same order.
 func (b *Backend) trayName(id, program string, n int) string {
 	if id == "" {
-		return fmt.Sprintf("mygo-%d-%d", os.Getpid(), n)
+		id = strconv.Itoa(n)
 	}
 	if program == "" {
 		program = "mygo"
