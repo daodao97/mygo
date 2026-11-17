@@ -326,3 +326,23 @@ func TestDiffFrameAllocs(t *testing.T) {
 		t.Errorf("a steady frame allocates %.0f times, and one scrolling within rows laid out %.0f, not 2", steady, warm)
 	}
 }
+
+// BenchmarkPainterRichText renders the frames of a view drawing 80 lines
+// with Painter.RichText, as a diff pane does: the same lines, or the next
+// page of them each frame, which lays out every line anew.
+func BenchmarkPainterRichText(b *testing.B) {
+	for _, pages := range []bool{false, true} {
+		b.Run(map[bool]string{false: "steady", true: "pages"}[pages], func(b *testing.B) {
+			rl := newRichLines(4000)
+			rl.shown = 80
+			tt := coreNewTester(rl.view, 400, 80*16)
+			b.ReportAllocs()
+			for b.Loop() {
+				if pages {
+					rl.from += rl.shown
+				}
+				tt.Frame()
+			}
+		})
+	}
+}

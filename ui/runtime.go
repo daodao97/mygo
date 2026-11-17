@@ -159,8 +159,11 @@ type engine struct {
 	// afterInputs whose containers are still building.
 	waitingInputs, waitingActions []int
 
-	// measured are the last spans laid out outside elements (richParams).
-	measured     [8]measuredSpans
+	// measured are the last spans laid out outside elements, a ring made
+	// by the first (richSpans), and measuredAt the entries by their
+	// fingerprints.
+	measured     []measuredSpans
+	measuredAt   map[uint64]int32
 	nextMeasured int
 	paths        paths
 	// pathClips are the masks of the paths clips were cut to lately, by
