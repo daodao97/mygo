@@ -26,6 +26,11 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		}
 		return false
 	}
+	if ev.Kind == platform.SurfaceGesture {
+		// Two fingers, for what asks (Gestures, touch_fork.go).
+		rt.fromWindow(&ev)
+		return rt.gestureEvent(ev)
+	}
 	switch ev.Kind {
 	case platform.SurfaceFrame:
 	case platform.PointerMove, platform.PointerLeave:

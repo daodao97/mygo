@@ -55,7 +55,7 @@ func View(c *ui.Context, t *Terminal) ui.Element {
 			e.Tooltip("Open " + label)
 		}
 	}
-	e.HandleInput(v.input)
+	e.HandleInput(v.input).TouchSelection()
 	e.TextCaret(v.caret())
 	e.Draw(v.paint)
 	e.ContextMenu(v.menu)
@@ -680,7 +680,7 @@ func (v *view) input(ev ui.InputEvent) bool {
 			return false
 		}
 		return true
-	case ui.InputPointerDown, ui.InputPointerUp, ui.InputPointerMove:
+	case ui.InputPointerDown, ui.InputPointerUp, ui.InputPointerMove, ui.InputLongPress:
 		took := v.pointerEvent(ev)
 		if a := v.rightClick; a != RightClickContextMenu {
 			// Outside pointerEvent's lock, which copying and pasting take.
@@ -1196,6 +1196,8 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 	}
 	if tap := v.linkTap; tap != nil {
 		switch ev.Kind {
+		case ui.InputLongPress:
+			v.linkTap = nil // Continue into ordinary word selection.
 		case ui.InputPointerMove:
 			tap.cancelled = tap.cancelled || tap.moved(ev.X, ev.Y)
 			return true
@@ -1222,9 +1224,7 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 			return true
 		}
 	}
-	// The fork's touch selection by a long press waits for its port onto
-	// #940's touch engine (FORK.md, "第二阶段").
-	longPress := false
+	longPress := ev.Kind == ui.InputLongPress
 	if longPress {
 		v.touchSelecting = true
 	}
@@ -1246,7 +1246,7 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 	col, row := v.cellAt(ev.X, ev.Y)
 	px, py := float64(ev.X*v.scale), float64(ev.Y*v.scale)
 	switch ev.Kind {
-	case ui.InputPointerDown:
+	case ui.InputPointerDown, ui.InputLongPress:
 		if ev.Kind == ui.InputPointerDown && ev.Button == 1 && t.opts.RightClick != RightClickContextMenu {
 			// input does it once the lock is released.
 			v.rightClick = t.opts.RightClick

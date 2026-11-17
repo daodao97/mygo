@@ -41,7 +41,9 @@ type surface struct {
 	pinchTurning bool
 	// lastTap is where and when the last tap ended, for double taps.
 	lastTapX, lastTapY, lastTapTime float64
-	taps                            int
+	// two is the fork's two-finger gestures (gesture_fork.go).
+	two  twoFingers
+	taps int
 
 	text     platform.TextInputState
 	textSent wire.SetTextInput
@@ -340,6 +342,7 @@ func (s *surface) touch(e *wire.TouchEvent) {
 				// Pinching, not pressing: the press ends without a click.
 				s.cancel()
 			}
+			s.twoStart(e.Time)
 			return
 		}
 		if len(s.fingers) > 1 {
@@ -358,6 +361,10 @@ func (s *surface) touch(e *wire.TouchEvent) {
 			return
 		}
 		s.fingers[e.Pointer] = [2]float64{e.X, e.Y}
+		if len(s.fingers) == 2 && s.two.on {
+			s.twoMove()
+			return
+		}
 		if len(s.fingers) == 2 {
 			d := s.spread()
 			if s.pinchDist > 0 && d > 0 {
@@ -372,6 +379,9 @@ func (s *surface) touch(e *wire.TouchEvent) {
 			s.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: e.X, Y: e.Y, Touch: true})
 		}
 	case "up", "cancel":
+		if _, ok := s.fingers[e.Pointer]; ok && len(s.fingers) == 2 && s.two.on {
+			s.twoEnd(e.Phase == "cancel", e.Time)
+		}
 		delete(s.fingers, e.Pointer)
 		if len(s.fingers) < 2 {
 			s.pinchDist = 0

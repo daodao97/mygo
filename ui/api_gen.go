@@ -5612,6 +5612,20 @@ func (_handle Element) GapY(v float32) Element {
 	return wrapElement(_node.GapY(v))
 }
 
+// Gestures has the element take two fingers landing on it, and returns their
+// updates since the last frame. A gesture stays with the element it started
+// on until it ends or the element goes. Elements that ask for none leave two
+// fingers to pinch what is under them (InputZoom).
+func (_handle Element) Gestures() []GestureEvent {
+	_node := _handle.node()
+	if _node == nil {
+		return nil
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.Gestures()
+}
+
 // Gradient fills the element with a linear gradient from one color to
 // another, at angle degrees clockwise from upwards as in CSS: 180 goes
 // from top to bottom, 90 from left to right.
@@ -6147,6 +6161,18 @@ func (_handle Element) Keyboard(k KeyboardType) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Keyboard(k))
+}
+
+// KeyboardDismiss has a finger starting to pan anywhere dismiss the on-screen
+// keyboard while the element, a text input, has the focus.
+func (_handle Element) KeyboardDismiss(m KeyboardDismissMode) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.KeyboardDismiss(m))
 }
 
 // Keyframes plays a sequence, holding its last value when done. It starts
@@ -8611,6 +8637,33 @@ func (_handle Element) TopPercent(p float32) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.TopPercent(p))
+}
+
+// TouchPointer has a finger on the element drive the pointer as a mouse does,
+// rather than pan what scrolls under it: it presses at once, and its moves
+// come as InputPointerMove, for the frame it is called in. A remote screen or
+// a canvas that draws with the finger asks for it.
+func (_handle Element) TouchPointer() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.TouchPointer())
+}
+
+// TouchSelection has the element's input handler hear long presses on it
+// (InputLongPress) where it is editable or selectable text, before a long
+// press selects a word, for the frame it is called in.
+func (_handle Element) TouchSelection() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.TouchSelection())
 }
 
 // Touches returns the fingers on a touchscreen that landed on the element

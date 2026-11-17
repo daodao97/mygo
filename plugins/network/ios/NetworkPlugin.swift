@@ -33,6 +33,9 @@ final class NetworkPlugin: MyGoPlugin {
         case "cancel":
             tasks[id]?.cancel()
             reply(.success(nil))
+        case "interfaces":
+            // Go's net.Interfaces reads them on iOS.
+            reply(.failure(PluginFailure("Unsupported")))
         default:
             reply(.failure(PluginFailure("NoMethod", method)))
         }

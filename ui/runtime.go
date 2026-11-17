@@ -111,6 +111,8 @@ type host interface {
 type engine struct {
 	// inlineRects is placeInline's scratch, kept from frame to frame.
 	inlineRects []text.Rect
+	// forkGestures are the two-finger gestures in progress (touch_fork.go).
+	forkGestures map[string]gestureCapture
 	// byPosition holds the keys whose press stood for its physical key
 	// (keyDownPhysical), until their release does the same.
 	byPosition      map[Key]bool
@@ -1704,6 +1706,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		s.parent = 0
 	}
 	s.flags = e.flags
+	s.forgetTouchAsks(rt.frame)
 	if s.fingersFrame != rt.frame && (s.refresh != nil || s.longPress) {
 		// What asked for them went, and this element has its place.
 		s.refresh, s.longPress = nil, false

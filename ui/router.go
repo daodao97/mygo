@@ -93,6 +93,11 @@ type Router struct {
 	//
 	// Elsewhere, as on desktops and in browsers, it changes nothing.
 	SystemStack bool
+	// DisableBackGesture turns off going back by swiping from the screen's
+	// left edge, as on a page whose own drawer opens that way: the fork's
+	// (FORK.md). The system's own gestures (Android's back, a SystemStack's)
+	// are the system's.
+	DisableBackGesture bool
 
 	entries []*routeEntry
 	at      int

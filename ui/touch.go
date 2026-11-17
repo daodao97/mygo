@@ -156,6 +156,9 @@ type touchPan struct {
 	// samples are its last positions, for its speed as it lifts.
 	samples [6]touchSample
 	n       int
+	// inputHolds is the input handler a long press goes to first, and
+	// inputHeld the one that took the finger (touch_fork.go).
+	inputHolds, inputHeld uint64
 }
 
 type touchSample struct {
@@ -175,6 +178,9 @@ type fling struct {
 // touchEvent handles the pointer events of a finger, and reports whether
 // it took the event, which the mouse's handling then skips.
 func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
+	if rt.heldEvent(ev, x, y) {
+		return true
+	}
 	t := &rt.touch
 	switch ev.Kind {
 	case platform.PointerDown:
@@ -196,7 +202,8 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 			return true
 		}
 		t.holds = rt.longPressTarget(x, y)
-		if rt.overScroller(x, y) {
+		t.inputHolds = rt.inputHoldAt(x, y)
+		if rt.overScroller(x, y) && !rt.touchPointerAt(x, y) {
 			t.waiting, t.clicks = true, ev.Clicks
 			rt.requestFrame()
 			return true
@@ -227,7 +234,12 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 			if math.Hypot(float64(dx), float64(dy)) < touchSlop {
 				return t.waiting
 			}
-			t.holds = 0
+			t.holds, t.inputHolds = 0, 0
+			if rt.touchPointerAt(t.x0, t.y0) {
+				// It drives the pointer as a mouse does (TouchPointer).
+				t.dragging = true
+				return false
+			}
 			axis := Vertical
 			if abs32(dx) > abs32(dy) {
 				axis = Horizontal
@@ -247,6 +259,7 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 				return t.waiting
 			}
 			t.panning = true
+			rt.dismissKeyboardOnPan()
 			if t.waiting {
 				t.waiting = false // it never pressed
 			} else {
@@ -384,6 +397,9 @@ func (rt *engine) cancelTouch() {
 	t := &rt.touch
 	was := *t
 	*t = touchPan{}
+	if was.inputHeld != 0 {
+		rt.endHeld(was.inputHeld, true)
+	}
 	rt.releaseCaught(&was)
 	if rt.touchText.held != handleNone {
 		rt.touchText.held = handleNone
@@ -813,7 +829,7 @@ func (rt *engine) touchStep(now time.Time) {
 				rt.animating = true
 			}
 		}
-		if t.holds != 0 && !t.panning {
+		if (t.holds != 0 || t.inputHolds != 0) && !t.panning && !t.dragging {
 			if now.Sub(t.at) >= longPressDelay {
 				rt.longPress(t)
 			} else {
@@ -904,6 +920,9 @@ func (rt *engine) longPressTarget(x, y float32) uint64 {
 
 // longPress is a finger held still for longPressDelay.
 func (rt *engine) longPress(t *touchPan) {
+	if t.inputHolds != 0 && rt.longPressInput(t) {
+		return
+	}
 	s := rt.states[t.holds]
 	t.holds = 0
 	if s == nil {

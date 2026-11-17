@@ -28,3 +28,9 @@ func TestPrepareNeedsHTTPS(t *testing.T) {
 		}
 	}
 }
+
+func TestInterfacesUnsupportedOnDesktops(t *testing.T) {
+	if _, err := Interfaces(context.Background()); !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("err = %v", err)
+	}
+}
