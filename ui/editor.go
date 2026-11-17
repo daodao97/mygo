@@ -4,7 +4,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/text"
 )
 
@@ -15,7 +14,6 @@ const (
 	editInsert
 	editCompose
 	editCommand
-	editSelect
 )
 
 type editEvent struct {
@@ -28,10 +26,8 @@ type editEvent struct {
 	repeat bool
 	// replace makes an insertion or a composition take the runes from to
 	// to instead of the selection, as an input method asked.
-	replace                bool
-	snapshot               bool
-	from, to               int
-	markedStart, markedEnd int
+	replace  bool
+	from, to int
 }
 
 // editor is the state of a text input: the text, the caret, the selection,
@@ -60,8 +56,7 @@ type editor struct {
 	source             string // the text of selectable text
 	password           bool
 	// onPaste sees a paste before it is inserted (OnPaste).
-	onPaste      func(text string) bool
-	inputOptions platform.TextInputOptions
+	onPaste func(text string) bool
 	// onTextKey sees a key before the editor takes it (OnTextKey).
 	onTextKey func(k TextKey) bool
 	// keying is set while onTextKey runs, as the TextKey numbered keySeq
@@ -218,40 +213,6 @@ func (ed *editor) commitCompose() {
 	ed.compositionActive = false
 }
 
-// snapshot applies only the changed runes of a native editor's surrounding
-// text. Repeated IME snapshots must not create edits for unchanged context,
-// replace the whole document in undo history, or invalidate every paragraph.
-func (ed *editor) snapshot(ev editEvent) {
-	if ed.readOnly {
-		return
-	}
-	a, b := ed.selection()
-	if ev.replace {
-		a, b = min(ev.from, ed.buf.n), min(ev.to, ed.buf.n)
-	}
-	before, after := []rune(ed.buf.slice(a, b)), []rune(ev.text)
-	prefix := 0
-	for prefix < min(len(before), len(after)) && before[prefix] == after[prefix] {
-		prefix++
-	}
-	x, y := len(before), len(after)
-	for x > prefix && y > prefix && before[x-1] == after[y-1] {
-		x--
-		y--
-	}
-	if x != prefix || y != prefix {
-		ed.record(x == prefix && y-prefix == 1)
-		ed.replace(a+prefix, a+x, string(after[prefix:y]))
-		ed.hasDesired = false
-	}
-	caret := max(0, min(a+ev.caret, ed.buf.n))
-	if ed.caret != caret || ed.anchor != caret {
-		ed.move(caret, false)
-	} else if ed.area != nil {
-		ed.area.reveal = true
-	}
-}
-
 // process applies the input queued for the editor.
 func (ed *editor) process(c *context, e *node) {
 	st := e.st
@@ -260,41 +221,22 @@ func (ed *editor) process(c *context, e *node) {
 	queue := ed.queue
 	ed.queue = nil
 	for _, ev := range queue {
-		if ev.replace && !ev.snapshot {
+		if ev.replace {
 			ed.anchor, ed.caret = min(ev.from, ed.buf.n), min(ev.to, ed.buf.n)
 		}
 		switch ev.kind {
-		case editSelect:
-			ed.editorSelection = editorSelection{anchor: max(0, min(ev.from, ed.buf.n)), caret: max(0, min(ev.to, ed.buf.n))}
-			if ed.area != nil {
-				ed.area.reveal = true
-			}
 		case editKey:
 			ed.commitCompose()
 			ed.key(c, st, ev)
 		case editInsert:
 			ed.compose = ""
-			if ev.snapshot {
-				ed.snapshot(ev)
-			} else {
-				ed.insert(ev.text)
-			}
+			ed.insert(ev.text)
 		case editCompose:
 			if ed.readOnly {
 				break
 			}
 			if ed.area != nil {
 				ed.area.reveal = true
-			}
-			if ev.snapshot {
-				text := []rune(ev.text)
-				ed.coalesce = false
-				a, b := max(0, min(ev.markedStart, len(text))), max(0, min(ev.markedEnd, len(text)))
-				b = max(a, b)
-				ed.snapshot(editEvent{replace: ev.replace, from: ev.from, to: ev.to, text: string(text[:a]) + string(text[b:]), caret: a})
-				ed.compose = string(text[a:b])
-				ed.composeCaret = max(0, min(ev.caret-a, b-a))
-				break
 			}
 			ed.compose = ev.text
 			ed.composeCaret = max(0, min(ev.caret, utf8.RuneCountInString(ev.text)))

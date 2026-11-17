@@ -153,6 +153,7 @@ func load(dir string, loaded map[string]*Module, loading []string) (*Module, err
 		return nil, fmt.Errorf("%s has no Go files: declare the module's interface there, with //mygo:native", dir)
 	}
 	l.m.Name = UpperCamel(l.m.Package)
+	l.m.ImportPath = modulePath(abs)
 	l.files = files
 	for _, f := range files {
 		l.collect(f)

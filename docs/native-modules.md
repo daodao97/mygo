@@ -2,21 +2,24 @@
 
 **Experimental.** Native modules, and binding a C library with `ffi`, may
 change in any release, including in breaking ways: the Go side, the
-generated Swift, Rust and Zig, the `mygo native` commands and
+generated Swift, Kotlin, Rust and Zig, the `mygo native` commands and
 `mygo-plugin.json`. Release notes list each breaking change and what to
 do about it.
 
-A native module is a Go interface implemented in Swift, Rust or Zig. You
-declare the interface in Go, implement what MyGo generates from it, and
-call it from Go like any other Go value: with `context.Context`, errors,
-iterators and callbacks, checked by the Go compiler on one side and
-Swift's, Rust's or Zig's on the other. There is no cgo, and nothing to
+A native module is a Go interface implemented in Swift, Kotlin, Rust or
+Zig. You declare the interface in Go, implement what MyGo generates from
+it, and call it from Go like any other Go value: with `context.Context`,
+errors, iterators and callbacks, checked by the Go compiler on one side and
+Swift's, Kotlin's, Rust's or Zig's on the other. There is no cgo, and nothing to
 write by hand between the two.
 
 Use one for what Go lacks or does slowly:
 
-- what macOS offers in Swift only: its frameworks (NaturalLanguage, Vision,
-  AVFoundation, Speech …), Swift packages, and views shown in native UI;
+- what macOS and iOS offer in Swift only: their frameworks
+  (NaturalLanguage, Vision, AVFoundation, Speech …), Swift packages, and
+  views shown in native UI;
+- what Android offers in Kotlin and Java: its SDK, Jetpack and other
+  Android libraries, and views;
 - a Rust crate or a Zig or C library, such as a parser, a codec, a
   database or an inference engine, on every platform.
 
@@ -25,14 +28,16 @@ language, built with that language's tools:
 
 | Directory | Language | Runs on |
 |---|---|---|
-| `swift/` | Swift, as a Swift package | macOS (and Linux under `go test`, with Foundation alone) |
+| `swift/` | Swift, as a Swift package | macOS and iOS, as its `Package.swift` names them (and Linux under `go test`, with Foundation alone) |
+| `kotlin/` | Kotlin, as an Android library of Gradle | Android |
 | `rust/` | Rust, as a crate | macOS, Linux, Windows |
 | `zig/` | Zig, as a package | macOS, Linux, Windows |
 
-A module may have several: each platform gets one, Swift on macOS where
-there is one, and otherwise Rust, then Zig. So a module can use Apple's
-frameworks on macOS and a Rust crate elsewhere, behind the same Go
-interface. The Go side says what a module does, and each directory how. On
+A module may have several: each platform gets one, Swift on iOS, Kotlin on
+Android, Swift on macOS where there is one, and otherwise Rust, then Zig.
+So a module can use Apple's frameworks on Macs and iPhones, Android's on
+Android phones and a Rust crate elsewhere, behind the same Go interface
+(see [Phones](#phones)). The Go side says what a module does, and each directory how. On
 a platform the module has no implementation for, its constructors return
 `errors.ErrUnsupported`, so the app compiles everywhere and decides what to
 do without it.
@@ -132,7 +137,7 @@ mygo native new [-lang <languages>] <module name>
 makes a module named `<module name>` in `modules/<module name>` of the app,
 or at the path you give instead of a name, such as `internal/<module name>`.
 `-lang` names the languages to implement it in, separated by commas:
-`swift` by default, `rust`, `zig`. `-lang none` makes the Go side alone, to
+`swift` by default, `kotlin`, `rust`, `zig`. `-lang none` makes the Go side alone, to
 agree on the interface first and implement it later.
 
 ```
@@ -148,6 +153,11 @@ modules/<module name>/
 │   └── Sources/<Module>/
 │       ├── <Module>.swift        # the implementation: yours
 │       └── <Module>.mygo.swift   # generated
+├── kotlin/
+│   ├── build.gradle.kts          # the Android library: yours, for its dependencies
+│   └── src/main/kotlin/<package as a path>/
+│       ├── <Module>.kt           # the implementation: yours
+│       └── <Module>.mygo.kt      # generated
 ├── rust/
 │   ├── Cargo.toml                # the crate: yours, for its dependencies
 │   └── src/
@@ -174,8 +184,9 @@ mygo native add <language> [module dir]
 makes the language's directory in the module, the current directory by
 default, with a factory for every entry point and an implementation whose
 every method says it is unsupported, so the module builds at once and the
-methods are implemented one at a time. Rust and Zig refuse a module that
-uses what only Swift implements (see [Rust and Zig](#rust-and-zig)).
+methods are implemented one at a time. Kotlin, Rust and Zig refuse a
+module that uses what they cannot implement (see [Rust and
+Zig](#rust-and-zig) and [Phones](#phones)).
 
 A module is an ordinary Go package. Import it from the app, or from any Go
 module: `mygo dev` and `mygo build` find every package of the app with an
@@ -185,7 +196,7 @@ register.
 
 Commit the generated files. `<module name>_native.go` lets the app compile,
 vet and test on any machine, with or without the languages' tools, and
-`<Module>.mygo.swift`, `mygo.rs` and `mygo.zig`, which hold the
+`<Module>.mygo.swift`, `<Module>.mygo.kt`, `mygo.rs` and `mygo.zig`, which hold the
 declarations of the Go side and the C functions Go calls, let editors
 complete and check the implementation; never edit them. They say which
 interface they came from, and `mygo build` refuses to build when one is
@@ -519,11 +530,122 @@ with `mygo.allocator` and freed in its `deinit`, which Go calls when it
 releases the value. A callback a method keeps past the call is `keep()`ed
 and `release()`d when done.
 
-**What only Swift implements.** Views, textures, windows and the
-interfaces of other modules are Apple's, so a module that uses them is
-implemented in Swift only, and `mygo native add rust` says which of its
-methods stop it. So is returning a `*native.Buffer`, rather than taking
-one.
+**What only Swift implements.** Views and windows are the platform's,
+so a module that uses them is implemented in Swift, or in Kotlin for
+Android, and `mygo native add rust` says which of its methods stop it.
+Textures and the interfaces of other modules are Swift's only, and so is
+returning a `*native.Buffer`, rather than taking one.
+
+## Phones
+
+iPhones and Android phones build a module from its sources, with the app:
+`mygo dev` and `mygo build` for `-platform ios` build its Swift with
+`xcodebuild` into a framework of the app, and for `-platform android` add
+its Kotlin to the app's Gradle build, one library per module. They never
+use published builds: iOS signs what it runs with the app, and an
+Android app's libraries are its own build. A module has no
+implementation on a phone without the directory, and its constructors
+return `errors.ErrUnsupported` there, as on any platform it lacks.
+
+### Swift on iOS
+
+The module's Swift runs on iOS when its `Package.swift` names iOS among its
+platforms, with the oldest version it supports, and on macOS when it names
+macOS, or no platform:
+
+```swift
+platforms: [.macOS(.v13), .iOS(.v16)],
+```
+
+The same Swift serves both, with `#if os(iOS)` where they differ, as the
+generated code does: views are `UIView`s on iOS (`NativeView` names
+`NSView` or `UIView`), and windows arrive as the `UIViewController` that
+shows them, to present from. A module for iOS alone names only `.iOS`:
+macOS then uses its Rust or Zig, as the SQLite plugin does. Swift packages,
+binary frameworks (`.binaryTarget`) and resources work as in Xcode, which
+builds them; iOS needs Xcode, not only its Command Line Tools.
+
+### Kotlin on Android
+
+`mygo native add kotlin` makes `kotlin/`, an Android library whose
+`build.gradle.kts` names its namespace and its dependencies, and whose
+Kotlin is in the package of the module's import path, reversed as Java's
+are: `example.com/app/modules/language` is
+`com.example.app.modules.language`. The app's build sets its SDK levels,
+Java and Kotlin, and its dependency on MyGo's host library, `dev.mygo`,
+which brings coroutines. The implementation is a function per entry point
+and a class implementing each interface:
+
+```kotlin
+package com.example.app.modules.language
+
+import android.icu.text.BreakIterator
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+
+fun makeAnalyzer(): Analyzer = ICUAnalyzer()
+
+private class ICUAnalyzer : Analyzer {
+    override fun detectLanguage(text: String): String = throw LanguageException(LanguageError.UNDETERMINED)
+
+    override fun tokens(text: String, unit: Unit): Flow<Token> = flow {
+        val it = if (unit == Unit.WORD) BreakIterator.getWordInstance() else BreakIterator.getSentenceInstance()
+        it.setText(text)
+        var start = it.first()
+        var end = it.next()
+        while (end != BreakIterator.DONE) {
+            val s = text.substring(start, end)
+            val at = text.substring(0, start).toByteArray().size.toLong()
+            emit(Token(at, at + s.toByteArray().size, s))
+            start = end
+            end = it.next()
+        }
+    }
+}
+```
+
+| Go | Kotlin |
+|---|---|
+| `M(a int, b string)` | `fun m(a: Long, b: String)` |
+| `M(...) error`, `M(...) (T, error)` | `fun m(...)`, `fun m(...): T`, which throw |
+| `M(ctx context.Context, ...)` | `suspend fun m(...)`, canceled with Go's context |
+| `iter.Seq2[T, error]`, `iter.Seq[T]` | `Flow<T>`, which Go's loop pulls |
+| `onChange func(float64)` | `(Double) -> Unit` |
+| `M(...) io.Closer` | `AutoCloseable`, from `NativeCloser { }` |
+| an interface of the module | the interface, implemented by a class |
+| an interface Go implements | the interface, whose methods call Go |
+| `bool`, `int`, `int32`, `uint16`, `uint64` … | `Boolean`, `Long`, `Int`, `UShort`, `ULong` … |
+| `float32`, `float64` | `Float`, `Double` |
+| `string`, `[]byte` | `String`, `ByteArray` |
+| `time.Time`, `time.Duration` | `java.time.Instant`, `kotlin.time.Duration` |
+| `[]T`, `map[string]T`, `*T` | `List<T>`, `Map<String, T>`, `T?` |
+| a struct, an enum of the package | a `data class`, an `enum class` |
+| `*native.Buffer` (a parameter) | `NativeBuffer`, with `bytes`, a direct `ByteBuffer` |
+| `native.View`, `*mygo.Window` | an `android.view.View`, the window's view |
+| `ui.Rect` | `android.graphics.RectF`, in the view's pixels |
+
+The package's errors are `<Name>Exception(<Name>Error.X)`;
+`NativeUnsupportedException` reaches Go as `errors.ErrUnsupported`, and
+any other exception as a `*native.Error`, with `NativeException(domain,
+number, message)` setting its domain and number. Methods run on the
+calling goroutine's thread, attached to the JVM, `suspend` ones and
+streams on coroutines of their own, and `//mygo:mainthread` ones, views
+and their callbacks on the UI thread. `dev.mygo.Native.context` is the
+application's `Context`, and `Native.activity` the activity, to start
+others from. A view is an `android.view.View` the module makes with
+`Native.context`.
+
+Kotlin implements what Swift does but textures, returning a
+`*native.Buffer` and the interfaces of other modules, which `mygo native
+add kotlin` says.
+
+**C on Android.** A Kotlin module may bring C, or C++, which its
+`build.gradle.kts` builds with CMake (`externalNativeBuild`); the app's
+build gives it the NDK and the ABIs that Go builds for, and the Kotlin
+loads it with `System.loadLibrary`. The SQLite plugin's module,
+`plugins/sqlite/internal/sqlitecore`, does so: its Kotlin calls SQLite's
+amalgamation, which its CMake downloads, pinned by its SHA-256, and its
+Swift links the same SQLite as a binary framework.
 
 ## Objects
 
@@ -984,7 +1106,10 @@ must allow, such as App Groups, needs one that does
 ## Build, run and test
 
 Building a module needs its language's tools: for `swift/`, Xcode or its
-Command Line Tools, with Swift 6; for `rust/`, cargo
+Command Line Tools, with Swift 6 (Xcode for iOS); for `kotlin/`, what
+Android apps need already, the Android SDK and Gradle's JDK
+([phones](mobile/README.md#what-you-need)), and CMake from the SDK Manager for
+modules with C; for `rust/`, cargo
 ([rustup](https://rustup.rs)); for `zig/`, [Zig](https://ziglang.org) 0.16.
 `mygo doctor` says which are installed.
 
@@ -1008,6 +1133,12 @@ they say to run it when the build is missing or older than the sources.
 mygo native build -target host -lang rust ./modules/language && go test ./modules/language
 mygo native build -target host -lang zig ./modules/language && go test ./modules/language
 ```
+
+On phones, the module runs in the app: `mygo dev -platform ios` and
+`-platform android` build it with the app and run it on the simulator,
+emulator or device, where its logs show beside Go's. `go test` does not
+run there, so test the Go that uses the module through a fake of its
+interface, below, and the implementation in an app.
 
 On Linux, the same commands build the Swift of a module that uses only
 Foundation with a [Swift toolchain](https://www.swift.org/install/linux/),
@@ -1037,7 +1168,7 @@ Go's.
 ## Publish a module
 
 Apps whose modules are their own, or in a Go module they replace with a
-directory, build them from their sources. Apps that use your module from
+directory, build them from their sources, as phones always do. Apps that use your module from
 the module cache, and machines without its language, such as a Linux
 runner of GitHub Actions building a macOS app, use its published builds
 instead. `mygo native build` makes them:
@@ -1162,7 +1293,9 @@ mygo.Bind(&Text{a}) // a service whose methods call a
 The generated Go calls the implementation's library, which package `ffi`
 finds and loads, through purego, with no cgo, as MyGo calls the system:
 one C entry point per method, which the generated Swift exports with
-`@_cdecl`, Rust with `#[no_mangle] extern "C"` and Zig with `export`, and
+`@_cdecl`, Rust with `#[no_mangle] extern "C"` and Zig with `export`
+(on Android, the generated Kotlin's `invoke`, which the host's JNI calls),
+and
 one Go callback shared by every module, for results of asynchronous
 methods, the values of streams, callbacks, and calls into interfaces Go
 implements. The three languages share this one interface, so Go does not

@@ -56,14 +56,6 @@ const (
 	// element leaves scrolls the scroll containers around it. Momentum
 	// marks scrolling that continues after the fingers leave a touchpad.
 	InputScroll
-	// InputLongPress starts a stationary touch selection. Subsequent pointer
-	// moves and the Up, Canceled or not, are captured without focusing or
-	// opening the keyboard.
-	InputLongPress
-	// InputTextReplace replaces the rune range From:To in TextContext.
-	InputTextReplace
-	// InputSelection moves the caret in TextContext, in runes.
-	InputSelection
 	// InputSelect selects runes Start to End of the text an element
 	// describes to assistive technology (Element.Access), as a screen
 	// reader moves the selection of a text field of the app's own.
@@ -93,13 +85,10 @@ type InputEvent struct {
 	Code   KeyCode
 	Mods   Modifiers
 	Repeat bool
-	// Software marks modifiers supplied by InputModifiers rather than hardware.
-	Software bool
 	// Text of InputText, InputCompose and InputCommand, and Caret the
 	// rune of an InputCompose's caret.
-	Text     string
-	Caret    int
-	From, To int
+	Text  string
+	Caret int
 	// X and Y locate the pointer relative to the element's box.
 	X, Y float32
 	// Button is 0 for the primary button, 1 the secondary and 2 the
@@ -131,8 +120,9 @@ type InputEvent struct {
 	DX, DY   float32
 	Precise  bool
 	Momentum bool
-	// Scale is what InputZoom zooms by.
-	Scale float32
+	// Scale is what InputZoom zooms by, and Rotation the radians clockwise
+	// two fingers turned, on touch screens.
+	Scale, Rotation float32
 	// Start and End are the runes InputSelect selects.
 	Start, End int
 	// Time is when the event came, by the clock of the window's frames
@@ -155,22 +145,6 @@ type InputEvent struct {
 // instead (Clicked, Shortcut, Dragged).
 func (e *node) HandleInput(fn func(ev InputEvent) bool) *node {
 	e.inputFn = fn
-	return e
-}
-
-// TouchScroll makes a custom input widget take finger drags as precise
-// InputScroll events. A stationary tap still delivers pointer Down/Up and
-// focuses the widget; a swipe does neither, so it can scroll without
-// opening the keyboard. Mouse input and pointer tracking are unchanged.
-func (e *node) TouchScroll() *node {
-	e.touchScroll = true
-	return e
-}
-
-// TouchSelection lets a TouchScroll widget reserve a stationary long press
-// for its InputLongPress handler. Moving before the hold still scrolls.
-func (e *node) TouchSelection() *node {
-	e.touchScroll, e.touchSelection = true, true
 	return e
 }
 
@@ -208,27 +182,7 @@ func (e *node) ObserveInput(fn func(ev InputEvent)) *node {
 // relative to the element's box: candidate windows show there. Its
 // InputText and Compose events (HandleInput) bring the text.
 func (e *node) TextCaret(r Rect) *node {
-	e.caret, e.caretFn, e.takesText = r, nil, true
-	return e
-}
-
-// TextCaretFunc is TextCaret for a custom drawing whose cursor depends on its
-// final layout or rendered grid. fn runs on the UI thread after painting, so
-// the input method and the visible cursor use the same frame's geometry.
-// The returned rectangle is relative to the element's box.
-func (e *node) TextCaretFunc(fn func() Rect) *node {
-	e.caretFn, e.takesText = fn, fn != nil
-	return e
-}
-
-// TextContext supplies committed surrounding text and its caret (in runes)
-// for a custom TextCaret handler. fn runs on the UI thread. The handler owns
-// the document and applies InputTextReplace and InputSelection events;
-// native composition remains virtual until committed. This does not create
-// an editor or change pointer selection/rendering. Use HandleTextInput when
-// full indexed geometry or document selection is required.
-func (e *node) TextContext(fn func() (string, int)) *node {
-	e.textContext = fn
+	e.caret, e.takesText = r, true
 	return e
 }
 
@@ -284,38 +238,8 @@ func (rt *engine) deliver(s *state, ev InputEvent) bool {
 	if ev.Kind == InputScroll {
 		ev.DX, ev.DY = s.vector(rt.pointerX, rt.pointerY, ev.DX, ev.DY)
 	}
-	softwareKey := !s.inputComposing && ((ev.Kind == InputText || ev.Kind == InputTextReplace) && len(ev.Text) == 1 && ev.Text[0] < 128 || ev.Kind == InputKeyDown && softwareControlKey(ev.Key))
-	if ev.Kind == InputCompose {
-		s.inputComposing = ev.Text != ""
-	}
-	if ev.Kind == InputText || ev.Kind == InputTextReplace {
-		s.inputComposing = false
-	}
-	if softwareKey && s.inputModifiers != 0 {
-		ev.Mods |= s.inputModifiers
-		ev.Software = true
-		if ev.Kind == InputKeyDown {
-			if s.inputReleaseMods == nil {
-				s.inputReleaseMods = make(map[Key]Modifiers)
-			}
-			s.inputReleaseMods[ev.Key] = ev.Mods
-		}
-	}
-	if ev.Kind == InputKeyUp {
-		if mods, ok := s.inputReleaseMods[ev.Key]; ok {
-			ev.Mods = mods
-			ev.Software = true
-			delete(s.inputReleaseMods, ev.Key)
-		}
-	}
 	if !s.input(ev) {
-		if ev.Kind == InputKeyDown && ev.Software {
-			delete(s.inputReleaseMods, ev.Key)
-		}
 		return false
-	}
-	if softwareKey && s.inputModifiers != 0 && s.inputConsumed != nil {
-		s.inputConsumed()
 	}
 	rt.requestFrame()
 	return true
@@ -372,22 +296,4 @@ func (rt *engine) focusHandler() *state {
 		return s
 	}
 	return nil
-}
-
-func softwareControlKey(key Key) bool {
-	switch key {
-	case KeyEnter, KeyBackspace, KeyTab, KeyEscape, KeyDelete, KeyInsert, KeyHome, KeyEnd, KeyPageUp, KeyPageDown, KeyLeft, KeyRight, KeyUp, KeyDown:
-		return true
-	}
-	return key >= KeyF1 && key <= KeyF12
-}
-
-// InputModifiers adds software modifiers to ASCII text and control keys of
-// a custom HandleInput/TextCaret widget. It leaves IME composition, commits
-// and multi-character paste untouched. consumed runs on the UI thread after
-// a key is handled, allowing an app to release one-shot modifiers. Omitting
-// the call clears the modifiers. Standard text editors are unaffected.
-func (e *node) InputModifiers(mods Modifiers, consumed func()) *node {
-	e.inputModifiers, e.inputConsumed = mods&(Shift|Ctrl|Alt|Super), consumed
-	return e
 }

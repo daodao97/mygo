@@ -29,7 +29,7 @@ func (in *inspector) paintHighlight(rt *engine, p *Painter, h float32) {
 		return
 	}
 	savedClip, savedOpacity := p.clip, p.opacity
-	p.pushClip(Rect{0, 0, in.appW, h}, [4]float32{})
+	p.pushClip(Rect{0, 0, in.appW, min(h, in.appH)}, [4]float32{})
 	p.opacity = 1
 	defer func() {
 		p.popClip()

@@ -1,0 +1,16 @@
+{
+  "mobile": {
+    "id": "location",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "LocationPlugin",
+      "frameworks": ["CoreLocation"],
+      "infoPlist": {"NSLocationWhenInUseUsageDescription": "This app shows where you are."}
+    },
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "LocationPlugin",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    }
+  }
+}

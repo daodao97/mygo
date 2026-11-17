@@ -1,0 +1,16 @@
+{
+  "mobile": {
+    "id": "maps",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "MapsPlugin",
+      "frameworks": ["MapKit"]
+    },
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "MapsPlugin",
+      "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"],
+      "dependencies": ["org.osmdroid:osmdroid-android:6.1.20"]
+    }
+  }
+}

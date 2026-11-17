@@ -1,19 +1,18 @@
-// Package imagepicker lets the user choose photos from their library on
-// phones and tablets: the system's own picker, which asks the user for no
+// Package imagepicker lets the user choose photos and videos from their
+// library, or take one with the camera, on phones and tablets: the system's
+// own pickers (PHPickerViewController and UIImagePickerController on iOS, the
+// Photo Picker and the camera app on Android), which ask the user for no
 // permission to read the library. Elsewhere its functions report
-// mygo.ErrUnsupported.
-//
-// Its API is upstream #940's plugins/imagepicker (FORK.md, "向 #940 收敛");
-// until the fork takes #940's backends it runs on mygo.Dialog.Photos, which
-// picks images only: Videos, Any and Capture report mygo.ErrUnsupported.
+// errors.ErrUnsupported.
 package imagepicker
 
 import (
 	"context"
-	"os"
 
 	"github.com/egoist/mygo"
 )
+
+const pluginID = "imagepicker"
 
 // Kind is what a picker shows.
 type Kind string
@@ -44,37 +43,19 @@ func Pick(ctx context.Context, o Options) ([]string, error) {
 	if o.Limit == 0 {
 		o.Limit = 1
 	}
-	if o.Kind != Images {
-		return nil, mygo.ErrUnsupported
+	var r struct {
+		Paths []string `json:"paths"`
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	paths, err := mygo.Dialog.Photos(mygo.PhotoDialogOptions{Multiple: o.Limit != 1})
-	if err != nil {
-		return nil, err
-	}
-	return limit(paths, o.Limit), nil
-}
-
-// limit keeps the first n paths, when n is positive, and removes the copies
-// past them.
-func limit(paths []string, n int) []string {
-	if n < 0 || len(paths) <= n {
-		return paths
-	}
-	for _, p := range paths[n:] {
-		_ = os.Remove(p)
-	}
-	return paths[:n]
+	err := mygo.Native(pluginID).Call(ctx, "pick", map[string]any{"kind": o.Kind, "limit": o.Limit}, &r)
+	return r.Paths, err
 }
 
 // Capture shows the camera, for a photo, and returns the path of a JPEG of it
-// in the app's temporary directory, "" when the user went back. The fork's
-// backends have no camera picker yet: it reports mygo.ErrUnsupported.
+// in the app's temporary directory, "" when the user went back.
 func Capture(ctx context.Context) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
+	var r struct {
+		Path string `json:"path"`
 	}
-	return "", mygo.ErrUnsupported
+	err := mygo.Native(pluginID).Call(ctx, "capture", nil, &r)
+	return r.Path, err
 }

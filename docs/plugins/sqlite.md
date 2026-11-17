@@ -1,10 +1,11 @@
 # SQLite
 
 The SQLite plugin provides local databases to web pages and Go, including
-native UI apps. Its SQLite is a [native module](../native-modules.md)
-written in Zig, published prebuilt for each platform, so apps build
-without cgo, a C compiler or Zig. It supports macOS, Linux and Windows on
-amd64 and arm64.
+native UI apps. Its SQLite is a [native module](../native-modules.md):
+Zig on desktops, published prebuilt for each platform, so apps build
+without cgo, a C compiler or Zig; Swift on iOS and Kotlin with C on
+Android, which build with the app. It supports macOS, Linux and Windows on
+amd64 and arm64, iOS 16 and later, and Android.
 
 ## Using the page plugin
 
@@ -154,6 +155,15 @@ amalgamation, which `zig/build.zig.zon` pins by hash. `mygo dev` and
 `mygo build` put the module's library for the platform among the app's
 resources, signed with the app on macOS, and `go run` and `go test` of an
 app download it. Packaged apps never download native code at run time.
+
+Phones run the same SQLite, 3.53.4 with the same options, built with the
+app ([phones](../native-modules.md#phones)). On iOS its Swift links it
+from `CSQLite.xcframework`, which `swift/build-xcframework.sh` builds from
+the amalgamation and the release `native-sqlitecore` holds, pinned by its
+checksum in `Package.swift`: the system's SQLite is older on older iOS,
+and has other options. On Android its Kotlin calls it through C that CMake
+builds from the amalgamation, pinned by its SHA-256, which needs CMake
+from the Android SDK Manager.
 
 In this repository, the module is built from its sources, with Zig 0.16.0:
 

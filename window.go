@@ -60,6 +60,10 @@ type Rectangle struct{ X, Y, Width, Height int }
 // WindowOptions configures NewWindow. The zero value is a visible,
 // resizable 800x600 window centered on screen.
 type WindowOptions struct {
+	// OwnScene opens the window as a window of the system's own on iPad, beside
+	// the app's others, which ios.multipleWindows in mygo.json allows. Elsewhere
+	// it's a window as any: on a phone or Android, over the one before.
+	OwnScene bool
 	// Title of the window. Defaults to the application name. The title
 	// follows the page's <title> unless an OnPageTitleUpdated listener
 	// prevents it.
@@ -152,10 +156,6 @@ type WindowOptions struct {
 	// On iOS it also fills the surrounding safe area. Without an explicit
 	// color, native UI's opaque root background fills that area automatically.
 	BackgroundColor string
-	// ExtendIntoSafeArea lets iOS native UI draw under the status bar, notch
-	// and home indicator. Keep controls inside ui.Context.SafeArea. By default
-	// UIKit insets the entire surface. Other platforms ignore this option.
-	ExtendIntoSafeArea bool
 	// Vibrancy puts a translucent, blurred material behind a transparent
 	// page, or behind native UI where it draws no background (macOS and
 	// Windows 11 22H2), e.g. VibrancySidebar; ui.Context.Vibrancy tells
@@ -384,8 +384,7 @@ type Window struct {
 	// content draws a frame. Main thread only.
 	showLater, framing bool
 	// background is the BackgroundColor, if any. Main thread only.
-	background        *background
-	contentBackground *platform.Color // Last automatic mobile root fill; UI thread only.
+	background *background
 	// vibrancyTint is VibrancyTint, if any. Main thread only.
 	vibrancyTint *background
 	// hiddenTitleBar is a TitleBarStyle that hides the title bar: the pages
@@ -656,6 +655,7 @@ func newWindow(opts WindowOptions, bg, tint *background, native uintptr, flyout 
 	popts := w.platformOptions(&opts)
 	popts.BackgroundColor = w.backgroundColor()
 	popts.Surface = opts.Content != nil
+	popts.OwnScene = opts.OwnScene
 	if opts.Transparent {
 		// Backends keep transparent windows clear; so do theme changes.
 		w.background = nil
@@ -737,42 +737,41 @@ func newWindow(opts WindowOptions, bg, tint *background, native uintptr, flyout 
 func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	po := o.Page
 	p := &platform.WindowOptions{
-		Title:              o.Title,
-		X:                  o.X,
-		Y:                  o.Y,
-		Width:              or(o.Width, 800),
-		Height:             or(o.Height, 600),
-		Center:             o.X == 0 && o.Y == 0,
-		UseContentSize:     o.UseContentSize,
-		MinSize:            platform.Size{Width: o.MinWidth, Height: o.MinHeight},
-		MaxSize:            platform.Size{Width: o.MaxWidth, Height: o.MaxHeight},
-		Resizable:          !o.DisableResize,
-		Movable:            !o.DisableMove,
-		Minimizable:        !o.DisableMinimize,
-		Maximizable:        !o.DisableMaximize,
-		Closable:           !o.DisableClose,
-		Focusable:          true,
-		Fullscreenable:     !o.DisableFullScreen,
-		AlwaysOnTop:        o.AlwaysOnTop,
-		FullScreen:         o.FullScreen,
-		Maximized:          o.Maximized,
-		SkipTaskbar:        o.SkipTaskbar,
-		AutoHideMenu:       o.AutoHideMenuBar,
-		HasShadow:          !o.DisableShadow,
-		Frameless:          o.Frameless,
-		Transparent:        o.Transparent,
-		ExtendIntoSafeArea: o.ExtendIntoSafeArea,
-		TitleBarStyle:      string(o.TitleBarStyle),
-		TitleBarHeight:     max(o.TitleBarHeight, 0),
-		HideWindowButtons:  o.HideWindowButtons,
-		Vibrancy:           string(o.Vibrancy),
-		VibrancyTint:       w.vibrancyTintColor(),
-		CornerRadius:       max(o.CornerRadius, 0),
-		Opacity:            o.Opacity,
-		Modal:              o.Modal,
-		UserAgent:          po.UserAgent,
-		UserAgentSuffix:    strings.TrimSpace(po.UserAgentSuffix),
-		Zoom:               po.ZoomFactor,
+		Title:             o.Title,
+		X:                 o.X,
+		Y:                 o.Y,
+		Width:             or(o.Width, 800),
+		Height:            or(o.Height, 600),
+		Center:            o.X == 0 && o.Y == 0,
+		UseContentSize:    o.UseContentSize,
+		MinSize:           platform.Size{Width: o.MinWidth, Height: o.MinHeight},
+		MaxSize:           platform.Size{Width: o.MaxWidth, Height: o.MaxHeight},
+		Resizable:         !o.DisableResize,
+		Movable:           !o.DisableMove,
+		Minimizable:       !o.DisableMinimize,
+		Maximizable:       !o.DisableMaximize,
+		Closable:          !o.DisableClose,
+		Focusable:         true,
+		Fullscreenable:    !o.DisableFullScreen,
+		AlwaysOnTop:       o.AlwaysOnTop,
+		FullScreen:        o.FullScreen,
+		Maximized:         o.Maximized,
+		SkipTaskbar:       o.SkipTaskbar,
+		AutoHideMenu:      o.AutoHideMenuBar,
+		HasShadow:         !o.DisableShadow,
+		Frameless:         o.Frameless,
+		Transparent:       o.Transparent,
+		TitleBarStyle:     string(o.TitleBarStyle),
+		TitleBarHeight:    max(o.TitleBarHeight, 0),
+		HideWindowButtons: o.HideWindowButtons,
+		Vibrancy:          string(o.Vibrancy),
+		VibrancyTint:      w.vibrancyTintColor(),
+		CornerRadius:      max(o.CornerRadius, 0),
+		Opacity:           o.Opacity,
+		Modal:             o.Modal,
+		UserAgent:         po.UserAgent,
+		UserAgentSuffix:   strings.TrimSpace(po.UserAgentSuffix),
+		Zoom:              po.ZoomFactor,
 		// Tab reaches every control, as desktop apps do, unless the app
 		// asked for Safari's behavior.
 		TabFocusesLinks:        !po.SafariTabFocus,
@@ -932,7 +931,7 @@ func (w *Window) Close() { _ = w.TryClose() }
 // TryClose is Close with an error for system-managed windows (iOS).
 func (w *Window) TryClose() error {
 	return onMainValue(func() error {
-		if backend().SystemManagedLifetime() {
+		if systemManagedLifetime() {
 			return platform.ErrUnsupported
 		}
 		w.close()
@@ -942,7 +941,7 @@ func (w *Window) TryClose() error {
 
 // close runs on the main thread and reports whether the window was closed.
 func (w *Window) close() bool {
-	if backend().SystemManagedLifetime() {
+	if systemManagedLifetime() {
 		return false
 	}
 	if w.native == nil {
@@ -990,7 +989,7 @@ func (w *Window) detachSession() {
 // owns the scene lifetime, so this method does nothing.
 func (w *Window) Destroy() {
 	onMain(func() {
-		if !backend().SystemManagedLifetime() {
+		if !systemManagedLifetime() {
 			w.destroy()
 		}
 	})
@@ -2243,7 +2242,7 @@ func (w *Window) readyToShow() {
 type windowHandler struct{ w *Window }
 
 func (h *windowHandler) ShouldClose() bool {
-	if backend().SystemManagedLifetime() {
+	if systemManagedLifetime() {
 		return false
 	}
 	e := &CloseEvent{Window: h.w}
@@ -2346,23 +2345,6 @@ func (h *windowHandler) TitleBarChanged() {
 	h.w.sendTitleBar()
 	if c := h.w.conn; c != nil && c.TitleBarChanged != nil {
 		c.TitleBarChanged()
-	}
-}
-
-// SafeAreaChanged is called when the room the device's chrome takes
-// changes: a rotation, a soft keyboard, a fold, a window moved to another
-// display.
-//
-// 🔴 It does not send anything to a page the way TitleBarChanged sends the
-// room to a web view's, because nothing has to be told: package ui reads
-// the safe area from the window at the top of every frame (runtime.go),
-// and a frame is all this has to ask for. That is the cheaper half of the
-// pair and the one that cannot be missed — a page told through the bridge
-// can be a document that has not loaded yet, while a frame is drawn by
-// whichever content the window has.
-func (h *windowHandler) SafeAreaChanged() {
-	if c := h.w.conn; c != nil && c.SafeAreaChanged != nil {
-		c.SafeAreaChanged()
 	}
 }
 

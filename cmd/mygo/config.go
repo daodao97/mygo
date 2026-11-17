@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -113,9 +114,10 @@ type Config struct {
 	// Updates configures signed updates, which mygo.Updater installs.
 	Updates *Updates `json:"updates"`
 	MacOS   MacOS    `json:"macos"`
-	IOS     IOS      `json:"ios"`
 	Windows Windows  `json:"windows"`
 	Linux   Linux    `json:"linux"`
+	IOS     IOS      `json:"ios"`
+	Android Android  `json:"android"`
 
 	root string
 	file string // the configuration file, "" without one
@@ -236,109 +238,98 @@ type MacOS struct {
 	Notarize *Notarize `json:"notarize"`
 }
 
-// IOS configures the UIKit host of a native UI application.
+// IOS configures the iOS app (mygo build -platform ios, ios/simulator).
 type IOS struct {
-	// BackgroundTasks registers cancellable native refresh workers before launch.
-	BackgroundTasks []IOSBackgroundTask `json:"backgroundTasks"`
-	// AppGroups are shared container entitlements; extensions opt in separately.
-	AppGroups []string `json:"appGroups"`
-	// Native adds opt-in native sources/libraries to the host.
-	Native IOSNative `json:"native"`
-	// Extensions are native app-extension targets embedded and signed with the app.
-	Extensions []IOSExtension `json:"extensions"`
-	// Capabilities opts into protected native APIs. Empty disables them;
-	// notifications and ordinary Keychain storage remain available.
-	Capabilities []string `json:"capabilities"`
-	// PushNotifications generates the APNs development entitlement unless an
-	// explicit aps-environment is supplied. Export signing determines the final environment.
-	PushNotifications bool `json:"pushNotifications"`
-	// BuildNumber is CFBundleVersion, independent of the marketing version.
-	BuildNumber string `json:"buildNumber"`
-	// AssociatedDomains contains entitlement values, e.g. applinks:example.com.
-	AssociatedDomains []string `json:"associatedDomains"`
-	// Entitlements are merged into the generated signing property list.
-	Entitlements map[string]any `json:"entitlements"`
-
-	LaunchScreen IOSLaunchScreen `json:"launchScreen"`
-	// MinimumSystemVersion defaults to 15.0.
+	// MinimumSystemVersion is the oldest iOS version supported (default
+	// "17.0").
 	MinimumSystemVersion string `json:"minimumSystemVersion"`
-	// DevelopmentTeam enables automatic development signing. Without a
-	// team, the build is unsigned and cannot be installed on a device.
-	DevelopmentTeam string `json:"developmentTeam"`
-	// InfoPlist overrides bundle keys, including permission descriptions.
+	// Team is the ID of the Apple developer team that signs the app for
+	// devices, as Xcode's Signing & Capabilities shows it.
+	Team string `json:"team"`
+	// ProvisioningProfile is the profile to sign with: its name, UUID or
+	// the path of a .mobileprovision (default: the installed profile that
+	// best fits the identifier and the distribution).
+	ProvisioningProfile string `json:"provisioningProfile"`
+	// Distribution is what the build is for: "app-store" (default, and
+	// TestFlight), "ad-hoc", "development" or "enterprise".
+	Distribution string `json:"distribution"`
+	// MultipleWindows lets WindowOptions.OwnScene open windows of the system's
+	// own on iPad, beside each other (default: the app has one).
+	MultipleWindows bool `json:"multipleWindows"`
+	// BuildNumber is CFBundleVersion, which must grow with every upload of
+	// a version (default: the version).
+	BuildNumber string `json:"buildNumber"`
+	// Orientations are those the app turns to on iPhones: "portrait" and
+	// "landscape" (default both). iPads take every one.
+	Orientations []string `json:"orientations"`
+	// InfoPlist holds extra keys for the app's Info.plist, which replace
+	// MyGo's own, e.g. the usage descriptions of what the app asks for:
+	//   "NSCameraUsageDescription": "Scan documents with the camera."
 	InfoPlist map[string]any `json:"infoPlist"`
-	// Privacy adds app/dependency declarations to MyGo's required-reason APIs.
-	Privacy IOSPrivacy `json:"privacy"`
-	// Signing defaults to automatic signing through DevelopmentTeam.
-	Signing IOSSigning `json:"signing"`
+	// AssociatedDomains are the hosts of the app's universal links, which
+	// reach mygo.App.OnOpenURL: "example.com" signs the app with the
+	// entitlement applinks:example.com, and a value with its own service, as
+	// "webcredentials:example.com", stays as it is. The provisioning profile
+	// needs the capability Associated Domains, and each host an
+	// apple-app-site-association file.
+	AssociatedDomains []string `json:"associatedDomains"`
+	// LaunchScreen is what the system shows while the app starts (default:
+	// the system background).
+	LaunchScreen *IOSLaunchScreen `json:"launchScreen"`
+	// BackgroundModes are the app's UIBackgroundModes, as "audio", "fetch"
+	// or "remote-notification", with those its plugins ask for.
+	BackgroundModes []string `json:"backgroundModes"`
 }
 
-// IOSNative sources are copied into the exported Xcode project. Directories
-// compile .swift/.m/.mm/.c/.cc/.cpp files and make their headers available.
-// Libraries are prebuilt static archives for the selected SDK/architecture.
-type IOSNative struct {
-	Sources         []string `json:"sources"`
-	Resources       []string `json:"resources"`
-	Libraries       []string `json:"libraries"`
-	Frameworks      []string `json:"frameworks"`
-	LinkerFlags     []string `json:"linkerFlags"`
-	SwiftConditions []string `json:"swiftConditions"`
-	// Support selects MyGo's native helpers: actions, shared-store, widgets.
-	Support []string `json:"support"`
-	// EntryPoint replaces the generated host main.m; not valid on extensions.
-	EntryPoint string `json:"entryPoint"`
-}
-
-type IOSExtension struct {
-	Name string `json:"name"`
-	// BundleIdentifier defaults to the app identifier plus "." plus Name.
-	BundleIdentifier string `json:"bundleIdentifier"`
-	// ExtensionPoint is NSExtensionPointIdentifier, e.g. com.apple.widgetkit-extension.
-	ExtensionPoint       string         `json:"extensionPoint"`
-	MinimumSystemVersion string         `json:"minimumSystemVersion"`
-	Native               IOSNative      `json:"native"`
-	AppGroups            []string       `json:"appGroups"`
-	Entitlements         map[string]any `json:"entitlements"`
-	InfoPlist            map[string]any `json:"infoPlist"`
-}
-
-type IOSPrivacy struct {
-	Tracking        bool             `json:"tracking"`
-	TrackingDomains []string         `json:"trackingDomains"`
-	CollectedData   []IOSPrivacyData `json:"collectedData"`
-	AccessedAPIs    []IOSPrivacyAPI  `json:"accessedAPIs"`
-	// Manifests are .xcprivacy property lists merged into the app manifest.
-	Manifests []string `json:"manifests"`
-}
-
-type IOSPrivacyAPI struct {
-	Category string   `json:"category"`
-	Reasons  []string `json:"reasons"`
-}
-
-type IOSPrivacyData struct {
-	Type     string   `json:"type"`
-	Linked   bool     `json:"linked"`
-	Tracking bool     `json:"tracking"`
-	Purposes []string `json:"purposes"`
-}
-
-type IOSSigning struct {
-	Style               string            `json:"style"`
-	Identity            string            `json:"identity"`
-	ProvisioningProfile string            `json:"provisioningProfile"`
-	ExportProfiles      map[string]string `json:"exportProfiles"`
-	ExportCertificate   string            `json:"exportCertificate"`
-}
-
-// IOSLaunchScreen configures the system launch screen and the matching UIKit
-// overlay held until the first Go frame is presented.
+// IOSLaunchScreen is the app's launch screen, which has no storyboard: a
+// UILaunchScreen in Info.plist that names a color and an image of the app's
+// asset catalog.
 type IOSLaunchScreen struct {
-	Title           string `json:"title"`           // Defaults to the application name.
-	Image           string `json:"image"`           // Optional PNG path relative to the project.
-	BackgroundColor string `json:"backgroundColor"` // #RRGGBB; empty follows the system.
-	ForegroundColor string `json:"foregroundColor"` // #RRGGBB; empty follows the system.
-	FadeDurationMs  int    `json:"fadeDurationMs"`  // 0 disables the overlay fade.
+	// Background is its color, as "#102030".
+	Background string `json:"background"`
+	// Image is a PNG shown centered, at the size of a 3x screen: a logo of
+	// 600x600 pixels takes 200x200 points.
+	Image string `json:"image"`
+}
+
+// Android configures the Android app (mygo build -platform android).
+type Android struct {
+	// MinSdk is the oldest Android API level supported (default 26,
+	// Android 8.0).
+	MinSdk int `json:"minSdk"`
+	// VersionCode is the integer version Google Play orders uploads by
+	// (default: from the version, major×10000 + minor×100 + patch).
+	VersionCode int `json:"versionCode"`
+	// Permissions are those the manifest declares, in addition to INTERNET,
+	// as "android.permission.CAMERA" or just "CAMERA".
+	Permissions []string `json:"permissions"`
+	// Keystore is the keystore of the upload key that signs release
+	// builds, KeyAlias the key's alias in it; their passwords come from
+	// MYGO_ANDROID_KEYSTORE_PASSWORD and MYGO_ANDROID_KEY_PASSWORD
+	// (default: the latter the former). Without a keystore, builds are
+	// signed with the debug key.
+	Keystore string `json:"keystore"`
+	KeyAlias string `json:"keyAlias"`
+	// AppLinks are the hosts of the app's https deep links, verified by
+	// Android (android:autoVerify), which reach mygo.App.OnOpenURL: each
+	// serves /.well-known/assetlinks.json naming the app. "*.example.com"
+	// takes its subdomains.
+	AppLinks []string `json:"appLinks"`
+	// AdaptiveIcon is the launcher icon of Android 8.0 and later, which the
+	// launcher masks and moves. Without it, launchers show icon as it is.
+	AdaptiveIcon *AndroidAdaptiveIcon `json:"adaptiveIcon"`
+	// Splash is the color of the screen the system shows while the app
+	// starts, as "#102030" (default: the theme's).
+	Splash string `json:"splash"`
+}
+
+// AndroidAdaptiveIcon is an icon of two layers.
+type AndroidAdaptiveIcon struct {
+	// Foreground is a square PNG, ideally 432x432 or more, with transparency
+	// around what it shows: launchers crop to the middle 72/108 of it.
+	Foreground string `json:"foreground"`
+	// Background is the color under it, as "#102030".
+	Background string `json:"background"`
 }
 
 // Notarize holds notarytool credentials stored in the keychain with
@@ -481,6 +472,9 @@ func (c *Config) validate() error {
 			return fmt.Errorf("i18n.dir %q is not a directory of the project: the catalogs are a Go package of their own, as locales", c.I18n.Dir)
 		}
 	}
+	if err := c.validateMobile(); err != nil {
+		return err
+	}
 	if c.DevURL != "" {
 		if u, err := url.Parse(c.DevURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("devUrl %q is not an http(s) URL", c.DevURL)
@@ -489,7 +483,78 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// validateMobile checks the sections of phones, which say what the stores
+// and the systems would refuse only much later.
+func (c *Config) validateMobile() error {
+	for _, d := range c.IOS.AssociatedDomains {
+		// A value with a service keeps it; its host may name a mode, as
+		// applinks:example.com?mode=developer.
+		host := d
+		if _, after, ok := strings.Cut(d, ":"); ok {
+			host, _, _ = strings.Cut(after, "?")
+		}
+		if !hostRe.MatchString(host) {
+			return fmt.Errorf("ios.associatedDomains: %q is not a host, as example.com or applinks:example.com", d)
+		}
+	}
+	if l := c.IOS.LaunchScreen; l != nil {
+		if l.Background == "" && l.Image == "" {
+			return errors.New("ios.launchScreen needs a background or an image")
+		}
+		if l.Background != "" {
+			if _, err := parseHexColor(l.Background); err != nil {
+				return fmt.Errorf("ios.launchScreen.background: %w", err)
+			}
+		}
+	}
+	for _, m := range c.IOS.BackgroundModes {
+		if m == "" || strings.ContainsFunc(m, unicode.IsSpace) {
+			return fmt.Errorf("ios.backgroundModes: %q is not a mode, as audio or fetch", m)
+		}
+	}
+	for _, h := range c.Android.AppLinks {
+		if !hostRe.MatchString(h) {
+			return fmt.Errorf("android.appLinks: %q is not a host, as example.com or *.example.com, without https://", h)
+		}
+	}
+	if a := c.Android.AdaptiveIcon; a != nil {
+		if a.Foreground == "" {
+			return errors.New("android.adaptiveIcon needs a foreground")
+		}
+		if _, err := parseHexColor(a.Background); err != nil {
+			return fmt.Errorf("android.adaptiveIcon.background: %w", err)
+		}
+	}
+	if c.Android.Splash != "" {
+		if _, err := parseHexColor(c.Android.Splash); err != nil {
+			return fmt.Errorf("android.splash: %w", err)
+		}
+	}
+	return nil
+}
+
+// parseHexColor reads a color as "#rgb" or "#rrggbb".
+func parseHexColor(s string) ([3]uint8, error) {
+	hex, ok := strings.CutPrefix(s, "#")
+	if ok && len(hex) == 3 {
+		hex = string([]byte{hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]})
+	}
+	var out [3]uint8
+	if !ok || len(hex) != 6 {
+		return out, fmt.Errorf("%q is not a color, as #102030", s)
+	}
+	for i := range out {
+		v, err := strconv.ParseUint(hex[i*2:i*2+2], 16, 8)
+		if err != nil {
+			return out, fmt.Errorf("%q is not a color, as #102030", s)
+		}
+		out[i] = uint8(v)
+	}
+	return out, nil
+}
+
 var (
+	hostRe   = regexp.MustCompile(`^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$`)
 	nonIdent = regexp.MustCompile(`[^a-zA-Z0-9]+`)
 	slugRe   = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	schemeRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*$`)
@@ -524,6 +589,15 @@ func (c *Config) applyDefaults() {
 	}
 	if c.MacOS.SigningIdentity == "" {
 		c.MacOS.SigningIdentity = "-"
+	}
+	if c.IOS.MinimumSystemVersion == "" {
+		c.IOS.MinimumSystemVersion = "17.0"
+	}
+	if c.IOS.Distribution == "" {
+		c.IOS.Distribution = "app-store"
+	}
+	if c.Android.MinSdk == 0 {
+		c.Android.MinSdk = 26
 	}
 	if c.MacOS.DMGTitle == "" {
 		c.MacOS.DMGTitle = c.Name
@@ -695,16 +769,6 @@ func fsName(s string) string {
 func isDir(path string) bool {
 	st, err := os.Stat(path)
 	return err == nil && st.IsDir()
-}
-
-// IOSBackgroundTask names C-exported Go callbacks. Prepare/Cancel run on main;
-// Run/NextDelay on utility queues, independently of the UI application loop.
-type IOSBackgroundTask struct {
-	Identifier string `json:"identifier"`
-	Prepare    string `json:"prepare"`
-	Run        string `json:"run"`
-	Cancel     string `json:"cancel"`
-	NextDelay  string `json:"nextDelay"`
 }
 
 // devIcon returns the development app's icon, the icon's name with -dev

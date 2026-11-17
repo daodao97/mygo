@@ -68,7 +68,7 @@ func (BiometricModule) Query() (BiometricStatus, error) {
 	}
 	ch := make(chan result, 1)
 	if !postMain(func() {
-		backend().Authenticator().Query(func(s platform.BiometricStatus, err error) {
+		authenticatorBackend().Query(func(s platform.BiometricStatus, err error) {
 			deliver(ch, result{BiometricStatus{BiometricKind(s.Kind), s.Available, s.UnavailableReason, s.DeviceAuthenticationAvailable}, err})
 		})
 	}) {
@@ -103,7 +103,7 @@ func (BiometricModule) Authenticate(ctx context.Context, o AuthenticationOptions
 			close(finished)
 			return
 		}
-		cancel := backend().Authenticator().Authenticate(platform.AuthenticationOptions{Reason: o.Reason, AllowDevicePasscode: o.AllowDevicePasscode}, func(err error) {
+		cancel := authenticatorBackend().Authenticate(platform.AuthenticationOptions{Reason: o.Reason, AllowDevicePasscode: o.AllowDevicePasscode}, func(err error) {
 			if ctx.Err() != nil {
 				err = ctx.Err()
 			}

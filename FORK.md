@@ -5,6 +5,7 @@
 ## 快照（2026-11-12）
 
 - fork `main` 已合并 `upstream/main` 到 `12e8babd`（2026-11-17）；只落后上游 1 个提交，即 #940（`6e712c6e`），有意留给第二阶段（见「向 #940 收敛」）。
+- 分支 `sync-940`（worktree `~/.cache/mygo-pr/sync-940`，基于 `main` 的 `25f0be9a`）合并了 #940，第二阶段第 1 步（换平台）完成，未推送，见「第二阶段进度（2026-11-17）」。
 - fork 独有的非合并提交：158 个；与上游的增删差异约 71,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
 - 2026-11-09 同步了上游 39 个提交（到 `6a730f12`）。冲突：`docs/architecture.md` 两边都保留（fork 的 iOS 段落、上游的 `ffi`）；`ui/runtime.go` 两边都保留（fork 的帧计时、上游的 `sweepVideos`）；`ui/layoutcache_test.go` 字段清单取并集；`internal/gpu/gl/load_linux.go` 只取上游新增的 `uploadElement`，`setShaderSource`/`shaderLog`/`programLog`/`infoLog` 在 fork 已移到 `load_common.go`（与 Android 共用）；终端 `urlPattern` 按规则 1 改用上游 #1481（URL 在第一个非 ASCII 字符处结束），fork 的写法删除；shader 二进制取上游后重新 `go generate`。上游 #1476 给 `platform.Clipboard.WriteData` 加了 `concealed` 参数，iOS/Android 后端已跟上签名，但还没有标记机密内容（iOS 的 `UIPasteboard` localOnly、Android 的 `EXTRA_IS_SENSITIVE`）。
@@ -148,6 +149,33 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
   - `InteractiveBack`：上表那一行写的是 #940 自动开启、没有开关。现在多了 `SystemStack`，可以按 Router 开启，开启后 iOS 的侧滑返回由 UIKit 负责。Miya 在抽屉页和 `/desktop` 关掉侧滑返回的需求，可以改用不开 `SystemStack` 的 Router 来满足，届时复核。
   - fork 的 `Router.Reset`/`History`/`Transitioning`/JSON 持久化（B 类，Miya 用 `Transitioning`）也会改 Router 的历史。要确认它们和 `SystemStack` 的页面栈同步（`noteStack`、`syncStack`、`stackPopped`）能共存：`Reset` 和恢复持久化后，系统页面栈要跟着重建；`Transitioning` 在 UIKit 负责过渡时要有意义。
 
+### 第二阶段进度（2026-11-17）
+
+分支 `sync-940` 合并 #940（`6e712c6e`），按 2026-11-17 的决定「先换平台，再逐个移植」：平台层和核心以 #940 为准，fork 独有的移动端 API 先删掉或在手机上返回 `ErrUnsupported`，之后每项单独移植回来。
+
+**已换成 #940 的（规则 1）：**
+
+- 后端：删除 `internal/ios`、`internal/android`、`android/`、`native/ios` 和根包导入它们的文件；手机走 `internal/mobile`（恢复了 #940 的 `backend_mobile.go`）。`internal/gpu/gl` 删除 fork 的 `context_*.go`、`load_common.go`，Android 文字引擎删除，`coretext_apple.go` 改回 `coretext_darwin.go`（保留 fork 的改动）。
+- typesetting 改回 `go-text/typesetting v0.3.5`，删除 `Heyana/typesetting-go`、`third_party/hb-build`、`scripts/android-*.sh`、`.github/workflows/android.yml`，AGENTS.md 的 Runbook 一节删除。
+- CLI：`IOS`/`Android` 配置、打包、`devices`/`publish` 取 #940；删除 fork 的 17 个 `ios_*.go` 和 `mygo push setup/status`；`packages/cli/index.d.ts` 取 #940。
+- `ui` 顶层以 #940 为底，用三方合并补回 fork 的非移动端扩展：Router `Reset`/`History`/`Transitioning`（读 #940 的 `swiping`）/JSON 持久化（`restoring`，持久化改为沿用 `SystemStack`）/`TransitionStack`，frame-why、诊断计时，`Startup` 的 `firstFramePresented`，`Tester.SetRefreshRate`，`Context.Blur`/`Services.Blur`，`diagnostics.go`、`startup.go`、`bitmap.go`、combobox、gridview 等。`flags` 改回 `uint32`。fork 的 `ui/touch_engine.go`、`touch_text.go`、`gesture.go`、`router_touch.go`、`touch_elastic*`、`input_options.go`、`native_text_scope.go`、`text_geometry.go` 等删除，用 #940 的触摸引擎。
+- 平台契约：删除 fork 的 `Window.SafeArea`、`WindowHandler.SafeAreaChanged`、`WindowOptions.ExtendIntoSafeArea`、`surface.Conn.SafeArea`/`ContentBackground`、`TextInputOptions`、`TextGeometry`、`NativeTextSelectionSurface`、`Dialogs.ShowExportDialog`/`ShowPhotoDialog`、`Sharing`（改用 #940 的 `Share`）、`SurfaceMemoryPressure`（改用 #940 的 `SurfaceLowMemory`，测试保留）、`AppHandler.DidEnterBackground`/`WillEnterForeground`。根包删除 fork 的 `Haptics`、`SetStatusBar`（#940 的 `Haptics`、`SystemBars`）、`Dialog.Export`/`Photos`。
+- 插件 `biometrics`、`push`、`imagepicker`、`permissionflow_mobile.go` 取 #940（fork 的测试删除）。
+- `examples/ios-native` 删除。
+
+**保留、但在 #940 的手机后端上暂时返回不支持：** `Backend` 的 `Authenticator`、`Mobile`、`Permissions`、`Speech`、`SystemManagedLifetime` 改为可选接口（`platform_optional.go`），桌面照旧，#940 手机后端没有实现。受影响：`mygo.Biometrics`、`Permissions`、`Speech`/`plugins/speech`、`Microphone`/`plugins/microphone`、`Device`/`DismissKeyboard`/`Scanner`/`Network.Prepare`（移到 `device_fork.go`，供 `plugins/scanner`、`plugins/network`）、推送回调、App Group、后台刷新、Live Activity（`*_other.go` 去掉标签，所有平台都是空实现）。`SystemManagedLifetime` 在手机上回退为 true。
+
+**改接到 #940 上的：** `Lifecycle` 的进出后台改由 `Power` 的 suspend/resume 驱动（只在系统管理生命周期时；重复的 suspend 忽略，resume 只从后台恢复），顺序同 fork：`OnDidEnterBackground` → `Power.OnSuspend` → checkpoint。`keyboardbar` 的长按改为轮询 `Element.LongPressed()`。`automation` 保留 #940 的 `@`/`tcp:` 监听，外层仍是 fork 的 `listenWith`。
+
+**待移植（第二阶段第 2～5 步）：**
+
+1. 触摸：`TouchScroll`、`TouchSelection`/`InputLongPress`（终端长按选择已关闭，`longPress := false`）、捏合 `Gestures`、`InteractiveBack`。
+2. 键盘与输入：`Element.InputModifiers`（`keyboardbar` 的修饰键锁定、终端软键盘修饰键，相关测试已删）、`KeyboardDismiss`/`KeyboardDismissInteractive`、`TextCaretFunc`（终端改用 `TextCaret(v.caret())`）、`TextContext`/`InputTextReplace`/`InputSelection`（终端原生替换已删）、原生文字选区（`ui/richtext` 的 `SelectionRectsForRange` 已删）。
+3. 用 `mygo.Native` + Swift/Kotlin 重写：`microphone`、`speech`、`scanner`、`browser`、`network`、App Group/widget（`sharedstore` 的 Swift 样本测试已删）、后台刷新、Live Activity、导出对话框、fork 的推送发送端 CLI。
+4. Miya：用临时 go.work 指向 `sync-940` 编译，第一轮报 `ui.KeyboardDismissInteractive`、`TouchSelection`、`KeyboardDismiss`（修掉后依赖它们的包可能再报）；按 `ExtendIntoSafeArea` 一行的说明删掉 Miya 自己的安全区内缩。
+
+**验证（2026-11-17，`sync-940`）：** macOS/Linux/Windows 的 `go build ./...`（含 `CGO_ENABLED=0`）与 `go vet ./...`，`go vet -tags mygo_noinspector ./...`，js/wasm vet；iOS（iphoneos SDK）和 Android（NDK r28 clang）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet；`go test -short`（除 `internal/e2e`）全部通过，`go generate ./ui` 与 `uimigrate` 已更新。未做：发布体积、e2e、真机。
+
 ## 差异分类
 
 ### A. 移动端（保留，不提交上游）
@@ -263,8 +291,8 @@ go build ./... && go vet . ./ui && go test . ./ui ./internal/text ./plugins/term
 (cd ../Miya && go build ./...)
 # 移动端：上游给 platform 接口加的方法（如 Window.GPUProcessID、SetVibrancyTint、
 # Shell.TypeIcon）iOS/Android 后端不会自动有，桌面编译也发现不了
-GOOS=ios GOARCH=arm64 CGO_ENABLED=1 CC="$(xcrun --sdk iphoneos -f clang) -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -arch arm64" go vet ./internal/ios/...
-bash scripts/android-build.sh --so-only
+GOOS=ios GOARCH=arm64 CGO_ENABLED=1 CC="$(xcrun --sdk iphoneos -f clang) -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -arch arm64" go vet . ./ui ./internal/mobile/... ./plugins/...
+GOOS=android GOARCH=arm64 CGO_ENABLED=1 CC="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android29-clang" go vet . ./ui ./internal/mobile/... ./plugins/...   # sync-940 起，手机后端是 #940 的 internal/mobile
 go generate ./ui && git status --short ui/api_gen.go  # 上游新加的 facade 函数要用 fork 的生成器重新生成
 git push origin main                                # 快进推送，不用 force
 ```

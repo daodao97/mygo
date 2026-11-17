@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Heyana/typesetting-go/segmenter"
+	"github.com/go-text/typesetting/segmenter"
 )
 
 // keptBreaks returns where the lines of text may break in language lang

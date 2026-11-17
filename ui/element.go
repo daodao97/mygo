@@ -135,7 +135,7 @@ const (
 
 // flags of an element.
 const (
-	flagClickable uint64 = 1 << iota
+	flagClickable uint32 = 1 << iota
 	flagFocusable
 	flagEditable
 	flagDragWindow
@@ -354,7 +354,7 @@ type node struct {
 	// again a frame, and each of them is read in as few lines as it can
 	// be.
 	c     *context
-	flags uint64
+	flags uint32
 	// special tells that the element lays out by more than what it is
 	// built with: a list, a toolbar, a form or a table's columns. The
 	// layout looks for those on every element it lays out, and this tells
@@ -371,7 +371,7 @@ type node struct {
 	// The layout reads it of every child it walks, next to the flags it
 	// reads there too, so that the walk reads one cache line.
 	hidden bool
-	laid    uint64
+	laid   uint64
 	// hold is the element's entry in the engine's holds (0 for none):
 	// what a measuring pass resolved for its in-flow children, which a
 	// commit pass at the same size uses instead of building them again.
@@ -391,14 +391,6 @@ type node struct {
 	// measured is what was measured of the element: its max-content and
 	// min-content widths, and its heights at widths.
 	measured
-
-	// gestureEnabled is set by Gestures: the element wants pinch and
-	// rotation updates, so the engine keeps routing a gesture to it after
-	// the fingers leave its box. Copied to the state each frame the element
-	// is built (see context.go's state.gestureEnabled).
-	gestureEnabled bool
-	router         *Router
-	routerLevel    int
 
 	epoch      uint64
 	key        any
@@ -504,20 +496,13 @@ type node struct {
 
 	// Input the element takes itself (HandleInput), and where the caret of
 	// the text it takes is (TextCaret).
-	inputFn        func(InputEvent) bool
-	observeFn      func(InputEvent) // the input in it (ObserveInput)
-	caret          Rect
-	caretFn        func() Rect
-	textContext    func() (string, int)
-	takesText      bool
-	touchScroll    bool
-	touchSelection bool
-	inputOptions   inputTraits
-	inputModifiers Modifiers
-	inputConsumed  func()
-	textClient     TextInputClient
-	noIME          bool // InputMethod(false)
-	copyData       func(parts []SelectedText) transfer.Data
+	inputFn    func(InputEvent) bool
+	observeFn  func(InputEvent) // the input in it (ObserveInput)
+	textClient TextInputClient
+	caret      Rect
+	takesText  bool
+	noIME      bool // InputMethod(false)
+	copyData   func(parts []SelectedText) transfer.Data
 
 	// Content.
 	spans    []Span // of a RichText
@@ -628,7 +613,7 @@ type node struct {
 	keepScrollbars bool
 	// hiddenScrollbars holds the axes hidden by ScrollbarAxes and the
 	// independent Scrollbars(false) override.
-	hiddenScrollbars uint64
+	hiddenScrollbars uint32
 	barsFrom         *node
 	rowIndex         int
 	rowsOf           *listFrame

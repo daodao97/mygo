@@ -24,10 +24,10 @@ import (
 )
 
 // Native modules (docs/native-modules.md): Go packages whose interfaces
-// Swift, Rust or Zig implement. The CLI generates them, builds their
-// implementations and puts them into the app: Swift ones here, into the
-// Frameworks of macOS apps, and the others as the libraries packages name
-// (natives).
+// Swift, Kotlin, Rust or Zig implement. The CLI generates them, builds
+// their implementations and puts them into the app: Swift ones here, into
+// the Frameworks of macOS apps, the others as the libraries packages name
+// (natives), and phones' with the app (mobile_modules.go).
 
 // nativeApp is what the app's native modules add to its bundle.
 type nativeApp struct {
@@ -588,14 +588,14 @@ func plistEqual(a, b any) bool {
 func runNative(args []string) error {
 	const usage = `Usage: mygo native <command> [arguments]
 
-Native modules: Go packages whose interfaces are implemented in Swift, Rust
-or Zig, built into a library per platform and published with the package
-(docs/native-modules.md). Packages that bind a C library with ffi name it
+Native modules: Go packages whose interfaces are implemented in Swift,
+Kotlin, Rust or Zig, built into a library per platform and published with
+the package, and on phones with the app (docs/native-modules.md). Packages that bind a C library with ffi name it
 the same way. Experimental: they may change in breaking ways in any release.
 
 	build [flags] [dir]                     build the native modules and libraries of the packages in dir, ready to publish
 	new [-lang <languages>] <module name>   make a module in modules/<name>, or at a path
-	add <language> [module dir]             implement a module in another language: swift, rust or zig
+	add <language> [module dir]             implement a module in another language: swift, kotlin, rust or zig
 	check [module dir]                      generate, build and vet a module, listing problems
 	call [-timeout <d>] [module dir] <Interface>.<Method> [<arguments>]
 	                                        call a method and print its result as JSON
@@ -630,7 +630,7 @@ generated Go, an AGENTS.md, and a directory per language implementing it.
 Swift serves macOS, where it reaches Apple's frameworks; Rust and Zig serve
 every platform. A module in several languages is built in Swift on macOS,
 and in Rust, or else Zig, elsewhere.`)
-	langs := fs.String("lang", "swift", "the languages to implement it in, separated by commas: swift, rust, zig, or none for the Go side alone")
+	langs := fs.String("lang", "swift", "the languages to implement it in, separated by commas: swift, kotlin, rust, zig, or none for the Go side alone")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -660,7 +660,7 @@ and in Rust, or else Zig, elsewhere.`)
 }
 
 func runNativeAdd(args []string) error {
-	fs := newFlags("native add", "<language> [module dir]", "Implements an existing module in another language (swift, rust or zig), with\nmethods that say they are unsupported, so that the module builds at once.")
+	fs := newFlags("native add", "<language> [module dir]", "Implements an existing module in another language (swift, kotlin, rust or zig), with\nmethods that say they are unsupported, so that the module builds at once.")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

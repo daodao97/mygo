@@ -15,19 +15,14 @@ import (
 )
 
 type buildOptions struct {
-	debug           bool
-	sign            string // macOS signing identity
-	skipDMG         bool
-	skipNotarize    bool
-	skipInstaller   bool // no Windows installer, nor NSIS for it
-	iosSimulator    bool
-	iosTeam         string
-	iosArchive      bool
-	iosExportMethod string
-	iosDevice       string
-	pkg             string            // directory of the main package
-	work            string            // for generated files
-	overlay         map[string]string // go build -overlay entries (the frontend)
+	debug         bool
+	sign          string // macOS signing identity
+	skipDMG       bool
+	skipNotarize  bool
+	skipInstaller bool              // no Windows installer, nor NSIS for it
+	pkg           string            // directory of the main package
+	work          string            // for generated files
+	overlay       map[string]string // go build -overlay entries (the frontend)
 }
 
 func runBuild(args []string) error {
@@ -49,11 +44,9 @@ among them are signed with the app. Directories of resources named after a
 platform, such as resources/darwin or resources/linux-amd64, only ship with
 that platform's apps; darwin/universal combines darwin-arm64 and
 darwin-amd64. Go source files in resources, and the paths there that match
-resourcesExclude in mygo.json, such as "**/*.psd", are left out. Desktop builds need no cgo and can be cross-compiled;
-signing and disk images need macOS. ios/arm64 builds a native UI app and
-its Xcode host project, with cgo and the iOS SDK on macOS. Use -ios-team
-for development signing, or -ios-simulator for an Apple Silicon simulator.
-Windows also gets
+resourcesExclude in mygo.json, such as "**/*.psd", are left out. MyGo needs
+no cgo, so any platform can be compiled from any machine; signing and disk
+images need macOS. Windows also gets
 "<slug>-setup-<version>-<arch>.exe", made with NSIS, which mygo build
 downloads on Windows when it is not installed; -skip-installer leaves both
 out.
@@ -69,13 +62,7 @@ update-<platform>.json: publish them where updates point to.
 The platform web (or js/wasm) builds an app of native UI for browsers into
 <out>/web: index.html, which loads the app, Go's wasm_exec.js and the app's
 WebAssembly, named by its content: a static site, to serve from anywhere.`)
-	platforms := flags.String("platform", runtime.GOOS+"/"+runtime.GOARCH, "comma separated GOOS/GOARCH targets, e.g. darwin/universal,linux/amd64,windows/amd64,ios/arm64, or web for browsers")
-	iosSimulator := flags.Bool("ios-simulator", false, "build ios/arm64 for the iOS simulator")
-	iosTeam := flags.String("ios-team", "", "Apple development team (default: ios.developmentTeam; unset builds unsigned)")
-	iosDevice := flags.String("ios-device", "", "iPhone/iPad UDID to include in development provisioning (requires -ios-team)")
-	iosArchive := flags.Bool("ios-archive", false, "create an iOS Release .xcarchive (device target only)")
-	iosExportMethod := flags.String("ios-export-method", "", "export an IPA from an archive: debugging, release-testing, app-store-connect or enterprise; never uploads")
-	iosNumber := flags.String("ios-build-number", "", "numeric ios.buildNumber override for this build (does not modify configuration)")
+	platforms := flags.String("platform", runtime.GOOS+"/"+runtime.GOARCH, "comma separated GOOS/GOARCH targets, e.g. darwin/universal,linux/amd64,windows/amd64, or web for browsers")
 	debug := flags.Bool("debug", false, "keep development features such as the web inspector")
 	skipBuildCommand := flags.Bool("skip-build-command", false, "do not run buildCommand")
 	skipDMG := flags.Bool("skip-dmg", false, "do not create a disk image for macOS")
@@ -98,15 +85,6 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 	if *out != "" {
 		c.Out = *out
 	}
-	if *iosNumber != "" && !slices.Contains(splitList(*platforms), "ios/arm64") {
-		return fmt.Errorf("iOS build number flags require an ios/arm64 target")
-	}
-	if err := overrideIOSBuildNumber(c, *iosNumber); err != nil {
-		return err
-	}
-	if *upload && slices.Contains(splitList(*platforms), "ios/arm64") {
-		return fmt.Errorf("iOS builds export local artifacts; use your release tooling to upload them")
-	}
 	// The catalogs name the languages the packages declare.
 	if _, err := c.languages(); err != nil {
 		return err
@@ -117,12 +95,6 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 		}
 	}
 	opts := buildOptions{debug: *debug, sign: c.MacOS.SigningIdentity, skipDMG: *skipDMG, skipNotarize: *skipNotarize, skipInstaller: *skipInstaller}
-	opts.iosSimulator, opts.iosTeam = *iosSimulator, c.IOS.DevelopmentTeam
-	opts.iosArchive, opts.iosExportMethod = *iosArchive, *iosExportMethod
-	opts.iosDevice = *iosDevice
-	if *iosTeam != "" {
-		opts.iosTeam = *iosTeam
-	}
 	if *sign != "" {
 		opts.sign = *sign
 	}
@@ -185,6 +157,14 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 			}
 			continue
 		}
+		if mobile, ok := mobilePlatform(p); ok {
+			paths, err := mobile(c, opts)
+			built = append(built, paths...)
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		goos, goarch, _ := strings.Cut(p, "/")
 		paths, err := buildPlatform(c, goos, goarch, opts)
 		built = append(built, paths...)
@@ -219,19 +199,17 @@ func buildPlatforms(raw string) ([]string, error) {
 		if isWebPlatform(p) {
 			continue
 		}
+		if _, ok := mobilePlatform(p); ok {
+			continue
+		}
 		goos, goarch, ok := strings.Cut(p, "/")
 		if !ok || goos == "" || goarch == "" || strings.Contains(goarch, "/") {
-			return nil, fmt.Errorf("invalid platform %q, want GOOS/GOARCH or web", p)
+			return nil, fmt.Errorf("invalid platform %q, want GOOS/GOARCH, web, ios or android", p)
 		}
 		switch goos {
 		case "darwin", "linux", "windows":
-		case "ios":
-			// buildIOS packages the device and simulator SDKs for arm64 only.
-			if goarch != "arm64" {
-				return nil, fmt.Errorf("unsupported build platform %q: iOS builds use ios/arm64", p)
-			}
 		default:
-			return nil, fmt.Errorf("unsupported build platform %q: use darwin, linux, windows, ios/arm64 or web", p)
+			return nil, fmt.Errorf("unsupported build platform %q: use darwin, linux, windows, web, ios or android", p)
 		}
 	}
 	return targets, nil
@@ -262,9 +240,6 @@ func buildSummary(c *Config, artifacts []string, took time.Duration) string {
 // in a staging directory that then replaces the platform directory, so a
 // failed build keeps the previous one and nothing stale remains.
 func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string, error) {
-	if goos == "ios" {
-		return buildIOS(c, goarch, opts)
-	}
 	out := c.path(c.Out)
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return nil, err

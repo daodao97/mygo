@@ -43,6 +43,8 @@ type headless struct {
 	opened        []string
 	// escapes counts the Escapes nothing handled.
 	escapes int
+	// stack is the system's stack of screens tests give the window.
+	stack platform.StackSurface
 	// titleDoubles counts the double clicks a DragWindow handle left to
 	// the window.
 	titleDoubles int
@@ -52,11 +54,9 @@ type headless struct {
 	clipboardErr error
 	// later are what the view asked to run after the frame, as a window
 	// posts them to the main thread.
-	later []func()
-	bar   TitleBar
-	// safe is the room the device's chrome takes, which a test sets with
-	// SetSafeArea to lay a page out as a phone would.
-	safe   platform.SafeArea
+	later  []func()
+	bar    TitleBar
+	inset  platform.Insets
 	access *platform.AccessTree
 	// told are the announcements of the trees, and announced those the
 	// view made; alerts are what the trees told to read at once, and
@@ -121,10 +121,6 @@ func (h *headless) textSystem() *text.System {
 	}
 	return h.text
 }
-func (h *headless) present(s *scene.Scene) {
-	h.last = s
-	h.img.Render(s)
-}
 func (h *headless) firstFramePresented() bool {
 	if h.last == nil {
 		h.requestFrame()
@@ -132,6 +128,10 @@ func (h *headless) firstFramePresented() bool {
 	return h.last != nil
 }
 
+func (h *headless) present(s *scene.Scene) {
+	h.last = s
+	h.img.Render(s)
+}
 func (h *headless) afterTimer(at time.Time) {
 	h.afterAt = at
 	if h.clock != nil {
@@ -205,15 +205,12 @@ func (h *headless) preferences() platform.Preferences { return h.prefs }
 func (h *headless) locale() string                    { return h.lang }
 func (h *headless) region() i18n.Region               { return h.reg }
 func (h *headless) titleBar() TitleBar                { return h.bar }
+func (h *headless) insets() platform.Insets           { return h.inset }
 func (h *headless) vibrancy() bool                    { return h.material }
 func (h *headless) active() bool                      { return !h.inactive }
 func (h *headless) invalidate() {
 	h.invalidated.Store(true)
 	h.requested.Store(true)
-}
-func (h *headless) safeArea() safeInsets {
-	a := h.safe
-	return safeInsets{Top: float32(a.Top), Right: float32(a.Right), Bottom: float32(a.Bottom), Left: float32(a.Left)}
 }
 
 // writeClipboard copies s, unless FailClipboard set an error;
@@ -444,6 +441,9 @@ func (t *Tester) send(ev platform.SurfaceEvent) {
 	switch ev.Kind {
 	case platform.PointerMove, platform.PointerDown, platform.PointerUp:
 		ev.Pointer, ev.Pressure = platform.PointerKind(t.pointer), float64(t.pressure)
+		if ev.Touch {
+			ev.Pointer = platform.PointerTouch // TouchDown
+		}
 	}
 	if ev.Kind == platform.PointerDown && ev.Clicks == 0 {
 		// Counted as a backend counts.
@@ -502,18 +502,12 @@ func (t *Tester) SetTitleBar(bar TitleBar) {
 	t.Frame()
 }
 
-// SetInsets sets the room the device's own chrome takes from the content
-// (a status bar, a notch, a home indicator), which Context.SafeArea
-// returns. A test uses it to lay a page out as a phone would:
-//
-//	tester.SetInsets(24, 0, 48, 0)
+// SetInsets sets how far in from each edge the window is covered, in DIPs,
+// as a phone's bars, cutout and keyboard cover its screen: the view lays
+// out inside them.
 func (t *Tester) SetInsets(top, right, bottom, left float32) {
-	t.h.safe = platform.SafeArea{
-		Top:    int(top),
-		Right:  int(right),
-		Bottom: int(bottom),
-		Left:   int(left),
-	}
+	enableTouch()
+	t.h.inset = platform.Insets{Top: float64(top), Right: float64(right), Bottom: float64(bottom), Left: float64(left)}
 	t.Frame()
 }
 
@@ -725,7 +719,7 @@ func (t *Tester) targetLabelCenter(n *labelNode, button int) (float32, float32, 
 	if button == 1 {
 		flags |= flagContextMenu
 	}
-	receiverOf := func(chain []uint64, f uint64) *state {
+	receiverOf := func(chain []uint64, f uint32) *state {
 		for _, id := range chain {
 			if st := t.rt.states[id]; st != nil &&
 				(st.flags&f != 0 || st.input != nil || st.webView != nil) {
@@ -963,6 +957,34 @@ func (t *Tester) webViewPress(x, y float32, button int, mods platform.Modifiers)
 	}
 	t.send(platform.SurfaceEvent{Kind: platform.WebViewPress, X: float64(x), Y: float64(y), Button: button, Mods: mods})
 	return true
+}
+
+// FingerDown puts a finger on a touch screen at (x, y); FingerMove moves it
+// and FingerUp lifts it: a press that moves pans what scrolls under it,
+// and lifted as it moves it flings it on, which advancing the clock
+// (Advance) shows.
+func (t *Tester) FingerDown(x, y float32) {
+	enableTouch()
+	t.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: float64(x), Y: float64(y), Touch: true})
+	t.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: float64(x), Y: float64(y), Clicks: 1, Touch: true})
+}
+
+// FingerMove moves the finger on the screen to (x, y).
+func (t *Tester) FingerMove(x, y float32) {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: float64(x), Y: float64(y), Touch: true})
+}
+
+// FingerUp lifts the finger at (x, y).
+func (t *Tester) FingerUp(x, y float32) {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: float64(x), Y: float64(y), Clicks: 1, Touch: true})
+	t.send(platform.SurfaceEvent{Kind: platform.PointerLeave, Touch: true})
+}
+
+// FingerCancel ends the finger as the system does when it takes it away: as a
+// system gesture starts, or a call comes.
+func (t *Tester) FingerCancel() {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: -1e6, Y: -1e6, Touch: true, Canceled: true})
+	t.send(platform.SurfaceEvent{Kind: platform.PointerLeave, Touch: true})
 }
 
 // UsePointer has the pointer's presses and moves from now on come from
@@ -1244,3 +1266,5 @@ func (t *Tester) Focused(s string) bool {
 	}
 	return false
 }
+
+func (h *headless) stackSurface() platform.StackSurface { return h.stack }

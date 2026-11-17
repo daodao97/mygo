@@ -68,9 +68,9 @@ func nativePermission(kind Permission, request bool) (PermissionStatus, error) {
 	if !postMain(func() {
 		done := func(status string, err error) { deliver(ch, result{PermissionStatus(status), err}) }
 		if request {
-			backend().Permissions().Request(string(kind), done)
+			permissionsBackend().Request(string(kind), done)
 		} else {
-			backend().Permissions().Query(string(kind), done)
+			permissionsBackend().Query(string(kind), done)
 		}
 	}) {
 		return "", errLoopStopped
@@ -85,7 +85,7 @@ func nativePermission(kind Permission, request bool) (PermissionStatus, error) {
 func (PermissionModule) OpenSettings() error {
 	needsApp("Permissions.OpenSettings")
 	ch := make(chan error, 1)
-	if !postMain(func() { backend().Permissions().OpenSettings(func(err error) { deliver(ch, err) }) }) {
+	if !postMain(func() { permissionsBackend().OpenSettings(func(err error) { deliver(ch, err) }) }) {
 		return errLoopStopped
 	}
 	return await(ch)

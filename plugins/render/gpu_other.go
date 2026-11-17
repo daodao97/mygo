@@ -1,4 +1,4 @@
-//go:build !darwin && !windows && !(linux && (amd64 || arm64))
+//go:build !(darwin && !ios) && !windows && !(linux && !android && (amd64 || arm64))
 
 package render
 

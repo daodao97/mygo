@@ -9,38 +9,49 @@ import (
 	"github.com/egoist/mygo"
 )
 
+// Phones keep them through the plugin's native code. It uses the system's
+// frameworks by name on iOS, not to make every app that imports it declare why
+// it would use the camera: an app declares what it asks for.
+
 const ungated = false
 
 func title(_ Permission, t string) string { return t }
 
-func native(ctx context.Context, p Permission, ask bool) (Status, error) {
-	n, ok := nativeOf(p)
-	if !ok {
-		return Unknown, errors.ErrUnsupported
+func call(ctx context.Context, method string, p Permission) (Status, error) {
+	var r struct {
+		Status string `json:"status"`
 	}
-	if err := ctx.Err(); err != nil {
+	err := mygo.Native("permissionflow").Call(ctx, method, map[string]string{"permission": string(p)}, &r)
+	var n *mygo.NativeError
+	if errors.As(err, &n) {
+		switch n.Code {
+		case "Unsupported":
+			return Unknown, errors.ErrUnsupported
+		case "NoUsageDescription":
+			return Unknown, ErrUsageDescription
+		}
 		return Unknown, err
 	}
-	query := mygo.Permissions.Query
-	if ask {
-		query = mygo.Permissions.Request
-	}
-	s, err := query(n)
 	if err != nil {
 		return Unknown, err
 	}
-	return statusOf(s), nil
+	switch r.Status {
+	case "granted":
+		return Granted, nil
+	case "denied":
+		return Denied, nil
+	case "notDetermined":
+		return NotDetermined, nil
+	}
+	return Unknown, nil
 }
 
-func check(p Permission) (Status, error) { return native(context.Background(), p, false) }
+func check(p Permission) (Status, error) { return call(context.Background(), "check", p) }
 
-func request(ctx context.Context, p Permission) (Status, error) { return native(ctx, p, true) }
+func request(ctx context.Context, p Permission) (Status, error) { return call(ctx, "request", p) }
 
 func openSettings(p Permission) error {
-	if _, ok := nativeOf(p); !ok {
-		return errors.ErrUnsupported
-	}
-	return mygo.Permissions.OpenSettings()
+	return mygo.Native("permissionflow").Call(context.Background(), "openSettings", map[string]string{"permission": string(p)}, nil)
 }
 
 func guide(ctx context.Context, p Permission, _ GuideOptions) (Status, error) {

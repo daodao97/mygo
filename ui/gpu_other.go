@@ -1,4 +1,4 @@
-//go:build (android && !cgo) || (ios && !cgo) || (!windows && !darwin && !android && !(linux && (amd64 || arm64)) && !(js && wasm))
+//go:build !windows && !darwin && !(linux && !android && (amd64 || arm64)) && !js && !android
 
 package ui
 

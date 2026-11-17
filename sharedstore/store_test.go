@@ -195,21 +195,3 @@ func TestLockAcrossProcesses(t *testing.T) {
 	next()
 }
 
-func TestSwiftSnapshotWireFixture(t *testing.T) {
-	s, err := Open(t.TempDir(), Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	wire, err := os.ReadFile("../native/ios/tests/snapshot-v1.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.WriteBytes("wire.json", wire); err != nil {
-		t.Fatal(err)
-	}
-	got, err := Read[map[string]int](s, "wire.json", 1, time.UnixMilli(1800000000001))
-	if err != nil || got.Value["count"] != 4 || got.ExpiresAt == nil || *got.ExpiresAt != 1800000060000 {
-		t.Fatal(got, err)
-	}
-}

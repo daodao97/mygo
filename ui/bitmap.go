@@ -133,6 +133,54 @@ func DecodeBitmap(data []byte) (*Bitmap, error) {
 	return &Bitmap{img: s, w: s.W, h: s.H, remake: func() (*scene.Image, error) { return decodeImage(data) }}, nil
 }
 
+// DecodeBitmapScaled decodes as DecodeBitmap, to a bitmap no longer on either
+// side than maxSide pixels: a list of thumbnails of photos holds the memory of
+// its thumbnails, not of its photos. It doesn't enlarge. Unlike DecodeBitmap it
+// doesn't keep data, so that its bitmap holds only its pixels, and
+// ReleasePixels leaves them.
+func DecodeBitmapScaled(data []byte, maxSide int) (*Bitmap, error) {
+	s, err := decodeImage(data)
+	if err != nil {
+		return nil, err
+	}
+	s = shrinkImage(s, maxSide)
+	return &Bitmap{img: s, w: s.W, h: s.H}, nil
+}
+
+// shrinkImage averages each pixel of the result over the pixels it covers.
+func shrinkImage(s *scene.Image, maxSide int) *scene.Image {
+	if maxSide <= 0 || (s.W <= maxSide && s.H <= maxSide) {
+		return s
+	}
+	w, h := maxSide, maxSide
+	if s.W > s.H {
+		h = max(s.H*maxSide/s.W, 1)
+	} else {
+		w = max(s.W*maxSide/s.H, 1)
+	}
+	out := make([]byte, 4*w*h)
+	for y := range h {
+		y0, y1 := y*s.H/h, max((y+1)*s.H/h, y*s.H/h+1)
+		for x := range w {
+			x0, x1 := x*s.W/w, max((x+1)*s.W/w, x*s.W/w+1)
+			var sum [4]int
+			for sy := y0; sy < y1; sy++ {
+				row := s.Pix[sy*s.W*4:]
+				for sx := x0; sx < x1; sx++ {
+					for k := range 4 {
+						sum[k] += int(row[sx*4+k])
+					}
+				}
+			}
+			n := (x1 - x0) * (y1 - y0)
+			for k := range 4 {
+				out[(y*w+x)*4+k] = byte((sum[k] + n/2) / n)
+			}
+		}
+	}
+	return scene.NewImageRGBA(w, h, out)
+}
+
 // decodeImage decodes the bytes to a premultiplied RGBA bitmap, upright
 // as a JPEG's EXIF orientation says.
 func decodeImage(data []byte) (*scene.Image, error) {

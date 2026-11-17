@@ -63,9 +63,10 @@ func (c *Config) nativesOf(pkgs []nativePackage, goos, goarch string) ([]source,
 	for _, p := range pkgs {
 		for _, l := range p.manifest.Libraries {
 			l = p.library(l, goos, "")
-			if seen[l.Name] || l.Build.IsSwift() || p.isModule(l) && l.Build == nil {
-				// Swift libraries go into Frameworks (prepareNative), and
-				// a module no language implements here is unsupported.
+			if seen[l.Name] || l.Build.IsSwift() || p.isModule(l) && (l.Build == nil || goos == "ios" || goos == "android") {
+				// Swift libraries go into Frameworks (prepareNative), a
+				// module no language implements here is unsupported, and
+				// phones build their modules with the app (phoneModules).
 				continue
 			}
 			seen[l.Name] = true
@@ -173,7 +174,7 @@ func (c *Config) packageDirs(goos, goarch string) ([]string, error) {
 		return dirs, nil
 	}
 	var out, stderr bytes.Buffer
-	cmd := goCommand(c.root, []string{"GOOS=" + goos, "GOARCH=" + arch}, "list", "-e", "-deps", "-f", "{{if not .Standard}}{{.Dir}}{{end}}", c.Main)
+	cmd := goCommand(c.root, listEnv(goos, arch), "list", "-e", "-deps", "-f", "{{if not .Standard}}{{.Dir}}{{end}}", c.Main)
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("go list: %v\n%s", err, strings.TrimSpace(stderr.String()))

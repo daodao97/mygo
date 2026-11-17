@@ -143,8 +143,7 @@ func (w *widgetTextInput) Selection() TextInputSelection {
 		if ed.password {
 			start = 0
 		}
-		selected := platform.NormalizeTextRange(ed.composeSelected)
-		return TextInputSelection{Range: TextInputRange{Start: start + selected.Start, End: start + selected.End}, Reversed: ed.composeSelected.Start > ed.composeSelected.End}
+		return TextInputSelection{Range: TextInputRange{Start: start + ed.composeSelected.Start, End: start + ed.composeSelected.End}}
 	}
 	if ed.password {
 		return TextInputSelection{}
@@ -263,6 +262,23 @@ func (w *widgetTextInput) UnmarkText() {
 	// GTK/IMM32 can end preedit before committing their replacement. The
 	// platform remembers the range; both operations share this undo step.
 	ed.compositionActive = transaction
+	w.publish()
+}
+
+// SetTextSelection moves the selection, as an on-screen keyboard does.
+func (w *widgetTextInput) SetTextSelection(r TextInputRange) {
+	w.prepare()
+	ed := w.ed
+	if ed.password {
+		return
+	}
+	ed.commitCompose()
+	a, z := ed.buf.runeAtUTF16(r.Start), ed.buf.runeAtUTF16(r.End)
+	ed.anchor, ed.caret = a, z
+	ed.hasDesired = false
+	if ed.area != nil {
+		ed.area.reveal = true
+	}
 	w.publish()
 }
 

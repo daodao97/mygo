@@ -25,7 +25,12 @@ const suffix = ".localhost"
 
 // WebURL maps raw, a URL of a scheme that has reports as the app's, to
 // the http URL that serves it. Other URLs are returned as they are.
-func WebURL(raw string, has func(scheme string) bool) string {
+func WebURL(raw string, has func(scheme string) bool) string { return WebURLOf(raw, "http", has) }
+
+// WebURLOf is WebURL with the scheme of the URLs that serve the app's,
+// http or https: Android's web view serves them at https URLs, which are
+// secure contexts and take no exception for cleartext traffic.
+func WebURLOf(raw, webScheme string, has func(scheme string) bool) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Opaque != "" || u.User != nil || !has(u.Scheme) {
 		return raw
@@ -43,16 +48,19 @@ func WebURL(raw string, has func(scheme string) bool) string {
 	if s, h, ok := AppHost(web, has); !ok || s != u.Scheme || h != host {
 		return raw
 	}
-	u.Scheme, u.Host = "http", web
+	u.Scheme, u.Host = webScheme, web
 	return u.String()
 }
 
 // AppURL maps raw, an http URL that serves a scheme that has reports as
 // the app's, back to the URL of that scheme. Other URLs are returned as
 // they are.
-func AppURL(raw string, has func(scheme string) bool) string {
+func AppURL(raw string, has func(scheme string) bool) string { return AppURLOf(raw, "http", has) }
+
+// AppURLOf is AppURL for URLs served at URLs of webScheme (WebURLOf).
+func AppURLOf(raw, webScheme string, has func(scheme string) bool) string {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" || u.User != nil || u.Port() != "" {
+	if err != nil || u.Scheme != webScheme || u.User != nil || u.Port() != "" {
 		return raw
 	}
 	scheme, host, ok := AppHost(u.Hostname(), has)

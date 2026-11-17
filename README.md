@@ -22,8 +22,7 @@ MyGo Mobile 是 [egoist/mygo](https://github.com/egoist/mygo) 的 fork（仓库 
 |---|---|---|
 | [egoist/mygo#157](https://github.com/egoist/mygo/pull/157) | Add experimental iOS native UI and mobile build tooling：UIKit 后端、触摸/手势/输入法、移动端系统能力、APNs、`mygo build -platform ios`、Xcode 工程生成与签名导出（206 个文件，+19,699 行） | 2026-10-08 关闭，未合并。维护者的答复：*“I don't want to maintain ios/android support, and I also prefer native ui components on mobile device.”* |
 
-因此移动端代码**只在本 fork 维护**，不再向上游提交。Android 后端在
-[@Heyana](https://github.com/Heyana) 贡献的实现基础上合入并继续补齐。
+2026-11-17 起移动端以上游 #940（`internal/mobile`，Swift/Kotlin 宿主内嵌在 CLI）为准；fork 原来的 iOS/Android 后端已删除，fork 独有、尚未移植到 #940 的移动端扩展见 [FORK.md](FORK.md)。
 
 ## 比上游多出的功能
 

@@ -33,10 +33,9 @@ func (w *Window) attachContent(content Content) {
 		panic("mygo: the backend " + backend().Name() + " created no surface for the window's Content")
 	}
 	w.conn = &surface.Conn{
-		Surface:           s,
-		Window:            w,
-		Clipboard:         backend().Clipboard(),
-		ContentBackground: w.syncContentBackground,
+		Surface:   s,
+		Window:    w,
+		Clipboard: backend().Clipboard(),
 		FrameSubmitted: func() {
 			if _, native := s.(platform.DrawableSurface); !native {
 				postMain(w.presented)
@@ -67,22 +66,6 @@ func (w *Window) attachContent(content Content) {
 				return platform.TitleBar{}
 			}
 			return w.native.TitleBar()
-		},
-		// 🔴 SafeArea is not gated on hiddenTitleBar the way TitleBar is,
-		// and that is the whole difference between the two: a title bar is
-		// this window's own controls, which only exist when the window was
-		// asked for a hidden one; the safe area is the *device's* chrome,
-		// which is there whatever the window asked for.
-		//
-		// It is nil on a backend that has not filled it in, and
-		// windowHost.safeArea treats nil as zero — the desktop answer. That
-		// is why leaving this line out is invisible on a desktop and wrong
-		// on a phone: the numbers are read, reported, and dropped here.
-		SafeArea: func() platform.SafeArea {
-			if w.native == nil {
-				return platform.SafeArea{}
-			}
-			return w.native.SafeArea()
 		},
 		Active: func() bool { return w.active },
 		OpenURL: func(url string, done func(error)) {
@@ -127,19 +110,6 @@ func (w *Window) attachContent(content Content) {
 		f.native(w, w.conn)
 	}
 	content.AttachContent(w.conn)
-}
-
-// syncContentBackground fills the mobile safe area around native UI. Explicit
-// window backgrounds take precedence; desktop backgrounds keep their policy.
-func (w *Window) syncContentBackground(c platform.Color) {
-	if w.native == nil || w.background != nil || !App.IsSystemManaged() || c.A != 255 {
-		return
-	}
-	if w.contentBackground != nil && *w.contentBackground == c {
-		return
-	}
-	w.contentBackground = &c
-	w.native.SetBackgroundColor(c)
 }
 
 // contentMenu returns the items of a context menu of the Content, whose
@@ -270,14 +240,6 @@ func (w *Window) captureContent() ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
-}
-
-// TextGeometry forwards optional native selection queries to the content.
-func (h *windowHandler) TextGeometry(q platform.TextGeometryQuery) platform.TextGeometry {
-	if c := h.w.conn; c != nil && c.TextGeometry != nil {
-		return c.TextGeometry(q)
-	}
-	return platform.TextGeometry{}
 }
 
 // SurfaceEvent passes the surface's events to the Content, noting while it

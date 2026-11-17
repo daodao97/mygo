@@ -18,8 +18,8 @@ func mainThread() bool {
 	return r != 0
 }
 
-// olderMacOS reports whether the system is older than version, as "12" or
-// "13.3".
+// olderMacOS reports whether the system, macOS or iOS, is older than
+// version, as "12" or "13.3".
 func olderMacOS(version string) bool {
 	have, err := syscall.Sysctl("kern.osproductversion")
 	if err != nil {

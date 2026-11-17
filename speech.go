@@ -243,7 +243,7 @@ func (appleSpeechProvider) Start(ctx context.Context, o SpeechOptions, emit func
 		if err = ctx.Err(); err != nil {
 			return
 		}
-		recording, err = backend().Speech().Start(platform.SpeechOptions{Language: o.Language, OnDevice: o.OnDevice, ContextualStrings: o.ContextualStrings}, func(r platform.SpeechResult) {
+		recording, err = speechBackend().Start(platform.SpeechOptions{Language: o.Language, OnDevice: o.OnDevice, ContextualStrings: o.ContextualStrings}, func(r platform.SpeechResult) {
 			emit(SpeechResult{Text: r.Text, Final: r.Final, Err: r.Err})
 		})
 	})

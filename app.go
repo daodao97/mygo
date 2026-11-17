@@ -80,15 +80,19 @@ type Application struct {
 	// JumpList controls the jump list of the taskbar button on Windows.
 	JumpList *JumpList
 
-	onReady               listeners[func()]
-	onWindowAllClosed     listeners[func()]
-	onBeforeQuit          listeners[func(*QuitEvent)]
-	onWillQuit            listeners[func(*QuitEvent)]
-	onQuitCanceled        listeners[func()]
-	onQuit                listeners[func()]
-	onActivate            listeners[func(bool)]
-	onDidBecomeActive     listeners[func()]
-	onDidResignActive     listeners[func()]
+	onReady           listeners[func()]
+	onWindowAllClosed listeners[func()]
+	onBeforeQuit      listeners[func(*QuitEvent)]
+	onWillQuit        listeners[func(*QuitEvent)]
+	onQuitCanceled    listeners[func()]
+	onQuit            listeners[func()]
+	onMemoryWarning   listeners[func()]
+	saveState         func() []byte
+	keepingState      bool
+	onActivate        listeners[func(bool)]
+	onDidBecomeActive listeners[func()]
+	onDidResignActive listeners[func()]
+	// The fork's Lifecycle and PersistState (FORK.md, B class).
 	onDidEnterBackground  listeners[func()]
 	onWillEnterForeground listeners[func()]
 	onLifecycleChanged    listeners[func(LifecycleState)]
@@ -120,10 +124,8 @@ func (a *Application) Run() error {
 	if out := os.Getenv("MYGO_GENERATE"); out != "" {
 		return writeClient(out)
 	}
-	if host, ok := backend().(platform.ApplicationHost); ok {
-		return host.RunApplication(a.start, a.finish)
-	}
-	if !isMainThread() && !runFromAnyGoroutine() {
+	takeDevMarker()
+	if !isMainThread() {
 		return errors.New("mygo: App.Run must be called from the main goroutine")
 	}
 	if err := a.start(); err != nil {
@@ -207,7 +209,7 @@ func (a *Application) IsReady() bool {
 // it. On iOS this does nothing; TryQuit reports ErrUnsupported.
 func (a *Application) Quit() {
 	postMain(func() {
-		if backend().SystemManagedLifetime() {
+		if systemManagedLifetime() {
 			return
 		}
 		if a.stopping {
@@ -257,7 +259,7 @@ func (a *Application) forceStop() {
 // without emitting quit events or asking windows. On iOS this does nothing;
 // the system owns the process lifetime.
 func (a *Application) Exit(code int) {
-	if backend().SystemManagedLifetime() {
+	if systemManagedLifetime() {
 		return
 	}
 	onMain(func() {
@@ -634,6 +636,32 @@ func (a *Application) OnQuitCanceled(fn func()) (off func()) {
 // last hook, and must finish its work synchronously.
 func (a *Application) OnQuit(fn func()) (off func()) { return a.onQuit.add(fn, false) }
 
+// OnSaveState has fn give what the app needs to come back as it was, called on
+// the main thread as a phone's app goes to the background, where the system may
+// end it without a word. The next launch finds it in RestoredState. Keep it
+// small: it is written before the app may do no more. Desktops never call it,
+// but under mygo dev, which restarts the app as the code changes: it is called
+// every second there, for the app to come back as it was on every platform.
+func (a *Application) OnSaveState(fn func() []byte) {
+	a.saveState = fn
+	a.keepStateInDevelopment()
+}
+
+// RestoredState returns what OnSaveState gave as the app went to the background,
+// if the system ended it there. Android tells when the user meant to leave, which
+// gives nil. iOS doesn't say by the time the app starts: an app the user force-quit
+// from the background gets it too. An end while the app is on screen, as a crash,
+// gives nil.
+func (a *Application) RestoredState() []byte { return restoredState() }
+
+// OnMemoryWarning is called on the main thread when the system is short of
+// memory: let go of what can be made again, as caches. Phones end apps that
+// keep too much; desktops do not report it. Native UI drops its own caches
+// after these listeners ran, and the garbage collector returns what it can.
+func (a *Application) OnMemoryWarning(fn func()) (off func()) {
+	return a.onMemoryWarning.add(fn, false)
+}
+
 // OnActivate is called when the application is re-activated, for example by
 // clicking its Dock icon (macOS). Apps usually open a window when
 // hasVisibleWindows is false.
@@ -801,21 +829,6 @@ func (appHandler) DidResignActive() {
 		fire(&App.onDidResignActive)
 	}
 }
-func (appHandler) DidEnterBackground() {
-	if App.setLifecycle(LifecycleBackground) {
-		fire(&App.onDidEnterBackground)
-		// As #940 reports a phone's app leaving for the background: the
-		// system suspending it, where it may not run again.
-		Power.event("suspend")
-		App.checkpoint()
-	}
-}
-func (appHandler) WillEnterForeground() {
-	if App.setLifecycle(LifecycleInactive) {
-		fire(&App.onWillEnterForeground)
-		Power.event("resume")
-	}
-}
 func (appHandler) OpenURLs(urls []string) {
 	for _, u := range urls {
 		fire1(&App.onOpenURL, u)
@@ -835,9 +848,34 @@ func (appHandler) ThemeChanged() {
 	// media queries do not tell them.
 	sendPreferences()
 }
-func (appHandler) DisplaysChanged()              { Screen.changed() }
-func (appHandler) LocaleChanged()                { App.localeChangedFromSystem() }
-func (appHandler) PowerEvent(event string)       { Power.event(event) }
+func (appHandler) MemoryWarning()   { fire(&App.onMemoryWarning) }
+func (appHandler) DisplaysChanged() { Screen.changed() }
+func (appHandler) LocaleChanged()   { App.localeChangedFromSystem() }
+func (appHandler) PowerEvent(event string) {
+	// #940's phone backends report the app leaving for the background, and
+	// coming back, as the system suspending and resuming it: the fork's
+	// Lifecycle (FORK.md) follows them there, in its own order.
+	phone := systemManagedLifetime()
+	switch event {
+	case "suspend":
+		if phone {
+			if !App.setLifecycle(LifecycleBackground) {
+				return // the system told it twice
+			}
+			fire(&App.onDidEnterBackground)
+		}
+		App.writeState()
+	case "resume":
+		forgetKeptState()
+		if phone && App.Lifecycle() == LifecycleBackground && App.setLifecycle(LifecycleInactive) {
+			fire(&App.onWillEnterForeground)
+		}
+	}
+	Power.event(event)
+	if phone && event == "suspend" {
+		App.checkpoint()
+	}
+}
 func (appHandler) HotkeyPressed(id int)          { GlobalShortcut.pressed(id) }
 func (appHandler) NotificationClicked(id string) { notificationClicked(id) }
 

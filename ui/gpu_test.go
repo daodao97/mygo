@@ -78,7 +78,7 @@ func TestMemoryPressureReleasesRenderer(t *testing.T) {
 	})
 	t.Cleanup(h.detach)
 	frame()
-	h.event(platform.SurfaceEvent{Kind: platform.SurfaceMemoryPressure})
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceLowMemory})
 	if len(made) != 1 || made[0].released != 1 || h.gpu != nil {
 		t.Fatal("memory pressure retained the renderer")
 	}

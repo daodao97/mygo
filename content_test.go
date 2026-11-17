@@ -511,34 +511,6 @@ func TestContentDuplicateKeyTellsWhere(t *testing.T) {
 	}
 }
 
-func TestContentBackgroundFollowsMobileRoot(t *testing.T) {
-	fb.SystemManaged.Store(true)
-	theme := ui.DarkTheme()
-	theme.Background = ui.Hex("#14213d")
-	w, fw, s := contentWindow(t, func(c *ui.Context) { c.SetTheme(theme); ui.Text(c, "Theme") })
-	t.Cleanup(func() { fb.SystemManaged.Store(false) })
-	background := func() platform.Color { return onMainValue(func() platform.Color { return fw.Background }) }
-	if got := background(); got != (platform.Color{R: 20, G: 33, B: 61, A: 255}) {
-		t.Fatalf("mobile background = %+v", got)
-	}
-	onMain(func() { theme = ui.LightTheme(); theme.Background = ui.Hex("#eef4f8") })
-	w.Invalidate()
-	onMain(func() { s.Frame() })
-	if got := background(); got != (platform.Color{R: 238, G: 244, B: 248, A: 255}) {
-		t.Fatalf("changed root background = %+v", got)
-	}
-	// An explicit native background remains under the application's control.
-	if err := w.SetBackgroundColor("#123456"); err != nil {
-		t.Fatal(err)
-	}
-	onMain(func() { theme = ui.DarkTheme() })
-	w.Invalidate()
-	onMain(func() { s.Frame() })
-	if got := background(); got != (platform.Color{R: 18, G: 52, B: 86, A: 255}) {
-		t.Fatalf("root overrode explicit background: %+v", got)
-	}
-}
-
 func TestContentBackgroundKeepsDesktopPolicy(t *testing.T) {
 	theme := ui.DarkTheme()
 	w, fw, s := contentWindow(t, func(c *ui.Context) { c.SetTheme(theme) })
@@ -634,30 +606,6 @@ func TestContentMaximizeButton(t *testing.T) {
 
 // Extending backgrounds does not turn off control insets. Insets can change
 // without a resize (system chrome), and the keyboard removes bottom padding.
-func TestContentExtendedSafeAreaUpdatesWithoutResize(t *testing.T) {
-	var seen [4]float32
-	var frames int
-	_, fw := testWindow(t, WindowOptions{Width: 390, Height: 844, ExtendIntoSafeArea: true, Content: ui.View(func(c *ui.Context) {
-		frames++
-		seen[0], seen[1], seen[2], seen[3] = c.SafeArea()
-		ui.Column(c).Fill().Padding(seen[0], seen[1], seen[2], seen[3]).Children(func() { ui.Text(c, "Controls") })
-	})})
-	if !fw.Opts.ExtendIntoSafeArea {
-		t.Fatal("native surface did not receive safe-area extension")
-	}
-	surface := fw.FakeSurface()
-	onMain(func() { surface.Frame() })
-	for _, area := range []platform.SafeArea{{Top: 59, Bottom: 34}, {Top: 59}, {Left: 59, Right: 59, Bottom: 21}} {
-		before := onMainValue(func() int { return frames })
-		onMain(func() { fb.SetSafeArea(fw, area) })
-		onMain(func() { surface.Frame() })
-		got := onMainValue(func() [4]float32 { return seen })
-		if got != [4]float32{float32(area.Top), float32(area.Right), float32(area.Bottom), float32(area.Left)} || onMainValue(func() int { return frames }) <= before {
-			t.Fatalf("safe-area change did not reach layout: %+v want %+v", got, area)
-		}
-	}
-}
-
 // TestContentClosedWindowLetsItsBitmapsGo checks issue #1281: once a
 // window of native UI closes, nothing of it keeps its view, the bitmaps
 // its last frame drew, or that frame, though the app keeps the window, as

@@ -72,7 +72,7 @@ type layoutRecord struct {
 	layout     uint64
 	ok         bool
 	style      layoutStyle
-	flags      uint64
+	flags      uint32
 	hidden     bool
 	ts         textLayout
 	cols, rows []Track

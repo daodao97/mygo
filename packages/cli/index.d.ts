@@ -41,7 +41,7 @@ export type ConfigFn = (env: ConfigEnv) => Config | Promise<Config>;
 /** What a configuration function gets. */
 export interface ConfigEnv {
   /** The mygo command running. */
-  command: "dev" | "build" | "generate" | "init";
+  command: "dev" | "build" | "generate" | "init" | "publish";
 }
 
 /** The configuration of a MyGo project. Every field is optional. */
@@ -136,110 +136,14 @@ export interface Config {
   updates?: UpdatesConfig;
   /** macOS packaging. */
   macos?: MacOSConfig;
-  /** iOS native UI packaging (requires macOS and Xcode). */
-  ios?: IOSConfig;
   /** Windows packaging. */
   windows?: WindowsConfig;
   /** Linux packaging. */
   linux?: LinuxConfig;
-}
-
-/** The UIKit host of a native UI application. */
-export interface IOSConfig {
-  backgroundTasks?: IOSBackgroundTaskConfig[];
-  /** Shared-container entitlements; each extension opts in separately. */
-  appGroups?: string[];
-  native?: IOSNativeConfig;
-  extensions?: IOSExtensionConfig[];
-  /** Opt into protected native APIs; disabled by default. Notifications and ordinary Keychain storage remain available. */
-  capabilities?: ("camera" | "microphone" | "geolocation" | "photos" | "biometrics" | "speech")[];
-  /** Enable APNs; generates aps-environment=development unless explicitly overridden. */
-  pushNotifications?: boolean;
- /** CFBundleVersion, independent of the marketing version. */
-  buildNumber?: string;
- /** Entitlement values, e.g. ["applinks:example.com"]. Requires a hosted AASA file. */
-  associatedDomains?: string[];
- /** Signing capabilities, e.g. { "aps-environment": "development" }. */
-  entitlements?: Record<string, unknown>;
-
-  /** Static launch screen and matching overlay until the first Go frame. */
-  launchScreen?: IOSLaunchScreenConfig;
-  /** Oldest supported iOS version (default: "15.0"). */
-  minimumSystemVersion?: string;
-  /** Apple development team for automatic signing; unset builds unsigned. */
-  developmentTeam?: string;
-  /** Bundle keys, including permission descriptions. */
-  infoPlist?: Record<string, unknown>;
-  /** App/dependency privacy declarations merged with MyGo's required reasons. */
-  privacy?: IOSPrivacyConfig;
-  /** Automatic by default; manual signing requires identity and profile. */
-  signing?: IOSSigningConfig;
-}
-
-/** Opt-in native files copied into the exported, self-contained Xcode host. */
-export interface IOSNativeConfig {
-  sources?: string[];
-  resources?: string[];
-  /** Prebuilt static .a archives for the chosen SDK; linked with -force_load. */
-  libraries?: string[];
-  frameworks?: string[];
-  linkerFlags?: string[];
-  swiftConditions?: string[];
-  support?: ("actions" | "shared-store" | "widgets" | "browser" | "live-activities")[];
-  /** Replaces host main.m; unavailable on extension targets. */
-  entryPoint?: string;
-}
-
-export interface IOSExtensionConfig {
-  name: string;
-  bundleIdentifier?: string;
-  extensionPoint: string;
-  minimumSystemVersion?: string;
-  native?: IOSNativeConfig;
-  appGroups?: string[];
-  entitlements?: Record<string, unknown>;
-  infoPlist?: Record<string, unknown>;
-}
-
-export interface IOSPrivacyConfig {
-  tracking?: boolean;
-  trackingDomains?: string[];
-  collectedData?: IOSPrivacyData[];
-  accessedAPIs?: IOSPrivacyAPI[];
-  /** Paths to XML or binary PrivacyInfo.xcprivacy files to merge. */
-  manifests?: string[];
-}
-
-export interface IOSPrivacyAPI {
-  category: string;
-  reasons: string[];
-}
-
-export interface IOSPrivacyData {
-  type: string;
-  linked?: boolean;
-  tracking?: boolean;
-  purposes: string[];
-}
-
-export interface IOSSigningConfig {
-  style?: "automatic" | "manual";
-  identity?: string;
-  provisioningProfile?: string;
-  exportProfiles?: Record<string, string>;
-  exportCertificate?: string;
-}
-
-export interface IOSLaunchScreenConfig {
-  title?: string;
-  /** PNG path relative to the project. */
-  image?: string;
-  /** #RRGGBB; unset follows the system appearance. */
-  backgroundColor?: string;
-  /** #RRGGBB; unset follows the system appearance. */
-  foregroundColor?: string;
-  /** Overlay fade in milliseconds; default 0. Respects Reduce Motion. */
-  fadeDurationMs?: number;
+  /** The iOS app (`mygo build -platform ios`, `ios/simulator`). */
+  ios?: IOSConfig;
+  /** The Android app (`mygo build -platform android`). */
+  android?: AndroidConfig;
 }
 
 /**
@@ -387,6 +291,77 @@ export interface WindowsConfig {
 }
 
 /** Linux packaging. */
+/** The iOS app. */
+export interface IOSConfig {
+  /** The oldest iOS the app runs on (default: `17.0`). */
+  minimumSystemVersion?: string;
+  /** The ID of the Apple developer team that signs the app for devices. */
+  team?: string;
+  /** The provisioning profile to sign with: its name, UUID or the path of a `.mobileprovision` (default: the installed one that best fits). */
+  provisioningProfile?: string;
+  /** What the build is for (default: `app-store`, TestFlight too). */
+  distribution?: "app-store" | "ad-hoc" | "development" | "enterprise";
+  /** `CFBundleVersion`, which must grow with every upload of a version (default: the version). */
+  /** Lets WindowOptions.OwnScene open windows of the system's own on iPad. */
+  multipleWindows?: boolean;
+  buildNumber?: string;
+  /** The orientations the app turns to on iPhones (default: both); iPads take every one. */
+  orientations?: ("portrait" | "landscape")[];
+  /** Extra keys of Info.plist, which replace MyGo's own, as usage descriptions. */
+  infoPlist?: Record<string, unknown>;
+  /**
+   * The hosts of the app's universal links, which reach `App.OnOpenURL`:
+   * `example.com` signs the app with `applinks:example.com`, and a value with
+   * its own service, as `webcredentials:example.com`, stays as it is. The
+   * provisioning profile needs the capability Associated Domains.
+   */
+  associatedDomains?: string[];
+  /** What the system shows while the app starts (default: the system background). */
+  launchScreen?: IOSLaunchScreen;
+  /** The app's `UIBackgroundModes`, as `audio`, `fetch` or `remote-notification`, with those its plugins ask for. */
+  backgroundModes?: string[];
+}
+
+/** The launch screen of the iOS app: at least one of its fields. */
+export interface IOSLaunchScreen {
+  /** Its color, as `#102030`. */
+  background?: string;
+  /** A PNG shown centered, at the size of a 3x screen: a logo of 600×600 pixels takes 200×200 points. */
+  image?: string;
+}
+
+/** The Android app. */
+export interface AndroidConfig {
+  /** The oldest Android API level the app runs on (default: `26`, Android 8.0). */
+  minSdk?: number;
+  /** The integer version Google Play orders uploads by (default: from the version, major×10000 + minor×100 + patch). */
+  versionCode?: number;
+  /** Permissions the manifest declares besides INTERNET, as `android.permission.CAMERA` or `CAMERA`. */
+  permissions?: string[];
+  /** The keystore of the upload key that signs release builds; its passwords come from `MYGO_ANDROID_KEYSTORE_PASSWORD` and `MYGO_ANDROID_KEY_PASSWORD`. Without one, builds are signed with the debug key. */
+  keystore?: string;
+  /** The alias of the upload key in the keystore. */
+  keyAlias?: string;
+  /**
+   * The hosts of the app's https deep links, verified by Android, which reach
+   * `App.OnOpenURL`: each serves `/.well-known/assetlinks.json` naming the
+   * app. `*.example.com` takes its subdomains.
+   */
+  appLinks?: string[];
+  /** The launcher icon of Android 8.0 and later, which the launcher masks and moves. Without it, launchers show `icon` as it is. */
+  adaptiveIcon?: AndroidAdaptiveIcon;
+  /** The color of the screen the system shows while the app starts, as `#102030` (default: the theme's). */
+  splash?: string;
+}
+
+/** An icon of two layers. */
+export interface AndroidAdaptiveIcon {
+  /** A square PNG, ideally 432×432 or more, with transparency around what it shows: launchers crop to the middle 72/108 of it. */
+  foreground: string;
+  /** The color under it, as `#102030`. */
+  background: string;
+}
+
 export interface LinuxConfig {
   /** `Name <email>`, the maintainer of the Debian and RPM packages and of the PKGBUILD (default: `author` in package.json, else the app's name). */
   maintainer?: string;
@@ -428,13 +403,4 @@ export interface LinuxDepends {
   rpm?: string[];
   /** Arch Linux packages the app needs besides GTK and WebKitGTK. */
   arch?: string[];
-}
-
-/** C-exported Go callbacks. A negative nextDelay disables scheduling. */
-export interface IOSBackgroundTaskConfig {
-  identifier: string;
-  prepare: string;
-  run: string;
-  cancel: string;
-  nextDelay: string;
 }

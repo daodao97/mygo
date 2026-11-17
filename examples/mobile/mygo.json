@@ -1,0 +1,11 @@
+{
+  "name": "mobile",
+  "displayName": "Mobile",
+  "identifier": "dev.mygo.mobile",
+  "urlSchemes": [
+    "mygomobile"
+  ],
+  "ios": {
+    "multipleWindows": true
+  }
+}

@@ -4,9 +4,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Heyana/typesetting-go/segmenter"
 	"github.com/egoist/mygo/plugins/terminal/internal/vt"
 	"github.com/egoist/mygo/ui"
+	"github.com/go-text/typesetting/segmenter"
 )
 
 // inputContext mirrors only locally typed, unsubmitted text. The remote
@@ -114,70 +114,6 @@ func (t *Terminal) contextKey(key vt.Key, mods ui.Modifiers, text string) {
 		// invalidate the mirror. Ordinary arrow keys still edit the live PTY.
 		d.text, d.caret = nil, 0
 	}
-}
-func (v *view) moveInputCaret(caret int) {
-	t := v.t
-	t.context.mu.Lock()
-	d := &t.context
-	bounds := contextBoundaries(d.text)
-	from, to := contextIndex(bounds, d.caret), contextIndex(bounds, max(0, min(caret, len(d.text))))
-	d.caret = bounds[to]
-	t.context.mu.Unlock()
-	key := ui.KeyRight
-	if to < from {
-		key = ui.KeyLeft
-	}
-	for n := 0; n < absInt(to-from); n++ {
-		t.sendSoftwareKey(key, 0)
-	}
-}
-func absInt(n int) int {
-	if n < 0 {
-		return -n
-	}
-	return n
-}
-func (v *view) replaceInput(ev ui.InputEvent) {
-	t := v.t
-	t.context.mu.Lock()
-	d := &t.context
-	bounds := contextBoundaries(d.text)
-	from, to := max(0, min(ev.From, len(d.text))), max(0, min(ev.To, len(d.text)))
-	if from > to {
-		from, to = to, from
-	}
-	a, b := contextIndex(bounds, from), contextIndex(bounds, to)
-	if bounds[b] < to {
-		b++
-	}
-	// Expand partial native replacements to grapheme boundaries. Emoji and
-	// combining accents must be deleted with one terminal key per grapheme.
-	text := string(d.text[bounds[a]:from]) + ev.Text + string(d.text[to:bounds[b]])
-	oldCaret := contextIndex(bounds, d.caret)
-	// Apply the mirror mutation atomically; a snapshot restore may clear it
-	// from the reader goroutine while terminal keys are being queued.
-	d.text = append(d.text[:bounds[a]], d.text[bounds[b]:]...)
-	d.caret = bounds[a]
-	t.context.mu.Unlock()
-	key := ui.KeyRight
-	if b < oldCaret {
-		key = ui.KeyLeft
-	}
-	for n := 0; n < absInt(b-oldCaret); n++ {
-		t.sendSoftwareKey(key, 0)
-	}
-	for n := a; n < b; n++ {
-		t.sendSoftwareKey(ui.KeyBackspace, 0)
-	}
-	if ev.Mods != 0 {
-		v.modifiedText(text, ev.Mods)
-	} else {
-		v.typed(text)
-	}
-	if ev.Mods == 0 {
-		v.moveInputCaret(ev.Caret)
-	}
-	v.preedit = ""
 }
 
 // InsertNewline inserts a line break without sending an unmodified Return.

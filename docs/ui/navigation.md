@@ -98,15 +98,12 @@ ownership stays in the router; page code calls these methods directly.
 This follows the traversal model of [Vue Router](https://router.vuejs.org/guide/essentials/navigation.html)
 and the [history library](https://github.com/remix-run/history/blob/main/docs/api-reference.md).
 
-On iOS, `ui.NewRouter` enables `InteractiveBack`: a touch within 24 DIPs of
-the view's left edge can drag the current page right, revealing the previous
-page. Release beyond halfway, or flick right, to finish returning; a short
-or reversed drag cancels. Cancellation retains the current page's editing,
-keyboard focus and scroll position. Shared layouts remain fixed and the
-root page cannot return further. Vertical edge gestures still scroll.
-Set `router.InteractiveBack = false` to disable it, or `true` to opt in on
-another platform with touch input. Entries differing only by query share
-one page and use the ordinary Back controls rather than a drag preview.
+On phones, `router.SystemStack = true` shows the history as the system's
+own stack of screens, under its navigation bar with each page's title and
+a back button: UIKit moves the pages on iOS, with its swipe from the left
+edge, and Android shows Material's toolbar over them. `InSystemStack`
+tells the view to show no bar of its own then (see
+[Interfaces on phones](../mobile/interface.md#tabs-and-stacks)).
 
 In a [browser](browsers.md), the first router a window shows follows the
 tab's history, in the URL's fragment (`#/notes/42`): going to a page adds

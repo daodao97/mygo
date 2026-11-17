@@ -3,12 +3,8 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
-	"runtime"
 	"slices"
 	"testing"
-	"time"
-
-	"github.com/egoist/mygo/internal/platform"
 )
 
 func TestRouterJSONRoundTrip(t *testing.T) {
@@ -27,9 +23,6 @@ func TestRouterJSONRoundTrip(t *testing.T) {
 	}
 	if restored.Location() != r.Location() || restored.at != 1 || len(restored.entries) != 3 || !restored.CanGoForward() || restored.Query("text") != "👋" {
 		t.Fatalf("restored: %s, index=%d, entries=%d", restored.Location(), restored.at, len(restored.entries))
-	}
-	if restored.InteractiveBack != (runtime.GOOS == "ios") {
-		t.Fatal("fresh restored router lost platform defaults")
 	}
 	restored.Forward()
 	if restored.at != 2 {
@@ -150,23 +143,6 @@ func TestRestoredRouterSharedLayouts(t *testing.T) {
 				if values != [3]string{outer, inner, leaf} {
 					t.Fatal("returning to the original branch lost its state")
 				}
-				// After restoration, the gesture must move only the leaf view.
-				goTo(2)
-				r.InteractiveBack, r.Transition = true, TransitionAuto
-				now := time.Now()
-				tt.rt.clock = func() time.Time { return now }
-				touch(tt, platform.PointerDown, 1, 8, 200)
-				now = now.Add(time.Second)
-				touch(tt, platform.PointerMove, 1, 230, 200)
-				if r.back == nil || r.back.level != 2 {
-					t.Fatal("restored back gesture moved a shared layout")
-				}
-				now = now.Add(200 * time.Millisecond)
-				touch(tt, platform.PointerUp, 1, 230, 200)
-				finishBack(tt, &now)
-				if r.at != 1 || values != [3]string{outer, inner, leaf} {
-					t.Fatal("restored gesture lost a shared layout or query leaf")
-				}
 			})
 		}
 	}
@@ -226,13 +202,13 @@ func TestRouterJSONRejectsInvalidStateAtomically(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			r := NewRouter("/original")
 			r.Push("/original/detail")
-			r.Transition, r.InteractiveBack = TransitionFade, true
+			r.Transition = TransitionFade
 			original, _ := json.Marshal(r)
 			if err := json.Unmarshal([]byte(input), r); err == nil {
 				t.Fatal("invalid state accepted")
 			}
 			after, _ := json.Marshal(r)
-			if string(original) != string(after) || r.Transition != TransitionFade || !r.InteractiveBack {
+			if string(original) != string(after) || r.Transition != TransitionFade {
 				t.Fatal("invalid restore changed the live router")
 			}
 		})
@@ -241,14 +217,14 @@ func TestRouterJSONRejectsInvalidStateAtomically(t *testing.T) {
 
 func TestRouterLiveRestoreAndReset(t *testing.T) {
 	r := NewRouter("/old")
-	r.Transition, r.InteractiveBack = TransitionNone, true
+	r.Transition = TransitionNone
 	tt := NewTester(func(c *Context) { r.View(c, func(p *Route) { Text(c, p.Path()) }) }, 320, 240)
 	oldID, host := r.current().pages[0], r.rt
 	if err := json.Unmarshal([]byte(`{"version":1,"entries":["/new","/new/detail"],"index":0}`), r); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !tt.HasText("/new") || tt.HasText("/old") || r.current().pages[0] == oldID || r.rt != host || r.Transition != TransitionNone || !r.InteractiveBack {
+	if !tt.HasText("/new") || tt.HasText("/old") || r.current().pages[0] == oldID || r.rt != host || r.Transition != TransitionNone {
 		t.Fatal("live restore lost configuration, attachment or reused old element state")
 	}
 	r.Forward()
@@ -263,30 +239,4 @@ func TestRouterLiveRestoreAndReset(t *testing.T) {
 	if !slices.Equal(r.History(), []string{"/child"}) {
 		t.Fatal("Reset of the current location retained history")
 	}
-}
-
-func TestRouterGestureCheckpointUsesOwnedHistory(t *testing.T) {
-	tt, r, now := backFixture(t, func(c *Context, r *Router) { r.View(c, func(p *Route) { Text(c, p.Path()) }) })
-	check := func(want string, forward bool) {
-		t.Helper()
-		data, err := json.Marshal(r)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var restored Router
-		if err := json.Unmarshal(data, &restored); err != nil {
-			t.Fatal(err)
-		}
-		if restored.Path() != want || restored.CanGoForward() != forward {
-			t.Fatalf("checkpoint: %s, forward=%v", restored.Path(), restored.CanGoForward())
-		}
-	}
-	touch(tt, platform.PointerDown, 1, 8, 100)
-	*now = now.Add(time.Second)
-	touch(tt, platform.PointerMove, 1, 230, 100)
-	check("/list/detail", false)
-	*now = now.Add(200 * time.Millisecond)
-	touch(tt, platform.PointerUp, 1, 230, 100)
-	finishBack(tt, now)
-	check("/list", true)
 }

@@ -62,6 +62,8 @@ keep it: the app's own setting is left as it is.`)
 	port := flags.Int("port", 5174, "with -web, the port to serve the app at, or the next free one")
 	openPage := flags.Bool("open", true, "with -web, open the app in the browser")
 	lang := flags.String("lang", "", "run the app in this language (as de, or the pseudo locales en-XA and ar-XB), without keeping it")
+	platform := flags.String("platform", "", "develop the app on a phone: ios (the simulator) or android (a device or an emulator)")
+	device := flags.String("device", "", "with -platform, what to run on (mygo devices lists them): an iOS simulator or device (name or UDID), an Android device (adb serial) or emulator, which it starts")
 	background := flags.Bool("background", false, "start the app, and again after each rebuild, without bringing it to the front")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -83,7 +85,24 @@ keep it: the app's own setting is left as it is.`)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	s := &devSession{root: c.root, sign: devSign(c, *sign), name: devConfig(c).Name, env: []string{"MYGO_ENV=development"}}
+	s := &devSession{root: c.root, sign: *sign, name: devConfig(c).Name, env: []string{"MYGO_ENV=development"}}
+	switch *platform {
+	case "":
+		s.sign = devSign(c, *sign)
+	case "ios":
+		if s.device, err = iosRunTarget(*device); err != nil {
+			return err
+		}
+	case "android":
+		if s.device, err = androidDevice(ctx, *device); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown platform %q: dev takes ios or android", *platform)
+	}
 	if *background {
 		s.env = append(s.env, "MYGO_DEV_BACKGROUND=1")
 	}
@@ -165,7 +184,13 @@ keep it: the app's own setting is left as it is.`)
 		if err := starting.end(err, "Dev server ready at "+cyan(c.DevURL)); err != nil {
 			return err
 		}
-		s.env = append(s.env, "MYGO_DEV_URL="+c.DevURL)
+		devURL := c.DevURL
+		if s.device != nil {
+			if devURL, err = s.device.reachDevURL(devURL); err != nil {
+				return err
+			}
+		}
+		s.env = append(s.env, "MYGO_DEV_URL="+devURL)
 	case starting != nil:
 		starting.done("Started " + c.DevCommand)
 	}
@@ -188,7 +213,7 @@ keep it: the app's own setting is left as it is.`)
 			}
 		}()
 	}
-	if c.DevURL == "" && c.FrontendDist != "" {
+	if c.DevURL == "" && c.FrontendDist != "" && s.device == nil {
 		s.env = append(s.env, "MYGO_FRONTEND_DIST="+c.path(c.FrontendDist))
 	}
 	return s.run(ctx, c)
@@ -224,10 +249,11 @@ func devSign(c *Config, sign string) string {
 
 // devSession builds and runs development builds of an app.
 type devSession struct {
-	root string
-	sign string
-	name string   // of the development app, for messages
-	env  []string // for the app
+	root   string
+	device *mobileDevice // the phone it runs on, nil for this computer
+	sign   string
+	name   string   // of the development app, for messages
+	env    []string // for the app
 
 	// Used by one build at a time.
 	i18nWarnings string // the warnings of the catalogs last shown
@@ -235,7 +261,12 @@ type devSession struct {
 	icns         []byte
 	mainFor      string // the Main that mainDir is the package directory of
 	mainDir      string
-	desktopEntry string
+	// What the phone has installed, which a change of the Go code keeps: the
+	// device, the iOS bundle but its executable, the Android host.
+	installedOn     string
+	installedBundle [32]byte
+	androidHost     string
+	desktopEntry    string
 
 	// Used by the run loop only.
 	app *devProcess // the running build
@@ -562,6 +593,9 @@ func devConfig(c *Config) *Config {
 // running build, whose fingerprint is running, showing its progress on t.
 // It returns the new process.
 func (s *devSession) buildAndLaunch(ctx context.Context, t *task, running [32]byte) (p *devProcess, sum [32]byte, err error) {
+	if s.device != nil {
+		return s.buildAndLaunchMobile(ctx, t, running)
+	}
 	c, err := loadConfig(s.root)
 	if err != nil {
 		return nil, sum, err
@@ -938,6 +972,8 @@ type devProcess struct {
 	err  error         // how it exited, set before done is closed
 	// replaced is set when the build is stopped for the next one.
 	replaced atomic.Bool
+	// onStop ends the app where cmd only follows it (phones).
+	onStop func()
 }
 
 // stopGrace is how long a stopped build may take to quit.
@@ -952,6 +988,9 @@ func (p *devProcess) stop() {
 	case <-p.done:
 		return
 	default:
+	}
+	if p.onStop != nil {
+		p.onStop()
 	}
 	interrupt(p.cmd)
 	select {

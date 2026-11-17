@@ -106,31 +106,6 @@ func (v *view) SetSelection(selection ui.TextInputSelection) {
 	v.publish()
 }
 
-func (v *view) SelectionRectsForRange(r ui.TextInputRange) []ui.TextInputSelectionRect {
-	v.sync()
-	if v.compose != "" {
-		return nil
-	}
-	a, z := v.virtualRune(min(r.Start, r.End)), v.virtualRune(max(r.Start, r.End))
-	var out []ui.TextInputSelectionRect
-	for p := v.first; p <= v.last && p < len(v.paras); p++ {
-		ps := v.shown.paraStart(p)
-		pe := ps + v.para(p).n
-		if a >= pe && p < len(v.paras)-1 || z <= ps {
-			continue
-		}
-		pv := v.paraLayout(p)
-		x, y := v.origin(p)
-		from, to := v.local(p, max(a, ps)), v.local(p, min(z, pe))
-		for _, rect := range pv.layout.SelectionRects(ui.TextInputRange{Start: pv.units[from], End: pv.units[to]}) {
-			rect.X += v.padX + x
-			rect.Y += v.padY + float32(y-v.scroll)
-			out = append(out, ui.TextInputSelectionRect{Rect: rect})
-		}
-	}
-	return out
-}
-
 func (v *view) MarkedRange() (ui.TextInputRange, bool) {
 	if v.compose == "" {
 		return ui.TextInputRange{}, false

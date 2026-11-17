@@ -38,14 +38,10 @@ type TextInputClient interface {
 	IndexForPoint(x, y float64) (int, bool)
 }
 
-// TextInputSelectionClient lets native caret/handle gestures update a client.
-type TextInputSelectionClient interface {
-	SetSelection(TextSelection)
-}
-
-// TextInputSelectionGeometryClient supplies visible selection rectangles.
-type TextInputSelectionGeometryClient interface {
-	SelectionRectsForRange(TextRange) []TextSelectionRect
+// TextSelectionSetter is a TextInputClient whose selection a native text
+// service may move, as phones' keyboards do with their space bar's cursor.
+type TextSelectionSetter interface {
+	SetTextSelection(TextRange)
 }
 
 // InputComposition preserves the native end-preedit/commit ordering without

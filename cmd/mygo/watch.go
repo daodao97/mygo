@@ -78,6 +78,12 @@ func listBuildInputs(c *Config) (*buildInputs, error) {
 	if c.Icon != "" {
 		in.files = append(in.files, c.path(c.Icon))
 	}
+	if a := c.Android.AdaptiveIcon; a != nil {
+		in.files = append(in.files, c.path(a.Foreground))
+	}
+	if l := c.IOS.LaunchScreen; l != nil && l.Image != "" {
+		in.files = append(in.files, c.path(l.Image))
+	}
 	if c.MacOS.Entitlements != "" {
 		in.files = append(in.files, c.path(c.MacOS.Entitlements))
 	}

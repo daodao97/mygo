@@ -11,15 +11,21 @@ wire protocol, TypeScript generation, and the checklist for adding features.
 
 ## Hard rules
 
-- **Desktop builds have no cgo.** macOS, Linux and Windows must build with
-  `CGO_ENABLED=0`, using purego or syscall. Mobile builds may enable cgo;
-  keep native bridges in their platform backend and shared UI/logic in Go.
+- **No cgo**, but to link for phones. Everything must build with
+  `CGO_ENABLED=0` for desktops and browsers. Call native code through
+  purego (`internal/darwin`, `internal/linux`) or `syscall`
+  (`internal/windows`), never `import "C"`. iOS and Android link with
+  their own toolchains (`CGO_ENABLED=1`, Xcode's and the NDK's clang), as
+  Go needs for them: `import "C"` is only in `internal/mobile`'s glue, and
+  on iOS purego reaches Metal and Core Text alone, the hosts (Swift,
+  Kotlin) everything else (see "Phones" in the architecture guide).
 - **Bun is dev tooling only.** The repository is a Bun workspace
   (`packages/bridge`, `packages/runtime`, `packages/cli` with its platform
   packages, the plugins' packages in `plugins/`, and examples with a frontend, which keep it at their root like
   the project template, and `website`); Bun also installs and runs the template's scripts
   (Vite, the mygo-cli package). Nothing in an app may need Bun at run time.
-- **Scope:** system webview on macOS, Linux and Windows (WebView2), and
+- **Scope:** system webview on macOS, Linux and Windows (WebView2), on
+  iOS and Android (`internal/mobile`, with Swift and Kotlin hosts), and
   native UI that MyGo draws itself (`WindowOptions.Content`, package `ui`;
   see "Native UI" in the architecture guide), which also runs in browsers
   (`GOOS=js GOARCH=wasm`, `internal/web`, drawn with WebGL 2 by the GL
@@ -122,6 +128,8 @@ go build ./... && GOOS=linux go build ./... && GOOS=windows go build ./...  # al
 go vet ./... && GOOS=linux go vet ./... && GOOS=windows go vet ./...
 go vet -tags mygo_noinspector ./...        # production builds, without the inspector of native UI
 GOOS=js GOARCH=wasm go vet $(GOOS=js GOARCH=wasm go list ./... | grep -v /cmd/mygo)  # browsers, all but the CLI
+GOOS=ios GOARCH=arm64 CGO_ENABLED=1 CC="$(xcrun --sdk iphoneos --find clang) -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -arch arm64" go vet ./...  # iPhones (Xcode)
+GOOS=android GOARCH=arm64 CGO_ENABLED=1 CC=$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android26-clang go vet ./...  # Android (the NDK)
 go test ./...                              # core (fake backend), tsgen, CLI, accelerator
 go build -trimpath -tags mygo_noinspector -ldflags "-s -w -X github.com/egoist/mygo.production=1" -o /tmp/counter-native ./examples/counter-native  # an app's release size, as the benchmarks build it
 MYGO_E2E=1 go test ./internal/e2e          # real GUI tests (macOS desktop session)
@@ -135,6 +143,12 @@ go run ./cmd/mygo build examples/todo      # .app + .dmg in examples/todo/build
 go run ./cmd/mygo generate examples/native-module   # regenerate a native module, build its Swift package (macOS)
 go run ./cmd/mygo native check examples/native-module/modules/language   # a native module's problems, as file:line
 go run ./cmd/mygo build -platform web examples/counter-native   # a static site in examples/counter-native/dist/web
+go run ./cmd/mygo dev -platform ios examples/todo        # on the booted iOS simulator (Xcode)
+go run ./cmd/mygo dev -platform android examples/todo    # on the device or emulator adb reaches (SDK + NDK)
+go run ./cmd/mygo build -platform ios/simulator examples/counter-native   # an .app for the simulator (ios: a signed .ipa)
+go run ./cmd/mygo build -platform android examples/counter-native         # an .apk and an .aab
+go generate ./internal/mobile/wire          # the messages of phones' backend and hosts: Go, Swift, Kotlin
+go run ./cmd/mygo dev -platform ios examples/mobile      # phones' gestures, widgets, plugins (ui/mobile)
 go run ./examples/gallery                  # the native UI toolkit's tour
 go run ./examples/code-editor              # the code editor and the diff viewer (ui/editor)
 go run ./examples/markdown-chat            # Markdown replies streaming in (ui/markdown)
@@ -172,7 +186,10 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   benchmarks branch's commits say it.
 - New behavior goes into `package mygo` first; backends only translate
   `internal/platform` calls to native ones. Implement every platform method in
-  `darwin`, `linux`, `windows`, `web`, `fake` and `unsupported`.
+  `darwin`, `linux`, `windows`, `web`, `mobile`, `fake` and `unsupported`.
+  A call of `mobile`'s host is a message of `internal/mobile/wire/gen/spec.go`,
+  implemented in the Swift host (`internal/mobile/ios`) and the Kotlin one
+  (`internal/mobile/android`).
 - Objective-C: `alloc`/`init` objects are owned and must be released; wrap
   temporary objects in `withPool`; copy blocks you call later.
 - Native modules (`native`, `internal/nativegen`, docs/native-modules.md):
@@ -182,7 +199,12 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   without warnings. The Rust and Zig glue (`rustsupport.go`,
   `zigsupport.go`) is checked by the roundtrip module built in each
   language: `go run ./cmd/mygo native build -target host -lang <swift|rust|zig>
-  native/internal/roundtrip && go test ./native/internal/roundtrip`.
+  native/internal/roundtrip && go test ./native/internal/roundtrip`. On
+  phones the same checks (`native/internal/roundtrip/check`) run in the app
+  `native/internal/roundtrip/app`, with its Swift on the iOS simulator and
+  its Kotlin (the runtime in `internal/mobile/android/.../Native.kt`) on
+  Android's emulator, which CI's phone jobs launch and read the log of;
+  `TestKotlinUpToDate` checks the committed Kotlin.
 - Official plugins live in `plugins/<name>`: the Go package and its npm
   package (`@mygo-plugins/<name>`) side by side, released with
   mygo-runtime's version. The updater plugin is Go only; its `native`
@@ -192,9 +214,13 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   like any: `mygo-plugin.json` names its published builds (release assets
   `libghostty-vt-<commit>`), each with the hash of its sources, and
   `go generate` publishes new ones (`mygo native build`, with Zig 0.16.0).
-  The SQLite plugin's SQLite is a native module in Zig,
-  `plugins/sqlite/internal/sqlitecore`, which `mygo native build -target
-  host` builds for its tests and `-upload` publishes. The glass
+  The SQLite plugin's SQLite is a native module,
+  `plugins/sqlite/internal/sqlitecore`: Zig on desktops, which `mygo
+  native build -target host` builds for its tests and `-upload`
+  publishes, Swift on iOS (linking `CSQLite.xcframework`, which
+  `swift/build-xcframework.sh` builds on a Mac and the release
+  `native-sqlitecore` holds) and Kotlin with C (CMake) on Android, all
+  the same SQLite version and options. The glass
   plugin is Go only too, an effect of the renderers (`scene.Effect`): its
   shader in Metal, HLSL and GLSL with a CPU twin that must draw the same
   pixels, compiled ahead of time by `go generate` on macOS and Windows.
@@ -212,6 +238,11 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   `mygo-automation` (`plugins/automation/cmd/mygo-automation`, the code
   in `internal/automationcli`), uses the socket alone and Go's standard
   library; keep its embedded `SKILL.md` true to its commands.
+  The location, imagepicker, camera, videoplayer, biometrics, sensors and
+  push plugins are for phones, with Swift and Kotlin beside the Go, which
+  their `mygo-plugin.json`'s `mobile` names: they reach it with
+  `mygo.Native`, and an app has none of it unless it imports them. Package
+  `ui/mobile` is phones' widgets on ui's public API.
   The permissionflow plugin is Go only too, after PermissionFlow: TCC's
   permissions through purego on macOS, with a panel of AppKit under
   System Settings to drag the app from, the consent store on Windows,
@@ -295,58 +326,3 @@ upstream or porting fork commits, and keep it current.
   `upstream/main`, opened as a draft whose "a human read every line" box the
   user ticks.
 
-## Runbook
-
-Android build/install/EGL checks live in `scripts/android-*.sh` (bash; run them from
-anywhere, they find the repo themselves). The scripts are **platform-adaptive**:
-`HOST_TAG` and the executable suffix come from `uname`, and the default SDK/JDK paths
-differ per platform (Windows `C:/Users/hzy/AppData/Local/Android/Sdk`, macOS
-`~/Library/Android/sdk`, Linux `~/Android/Sdk`). Everything is overridable by env
-(`ANDROID_HOME`/`ANDROID_SDK_ROOT`, `ANDROID_NDK_VERSION=28.2.13676358`, `JAVA_HOME`,
-`MYGO_ANDROID_CC`, `MYGO_ANDROID_PKG`, `MYGO_ANDROID_SO`, `MYGO_PYTHON`):
-
-```sh
-bash scripts/android-doctor.sh          # toolchain self-check: SDK≥31 / NDK r28 / JDK 17+ / CC / adb / emulator
-bash scripts/android-build.sh           # Go .so (c-shared) → 16KB align check → Gradle if android/ exists
-bash scripts/android-build.sh --so-only # the .so and its page-align check only
-bash scripts/android-run.sh             # adb install + am start + logcat
-bash scripts/android-egl-stress.sh      # 20x foreground/background + 10x rotation, blank-frame report
-```
-
-**JDK: AGP 9.0.1 / Gradle 9.1.0 need JDK 17+; JDK 21 is what the Mac mini uses.**
-`brew install openjdk@21` is keg-only — export
-`JAVA_HOME=/opt/homebrew/opt/openjdk@21` (or the equivalent) before running Gradle.
-
-The `.so` is `GOOS=android GOARCH=arm64 CGO_ENABLED=1 go build -buildmode=c-shared`
-with the NDK r28 `aarch64-linux-android29-clang`; it lands in
-`android/app/src/main/jniLibs/arm64-v8a/` when that exists, else in `.mygo/android/`
-(gitignored). **NDK r28 already links 16KB-aligned (`align 2**14`), so never set
-`CGO_LDFLAGS`; the build script only *verifies* alignment with `llvm-objdump -p`.**
-`android-run.sh` and `android-egl-stress.sh` read the package/activity from
-`android/app/src/main/AndroidManifest.xml` and say exactly what is missing instead of
-guessing; the stress test reports "无设备，未跑" when no device is attached.
-
-### HarfBuzz static libraries (Android text shaping)
-
-Android shapes text through C HarfBuzz (`shaping/chb.go` in
-`github.com/Heyana/typesetting-go`), which links two static libraries. They are
-**not in git** — `third_party/hb-build/.gitignore` keeps `src/` and `lib/` out —
-because they are 12 MB of build product. `android-build.sh` looks for them at
-`third_party/hb-build/src/lib/android/` and exports the `CGO_CFLAGS`/`CGO_LDFLAGS`
-itself; `chb.go`'s own `#cgo` paths point at `${SRCDIR}/../hb-build`, which does not
-resolve from the module cache, so those flags are the only thing that makes the link
-work. Missing libraries is an error with the download URL, not a link failure later.
-
-```sh
-# download (same for local builds and CI)
-curl -fsSL https://github.com/Heyana/mygo-upstream/releases/download/hb-android-arm64/hb-android-arm64.tar.gz \
-  | tar xz -C third_party/hb-build/src/lib
-
-# or build them yourself — auto-downloads the freetype/harfbuzz sources on first run
-bash third_party/hb-build/build.sh android
-```
-
-`build.sh` reads the NDK from `$NDK`, then `ANDROID_HOME`/`ANDROID_SDK_ROOT`, and
-derives the host tag from `uname`. It fills `android-arm64.ini` from
-`android-arm64.ini.in` (that generated file names one machine's toolchain, so it is
-ignored rather than tracked).

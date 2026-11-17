@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"github.com/egoist/mygo/internal/platform"
 	"hash/maphash"
 	"reflect"
 	"time"
@@ -32,7 +33,6 @@ type context struct {
 	now      time.Time
 	w, h     float32
 	titleBar TitleBar
-	safeArea safeInsets
 	vibrancy bool
 	overlay  *node
 	nextKey  any
@@ -420,6 +420,23 @@ func (e *node) theme() *Theme {
 // Size returns the size of the window's content in DIPs.
 func (c *context) Size() (width, height float32) { return c.w, c.h }
 
+// SafeArea returns how far in from each edge of the window what the system
+// draws covers it, in DIPs: a phone's bars, its cutout and the keyboard. The
+// window's root keeps its content inside them; what draws in the Overlay, as
+// a sheet, or under them, reads them here.
+func (c *context) SafeArea() (top, right, bottom, left float32) {
+	h, ok := c.rt.host.(interface{ insets() platform.Insets })
+	if !ok {
+		return 0, 0, 0, 0
+	}
+	in := h.insets()
+	z := float32(1)
+	if c.rt.zoomed() {
+		z = c.rt.contentZoom
+	}
+	return float32(in.Top) / z, float32(in.Right) / z, float32(in.Bottom) / z, float32(in.Left) / z
+}
+
 // TitleBar is the room the window controls take at the top of a window
 // with a hidden title bar, in DIPs: they sit in a band of Height along the
 // top edge, Left wide from the left edge and Right wide from the right,
@@ -427,11 +444,6 @@ func (c *context) Size() (width, height float32) { return c.w, c.h }
 // traffic lights, and Height on Linux and Windows, where the controls fill
 // the band.
 type TitleBar struct{ Height, Left, Right, Bottom float32 }
-
-// safeInsets is the room the device's own chrome takes from the content, in
-// DIPs, which Context.SafeArea returns: platform.SafeArea, which a backend
-// fills in, in the floats the layout works in.
-type safeInsets struct{ Top, Right, Bottom, Left float32 }
 
 // TitleBar returns the room the window controls take in a window with a
 // hidden title bar (mygo.WindowOptions.TitleBarStyle), whose view draws
@@ -447,28 +459,6 @@ type safeInsets struct{ Top, Right, Bottom, Left float32 }
 //
 //	ui.Column(c).Padding(bar.Bottom+8, 0, 0, 0)
 func (c *context) TitleBar() TitleBar { return c.titleBar }
-
-// SafeArea is the room the device's own chrome takes from the content, in
-// DIPs: a status bar or a notch at the top, a home indicator or a gesture
-// bar at the bottom, a rounded corner or a camera cutout at either side.
-//
-// It is zero on a desktop, where the system draws outside the window, and
-// non-zero on a phone and on a tablet — including in a window that fills
-// the screen, where the status bar is drawn *over* it. A page that wants
-// its content inside the safe area pads by it:
-//
-//	top, right, bottom, left := c.SafeArea()
-//	ui.Column(c).Fill().Padding(top, right, bottom, left)
-//
-// A page that wants its background to run under the system's chrome (a
-// photo viewer, a video) draws its background at the window's edge and
-// pads only what must stay clear of it — the same split as a TitleBar.
-//
-// Its shape is upstream #940's (FORK.md, "向 #940 收敛").
-func (c *context) SafeArea() (top, right, bottom, left float32) {
-	a := c.safeArea
-	return a.Top, a.Right, a.Bottom, a.Left
-}
 
 // Vibrancy reports whether the window shows its material
 // (mygo.WindowOptions.Vibrancy) wherever the view draws no background: on
@@ -536,7 +526,7 @@ func (c *context) Invalidate() { c.rt.host.invalidate() }
 // it, for something moving. Call it in every frame while it moves. A
 // drawing that moves while the layout stays asks with
 // Painter.AnimationFrame instead, whose frames do not build the view.
-func (c *context) AnimationFrame() { c.rt.animate() }
+func (c *context) AnimationFrame() { c.rt.animating = true }
 
 // DisableAnimations makes the values that animate in this frame
 // (AnimateTo, Animate, Spring), the element transitions and the pages of
@@ -693,22 +683,19 @@ func keepLocal[T any](st *state, key any, init func() T) (v *T, made bool) {
 	}
 	v = new(T)
 	*v = init()
+	if restoreLocal != nil {
+		restoreLocal(st, key, v)
+	}
 	st.locals[key] = v
 	return v, true
 }
 
 // state is what the runtime keeps about an element from frame to frame.
 type state struct {
-	// gestureEnabled is this frame's element asking for pinch and rotation
-	// updates (Gestures), and gestures what arrived since its last frame.
-	// Per-frame rather than sticky: an element that stops asking stops
-	// receiving, which is what lets a gesture end by the element going away.
-	gestureEnabled bool
-	gestures       []GestureEvent
-	rt             *engine
-	pendingSubmit  bool
-	pendingChange  bool
-	noticeQueued   bool
+	rt            *engine
+	pendingSubmit bool
+	pendingChange bool
+	noticeQueued  bool
 
 	// rowPressed marks a row of a list the pointer pressed, until the
 	// release; pressChose, that the press chose it, so that its click does
@@ -764,9 +751,7 @@ type state struct {
 	vx, vy, vw, vh float32
 	reposed        bool
 	parent         uint64
-	router         *Router
-	routerLevel    int
-	flags          uint64
+	flags          uint32
 	// hoverBuilt tells that the pass building the element read its hover
 	// (Hovered): its hover changing builds the view anew. hoverLook tells
 	// that the last frame's painting did, as a button's styleFn picks its
@@ -871,8 +856,21 @@ type state struct {
 	// scrollX and scrollY are float64, as the content a List scrolls
 	// may be taller than float32 counts to a fraction of a DIP.
 	scrollX, scrollY float64
-	contentW         float64
-	contentH         float64
+	// A finger past the content's ends: how far the content shows past
+	// them across and down (the sign says which end), how far the finger
+	// went, how fast it springs back, and until when its indicator shows.
+	over, overRaw, overV [2]float32
+	barsUntil            time.Time
+	// refresh is the pull to refresh of the container (PullToRefresh).
+	refresh      *RefreshState
+	refreshFired bool
+	// longPress says the element asks for long presses (LongPressed), and
+	// longPressed that a finger held it since the last frame.
+	longPress, longPressed bool
+	// fingersFrame is the frame that last asked for longPress or refresh.
+	fingersFrame uint64
+	contentW     float64
+	contentH     float64
 	// barInset is the element's ScrollbarInsets, and barStyle how its
 	// scroll bars look, its ScrollbarStyle with the theme's zero fields
 	// filled in.
@@ -883,7 +881,7 @@ type state struct {
 	// dragged, unless it keeps them (KeepScrollbars).
 	barsShown bool
 	// barFlags contains the enabled scroll axes and, if any, the keep bit.
-	barFlags uint64
+	barFlags uint32
 	// track is the ScrollState of the last frame's element, which events
 	// that scroll it update (scrollTo).
 	track *ScrollState
@@ -960,22 +958,16 @@ type state struct {
 
 	// input, caret and takesText are those of the last frame's element
 	// (HandleInput, TextCaret).
-	input            func(InputEvent) bool
-	observe          func(InputEvent) // ObserveInput
-	caret            Rect
-	caretFn          func() Rect
-	textContext      func() (string, int)
-	takesText        bool
-	touchScroll      bool
-	touchSelection   bool
-	inputOptions     inputTraits
-	inputModifiers   Modifiers
-	inputConsumed    func()
-	inputComposing   bool
-	inputReleaseMods map[Key]Modifiers
-	textClient       TextInputClient
-	textAdapter      *textInputAdapter
-	noIME            bool
+	input       func(InputEvent) bool
+	observe     func(InputEvent) // ObserveInput
+	textClient  TextInputClient
+	textAdapter *textInputAdapter
+	caret       Rect
+	takesText   bool
+	noIME       bool
+	// traits describe the element's text to on-screen keyboards, as this
+	// frame set them.
+	traits platform.TextTraits
 	// copyData is what a Selectable container's selection copies as
 	// (CopyData).
 	copyData func(parts []SelectedText) transfer.Data
@@ -1017,6 +1009,10 @@ func (rt *engine) lookState(id uint64) (s *state, built bool) {
 			s = &state{id: id, born: rt.frame}
 		}
 		rt.states[id] = s
+		if restoreElement != nil {
+			s.rt = rt
+			restoreElement(rt, s)
+		}
 	} else {
 		built = s.seen == rt.frame && s.pass == rt.pass
 	}

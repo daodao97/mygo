@@ -5,9 +5,8 @@ package automation
 import (
 	"errors"
 	"fmt"
-	"net"
 	"os"
-	"sync"
+	"runtime"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -15,43 +14,50 @@ import (
 	"github.com/egoist/mygo/internal/surface"
 )
 
-var startMu sync.Mutex
-var started bool
-
-// Start enables UI automation before opening windows, including shared-library
-// mobile hosts. On Unix its socket must be inside a private user directory;
-// this avoids a process-wide umask change while the app is running.
-func Start(path string) error { return start(path, listenRuntime) }
-
-func start(path string, listenFn func(string) (net.Listener, error)) error {
-	startMu.Lock()
-	defer startMu.Unlock()
-	if started {
-		return errors.New("mygo: automation already started")
-	}
-	if path == "" {
-		return errors.New("mygo: automation needs a socket path")
-	}
-	l, err := listenFn(path)
-	if err != nil {
-		return err
-	}
-	a := &app{ready: make(chan struct{}), targets: map[*mygo.Window]target{}}
-	surface.Automate = a.attached
-	mygo.App.WhenReady(func() { close(a.ready) })
-	mygo.App.OnQuit(func() { l.Close() })
-	go serve(l, a)
-	started = true
-	return nil
-}
+// init listens on the socket MYGO_AUTOMATION names, if any, before any
+// window opens, so that the content of every window of native UI comes to
+// the plugin as it attaches.
 func init() {
+	if runtime.GOOS == "android" {
+		// Android's host sets the environment after this package's init, as
+		// the library has to load to run anything: the variable shows by the
+		// time the app is ready, before any window opens.
+		a := newApp()
+		surface.Automate = a.attached
+		mygo.App.WhenReady(func() {
+			close(a.ready)
+			if path := os.Getenv("MYGO_AUTOMATION"); path != "" {
+				a.listen(path)
+			}
+		})
+		return
+	}
 	path := os.Getenv("MYGO_AUTOMATION")
 	if path == "" {
 		return
 	}
-	if err := start(path, listen); err != nil {
-		fmt.Fprintln(os.Stderr, "mygo: automation:", err)
+	a := newApp()
+	if !a.listen(path) {
+		return
 	}
+	surface.Automate = a.attached
+	mygo.App.WhenReady(func() { close(a.ready) })
+}
+
+func newApp() *app {
+	return &app{ready: make(chan struct{}), targets: map[*mygo.Window]target{}}
+}
+
+// listen serves requests on the socket at path, and reports whether it can.
+func (a *app) listen(path string) bool {
+	l, err := listen(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "mygo: automation:", err)
+		return false
+	}
+	mygo.App.OnQuit(func() { l.Close() })
+	go serve(l, a)
+	return true
 }
 
 // app drives the running app's windows.

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"runtime"
 	"slices"
 	"strings"
 )
@@ -58,9 +57,9 @@ func (r *Router) UnmarshalJSON(data []byte) error {
 	if len(s.Entries) == 0 || len(s.Entries) > maxHistory || s.Index < 0 || s.Index >= len(s.Entries) {
 		return fmt.Errorf("ui: invalid router history length %d or index %d", len(s.Entries), s.Index)
 	}
-	next := Router{InteractiveBack: runtime.GOOS == "ios", pages: r.pages, rt: r.rt, view: r.view}
+	next := Router{pages: r.pages, rt: r.rt, view: r.view}
 	if len(r.entries) > 0 || r.rt != nil {
-		next.Transition, next.InteractiveBack = r.Transition, r.InteractiveBack
+		next.Transition, next.SystemStack = r.Transition, r.SystemStack
 	}
 	for _, location := range s.Entries {
 		u, err := url.Parse(location)

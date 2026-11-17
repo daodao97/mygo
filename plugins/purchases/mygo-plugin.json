@@ -1,0 +1,12 @@
+{
+  "mobile": {
+    "id": "purchases",
+    "ios": {"sources": ["ios/*.swift"], "class": "PurchasesPlugin", "frameworks": ["StoreKit"]},
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "PurchasesPlugin",
+      "permissions": ["com.android.vending.BILLING"],
+      "dependencies": ["com.android.billingclient:billing:7.1.1"]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-//go:build darwin || linux || windows
+//go:build (darwin || linux || windows) && !android
 
 package native
 
@@ -105,7 +105,11 @@ func (m *Module) load() (*library, error) {
 }
 
 func (m *Module) open() (*library, error) {
-	if !m.supported() || m.MinMacOS != "" && olderMacOS(m.MinMacOS) {
+	min := m.MinMacOS
+	if runtime.GOOS == "ios" {
+		min = m.MinIOS
+	}
+	if !m.supported() || min != "" && olderMacOS(min) {
 		return nil, errors.ErrUnsupported
 	}
 	if err := loadLibc(); err != nil {
@@ -271,6 +275,15 @@ func (l *library) next(m *Module, call uint64)   { l.simple(m, "next", uintptr(c
 // resume answers a continuation with a block the platform frees.
 func (l *library) resume(m *Module, cont uint64, status int64, data []byte) {
 	l.simple(m, "resume", uintptr(cont), newBlock(status, data))
+}
+
+// directSym calls the C function of a method of numbers, by its name.
+func (l *library) directSym(m *Module, name string, h uint64, args []uintptr) uintptr {
+	fn, err := l.sym(m, name)
+	if err != nil {
+		return 0
+	}
+	return l.direct(fn, h, args)
 }
 
 // direct calls fn, a method of numbers, on the object h.

@@ -1,0 +1,15 @@
+{
+  "mobile": {
+    "id": "imagepicker",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "ImagePickerPlugin",
+      "frameworks": ["PhotosUI", "Photos"],
+      "infoPlist": {"NSCameraUsageDescription": "This app takes photos with the camera."}
+    },
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "ImagePickerPlugin"
+    }
+  }
+}

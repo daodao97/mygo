@@ -1,4 +1,4 @@
-//go:build linux && !android && (amd64 || arm64)
+//go:build linux && !android && (amd64 || arm64) && !android
 
 package text
 
@@ -19,9 +19,9 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"github.com/Heyana/typesetting-go/segmenter"
 	"github.com/ebitengine/purego"
 	"github.com/egoist/mygo/internal/scene"
+	"github.com/go-text/typesetting/segmenter"
 )
 
 // Pango lays out paragraphs: fontconfig finds the fonts and the fallbacks

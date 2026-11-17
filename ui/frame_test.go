@@ -830,7 +830,7 @@ func TestHandleBoundsBetweenBuilds(t *testing.T) {
 
 func TestNilPublicCallbacksStayNil(t *testing.T) {
 	tt := NewTester(func(c *Context) {
-		Box(c).Label("Terminal").Size(100, 40).AutoFocus().TextCaret(Rect{W: 1, H: 10}).HandleInput(func(InputEvent) bool { return true }).InputModifiers(Ctrl, nil)
+		Box(c).Label("Terminal").Size(100, 40).AutoFocus().TextCaret(Rect{W: 1, H: 10}).HandleInput(func(InputEvent) bool { return true })
 	}, 120, 60)
 	tt.Type("c") // a handled key must not call the omitted consumed callback
 }

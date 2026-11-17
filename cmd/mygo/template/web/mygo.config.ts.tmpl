@@ -12,4 +12,9 @@ export default defineConfig({
   frontendDist: "dist",
   bindings: "src/mygo.ts",
   out: "build",
+  // Phones: `mygo dev -platform ios` and `-platform android` run the app on a
+  // simulator, an emulator or a device (`mygo devices` lists them, and
+  // `mygo doctor` tells what is missing). What devices and stores need:
+  // ios: { team: "ABCDE12345", infoPlist: { NSCameraUsageDescription: "Scan receipts." } },
+  // android: { keystore: "upload.jks", keyAlias: "upload", permissions: ["CAMERA"] },
 });

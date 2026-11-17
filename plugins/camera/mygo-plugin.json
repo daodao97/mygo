@@ -1,0 +1,17 @@
+{
+  "mobile": {
+    "id": "camera",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "CameraPlugin",
+      "frameworks": ["AVFoundation"],
+      "infoPlist": {"NSCameraUsageDescription": "This app uses the camera."}
+    },
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "CameraPlugin",
+      "permissions": ["CAMERA"],
+      "dependencies": ["androidx.camera:camera-camera2:1.6.2", "androidx.camera:camera-lifecycle:1.6.2", "androidx.camera:camera-view:1.6.2"]
+    }
+  }
+}

@@ -1,3 +1,5 @@
+//go:build darwin && !ios
+
 package e2e
 
 import (
@@ -48,7 +50,9 @@ func TestPanelHoverWhileInactive(t *testing.T) {
 	dx := 0.0
 	eventually(t, "the pointer moving over the panel", func() bool {
 		var ok bool
-		mygo.RunOnMain(func() { ok = darwin.TestPostMouseMove(float64(b.X)+float64(b.Width)/2+dx, float64(b.Y)+float64(b.Height)/2) })
+		mygo.RunOnMain(func() {
+			ok = darwin.TestPostMouseMove(float64(b.X)+float64(b.Width)/2+dx, float64(b.Y)+float64(b.Height)/2)
+		})
 		if !ok {
 			t.Skip("this process may not post events (Accessibility)")
 		}

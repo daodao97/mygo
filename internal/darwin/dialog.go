@@ -341,10 +341,3 @@ func jsFileInput(w *window, params id, handler uintptr) {
 		})
 	})
 }
-
-func (dialogs) ShowExportDialog(_ platform.Window, _ *platform.ExportDialogOptions, cb func(bool, error)) {
-	cb(false, platform.ErrUnsupported)
-}
-func (dialogs) ShowPhotoDialog(_ platform.Window, _ *platform.PhotoDialogOptions, cb func([]string, error)) {
-	cb(nil, platform.ErrUnsupported)
-}

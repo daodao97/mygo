@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/internal/nativehost"
 	"github.com/egoist/mygo/internal/texture"
 )
 
@@ -54,6 +55,12 @@ var errNotMain = errors.New("native: the method runs on the main thread, which i
 func onMain(flags Flags, fn func()) error {
 	if flags&MainThread == 0 {
 		fn()
+		return nil
+	}
+	if ui := nativehost.OnUI; ui != nil {
+		// On phones Go's main thread is its own, and the system's views and
+		// Swift's main actor live on the UI thread.
+		ui(fn)
 		return nil
 	}
 	if mygo.App.IsReady() {
@@ -107,11 +114,7 @@ func (m *Module) direct(h uint64, sym string, args []uintptr) uintptr {
 	if err != nil {
 		return 0
 	}
-	fn, err := lib.sym(m, sym)
-	if err != nil {
-		return 0
-	}
-	return lib.direct(fn, h, args)
+	return lib.directSym(m, sym, h, args)
 }
 
 func (m *Module) result(ctx context.Context, sym string, r reply) (*Decoder, error) {

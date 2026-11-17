@@ -55,7 +55,7 @@ func (a *Application) OnWillEnterForeground(fn func()) func() {
 }
 
 // IsSystemManaged reports whether closing/quitting belongs to the OS (iOS).
-func (a *Application) IsSystemManaged() bool { return backend().SystemManagedLifetime() }
+func (a *Application) IsSystemManaged() bool { return systemManagedLifetime() }
 
 // TryQuit follows the cancelable desktop quit sequence. iOS returns
 // ErrUnsupported without closing content or stopping the Go dispatch loop.

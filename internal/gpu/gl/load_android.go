@@ -1,74 +1,100 @@
-//go:build android && cgo
-
 package gl
-
-/*
-#include <stdlib.h>
-#include <EGL/egl.h>
-#include <GLES3/gl3.h>
-*/
-import "C"
 
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
 )
 
-// load takes the GL entry points from eglGetProcAddress, which is how
-// Khronos says the functions of a GLES context are found on Android (the
-// EGL spec makes it the one portable way; libepoxy, which load_linux.go
-// uses, does not exist there).
-//
-// 🔴 The context must be current when this runs, and it must be the one the
-// renderer will draw in: eglGetProcAddress answers per context for the
-// extension functions, and the core names come from libGLESv3.so, which
-// Android loads with the context. gl.New is called after eglMakeCurrent
-// for exactly this reason.
-//
-// 🔴 A load with no current context is not a verdict, and caching one as if
-// it were cost a device every GPU frame it ever drew.
-//
-// eglGetProcAddress answers nothing useful with no context current, so the
-// first ask comes back with every name missing. loadOnce then latched that
-// answer for the life of the process — and on this device the very first
-// frame is asked for before any surface is usable (ColorOS hands the launch
-// surfaceCreated → surfaceChanged → surfaceDestroyed inside ten
-// milliseconds, and the EGLSurface create fails, see
-// internal/android/backend/frame.go), so the latch was taken with no
-// context and every later renderer, however good its surface, was refused
-// with "OpenGL 0.0 is too old".
-//
-// So: latch success, and latch a failure only when a context was current and
-// the names are still missing — that is a driver's real answer. With no
-// context, do nothing and let the next frame try again once there is one.
-//
-// Desktop GL extensions (epoxy's epoxy_* and one desktop-only entry point)
-// have no place here: an Android GLES3 context has no such things, and
-// asking for them would make load() fail on a device that is behaving.
+// The functions of OpenGL ES 3 this package calls, from Android's
+// libGLESv3, and EGL's, which makes the contexts (egl_android.go).
+var (
+	loadOnce sync.Once
+	errLoad  error
+
+	glGetString             func(name uint32) uintptr
+	glGetError              func() uint32
+	glGetIntegerv           func(name uint32, data *int32)
+	glCreateShader          func(typ uint32) uint32
+	glShaderSource          func(shader uint32, count int32, sources **byte, lengths *int32)
+	glCompileShader         func(shader uint32)
+	glGetShaderiv           func(shader, name uint32, out *int32)
+	glGetShaderInfoLog      func(shader uint32, size int32, length *int32, log *byte)
+	glDeleteShader          func(shader uint32)
+	glCreateProgram         func() uint32
+	glAttachShader          func(program, shader uint32)
+	glLinkProgram           func(program uint32)
+	glGetProgramiv          func(program, name uint32, out *int32)
+	glGetProgramInfoLog     func(program uint32, size int32, length *int32, log *byte)
+	glUseProgram            func(program uint32)
+	glDeleteProgram         func(program uint32)
+	glGetUniformLocation    func(program uint32, name string) int32
+	glGetUniformBlockIndex  func(program uint32, name string) uint32
+	glUniformBlockBinding   func(program, index, binding uint32)
+	glBindBufferBase        func(target, index, buffer uint32)
+	glUniform1i             func(location, v int32)
+	glUniform2f             func(location int32, x, y float32)
+	glUniform1f             func(location int32, v float32)
+	glUniform2i             func(location, x, y int32)
+	glUniform4i             func(location, x, y, z, w int32)
+	glCopyTexSubImage2D     func(target uint32, level, xoff, yoff, x, y, w, h int32)
+	glGenVertexArrays       func(n int32, out *uint32)
+	glBindVertexArray       func(array uint32)
+	glDeleteVertexArrays    func(n int32, arrays *uint32)
+	glGenBuffers            func(n int32, out *uint32)
+	glBindBuffer            func(target, buffer uint32)
+	glBufferData            func(target uint32, size int, data unsafe.Pointer, usage uint32)
+	glDeleteBuffers         func(n int32, buffers *uint32)
+	glEnableVertexAttrib    func(index uint32)
+	glVertexAttribPointer   func(index uint32, size int32, typ uint32, normalized bool, stride int32, offset uintptr)
+	glVertexAttribDivisor   func(index, divisor uint32)
+	glGenTextures           func(n int32, out *uint32)
+	glBindTexture           func(target, texture uint32)
+	glActiveTexture         func(unit uint32)
+	glTexImage2D            func(target uint32, level, internalFormat, w, h, border int32, format, typ uint32, pix unsafe.Pointer)
+	glTexSubImage2D         func(target uint32, level, x, y, w, h int32, format, typ uint32, pix unsafe.Pointer)
+	glTexParameteri         func(target, name uint32, v int32)
+	glDeleteTextures        func(n int32, textures *uint32)
+	glPixelStorei           func(name uint32, v int32)
+	glViewport              func(x, y, w, h int32)
+	glScissor               func(x, y, w, h int32)
+	glEnable                func(cap uint32)
+	glDisable               func(cap uint32)
+	glBlendFunc             func(src, dst uint32)
+	glBlendFuncSeparate     func(srcRGB, dstRGB, srcAlpha, dstAlpha uint32)
+	glClearColor            func(r, g, b, a float32)
+	glClear                 func(mask uint32)
+	glDrawArraysInstanced   func(mode uint32, first, count, instances int32)
+	glReadPixels            func(x, y, w, h int32, format, typ uint32, pix unsafe.Pointer)
+	glGenFramebuffers       func(n int32, out *uint32)
+	glBindFramebuffer       func(target, fb uint32)
+	glFramebufferTexture2D  func(target, attachment, texTarget, texture uint32, level int32)
+	glCheckFramebufferState func(target uint32) uint32
+	glDeleteFramebuffers    func(n int32, fbs *uint32)
+	glBlitFramebuffer       func(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1 int32, mask, filter uint32)
+)
+
+// glExtensions is GL_EXTENSIONS, for glGetString.
+const glExtensions = 0x1F03
+
 func load() error {
-	if errLoad != nil && errLoadLatched {
-		return errLoad
-	}
-	if currentContext() == 0 {
-		// Nothing is current: eglGetProcAddress would answer nothing and
-		// register nothing. Leave errLoad unlatched so the next call, made
-		// with a context, does the real work.
-		return errNoContext
-	}
 	loadOnce.Do(func() {
+		lib, err := purego.Dlopen("libGLESv3.so", purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		if err != nil {
+			errLoad = fmt.Errorf("gl: cannot load libGLESv3: %w", err)
+			return
+		}
 		var missing []string
 		gl := func(f any, name string) {
-			cs := C.CString(name)
-			p := C.eglGetProcAddress(cs)
-			C.free(unsafe.Pointer(cs))
-			if p == nil {
+			sym, err := purego.Dlsym(lib, name)
+			if err != nil || sym == 0 {
 				missing = append(missing, name)
 				return
 			}
-			purego.RegisterFunc(f, uintptr(unsafe.Pointer(p)))
+			purego.RegisterFunc(f, sym)
 		}
 		gl(&glGetString, "glGetString")
 		gl(&glGetError, "glGetError")
@@ -87,10 +113,14 @@ func load() error {
 		gl(&glUseProgram, "glUseProgram")
 		gl(&glDeleteProgram, "glDeleteProgram")
 		gl(&glGetUniformLocation, "glGetUniformLocation")
+		gl(&glGetUniformBlockIndex, "glGetUniformBlockIndex")
+		gl(&glUniformBlockBinding, "glUniformBlockBinding")
+		gl(&glBindBufferBase, "glBindBufferBase")
 		gl(&glUniform1i, "glUniform1i")
 		gl(&glUniform2f, "glUniform2f")
 		gl(&glUniform1f, "glUniform1f")
 		gl(&glUniform2i, "glUniform2i")
+		gl(&glUniform4i, "glUniform4i")
 		gl(&glCopyTexSubImage2D, "glCopyTexSubImage2D")
 		gl(&glGenVertexArrays, "glGenVertexArrays")
 		gl(&glBindVertexArray, "glBindVertexArray")
@@ -127,43 +157,85 @@ func load() error {
 		gl(&glDeleteFramebuffers, "glDeleteFramebuffers")
 		gl(&glBlitFramebuffer, "glBlitFramebuffer")
 		if len(missing) > 0 {
-			errLoad = fmt.Errorf("gl: eglGetProcAddress lacks %s", strings.Join(missing, ", "))
-			// A context was current and the names are still absent: this is
-			// the driver's answer, and it will not change. Latch it.
-			errLoadLatched = true
+			errLoad = fmt.Errorf("gl: libGLESv3 lacks %s", strings.Join(missing, ", "))
 			return
 		}
-		// The GL version and the desktop question are answered here rather
-		// than by libepoxy: an Android context is ES by definition, and
-		// glGetString(GL_VERSION) says which of them.
-		epoxyGLVersion = esVersion
-		epoxyIsDesktopGL = func() bool { return false }
-		epoxyHasExtension = hasGLExtension
-		errLoad = nil
-		errLoadLatched = true
+		errLoad = loadEGL()
 	})
 	return errLoad
 }
 
-// The three functions libepoxy would have provided, on Android: a GLES3
-// context answers "ES 3.x" and is never desktop GL.
-func esVersion() int32 {
-	s := goString(glGetString(C.GL_VERSION))
-	// "OpenGL ES 3.2 v1.r1p0..." — the major and minor are the two numbers
-	// after "ES ", and the renderer wants them as one number (3.2 -> 32).
-	var major, minor int
-	if _, err := fmt.Sscanf(s, "OpenGL ES %d.%d", &major, &minor); err != nil {
+func currentContext() uintptr {
+	if eglGetCurrentContext == nil {
 		return 0
 	}
-	return int32(major*10 + minor)
+	return eglGetCurrentContext()
 }
 
-func hasGLExtension(name string) bool {
-	s := goString(glGetString(C.GL_EXTENSIONS))
-	for _, f := range strings.Fields(s) {
-		if f == name {
+func goString(p uintptr) string {
+	if p == 0 {
+		return ""
+	}
+	var b []byte
+	for i := uintptr(0); ; i++ {
+		c := *(*byte)(unsafe.Add(*(*unsafe.Pointer)(unsafe.Pointer(&p)), i))
+		if c == 0 {
+			return string(b)
+		}
+		b = append(b, c)
+	}
+}
+
+// contextVersion returns the version of the current context, major × 10 +
+// minor: always OpenGL ES on Android, as "OpenGL ES 3.2 ...".
+func contextVersion() (version int32, es bool) {
+	v := strings.TrimPrefix(versionString(), "OpenGL ES ")
+	var major, minor int32
+	fmt.Sscanf(v, "%d.%d", &major, &minor)
+	return major*10 + minor, true
+}
+
+// hasExtension reports whether the current context has an extension.
+func hasExtension(name string) bool {
+	for _, e := range strings.Fields(goString(glGetString(glExtensions))) {
+		if e == name {
 			return true
 		}
 	}
 	return false
 }
+
+// hasContext reports whether a context is current.
+func hasContext() bool { return currentContext() != 0 }
+
+// versionString describes the current context's version, for errors.
+func versionString() string { return goString(glGetString(glVersion)) }
+
+// rendererString names the current context's renderer.
+func rendererString() string { return goString(glGetString(glRenderer)) }
+
+// setShaderSource sets the source of a shader.
+func setShaderSource(s uint32, src string) {
+	b := append([]byte(src), 0)
+	p := &b[0]
+	glShaderSource(s, 1, &p, nil)
+}
+
+// shaderLog and programLog return what compiling a shader or linking a
+// program logged.
+func shaderLog(s uint32) string  { return infoLog(s, glGetShaderiv, glGetShaderInfoLog) }
+func programLog(p uint32) string { return infoLog(p, glGetProgramiv, glGetProgramInfoLog) }
+
+func infoLog(obj uint32, get func(uint32, uint32, *int32), read func(uint32, int32, *int32, *byte)) string {
+	var n int32
+	get(obj, glInfoLogLength, &n)
+	if n <= 1 {
+		return "no log"
+	}
+	buf := make([]byte, n)
+	read(obj, n, nil, &buf[0])
+	return strings.TrimSpace(string(buf[:n-1]))
+}
+
+// uploadElement is for browsers' video elements, which Android has none of.
+func uploadElement(uintptr) bool { return false }

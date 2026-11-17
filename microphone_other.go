@@ -1,5 +1,3 @@
-//go:build !((ios || android) && cgo)
-
 package mygo
 
 const microphoneAvailable = false

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"unicode"
 
-	"github.com/Heyana/typesetting-go/segmenter"
+	"github.com/go-text/typesetting/segmenter"
 )
 
 // softHyphen is a break opportunity that shows as a hyphen where a line

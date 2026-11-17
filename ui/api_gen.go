@@ -106,6 +106,17 @@ func (_handle *Route) View(c *Context, fn func(r *Route)) Element {
 	return wrapElement(_e)
 }
 
+// InSystemStack reports whether the system shows r's pages as its own
+// stack of screens (SystemStack), with its navigation bar: the view then
+// shows no bar of its own over them, nor a back button.
+func (_handle *Router) InSystemStack(c *Context) bool {
+	_ctx := c.build()
+	if _ctx == nil {
+		return false
+	}
+	return _handle.coreInSystemStack(_ctx)
+}
+
 // View builds the page shown with fn, in a column taking the room it is
 // given, and returns the column. As a page slides in, it builds the one
 // going away too, which takes neither the pointer nor the keyboard.
@@ -654,7 +665,7 @@ func (_handle *Context) SetTheme(t *Theme) {
 // stays until set again, and is clamped to between 0.25 and 5. A frame
 // that sets another builds again at the new size before it shows.
 //
-// What the view sees is zoomed: Size, TitleBar, SafeArea, Bounds and every length
+// What the view sees is zoomed: Size, TitleBar, Bounds and every length
 // are in the content's DIPs, z of them to the window's. The pointer, text
 // input, input methods, accessibility, context menus, drags and web views
 // follow it. The window's own sizes are not zoomed: Window.SetContentSize
@@ -5601,21 +5612,6 @@ func (_handle Element) GapY(v float32) Element {
 	return wrapElement(_node.GapY(v))
 }
 
-// Gestures opts an element into pinch/rotation input and returns updates since
-// its last frame. A gesture stays with its starting element until it ends or
-// that element disappears. A backend whose surface reports SurfaceGesture
-// events supplies these; on a touchscreen the system recognizes the two-finger
-// pinch and rotate and hands them over as deltas.
-func (_handle Element) Gestures() []GestureEvent {
-	_node := _handle.node()
-	if _node == nil {
-		return nil
-	}
-	_ctx := _node.c
-	_ = _ctx
-	return _node.Gestures()
-}
-
 // Gradient fills the element with a linear gradient from one color to
 // another, at angle degrees clockwise from upwards as in CSS: 180 goes
 // from top to bottom, 90 from left to right.
@@ -5955,21 +5951,6 @@ func (_handle Element) InputMethod(on bool) Element {
 	return wrapElement(_node.InputMethod(on))
 }
 
-// InputModifiers adds software modifiers to ASCII text and control keys of
-// a custom HandleInput/TextCaret widget. It leaves IME composition, commits
-// and multi-character paste untouched. consumed runs on the UI thread after
-// a key is handled, allowing an app to release one-shot modifiers. Omitting
-// the call clears the modifiers. Standard text editors are unaffected.
-func (_handle Element) InputModifiers(mods Modifiers, consumed func()) Element {
-	_node := _handle.node()
-	if _node == nil {
-		return Element{}
-	}
-	_ctx := _node.c
-	_ = _ctx
-	return wrapElement(_node.InputModifiers(mods, consumed))
-}
-
 // InsetShadow adds an inner box shadow, as CSS's box-shadow: inset: offset
 // by x and y, blurred by blur and grown inward by spread DIPs. It shows
 // only inside the box's padding edge, within its border and rounded
@@ -6168,19 +6149,6 @@ func (_handle Element) Keyboard(k KeyboardType) Element {
 	return wrapElement(_node.Keyboard(k))
 }
 
-// KeyboardDismiss chooses how scrolling dismisses the on-screen keyboard
-// while the input has the focus. It is the fork's; #940 has no
-// counterpart.
-func (_handle Element) KeyboardDismiss(m KeyboardDismissMode) Element {
-	_node := _handle.node()
-	if _node == nil {
-		return Element{}
-	}
-	_ctx := _node.c
-	_ = _ctx
-	return wrapElement(_node.KeyboardDismiss(m))
-}
-
 // Keyframes plays a sequence, holding its last value when done. It starts
 // on the first call, with the first frame's value. Keep the element and
 // key stable, and change Run when changing the sequence. Only active
@@ -6361,6 +6329,19 @@ func (_handle Element) LocalToWindow(x float32, y float32) (float32, float32) {
 	_ctx := _node.c
 	_ = _ctx
 	return _node.LocalToWindow(x, y)
+}
+
+// LongPressed reports whether a finger held the element still for half a
+// second since the last frame, on a touch screen. The press then clicks
+// nothing as it lifts.
+func (_handle Element) LongPressed() bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.LongPressed()
 }
 
 // Loop returns the progress of an animation that starts over every
@@ -7413,6 +7394,29 @@ func (_handle Element) Pretty() Element {
 	return wrapElement(_node.Pretty())
 }
 
+// PullToRefresh lets a finger pull a scroll container's content past its top
+// to refresh it, as with iOS's UIRefreshControl and Android's swipe to
+// refresh, each drawn as on its system: an indicator shows, spinning while
+// s.Refreshing. It reports whether the finger just asked to refresh: fetch
+// what's new, and set s.Refreshing to false.
+//
+//	list := ui.Scroll(c).Fill()
+//	if list.PullToRefresh(&app.refresh) {
+//		go func() {
+//			items := fetch()
+//			win.Update(func() { app.items, app.refresh.Refreshing = items, false })
+//		}()
+//	}
+func (_handle Element) PullToRefresh(s *RefreshState) bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.PullToRefresh(s)
+}
+
 // Query binds *q to the text being typed in a TokenField's input, for an
 // app that looks up suggestions as the user types, as a mail's recipients
 // in an address book. The field writes the text to *q as Query is called,
@@ -7532,8 +7536,8 @@ func (_handle Element) ReplaceText(start int, end int, s string) Element {
 }
 
 // ReturnKey sets what the return key of an on-screen keyboard says, for a
-// single-line input. It submits the input as Enter does; text areas keep
-// their newlines.
+// single-line input. It submits the input as Enter does; ReturnNext moves
+// the focus on as well.
 func (_handle Element) ReturnKey(k ReturnKeyType) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -8459,20 +8463,6 @@ func (_handle Element) TextCaret(r Rect) Element {
 	return wrapElement(_node.TextCaret(r))
 }
 
-// TextCaretFunc is TextCaret for a custom drawing whose cursor depends on its
-// final layout or rendered grid. fn runs on the UI thread after painting, so
-// the input method and the visible cursor use the same frame's geometry.
-// The returned rectangle is relative to the element's box.
-func (_handle Element) TextCaretFunc(fn func() Rect) Element {
-	_node := _handle.node()
-	if _node == nil {
-		return Element{}
-	}
-	_ctx := _node.c
-	_ = _ctx
-	return wrapElement(_node.TextCaretFunc(fn))
-}
-
 // TextColor sets the color of text.
 func (_handle Element) TextColor(c Color) Element {
 	_node := _handle.node()
@@ -8482,22 +8472,6 @@ func (_handle Element) TextColor(c Color) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.TextColor(c))
-}
-
-// TextContext supplies committed surrounding text and its caret (in runes)
-// for a custom TextCaret handler. fn runs on the UI thread. The handler owns
-// the document and applies InputTextReplace and InputSelection events;
-// native composition remains virtual until committed. This does not create
-// an editor or change pointer selection/rendering. Use HandleTextInput when
-// full indexed geometry or document selection is required.
-func (_handle Element) TextContext(fn func() (string, int)) Element {
-	_node := _handle.node()
-	if _node == nil {
-		return Element{}
-	}
-	_ctx := _node.c
-	_ = _ctx
-	return wrapElement(_node.TextContext(fn))
 }
 
 // TextRanges styles runs of a text input's text, in the frames that call
@@ -8637,32 +8611,6 @@ func (_handle Element) TopPercent(p float32) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.TopPercent(p))
-}
-
-// TouchScroll makes a custom input widget take finger drags as precise
-// InputScroll events. A stationary tap still delivers pointer Down/Up and
-// focuses the widget; a swipe does neither, so it can scroll without
-// opening the keyboard. Mouse input and pointer tracking are unchanged.
-func (_handle Element) TouchScroll() Element {
-	_node := _handle.node()
-	if _node == nil {
-		return Element{}
-	}
-	_ctx := _node.c
-	_ = _ctx
-	return wrapElement(_node.TouchScroll())
-}
-
-// TouchSelection lets a TouchScroll widget reserve a stationary long press
-// for its InputLongPress handler. Moving before the hold still scrolls.
-func (_handle Element) TouchSelection() Element {
-	_node := _handle.node()
-	if _node == nil {
-		return Element{}
-	}
-	_ctx := _node.c
-	_ = _ctx
-	return wrapElement(_node.TouchSelection())
 }
 
 // Touches returns the fingers on a touchscreen that landed on the element

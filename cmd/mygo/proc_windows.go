@@ -21,6 +21,13 @@ func shell(line string) *exec.Cmd {
 
 func setProcessGroup(cmd *exec.Cmd) {}
 
+// detachProcess starts the command apart from this one, which it outlives:
+// Ctrl+C on the console does not reach it.
+func detachProcess(cmd *exec.Cmd) {
+	const detachedProcess = 0x00000008
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | detachedProcess}
+}
+
 func terminate(cmd *exec.Cmd) { kill(cmd) }
 
 func interrupt(cmd *exec.Cmd) { kill(cmd) }

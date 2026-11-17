@@ -42,7 +42,7 @@ func PersistState[T any](key string, value *T) (off func(), err error) {
 		if err = App.loadState(); err != nil {
 			return
 		}
-		saveRegisteredState = App.saveState
+		saveRegisteredState = App.savePersisted
 		if s.bindings[key] != nil {
 			err = fmt.Errorf("mygo: state key %q is already registered", key)
 			return
@@ -109,14 +109,14 @@ func (a *Application) loadState() error {
 // called after important edits; a force kill may have no background callback.
 func (a *Application) SaveState() error {
 	needsApp("App.SaveState")
-	return onMainValue(a.saveState)
+	return onMainValue(a.savePersisted)
 }
 
 func (a *Application) OnStateSaveError(fn func(error)) func() {
 	return a.onStateSaveError.add(fn, false)
 }
 
-func (a *Application) saveState() error {
+func (a *Application) savePersisted() error {
 	s := &a.state
 	if len(s.bindings) == 0 {
 		return nil

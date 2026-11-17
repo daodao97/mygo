@@ -74,9 +74,6 @@ type Color struct{ R, G, B, A uint8 }
 type Backend interface {
 	// Name identifies the backend, for example "darwin/wkwebview".
 	Name() string
-	// SystemManagedLifetime is true when the OS owns closing and quitting.
-	// This capability may be read before Init and from any goroutine.
-	SystemManagedLifetime() bool
 
 	// Init prepares the native application. It is called once, on the main
 	// thread, before Run.
@@ -112,11 +109,6 @@ type Backend interface {
 
 	App() AppController
 	Dialogs() Dialogs
-	Sharing() Sharing
-	Permissions() Permissions
-	Speech() SpeechRecognizer
-	Authenticator() Authenticator
-	Mobile() Mobile
 	Clipboard() Clipboard
 	Shell() Shell
 	Screen() Screen
@@ -254,8 +246,6 @@ type AppHandler interface {
 	Activated(hasVisibleWindows bool)
 	DidBecomeActive()
 	DidResignActive()
-	DidEnterBackground()
-	WillEnterForeground()
 	OpenURLs(urls []string)
 	OpenFiles(paths []string)
 	MenuItemClicked(id int)
@@ -277,6 +267,9 @@ type AppHandler interface {
 	// MediaCommand reports a media key or a remote command for what
 	// NowPlaying shows; position is where MediaSeek asks to go.
 	MediaCommand(cmd MediaCommand, position time.Duration)
+	// MemoryWarning reports that the system is short of memory, on the
+	// systems that say: phones end apps that keep too much.
+	MemoryWarning()
 }
 
 // AppController exposes application level native features.
@@ -456,8 +449,7 @@ type WindowOptions struct {
 	Transparent    bool
 	// BackgroundColor is painted before the page renders; nil keeps the
 	// platform default.
-	BackgroundColor    *Color
-	ExtendIntoSafeArea bool // iOS native surface draws behind system chrome.
+	BackgroundColor *Color
 	// TitleBarStyle is "default", "hidden" or "hiddenInset". A hidden title
 	// bar gives the page the whole window, under the window controls:
 	// AppKit's traffic lights on macOS, and on Linux and Windows controls
@@ -542,6 +534,8 @@ type WindowOptions struct {
 	// itself fills, instead of a webview: Window.Surface returns it, the
 	// webview methods do nothing and the webview options are ignored.
 	Surface bool
+	// OwnScene opens the window as a window of the system's own, on iPad.
+	OwnScene bool
 }
 
 // DataStoreOptions describe a website data store (AppController.NewDataStore).
@@ -697,13 +691,6 @@ type Window interface {
 	// changes of. It is zero for other windows and while the controls are
 	// hidden, in full screen.
 	TitleBar() TitleBar
-	// SafeArea returns the room the device's own chrome takes from the
-	// content: the status bar, a notch, the home indicator, a rounded
-	// corner. It is zero on a desktop, where the system draws outside the
-	// window; on a phone it is what content must keep clear of, and
-	// WindowHandler.SafeAreaChanged reports changes of it (a rotation, a
-	// keyboard showing, a fold).
-	SafeArea() SafeArea
 	// StartDrag moves the window with the mouse (frameless drag regions).
 	StartDrag()
 	// TitleBarDoubleClicked performs the platform action for a double click
@@ -979,10 +966,6 @@ type WindowHandler interface {
 	// TitleBarChanged is called when Window.TitleBar changes, e.g. when the
 	// window enters full screen or the desktop's button layout changes.
 	TitleBarChanged()
-	// SafeAreaChanged is called when Window.SafeArea changes: the device
-	// rotated, a keyboard came up or went away, or the window moved to
-	// another display.
-	SafeAreaChanged()
 
 	// Message delivers a message posted by the renderer bridge.
 	Message(msg string)
@@ -1256,8 +1239,6 @@ type MessageBoxResult struct {
 type Dialogs interface {
 	ShowOpenDialog(parent Window, opts *OpenDialogOptions, cb func(paths []string, err error))
 	ShowSaveDialog(parent Window, opts *SaveDialogOptions, cb func(path string, err error))
-	ShowExportDialog(parent Window, opts *ExportDialogOptions, cb func(completed bool, err error))
-	ShowPhotoDialog(parent Window, opts *PhotoDialogOptions, cb func(paths []string, err error))
 	ShowMessageBox(parent Window, opts *MessageBoxOptions, cb func(res MessageBoxResult, err error))
 }
 
@@ -1583,4 +1564,126 @@ type Notification struct {
 type NotificationSender struct {
 	ID, Name string
 	Avatar   []byte
+}
+
+// DeviceBackend is a Backend of a device held in the hand: phones and
+// tablets. Backends of desktops have none, and the core's modules do
+// nothing or report that they cannot.
+type DeviceBackend interface {
+	// Haptic plays a haptic: "selection", "light", "medium", "heavy",
+	// "success", "warning" or "error".
+	Haptic(kind string)
+	// SetSystemBars sets the color of the icons of the system's bars,
+	// "auto", "light" or "dark", and whether the bars hide.
+	SetSystemBars(style string, hidden bool)
+	// SetOrientations limits the orientations the screen may take: a mask
+	// of Orientation values, 0 for any.
+	SetOrientations(mask uint32)
+	// Share shows the system's share sheet; done is called once it is
+	// shown, or with why it could not be.
+	Share(s ShareRequest, done func(error))
+	// SaveFile has the user choose where to keep a copy of the file at path.
+	SaveFile(path, name string, done func(saved string, err error))
+	// Battery tells the state of the battery.
+	Battery() BatteryStatus
+	// SetBarItems sets the buttons at the end of w's navigation bar.
+	SetBarItems(w Window, items []BarItem)
+}
+
+// PluginBackend is a Backend whose host runs plugins' native code: the Swift
+// and Kotlin that plugins bring (mygo-plugin.json), which it reaches by name.
+type PluginBackend interface {
+	// PluginCall calls a method of a plugin's native code, with JSON, and
+	// done with its JSON answer, or an error (a PluginError, with its code).
+	PluginCall(plugin, method string, args []byte, done func(result []byte, err error))
+	// OnPluginEvent sets who hears the events of plugins' native code.
+	OnPluginEvent(fn func(plugin, name string, data []byte))
+}
+
+// PluginError is an error of a plugin's native code.
+type PluginError struct{ Code, Message string }
+
+func (e *PluginError) Error() string {
+	if e.Code == "" {
+		return e.Message
+	}
+	return e.Code + ": " + e.Message
+}
+
+// Orientations of the screen, for DeviceBackend.SetOrientations.
+const (
+	OrientationPortrait uint32 = 1 << iota
+	OrientationPortraitUpsideDown
+	OrientationLandscapeLeft
+	OrientationLandscapeRight
+)
+
+// ShareRequest is what a share sheet shares. X and Y are where in the window
+// in front it comes from, which an iPad's sheet points at.
+type ShareRequest struct {
+	Text, URL string
+	Paths     []string
+	X, Y      float64
+}
+
+// BatteryStatus is the state of a device's battery. Level is from 0 to 1,
+// negative where it is not known.
+type BatteryStatus struct {
+	Level    float64
+	Charging bool
+	LowPower bool
+}
+
+// BarItem is a button of a window's navigation bar.
+type BarItem struct {
+	Title, Symbol string
+	// Icon is a PNG drawn as a template (Tab.Icon).
+	Icon    []byte
+	OnClick func()
+}
+
+// NavigationBackend is a Backend with the navigation of phones: a bar of
+// tabs, each showing a window, and stacks of windows pushed over others,
+// both the system's own (UIKit's tab bar and navigation controllers,
+// Android's bottom navigation and toolbars). Backends of desktops have
+// none: the core shows the windows as windows.
+type NavigationBackend interface {
+	// NewTabs shows a bar of tabs at the bottom of the screen, tab i
+	// showing tabs[i].Window, over the windows shown before.
+	NewTabs(tabs []Tab, h TabsHandler) (TabBar, error)
+	// PushWindow shows child over parent in parent's stack, with a bar
+	// at the top holding child's title and a back button, which pops it.
+	PushWindow(parent, child Window, animated bool)
+	// PopWindow takes w out of its stack, back to the window under it.
+	PopWindow(w Window, animated bool)
+}
+
+// Tab is a tab of a TabBar.
+type Tab struct {
+	Title string
+	// Symbol names an SF Symbol, which iOS draws; Icon is a PNG drawn as
+	// a template (its alpha, in the bar's colors), which Android draws,
+	// and iOS without a Symbol.
+	Symbol string
+	Icon   []byte
+	Window Window
+}
+
+// TabBar is a bar of tabs of a NavigationBackend.
+type TabBar interface {
+	Select(i int)
+	SetBadge(i int, badge string)
+	Close()
+}
+
+// TabsHandler hears of a TabBar, on the main thread.
+type TabsHandler interface {
+	// TabSelected reports that the user chose tab i.
+	TabSelected(i int)
+}
+
+// NavigationHandler is a WindowHandler told that the user popped its
+// window off its stack (the back button, a swipe, Android's back).
+type NavigationHandler interface {
+	Popped()
 }

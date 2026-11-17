@@ -1,23 +1,25 @@
 # 原生模块
 
-**实验性。** 原生模块，以及用 `ffi` 绑定 C 库，可能在任意发布版本中变化，包括破坏性变化：Go 侧、生成的 Swift、Rust 和 Zig、`mygo native` 命令以及 `mygo-plugin.json`。发布说明会列出每项破坏性变化以及该怎么应对。
+**实验性。** 原生模块，以及用 `ffi` 绑定 C 库，可能在任意发布版本中变化，包括破坏性变化：Go 侧、生成的 Swift、Kotlin、Rust 和 Zig、`mygo native` 命令以及 `mygo-plugin.json`。发布说明会列出每项破坏性变化以及该怎么应对。
 
-原生模块是用 Swift、Rust 或 Zig 实现的 Go 接口。你在 Go 中声明接口，再按照 MyGo 生成的声明编写实现，就能像调用普通 Go 值一样使用它：支持 `context.Context`、错误、迭代器和回调，Go 侧由 Go 编译器检查，实现侧由相应语言的编译器检查。不使用 cgo，也无需手写两种语言之间的胶水代码。
+原生模块是用 Swift、Kotlin、Rust 或 Zig 实现的 Go 接口。你在 Go 中声明接口，再按照 MyGo 生成的声明编写实现，就能像调用普通 Go 值一样使用它：支持 `context.Context`、错误、迭代器和回调，Go 侧由 Go 编译器检查，实现侧由相应语言的编译器检查。不使用 cgo，也无需手写两种语言之间的胶水代码。
 
 适合用在 Go 缺少或做得慢的地方：
 
-- macOS 仅向 Swift 提供的功能：系统框架（NaturalLanguage、Vision、AVFoundation、Speech……）、Swift 包，以及嵌入原生 UI 的视图；
+- macOS 和 iOS 仅向 Swift 提供的功能：系统框架（NaturalLanguage、Vision、AVFoundation、Speech……）、Swift 包，以及嵌入原生 UI 的视图；
+- Android 用 Kotlin 和 Java 提供的功能：它的 SDK、Jetpack 和其他 Android 库，以及视图；
 - 在所有平台上使用 Rust crate 或 Zig、C 库，例如解析器、编解码器、数据库或推理引擎。
 
 模块把每种实现放在以对应语言命名的目录里，用该语言的工具构建：
 
 | 目录 | 语言 | 运行于 |
 |---|---|---|
-| `swift/` | Swift，作为 Swift 包 | macOS（以及在 `go test` 下的 Linux，仅用 Foundation） |
+| `swift/` | Swift，作为 Swift 包 | macOS 和 iOS，以其 `Package.swift` 列出的为准（以及在 `go test` 下的 Linux，仅用 Foundation） |
+| `kotlin/` | Kotlin，作为 Gradle 的 Android 库 | Android |
 | `rust/` | Rust，作为 crate | macOS、Linux、Windows |
 | `zig/` | Zig，作为包 | macOS、Linux、Windows |
 
-模块可以有多种实现：每个平台选一种——macOS 上有 Swift 实现就用 Swift，否则用 Rust，再否则用 Zig。因此一个模块可以在 macOS 上使用 Apple 的框架，在其他地方使用 Rust crate，而对外仍是同一个 Go 接口。Go 侧说明模块做什么，每个目录说明怎么做。在模块没有实现的平台上，其构造函数返回 `errors.ErrUnsupported`，这样应用在所有平台都能编译，并自行决定没有它时该怎么办。
+模块可以有多种实现：每个平台选一种——iOS 上用 Swift，Android 上用 Kotlin，macOS 上有 Swift 实现就用 Swift，否则用 Rust，再否则用 Zig。因此一个模块可以在 Mac 和 iPhone 上使用 Apple 的框架，在 Android 手机上使用 Android 的框架，在其他地方使用 Rust crate，而对外仍是同一个 Go 接口（见[手机](#手机)）。Go 侧说明模块做什么，每个目录说明怎么做。在模块没有实现的平台上，其构造函数返回 `errors.ErrUnsupported`，这样应用在所有平台都能编译，并自行决定没有它时该怎么办。
 
 Go 侧：
 
@@ -103,7 +105,7 @@ for tok, err := range a.Tokens(ctx, text, language.Sentence) {
 mygo native new [-lang <languages>] <module name>
 ```
 
-在应用的 `modules/<module name>` 下创建一个名为 `<module name>` 的模块，或者用你给出的路径代替名称，例如 `internal/<module name>`。`-lang` 指定用来实现它的语言，用逗号分隔：默认 `swift`，还有 `rust`、`zig`。`-lang none` 只生成 Go 侧，以便先确定接口，之后再实现。
+在应用的 `modules/<module name>` 下创建一个名为 `<module name>` 的模块，或者用你给出的路径代替名称，例如 `internal/<module name>`。`-lang` 指定用来实现它的语言，用逗号分隔：默认 `swift`，还有 `kotlin`、`rust`、`zig`。`-lang none` 只生成 Go 侧，以便先确定接口，之后再实现。
 
 ```
 modules/<module name>/
@@ -118,6 +120,11 @@ modules/<module name>/
 │   └── Sources/<Module>/
 │       ├── <Module>.swift        # the implementation: yours
 │       └── <Module>.mygo.swift   # generated
+├── kotlin/
+│   ├── build.gradle.kts          # the Android library: yours, for its dependencies
+│   └── src/main/kotlin/<package as a path>/
+│       ├── <Module>.kt           # the implementation: yours
+│       └── <Module>.mygo.kt      # generated
 ├── rust/
 │   ├── Cargo.toml                # the crate: yours, for its dependencies
 │   └── src/
@@ -138,11 +145,11 @@ modules/<module name>/
 mygo native add <language> [module dir]
 ```
 
-该命令在模块中创建对应语言的目录（模块目录默认为当前目录），为每个入口点生成工厂函数，并生成所有方法均返回“不支持”的占位实现。模块因此可以立即构建，之后再逐个实现方法。如果模块用到了只有 Swift 支持的功能，就不能添加 Rust 或 Zig 实现（见 [Rust 和 Zig](#rust-和-zig)）。
+该命令在模块中创建对应语言的目录（模块目录默认为当前目录），为每个入口点生成工厂函数，并生成所有方法均返回“不支持”的占位实现。模块因此可以立即构建，之后再逐个实现方法。如果模块用到了 Kotlin、Rust 或 Zig 无法实现的功能，就不能添加相应的实现（见 [Rust 和 Zig](#rust-和-zig) 和[手机](#手机)）。
 
 模块就是普通的 Go 包，可以从应用或其他 Go 模块中导入。`mygo dev` 和 `mygo build` 通过 `go list -deps` 找出依赖中所有带实现的原生模块包，为目标平台构建实现并放入应用，无需额外注册。
 
-提交生成的文件。`<module name>_native.go` 让应用在任意机器上编译、vet 和测试，无论是否安装了这些语言的工具；`<Module>.mygo.swift`、`mygo.rs` 和 `mygo.zig` 保存 Go 侧的声明和 Go 调用的 C 函数，让编辑器补全并检查实现；永远不要编辑它们。它们会注明自己来自哪个接口，当某个文件比接口旧时，`mygo build` 会拒绝构建。
+提交生成的文件。`<module name>_native.go` 让应用在任意机器上编译、vet 和测试，无论是否安装了这些语言的工具；`<Module>.mygo.swift`、`<Module>.mygo.kt`、`mygo.rs` 和 `mygo.zig` 保存 Go 侧的声明和 Go 调用的 C 函数，让编辑器补全并检查实现；永远不要编辑它们。它们会注明自己来自哪个接口，当某个文件比接口旧时，`mygo build` 会拒绝构建。
 
 ## 声明接口
 
@@ -374,7 +381,79 @@ const Words = struct {
 
 **Zig 中的内存。** 每次调用都有一个 arena，用于存放参数，发送结果后释放；返回其中的切片或参数的切片时无需复制。流的 arena 和参数保留到流结束，每个产出的值另有独立的 arena。需要在调用结束后继续保留的对象、迭代器，以及用 `keep()` 保留的回调，应使用 `mygo.allocator` 分配，并在 Go 释放该值时调用的 `deinit` 中释放内存。方法若在调用结束后仍保留某个回调，就要对它调用 `keep()`，用完再调用 `release()`。
 
-**只有 Swift 能实现的东西。** 视图、纹理、窗口和其他模块的接口都是 Apple 的，因此使用它们的模块只能用 Swift 实现，`mygo native add rust` 会指出它的哪些方法造成了阻碍。返回 `*native.Buffer`（而不是接收它）也是如此。
+**只有 Swift 能实现的东西。** 视图和窗口属于平台，因此使用它们的模块只能用 Swift 实现，在 Android 上则用 Kotlin 实现，`mygo native add rust` 会指出它的哪些方法造成了阻碍。纹理和其他模块的接口只有 Swift 能实现，返回 `*native.Buffer`（而不是接收它）也是如此。
+
+## 手机
+
+iPhone 和 Android 手机随应用一起从源码构建模块：`-platform ios` 的 `mygo dev` 和 `mygo build` 用 `xcodebuild` 把模块的 Swift 构建为应用中的一个 framework，`-platform android` 则把模块的 Kotlin 加入应用的 Gradle 构建，每个模块一个库。手机从不使用已发布的构建：iOS 运行的代码随应用签名，Android 应用的库也是它自己构建的。模块没有对应目录时，在手机上就没有实现，其构造函数返回 `errors.ErrUnsupported`，和在其他缺少实现的平台上一样。
+
+### iOS 上的 Swift
+
+模块的 `Package.swift` 在平台中列出 iOS 及其支持的最低版本时，它的 Swift 在 iOS 上运行；列出 macOS 或不列出任何平台时，在 macOS 上运行：
+
+```swift
+platforms: [.macOS(.v13), .iOS(.v16)],
+```
+
+同一份 Swift 同时服务两者，二者不同之处用 `#if os(iOS)` 区分，生成的代码也是如此：iOS 上视图是 `UIView`（`NativeView` 表示 `NSView` 或 `UIView`），窗口以显示它的 `UIViewController` 传入，可以从它弹出界面。只用于 iOS 的模块只列出 `.iOS`，macOS 上就用它的 Rust 或 Zig，SQLite 插件就是这样。Swift 包、二进制 framework（`.binaryTarget`）和资源的用法与 Xcode 中相同，因为构建它们的就是 Xcode；iOS 需要 Xcode，仅有 Command Line Tools 不够。
+
+### Android 上的 Kotlin
+
+`mygo native add kotlin` 创建 `kotlin/`：一个 Android 库，其 `build.gradle.kts` 写明命名空间和依赖，Kotlin 代码位于模块导入路径对应的包中，像 Java 包名那样把域名倒过来：`example.com/app/modules/language` 对应 `com.example.app.modules.language`。应用的构建设置它的 SDK 级别、Java 和 Kotlin，以及它对 MyGo 宿主库 `dev.mygo` 的依赖，协程也由这个库带来。实现由每个入口点一个函数和实现各接口的类组成：
+
+```kotlin
+package com.example.app.modules.language
+
+import android.icu.text.BreakIterator
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+
+fun makeAnalyzer(): Analyzer = ICUAnalyzer()
+
+private class ICUAnalyzer : Analyzer {
+    override fun detectLanguage(text: String): String = throw LanguageException(LanguageError.UNDETERMINED)
+
+    override fun tokens(text: String, unit: Unit): Flow<Token> = flow {
+        val it = if (unit == Unit.WORD) BreakIterator.getWordInstance() else BreakIterator.getSentenceInstance()
+        it.setText(text)
+        var start = it.first()
+        var end = it.next()
+        while (end != BreakIterator.DONE) {
+            val s = text.substring(start, end)
+            val at = text.substring(0, start).toByteArray().size.toLong()
+            emit(Token(at, at + s.toByteArray().size, s))
+            start = end
+            end = it.next()
+        }
+    }
+}
+```
+
+| Go | Kotlin |
+|---|---|
+| `M(a int, b string)` | `fun m(a: Long, b: String)` |
+| `M(...) error`、`M(...) (T, error)` | `fun m(...)`、`fun m(...): T`，出错时抛出异常 |
+| `M(ctx context.Context, ...)` | `suspend fun m(...)`，随 Go 的 context 取消 |
+| `iter.Seq2[T, error]`、`iter.Seq[T]` | `Flow<T>`，由 Go 的循环拉取 |
+| `onChange func(float64)` | `(Double) -> Unit` |
+| `M(...) io.Closer` | `AutoCloseable`，可用 `NativeCloser { }` 创建 |
+| 模块的接口 | 该接口，由一个类实现 |
+| Go 实现的接口 | 该接口，其方法调用 Go |
+| `bool`、`int`、`int32`、`uint16`、`uint64`…… | `Boolean`、`Long`、`Int`、`UShort`、`ULong`…… |
+| `float32`、`float64` | `Float`、`Double` |
+| `string`、`[]byte` | `String`、`ByteArray` |
+| `time.Time`、`time.Duration` | `java.time.Instant`、`kotlin.time.Duration` |
+| `[]T`、`map[string]T`、`*T` | `List<T>`、`Map<String, T>`、`T?` |
+| 包中的结构体、枚举 | `data class`、`enum class` |
+| `*native.Buffer`（作为参数） | `NativeBuffer`，其 `bytes` 是直接 `ByteBuffer` |
+| `native.View`、`*mygo.Window` | `android.view.View`，即窗口的视图 |
+| `ui.Rect` | `android.graphics.RectF`，以视图的像素为单位 |
+
+包的错误写作 `<Name>Exception(<Name>Error.X)`；`NativeUnsupportedException` 以 `errors.ErrUnsupported` 到达 Go，其他异常则作为 `*native.Error` 到达，用 `NativeException(domain, number, message)` 可以设置它的 domain 和 number。方法在调用方 goroutine 的线程上运行，该线程已附加到 JVM；`suspend` 方法和流在各自的协程上运行；`//mygo:mainthread` 方法、视图及其回调在 UI 线程上运行。`dev.mygo.Native.context` 是应用的 `Context`，`Native.activity` 是当前 activity，可以从它启动其他 activity。视图是模块用 `Native.context` 创建的 `android.view.View`。
+
+除了纹理、返回 `*native.Buffer` 和其他模块的接口，Swift 能实现的 Kotlin 都能实现，`mygo native add kotlin` 会指出不能实现的部分。
+
+**Android 上的 C。** Kotlin 模块可以带上 C 或 C++，由它的 `build.gradle.kts` 用 CMake（`externalNativeBuild`）构建；应用的构建会给它 NDK 和 Go 所构建的 ABI，Kotlin 用 `System.loadLibrary` 加载它。SQLite 插件的模块 `plugins/sqlite/internal/sqlitecore` 就是这样：它的 Kotlin 调用 SQLite 的 amalgamation，由 CMake 下载并用 SHA-256 固定版本；它的 Swift 则以二进制 framework 链接同一个 SQLite。
 
 ## 对象
 
@@ -730,7 +809,7 @@ let package = Package(
 
 ## 构建、运行和测试
 
-构建模块需要其语言的工具：`swift/` 需要 Xcode 或其 Command Line Tools，以及 Swift 6；`rust/` 需要 cargo（[rustup](https://rustup.rs)）；`zig/` 需要 [Zig](https://ziglang.org) 0.16。`mygo doctor` 会告诉你装了哪些。
+构建模块需要其语言的工具：`swift/` 需要 Xcode 或其 Command Line Tools，以及 Swift 6（iOS 需要 Xcode）；`kotlin/` 需要 Android 应用本来就需要的 Android SDK 和 Gradle 所用的 JDK（[手机和平板](mobile/README.md#你需要什么)），带 C 的模块还需要 SDK Manager 中的 CMake；`rust/` 需要 cargo（[rustup](https://rustup.rs)）；`zig/` 需要 [Zig](https://ziglang.org) 0.16。`mygo doctor` 会告诉你装了哪些。
 
 接口变化后，`mygo dev` 会重新生成模块；实现文件变化后，会重新构建当前机器的实现并重启应用，窗口会在原位置重新打开。`mygo build` 则以发布模式为目标平台构建每个模块：Swift 生成兼容 arm64 和 x86_64 的通用二进制，连同依赖框架一起签名，再进行应用的签名和公证（[分发](distribution.md)）；Rust 和 Zig 生成各架构的库，放入应用资源。cargo 和 Zig 的构建文件位于 Go 模块的 `.mygo/native`，而不是原生模块目录；应将 `.mygo/` 加入 `.gitignore`，`mygo init` 创建的项目已这样配置。
 
@@ -740,6 +819,8 @@ let package = Package(
 mygo native build -target host -lang rust ./modules/language && go test ./modules/language
 mygo native build -target host -lang zig ./modules/language && go test ./modules/language
 ```
+
+在手机上，模块在应用中运行：`mygo dev -platform ios` 和 `-platform android` 随应用构建它，并在模拟器或设备上运行，它的日志和 Go 的日志显示在一起。`go test` 不在手机上运行，所以通过接口的假实现测试使用模块的 Go 代码（见下文），在应用中测试实现。
 
 在 Linux 上，同样的命令可以用 [Swift 工具链](https://www.swift.org/install/linux/) 构建仅依赖 Foundation 的 Swift 模块。GitHub 的 Ubuntu runner 镜像自带该工具链，因此这些模块也能在 Linux 任务中测试；应用本身只在 macOS 上运行 Swift 实现。依赖接口而不是构造函数返回值的代码，可以在任何平台上用假实现测试：
 
@@ -759,7 +840,7 @@ func (f fakeAnalyzer) Tokens(ctx context.Context, text string, unit language.Uni
 
 ## 发布模块
 
-如果模块属于应用自己，或位于应用用目录替换的 Go 模块中，应用就会从源码构建它们。从模块缓存中使用你的模块的应用，以及没有该语言工具的机器，例如构建 macOS 应用的 GitHub Actions Linux runner，则使用已发布的构建。`mygo native build` 生成这些构建：
+如果模块属于应用自己，或位于应用用目录替换的 Go 模块中，应用就会从源码构建它们，手机则总是如此。从模块缓存中使用你的模块的应用，以及没有该语言工具的机器，例如构建 macOS 应用的 GitHub Actions Linux runner，则使用已发布的构建。`mygo native build` 生成这些构建：
 
 ```sh
 mygo native build -upload [module dir]
@@ -830,7 +911,7 @@ mygo.Bind(&Text{a}) // a service whose methods call a
 
 ## 工作原理
 
-生成的 Go 代码通过 `ffi` 查找、加载实现所在的库，并用 purego 调用，不使用 cgo，与 MyGo 调用系统 API 的方式相同。每个方法都有一个 C 入口点，Swift 用 `@_cdecl` 导出，Rust 用 `#[no_mangle] extern "C"`，Zig 用 `export`；所有模块共享一个 Go 回调，传递异步结果、流中的值、回调调用，以及对 Go 实现接口的调用。三种语言使用相同的调用接口，Go 无需区分实现语言。加载库时，Go 将所用 C 运行时的 `malloc` 和 `free` 传给库，双方用同一组函数分配和释放跨边界传递的数据。
+生成的 Go 代码通过 `ffi` 查找、加载实现所在的库，并用 purego 调用，不使用 cgo，与 MyGo 调用系统 API 的方式相同。每个方法都有一个 C 入口点，Swift 用 `@_cdecl` 导出，Rust 用 `#[no_mangle] extern "C"`，Zig 用 `export`（在 Android 上则是生成的 Kotlin 的 `invoke`，由宿主的 JNI 调用）；所有模块共享一个 Go 回调，传递异步结果、流中的值、回调调用，以及对 Go 实现接口的调用。三种语言使用相同的调用接口，Go 无需区分实现语言。加载库时，Go 将所用 C 运行时的 `malloc` 和 `free` 传给库，双方用同一组函数分配和释放跨边界传递的数据。
 
 值以二进制编码跨越边界，双方的生成代码按声明的顺序写入和读取，不使用反射，也没有字段名：整数为 8 字节，浮点为 float64，字符串和 `[]byte` 为长度后跟字节，切片和 map 为长度后跟元素，指针为一个标志后跟值，结构体为其字段，枚举为其值，时间为 Unix 秒和纳秒。结果直接从实现返回它们的那块内存中就地读取。只使用数字和 bool、且不返回错误的方法连这一步都省了：Go 直接把它们作为寄存器参数调用对应的 C 函数。缓冲区是双方映射的内存，纹理是与 GPU 共享的 `IOSurface`。没有任何原生模块的应用不会链接这其中的任何东西。
 

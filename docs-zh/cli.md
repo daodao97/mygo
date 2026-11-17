@@ -133,7 +133,7 @@ mygo i18n check [dir]
 
 ## mygo native
 
-与原生模块一样是实验性的：这些命令及其标志可能在任何发布版本中改变。这些命令用于[原生模块](native-modules.md)——用 Swift、Rust 或 Zig 实现的 Go 接口，按平台构建成一个库——以及包用 `ffi` 绑定的 C 库（[自己绑定一个 C 库](native-modules.md#自己绑定-c-库)）。`[module dir]` 默认为当前目录。
+与原生模块一样是实验性的：这些命令及其标志可能在任何发布版本中改变。这些命令用于[原生模块](native-modules.md)——用 Swift、Kotlin、Rust 或 Zig 实现的 Go 接口，按平台构建成一个库（在手机上随应用构建）——以及包用 `ffi` 绑定的 C 库（[自己绑定一个 C 库](native-modules.md#自己绑定-c-库)）。`[module dir]` 默认为当前目录。
 
 ### mygo native build
 
@@ -158,7 +158,7 @@ mygo native build [flags] [dir]
 mygo native new [-lang <languages>] <module name>
 ```
 
-在 `modules/<module name>` 中创建模块，或者在给出路径而不是名称时，在该路径创建：包含接口的 Go 包、为它生成的 Go 代码、一个 `AGENTS.md`，以及每种语言一个目录。`-lang` 接受以逗号分隔的语言：`swift`（默认）、`rust`、`zig`，或 `none`，表示只有 Go 部分。
+在 `modules/<module name>` 中创建模块，或者在给出路径而不是名称时，在该路径创建：包含接口的 Go 包、为它生成的 Go 代码、一个 `AGENTS.md`，以及每种语言一个目录。`-lang` 接受以逗号分隔的语言：`swift`（默认）、`kotlin`、`rust`、`zig`，或 `none`，表示只有 Go 部分。
 
 ### mygo native add
 
@@ -166,7 +166,7 @@ mygo native new [-lang <languages>] <module name>
 mygo native add <language> [module dir]
 ```
 
-为现有模块添加另一种语言（`swift`、`rust` 或 `zig`）的实现，生成每个入口点的工厂函数和返回“不支持”错误的方法，使模块立即可以构建。
+为现有模块添加另一种语言（`swift`、`kotlin`、`rust` 或 `zig`）的实现，生成每个入口点的工厂函数和返回“不支持”错误的方法，使模块立即可以构建。
 
 ### mygo native check
 

@@ -76,7 +76,7 @@ func main() {
 - [文稿](documents.md)：以文稿为中心的应用，每个文件一个窗口，支持“文件”菜单、自动保存、崩溃后恢复、关闭和退出前询问是否保存，以及处理其他应用对文件的更改。
 - [语言](i18n.md)：为应用提供多语言文本，包括 ICU 消息目录、带类型的 Go 和 TypeScript 函数、复数规则、MyGo 内置文本，以及用于测试布局的伪区域设置。
 - [桌面 API](native.md)：对话框、通知、剪贴板、shell、显示器、深色模式、电源、网络状态、机密、监视文件和全局快捷键。
-- [原生模块](native-modules.md)：用 Swift、Rust 或 Zig 实现 Go 接口的实验性功能，无需 cgo 即可对接 macOS 框架和视图、Rust crate，以及 Zig 和 C 库；CLI 负责构建、打包到应用中，并发布给使用你的 Go 包的开发者。
+- [原生模块](native-modules.md)：用 Swift、Kotlin、Rust 或 Zig 实现 Go 接口的实验性功能，无需 cgo 即可对接 macOS、iOS 和 Android 的框架和视图、Rust crate，以及 Zig 和 C 库；CLI 负责构建、打包到应用中，并发布给使用你的 Go 包的开发者。
 - [剪贴板与拖放数据](data-transfer.md)：多种表示形式、文件列表、自定义格式、惰性提供方和剪贴板持久化。
 - [音频](audio.md)：音效、流式音乐和应用自己合成的声音，在 Go 中混音，支持 WAV、Ogg Vorbis 和 MP3。
 - [启动器](launchers.md)：像 Spotlight 和 Raycast 那样的应用，用快捷键在任何应用之上唤出，用来查找并打开已安装的应用。
@@ -90,6 +90,13 @@ func main() {
 - [前端](frontend.md)：页面在开发时和构建出的应用中如何加载、`mygo-runtime` 包、自定义协议、自定义标题栏和拖放的文件。
 - [从前端调用 Go](bindings.md)：绑定的服务、通道、类型化的事件和生成的 TypeScript 客户端。
 - [插件](plugins.md)：以 Go 包和 npm 包形式提供的功能，例如官方插件，以及如何编写你自己的插件。
+
+## 手机和平板
+
+- [手机和平板](mobile/README.md)：同一个应用在 iOS 和 Android 上运行，需要什么，在模拟器或设备上开发，以及应用在手机上的行为。
+- [为手机构建和发布](mobile/building.md)：签名的 `.ipa`、`.apk` 和 `.aab` 文件，App Store Connect 和 Google Play，链接、图标和启动画面。
+- [手机上的界面](mobile/interface.md)：系统的标签页和栈、手指、键盘、手机的控件，以及测试。
+- [设备 API 和插件](mobile/plugins.md)：触感反馈、分享、电池，地图、相机、定位等官方插件，以及用 Swift 和 Kotlin 编写你自己的插件。
 
 ## 发布
 

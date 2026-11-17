@@ -82,16 +82,12 @@ func (v *Content) AttachContent(conn *surface.Conn) {
 	rt := newRuntime(v.view, h)
 	h.rt = rt
 	conn.Event = h.event
-	conn.TextGeometry = rt.textGeometry
 	conn.ThemeChanged = func() {
 		// The interface font is part of the appearance.
 		h.uiFont()
 		rt.themeChanged()
 	}
 	conn.TitleBarChanged = rt.requestFrame
-	// Insets can change while the surface keeps its size; cached paint is
-	// insufficient because controls must be laid out inside the new safe area.
-	conn.SafeAreaChanged = rt.changed
 	conn.ActiveChanged = rt.activeChanged
 	conn.Changed = rt.changed
 	conn.LocaleChanged = func() {
@@ -113,6 +109,9 @@ func (v *Content) AttachContent(conn *surface.Conn) {
 	h.uiFont()
 	h.textLanguage()
 	h.automate()
+	if devAttach != nil {
+		devAttach(h)
+	}
 	// Load the fonts while the window shows up.
 	go text.Shared().Preload()
 	h.requestFrame()
@@ -192,12 +191,8 @@ type windowHost struct {
 // thread: a frame following the last one draws once the display can take
 // it (Direct3D's), or once the last, built while the display could not,
 // was drawn (Metal's). refreshWaiter is one for frames drawn in memory.
-type displayWaiter interface {
-	// Ready reports whether a frame can draw at once; otherwise wake runs,
-	// on any goroutine, once it can.
-	Ready(wake func()) bool
-}
-
+// firstFramePresented reports whether the window presented its first frame
+// (ui.Startup), watching for it on the surface's hook where it has one.
 func (h *windowHost) firstFramePresented() bool {
 	if !h.firstFrameWatching {
 		h.firstFrameWatching = true
@@ -219,6 +214,12 @@ func (h *windowHost) firstFramePresented() bool {
 		return h.shown
 	}
 	return h.firstFrameShown
+}
+
+type displayWaiter interface {
+	// Ready reports whether a frame can draw at once; otherwise wake runs,
+	// on any goroutine, once it can.
+	Ready(wake func()) bool
 }
 
 // refreshWaiter holds the frames drawn in memory on a surface that shows
@@ -348,16 +349,6 @@ func (h *windowHost) event(ev platform.SurfaceEvent) bool {
 	if h.detached {
 		return false // the window closed: it draws nothing more
 	}
-	if ev.Kind == platform.SurfaceMemoryPressure {
-		h.soft.Release()
-		if h.gpu != nil {
-			h.gpu.Release()
-			h.gpu = nil
-		}
-		h.gpuTried = false
-		h.rt.changed()
-		return false
-	}
 	if ev.Kind == platform.SurfaceRenew {
 		// The next frame makes the renderer again, for the surface's new
 		// native objects.
@@ -367,6 +358,22 @@ func (h *windowHost) event(ev platform.SurfaceEvent) bool {
 		}
 		h.gpuTried, h.retryAt = false, time.Time{}
 		h.requestFrame()
+		return false
+	}
+	if ev.Kind >= platform.SurfaceLowMemory && ev.Kind <= platform.SurfaceStackPopped {
+		if ev.Kind == platform.SurfaceLowMemory {
+			// What the next frame makes again: the renderer's textures, its
+			// atlases and pipelines among them.
+			if h.gpu != nil {
+				h.gpu.Release()
+				h.gpu = nil
+				h.gpuTried, h.retryAt = false, time.Time{}
+			}
+			h.requestFrame()
+		}
+		if touchSystem != nil {
+			touchSystem(h.rt, ev)
+		}
 		return false
 	}
 	if ev.Kind == platform.WebViewTabOut || ev.Kind == platform.WebViewKey {
@@ -510,14 +517,8 @@ func (h *windowHost) present(s *scene.Scene) {
 		h.unshown = true
 		return
 	}
-	if h.conn.ContentBackground != nil && h.rt.c.root != nil {
-		root := h.rt.c.root
-		c := root.bg
-		if c.A == 255 && root.fill == fillColor && (!root.opacitySet || root.opacity >= 1) {
-			h.conn.ContentBackground(platform.Color{R: c.R, G: c.G, B: c.B, A: c.A})
-		}
-	}
 	if h.conn.FrameSubmitted != nil {
+		// The fork's Window.OnFirstFrame and ui.Startup (FORK.md, B class).
 		defer h.conn.FrameSubmitted()
 	}
 	due := !h.retryAt.IsZero() && !time.Now().Before(h.retryAt)
@@ -702,11 +703,6 @@ func (h *windowHost) makeGPU() {
 		h.degraded = false
 	}
 	h.gpu, h.gpuSince = r, time.Now()
-	if s, ok := h.conn.Surface.(platform.DrawableSurface); ok {
-		if p, ok := r.(interface{ SetPresentationHook(func(uintptr)) }); ok {
-			p.SetPresentationHook(s.WatchDrawable)
-		}
-	}
 	h.wide = false // the renderer draws sRGB until told otherwise
 	if p, ok := r.(interface{ SetPost(func(func())) }); ok && h.conn.Post != nil {
 		// Frames waiting for the display draw through the main thread.
@@ -898,11 +894,6 @@ func (h *windowHost) setCursor(c Cursor) { h.conn.Surface.SetCursor(platform.Cur
 
 func (h *windowHost) setTextInput(t platform.TextInputState) { h.conn.Surface.SetTextInput(t) }
 
-func (h *windowHost) nativeTextSelection() bool {
-	s, ok := h.conn.Surface.(platform.NativeTextSelectionSurface)
-	return ok && s.NativeTextSelection()
-}
-
 func (h *windowHost) updateAccessibility(tree *platform.AccessTree) {
 	h.conn.Surface.UpdateAccessibility(tree)
 }
@@ -1025,25 +1016,20 @@ func (h *windowHost) textLanguage() {
 	h.textSystem().SetLanguage(h.locale())
 }
 
+// insets are those the surface tells, as a phone's.
+func (h *windowHost) insets() platform.Insets {
+	if s, ok := h.conn.Surface.(platform.InsetSurface); ok {
+		return s.Insets()
+	}
+	return platform.Insets{}
+}
+
 func (h *windowHost) titleBar() TitleBar {
 	if h.conn.TitleBar == nil {
 		return TitleBar{}
 	}
 	t := h.conn.TitleBar()
 	return TitleBar{Height: float32(t.Height), Left: float32(t.Left), Right: float32(t.Right), Bottom: float32(t.Bottom)}
-}
-
-func (h *windowHost) safeArea() safeInsets {
-	if h.conn.SafeArea == nil {
-		return safeInsets{}
-	}
-	a := h.conn.SafeArea()
-	return safeInsets{
-		Top:    float32(a.Top),
-		Right:  float32(a.Right),
-		Bottom: float32(a.Bottom),
-		Left:   float32(a.Left),
-	}
 }
 
 func (h *windowHost) vibrancy() bool {
@@ -1125,13 +1111,18 @@ func (h *windowHost) tabIntoWebView(v NativeWebView, back bool) {
 	}
 }
 
+func (h *windowHost) touchSurface() platform.TouchSurface {
+	s, _ := h.conn.Surface.(platform.TouchSurface)
+	return s
+}
+
+func (h *windowHost) stackSurface() platform.StackSurface {
+	s, _ := h.conn.Surface.(platform.StackSurface)
+	return s
+}
+
 func (h *windowHost) popupMenu(m *platform.Menu, x, y float32, chosen func(int)) {
 	if h.conn.PopupMenu != nil {
 		h.conn.PopupMenu(m, float64(x), float64(y), chosen)
 	}
-}
-
-func (h *windowHost) snapshotTextInput() bool {
-	_, ok := h.conn.Surface.(platform.NativeTextSelectionSurface)
-	return ok
 }

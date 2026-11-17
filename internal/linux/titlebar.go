@@ -169,11 +169,6 @@ func (w *window) TitleBar() platform.TitleBar {
 	return w.controls.room
 }
 
-// SafeArea is zero on Linux: the desktop draws the panel, the window
-// decorations and the window controls outside the window, so there is
-// nothing over the content to keep clear of.
-func (w *window) SafeArea() platform.SafeArea { return platform.SafeArea{} }
-
 // titleBarScript tells the first page the room of the title buttons, at
 // document start.
 func (w *window) titleBarScript() string { return bridge.TitleBarScript(w.TitleBar(), w.opts.Zoom) }

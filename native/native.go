@@ -1,5 +1,5 @@
 // Package native runs native modules: Go interfaces implemented in Swift,
-// Rust or Zig (see docs/native-modules.md).
+// Kotlin, Rust or Zig (see docs/native-modules.md).
 //
 // Native modules are experimental: this package, the code MyGo generates
 // and the mygo native commands may change in breaking ways in any
@@ -20,11 +20,13 @@ import (
 	"iter"
 	"math"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/internal/nativehost"
 )
 
 // ErrClosed is returned by the methods of an object that was closed.
@@ -94,11 +96,17 @@ type Module struct {
 	// implementation for go test and go run.
 	Dir string
 	// Langs are the languages the module is implemented in: swift,
-	// rust, zig.
+	// kotlin, rust, zig.
 	Langs []string
-	// MinMacOS is the oldest macOS the implementation runs on, from the
-	// platforms of its Package.swift.
-	MinMacOS string
+	// SwiftOS are the systems its Swift runs on, from the platforms of its
+	// Package.swift: macos, ios.
+	SwiftOS []string
+	// MinMacOS and MinIOS are the oldest macOS and iOS the Swift runs on,
+	// from the platforms of its Package.swift.
+	MinMacOS, MinIOS string
+	// Kotlin is the class of its Kotlin's generated object, which Android
+	// loads.
+	Kotlin string
 	// Errors are the errors the module declares.
 	Errors []*Error
 	// Deps are the Swift modules of the native modules whose types it
@@ -111,16 +119,35 @@ type Module struct {
 }
 
 // supported reports whether an implementation of the module runs here:
-// Rust and Zig everywhere package ffi loads libraries, Swift on macOS, and
-// on Linux under go test and go run.
+// on phones their own language, Swift on iOS and Kotlin on Android;
+// elsewhere Rust and Zig everywhere package ffi loads libraries, Swift on
+// macOS, and on Linux under go test and go run.
 func (m *Module) supported() bool {
-	for _, l := range m.Langs {
-		switch l {
-		case "rust", "zig":
-			return true
-		case "swift":
-			if runtime.GOOS == "darwin" || runtime.GOOS == "linux" && !mygo.App.IsPackaged() {
+	return supportedOn(runtime.GOOS, m.Langs, m.SwiftOS, mygo.App.IsPackaged())
+}
+
+func supportedOn(goos string, langs, swiftOS []string, packaged bool) bool {
+	if len(swiftOS) == 0 {
+		swiftOS = []string{"macos"}
+	}
+	for _, l := range langs {
+		switch goos {
+		case "ios":
+			if l == "swift" && slices.Contains(swiftOS, "ios") {
 				return true
+			}
+		case "android":
+			if l == "kotlin" {
+				return true
+			}
+		default:
+			switch l {
+			case "rust", "zig":
+				return true
+			case "swift":
+				if goos == "darwin" && slices.Contains(swiftOS, "macos") || goos == "linux" && !packaged {
+					return true
+				}
 			}
 		}
 	}
@@ -241,6 +268,10 @@ func (m *Module) release(h uint64, flags Flags) {
 		// goroutine. Before the app runs, it waits for it to.
 		mygo.App.WhenReady(func() {
 			viewGone(uintptr(h))
+			if post := nativehost.PostUI; post != nil {
+				post(func() { lib.release(m, h) })
+				return
+			}
 			lib.release(m, h)
 		})
 		return
@@ -355,7 +386,18 @@ func (o *Object) Close() error {
 		return ErrClosed
 	}
 	var err error
-	if o.flags&MainThread != 0 {
+	if o.flags&MainThread != 0 && nativehost.OnUI != nil {
+		// The windows let go of a view on Go's main thread, and the view
+		// closes on the UI thread.
+		if mygo.App.IsReady() {
+			mygo.RunOnMain(func() { viewGone(uintptr(o.h)) })
+		}
+		var cerr error
+		err = onMain(o.flags, func() { cerr = o.m.callNone(o.h, "close", 0) })
+		if err == nil {
+			err = cerr
+		}
+	} else if o.flags&MainThread != 0 {
 		var cerr error
 		err = onMain(o.flags, func() {
 			viewGone(uintptr(o.h))

@@ -216,6 +216,10 @@ func TestPersistStateCorruption(t *testing.T) {
 
 func TestBackgroundCheckpointAndLifecycle(t *testing.T) {
 	file := isolateAppState(t)
+	// A phone's lifetime, which #940's backends report going to the background
+	// and back as Power's suspend and resume.
+	fb.SystemManaged.Store(true)
+	t.Cleanup(func() { fb.SystemManaged.Store(false) })
 	old := App.Lifecycle()
 	t.Cleanup(func() { onMain(func() { App.mu.Lock(); App.lifecycle = old; App.mu.Unlock() }) })
 	var states []LifecycleState
@@ -241,8 +245,8 @@ func TestBackgroundCheckpointAndLifecycle(t *testing.T) {
 		states = nil
 		h.DidResignActive()
 		h.DidResignActive() // duplicate OS callbacks are harmless
-		h.DidEnterBackground()
-		h.DidEnterBackground()
+		h.PowerEvent("suspend")
+		h.PowerEvent("suspend")
 	})
 	data, err := os.ReadFile(file)
 	if err != nil {
@@ -255,7 +259,7 @@ func TestBackgroundCheckpointAndLifecycle(t *testing.T) {
 	if !bytes.Contains(snapshot.Values["draft"], []byte("from background handler")) {
 		t.Fatal("checkpoint preceded background handlers")
 	}
-	onMain(func() { appHandler{}.WillEnterForeground(); appHandler{}.DidBecomeActive() })
+	onMain(func() { appHandler{}.PowerEvent("resume"); appHandler{}.DidBecomeActive() })
 	onMain(func() {
 		want := []LifecycleState{LifecycleInactive, LifecycleBackground, LifecycleInactive, LifecycleActive}
 		if !reflect.DeepEqual(states, want) || backgrounds != 1 || foregrounds != 1 || suspends != 1 || resumes != 1 {
@@ -270,7 +274,7 @@ func TestBackgroundCheckpointAndLifecycle(t *testing.T) {
 	failures := make(chan error, 1)
 	offError := App.OnStateSaveError(func(err error) { failures <- err })
 	defer offError()
-	onMain(func() { appHandler{}.DidEnterBackground() })
+	onMain(func() { appHandler{}.PowerEvent("suspend") })
 	select {
 	case err := <-failures:
 		if err == nil {

@@ -107,6 +107,16 @@ func runDoctor(args []string) error {
 		optional("codesign", "a Developer ID to sign apps for other Macs", ids > 0, fmt.Sprintf("%d Developer ID identities", ids))
 	}
 
+	// Phones: what is missing only warns, as desktop apps need none of it.
+	if runtime.GOOS == "darwin" {
+		for _, l := range iosDoctorLines(probeIOS()) {
+			l.print()
+		}
+	}
+	for _, l := range androidDoctorLines(probeAndroid()) {
+		l.print()
+	}
+
 	if !ok {
 		return fmt.Errorf("some checks failed")
 	}

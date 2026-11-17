@@ -1,4 +1,4 @@
-//go:build !darwin && !windows && !js
+//go:build !(darwin && !ios) && !windows && !js
 
 package main
 

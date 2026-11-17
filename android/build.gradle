@@ -1,7 +1,0 @@
-// mygo Android 宿主工程 —— 根构建脚本
-//
-// AGP 版本依据见 settings.gradle 顶部注释（AGP 9.0.1 ↔ Gradle 9.1.0 / BT 36.0.0 /
-// NDK 28.2.13676358 / JDK 17，与本机实测环境四项全中）。
-plugins {
-    id 'com.android.application' version '9.0.1' apply false
-}

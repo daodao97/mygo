@@ -3,8 +3,8 @@ module github.com/egoist/mygo
 go 1.27.3
 
 require (
-	github.com/Heyana/typesetting-go v0.3.5-heyana.4
 	github.com/ebitengine/purego v0.11.1
+	github.com/go-text/typesetting v0.3.5
 	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/jfreymuth/oggvorbis v1.0.5
 	github.com/mewkiz/flac v1.0.14

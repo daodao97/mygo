@@ -53,9 +53,6 @@ type Conn struct {
 	// TitleBar returns the room the window controls take in a window with
 	// a hidden title bar, zero in other windows.
 	TitleBar func() platform.TitleBar
-	// SafeArea returns the room the device's chrome takes from the content
-	// (a status bar, a notch, a home indicator), zero on a desktop.
-	SafeArea func() platform.SafeArea
 	// Active reports whether the window is drawn as active, as the window
 	// the user's input goes to (see ui.Context.WindowActive), which
 	// ActiveChanged tells changes of; nil is active. It costs nothing.
@@ -79,9 +76,6 @@ type Conn struct {
 	// display. The returned function cancels the subscription. Both run on
 	// the main thread; native presentation is distinct from submission.
 	OnFirstFrame func(func()) func()
-	// ContentBackground reports the opaque root fill of a presented UI frame.
-	// The window may use it to match surrounding system chrome on mobile.
-	ContentBackground func(platform.Color)
 	// Post runs fn on the main thread soon, unless the window has closed;
 	// it is safe from any goroutine.
 	Post func(fn func())
@@ -116,9 +110,6 @@ type Conn struct {
 	// window. It reports whether the content takes dragged files, as
 	// WindowHandler.SurfaceEvent does.
 	Event func(ev platform.SurfaceEvent) bool
-	// TextGeometry answers selection/caret queries using the content's actual
-	// text layout. It is optional and runs on the UI thread.
-	TextGeometry func(platform.TextGeometryQuery) platform.TextGeometry
 	// ThemeChanged is called when the system appearance changes, and
 	// TitleBarChanged when TitleBar does.
 	ThemeChanged    func()
@@ -128,8 +119,6 @@ type Conn struct {
 	// LocaleChanged is called when Locale or Region changed, for the
 	// content to build its frame anew.
 	LocaleChanged func()
-	// SafeAreaChanged is called when SafeArea does.
-	SafeAreaChanged func()
 	// Capture renders the content as it is now into premultiplied RGBA.
 	Capture func() (width, height int, rgba []byte)
 	// ToggleDevTools opens or closes the content's inspector, for the

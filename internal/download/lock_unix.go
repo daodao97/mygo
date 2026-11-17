@@ -1,4 +1,4 @@
-//go:build darwin || dragonfly || freebsd || linux || netbsd || openbsd
+//go:build (darwin && !ios) || dragonfly || freebsd || (linux && !android) || netbsd || openbsd
 
 package download
 

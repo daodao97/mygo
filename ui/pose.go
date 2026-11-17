@@ -198,7 +198,11 @@ func (e *node) insideReposed() bool {
 func (e *node) updateWorld() {
 	w := e.transformAt(e.x, e.y)
 	if e.parent != nil && e != e.c.overlay {
-		w = e.parent.world.Mul(w)
+		base := e.parent.world
+		if contentStretch != nil && e.parent.scrolls() {
+			base = contentStretch(base, e.parent)
+		}
+		w = base.Mul(w)
 	}
 	e.world = w
 	if e.st != nil {

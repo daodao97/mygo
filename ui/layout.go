@@ -162,11 +162,8 @@ func place(e *node, x, y float32) {
 			// app from its ScrollState: build the next frame with the new.
 			e.c.rt.animate()
 		}
-		ex, ey := e.c.rt.elasticOffset(s)
-		cx -= ex
-		cy -= ey
-		cx -= float32(e.scrollLeft())
-		cy -= float32(s.scrollY - e.scrollBase)
+		cx -= float32(e.scrollLeft()) + s.contentOverX()
+		cy -= float32(s.scrollY-e.scrollBase) + s.contentOver()
 	}
 	for ch := e.first; ch != nil; ch = ch.next {
 		// A copy of an element leaving the flow stays where the flow was.

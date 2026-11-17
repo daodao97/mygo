@@ -873,6 +873,28 @@ func (s *System) Preload() {
 	s.font(Style{})
 }
 
+// forgetAll lets go of the fonts and what refers to them.
+func (s *System) forgetAll(f fontForgetter) {
+	s.gen++
+	s.clearLayouts()
+	clear(s.marks)
+	clear(s.fonts)
+	clear(s.glyphs)
+	clear(s.places)
+	clear(s.runs)
+	f.forgetFonts()
+}
+
+// Forget lets go of what the System can make again: layouts, fonts, glyphs,
+// as the system runs short of memory.
+func (s *System) Forget() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if f, ok := s.eng.(fontForgetter); ok {
+		s.forgetAll(f)
+	}
+}
+
 // EndFrame forgets layouts no frame used for a while. The ui package calls
 // it after each frame.
 func (s *System) EndFrame() {
@@ -899,14 +921,7 @@ func (s *System) EndFrame() {
 		// glyphs as it makes room; the next frame lays out and draws its
 		// text anew. Layouts kept elsewhere keep their Fonts, which still
 		// draw, and go once nothing refers to them.
-		s.gen++
-		s.clearLayouts()
-		clear(s.marks)
-		clear(s.fonts)
-		clear(s.glyphs)
-		clear(s.places)
-		clear(s.runs)
-		f.forgetFonts()
+		s.forgetAll(f)
 		return
 	}
 	for s.oldest != nil && s.overLayoutBudget(0) {

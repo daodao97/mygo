@@ -48,15 +48,8 @@ func Bar(c *ui.Context, actions []Action, expanded *bool, handler func(string)) 
 				ui.Text(c, a.Label).FontSize(13)
 			}
 		})
-		if a.LongPressID != "" {
-			id := a.LongPressID
-			b.HandleInput(func(ev ui.InputEvent) bool {
-				if ev.Kind == ui.InputLongPress {
-					handler(id)
-					return true
-				}
-				return false
-			})
+		if a.LongPressID != "" && b.LongPressed() {
+			handler(a.LongPressID)
 		}
 		if b.Clicked() {
 			if len(a.Items) > 0 {

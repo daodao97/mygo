@@ -20,7 +20,7 @@ const (
 // stays until set again, and is clamped to between 0.25 and 5. A frame
 // that sets another builds again at the new size before it shows.
 //
-// What the view sees is zoomed: Size, TitleBar, SafeArea, Bounds and every length
+// What the view sees is zoomed: Size, TitleBar, Bounds and every length
 // are in the content's DIPs, z of them to the window's. The pointer, text
 // input, input methods, accessibility, context menus, drags and web views
 // follow it. The window's own sizes are not zoomed: Window.SetContentSize
@@ -111,16 +111,6 @@ func (rt *engine) titleBar() TitleBar {
 		b = TitleBar{Height: b.Height / z, Left: b.Left / z, Right: b.Right / z, Bottom: b.Bottom / z}
 	}
 	return b
-}
-
-// safeArea returns the device's insets in the content's DIPs.
-func (rt *engine) safeArea() safeInsets {
-	a := rt.host.safeArea()
-	if rt.zoomed() {
-		z := rt.contentZoom
-		a = safeInsets{Top: a.Top / z, Right: a.Right / z, Bottom: a.Bottom / z, Left: a.Left / z}
-	}
-	return a
 }
 
 // windowAccess maps the boxes of an accessibility tree to the window's

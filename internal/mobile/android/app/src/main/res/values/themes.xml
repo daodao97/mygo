@@ -1,0 +1,11 @@
+<resources>
+    <!-- The system's own look, light or dark with the system's setting,
+         drawn edge to edge: the app's content goes under the bars, and
+         the insets tell where they are. -->
+    <style name="Theme.MyGo" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

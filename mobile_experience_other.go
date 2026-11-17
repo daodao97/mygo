@@ -1,5 +1,3 @@
-//go:build (!ios && !android) || !cgo
-
 package mygo
 
 func hostMobileExperience(_, _ string, done func(string, error)) func() {

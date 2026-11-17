@@ -71,12 +71,28 @@ type Router struct {
 	// easing out over 250 ms as they slide, 150 ms as they fade, and 300
 	// ms as they fade into each other (TransitionMatch).
 	Transition Transition
-	// InteractiveBack enables a primary touch starting within 24 DIPs of
-	// the View's left edge to drag back. NewRouter enables it on iOS.
-	// History changes only when the gesture completes; cancellation keeps
-	// the current page, its scroll position and keyboard focus.
-	InteractiveBack bool
-	Animation       *Animation
+	Animation  *Animation
+
+	// SystemStack has phones show the pages as the system's own stack of
+	// screens: the history up to the page shown is the stack, under the
+	// system's navigation bar, which shows the title of the page (Route.Title)
+	// and a back button. On iOS the system moves the pages, as UIKit's
+	// navigation controller does, with its swipe back from the left edge;
+	// on Android the bar is Material's toolbar, over the pages as the router
+	// moves them. Set it for the window's first router, whose View fills the
+	// window, and show no bar of your own while InSystemStack reports it:
+	//
+	//	app.router.SystemStack = true
+	//	if !app.router.InSystemStack(c) {
+	//		ui.Row(c).Children(func() {
+	//			ui.BackButton(c, app.router)
+	//			ui.Text(c, app.router.Title())
+	//		})
+	//	}
+	//	app.router.View(c, app.page)
+	//
+	// Elsewhere, as on desktops and in browsers, it changes nothing.
+	SystemStack bool
 
 	entries []*routeEntry
 	at      int
@@ -89,9 +105,21 @@ type Router struct {
 	rt *engine
 	// view is the state of View; the views of Route.View keep theirs in
 	// their elements.
-	view                 routeView
-	back                 *routeBack
-	suppressTransitionAt uint64
+	view routeView
+	// swipe is how far, from 0 to 1, a gesture has taken the page shown back
+	// over the one before it (touch_back.go), while swiping; settle takes it
+	// back to 0 as the gesture is given up.
+	swipe    float32
+	swiping  bool
+	settle   channel
+	settling bool
+	// resume is where the slide of the next page starts, a gesture having
+	// gone that far of it.
+	resume float32
+	// stackMoves is set while the system's stack moves the pages
+	// (router_stack.go), and keyed counts the keys of entries.
+	stackMoves bool
+	keyed      uint64
 }
 
 // routeEntry is an entry of the history: a location of a page.
@@ -109,6 +137,9 @@ type routeEntry struct {
 	// Route.View takes, -1 for other pages and those not built yet.
 	layouts []int
 	title   string
+	// key tells the entry's screen apart in a system's stack, 0 until it
+	// shows in one (Router.entryKey).
+	key uint64
 	// focus is the element that had the keyboard focus as the entry went
 	// out of sight.
 	focus uint64
@@ -164,7 +195,7 @@ const (
 
 // NewRouter returns a router showing the page at path.
 func NewRouter(path string) *Router {
-	r := &Router{InteractiveBack: runtime.GOOS == "ios"}
+	r := &Router{}
 	r.Replace(path)
 	return r
 }
@@ -305,6 +336,7 @@ func (r *Router) Forward() { r.Go(1) }
 // Go moves n pages through the history: back for a negative n, forward
 // for a positive one, as far as it goes.
 func (r *Router) Go(n int) {
+	r.endSwipe()
 	r.current()
 	at := max(0, min(r.at+n, len(r.entries)-1))
 	if at != r.at {
@@ -335,11 +367,11 @@ func (r *Router) CanGoBack() bool    { return r.at > 0 }
 func (r *Router) CanGoForward() bool { return r.at < len(r.entries)-1 }
 
 // Transitioning reports whether the router's outer View has a pending
-// navigation, an outgoing page or an interactive back preview. Keep
+// navigation, an outgoing page or a back gesture in progress. Keep
 // outgoing page data alive until this is false; the View requests frames
 // while it animates.
 func (r *Router) Transitioning() bool {
-	return r.back != nil || r.view.leaving != nil || r.view.shown != nil && r.view.shown != r.current()
+	return r.swiping || r.view.leaving != nil || r.view.shown != nil && r.view.shown != r.current()
 }
 
 // Path returns the path of the page shown, as "/notes/42", without its
@@ -374,7 +406,6 @@ func (r *Router) Title() string { return r.current().title }
 // changed asks for a frame showing the page now current: another pass of
 // the frame being built, or a frame.
 func (r *Router) changed() {
-	r.back = nil // programmatic navigation takes precedence over a gesture
 	if rt := r.rt; rt != nil {
 		if rt.inFrame {
 			rt.consumed = true
@@ -565,7 +596,6 @@ func (r *Route) coreView(c *context, fn func(r *Route)) *node {
 		r.router.restoreSharing(e, r.level, e.layouts[r.level])
 	}
 	v := coreLocal(box, "view", func() routeView { return routeView{} })
-	box.router, box.routerLevel = r.router, r.level+1
 	r.router.build(c, box, v, r, fn)
 	return box
 }
@@ -581,27 +611,29 @@ func (r *Router) coreView(c *context, fn func(r *Route)) *node {
 	box := coreColumn(c).Grow(1).AlignSelf(Stretch).MinWidth(0).MinHeight(0)
 	box.widget = "Router"
 	wrapElement(box).Bind(&r.Handle)
+	if noteRouter != nil {
+		noteRouter(r, box)
+	}
 	r.keys(c, box)
-	box.router = r
+	r.noteStack(c)
+	if touchFrame != nil && c.routers == 1 {
+		r.noteBack(c)
+	}
 	r.build(c, box, &r.view, nil, fn)
+	if routerBuilt != nil {
+		routerBuilt(r, box)
+	}
 	return box
 }
 
 // build builds the pages of view v in box: the router's, or those inside
 // the page of route parent, a layout.
 func (r *Router) build(c *context, box *node, v *routeView, parent *Route, fn func(*Route)) {
-	if parent == nil && r.back != nil {
-		r.advanceBack(c)
-	}
 	// The entry to show: the router's, or the layout's, which is going
 	// away while it slides out.
 	cur, level := r.current(), 0
 	if parent != nil {
 		cur, level = parent.entry, parent.level+1
-	}
-	if g := r.back; g != nil && level == g.level && cur == g.from {
-		r.buildBack(c, box, v, parent, fn)
-		return
 	}
 	switch {
 	case v.shown == nil:
@@ -624,6 +656,17 @@ func (r *Router) build(c *context, box *node, v *routeView, parent *Route, fn fu
 	box.Children(func() {
 		var page *node
 		switch {
+		case v.leaving == nil && parent == nil && r.peeking(c) && r.at > 0:
+			// A gesture takes the page back: the one before shows under it.
+			box.Clip()
+			bg := backdrop(box)
+			at := r.swipe
+			lower := r.page(c, parent, r.entries[r.at-1], fn, true)
+			page = r.page(c, parent, cur, fn, false)
+			page.Absolute().Top(0).Fill().Background(bg).StartPercent(100*at).Shadow(0, 0, 16, 0, RGBA(0, 0, 0, 0.15))
+			lower.StartPercent(-30 * (1 - at)).Background(bg).DrawOver(func(p *Painter, rc Rect) {
+				p.Fill(rc, RGBA(0, 0, 0, 0.06*(1-at)), 0)
+			})
 		case v.leaving == nil:
 			page = r.page(c, parent, cur, fn, false)
 		case r.Transition == TransitionMatch:
@@ -677,7 +720,12 @@ func (r *Router) keys(c *context, box *node) {
 	if runtime.GOOS == "darwin" {
 		back[1], forward[1] = shortcut{Super, KeyBracketLeft}, shortcut{Super, KeyBracketRight}
 	}
-	pressed := func(keys [2]shortcut) bool {
+	// Only while there is somewhere to go: the keys are the window's
+	// otherwise, and Android's back leaves the app.
+	pressed := func(keys [2]shortcut, can bool) bool {
+		if !can {
+			return false
+		}
 		hit := false
 		for _, k := range keys {
 			if box.Shortcut(k.mods, k.key) || first && c.Shortcut(k.mods, k.key) {
@@ -686,10 +734,10 @@ func (r *Router) keys(c *context, box *node) {
 		}
 		return hit
 	}
-	if pressed(back) {
+	if pressed(back, r.CanGoBack()) {
 		r.Back()
 	}
-	if pressed(forward) {
+	if pressed(forward, r.CanGoForward()) {
 		r.Forward()
 	}
 }
@@ -716,15 +764,18 @@ func (r *Router) show(c *context, box *node, v *routeView, parent *Route, cur *r
 		v.focusing, v.announcing = false, true
 	}
 	v.leaving, v.dir, v.start = nil, 0, c.now
-	// A returning element may have shared its state with a different page.
-	// Show its own colors immediately instead of easing from that page.
+	// The colors of the page that comes show at once: the state of an
+	// element that comes back may have been painted for the element that
+	// took its place while it was away, and easing from that element's
+	// color is not its own.
 	rt.forgetColors()
-	if r.Transition == TransitionNone || rt.instant() || r.suppressTransitionAt == rt.frame {
+	if r.Transition == TransitionNone || rt.instant() || r.stackMoves && parent == nil {
 		return
 	}
 	v.leaving = old
 	defer func() {
-		v.progress = channel{at: c.now}
+		v.progress = channel{value: float64(r.resume), at: c.now}
+		r.resume = 0
 		headFor(&v.progress, 1, r.animation(v.dir), c.now)
 	}()
 	if r.Transition == TransitionStack && !rt.preferences().ReduceMotion {

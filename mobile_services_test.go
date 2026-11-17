@@ -5,7 +5,6 @@ package mygo
 import (
 	"errors"
 	"github.com/egoist/mygo/internal/platform"
-	"github.com/egoist/mygo/internal/pushhub"
 	"testing"
 	"time"
 )
@@ -57,60 +56,6 @@ func TestMobileNotificationScheduleAndLaunch(t *testing.T) {
 		t.Fatalf("denied: %v", err)
 	}
 }
-func TestMobileFeedbackStatusAndPush(t *testing.T) {
-	onMain(func() { fb.HapticCalls = nil; fb.MobileError = nil; fb.PushRegistrations = 0 })
-	Haptics.Selection()
-	Haptics.Light()
-	Haptics.Medium()
-	Haptics.Heavy()
-	Haptics.Success()
-	Haptics.Warning()
-	Haptics.Error()
-	onMain(func() {
-		want := []string{"selection", "light", "medium", "heavy", "success", "warning", "error"}
-		ok := len(fb.HapticCalls) == len(want)
-		for i := 0; ok && i < len(want); i++ {
-			ok = fb.HapticCalls[i] == want[i]
-		}
-		if !ok {
-			t.Errorf("haptics not forwarded: %q", fb.HapticCalls)
-		}
-	})
-	if err := App.SetStatusBar(StatusBarLight, true); err != nil {
-		t.Fatal(err)
-	}
-	onMain(func() {
-		if fb.StatusBarStyle != "light" || !fb.StatusBarHidden {
-			t.Error("status bar not forwarded")
-		}
-	})
-	if err := App.SetStatusBar("invalid", false); err == nil {
-		t.Fatal("invalid style")
-	}
-	token := ""
-	var registrationError error
-	pushhub.Registered = func(value string, err error) {
-		if err != nil {
-			registrationError = err
-		} else {
-			token = value
-		}
-	}
-	defer func() { pushhub.Registered = nil }()
-	if err := App.RegisterPushNotifications(); err != nil {
-		t.Fatal(err)
-	}
-	onMain(func() { fb.RegisterPushResult("abcdef", nil); fb.RegisterPushResult("", platform.ErrUnsupported) })
-	if token != "abcdef" || !errors.Is(registrationError, ErrUnsupported) {
-		t.Fatal("push results lost")
-	}
-	onMain(func() { fb.MobileError = platform.ErrUnsupported })
-	defer onMain(func() { fb.MobileError = nil; fb.HapticCalls = nil })
-	if !errors.Is(App.SetStatusBar(StatusBarAuto, false), ErrUnsupported) {
-		t.Fatal("device errors not propagated")
-	}
-}
-
 func TestFailedNotificationReplacementRetainsClickListener(t *testing.T) {
 	old := NewNotification(NotificationOptions{ID: "replacement"})
 	called := false

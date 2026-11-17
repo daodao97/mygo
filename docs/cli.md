@@ -212,7 +212,8 @@ when there are errors.
 
 Experimental, as native modules are: these commands and their flags may
 change in any release. The commands of [native modules](native-modules.md): Go interfaces
-implemented in Swift, Rust or Zig, built into a library per platform, and
+implemented in Swift, Kotlin, Rust or Zig, built into a library per
+platform (on phones, with the app), and
 of the C libraries that packages bind with `ffi`
 ([bind a C library yourself](native-modules.md#bind-a-c-library-yourself)).
 `[module dir]` defaults to the current directory.
@@ -225,7 +226,7 @@ mygo native build [flags] [dir]
 
 Builds the [native modules](native-modules.md) in `dir`, each in the
 language of each platform (Swift on macOS where a module has it,
-otherwise Rust, then Zig), and the libraries that the packages in `dir`
+otherwise Rust, then Zig; phones build theirs with the app), and the libraries that the packages in `dir`
 name in their `mygo-plugin.json`, from their sources, with swift, cargo
 or zig, for every platform, writes the files to publish into
 `.mygo/native/release` of the module, named after their SHA-256, and
@@ -256,7 +257,7 @@ mygo native new [-lang <languages>] <module name>
 Makes a module in `modules/<module name>`, or at the path given instead of
 a name: the Go package with the interface, its generated Go, an
 `AGENTS.md`, and a directory per language. `-lang` takes the languages,
-separated by commas: `swift` (the default), `rust`, `zig`, or `none` for
+separated by commas: `swift` (the default), `kotlin`, `rust`, `zig`, or `none` for
 the Go side alone.
 
 ### mygo native add
@@ -265,8 +266,8 @@ the Go side alone.
 mygo native add <language> [module dir]
 ```
 
-Implements an existing module in another language, `swift`, `rust` or
-`zig`, with a factory for every entry point and methods that say they are
+Implements an existing module in another language, `swift`, `kotlin`,
+`rust` or `zig`, with a factory for every entry point and methods that say they are
 unsupported, so the module builds at once.
 
 ### mygo native check
