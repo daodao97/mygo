@@ -375,7 +375,9 @@ type Scene struct {
 	MaskAtlas, ColorAtlas *Atlas
 	// Canvases are the canvases (NewCanvas) drawn anew for this frame,
 	// which renderers draw before it, whether it shows them or not, while
-	// the atlases their glyphs point at hold them.
+	// the atlases their glyphs point at hold them: a renderer that draws
+	// one later, as one that has not its texture, needs its scene to keep
+	// them (Own).
 	Canvases []*Image
 	// Drawn, unless zero, is the part of a canvas's frame its content
 	// takes, from the top left corner, as an effect's layer made larger

@@ -473,6 +473,9 @@ type Renderer struct {
 	video  videoState
 	// canvases are the textures canvases are drawn into.
 	canvases map[uint64]*canvasTexture
+	// atlases are the atlases of the frame being drawn, which mask and
+	// color hold: a canvas's scene may draw from its own (scene.Scene.Own).
+	atlases [2]*scene.Atlas
 	// blurred are the textures of the images the frame draws blurred
 	// (gpu.Builder.BlurredImage), the first used of them, and blurTmp the
 	// textures their passes go through; stopsTex is the texture of the
@@ -1202,6 +1205,7 @@ func (r *Renderer) prepare(s *scene.Scene) (cb id, built *scene.Scene, err error
 	if err := r.syncAtlas(&r.color, s.ColorAtlas, pixelFormatRGBA8Unorm); err != nil {
 		return 0, nil, err
 	}
+	r.atlases = [2]*scene.Atlas{s.MaskAtlas, s.ColorAtlas}
 	r.pipes.fallbacks = 0
 	r.used = 0
 	cb = send(r.queue, "commandBuffer")
@@ -1249,8 +1253,16 @@ func (r *Renderer) drawCanvas(cb id, c *scene.Image) error {
 		t.w, t.h = c.W, c.H
 	}
 	// In BGRA8, in sRGB, whatever the frame's format.
-	saved := r.cur
-	defer func() { r.cur = saved }()
+	saved, frame := r.cur, [2]texture{r.mask, r.color}
+	defer func() {
+		r.cur = saved
+		for i, a := range [2]*texture{&r.mask, &r.color} {
+			if a.tex != frame[i].tex {
+				release(&a.tex)
+			}
+			*a = frame[i]
+		}
+	}()
 	r.cur = &r.formats[0]
 	if r.cur.pipeline == 0 {
 		if err := r.makePipelines(r.cur); err != nil {
@@ -1259,6 +1271,21 @@ func (r *Renderer) drawCanvas(cb id, c *scene.Image) error {
 	}
 	cs := c.Scene
 	cs.Width, cs.Height = c.W, c.H
+	// A canvas that keeps its glyphs (scene.Scene.Own) draws them from
+	// atlases of its own, in textures made for this drawing, which the
+	// command buffer keeps until the frame is drawn.
+	if a := cs.MaskAtlas; a != nil && a != r.atlases[0] {
+		r.mask = texture{}
+		if err := r.syncAtlas(&r.mask, a, pixelFormatR8Unorm); err != nil {
+			return err
+		}
+	}
+	if a := cs.ColorAtlas; a != nil && a != r.atlases[1] {
+		r.color = texture{}
+		if err := r.syncAtlas(&r.color, a, pixelFormatRGBA8Unorm); err != nil {
+			return err
+		}
+	}
 	t.b.Wide = false
 	t.b.Opaque, t.b.Classes = r.b.Opaque, r.b.Classes
 	t.b.NoCull, t.b.NoShadowSplit, t.b.NoRingSplit, t.b.NoCornerSplit = r.b.NoCull, r.b.NoShadowSplit, r.b.NoRingSplit, r.b.NoCornerSplit
