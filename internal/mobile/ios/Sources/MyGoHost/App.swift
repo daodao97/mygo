@@ -314,10 +314,63 @@ final class RootViewController: UIViewController, UIScrollViewDelegate {
     }
 
     @objc func keyboardChanged(_ n: Notification) {
-        var frame: CGRect?
+        var target: CGRect?
         if n.name != UIResponder.keyboardWillHideNotification {
-            frame = (n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+            target = (n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
         }
+        // A keyboard that ends below the screen is going away.
+        if let t = target, t.minY >= screenHeight { target = nil }
+        if keyboardLink != nil ? target == keyboardTo : target == keyboardFrame { return }
+        let duration = (n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0
+        keyboardFrom = keyboardFrame ?? away(target)
+        keyboardTo = target
+        keyboardLink?.invalidate()
+        keyboardLink = nil
+        guard duration > 0, !UIAccessibility.isReduceMotionEnabled, keyboardFrom != nil else {
+            setKeyboard(target)
+            return
+        }
+        // The content moves with the keyboard, frame by frame, rather than
+        // to where it ends as it starts to move.
+        keyboardStart = CACurrentMediaTime()
+        keyboardDuration = duration
+        let link = CADisplayLink(target: self, selector: #selector(keyboardStep(_:)))
+        link.add(to: .main, forMode: .common)
+        keyboardLink = link
+    }
+
+    /// The keyboard's frame as it moves: from where it was to where it goes,
+    /// along the system's ease out, in the time the system takes.
+    private var keyboardFrom: CGRect?
+    private var keyboardTo: CGRect?
+    private var keyboardStart: CFTimeInterval = 0
+    private var keyboardDuration: Double = 0
+    private var keyboardLink: CADisplayLink?
+
+    private var screenHeight: CGFloat { view.window?.screen.bounds.height ?? view.bounds.height }
+
+    /// A frame like r just below the screen, where a keyboard comes from.
+    private func away(_ r: CGRect?) -> CGRect? {
+        guard let r else { return nil }
+        return CGRect(x: r.minX, y: screenHeight, width: r.width, height: r.height)
+    }
+
+    @objc private func keyboardStep(_ link: CADisplayLink) {
+        guard let from = keyboardFrom else { return }
+        let to = keyboardTo ?? away(from)!
+        let t = min(1, (CACurrentMediaTime() - keyboardStart) / keyboardDuration)
+        if t >= 1 {
+            link.invalidate()
+            keyboardLink = nil
+            setKeyboard(keyboardTo)
+            return
+        }
+        let e = CGFloat(1 - pow(1 - t, 3))
+        setKeyboard(CGRect(x: from.minX + (to.minX - from.minX) * e, y: from.minY + (to.minY - from.minY) * e,
+                           width: from.width + (to.width - from.width) * e, height: from.height + (to.height - from.height) * e))
+    }
+
+    private func setKeyboard(_ frame: CGRect?) {
         if frame != keyboardFrame {
             keyboardFrame = frame
             for w in Host.shared.windows.values { w.reportSize() }
