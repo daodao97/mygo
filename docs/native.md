@@ -484,6 +484,20 @@ defer release()
 itself, `NowPlaying.Sync` shows it. In browsers, `NowPlaying` is the
 page's Media Session.
 
+A track with more than one artist names them in `Artists`, which wins
+over `Artist` when it names any: MPRIS clients list them, and macOS,
+Windows and browsers, which show one artist, show them joined with ", ".
+
+```go
+mygo.NowPlaying.Set(mygo.NowPlayingInfo{
+	Title: "Get Lucky", Artists: []string{"Daft Punk", "Pharrell Williams", "Nile Rodgers"},
+})
+```
+
+On Linux, an MPRIS client can raise the player (`Raise`), as the media
+controls of GNOME and KDE do when it is clicked: the app's window that had
+the keyboard last shows, if hidden, and takes the keyboard.
+
 ## Network
 
 `mygo.Network` tells whether the computer is online and whether the

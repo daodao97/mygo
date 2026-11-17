@@ -209,7 +209,10 @@ func (w *window) createSurface(content NSRect) {
 	layer := send(s.view, "layer")
 	send(layer, "setContentsGravity:", uintptr(nsString("resize")))
 	// Tracking for hover, inside the visible part of the view.
-	const options = 0x01 | 0x02 | 0x04 | 0x40 | 0x200 // entered/exited, moved, cursor update, active app, visible rect
+	options := uint(0x01 | 0x02 | 0x04 | 0x40 | 0x200) // entered/exited, moved, cursor update, active app, visible rect
+	if w.opts.Panel || w.opts.Flyout != nil {
+		options = options&^0x40 | 0x80 // active always: panels and flyouts never make the app active
+	}
 	s.tracking = msgInitTracking(send(class("NSTrackingArea"), "alloc"), sel("initWithRect:options:owner:userInfo:"), NSRect{}, options, s.view, 0)
 	send(s.view, "addTrackingArea:", uintptr(s.tracking))
 	if respondsTo(s.view, "displayLinkWithTarget:selector:") {

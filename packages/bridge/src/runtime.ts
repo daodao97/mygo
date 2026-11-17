@@ -67,7 +67,7 @@ export class CallError extends Error {
 export function createRuntime(
   config: BridgeConfig,
   post: (message: string) => void,
-): { runtime: Runtime; internal: Internal } {
+): { runtime: Runtime; internal: Internal; restored: () => void } {
   // A per-page token keeps replies addressed to a previous page (before a
   // navigation) from resolving promises of the current one.
   const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -351,6 +351,19 @@ export function createRuntime(
     },
   };
 
+  // The page shows again from the web view's cache of pages, as going
+  // back to it does: Go canceled the calls it had not answered as the page
+  // left, and their replies went to the page that took its place.
+  const restored = () => {
+    const left = [...pending.values()];
+    pending.clear();
+    for (const p of left) {
+      p.done?.();
+      p.channels?.forEach((c) => c.end());
+      p.reject(new CallError(p.method, "the page was left before the call returned"));
+    }
+  };
+
   const win = (op: string) => () => call<any>(`mygo:window.${op}`);
   const runtime: Runtime = Object.freeze({
     call,
@@ -385,5 +398,5 @@ export function createRuntime(
     }),
   });
 
-  return { runtime, internal };
+  return { runtime, internal, restored };
 }

@@ -84,6 +84,11 @@ func (ed *editor) record(typing bool) {
 	ed.lastEdit = now
 }
 
+// lineBreaks turns the line breaks of s that are not a newline, \r\n and a
+// lone \r as old Mac text has (a paste of it), into newlines, as the text
+// holds them (#1915).
+var lineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n")
+
 // lineBreaksAsSpaces returns s as a single-line input takes it.
 func lineBreaksAsSpaces(s string) string {
 	return strings.Map(func(r rune) rune {
@@ -96,10 +101,10 @@ func lineBreaksAsSpaces(s string) string {
 
 // edited returns s as an edit puts it in the text, for what compares it
 // with the text there first: a line break of two characters is one, as
-// insert takes it, and a single-line input has spaces for line breaks, as
-// replace gives it.
+// insert takes it, and a lone \r one too, and a single-line input has
+// spaces for line breaks, as replace gives it.
 func (ed *editor) edited(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = lineBreaks.Replace(s)
 	if !ed.multiline {
 		s = lineBreaksAsSpaces(s)
 	}

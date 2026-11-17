@@ -193,8 +193,11 @@ focus, on its first item then; Up, Down, Home, End and typing the first
 letters of an item move the highlight, past items `Disabled`; Right and
 Left open and close submenus, the other way round right to left; Enter
 and Space choose, Escape closes the submenu on top, and Tab and presses
-outside close the menu, which gives the focus back to the button. Setting
-the `*bool` opens and closes it too. Assistive technology sees the menu
+outside close the menu, which gives the focus back to the button. The
+pointer highlights the item it moves onto, opening its submenu, but for
+the items it crosses heading for a submenu that shows, which stays open
+until the pointer rests on one of them for 300 ms. Setting the `*bool`
+opens and closes it too. Assistive technology sees the menu
 button, expanded while its menu shows, a menu of menu items, check box
 items and radio items, checked as `CheckItem` and `RadioItem` say, and
 each submenu named by its item. Separators and headings are elements of

@@ -599,6 +599,34 @@ func TestReadyToShowFiresOnce(t *testing.T) {
 	}
 }
 
+// A window created hidden and shown from OnReadyToShow shows when its
+// first page fails to load, unless a listener of the failure loads
+// another page, which the window then waits for.
+func TestReadyToShowAfterFailedLoad(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{Hidden: true})
+	var n atomic.Int32
+	w.OnReadyToShow(func() { n.Add(1) })
+	fail := func() { onMain(func() { fw.H.LoadFailed("https://down.example/", -1004, "could not connect") }) }
+	fail()
+	if n.Load() != 1 {
+		t.Errorf("ready-to-show fired %d times after a failed load, want 1", n.Load())
+	}
+
+	w, fw = testWindow(t, WindowOptions{Hidden: true})
+	n.Store(0)
+	w.OnReadyToShow(func() { n.Add(1) })
+	off := w.Page().OnDidFailLoad(func(*LoadError) { w.Page().LoadHTML("<p>offline</p>", "") })
+	fail()
+	if n.Load() != 0 {
+		t.Errorf("ready-to-show fired %d times while the page of a listener loads, want 0", n.Load())
+	}
+	off()
+	fail()
+	if n.Load() != 1 {
+		t.Errorf("ready-to-show fired %d times after that page failed too, want 1", n.Load())
+	}
+}
+
 // Bound services.
 
 type testUser struct {
@@ -671,6 +699,28 @@ func TestCalls(t *testing.T) {
 	}
 	if svc.calls.Load() != 1 {
 		t.Errorf("Hello called %d times", svc.calls.Load())
+	}
+}
+
+// Text cut in the middle of an emoji holds half of a surrogate pair, which
+// JSON.stringify writes as an escape that is no character. The call is
+// made with U+FFFD in its place, and answered.
+func TestCallLoneSurrogate(t *testing.T) {
+	bindForTest(t, "Half", &testService{})
+	_, fw := testWindow(t, WindowOptions{})
+	for i, tt := range []struct{ method, arg, want string }{
+		{"Half.Hello", `"x\ud83d"`, "hello x\ufffd"},
+		{"Half.Hello", `"\ude00x"`, "hello \ufffdx"},
+		{"Half.Echo", `{"name":"a\ud83d","tags":[]}`, "map[name:a\ufffd tags:[echoed]]"},
+	} {
+		id := 300 + i
+		page(fw, fmt.Sprintf(`{"t":"call","id":%d,"k":"tok","m":%q,"a":[%s]}`, id, tt.method, tt.arg))
+		m := received(t, fw, func(m map[string]any) bool {
+			return m["t"] == "reply" && m["id"] == float64(id)
+		})
+		if m["ok"] != true || fmt.Sprint(m["v"]) != tt.want {
+			t.Errorf("%s(%s) = %v (%v), want %q", tt.method, tt.arg, m["v"], m["e"], tt.want)
+		}
 	}
 }
 

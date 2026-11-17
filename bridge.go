@@ -322,7 +322,7 @@ func (w *Window) handleMessage(msg string) {
 		S  string `json:"s"`
 		E  bool   `json:"e"`
 	}
-	if err := json.Unmarshal(stringBytes(msg), &m); err != nil {
+	if err := json.Unmarshal(stringBytes(msg), &m, decodeOptions); err != nil {
 		return
 	}
 	switch m.T {

@@ -310,8 +310,43 @@ func shellExecute(verb, file, params string) error {
 	return nil
 }
 
-func (shell) OpenExternal(url string) error { return shellExecute("open", url, "") }
-func (shell) OpenPath(path string) error    { return shellExecute("open", path, "") }
+func (shell) OpenExternal(target string) error {
+	return shellExecute("open", externalShellTarget(target), "")
+}
+
+// Passing a file URL to ShellExecute can stall while it resolves the URL.
+// Give it the native path for local drive-letter files and directories.
+func externalShellTarget(target string) string {
+	const prefix = "file://"
+	if len(target) < len(prefix) || !strings.EqualFold(target[:len(prefix)], prefix) {
+		return target
+	}
+	path := target[len(prefix):]
+	// Some callers prepend file:// directly to a Windows path. Keep its
+	// literal percent signs and hashes intact.
+	if !hasDriveRoot(path) {
+		u, err := url.Parse(target)
+		if err != nil || u.User != nil || strings.ContainsAny(target, "?#") ||
+			(u.Host != "" && !strings.EqualFold(u.Host, "localhost")) {
+			return target
+		}
+		path = filepath.FromSlash(strings.TrimPrefix(u.Path, "/"))
+	}
+	if hasDriveRoot(path) && !strings.ContainsAny(path, "?\x00") {
+		return path
+	}
+	return target
+}
+
+func hasDriveRoot(path string) bool {
+	if len(path) < 3 || path[1] != ':' || path[2] != '\\' {
+		return false
+	}
+	drive := path[0]
+	return ('A' <= drive && drive <= 'Z') || ('a' <= drive && drive <= 'z')
+}
+
+func (shell) OpenPath(path string) error { return shellExecute("open", path, "") }
 
 func (shell) ShowItemInFolder(path string) {
 	_ = shellExecute("open", "explorer.exe", `/select,"`+path+`"`)

@@ -1,7 +1,6 @@
 package richtext
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -340,9 +339,7 @@ func readsAs(s string, runs []Run) bool {
 		}
 		got = append(p.Runs, Run{})[:len(p.Runs)]
 	}
-	gc, gm := markSeq(got)
-	rc, rm := markSeq(runs)
-	return slices.Equal(gc, rc) && slices.Equal(gm, rm)
+	return sameMarkRuns(got, runs)
 }
 
 // runMarks are the marks of a character that Markdown keeps.
@@ -351,35 +348,89 @@ type runMarks struct {
 	link, atName, atURL               string
 }
 
-// markSeq returns the characters of runs and the marks of each that
-// Markdown keeps, but none of whitespace outside code, nor the spaces
-// ending the paragraph, which it does not show. It is compared, not
-// printed: a paragraph's characters are many.
-func markSeq(runs []Run) ([]rune, []runMarks) {
-	var all []rune
-	var ms []runMarks
+// markScanner walks the runes of runs and the marks Markdown keeps for
+// each, skipping trailing spaces outside code.
+type markScanner struct {
+	runs []Run
+	ri   int
+	bi   int
+	rem  int
+	cur  runMarks
+}
+
+// newMarkScanner counts the bytes of runs, less the trailing spaces outside
+// code that Markdown does not keep.
+func newMarkScanner(runs []Run) markScanner {
+	rem := 0
 	for _, r := range runs {
-		a := r.Attributes
-		m := runMarks{bold: a.Bold(), italic: a.Italic, strike: a.Strikethrough, under: a.Underline, code: a.Code, link: a.Link}
-		if a.Attachment != nil {
-			m.atName, m.atURL = a.Attachment.Name, a.Attachment.URL
+		rem += len(r.Text)
+	}
+	for i := len(runs) - 1; i >= 0; i-- {
+		text := runs[i].Text
+		if text == "" {
+			continue
 		}
-		for _, c := range r.Text {
-			all = append(all, c)
-			ms = append(ms, m)
+		if runs[i].Attributes.Code {
+			break
+		}
+		j := len(text)
+		for j > 0 && text[j-1] == ' ' {
+			j--
+			rem--
+		}
+		if j > 0 {
+			break
 		}
 	}
-	end := len(all)
-	for end > 0 && all[end-1] == ' ' && !ms[end-1].code {
-		end--
+	return markScanner{runs: runs, rem: rem}
+}
+
+// next returns the next rune and its effective Markdown marks, or false at
+// the end of the scanned prefix.
+func (s *markScanner) next() (rune, runMarks, bool) {
+	for s.rem > 0 && s.ri < len(s.runs) {
+		r := &s.runs[s.ri]
+		if s.bi >= len(r.Text) {
+			s.ri++
+			s.bi = 0
+			continue
+		}
+		if s.bi == 0 {
+			a := r.Attributes
+			s.cur = runMarks{bold: a.Bold(), italic: a.Italic, strike: a.Strikethrough, under: a.Underline, code: a.Code, link: a.Link}
+			if a.Attachment != nil {
+				s.cur.atName, s.cur.atURL = a.Attachment.Name, a.Attachment.URL
+			}
+		}
+		c, size := utf8.DecodeRuneInString(r.Text[s.bi:])
+		s.bi += size
+		s.rem -= size
+		m := s.cur
+		if unicode.IsSpace(c) && !m.code {
+			m = runMarks{}
+		}
+		return c, m, true
 	}
-	all, ms = all[:end], ms[:end]
-	for i, c := range all {
-		if unicode.IsSpace(c) && !ms[i].code {
-			ms[i] = runMarks{}
+	return 0, runMarks{}, false
+}
+
+// sameMarkRuns reports whether a and b have the same runes and Markdown
+// marks, without allocating per-rune slices.
+func sameMarkRuns(a, b []Run) bool {
+	sa, sb := newMarkScanner(a), newMarkScanner(b)
+	for {
+		ca, ma, oka := sa.next()
+		cb, mb, okb := sb.next()
+		if oka != okb {
+			return false
+		}
+		if !oka {
+			return true
+		}
+		if ca != cb || ma != mb {
+			return false
 		}
 	}
-	return all, ms
 }
 
 // codeSpan returns s as a code span, fenced by more backticks than any

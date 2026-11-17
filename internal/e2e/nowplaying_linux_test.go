@@ -16,7 +16,8 @@ import (
 )
 
 // TestNowPlayingMPRIS drives the app's MPRIS player as the desktop's
-// media controls do, with gdbus.
+// media controls do, with gdbus: the metadata lists each artist, and
+// Raise brings the window that had the keyboard last forward.
 func TestNowPlayingMPRIS(t *testing.T) {
 	gdbus, err := exec.LookPath("gdbus")
 	if err != nil {
@@ -40,7 +41,7 @@ func TestNowPlayingMPRIS(t *testing.T) {
 	})
 	defer off()
 	mygo.NowPlaying.Set(mygo.NowPlayingInfo{
-		Title: "Spring", Artist: "Vivaldi", Album: "The Four Seasons", Artwork: []byte("\x89PNG\r\n\x1a\n"),
+		Title: "Spring", Artists: []string{"Antonio Vivaldi", "I Musici"}, Album: "The Four Seasons", Artwork: []byte("\x89PNG\r\n\x1a\n"),
 		Duration: 3 * time.Minute, Position: 10 * time.Second, State: mygo.PlaybackPaused,
 		Commands: mygo.MediaPlay | mygo.MediaPause | mygo.MediaNext | mygo.MediaSeek,
 	})
@@ -65,6 +66,9 @@ func TestNowPlayingMPRIS(t *testing.T) {
 		t.Helper()
 		return player("org.freedesktop.DBus.Properties.Get", "org.mpris.MediaPlayer2.Player", prop)
 	}
+	if got := player("org.freedesktop.DBus.Properties.Get", "org.mpris.MediaPlayer2", "CanRaise"); got != "(<true>,)" {
+		t.Errorf("CanRaise = %s", got)
+	}
 
 	if got := get("PlaybackStatus"); got != "(<'Paused'>,)" {
 		t.Errorf("PlaybackStatus = %s", got)
@@ -73,7 +77,7 @@ func TestNowPlayingMPRIS(t *testing.T) {
 		t.Errorf("Position = %s, want 10 s while paused", got)
 	}
 	meta := get("Metadata")
-	for _, want := range []string{"'xesam:title': <'Spring'>", "'xesam:artist': <['Vivaldi']>", "'xesam:album': <'The Four Seasons'>", "'mpris:length': <int64 180000000>", "'mpris:artUrl': <'file://"} {
+	for _, want := range []string{"'xesam:title': <'Spring'>", "'xesam:artist': <['Antonio Vivaldi', 'I Musici']>", "'xesam:album': <'The Four Seasons'>", "'mpris:length': <int64 180000000>", "'mpris:artUrl': <'file://"} {
 		if !strings.Contains(meta, want) {
 			t.Errorf("Metadata %s lacks %s", meta, want)
 		}
@@ -107,6 +111,39 @@ func TestNowPlayingMPRIS(t *testing.T) {
 	if got != strings.Join(want, ", ") {
 		t.Errorf("commands = %s, want %s", got, strings.Join(want, ", "))
 	}
+
+	// Raise shows and focuses the window that had the keyboard last: b,
+	// as a had it before. Both hide, the focused one last: a window still
+	// showing could take the keyboard as it hides, under the pointer
+	// without a window manager, and be the latest.
+	a := newWindow(t, mygo.WindowOptions{Title: "Raise A", Width: 200, Height: 100})
+	b := newWindow(t, mygo.WindowOptions{Title: "Raise B", Width: 200, Height: 100})
+	for _, w := range []*mygo.Window{a, b} {
+		w.Focus()
+		eventually(t, "the window to have the keyboard", w.IsFocused)
+	}
+	a.Hide()
+	b.Hide()
+	player("org.mpris.MediaPlayer2.Raise")
+	eventually(t, "b raised", func() bool { return b.IsVisible() && b.IsFocused() })
+	if a.IsVisible() {
+		t.Error("Raise showed a, which had the keyboard before b")
+	}
+	// Then a had it, after b.
+	a.Show()
+	eventually(t, "a to have the keyboard", a.IsFocused)
+	b.Hide()
+	a.Hide()
+	player("org.mpris.MediaPlayer2.Raise")
+	eventually(t, "a raised", func() bool { return a.IsVisible() && a.IsFocused() })
+	if b.IsVisible() {
+		t.Error("Raise showed b, which had the keyboard before a")
+	}
+	mu.Lock()
+	if len(cmds) != len(want) {
+		t.Errorf("Raise reached OnCommand: %s", strings.Join(cmds[len(want):], ", "))
+	}
+	mu.Unlock()
 
 	mygo.NowPlaying.Clear()
 	eventually(t, "the player leaving the bus", func() bool {

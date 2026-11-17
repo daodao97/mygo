@@ -3,9 +3,9 @@
 package e2e
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -71,8 +71,9 @@ func TestTrayIconPath(t *testing.T) {
 }
 
 // TestTrayID checks that an icon of an ID is given the panel under it,
-// after the program's name, so that it is the same icon across launches,
-// and that an icon of no ID is named after the process (#1835).
+// after the program's name, so that it is the same icon across launches
+// (#1835), and that an icon of no ID is named after the program and its
+// number, not after the process.
 func TestTrayID(t *testing.T) {
 	tray, err := mygo.NewTray(mygo.TrayOptions{ID: "e2e.icon", Icon: squarePNG(), ToolTip: "id"})
 	if err != nil {
@@ -91,7 +92,14 @@ func TestTrayID(t *testing.T) {
 	}
 	defer tray.Destroy()
 	mygo.RunOnMain(func() { id = linux.TestTrayID() })
-	if want := fmt.Sprintf("mygo-%d-", os.Getpid()); !strings.HasPrefix(id, want) {
-		t.Errorf("the icon of no ID is %q, want it to start %q", id, want)
+	prefix := linux.TestProgramName() + "-"
+	if n, ok := strings.CutPrefix(id, prefix); !ok || !isNumber(n) {
+		t.Errorf("the icon of no ID is %q, want %s<number>", id, prefix)
 	}
+}
+
+// isNumber tells whether s is a decimal number as strconv writes one.
+func isNumber(s string) bool {
+	n, err := strconv.Atoi(s)
+	return err == nil && strconv.Itoa(n) == s
 }

@@ -413,7 +413,20 @@ func downloadScheme(h *windowHandler, rawURL string) {
 		return
 	}
 	rw := &downloadWriter{h: h, url: rawURL, header: http.Header{}}
-	handler.ServeHTTP(rw, req)
+	func() {
+		// As serveScheme: a handler that panics fails its download, not
+		// the app, which a panic on this goroutine would end.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("mygo: panic serving %s: %v\n%s", rawURL, r, debug.Stack())
+				rw.wrote = true // what was not started does not start
+				if rw.err == nil {
+					rw.err = fmt.Errorf("mygo: downloading %s: panic: %v", rawURL, r)
+				}
+			}
+		}()
+		handler.ServeHTTP(rw, req)
+	}()
 	rw.WriteHeader(http.StatusOK) // nothing written
 	if rw.file == nil {
 		if rw.err != nil {

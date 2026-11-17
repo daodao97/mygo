@@ -4,7 +4,7 @@
 
 ## 快照（2026-11-12）
 
-- fork `main` 已合并 `upstream/main`：`9db28d4e`（2026-11-16）；fork 落后上游 0 个提交。
+- fork `main` 已合并 `upstream/main` 到 `12e8babd`（2026-11-17）；只落后上游 1 个提交，即 #940（`6e712c6e`），有意留给第二阶段（见「向 #940 收敛」）。
 - fork 独有的非合并提交：158 个；与上游的增删差异约 71,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
 - 2026-11-09 同步了上游 39 个提交（到 `6a730f12`）。冲突：`docs/architecture.md` 两边都保留（fork 的 iOS 段落、上游的 `ffi`）；`ui/runtime.go` 两边都保留（fork 的帧计时、上游的 `sweepVideos`）；`ui/layoutcache_test.go` 字段清单取并集；`internal/gpu/gl/load_linux.go` 只取上游新增的 `uploadElement`，`setShaderSource`/`shaderLog`/`programLog`/`infoLog` 在 fork 已移到 `load_common.go`（与 Android 共用）；终端 `urlPattern` 按规则 1 改用上游 #1481（URL 在第一个非 ASCII 字符处结束），fork 的写法删除；shader 二进制取上游后重新 `go generate`。上游 #1476 给 `platform.Clipboard.WriteData` 加了 `concealed` 参数，iOS/Android 后端已跟上签名，但还没有标记机密内容（iOS 的 `UIPasteboard` localOnly、Android 的 `EXTRA_IS_SENSITIVE`）。
@@ -36,6 +36,8 @@
 - 2026-11-16 同步上游 21 个提交（`13a0b3e7..9db28d4e`）。冲突 5 个文件，都来自上游 #1896/#1907 的多指触点（`Element.Touches`、`Touch`、`platform.TouchDown`/`TouchMove`/`TouchUp`/`TouchCancel`、`SurfaceEvent.Width`/`Height`）：上游新建的 `ui/touch.go`、`ui/touch_test.go` 与 fork 的触摸手势引擎同名（add/add）。两者不是同一功能——上游给视图原始触点（ID、阶段、接触面积），fork 把手指仲裁成滚动、长按选择、收起键盘——都保留：文件名让给上游（以后上游改 `touch.go` 能干净合并），fork 的移到 `ui/touch_engine.go`、`ui/touch_engine_test.go`。`internal/platform/surface.go` 的事件种类取并集（fork 的 `PointerLongPress` 在前，上游的四个 `Touch*` 连续排在后面，`ui/input.go` 按区间判断它们）；`ui/input.go` 先走上游的触点分支（总是返回 false，不影响指针路径），再走 fork 的 `fromWindow` 与手势仲裁；`ui/api_gen.go` 用 fork 的生成器重建（含 `Touches`）。
   对照这批新增检查了 fork 代码：调用的 `AbortSignal` 取消、`ListState.MoveAnimation`、菜单项 `KeepOpen` 与徽标颜色/形状、单实例锁持有到进程退出、`platform.ExitBackend`、半透明 web view 的 `Opacity`、托盘 `SetTitleMonospaced`、`PopoverMenu` 的 Panel/Item 选项在 fork 中没有同功能实现。fork 的 `Gestures`（捏合、旋转、双指平移和点按）是识别好的手势，与上游的原始触点不同层，保留。新的平台契约方法 iOS/Android 都由内层后端继承，不需要补。**缺口**：fork 的 iOS/Android 后端只发 `Pointer*`（`Pointer: PointerTouch`），不发 `TouchDown` 等，所以 `Element.Touches` 在 fork 的手机上暂时拿不到手指；需要时在 `internal/ios/backend.go`、`internal/android` 的触摸入口另外发这四种事件（#940 换后端时再看它是否发）。
   验证：macOS/Linux/Windows 的 `go build ./...`，`go vet . ./ui`；`go test . ./ui ./ui/editor ./ui/richtext ./internal/text ./internal/platform ./internal/linux/... ./internal/windows/... ./plugins/terminal/...`（13,002 项）通过；iOS 后端 vet、Android `.so` 构建与 16KB 对齐、`../Miya` 的 `go build ./...` 通过。
+- 2026-11-17 同步上游 18 个提交（`9db28d4e..12e8babd`，含 0.9.2），无冲突。上游 `main` 的下一个提交是 #940（`6e712c6e`，632 个文件，约 5.5 万行）。在临时 worktree 试合并到它，有 65 个文件冲突（55 个 UU、10 个 AA），按决定这次不合，另开分支做第二阶段。平台契约只给 Now Playing 加了 `MediaRaise` 和 `MediaInfo.Artists`，移动端不用补方法。`ui/api_gen.go` 用 fork 的生成器重建，只带进了 PopoverMenu 子菜单指向保持（`menuAimGrace`）的注释。对照这批新增检查了 fork 代码：子菜单指向保持、文本框把单独的 `\r` 当换行、字形偏离基线、Now Playing 多艺术家与 MPRIS Raise、diff 越过末尾滚动、Markdown 增量解析、调用和事件一直等待的修复，在 fork 中都没有同功能实现。
+  验证：macOS/Linux/Windows 的 `go build ./...`，`go vet . ./ui`；`go test . ./ui ./ui/editor ./ui/richtext ./ui/markdown/... ./internal/text ./internal/platform ./internal/linux/... ./internal/windows/... ./plugins/terminal/...`（13,163 项）通过；iOS 后端 vet、Android `.so` 构建与 16KB 对齐、`../Miya` 的 `go build ./...` 通过。
 - 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
 
 ## 规则
@@ -101,7 +103,7 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 | 安全区 | 只算系统栏，`ExtendIntoSafeArea` 控制 | 计入键盘，根元素自动内缩 |
 | 生命周期 | fork 的 `Lifecycle()`/`OnDidEnterBackground` 等保留为扩展，同时发 `Power` 的 suspend/resume | 只有 active/resign、`Power`、`OnSaveState` |
 
-**第二阶段：#940 合进上游 `main` 后换后端**（规则 1，以它为准）。按顺序：
+**第二阶段：#940 合进上游 `main` 后换后端**（规则 1，以它为准）。**#940 已于 2026-11-17 合进上游 `main`（`6e712c6e`）**；fork `main` 停在它之前的 `12e8babd`，第二阶段在单独分支上做：在 `~/.cache/mygo-pr/sync-940` 从 fork `main` 合并 `6e712c6e`，Miya 用临时 go.work 指向那里验证，完成后再合进 `main`。此后同步上游时，在 #940 进 `main` 之前，只合并它之后不依赖它的提交，或者一并等第二阶段。按顺序：
 
 1. 合并上游后，删除 `internal/ios`、`internal/android`、`android/`、`native/ios` 及 `cmd/mygo` 中 fork 的 iOS 打包，改用 `internal/mobile` 和 CLI 内嵌宿主；`ui/touch.go`、`ui/touch_text.go`、`ui/gpu_android.go` 会直接冲突，取 #940 的。
 2. 插件改为 `mygo.Native`：`biometrics`、`push`、`imagepicker`、`permissionflow` 换成 #940 自带的实现（保留 fork 扩展：细分错误、`push.SetPresentation`、`NotificationOptions.Data`）；`microphone`、`speech`、`scanner`、`browser`、`network` 是 fork 独有，给它们写 Swift/Kotlin 原生端。然后删根包对应模块（`mygo.Biometrics`、`Permissions`、`Microphone`、`Speech`、`Scanner`、`OpenInAppBrowser`、`Network.Prepare`、`Dialog.Photos` 的手机实现、`App.RegisterPushNotifications`）。

@@ -58,3 +58,44 @@ func TestDownloadEvents(t *testing.T) {
 		t.Fatal("the scheme download did not finish")
 	}
 }
+
+// A handler that panics while a download is served from it fails the
+// download, before it started or with part of the file written, which is
+// removed. The app goes on.
+func TestDownloadSchemePanic(t *testing.T) {
+	dir := t.TempDir()
+	App.SetPath(PathDownloads, dir)
+	defer App.SetPath(PathDownloads, "")
+	w, fw := testWindow(t, WindowOptions{})
+	if err := Protocol.HandleFunc("dlpanic", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/part" {
+			w.Header().Set("Content-Disposition", `attachment; filename="part.bin"`)
+			w.Write([]byte("half"))
+		}
+		panic("boom")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer Protocol.Unhandle("dlpanic")
+	done := make(chan *Download, 1)
+	defer w.Page().OnDownloadDone(func(d *Download) { done <- d })()
+	for _, tt := range []struct{ url, path string }{
+		{"dlpanic://localhost/none", ""},
+		{"dlpanic://localhost/part", filepath.Join(dir, "part.bin")},
+	} {
+		onMain(func() { fw.H.SchemeDownload(tt.url) })
+		select {
+		case d := <-done:
+			if d.Err == nil || d.Path != tt.path {
+				t.Errorf("%s: download = %+v, want an error and the path %q", tt.url, d, tt.path)
+			}
+		case <-time.After(wait.Guard):
+			t.Fatalf("%s: the download did not finish", tt.url)
+		}
+		if tt.path != "" {
+			if _, err := os.Stat(tt.path); !os.IsNotExist(err) {
+				t.Errorf("%s: the partial file was left behind (%v)", tt.url, err)
+			}
+		}
+	}
+}

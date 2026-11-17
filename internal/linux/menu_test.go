@@ -4,7 +4,6 @@ package linux
 
 import (
 	"bytes"
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -129,8 +128,9 @@ func TestMenuHides(t *testing.T) {
 
 // TestTrayName checks the IDs icons are made with: an icon of an ID is
 // named after the program and the ID, whatever the process, another icon
-// of that ID takes a number, and an icon of no ID is named after the
-// process (#1835).
+// of that ID takes a number (#1835), and an icon of no ID is named after
+// the program and its number among the app's icons, whatever the
+// process, so that it too stays across launches.
 func TestTrayName(t *testing.T) {
 	b := &Backend{trays: map[int]*tray{}}
 	if got := b.trayName("main", "notes", 1); got != "notes-main" {
@@ -147,7 +147,14 @@ func TestTrayName(t *testing.T) {
 	if got := b.trayName("main", "", 3); got != "mygo-main" {
 		t.Errorf("an icon of ID main with no program name is %q, want mygo-main", got)
 	}
-	if got, want := b.trayName("", "notes", 4), fmt.Sprintf("mygo-%d-4", os.Getpid()); got != want {
-		t.Errorf("an icon of no ID is %q, want %q", got, want)
+	if got := b.trayName("", "notes", 4); got != "notes-4" {
+		t.Errorf("an icon of no ID is %q, want notes-4", got)
+	}
+	if got := b.trayName("", "", 4); got != "mygo-4" {
+		t.Errorf("an icon of no ID with no program name is %q, want mygo-4", got)
+	}
+	b.trays[3] = &tray{id: 3, name: "notes-5"} // an icon of ID 5
+	if got := b.trayName("", "notes", 5); got != "notes-5-2" {
+		t.Errorf("an icon of no ID whose name an icon of an ID has is %q, want notes-5-2", got)
 	}
 }

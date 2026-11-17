@@ -270,6 +270,36 @@ describe("channels", () => {
   });
 });
 
+test("a page shown again fails the calls it left unanswered, and ends their channels", async () => {
+  const { sent, runtime, internal, restored } = setup();
+  const ch = runtime.channel();
+  const abort = new AbortController();
+  const a = runtime.call("Svc.Slow", ch);
+  const b = runtime.callWith("Svc.Slow", [], { signal: abort.signal });
+  const [ma, mb] = sent as CallMsg[];
+  restored();
+  const err = (await a.catch((e) => e)) as CallError;
+  expect(err).toBeInstanceOf(CallError);
+  expect(err.method).toBe("Svc.Slow");
+  await expect(b).rejects.toThrow("the page was left");
+  expect(ch.closed).toBe(true);
+
+  // Their late replies, and a signal that aborts, are of no use.
+  internal.receive([
+    { t: "reply", id: ma!.id, k: ma!.k, ok: true, v: "late" },
+    { t: "reply", id: mb!.id, k: mb!.k, ok: true, v: "late" },
+  ]);
+  abort.abort();
+  expect(sent.length).toBe(2);
+
+  // The page calls again as before.
+  const c = runtime.call("Svc.Fast");
+  const mc = sent[2] as CallMsg;
+  expect(mc.id).toBe(3);
+  internal.receive({ t: "reply", id: mc.id, k: mc.k, ok: true, v: "ok" });
+  expect(await c).toBe("ok");
+});
+
 test("runtime object is frozen", () => {
   const { runtime } = setup();
   expect(runtime.platform).toBe("darwin");

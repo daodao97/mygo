@@ -3,12 +3,14 @@
 package mygo
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/audio"
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/wait"
+	"github.com/egoist/mygo/ui"
 )
 
 // shownNowPlaying waits for the backend to have been told n times and
@@ -162,5 +164,86 @@ func TestNowPlayingControl(t *testing.T) {
 	onMain(func() { fb.EmitMediaCommand(platform.MediaPlay, 0) })
 	if p.playing {
 		t.Error("a command reached the released player")
+	}
+}
+
+// Artists reach the backend as a list, joined for the systems that show
+// one artist, and win over Artist; Artist alone is a list of one.
+func TestNowPlayingArtists(t *testing.T) {
+	defer NowPlaying.Clear()
+	sets := onMainValue(func() int { return fb.NowPlayingSets })
+	artists := []string{"Daft Punk", "", "Pharrell Williams"}
+	NowPlaying.Set(NowPlayingInfo{Title: "Get Lucky", Artist: "Someone else", Artists: artists})
+	artists[0] = "changed after Set"
+	got := shownNowPlaying(t, sets+1)
+	if want := []string{"Daft Punk", "Pharrell Williams"}; !slices.Equal(got.Artists, want) || got.Artist != "Daft Punk, Pharrell Williams" {
+		t.Errorf("artists %q, artist %q; want %q joined", got.Artists, got.Artist, want)
+	}
+	if info, _ := NowPlaying.Info(); !slices.Equal(info.Artists, []string{"Daft Punk", "", "Pharrell Williams"}) || info.Artist != "Someone else" {
+		t.Errorf("Info: artists %q, artist %q, want them as set", info.Artists, info.Artist)
+	}
+
+	for i, c := range []struct {
+		info    NowPlayingInfo
+		artists []string
+		artist  string
+	}{
+		{NowPlayingInfo{Artist: "Vivaldi"}, []string{"Vivaldi"}, "Vivaldi"},
+		{NowPlayingInfo{Artist: "Vivaldi", Artists: []string{""}}, []string{"Vivaldi"}, "Vivaldi"},
+		{NowPlayingInfo{Artist: "Simon, Garfunkel"}, []string{"Simon, Garfunkel"}, "Simon, Garfunkel"},
+		{NowPlayingInfo{}, nil, ""},
+	} {
+		NowPlaying.Set(c.info)
+		got := shownNowPlaying(t, sets+2+i)
+		if !slices.Equal(got.Artists, c.artists) || got.Artist != c.artist {
+			t.Errorf("%+v: artists %q, artist %q; want %q, %q", c.info, got.Artists, got.Artist, c.artists, c.artist)
+		}
+	}
+}
+
+// Raising the player, as MPRIS clients do, shows and focuses the window
+// that had the keyboard last, and is no command of the app's.
+func TestNowPlayingRaise(t *testing.T) {
+	defer NowPlaying.Clear()
+	var cmds []MediaCommand
+	off := NowPlaying.OnCommand(func(cmd MediaCommand, _ time.Duration) { cmds = append(cmds, cmd) })
+	defer off()
+	sets := onMainValue(func() int { return fb.NowPlayingSets })
+	NowPlaying.Set(NowPlayingInfo{Title: "Spring", Commands: MediaPlay | MediaCommand(platform.MediaRaise)})
+	if got := shownNowPlaying(t, sets+1); got.Commands != platform.MediaPlay {
+		t.Errorf("commands = %b, want play alone", got.Commands)
+	}
+
+	a := NewWindow(WindowOptions{Title: "A", Hidden: true})
+	defer a.Destroy()
+	b := NewWindow(WindowOptions{Title: "B", Hidden: true})
+	defer b.Destroy()
+	fl, _ := testFlyout(t, FlyoutOptions{Parent: a, Focusable: true, Content: ui.View(func(c *ui.Context) {})})
+	shows := map[*Window]int{}
+	for _, w := range []*Window{a, b} {
+		w.OnShow(func() { shows[w]++ })
+	}
+	raise := func() { onMain(func() { fb.EmitMediaCommand(platform.MediaRaise, 0) }) }
+
+	// a, then b, then a flyout had the keyboard: b shows, not the flyout.
+	a.Focus()
+	b.Focus()
+	fl.Focus()
+	fl.Hide()
+	a.Hide()
+	b.Hide()
+	raise()
+	if !b.IsVisible() || a.IsVisible() || fl.IsVisible() || shows[b] != 1 || shows[a] != 0 {
+		t.Errorf("after b had the keyboard: a visible %v, b visible %v, flyout visible %v, shows %v", a.IsVisible(), b.IsVisible(), fl.IsVisible(), shows)
+	}
+	// Then a had it: a shows.
+	a.Focus()
+	b.Hide()
+	raise()
+	if !a.IsVisible() || b.IsVisible() || shows[a] != 1 {
+		t.Errorf("after a had the keyboard: a visible %v, b visible %v, shows %v", a.IsVisible(), b.IsVisible(), shows)
+	}
+	if len(cmds) != 0 {
+		t.Errorf("raising reached OnCommand: %v", cmds)
 	}
 }

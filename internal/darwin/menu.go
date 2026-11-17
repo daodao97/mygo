@@ -723,9 +723,8 @@ const (
 	menuKeepOpenIconSize   = 16
 	menuKeepOpenLabelX     = 26
 	menuKeepOpenIconLabelX = menuKeepOpenLabelX + 20
-	menuKeepOpenRight      = 10
+	menuKeepOpenRight      = 8
 	menuKeepOpenMinRoom    = 120
-	menuKeepOpenChrome     = 40
 	menuViewBackdrop       = 1
 	menuViewCheck          = 2
 	menuViewLabel          = 3
@@ -868,8 +867,18 @@ func keepOpenMetrics(m *platform.Menu) (start, badgeWidth, viewWidth, labelX flo
 	if hasBadge {
 		start = maxLabel + menuBadgeGap
 	}
-	viewWidth = max(labelX+menuKeepOpenMinRoom, labelX+start+maxBadge+menuKeepOpenRight) + menuKeepOpenChrome
+	viewWidth = keepOpenViewWidth(labelX, start, maxBadge)
 	return start, maxBadge, viewWidth, labelX
+}
+
+// keepOpenViewWidth is the width of the views of a menu's KeepOpen items:
+// the label column, the badge column, and the space after the badges. The
+// menu sizes itself from it (setMinimumWidth) and the badges are anchored
+// to the view's right edge, so this space is all that separates a badge
+// from the row's end: 8pt is the room a menu row keeps at its trailing
+// edge, and the badge box carries its own padding on top of it.
+func keepOpenViewWidth(labelX, start, badgeWidth float64) float64 {
+	return max(labelX+menuKeepOpenMinRoom, labelX+start+badgeWidth+menuKeepOpenRight)
 }
 
 // retabKeepOpenMenu lays the views of the KeepOpen items of the menu that
@@ -922,7 +931,7 @@ func retabKeepOpenMenu(item id, label, badge string, align platform.BadgeAlignme
 	if hasBadge {
 		start = maxLabel + menuBadgeGap
 	}
-	width := max(labelX+menuKeepOpenMinRoom, labelX+start+maxBadge+menuKeepOpenRight) + menuKeepOpenChrome
+	width := keepOpenViewWidth(labelX, start, maxBadge)
 	msgSetFloat(menu, sel("setMinimumWidth:"), width)
 	for _, r := range rows {
 		layoutKeepOpenView(r.view, r.label, r.badge, start, maxBadge, width, labelX, r.align, r.style)
@@ -947,6 +956,7 @@ func buildKeepOpenView(it *platform.MenuItem, metrics menuMetrics) id {
 			Size:   NSSize{Width: width - 8, Height: menuKeepOpenHeight - 2},
 		})
 		msgSetFloat(backdrop, sel("setCornerRadius:"), 4)
+		send(backdrop, "setAutoresizingMask:", 2) // kCALayerWidthSizable
 		send(backdrop, "setHidden:", 1)
 		send(layer, "addSublayer:", uintptr(backdrop))
 	}
@@ -975,7 +985,9 @@ func buildKeepOpenView(it *platform.MenuItem, metrics menuMetrics) id {
 	send(label, "setAlignment:", 0)
 	send(label, "setFont:", uintptr(menuFont()))
 	send(label, "setTag:", menuViewLabel)
-	send(label, "setAutoresizingMask:", 2) // NSViewWidthSizable
+	// Not width-sizable: the badge column sits to its right, and a wider
+	// menu must not run the label under it.
+	send(label, "setAutoresizingMask:", 0)
 	send(view, "addSubview:", uintptr(label))
 
 	badge := autorelease(msgInitRect(send(class("MyGoMenuBadge"), "alloc"), sel("initWithFrame:"), NSRect{}))
@@ -987,6 +999,7 @@ func buildKeepOpenView(it *platform.MenuItem, metrics menuMetrics) id {
 	send(badge, "setFont:", uintptr(menuBadgeFont()))
 	send(badge, "setTag:", menuViewBadge)
 	send(badge, "setRefusesFirstResponder:", 1)
+	send(badge, "setAutoresizingMask:", 1) // NSViewMinXMargin: keep to the right edge
 	send(badge, "setAccessibilityElement:", 0)
 	send(badge, "setWantsLayer:", 1)
 	if layer := send(badge, "layer"); layer != 0 {
@@ -1042,6 +1055,20 @@ func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) {
 // layoutKeepOpenView places the label and badge of view in their columns
 // and makes room for width, the width the menu's views share.
 func layoutKeepOpenView(view id, label, badge string, start, badgeWidth, width, labelX float64, align platform.BadgeAlignment, style keepOpenBadgeStyle) {
+	// A menu can be wider than its widest KeepOpen row, as a long item NSMenu
+	// draws itself sets the width; AppKit then widens the view to fill it.
+	// Lay out to the view's own width when that is wider, so the backdrop,
+	// the label and the badge follow instead of stopping halfway.
+	if f := msgRect(view, sel("frame")); f.Size.Width > width {
+		width = f.Size.Width
+	}
+	if align == platform.BadgeAlignRight && badgeWidth > 0 {
+		// Anchor the column to the view's right edge rather than to the
+		// longest label: the room after the badge is then exactly
+		// menuKeepOpenRight, and if the view turns out wider than measured
+		// the badge moves with the edge instead of leaving a gap.
+		start = max(start, width-menuKeepOpenRight-badgeWidth-labelX)
+	}
 	background := style.shape != "" && badge != ""
 	if field := send(view, "viewWithTag:", menuViewLabel); field != 0 {
 		fieldWidth := width - labelX - 4
@@ -1077,8 +1104,11 @@ func layoutKeepOpenView(view id, label, badge string, start, badgeWidth, width, 
 			send(field, "setHidden:", 1)
 		}
 	}
+	// Only grow: AppKit sizes the view to the menu when it opens. Shrinking
+	// it while the menu stays open would cut the backdrop and pull the
+	// badges in as latencies change; the next open computes a fresh width.
 	frame := msgRect(view, sel("frame"))
-	if frame.Size.Width != width {
+	if frame.Size.Width < width {
 		frame.Size.Width = width
 		msgSetRect(view, sel("setFrame:"), frame)
 	}

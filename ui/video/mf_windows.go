@@ -157,7 +157,11 @@ func failed(hr uintptr) bool { return int32(uint32(hr)) < 0 }
 func cptr(a uintptr) unsafe.Pointer { return *(*unsafe.Pointer)(unsafe.Pointer(&a)) }
 
 // call calls method i of a COM object, returning its HRESULT, and what
-// the call left in the first floating point register on amd64.
+// the call left in the first floating point register on amd64. Pointers
+// converted to uintptr in the call stay valid until it returns
+// (go:uintptrescapes).
+//
+//go:uintptrescapes
 func call(obj uintptr, i int, args ...uintptr) uintptr {
 	r, _ := callRaw(obj, i, args...)
 	return r
