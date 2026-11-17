@@ -340,6 +340,10 @@ func pressKeyComposing(*mygo.Window, uint16, string, string, string) bool { retu
 // dropFiles, dropping on the content's, skips.
 func dragFiles(*mygo.Window, float64, float64, []string) (bool, bool) { return false, false }
 
+func dropFilesFrom(*mygo.Window, float64, float64, float64, float64, []string) (bool, bool, bool) {
+	return false, false, false
+}
+
 // pressTab presses Tab, with Shift when back, as the keyboard does.
 func pressTab(_ *mygo.Window, back bool) bool {
 	if back {
