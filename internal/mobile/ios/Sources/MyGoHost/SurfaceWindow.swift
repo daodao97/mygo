@@ -254,6 +254,9 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
                 fingers[key] = nil
             }
         }
+        // A finger landing anywhere puts the edit menu away, as UIKit's text
+        // views do; one on the menu reaches the menu, not this view.
+        hideEditMenu()
         send(t, "down")
     }
     override func touchesMoved(_ t: Set<UITouch>, with e: UIEvent?) { send(t, "move") }
@@ -416,9 +419,10 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
 
     var hasText: Bool { length > 0 }
 
-    func insertText(_ s: String) { edit(Event.textReplace(id: id, hasRange: false, start: 0, end: 0, text: s)) }
+    func insertText(_ s: String) { hideEditMenu(); edit(Event.textReplace(id: id, hasRange: false, start: 0, end: 0, text: s)) }
 
     func deleteBackward() {
+        hideEditMenu()
         if markStart >= 0 {
             edit(Event.textMark(id: id, hasRange: false, start: 0, end: 0, text: "", selStart: 0, selEnd: 0))
             return
@@ -443,6 +447,7 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
     var markedTextStyle: [NSAttributedString.Key: Any]?
 
     func setMarkedText(_ s: String?, selectedRange: NSRange) {
+        hideEditMenu()
         let m = s ?? ""
         edit(Event.textMark(id: id, hasRange: false, start: 0, end: 0, text: m, selStart: selectedRange.location,
                             selEnd: selectedRange.location + selectedRange.length))
@@ -463,6 +468,7 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
     }
 
     func replace(_ range: UITextRange, withText s: String) {
+        hideEditMenu()
         guard let r = range as? Range else { return }
         edit(Event.textReplace(id: id, hasRange: true, start: r.lo.i, end: r.hi.i, text: s))
     }
@@ -606,8 +612,18 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
         return i
     }()
 
+    /// Whether the edit menu shows, which nothing but this view puts away.
+    private var menuShown = false
+
+    func hideEditMenu() {
+        guard menuShown else { return }
+        menuShown = false
+        editMenu.dismissMenu()
+    }
+
     func showMenu(_ c: ShowMenuCall) {
         menuActions = c.actions
+        menuShown = true
         if !isFirstResponder { becomeFirstResponder() }
         let cfg = UIEditMenuConfiguration(identifier: nil, sourcePoint: CGPoint(x: c.x, y: c.y))
         cfg.preferredArrowDirection = .down
