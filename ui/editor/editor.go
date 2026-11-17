@@ -36,6 +36,7 @@ type options struct {
 	wrapGuides    []int
 	indentGuides  bool
 	scrollPastEnd bool
+	scrollMargin  int
 	autoClose     bool
 	folding       bool
 	activeLine    bool
@@ -691,7 +692,7 @@ func (ed *editor) doReveal() {
 	lh := float64(v.lineHeight)
 	top, bottom := float64(cr.Y), float64(cr.Y+cr.H)
 	h := float64(ed.viewH)
-	margin := min(3*lh, max(0, (h-lh)/2))
+	margin := min(float64(ed.o.scrollMargin)*lh, max(0, (h-lh)/2))
 	switch mode {
 	case revealCenter:
 		if top < ed.scrollY || bottom > ed.scrollY+h {

@@ -580,6 +580,7 @@ func (d *DiffState) sideOptions(old bool) options {
 		keepScrollbars: d.KeepScrollbars, hideScrollbars: d.NoScrollbars,
 		renderFindBar: d.RenderFindBar, renderGoToLine: d.RenderGoToLine,
 	}
+	o.scrollMargin = defaultScrollMargin
 	if d.NoLineNumbers {
 		o.lineNumbers = LineNumbersOff
 	}
