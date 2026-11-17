@@ -382,7 +382,7 @@ func (ed *editor) command(c *context, name string) {
 }
 
 // press puts the caret where the pointer went down, at (x, y) relative to
-// the element; double and triple clicks select words and lines.
+// the element; double and triple clicks select words and paragraphs.
 func (ed *editor) press(x, y float32, clicks, button int) {
 	if button != 0 || !ed.laidOut() {
 		return
@@ -404,7 +404,7 @@ func (ed *editor) press(x, y float32, clicks, button int) {
 		ed.anchor, ed.caret = s, e
 	default:
 		if ed.multiline {
-			s, e := ed.lineEdges(i)
+			s, e := ed.buf.paraEdges(i)
 			ed.anchor, ed.caret = s, e
 		} else {
 			ed.selectAll()
@@ -441,14 +441,18 @@ func (ed *editor) drag(x, y float32) {
 	p := ed.hitPosition(x, y)
 	i := p.Index
 	switch ed.dragUnit {
-	case 2:
-		s, e := ed.buf.wordAt(i)
+	case 2, 3:
+		var s, e int
+		if ed.dragUnit == 2 {
+			s, e = ed.buf.wordAt(i)
+		} else {
+			s, e = ed.buf.paraEdges(i)
+		}
 		if i < ed.dragStart[0] {
 			ed.anchor, ed.caret = ed.dragStart[1], s
 		} else {
 			ed.anchor, ed.caret = ed.dragStart[0], max(e, ed.dragStart[1])
 		}
-	case 3:
 	default:
 		ed.movePosition(p, true)
 	}

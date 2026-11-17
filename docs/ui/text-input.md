@@ -137,7 +137,7 @@ lines, as a log or a source file, and stays as quick to type in.
 ## Editing
 
 Text inputs edit as the platform's text fields do: selection with the
-pointer (a double click selects a word, a triple click a line), with Shift
+pointer (a double click selects a word, a triple click a paragraph), with Shift
 and the arrows, and by words and lines with the platform's keys; undo and
 redo; cut, copy and paste, also from the Edit menu's roles; and a context
 menu of the editing commands. They take text composed with input methods,
