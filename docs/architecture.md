@@ -4795,9 +4795,10 @@ either.
   target the paragraph's layout (`laidOutBox`), so that a popover follows
   its anchor in the frame that moves it; then it goes to the other side, or
   the other way along the target, where that leaves the window less, and
-  moves along the target into the window (`alongTarget`); one that scrolls
-  vertically is first cut to the room the window has (`roomAlong`), as a
-  select's long list of options. Popovers have no
+  moves along the target into the window (`alongTarget`); its height is
+  first cut to the room the window has (`roomAlong`), so that a select's
+  long list of options scrolls, and a panel of `SelectBase`'s or
+  `PopoverBase`'s whose scroll container shrinks fits. Popovers have no
   backdrop: the engine notes what each press went down on (`downs`, for a
   pass), and `PressedOutside` walks from the last through parents, and from
   a popover to its anchor, which keeps presses in popovers of elements

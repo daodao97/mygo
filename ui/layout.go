@@ -1583,10 +1583,11 @@ func attachTo(c, e *node, pw, ph float32) {
 		h = heightAt(c, w, ph)
 	}
 	t := laidOutVisualBox(c.popover)
-	if c.flags&flagScrollY != 0 {
-		_, ay, _, sy := c.attachFractions()
-		h = min(h, roomAlong(t.Y, t.H, beside(ay, sy), c.m(0)+c.m(2), c.c.h, c.windowEdge()))
-	}
+	// No taller than the room the window has: one that scrolls, as a
+	// select's long list of options, scrolls, and children that shrink,
+	// as a scroll container inside a panel of SelectBase's, fit.
+	_, ay, _, sy := c.attachFractions()
+	h = min(h, roomAlong(t.Y, t.H, beside(ay, sy), c.m(0)+c.m(2), c.c.h, c.windowEdge()))
 	c.x, c.y = attachedAt(c, e, t, pw, ph, w, h)
 	layoutBox(c, w, h)
 }
@@ -1672,7 +1673,7 @@ func (c *node) windowEdge() float32 {
 // roomAlong returns the most an element attached to target can be along
 // an axis of the window, limit long, and stay in it, edge from its ends:
 // the larger side of target for one placed beside it, else the window.
-// One that scrolls, as a select's long list of options, is no longer.
+// An attached element is no taller (attachTo).
 func roomAlong(t0, tsize float32, beside bool, margins, limit, edge float32) float32 {
 	room := limit - 2*edge - margins
 	if beside {

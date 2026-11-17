@@ -71,9 +71,10 @@ menus, are built from what those are made of:
   that one is: its point `self` on the point `at` of the target, as
   `AttachTo(button, ui.AnchorBottomLeft, ui.AnchorTopLeft)` below a button.
   Where it would leave the window, it goes to the other side, or the other
-  way along the target, then moves into the window; one that scrolls
-  vertically is no taller than the room on the target's larger side, and
-  scrolls. Its margins keep it apart from the target. It is the target's popover: its elements follow
+  way along the target, then moves into the window. It is no taller than
+  the room the window has, on the target's larger side for one above or
+  below it: one that scrolls vertically scrolls, and children that shrink,
+  as a `ui.Scroll(c).Shrink(1)` between a header and a footer, fit. Its margins keep it apart from the target. It is the target's popover: its elements follow
   the target as Tab moves.
 - `AttachEdgeMargin(v)` keeps such an element `v` DIPs from the window's
   edges, where it keeps 4 unless set: `AttachEdgeMargin(12)` for a wide
