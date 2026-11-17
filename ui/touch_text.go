@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/internal/platform"
+	"github.com/egoist/mygo/internal/text"
 )
 
 // A finger edits text as phones have it: a word chosen by holding it, handles
@@ -78,7 +79,11 @@ func (rt *engine) caretHandle(now time.Time) bool {
 func (rt *engine) paintHandles(p *Painter) {
 	_, a, b, sel, ok := rt.handles()
 	if !ok {
-		return
+		// Selected read-only text (selectionHandles).
+		if a, b, ok = rt.selectionHandles(); !ok {
+			return
+		}
+		sel = platform.TextRange{Start: 0, End: 1}
 	}
 	color := p.Theme().Accent
 	cupertino := runtime.GOOS == "ios" || overscrollKind == overscrollBounce
@@ -128,7 +133,11 @@ func drawTeardrop(p *Painter, x, y float32, c Color, lean float32) {
 func (rt *engine) handleAt(x, y float32) int {
 	_, a, b, sel, ok := rt.handles()
 	if !ok {
-		return handleNone
+		// Selected read-only text (selectionHandles).
+		if a, b, ok = rt.selectionHandles(); !ok {
+			return handleNone
+		}
+		sel = platform.TextRange{Start: 0, End: 1}
 	}
 	near := func(px, py float64) bool {
 		dx, dy := float64(x)-px, float64(y)-py
@@ -154,6 +163,7 @@ func (rt *engine) handleAt(x, y float32) int {
 func (rt *engine) dragHandle(x, y float32) {
 	a, _, _, sel, ok := rt.handles()
 	if !ok {
+		rt.dragSelectionHandle(x, y) // selected read-only text
 		return
 	}
 	t := &rt.touchText
@@ -253,4 +263,75 @@ func (rt *engine) revealFocus() {
 	if s := rt.states[rt.focused]; s != nil && s.textClient != nil {
 		rt.reveal(rt.focused)
 	}
+}
+
+// Handles for selected read-only text: those above are the focused input's;
+// selectable text, as a conversation's messages, has its
+// selection across paragraphs (textSelection), which a long press starts and
+// these drag, with the system's magnifier and menu as an input's.
+
+// selectionHandles returns where the read-only selection starts and ends, in
+// the window, while something is selected and both ends show.
+func (rt *engine) selectionHandles() (start, end platform.RectF, ok bool) {
+	a, b, selected := rt.textSelectionBounds()
+	if !selected {
+		return start, end, false
+	}
+	start, okA := rt.textPointRect(a)
+	end, okB := rt.textPointRect(b)
+	return start, end, okA && okB
+}
+
+// textPointRect returns the caret's box at p, in the window, if it shows.
+func (rt *engine) textPointRect(p textPoint) (platform.RectF, bool) {
+	s := rt.states[p.id]
+	if s == nil || s.editor == nil || !s.editor.laidOut() || s.vw <= 0 || s.vh <= 0 {
+		return platform.RectF{}, false
+	}
+	ed := s.editor
+	x, y, h := ed.layout.CaretAt(text.CaretPosition{Index: ed.displayIndex(p.at)})
+	r := transformRect(s.world, Rect{s.x + ed.originX + x, s.y + ed.originY + y, 1, h})
+	// Hidden as what holds the text scrolled it away.
+	if r.Y+r.H < s.vy-1 || r.Y > s.vy+s.vh+1 {
+		return platform.RectF{}, false
+	}
+	return rt.toWindow(platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)}), true
+}
+
+// dragSelectionHandle moves the end of the read-only selection a finger
+// holds to the text above it.
+func (rt *engine) dragSelectionHandle(x, y float32) {
+	t := &rt.selection
+	a, b, selected := rt.textSelectionBounds()
+	if !selected {
+		return
+	}
+	// The line above the finger, which hides what is under it.
+	p := rt.textSelectionAt(t.scope, x, y-12)
+	if p.id == 0 {
+		return
+	}
+	anchor, caret := t.anchor, t.caret
+	switch rt.touchText.held {
+	case handleStart:
+		if rt.compareTextPoints(p, b) >= 0 {
+			return
+		}
+		anchor, caret = b, p
+	case handleEnd:
+		if rt.compareTextPoints(p, a) <= 0 {
+			return
+		}
+		anchor, caret = a, p
+	default:
+		return
+	}
+	if anchor != t.anchor || caret != t.caret {
+		t.anchor, t.caret, t.unit, t.dragging = anchor, caret, 0, false
+		rt.haptic("selection")
+	}
+	wx, wy := rt.windowPoint(x, y)
+	rt.touchSurface(func(s platform.TouchSurface) { s.ShowMagnifier(wx, wy) })
+	rt.askBuild()
+	rt.requestFrame()
 }

@@ -568,3 +568,47 @@ func TestTouchReach(t *testing.T) {
 		t.Errorf("far from it: %d clicks", clicks)
 	}
 }
+
+// Selected read-only text has handles, as an input's selection does: a long
+// press selects a word, and dragging the end handle takes the selection on.
+func TestReadOnlySelectionHandles(t *testing.T) {
+	tt := NewTester(func(c *Context) {
+		Column(c).Selectable().Padding(20).Children(func() {
+			Text(c, "alpha bravo charlie delta echo")
+		})
+	}, 400, 200)
+	tt.Frame()
+	r, ok := tt.Find("alpha bravo charlie delta echo")
+	if !ok {
+		t.Fatal("no text")
+	}
+	// Hold "bravo".
+	x, y := r.X+r.W*0.27, r.Y+r.H/2
+	tt.FingerDown(x, y)
+	tt.Advance(700 * time.Millisecond)
+	tt.FingerUp(x, y)
+	tt.Frame()
+	a, b, selected := tt.rt.textSelectionBounds()
+	if !selected {
+		t.Fatal("a long press selected nothing")
+	}
+	start, end, ok := tt.rt.selectionHandles()
+	if !ok || end.X <= start.X {
+		t.Fatalf("handles %v %v %v", start, end, ok)
+	}
+	if h := tt.rt.handleAt(float32(end.X), float32(end.Y+end.H)); h != handleEnd {
+		t.Fatalf("the end handle is not where it draws: %d", h)
+	}
+	was := b.at
+	tt.FingerDown(float32(end.X), float32(end.Y+end.H))
+	for _, nx := range []float32{float32(end.X) + 20, r.X + r.W - 2} {
+		tt.FingerMove(nx, y+12)
+		tt.Frame()
+	}
+	tt.FingerUp(r.X+r.W-2, y+12)
+	tt.Frame()
+	a2, b2, selected := tt.rt.textSelectionBounds()
+	if !selected || a2 != a || b2.at <= was {
+		t.Fatalf("dragging the end handle: from %v-%v to %v-%v", a, b, a2, b2)
+	}
+}
