@@ -23,4 +23,8 @@ var (
 	// Registered is told the token pushes are sent to, as it changes, or
 	// why registering failed.
 	Registered func(token string, err error)
+	// LocalData returns the Data of a notification the app showed, by its ID,
+	// which the core keeps for the notifications that have it, as phones'
+	// hosts carry no Data. Set as the first such notification shows.
+	LocalData func(id string) map[string]string
 )

@@ -385,7 +385,22 @@ final class Host: NSObject, HostCalls, UNUserNotificationCenterDelegate, UIDocum
         if n.request.trigger is UNPushNotificationTrigger {
             PluginHost.applicationEvent(.pushMessage(n.request.content.userInfo))
         }
-        done([.banner, .list, .sound])
+        let options: UNNotificationPresentationOptions = [.banner, .list, .sound]
+        guard let decide = PluginHost.presentation else {
+            done(options)
+            return
+        }
+        var answered = false
+        let finish: (Bool) -> Void = { show in
+            DispatchQueue.main.async {
+                guard !answered else { return }
+                answered = true
+                done(show ? options : [])
+            }
+        }
+        decide(n, finish)
+        // What isn't answered in time shows, as it would without the plugin.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { finish(true) }
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,

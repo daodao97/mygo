@@ -4,6 +4,7 @@
 // runs on the main thread.
 
 import UIKit
+import UserNotifications
 
 /// The result of a plugin's method: its answer, which JSON can encode, or an
 /// error.
@@ -43,6 +44,11 @@ public enum ApplicationEvent {
 
 /// What plugins have of the host.
 public enum PluginHost {
+    /// Decides whether a notification that arrives in front of the app shows,
+    /// answering on any thread: the fork's (FORK.md), which plugins/push sets
+    /// for push.SetPresentation. Unset, they all show.
+    public static var presentation: ((UNNotification, @escaping (Bool) -> Void) -> Void)?
+
     private static var plugins: [String: MyGoPlugin] = [:]
 
     private static var viewMakers: [String: (Int, [String: Any]) -> UIView] = [:]

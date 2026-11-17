@@ -8,6 +8,29 @@ final class PushPlugin: MyGoPlugin {
     /// A tap that launched the app comes before Go listens.
     private var opened: [[String: Any]] = []
     private var listening = false
+    /// Whether Go decides what shows in front of the app (push.SetPresentation),
+    /// and the answers it owes, by key.
+    private var presenting = false
+    private var asking: [Int: (Bool) -> Void] = [:]
+    private var nextKey = 0
+
+    init() {
+        PluginHost.presentation = { [weak self] n, answer in
+            guard let self, self.presenting else {
+                answer(true)
+                return
+            }
+            self.nextKey += 1
+            let key = self.nextKey
+            self.asking[key] = answer
+            PluginHost.emit("push", "present", [
+                "key": key,
+                "id": n.request.identifier,
+                "remote": n.request.trigger is UNPushNotificationTrigger,
+                "data": self.plain(n.request.content.userInfo),
+            ])
+        }
+    }
 
     private func plain(_ info: [AnyHashable: Any]) -> [String: Any] {
         var out: [String: Any] = [:]
@@ -31,6 +54,18 @@ final class PushPlugin: MyGoPlugin {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
             }
+        case "setPresentation":
+            presenting = args["on"] as? Bool ?? false
+            if !presenting {
+                for answer in asking.values { answer(true) }
+                asking = [:]
+            }
+            reply(.success(nil))
+        case "presented":
+            if let key = (args["key"] as? NSNumber)?.intValue, let answer = asking.removeValue(forKey: key) {
+                answer(args["show"] as? Bool ?? true)
+            }
+            reply(.success(nil))
         case "listenOpened":
             listening = true
             for o in opened { PluginHost.emit("push", "opened", o) }

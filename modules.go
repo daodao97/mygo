@@ -21,6 +21,7 @@ import (
 
 	"github.com/egoist/mygo/internal/accelerator"
 	"github.com/egoist/mygo/internal/platform"
+	"github.com/egoist/mygo/internal/pushhub"
 	"github.com/egoist/mygo/transfer"
 )
 
@@ -1271,6 +1272,10 @@ func (n *Notification) show(ctx context.Context, after time.Duration) error {
 		if s := n.opts.Sender; s != nil {
 			note.Sender = &platform.NotificationSender{ID: s.ID, Name: s.Name, Avatar: s.Avatar}
 		}
+		if len(n.opts.Data) > 0 && pushhub.LocalData == nil {
+			// Phones' hosts carry no Data: plugins/push asks for it by ID.
+			pushhub.LocalData = localNotificationData
+		}
 		backend().ShowNotification(note, func(err error) {
 			complete(err, false)
 			if canceled {
@@ -1342,4 +1347,15 @@ func notificationClicked(id string) {
 		fire(&n.onClick)
 	}
 	fire1(&App.onNotificationClick, id)
+}
+
+// localNotificationData is the Data of the notification shown with id, which
+// the fork's push.SetPresentation reads on phones (pushhub.LocalData).
+func localNotificationData(id string) map[string]string {
+	notifications.Lock()
+	defer notifications.Unlock()
+	if n := notifications.byID[id]; n != nil {
+		return maps.Clone(n.opts.Data)
+	}
+	return nil
 }
