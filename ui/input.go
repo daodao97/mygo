@@ -613,7 +613,7 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 		newFocus := uint64(0)
 		if focus != nil {
 			newFocus = focus.id
-			if rt.touch.down && focus.textClient != nil {
+			if (rt.touch.down || rt.touch.pressing) && focus.textClient != nil {
 				rt.ime.show++
 			}
 		}

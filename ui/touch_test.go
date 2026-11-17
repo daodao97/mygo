@@ -455,6 +455,35 @@ func TestKeyboardRevealsFocus(t *testing.T) {
 	}
 }
 
+// A tap on the focused input asks for the keyboard again, however quick:
+// on what scrolls the press waits for pressDelay, and a finger lifted
+// sooner presses after it went up, which must still count as a finger's.
+func TestTouchTapShowsKeyboard(t *testing.T) {
+	v := ""
+	tt := coreNewTester(func(c *context) {
+		coreScroll(c).Fill().Children(func() {
+			coreTextInput(c, &v).AutoFocus()
+			coreBox(c).Height(1000).Shrink(0)
+		})
+	}, 300, 300)
+	tt.Frame()
+	tt.Frame()
+	if active, _ := tt.TextInputActive(); !active {
+		t.Fatal("the input does not take text")
+	}
+	for _, hold := range []time.Duration{10 * time.Millisecond, pressDelay + 20*time.Millisecond} {
+		before := tt.h.ime.ShowKeyboard
+		tt.FingerDown(20, 10)
+		tt.Advance(hold)
+		tt.FingerUp(20, 10)
+		tt.Frame()
+		if tt.h.ime.ShowKeyboard == before {
+			t.Errorf("a tap held %v did not ask for the keyboard", hold)
+		}
+		tt.Advance(time.Second)
+	}
+}
+
 // A finger leaves no hover behind: what scrolls does not keep its bars.
 func TestTouchLeavesNoHover(t *testing.T) {
 	tt := coreNewTester(func(c *context) {

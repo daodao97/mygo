@@ -139,10 +139,13 @@ type touchPan struct {
 	// waiting is a press held back until pressDelay passed (at), on what
 	// scrolls, with its clicks.
 	waiting bool
-	at      time.Time
-	clicks  int
-	x0, y0  float32 // where it went down
-	lx, ly  float32 // where it was last
+	// pressing is set while pressNow presses for the finger, which a tap
+	// quicker than pressDelay does after it went up.
+	pressing bool
+	at       time.Time
+	clicks   int
+	x0, y0   float32 // where it went down
+	lx, ly   float32 // where it was last
 	// target is what the finger pans, and axes the way it locked to.
 	target uint64
 	axes   Orientation
@@ -495,6 +498,8 @@ func (rt *engine) overScroller(x, y float32) bool {
 
 // pressNow presses where a finger waited.
 func (rt *engine) pressNow(t touchPan) {
+	rt.touch.pressing = true
+	defer func() { rt.touch.pressing = false }()
 	rt.pointerMove(t.x0, t.y0)
 	rt.pointerDown(t.x0, t.y0, 0, rt.mods, max(t.clicks, 1))
 }

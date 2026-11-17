@@ -326,12 +326,14 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
         apply(text: c.text, base: c.base, length: c.length, selStart: c.selStart, selEnd: c.selEnd, markStart: c.markStart, markEnd: c.markEnd)
         if selChanged { inputDelegate?.selectionDidChange(self) }
         if textChanged { inputDelegate?.textDidChange(self) }
-        if editing && (!isFirstResponder || c.show != shows) {
+        if editing && !isFirstResponder {
             becomeFirstResponder()
         } else if !editing && wasEditing && isFirstResponder {
             resignFirstResponder()
-        } else if editing && (traitsChanged || another || !wasEditing) {
-            // From the edit menu's first responder, without a keyboard, to one.
+        } else if editing && (c.show != shows || traitsChanged || another || !wasEditing) {
+            // Already the first responder, becomeFirstResponder does nothing:
+            // from the edit menu's, without a keyboard, to one, or a tap
+            // asking for the keyboard again, the input views are reloaded.
             reloadInputViews()
         }
         shows = c.show
