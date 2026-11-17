@@ -106,6 +106,14 @@ func (v *view) SetSelection(selection ui.TextInputSelection) {
 	v.publish()
 }
 
+var _ ui.TextInputSelectionSetter = (*view)(nil)
+
+// SetTextSelection moves the selection as the system asks, as a finger
+// dragging the caret or a handle, or iOS's space bar held down, does.
+func (v *view) SetTextSelection(r ui.TextInputRange) {
+	v.SetSelection(ui.TextInputSelection{Range: r})
+}
+
 func (v *view) MarkedRange() (ui.TextInputRange, bool) {
 	if v.compose == "" {
 		return ui.TextInputRange{}, false
