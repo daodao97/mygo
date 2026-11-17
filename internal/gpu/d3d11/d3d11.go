@@ -382,6 +382,9 @@ type Renderer struct {
 	// render target drawn into now: the back buffer's, or a canvas's.
 	canvases map[uint64]*canvasTexture
 	drawing  uintptr
+	// atlases are the atlases of the frame being drawn, which mask and
+	// color hold: a canvas's scene may draw from its own (scene.Scene.Own).
+	atlases [2]*scene.Atlas
 
 	// The passes computing the backdrops of effects: their shaders and
 	// constants, grab, which holds the area of the frame read, and
@@ -1103,6 +1106,7 @@ func (r *Renderer) drawFrame(s *scene.Scene) (bool, error) {
 	if err := r.syncAtlas(&r.color, s.ColorAtlas, formatR8G8B8A8Unorm); err != nil {
 		return false, err
 	}
+	r.atlases = [2]*scene.Atlas{s.MaskAtlas, s.ColorAtlas}
 	if err := r.drawCanvases(s); err != nil {
 		return false, err
 	}
@@ -1183,6 +1187,30 @@ func (r *Renderer) drawCanvas(c *scene.Image) error {
 	}
 	cs := c.Scene
 	cs.Width, cs.Height = c.W, c.H
+	// A canvas that keeps its glyphs (scene.Scene.Own) draws them from
+	// atlases of its own, in textures made for this drawing.
+	frame := [2]texture{r.mask, r.color}
+	defer func() {
+		for i, a := range [2]*texture{&r.mask, &r.color} {
+			if a.tex != frame[i].tex {
+				free(&a.srv)
+				free(&a.tex)
+			}
+			*a = frame[i]
+		}
+	}()
+	if a := cs.MaskAtlas; a != nil && a != r.atlases[0] {
+		r.mask = texture{}
+		if err := r.syncAtlas(&r.mask, a, formatR8Unorm); err != nil {
+			return err
+		}
+	}
+	if a := cs.ColorAtlas; a != nil && a != r.atlases[1] {
+		r.color = texture{}
+		if err := r.syncAtlas(&r.color, a, formatR8G8B8A8Unorm); err != nil {
+			return err
+		}
+	}
 	if err := r.drawScene(cs, &t.b, t.rtv); err != nil {
 		return err
 	}

@@ -371,3 +371,97 @@ func (s *surface) nativeDataOperation(info id) uint {
 	}
 	return macOperations(s.dragOperation)
 }
+
+// webViewAtDrag returns the web view under the pointer of a drag, or nil.
+func (s *surface) webViewAtDrag(info id) *window {
+	if s == nil || len(s.placed) == 0 || info == 0 {
+		return nil
+	}
+	// Only the dragging info knows where a drag is (dragPoint).
+	x, y := s.dragPoint(info)
+	return s.webViewAt(x, y)
+}
+
+// pageDragTo makes wv the web view of the drag at info, and tells the web
+// view the drag came in over earlier that the drag left it, as a page of a
+// window hears when the pointer goes to another view. The content hears that
+// a drag left it for a page (DataDragLeave, which stops a drop zone's hover
+// there); a drag from wv to wv stays wv's.
+//
+// A page the drag reaches this way, from the content or from another page,
+// hears draggingEntered: too, which WebKit opens the page's drag with, and
+// without which the page takes no drop: info is AppKit's own dragging info,
+// so the message is the one the page would have had where AppKit routed the
+// drag to it. The drag's own selector is the excepted one, which the surface
+// forwards itself: forwarding it again would open the page's drag twice.
+func (s *surface) pageDragTo(wv *window, info id, entered bool) {
+	old := s.pageDrag
+	if old == wv {
+		return
+	}
+	s.pageDrag, s.pageDropped = wv, false
+	if old == nil {
+		if wv != nil {
+			// The drag came in over the content, whose drop zones hear
+			// that it left.
+			s.leaveContent(info)
+			if !entered {
+				objc.Send[uintptr](wv.web, objc.RegisterName("draggingEntered:"), uintptr(info))
+			}
+		}
+		return
+	}
+	if !old.closed {
+		objc.Send[struct{}](old.web, objc.RegisterName("draggingExited:"), uintptr(info))
+	}
+	if wv != nil && !entered {
+		objc.Send[uintptr](wv.web, objc.RegisterName("draggingEntered:"), uintptr(info))
+	}
+}
+
+// dragExited tells the page of the drag that the pointer left it, or the
+// content that it left the surface. A drag the page took is the page's
+// until it ends: the exit AppKit sends after a drop is not the page's.
+func (s *surface) dragExited(info id) {
+	wv, dropped := s.pageDrag, s.pageDropped
+	s.pageDrag, s.pageDropped = nil, false
+	if dropped {
+		return
+	}
+	if wv != nil && !wv.closed {
+		objc.Send[struct{}](wv.web, objc.RegisterName("draggingExited:"), uintptr(info))
+		return
+	}
+	s.leaveContent(info)
+}
+
+// leaveContent tells the content that the drag left it, which stops the
+// hover of a drop zone there. The content only learns of a drag from
+// nativeDataEvent, so one that leaves without ever coming in over it is
+// the content's to hear of by the drag's offer alone: a drag under way
+// (dataDrag) may be at a drop zone no drag over event reached yet.
+func (s *surface) leaveContent(info id) {
+	s.nativeDataEvent(info, platform.DataDragLeave)
+}
+
+// pageDragEnd returns the web view the drag belonged to, now that it ended,
+// and forgets it: a drag the page took concludes on it, then it is over.
+func (s *surface) pageDragEnd() *window {
+	wv := s.pageDrag
+	s.pageDrag, s.pageDropped = nil, false
+	if wv == nil || wv.closed {
+		return nil
+	}
+	return wv
+}
+
+// pageDrop gives the drop to the page of wv, which records the paths of the
+// files dropped on it (MyGoWebView's performDragOperation:), and reports
+// whether the page took it.
+func (s *surface) pageDrop(wv *window, info id) bool {
+	var taken bool
+	withPool(func() {
+		taken = objc.Send[bool](wv.web, objc.RegisterName("performDragOperation:"), uintptr(info))
+	})
+	return taken
+}

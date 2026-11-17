@@ -223,6 +223,11 @@ func dropOwner(owner int) {
 		}
 		if len(kept) == 0 {
 			delete(itemsByID, id)
+			// No menu shows the item any more: an app that builds a
+			// context menu of new items each time it shows one would
+			// otherwise leave a role here for each, for good, which
+			// enableEditItems walks.
+			delete(itemRoles, id)
 		} else {
 			itemsByID[id] = kept
 		}

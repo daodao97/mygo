@@ -158,3 +158,32 @@ func TestTrayName(t *testing.T) {
 		t.Errorf("an icon of no ID whose name an icon of an ID has is %q, want notes-5-2", got)
 	}
 }
+
+// TestDropOwnerForgetsRoles checks that a menu that is gone leaves nothing
+// of its items behind: an app that builds a context menu of new items each
+// time it shows one would grow itemRoles for good, which enableEditItems
+// walks. An item another menu still shows keeps its role.
+func TestDropOwnerForgetsRoles(t *testing.T) {
+	popup, bar := newOwner(), newOwner()
+	const once, shared = -1, -2 // no item of an app has such an ID
+	itemsByID[once] = []nativeItem{{owner: popup}}
+	itemsByID[shared] = []nativeItem{{owner: popup}, {owner: bar}}
+	itemRoles[once], itemRoles[shared] = "copy", "paste"
+	t.Cleanup(func() {
+		for _, id := range []int{once, shared} {
+			delete(itemsByID, id)
+			delete(itemRoles, id)
+		}
+	})
+	dropOwner(popup)
+	if _, ok := itemRoles[once]; ok || itemsByID[once] != nil {
+		t.Errorf("an item of the menu dropped alone: role kept %v, %d native items", ok, len(itemsByID[once]))
+	}
+	if itemRoles[shared] != "paste" || len(itemsByID[shared]) != 1 {
+		t.Errorf("an item another menu shows: role %q, %d native items", itemRoles[shared], len(itemsByID[shared]))
+	}
+	dropOwner(bar)
+	if _, ok := itemRoles[shared]; ok {
+		t.Error("its role stayed after the last menu showing it went")
+	}
+}

@@ -140,6 +140,9 @@ type Renderer struct {
 	// the names of those textures.
 	canvases  map[uint64]*canvasTexture
 	canvasTex map[uint32]bool
+	// atlases are the atlases of the frame being drawn, which mask and
+	// color hold: a canvas's scene may draw from its own (scene.Scene.Own).
+	atlases [2]*scene.Atlas
 
 	// The passes computing the backdrops of effects: down and blur are
 	// their programs, with their uniforms' locations, drawn with passVAO;
@@ -692,6 +695,7 @@ func (r *Renderer) draw(s *scene.Scene) error {
 	if err := r.syncAtlas(&r.color, s.ColorAtlas, glRGBA8, glRGBA); err != nil {
 		return err
 	}
+	r.atlases = [2]*scene.Atlas{s.MaskAtlas, s.ColorAtlas}
 	if err := r.drawCanvases(s); err != nil {
 		return err
 	}
@@ -804,6 +808,31 @@ func (r *Renderer) drawCanvas(c *scene.Image) error {
 	glBindFramebuffer(glFramebuffer, t.fb)
 	cs := c.Scene
 	cs.Width, cs.Height = c.W, c.H
+	// A canvas that keeps its glyphs (scene.Scene.Own) draws them from
+	// atlases of its own, in textures made for this drawing.
+	frame := [2]texture{r.mask, r.color}
+	defer func() {
+		for i, a := range [2]*texture{&r.mask, &r.color} {
+			if a.tex != frame[i].tex && a.tex != 0 {
+				glDeleteTextures(1, &a.tex)
+			}
+			*a = frame[i]
+		}
+	}()
+	if a := cs.MaskAtlas; a != nil && a != r.atlases[0] {
+		r.mask = texture{}
+		glActiveTexture(glTexture0)
+		if err := r.syncAtlas(&r.mask, a, glR8, glRed); err != nil {
+			return err
+		}
+	}
+	if a := cs.ColorAtlas; a != nil && a != r.atlases[1] {
+		r.color = texture{}
+		glActiveTexture(glTexture0)
+		if err := r.syncAtlas(&r.color, a, glRGBA8, glRGBA); err != nil {
+			return err
+		}
+	}
 	if err := r.drawScene(cs, &t.b); err != nil {
 		return err
 	}

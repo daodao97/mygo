@@ -776,7 +776,7 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		if wp == timerWebView {
 			procKillTimer.Call(hwnd, timerWebView)
 			for _, v := range s.w.webViews {
-				if webViewBuilt && v.controller == 0 && v.webViewErr == nil {
+				if webViewBuilt && v.asksAgain() {
 					v.createWebView()
 				}
 			}

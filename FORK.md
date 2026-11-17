@@ -41,6 +41,8 @@
   验证：macOS/Linux/Windows 的 `go build ./...`，`go vet . ./ui`；`go test . ./ui ./ui/editor ./ui/richtext ./ui/markdown/... ./internal/text ./internal/platform ./internal/linux/... ./internal/windows/... ./plugins/terminal/...`（13,163 项）通过；iOS 后端 vet、Android `.so` 构建与 16KB 对齐、`../Miya` 的 `go build ./...` 通过。
 - 2026-11-18 第二阶段完成：`sync-940` 快进合入 `main`（`964d7b6f`），随后同步上游 7 个提交（`12e8babd` 之后的 `55b50cfa`），无冲突。上游新增的 `internal/platform/touch.go` 是 Windows 触屏手势（点按、长按右键、拖动滚动、双指缩放，`DragRegionAt`），与 fork 在 `internal/mobile/surface.go` 的手机双指手势分属不同层，不重叠。真机（iPhone 16）上修掉的 #940 问题（编辑菜单弹出键盘、只读文本手柄与菜单位置、编辑菜单不消失与点光标切换、`KeepFocus` 按钮误弹菜单、菜单拷贝后取消只读选区）都直接改在源文件里，可整理为上游 PR。
   验证：macOS/Linux/Windows `CGO_ENABLED=0` 编译与 `go vet ./...`、wasm、iOS/Android 交叉 vet；根包、`ui`、`ui/editor`、`ui/richtext`、`internal/mobile`、`internal/windows`、终端插件、`uimigrate` 测试通过；`go generate ./ui` 无差异。
+- 2026-11-18 第二次同步上游 5 个提交（`55b50cfa..e88574c8`，含 0.10.0）。冲突 1 处：`internal/darwin/testhooks.go`，上游 #1946 加了 `TestDropFilesFrom`（拖入点与松手点分开，测试拖到网页视图），fork 加了 `TestDropFileReferences`（Finder 的 file-reference URL）。两者不是同一功能，都保留：内部的 `testDropFiles` 同时带 `overX, overY` 和 `references`，三个导出函数都调它。对照这批新增检查了 fork 代码：#1946 让拖到 native UI 中网页视图的文件交给 WebKit，fork 在 `surface_drag.go` 的改动是 native UI 自己的 `DataDrop` 用 NSURL 解析 file-reference URL，路径不同、不重叠；`Painter.RichText` 缓存（#1979）、canvas 字形保留（#1977）、WebView2 创建与 Linux 资源释放（#1978）在 fork 中没有同功能实现。`go generate ./ui` 无差异。
+  验证：macOS/Linux/Windows 的 `go build ./...`，`go vet . ./ui ./internal/darwin ./internal/e2e`、Linux/Windows 后端 vet；`go test . ./ui ./internal/darwin ./internal/gpu/metal` 通过；`../Miya` 的 `go build ./...` 通过。
 - 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
 
 ## 规则
@@ -246,8 +248,8 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 进行中的上游 PR：
 
-- #1525（草稿，2026-11-09）：`plugins/desktopcontrol` 作为纯 Go 官方插件，附 `examples/desktopcontrol` 和 `docs/plugins/desktopcontrol.md`。不含 `RunPrivacy`（gamma 遮屏），它留在 fork，之后单独提交。分支 `pr/desktopcontrol-plugin`，worktree `~/.cache/mygo-pr/desktopcontrol`。合并后按规则 1 改用上游版本，fork 只保留 `privacy*`。
-- #1571（草稿，2026-11-09）：loading 插件默认 30 fps（`Options.FPS`、`DefaultFPS`），`Painter.AnimationFrameRate` 在窗口没有键盘焦点时请求一半的帧，`ui.Tester.SetRefreshRate`。fork 的提交是 `2035305e`。上游版本的 `AnimationFrameRate` 保留上游的 `p.rt.repainting = true`，fork 用的是 frame-why 诊断的 `repaintFrames(false)`，其余相同。分支 `pr/loading-fps`，worktree `~/.cache/mygo-pr/loading-fps`。合并后同步时 `ui/paint.go` 以上游为准，同时保留 fork 的 `repaintFrames`。
+- #1525（2026-11-09 开为草稿，2026-11-18 查询时已转为待审，未合并）：`plugins/desktopcontrol` 作为纯 Go 官方插件，附 `examples/desktopcontrol` 和 `docs/plugins/desktopcontrol.md`。不含 `RunPrivacy`（gamma 遮屏），它留在 fork，之后单独提交。分支 `pr/desktopcontrol-plugin`，worktree `~/.cache/mygo-pr/desktopcontrol`。合并后按规则 1 改用上游版本，fork 只保留 `privacy*`。
+- #1571（2026-11-09 开为草稿，2026-11-18 查询时已转为待审，未合并）：loading 插件默认 30 fps（`Options.FPS`、`DefaultFPS`），`Painter.AnimationFrameRate` 在窗口没有键盘焦点时请求一半的帧，`ui.Tester.SetRefreshRate`。fork 的提交是 `2035305e`。上游版本的 `AnimationFrameRate` 保留上游的 `p.rt.repainting = true`，fork 用的是 frame-why 诊断的 `repaintFrames(false)`，其余相同。分支 `pr/loading-fps`，worktree `~/.cache/mygo-pr/loading-fps`。合并后同步时 `ui/paint.go` 以上游为准，同时保留 fork 的 `repaintFrames`。
 
 已被上游合并的 fork 改动：#928（macOS 空闲唤醒）、#1057（CJK 强调）、#1058（链接实线下划线）、#1077（zsh shell integration，上游在其基础上做了修改）、#1305（同步更新在 1 秒后放行，2026-11-06 同步时 `view.go` 取上游，两边的测试都保留）、#1530（macOS 原生 popover 跟随应用外观，2026-11-09 合并；同步时自动合并在 `showPopover` 里留下了 fork 和上游各一份 `setAppearance`，删掉 fork 那份，`popover.go` 与上游一致）、#1302（终端链接识别：Unicode 路径、带引号的路径、`(行,列)` 和 `#L行C列`，2026-11-07 同步时改用上游，见下表）。
 

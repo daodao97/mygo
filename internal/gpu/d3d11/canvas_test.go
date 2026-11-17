@@ -39,6 +39,34 @@ func TestCanvases(t *testing.T) {
 	}
 }
 
+// A canvas that keeps the bitmaps of its glyphs (scene.Scene.Own) draws
+// them from its own atlases, not from the frame's, which hold others, in
+// the frame that draws it, in one that only shows it and in one that
+// draws it anew; so does one with a mask atlas of its own alone.
+func TestOwnedCanvas(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	scenes := []*scene.Scene{gputest.OwnedCanvasScene(true), gputest.OwnedCanvasScene(false)}
+	r, err := New(hiddenWindow(t, scenes[0].Width, scenes[0].Height))
+	if err != nil {
+		t.Skip("no Direct3D 11:", err)
+	}
+	defer r.Release()
+	for _, s := range scenes {
+		for frame := range gputest.OwnedCanvasFrames {
+			if err := r.draw(s); err != nil {
+				t.Fatal(err)
+			}
+			pix, stride := r.readBack(t)
+			gputest.Compare(t, "d3d11-owned-canvas", pix, stride, s)
+			if err := r.present(1); err != nil {
+				t.Fatal(err)
+			}
+			gputest.OwnedCanvasNext(s, frame)
+		}
+	}
+}
+
 // A transient canvas's texture stays while frames draw it, and goes once
 // they stop, though the canvas is still about; another canvas's stays
 // until it is collected.

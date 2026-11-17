@@ -207,7 +207,9 @@ func (shell) OpenPath(path string) error    { return launch(fileURI(path)) }
 
 func (s shell) ShowItemInFolder(path string) {
 	uri := fileURI(path)
-	uris := gVariantNewArray(gVariantTypeNew(cs("s")), unsafe.Pointer(&[]ptr{gVariantNewString(cs(uri))}[0]), 1)
+	str := gVariantTypeNew(cs("s"))
+	uris := gVariantNewArray(str, unsafe.Pointer(&[]ptr{gVariantNewString(cs(uri))}[0]), 1)
+	gVariantTypeFree(str) // the array has its own
 	ctx, id := folderStartup()
 	defer gObjectUnref(ctx)
 	params := tuple(uris, gVariantNewString(cs(id)))
@@ -623,7 +625,9 @@ func dbusCall(name, path, iface, method string, params ptr, replyType string) (p
 	}
 	var rt ptr
 	if replyType != "" {
+		// The call only reads it.
 		rt = gVariantTypeNew(cs(replyType))
+		defer gVariantTypeFree(rt)
 	}
 	var gerr ptr
 	res := gDBusConnectionCallSync(conn, cs(name), cs(path), cs(iface), cs(method), params, rt, 0, 3000, 0, &gerr)
@@ -725,10 +729,7 @@ func (b *Backend) showNotification(n *platform.Notification) error {
 			hints = append(hints, hint)
 		}
 	}
-	hintArray := gVariantNewArray(gVariantTypeNew(cs("{sv}")), nil, 0)
-	if len(hints) > 0 {
-		hintArray = gVariantNewArray(0, unsafe.Pointer(&hints[0]), uintptr(len(hints)))
-	}
+	hintArray := vardict(hints...)
 	body := n.Body
 	if n.Subtitle != "" {
 		body = n.Subtitle + "\n" + body

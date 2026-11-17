@@ -868,7 +868,11 @@ features GTK 4 lacks become X11-only code beside it.
   A creation that fails is tried again, three times in all, a second
   then two apart, as Microsoft advises unless it failed with
   `ERROR_INVALID_STATE`: under load, WebView2 fails some with `ERROR_BUSY`
-  or `CO_E_SERVER_EXEC_FAILURE`. When the webview never comes, the calls
+  or `CO_E_SERVER_EXEC_FAILURE`. The web views of a window of native UI
+  share one timer, their surface's. It asks again for those whose creation
+  failed, but not for one WebView2 has not answered about yet
+  (`window.creating`), such as a web view made after the failure, which
+  would get a second controller. When the webview never comes, the calls
   that report a result (Eval, CapturePage, PrintToPDF) get the reason, as
   later ones do: the window closed, or WebView2 could not create it.
   User data lives in `%LOCALAPPDATA%\<name>\WebView2`. The direct path applies
@@ -5961,7 +5965,8 @@ either.
   `NewOffscreen`).
 - **Canvases** (`scene.NewCanvas`, `ui.Canvas`) are images drawn from a
   scene of their own. `Canvas.Draw` paints into its scene with a painter
-  of scale 1 sharing the window's atlases, and lists it in the frame's
+  of scale 1 sharing the window's atlases, which the scene leaves for its
+  own once painted (below), and lists it in the frame's
   `Scene.Canvases`, inner canvases first as they finish. Before a frame,
   each renderer draws the canvases it lists or shows whose version its
   texture does not hold (`Scene.EachCanvas`, those a canvas shows before
@@ -5978,6 +5983,24 @@ either.
   than wait for the canvas to be collected, which the little of Go's heap
   it takes may put off for minutes while its texture takes megabytes. The CPU renderer draws
   canvases into their `Pix` (`PixVersion`).
+  A renderer draws a canvas from its scene whenever it has not its
+  texture: one made anew, as after the GPU went away or a low-memory
+  warning, Metal's after it freed its textures while the window was idle,
+  another window's, or the CPU renderer for a capture. That may be long
+  after the frame that painted the scene, when the atlases every window
+  shares hold other bitmaps where its glyphs were (`System.MakeRoom`), and
+  other masks (a mask drawn for the first time lasts for its frame
+  alone). A canvas a view draws (`Canvas.Draw`), which it may do once,
+  therefore gives its scene atlases of its own (`Scene.Own`), holding the
+  bitmaps its glyphs show and no other, and renderers draw such a scene
+  with them, in textures made for that drawing. A canvas painted again
+  keeps the atlases it has while its bitmaps fit them and take a quarter
+  of their height or more, so that one drawn every frame makes none in
+  most. The glyphs and paths left out as the canvas was painted, the
+  shared atlas having no room for them, stay left out; the paths that
+  spilled stay in their layer, which the canvas's scene shows
+  (`pathSpill.shown`). The layers of effects and of `Cache` keep the
+  window's atlases: every frame painted whole paints their scenes again.
   Near square corners, coverage is exact, the area of a pixel
   inside the box, so lines thinner than a pixel cover as much as they
   should, as text decorations need. A fill's border widths travel in its

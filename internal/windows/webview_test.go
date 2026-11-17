@@ -3,6 +3,7 @@
 package windows
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -44,6 +45,26 @@ func TestUnhandledKey(t *testing.T) {
 	for _, vk := range []uintptr{0x09, vkShift, vkControl, vkMenu, vkLWin, 0xA0, 0xFF} {
 		if _, ok := unhandledKey(w, vk, 0, false); ok {
 			t.Errorf("virtual key %#x reached the content", vk)
+		}
+	}
+}
+
+// TestAsksAgain checks which web views of a surface its timer asks WebView2
+// for again after a creation failed: those whose creation failed, not one
+// WebView2 is creating, which would get a second controller, nor one that
+// has its controller or gave up.
+func TestAsksAgain(t *testing.T) {
+	for name, c := range map[string]struct {
+		w    window
+		want bool
+	}{
+		"its creation failed": {window{webViewFails: 1}, true},
+		"being created":       {window{creating: true}, false},
+		"created":             {window{controller: 1}, false},
+		"gave up":             {window{webViewFails: webViewAttempts, webViewErr: errors.New("busy")}, false},
+	} {
+		if got := c.w.asksAgain(); got != c.want {
+			t.Errorf("a web view %s: asked again %v, want %v", name, got, c.want)
 		}
 	}
 }

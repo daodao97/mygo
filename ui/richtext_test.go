@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"math"
 	"testing"
@@ -204,4 +205,89 @@ func TestSpanPadding(t *testing.T) {
 			t.Errorf("line %d of the wrapped span is %v wide, past 70", i, line.Width)
 		}
 	}
+}
+
+// richLines draws shown of its lines from line from through
+// Painter.RichText, each two spans filled into the one slice, as a view
+// reusing its scratch does: line i's second span is red, or blue for odd
+// i, swapped by swap.
+type richLines struct {
+	texts       []string
+	scratch     []Span
+	from, shown int
+	swap        bool
+}
+
+// richLineStep is how far apart richLines draws its lines, in DIPs: more
+// than a line of the default font is high on any system, so that no
+// line's glyphs reach into the next's band.
+const richLineStep = 32
+
+func newRichLines(n int) *richLines {
+	rl := &richLines{shown: n}
+	for i := range n {
+		rl.texts = append(rl.texts, fmt.Sprintf("line %d: ", i), fmt.Sprintf("value %d", i*7))
+	}
+	return rl
+}
+
+func (rl *richLines) color(i int) Color {
+	if (i%2 == 0) != rl.swap {
+		return RGB(255, 0, 0)
+	}
+	return RGB(0, 0, 255)
+}
+
+func (rl *richLines) view(c *context) {
+	coreBox(c).Fill().Draw(func(p *Painter, r Rect) {
+		lines := len(rl.texts) / 2
+		for k := range rl.shown {
+			i := (rl.from + k) % lines
+			// Both spans in the line's color, a primary one: the fringes of
+			// text in the theme's, which subpixel antialiasing tints, could
+			// pass for the other line color.
+			rl.scratch = append(rl.scratch[:0], Span{Text: rl.texts[2*i], Color: rl.color(i)}, Span{Text: rl.texts[2*i+1], Color: rl.color(i), Weight: 700})
+			p.RichText(0, float32(k)*richLineStep, 0, rl.scratch...)
+		}
+	})
+}
+
+// A view drawing many rich texts through Painter.RichText lays out and
+// encodes their spans once, not every frame, and draws each line with its
+// own spans, though it fills them all into one slice (#1976).
+func TestPainterRichTextKeepsSpans(t *testing.T) {
+	const lines = 40
+	rl := newRichLines(lines)
+	tt := coreNewTester(rl.view, 300, lines*richLineStep)
+	check := func(when string) {
+		t.Helper()
+		img := tt.Image()
+		for i := range lines {
+			want := rl.color(i)
+			found, wrong := false, false
+			for y := i * richLineStep; y < (i+1)*richLineStep; y++ {
+				for x := range 300 {
+					c := img.RGBAAt(x, y)
+					red, blue := c.R > 200 && c.B < 80, c.B > 200 && c.R < 80
+					found = found || want.R == 255 && red || want.B == 255 && blue
+					wrong = wrong || want.R == 255 && blue || want.B == 255 && red
+				}
+			}
+			if !found || wrong {
+				t.Fatalf("%s: line %d drawn without its color %v (found %v, other color %v)", when, i, want, found, wrong)
+			}
+		}
+	}
+	tt.Frame()
+	check("first frame")
+	tt.Frame()
+	check("steady frame")
+	if n := testing.AllocsPerRun(20, tt.Frame); n > 2 {
+		t.Errorf("a steady frame of %d rich texts allocates %.0f times", lines, n)
+	}
+	rl.swap = true
+	tt.Frame()
+	check("swapped colors")
+	tt.Frame()
+	check("swapped colors, steady")
 }

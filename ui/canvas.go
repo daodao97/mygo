@@ -25,6 +25,8 @@ type Canvas struct {
 	// cache tells, for the layer of an element kept by Cache, whether
 	// what it paints changed.
 	cache *layerCache
+	// own are the atlases of what Draw drew last (keep).
+	own *scene.Owned
 }
 
 // NewCanvas returns a canvas of w×h pixels, transparent until drawn.
@@ -45,17 +47,35 @@ func (cv *Canvas) Size() (w, h int) { return cv.img.W, cv.img.H }
 // callback's painter. What fn paints is what any painter paints: shapes,
 // paths, text, images, parts of them, other canvases, under transforms and
 // clips. Drawn, the canvas shows it from this frame on.
-func (cv *Canvas) Draw(p *Painter, fn func(cp *Painter)) { cv.draw(p, 1, fn) }
-
-// draw is Draw with scale pixels a DIP, the units fn paints in.
-func (cv *Canvas) draw(p *Painter, scale float32, fn func(cp *Painter)) {
-	cv.drawPart(p, scale, cv.img.W, cv.img.H, fn)
+func (cv *Canvas) Draw(p *Painter, fn func(cp *Painter)) {
+	cv.paint(p, 1, cv.img.W, cv.img.H, fn)
+	cv.keep()
+	cv.drawn(p)
 }
 
-// drawPart is draw into the canvas's top left w×h pixels, as an effect's
-// layer larger than its content: fn paints nothing beyond them, and
-// backdrops end at their edge (scene.Scene.Drawn), as in a canvas of that
-// size.
+// keep has the canvas's scene keep the bitmaps of the glyphs and masks it
+// draws, in atlases of its own (scene.Scene.Own). A renderer draws a
+// canvas from its scene whenever it has not its texture: one made anew,
+// as after the GPU went away, one that freed its textures while the
+// window was idle, another window's, or the one a capture draws in
+// memory. That may be long after Draw, which the view calls once, when
+// the atlases every window shares hold other glyphs where the canvas's
+// were, and other masks.
+//
+// The layers of effects and of Cache need none: every frame painted whole
+// paints their scenes again.
+func (cv *Canvas) keep() {
+	if cv.own == nil {
+		cv.own = &scene.Owned{}
+	}
+	cv.img.Scene.Own(cv.own)
+}
+
+// drawPart is Draw with scale pixels a DIP, the units fn paints in, into
+// the canvas's top left w×h pixels, as an effect's layer larger than its
+// content: fn paints nothing beyond them, and backdrops end at their edge
+// (scene.Scene.Drawn), as in a canvas of that size. Its scene keeps the
+// window's atlases (keep).
 func (cv *Canvas) drawPart(p *Painter, scale float32, w, h int, fn func(cp *Painter)) {
 	cv.paint(p, scale, w, h, fn)
 	cv.drawn(p)

@@ -34,6 +34,9 @@ type window struct {
 	pending      []pendingCall
 	webViewErr   error
 	webViewFails int // creations that failed
+	// creating is true from the time WebView2 was asked for the controller
+	// until it answered.
+	creating bool
 	// scriptIDs are the ids of the scripts added to every document, which
 	// SetUserScripts removes; scriptGen counts the replacements, so an id
 	// that arrives after one is removed at once.

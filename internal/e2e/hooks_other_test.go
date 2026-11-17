@@ -153,6 +153,10 @@ func pressKeyComposing(*mygo.Window, uint16, string, string, string) bool { retu
 
 func dragFiles(*mygo.Window, float64, float64, []string) (bool, bool) { return false, false }
 
+func dropFilesFrom(*mygo.Window, float64, float64, float64, float64, []string) (bool, bool, bool) {
+	return false, false, false
+}
+
 // AppKit's older accessibility API is macOS's.
 func axAttribute(*mygo.Window, string, string) (string, bool, bool, bool) {
 	return "", false, false, false

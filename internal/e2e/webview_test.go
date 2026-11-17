@@ -182,9 +182,11 @@ func TestContentWindowWebViewDrop(t *testing.T) {
 	w.Update(func() { view = v })
 	v.Page().LoadHTML(`<body style="margin:0;height:100vh"><script>
 document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("dragleave", () => (window.left = true));
 document.addEventListener("drop", (e) => {
 	e.preventDefault();
 	window.dropped = [...e.dataTransfer.files].map((f) => f.name).join(",");
+	window.drops = (window.drops || 0) + 1;
 });
 window.ready = true;
 </script></body>`, "")
@@ -196,14 +198,14 @@ window.ready = true;
 	}
 	dropped, ok := dragFiles(w, 250, 150, []string{file})
 	if !ok {
-		t.Skip("drags routed by the window's drop target are Windows's")
+		t.Skip("drags to a page of native UI are macOS's")
 	}
 	if !dropped {
 		t.Error("the page did not take the drop")
 	}
 	waitForPage(t, v.Page(), "window.dropped === 'page.txt'")
-	// Beside the page, the drop target hands the drag to the native UI,
-	// whose element takes the files as in TestContentWindowFileDrop.
+	// Beside the page, the drag is the native UI's, whose element takes the
+	// files as in TestContentWindowFileDrop.
 	if over, dropped, _ := dropFiles(w, 50, 150, []string{file}); !over || !dropped {
 		t.Errorf("the native UI beside the page took the drag %v and the drop %v", over, dropped)
 	}
@@ -212,6 +214,28 @@ window.ready = true;
 		mygo.RunOnMain(func() { n = len(zone) })
 		return n == 1
 	})
+
+	// A drag over the page that is let go beside it is the content's: the
+	// page hears the drag leave it, and takes no drop.
+	if over, dropped, ok := dropFilesFrom(w, 250, 150, 50, 150, []string{file}); !ok {
+		t.Skip("drags over a page then beside it are macOS's")
+	} else if !over || !dropped {
+		t.Errorf("the native UI beside the page took the drag %v and the drop %v", over, dropped)
+	}
+	eventually(t, "the drag leaving the page", func() bool {
+		s, _ := mygo.EvalAs[string](v.Page(), "window.left === true ? 'yes' : 'no'")
+		return s == "yes"
+	})
+
+	// A drag that comes in over the content and moves onto the page is the
+	// page's where it is let go: AppKit routes the drag to the surface, and
+	// the page hears its entered, its events and its drop from there.
+	if over, dropped, ok := dropFilesFrom(w, 50, 150, 250, 150, []string{file}); ok {
+		if !over || !dropped {
+			t.Errorf("the page took the drag %v and the drop %v", over, dropped)
+		}
+		waitForPage(t, v.Page(), "window.drops === 2")
+	}
 }
 
 // TestContentWindowWebViewEditMenu makes a web view before its window drew

@@ -372,6 +372,12 @@ func dragFiles(w *mygo.Window, x, y float64, paths []string) (dropped, ok bool) 
 	return dropped, true
 }
 
+// OLE routes a drag to a window's drop target as a whole, whose answer does
+// not follow the pointer within it.
+func dropFilesFrom(*mygo.Window, float64, float64, float64, float64, []string) (bool, bool, bool) {
+	return false, false, false
+}
+
 // pressTab presses Tab, with Shift when back, on the keyboard, in the
 // window brought to the front.
 func pressTab(w *mygo.Window, back bool) (ok bool) {
