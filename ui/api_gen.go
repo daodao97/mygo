@@ -8654,8 +8654,9 @@ func (_handle Element) TouchPointer() Element {
 }
 
 // TouchSelection has the element's input handler hear long presses on it
-// (InputLongPress) where it is editable or selectable text, before a long
-// press selects a word, for the frame it is called in.
+// (InputLongPress) where it is text, which a long press otherwise selects in,
+// for the frame it is called in. A finger on it presses only as it lifts, a
+// tap: a hold does not focus it first.
 func (_handle Element) TouchSelection() Element {
 	_node := _handle.node()
 	if _node == nil {

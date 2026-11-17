@@ -211,3 +211,70 @@ func TestExtendIntoSafeArea(t *testing.T) {
 		}
 	}
 }
+
+// Text that asks for TouchSelection: a hold its handler takes does not
+// focus it, a tap does, and text that does not ask keeps its long press.
+func TestTouchSelectionDefersThePress(t *testing.T) {
+	value, held := "", 0
+	ask := true
+	tt := NewTester(func(c *Context) {
+		in := TextInput(c, &value).Label("Message").Size(300, 44).HandleInput(func(ev InputEvent) bool {
+			if ev.Kind == InputLongPress {
+				held++
+				return true
+			}
+			return false
+		})
+		if ask && !in.Focused() {
+			in.TouchSelection()
+		}
+	}, 320, 200)
+	tt.Frame()
+	r, _ := tt.Find("Message")
+	x, y := r.X+r.W/2, r.Y+r.H/2
+	tt.FingerDown(x, y)
+	tt.Advance(time.Second)
+	tt.FingerUp(x, y)
+	tt.Frame()
+	if held != 1 || tt.Focused("Message") {
+		t.Fatalf("hold: held %d, focused %v", held, tt.Focused("Message"))
+	}
+	tt.FingerDown(x, y)
+	tt.FingerUp(x, y)
+	tt.Advance(200 * time.Millisecond)
+	if !tt.Focused("Message") {
+		t.Fatal("a tap did not focus the input")
+	}
+	// Focused, it no longer asks: the hold is the text's.
+	tt.FingerDown(x, y)
+	tt.Advance(time.Second)
+	tt.FingerUp(x, y)
+	tt.Frame()
+	if held != 1 || !tt.Focused("Message") {
+		t.Fatalf("focused hold: held %d, focused %v", held, tt.Focused("Message"))
+	}
+}
+
+// Each ask holds for the frame that asks: asking for another every frame
+// keeps no earlier one.
+func TestTouchAsksLastAFrame(t *testing.T) {
+	ask := true
+	var id uint64
+	tt := NewTester(func(c *Context) {
+		e := Box(c).Size(100, 100).KeyboardDismiss(KeyboardDismissOnDrag)
+		if ask {
+			e.TouchSelection().TouchPointer()
+		}
+		id = uint64(e.ID())
+	}, 200, 200)
+	tt.Frame()
+	s := tt.rt.states[id]
+	if s == nil || !s.touchHold || !s.touchPointer || s.keyboardDismiss != KeyboardDismissOnDrag {
+		t.Fatalf("asked: %+v", s)
+	}
+	ask = false
+	tt.Frame()
+	if s.touchHold || s.touchPointer || s.keyboardDismiss != KeyboardDismissOnDrag {
+		t.Fatal("an ask outlived its frame")
+	}
+}

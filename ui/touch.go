@@ -203,7 +203,7 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 		}
 		t.holds = rt.longPressTarget(x, y)
 		t.inputHolds = rt.inputHoldAt(x, y)
-		if rt.overScroller(x, y) && !rt.touchPointerAt(x, y) {
+		if rt.overScroller(x, y) && !rt.touchPointerAt(x, y) || rt.defersPress(t.inputHolds) {
 			t.waiting, t.clicks = true, ev.Clicks
 			rt.requestFrame()
 			return true
@@ -822,7 +822,7 @@ func (rt *engine) bounceStep(dt float32) {
 func (rt *engine) touchStep(now time.Time) {
 	if t := &rt.touch; t.down {
 		if t.waiting {
-			if now.Sub(t.at) >= pressDelay {
+			if now.Sub(t.at) >= pressDelay && !rt.defersPress(t.inputHolds) {
 				t.waiting = false
 				rt.pressNow(*t)
 			} else {

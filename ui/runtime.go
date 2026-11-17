@@ -1706,7 +1706,10 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		s.parent = 0
 	}
 	s.flags = e.flags
-	s.forgetTouchAsks(rt.frame)
+	s.touchHold, s.touchPointer, s.keyboardDismiss = e.touchHold, e.touchPointer, e.keyboardDismiss
+	if s.gestureEnabled = e.gestureEnabled; !s.gestureEnabled {
+		s.gestures = nil
+	}
 	if s.fingersFrame != rt.frame && (s.refresh != nil || s.longPress) {
 		// What asked for them went, and this element has its place.
 		s.refresh, s.longPress = nil, false

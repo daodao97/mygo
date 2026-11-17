@@ -869,12 +869,11 @@ type state struct {
 	longPress, longPressed bool
 	// fingersFrame is the frame that last asked for longPress or refresh.
 	fingersFrame uint64
-	// The fork's touch extensions (touch_fork.go), as the frame touchFrame
-	// asked for them, and the gestures since the last frame.
+	// The fork's touch extensions the last frame asked for, and the
+	// gestures since it (touch_fork.go).
 	touchHold, touchPointer, gestureEnabled bool
 	keyboardDismiss                         KeyboardDismissMode
 	gestures                                []GestureEvent
-	touchFrame                              uint64
 	contentW                                float64
 	contentH                                float64
 	// barInset is the element's ScrollbarInsets, and barStyle how its

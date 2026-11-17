@@ -496,13 +496,16 @@ type node struct {
 
 	// Input the element takes itself (HandleInput), and where the caret of
 	// the text it takes is (TextCaret).
-	inputFn    func(InputEvent) bool
-	observeFn  func(InputEvent) // the input in it (ObserveInput)
-	textClient TextInputClient
-	caret      Rect
-	takesText  bool
-	noIME      bool // InputMethod(false)
-	copyData   func(parts []SelectedText) transfer.Data
+	inputFn func(InputEvent) bool
+	// The fork's touch extensions this frame asks for (touch_fork.go).
+	touchHold, touchPointer, gestureEnabled bool
+	keyboardDismiss                         KeyboardDismissMode
+	observeFn                               func(InputEvent) // the input in it (ObserveInput)
+	textClient                              TextInputClient
+	caret                                   Rect
+	takesText                               bool
+	noIME                                   bool // InputMethod(false)
+	copyData                                func(parts []SelectedText) transfer.Data
 
 	// Content.
 	spans    []Span // of a RichText

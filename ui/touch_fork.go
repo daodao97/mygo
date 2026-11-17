@@ -36,13 +36,11 @@ const (
 )
 
 // TouchSelection has the element's input handler hear long presses on it
-// (InputLongPress) where it is editable or selectable text, before a long
-// press selects a word, for the frame it is called in.
+// (InputLongPress) where it is text, which a long press otherwise selects in,
+// for the frame it is called in. A finger on it presses only as it lifts, a
+// tap: a hold does not focus it first.
 func (e *node) TouchSelection() *node {
-	if e.hasState() {
-		e.st.touchHold = true
-		e.st.touchFrame = e.c.rt.frame
-	}
+	e.touchHold = true
 	return e
 }
 
@@ -51,20 +49,14 @@ func (e *node) TouchSelection() *node {
 // come as InputPointerMove, for the frame it is called in. A remote screen or
 // a canvas that draws with the finger asks for it.
 func (e *node) TouchPointer() *node {
-	if e.hasState() {
-		e.st.touchPointer = true
-		e.st.touchFrame = e.c.rt.frame
-	}
+	e.touchPointer = true
 	return e
 }
 
 // KeyboardDismiss has a finger starting to pan anywhere dismiss the on-screen
 // keyboard while the element, a text input, has the focus.
 func (e *node) KeyboardDismiss(m KeyboardDismissMode) *node {
-	if e.hasState() {
-		e.st.keyboardDismiss = m
-		e.st.touchFrame = e.c.rt.frame
-	}
+	e.keyboardDismiss = m
 	return e
 }
 
@@ -91,12 +83,11 @@ type gestureCapture struct {
 // on until it ends or the element goes. Elements that ask for none leave two
 // fingers to pinch what is under them (InputZoom).
 func (e *node) Gestures() []GestureEvent {
+	e.gestureEnabled = true
 	if !e.hasState() {
 		return nil
 	}
 	s := e.st
-	s.gestureEnabled = true
-	s.touchFrame = e.c.rt.frame
 	if len(s.gestures) == 0 {
 		return nil
 	}
@@ -104,14 +95,6 @@ func (e *node) Gestures() []GestureEvent {
 	s.gestures = nil
 	e.c.rt.consumed = true
 	return out
-}
-
-// forgetTouchAsks drops what an element no longer asks for.
-func (s *state) forgetTouchAsks(frame uint64) {
-	if s.touchFrame != frame {
-		s.touchHold, s.touchPointer, s.gestureEnabled = false, false, false
-		s.keyboardDismiss, s.gestures = KeyboardDismissNone, nil
-	}
 }
 
 // inputHoldAt returns the innermost element under x, y whose input handler
@@ -122,12 +105,19 @@ func (rt *engine) inputHoldAt(x, y float32) uint64 {
 		if s == nil || s.input == nil || s.flags&flagDisabled != 0 {
 			continue
 		}
-		if s.flags&(flagEditable|flagSelectable) != 0 && !s.touchHold {
-			return 0
+		if (s.flags&(flagEditable|flagSelectable) != 0 || s.takesText || s.textClient != nil) && !s.touchHold {
+			return 0 // text, which a long press selects in
 		}
 		return id
 	}
 	return 0
+}
+
+// defersPress reports whether a finger on what asked for TouchSelection waits
+// to press until it lifts: a tap presses it, a long press or a pan never.
+func (rt *engine) defersPress(id uint64) bool {
+	s := rt.states[id]
+	return id != 0 && s != nil && s.touchHold
 }
 
 // longPressInput offers t's long press to the input handler under it, and

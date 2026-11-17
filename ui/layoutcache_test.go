@@ -464,7 +464,7 @@ func TestLayoutInputs(t *testing.T) {
 		"setPos setSize choosesItems search description invalid readOnly multiline describedBy errorMessage followX sort level expandable " +
 		"chooseMany serial ignoreInput handleDoubleClick accessHidden accessDisabled themed lift ringOffset ringColor ringSet clipping zIndex zOrder " +
 		"roleDescription controls hasPopup popupSet " +
-		"caretFn textContext touchScroll touchSelection inputOptions inputAccessory inputAction inputModifiers inputConsumed"
+		"touchHold touchPointer keyboardDismiss"
 	known := map[string]bool{}
 	for _, f := range strings.Fields(read + " " + other) {
 		known[f] = true
