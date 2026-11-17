@@ -1,0 +1,16 @@
+{
+  "mobile": {
+    "id": "microphone",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "MicrophonePlugin",
+      "frameworks": ["AVFoundation"],
+      "infoPlist": {"NSMicrophoneUsageDescription": "This app records audio with the microphone."}
+    },
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "MicrophonePlugin",
+      "permissions": ["RECORD_AUDIO"]
+    }
+  }
+}
