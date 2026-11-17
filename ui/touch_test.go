@@ -886,3 +886,37 @@ func TestTouchAsksLastAFrame(t *testing.T) {
 		t.Fatal("an ask outlived its frame")
 	}
 }
+
+// A tap on a button that keeps the input's focus, as a chat's Send, is no tap
+// on its caret: it shows no edit menu.
+func TestKeepFocusTapIsNoCaretTap(t *testing.T) {
+	value, sent := "", 0
+	tt := NewTester(func(c *Context) {
+		Column(c).Gap(20).Padding(20).Children(func() {
+			TextInput(c, &value).Label("Message").Size(300, 44)
+			if Button(c, "Send").KeepFocus().Clicked() {
+				sent++
+			}
+		})
+	}, 400, 300)
+	tt.Frame()
+	r, _ := tt.Find("Message")
+	tt.FingerDown(r.X+r.W/2, r.Y+r.H/2)
+	tt.FingerUp(r.X+r.W/2, r.Y+r.H/2)
+	tt.Frame()
+	if !tt.Focused("Message") {
+		t.Fatal("the input took no focus")
+	}
+	caretAt := tt.rt.touchText.caretAt
+	tt.Advance(time.Second)
+	b, _ := tt.Find("Send")
+	tt.FingerDown(b.X+b.W/2, b.Y+b.H/2)
+	tt.FingerUp(b.X+b.W/2, b.Y+b.H/2)
+	tt.Frame()
+	if sent != 1 || !tt.Focused("Message") {
+		t.Fatalf("sent %d, focused %v", sent, tt.Focused("Message"))
+	}
+	if tt.rt.touchText.caretAt != caretAt {
+		t.Fatal("a tap on Send was taken for a tap on the caret")
+	}
+}

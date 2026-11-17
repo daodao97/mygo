@@ -436,6 +436,19 @@ func (rt *engine) afterTap(was *touchPan) {
 		rt.touchText.id = 0
 		return
 	}
+	// Only a tap on the input itself: one on a button that keeps the focus
+	// there (KeepFocus), as a chat's Send, leaves its caret where it was and
+	// is no tap on the caret.
+	on := false
+	for _, id := range rt.hitChain(was.x0, was.y0) {
+		if id == rt.focused {
+			on = true
+			break
+		}
+	}
+	if !on {
+		return
+	}
 	rt.textTapped(s, was.textBefore == rt.focused, was.selBefore)
 }
 
