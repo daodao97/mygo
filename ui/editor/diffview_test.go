@@ -1624,3 +1624,34 @@ func TestDiffLargeTypingWhileComparing(t *testing.T) {
 		t.Fatalf("hunks %v, want %v", got, want)
 	}
 }
+
+// With ScrollPastEnd, GoToHunk brings the last change to the middle of the
+// view, where without it the view stops at the last line; Focus then gives
+// the side its caret's editor the keyboard.
+func TestDiffScrollPastEndAndFocus(t *testing.T) {
+	var a []string
+	for i := range 200 {
+		a = append(a, "line "+strconv.Itoa(i))
+	}
+	b := append([]string(nil), a...)
+	b[198] = "changed"
+	for _, past := range []bool{false, true} {
+		for _, layout := range []DiffLayout{DiffSplit, DiffUnified} {
+			d := &DiffState{Old: NewBuffer(strings.Join(a, "\n")), New: NewBuffer(strings.Join(b, "\n")),
+				Layout: layout, ExpandUnchanged: true, ScrollPastEnd: past}
+			tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 600)
+			tt.Frame()
+			d.GoToHunk(0)
+			d.Focus()
+			tt.Frame()
+			tt.Frame()
+			end := d.LineTop(DiffNew, d.New.LineCount()) - d.ViewportHeight()
+			if y := d.ScrollY(); past != (y > end) {
+				t.Errorf("layout %v, ScrollPastEnd %v: ScrollY %v, the last line's bottom at %v", layout, past, y, end)
+			}
+			if !d.eds[1].focused {
+				t.Errorf("layout %v: Focus left the new side without the keyboard", layout)
+			}
+		}
+	}
+}

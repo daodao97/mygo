@@ -97,6 +97,10 @@ the final newline adds the empty line after it, where typing goes.
 - `KeepScrollbars` and `NoScrollbars` are those of the code editor: the
   scroll bar stays with the pointer away, so that a diff filling the
   window shows how far down it is, or goes, with its room.
+- `ScrollPastEnd` lets the lines scroll up until the last is at the top,
+  as the code editor's do unless `NoScrollPastEnd`, so that `GoToHunk` can
+  bring a change near the end to the middle of the view; it has no effect
+  with `FitContent`. Off, the view stops at the last line.
 - `Font`, `LineHeight`, `TabSize` and `Theme` are those of the code
   editor. Changes are tinted with the theme's `Added`, `Deleted` and
   `Modified` colors, mixed with the background in a perceptual color
@@ -151,7 +155,11 @@ return the offset and the position of its newest caret, as the code
 editor's do, and `CurrentHunk` the change the caret is in, with `inside`
 true, or else the last before it, -1 before the first, as "2 of 5"
 counts them; `GoToHunk` moves that caret, so Next Change can step from
-it. `Run` runs a command in its editor as its key would, and `Find` opens
+it, and leaves the keyboard where it was: `Focus` gives it to the diff, to
+its active side, as the frame is next built, so that its caret shows and its
+keys work after a button or a menu item moved the caret. A button that
+`KeepFocus`es leaves the keyboard in the diff by itself, when it was there.
+`Run` runs a command in its editor as its key would, and `Find` opens
 its find bar on a query, as an app's menu items do where the menu takes
 the keys first:
 
