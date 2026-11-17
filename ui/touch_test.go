@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -431,6 +432,119 @@ func TestTouchTextHandles(t *testing.T) {
 	tt.Frame()
 	if got := in.st.editor.selectedText(); got != "hello big world" {
 		t.Errorf("dragged to the end: chose %q", got)
+	}
+}
+
+// On iOS a finger held on a text input brings the caret under it and moves
+// it as it moves, choosing nothing; the edit menu waits for it to lift.
+func TestTouchLongPressMovesCaret(t *testing.T) {
+	defer func(b bool) { longPressMovesCaret = b }(longPressMovesCaret)
+	longPressMovesCaret = true
+	v := "hello big world"
+	var in *node
+	tt := coreNewTester(func(c *context) {
+		in = coreTextInput(c, &v).Fill().AutoFocus()
+	}, 300, 60)
+	tt.Frame()
+	tt.Frame()
+	tt.FingerDown(20, 30)
+	tt.Advance(600 * time.Millisecond)
+	sel := in.st.textAdapter.Selection().Range
+	if sel.Start != sel.End {
+		t.Fatalf("held: chose %q, want a caret", in.st.editor.selectedText())
+	}
+	if tt.rt.touchText.held != handleCaret {
+		t.Fatalf("held: the finger holds %d, not the caret", tt.rt.touchText.held)
+	}
+	if tt.rt.touchText.menu {
+		t.Error("the edit menu shows while the finger is down")
+	}
+	start := sel.Start
+	tt.FingerMove(280, 30)
+	tt.Frame()
+	sel = in.st.textAdapter.Selection().Range
+	if sel.Start != sel.End || sel.End <= start {
+		t.Errorf("moved right: selection %v, from a caret at %d", sel, start)
+	}
+	tt.FingerUp(280, 30)
+	tt.Frame()
+	if tt.rt.touchText.held != handleNone {
+		t.Errorf("lifted: still holds %d", tt.rt.touchText.held)
+	}
+	if sel := in.st.textAdapter.Selection().Range; sel.Start != sel.End {
+		t.Errorf("lifted: chose %q", in.st.editor.selectedText())
+	}
+}
+
+// selectingClient is a text client whose selection the system moves, as a
+// rich text editor's.
+type selectingClient struct{ primitiveClient }
+
+func (c *selectingClient) SetTextSelection(r TextInputRange) {
+	c.selection = TextInputSelection{Range: r}
+}
+
+// The same goes for an element taking text itself (HandleTextInput), as a
+// rich text editor, with a menu of its own: the menu waits for the finger to
+// lift, and is its own rather than the system's.
+func TestTouchLongPressMovesCaretOfTextClient(t *testing.T) {
+	defer func(b bool) { longPressMovesCaret = b }(longPressMovesCaret)
+	longPressMovesCaret = true
+	c := &selectingClient{primitiveClient{text: strings.Repeat("a", 60), selection: TextInputSelection{Range: TextInputRange{Start: 0, End: 0}}}}
+	tt := coreNewTester(func(ctx *context) {
+		coreBox(ctx).Size(250, 80).HandleTextInput(c).AutoFocus().ContextMenu(func(m *Menu) { m.Item("Quote") })
+	}, 300, 100)
+	tt.Frame()
+	tt.Frame()
+	tt.FingerDown(40, 30)
+	tt.Advance(600 * time.Millisecond)
+	if tt.rt.touchText.held != handleCaret {
+		t.Fatalf("held: the finger holds %d, not the caret", tt.rt.touchText.held)
+	}
+	if m := tt.Menu(); m != nil {
+		t.Fatalf("held: the menu %v shows while the finger is down", m)
+	}
+	if got := c.selection.Range; got != (TextInputRange{Start: 10, End: 10}) {
+		t.Errorf("held at 40: selection %v, want a caret at 10", got)
+	}
+	tt.FingerMove(120, 30)
+	tt.Frame()
+	if got := c.selection.Range; got != (TextInputRange{Start: 30, End: 30}) {
+		t.Errorf("moved to 120: selection %v, want a caret at 30", got)
+	}
+	tt.FingerUp(120, 30)
+	tt.Frame()
+	if m := tt.Menu(); len(m) != 1 || m[0] != "Quote" {
+		t.Errorf("lifted: menu %v, want its own", m)
+	}
+}
+
+// Elsewhere a finger held on a text input chooses a word, and moving on
+// before it lifts drags the word's end.
+func TestTouchLongPressDragsWordEnd(t *testing.T) {
+	defer func(b bool) { longPressMovesCaret = b }(longPressMovesCaret)
+	longPressMovesCaret = false
+	v := "hello big world"
+	var in *node
+	tt := coreNewTester(func(c *context) {
+		in = coreTextInput(c, &v).Fill().AutoFocus()
+	}, 300, 60)
+	tt.Frame()
+	tt.Frame()
+	tt.FingerDown(20, 30)
+	tt.Advance(600 * time.Millisecond)
+	if got := in.st.editor.selectedText(); got != "hello" {
+		t.Fatalf("held: chose %q", got)
+	}
+	tt.FingerMove(280, 30)
+	tt.Frame()
+	if got := in.st.editor.selectedText(); got != "hello big world" {
+		t.Errorf("dragged on: chose %q", got)
+	}
+	tt.FingerUp(280, 30)
+	tt.Frame()
+	if got := in.st.editor.selectedText(); got != "hello big world" {
+		t.Errorf("lifted: chose %q", got)
 	}
 }
 

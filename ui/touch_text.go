@@ -20,6 +20,12 @@ const (
 	caretHandleFor = 4 * time.Second
 )
 
+// longPressMovesCaret says a finger held still on a text input brings its
+// caret under the finger, with the magnifier, and moves it as the finger
+// moves, as iOS's text fields do; elsewhere it chooses a word, as Android's
+// do, whose end the finger then drags.
+var longPressMovesCaret = runtime.GOOS == "ios"
+
 // Which handle a finger holds.
 const (
 	handleNone = iota
@@ -37,6 +43,9 @@ type touchText struct {
 	caretAt time.Time
 	// held is the handle a finger holds.
 	held int
+	// grabbed says the finger took it by a long press, on the text, rather
+	// than by the handle drawn below it: what it points at is under it.
+	grabbed bool
 	// menu says the edit menu shows, which a finger landing or a key puts
 	// away.
 	menu bool
@@ -165,14 +174,25 @@ func (rt *engine) handleAt(x, y float32) int {
 // dragHandle moves the selection's end a finger holds to under it.
 func (rt *engine) dragHandle(x, y float32) {
 	a, _, _, sel, ok := rt.handles()
+	t := &rt.touchText
 	if !ok {
+		if t.grabbed {
+			// An input the long press just focused takes text from the
+			// next frame.
+			rt.requestFrame()
+			return
+		}
 		rt.dragSelectionHandle(x, y) // selected read-only text
 		return
 	}
-	t := &rt.touchText
-	// The line above the finger, which hides what is under it.
+	// A handle: the line above the finger, which hides what is under it.
+	// Taken by a long press, the finger is on the text itself.
 	wx, wy := rt.windowPoint(x, y)
-	i, found := a.IndexForPoint(wx, wy-12)
+	lift := 12.0
+	if t.grabbed {
+		lift = 0
+	}
+	i, found := a.IndexForPoint(wx, wy-lift)
 	if !found {
 		return
 	}

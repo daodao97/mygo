@@ -206,7 +206,7 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 		t.sample(rt.now(), x, y)
 		rt.catchBounces()
 		if h := rt.handleAt(x, y); h != handleNone {
-			rt.touchText.held = h
+			rt.touchText.held, rt.touchText.grabbed = h, false
 			return true
 		}
 		t.textBefore = rt.focused
@@ -307,9 +307,15 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 		t.down, t.waiting, t.holds = false, false, 0
 		rt.releaseCaught(&was)
 		if rt.touchText.held != handleNone {
-			rt.touchText.held = handleNone
+			grabbed := rt.touchText.grabbed
+			rt.touchText.held, rt.touchText.grabbed = handleNone, false
 			rt.touchSurface(func(s platform.TouchSurface) { s.HideMagnifier() })
-			if s := rt.states[rt.touchText.id]; s != nil {
+			if s := rt.states[rt.touchText.id]; s != nil && grabbed && s.flags&flagContextMenu != 0 {
+				// A long press on an input with a menu of its own shows
+				// that menu as it lifts, as the secondary button does.
+				rt.pointerDown(x, y, 1, rt.mods, 1)
+				rt.pointerUp(1, 1, false)
+			} else if s != nil {
 				rt.showEditMenu(s)
 			}
 			rt.requestFrame()
@@ -422,7 +428,7 @@ func (rt *engine) cancelTouch() {
 	}
 	rt.releaseCaught(&was)
 	if rt.touchText.held != handleNone {
-		rt.touchText.held = handleNone
+		rt.touchText.held, rt.touchText.grabbed = handleNone, false
 		rt.touchSurface(func(s platform.TouchSurface) { s.HideMagnifier() })
 	}
 	if r := rt.swipeRouter; was.edge && r != nil {
@@ -959,7 +965,7 @@ func (rt *engine) longPressTarget(x, y float32) uint64 {
 		if s == nil || s.flags&flagDisabled != 0 {
 			continue
 		}
-		if s.longPress || s.drags() || s.flags&(flagContextMenu|flagEditable|flagSelectable) != 0 {
+		if s.longPress || s.drags() || s.flags&(flagContextMenu|flagEditable|flagSelectable) != 0 || s.textClient != nil {
 			return id
 		}
 	}
@@ -978,6 +984,9 @@ func (rt *engine) longPress(t *touchPan) {
 	}
 	rt.haptic("medium")
 	x, y := t.lx, t.ly
+	// Text an element takes itself (HandleTextInput), as a rich text
+	// editor, is edited as an input is.
+	editable := s.flags&flagEditable != 0 || s.textClient != nil
 	switch {
 	case s.longPress:
 		s.longPressed = true
@@ -990,7 +999,17 @@ func (rt *engine) longPress(t *touchPan) {
 		// handling.
 		t.dragging = true
 		rt.pointerMove(x, y)
-	case s.flags&flagEditable != 0 || s.flags&flagSelectable != 0:
+	case editable && longPressMovesCaret:
+		// The caret under the finger, as a tap puts it, which then follows
+		// it with the magnifier; the edit menu shows as it lifts.
+		rt.cancelPress()
+		rt.lastPress.prev, rt.lastPress.base = 0, 0
+		rt.pointerDown(x, y, 0, rt.mods, 1)
+		rt.pointerUp(0, 1, false)
+		t.swallow = true
+		rt.touchText.id, rt.touchText.held, rt.touchText.grabbed = s.id, handleCaret, true
+		rt.dragHandle(x, y)
+	case editable || s.flags&flagSelectable != 0:
 		// A word chosen, as a double click does.
 		rt.cancelPress()
 		// As the second press of two on it, whatever it was pressed before.
@@ -999,7 +1018,16 @@ func (rt *engine) longPress(t *touchPan) {
 		rt.pointerUp(0, 2, false)
 		t.swallow = true
 		rt.touchText.id = s.id
-		rt.showEditMenu(s)
+		if !editable {
+			rt.showEditMenu(s)
+			break
+		}
+		// The finger drags on the end of the word, or the caret where it
+		// chose none; the edit menu shows as it lifts.
+		rt.touchText.held, rt.touchText.grabbed = handleEnd, true
+		if _, _, _, sel, ok := rt.handles(); ok && sel.Start == sel.End {
+			rt.touchText.held = handleCaret
+		}
 	default:
 		// The context menu, as the secondary button does.
 		rt.cancelPress()
