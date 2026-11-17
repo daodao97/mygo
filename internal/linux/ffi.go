@@ -155,6 +155,7 @@ var (
 	gVariantNewTuple               func(children unsafe.Pointer, n uintptr) ptr
 	gVariantNewArray               func(typ ptr, children unsafe.Pointer, n uintptr) ptr
 	gVariantTypeNew                func(s *byte) ptr
+	gVariantTypeFree               func(typ ptr)
 	gVariantGetChildValue          func(v ptr, i uintptr) ptr
 	gVariantGetUint32              func(v ptr) uint32
 	gVariantGetUint64              func(v ptr) uint64
@@ -592,6 +593,7 @@ func load() error {
 	mustBind(g, &gVariantNewTuple, "g_variant_new_tuple")
 	mustBind(g, &gVariantNewArray, "g_variant_new_array")
 	mustBind(g, &gVariantTypeNew, "g_variant_type_new")
+	mustBind(g, &gVariantTypeFree, "g_variant_type_free")
 	mustBind(g, &gVariantGetChildValue, "g_variant_get_child_value")
 	mustBind(g, &gVariantGetUint32, "g_variant_get_uint32")
 	mustBind(g, &gVariantGetUint64, "g_variant_get_uint64")

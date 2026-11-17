@@ -439,6 +439,14 @@ func (w *window) cleanup() {
 	w.b.flyouts = slices.DeleteFunc(w.b.flyouts, func(x *window) bool { return x == w })
 	delete(w.b.byWebView, w.web)
 	dropOwner(w.owner)
+	if w.accel != 0 {
+		// The window gives up its own reference as GTK destroys it; this
+		// is the one gtk_accel_group_new returned, as installMenu frees
+		// the group it replaces.
+		delete(roleKeys, w.accel)
+		gObjectUnref(w.accel)
+		w.accel = 0
+	}
 	if w.surface != nil {
 		w.surface.destroy()
 	}

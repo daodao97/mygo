@@ -633,7 +633,11 @@ features GTK 4 lacks become X11-only code beside it.
   A creation that fails is tried again, three times in all, a second
   then two apart, as Microsoft advises unless it failed with
   `ERROR_INVALID_STATE`: under load, WebView2 fails some with `ERROR_BUSY`
-  or `CO_E_SERVER_EXEC_FAILURE`. When the webview never comes, the calls
+  or `CO_E_SERVER_EXEC_FAILURE`. The web views of a window of native UI
+  share one timer, their surface's. It asks again for those whose creation
+  failed, but not for one WebView2 has not answered about yet
+  (`window.creating`), such as a web view made after the failure, which
+  would get a second controller. When the webview never comes, the calls
   that report a result (Eval, CapturePage, PrintToPDF) get the reason, as
   later ones do: the window closed, or WebView2 could not create it.
   User data lives in `%LOCALAPPDATA%\<name>\WebView2`. The direct path applies
