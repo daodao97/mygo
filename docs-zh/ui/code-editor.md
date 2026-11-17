@@ -119,6 +119,11 @@ app.code.OnInput = func(ev ui.InputEvent) bool {
   ```
 - `Font` 和 `LineHeight` 设置文本：默认是系统的等宽字体，13 DIP，行高为字号的 1.5 倍。
 - `NoAutoClose`、`NoFolding`、`NoActiveLine` 和 `NoScrollPastEnd` 关闭这些行为。`Placeholder` 在缓冲区为空时显示。
+- `ScrollMargin` 设置将插入符滚动到可见区域时，上下保留的行数。0 使用默认的 3 行，正数指定行数，负数表示不留空间。视口较小时，留白随之缩小。到达滚动边界时不再延伸。
+
+  ```go
+  st.ScrollMargin = -1 // 不留空间
+  ```
 - `CursorShape` 决定插入符的画法：竖线（`CursorBar`）；覆盖其后字符的块（`CursorBlock`，Vim 的普通模式如此，块半透明以便看见字符，编辑器没有键盘焦点时带描边）；或下划线（`CursorUnderline`，Vim 的待定操作符如此）。
 - `DiffBase` 是行号边栏中对照显示缓冲区更改的文本，比如 Git 中的文件版本：竖条标出新增和更改的行，标记表示删除发生在哪里。Cmd+F8 转到下一处更改，Cmd+Alt+Z 还原插入符处的更改。
 - `ContextMenu` 在编辑器自己的上下文菜单项之后添加菜单项。

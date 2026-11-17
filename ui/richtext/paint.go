@@ -142,9 +142,26 @@ func (v *view) paintBlock(p *ui.Painter, i int, st ParagraphStyle, x, top, heigh
 			}
 			top, height = top+above, height-above
 		}
+		// A bar is rounded only at the ends of its quotation: where the
+		// paragraph above or below goes on at its level, the bars join
+		// square, as one.
 		w := look.QuoteBarWidth
+		var above, below int
+		if i > 0 {
+			above = v.para(i - 1).style.quoteDepth()
+		}
+		if i+1 < len(v.paras) {
+			below = v.para(i + 1).style.quoteDepth()
+		}
 		for level := range st.quoteDepth() {
-			p.Fill(ui.Rect{X: x + indent + float32(level)*look.indent*0.75, Y: top, W: w, H: height}, look.QuoteBar, w/2)
+			r := [4]float32{w / 2, w / 2, w / 2, w / 2}
+			if above > level {
+				r[0], r[1] = 0, 0
+			}
+			if below > level {
+				r[2], r[3] = 0, 0
+			}
+			p.FillRadii(ui.Rect{X: x + indent + float32(level)*look.indent*0.75, Y: top, W: w, H: height}, r, look.QuoteBar)
 		}
 	}
 }

@@ -276,7 +276,7 @@ func textUnit(s *state, at, unit int) (int, int) {
 	case 2:
 		return s.editor.buf.wordAt(at)
 	case 3:
-		return s.editor.lineEdges(at)
+		return s.editor.buf.paraEdges(at)
 	}
 	return at, at
 }

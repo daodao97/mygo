@@ -532,8 +532,8 @@ func (e *node) Search() *node {
 }
 
 // Selectable lets the user select and copy text by dragging, double-clicking
-// a word, triple-clicking a line, or using Shift with the arrows. Its context
-// menu has Copy and Select All; Cmd+C copies the selection.
+// a word, triple-clicking a paragraph, or using Shift with the arrows. Its
+// context menu has Copy and Select All; Cmd+C copies the selection.
 //
 // On a container, its Text and RichText descendants share one selection.
 // Copy joins their selected text with newlines, in the order they were built.

@@ -46,6 +46,21 @@ sel.Popup(func(panel ui.Element) {
 })
 ```
 
+As `ui.Select`'s, the popup is no taller than the room the window has: put
+a long list of options in a scroll container that shrinks, which then
+scrolls inside the window:
+
+```go
+sel.Popup(func(panel ui.Element) {
+	panel.Margin(4, 0, 0, 0).Padding(4).MaxHeight(256)
+	ui.Scroll(c).Shrink(1).Children(func() {
+		for _, opt := range options {
+			sel.Item(opt).Height(32).Padding(0, 10).Children(func() { ui.Text(c, opt) })
+		}
+	})
+})
+```
+
 `SetOpen` opens and closes the popup, as typing on the closed trigger may
 open it, highlighting the option typed, or Tab moving on close it; the
 popup opens with the highlight on the choice, which `Highlight` then

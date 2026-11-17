@@ -472,7 +472,9 @@ func TestLayoutInputs(t *testing.T) {
 	ty := reflect.TypeFor[node]()
 	for i := range ty.NumField() {
 		f := ty.Field(i)
-		if f.Name == "layoutStyle" {
+		// The blank field is the padding that keeps the element a whole
+		// number of cache lines (element.go): layout reads no bytes of it.
+		if f.Name == "layoutStyle" || f.Name == "_" {
 			continue
 		}
 		if !known[f.Name] {

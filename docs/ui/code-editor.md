@@ -263,6 +263,14 @@ app.code.OnInput = func(ev ui.InputEvent) bool {
   13 DIPs, 1.5 times as high, by default.
 - `NoAutoClose`, `NoFolding`, `NoActiveLine` and `NoScrollPastEnd` turn
   those behaviors off. `Placeholder` shows while the buffer is empty.
+- `ScrollMargin` sets how many lines to keep above and below the
+  caret when scrolling it into view. Zero uses three lines, a positive
+  value sets that many lines, and a negative value removes the margin.
+  The margin shrinks to fit the viewport and stops at the scroll limits.
+
+  ```go
+  st.ScrollMargin = -1 // no margin
+  ```
 - `CursorShape` paints carets as bars (`CursorBar`), as blocks over the
   character after them (`CursorBlock`), as Vim's normal mode does,
   translucent so that the character shows and outlined while the editor

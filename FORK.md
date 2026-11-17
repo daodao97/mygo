@@ -39,6 +39,8 @@
   验证：macOS/Linux/Windows 的 `go build ./...`，`go vet . ./ui`；`go test . ./ui ./ui/editor ./ui/richtext ./internal/text ./internal/platform ./internal/linux/... ./internal/windows/... ./plugins/terminal/...`（13,002 项）通过；iOS 后端 vet、Android `.so` 构建与 16KB 对齐、`../Miya` 的 `go build ./...` 通过。
 - 2026-11-17 同步上游 18 个提交（`9db28d4e..12e8babd`，含 0.9.2），无冲突。上游 `main` 的下一个提交是 #940（`6e712c6e`，632 个文件，约 5.5 万行）。在临时 worktree 试合并到它，有 65 个文件冲突（55 个 UU、10 个 AA），按决定这次不合，另开分支做第二阶段。平台契约只给 Now Playing 加了 `MediaRaise` 和 `MediaInfo.Artists`，移动端不用补方法。`ui/api_gen.go` 用 fork 的生成器重建，只带进了 PopoverMenu 子菜单指向保持（`menuAimGrace`）的注释。对照这批新增检查了 fork 代码：子菜单指向保持、文本框把单独的 `\r` 当换行、字形偏离基线、Now Playing 多艺术家与 MPRIS Raise、diff 越过末尾滚动、Markdown 增量解析、调用和事件一直等待的修复，在 fork 中都没有同功能实现。
   验证：macOS/Linux/Windows 的 `go build ./...`，`go vet . ./ui`；`go test . ./ui ./ui/editor ./ui/richtext ./ui/markdown/... ./internal/text ./internal/platform ./internal/linux/... ./internal/windows/... ./plugins/terminal/...`（13,163 项）通过；iOS 后端 vet、Android `.so` 构建与 16KB 对齐、`../Miya` 的 `go build ./...` 通过。
+- 2026-11-18 第二阶段完成：`sync-940` 快进合入 `main`（`964d7b6f`），随后同步上游 7 个提交（`12e8babd` 之后的 `55b50cfa`），无冲突。上游新增的 `internal/platform/touch.go` 是 Windows 触屏手势（点按、长按右键、拖动滚动、双指缩放，`DragRegionAt`），与 fork 在 `internal/mobile/surface.go` 的手机双指手势分属不同层，不重叠。真机（iPhone 16）上修掉的 #940 问题（编辑菜单弹出键盘、只读文本手柄与菜单位置、编辑菜单不消失与点光标切换、`KeepFocus` 按钮误弹菜单、菜单拷贝后取消只读选区）都直接改在源文件里，可整理为上游 PR。
+  验证：macOS/Linux/Windows `CGO_ENABLED=0` 编译与 `go vet ./...`、wasm、iOS/Android 交叉 vet；根包、`ui`、`ui/editor`、`ui/richtext`、`internal/mobile`、`internal/windows`、终端插件、`uimigrate` 测试通过；`go generate ./ui` 无差异。
 - 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
 
 ## 规则

@@ -111,7 +111,7 @@ type editor struct {
 	sys       *text.System
 	coalesce  bool
 	dragging  bool
-	dragUnit  int // 1 rune, 2 word, 3 line
+	dragUnit  int // 1 rune, 2 word, 3 paragraph
 	dragStart [2]int
 	pressMods Modifiers
 	contentW  float32

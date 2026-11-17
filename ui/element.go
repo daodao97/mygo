@@ -286,33 +286,56 @@ const (
 // into the comparison there; TestLayoutInputs keeps node's other fields
 // out of layout.
 type layoutStyle struct {
-	// First, as what changes most, so that comparing finds it soonest.
-	text string
-
+	// First, as what changes most, so that comparing finds it soonest, and
+	// as what a walk reads: the text of a text element, its kind and its
+	// own alignment, then how it lays its own children out — a container
+	// reads those of itself as it lays out, and every container is a child
+	// of another, so they stand with the text in the element's second line
+	// rather than down in its cold end.
+	text                 string
 	kind                 kind
-	row                  bool
-	wrap                 bool
+	self                 Align
+	row, wrap            bool
 	reverse, wrapReverse bool
-	// dir is the element's direction (dirRTL, dirSet), and logical which
-	// of its horizontal edges were set by their start or end
-	// (direction.go).
-	dir, logical           uint8
-	justify, align, self   Align
-	alignContent           Align
-	gapX, gapY             float32
+	// dir is the element's direction (dirRTL, dirSet) (direction.go).
+	dir            uint8
+	justify, align Align
+	alignContent   Align
+	grid           bool
+	gapX, gapY     float32
+
+	// What the layout reads of every child a container walks, in the lines it
+	// reads them in: a container of a hundred thousand children reads all of
+	// these of each of them, so they come next, packed into the second,
+	// third and fourth cache lines of the element, under the tree links, the
+	// flags and the box that the first holds.
+	margin                 [4]float32 // Auto for auto margins
 	pad                    [4]float32 // top, right, bottom, left
 	border                 [4]float32 // top, right, bottom, left
-	margin                 [4]float32 // Auto for auto margins
 	width, height          length
 	minW, minH, maxW, maxH bound
 	grow, shrink           float32
 	basis                  length
-	inset                  [4]length
 	aspect                 float32
-	grid                   bool
-	justifyItems           Align // of a grid
-	cell                   gridCell
-	justifySelf            Align
+
+	// What no walk of a container's children reads comes last, in an order
+	// that leaves no padding in it: what is eight bytes wide first, where it
+	// needs none to stand, then what is one.
+	maxLines int
+	// cell is the element's place in its container's grid (gridCell), which
+	// only that container's own layout reads.
+	cell gridCell
+	// ellipsis is what ends a line of text that did not fit (Ellipsis).
+	ellipsis string
+	// inset is how far out of the flow the element sits (Absolute, Attach),
+	// from each edge of its container.
+	inset [4]length
+	// logical says which of its horizontal edges were set by their start or
+	// end (direction.go): the view sets it, the layout reads none of it.
+	logical uint8
+
+	justifyItems Align // of a grid
+	justifySelf  Align
 	// sticky holds the element in its scroll container by its insets
 	// (Sticky), which then do not move it as relative positioning does.
 	sticky bool
@@ -326,13 +349,11 @@ type layoutStyle struct {
 	// the walk.
 	absoluteChild bool
 
-	maxLines   int
 	single     bool
 	noWrap     bool
 	balance    bool
 	pretty     bool
 	keepSpaces bool
-	ellipsis   string
 	middle     bool
 	cutStart   bool
 }
@@ -372,22 +393,32 @@ type node struct {
 	// reads there too, so that the walk reads one cache line.
 	hidden bool
 	laid   uint64
+
+	parent *node
+	first  *node
+	next   *node
+
+	// The layout's results, in DIPs relative to the window. They are here,
+	// between the tree links and the style, so that a walk of a container's
+	// children reads the box it gives each of them in the lines it reads
+	// what it lays them out by, and not in a line of its own.
+	x, y, w, h float32
+
+	st   *state
+	last *node
 	// hold is the element's entry in the engine's holds (0 for none):
 	// what a measuring pass resolved for its in-flow children, which a
 	// commit pass at the same size uses instead of building them again.
 	hold int32
 
-	parent *node
-	first  *node
-	last   *node
-	next   *node
-	st     *state
-
-	// layoutStyle holds what lays the element out.
+	// layoutStyle holds what lays the element out. What the layout reads of
+	// every child a container walks comes first in it — the text, the kind
+	// and the alignment, then how a container lays its own children out and
+	// the sizes it lays the child out by — so that a walk of a container's
+	// children reads them next to the tree links, the flags and the box
+	// above, in the lines after them.
 	layoutStyle
 
-	// Layout results, in DIPs relative to the window.
-	x, y, w, h float32
 	// measured is what was measured of the element: its max-content and
 	// min-content widths, and its heights at widths.
 	measured
@@ -732,6 +763,13 @@ type node struct {
 	// serial is the order the pass made the element in: of overlays, the
 	// one made last shows on top.
 	serial int32
+	// The engine allocates elements from chunks of 32 (context.go), strided
+	// by the element's size, so that size is a whole number of cache lines:
+	// each element of a chunk then begins on one, and a walk of a
+	// container's children reads a child's box and style in the same lines
+	// whichever child it is on, rather than in one more line of most of
+	// them.
+	_ [2]uint32
 }
 
 // measure is the height of an element at a width (naturalHeight).

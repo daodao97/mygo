@@ -7,6 +7,10 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// defaultScrollMargin is how many lines the editor keeps above
+// and below the caret as it reveals it, as Zed's vertical_scroll_margin.
+const defaultScrollMargin = 3
+
 // State is a code editor's state, kept by the app across
 // frames: the buffer it edits, its options, and what the editor keeps of
 // its own, as its selections, folds and scroll position. Set the options
@@ -45,6 +49,12 @@ type State struct {
 	// NoScrollPastEnd stops scrolling at the last line rather than
 	// letting it scroll up to the top.
 	NoScrollPastEnd bool
+	// ScrollMargin is how many lines to keep above and below the
+	// caret when scrolling it into view. Zero uses the default of three
+	// lines, a positive value sets that many lines, and a negative value
+	// removes the margin. The margin shrinks to fit the viewport and
+	// stops at the scroll limits.
+	ScrollMargin int
 	// NoAutoClose stops closing brackets and quotes as they are typed.
 	NoAutoClose bool
 	// NoFolding hides the fold markers of the gutter and turns folding
@@ -237,10 +247,17 @@ type TextBackground struct {
 }
 
 func (st *State) options() options {
+	scrollMargin := defaultScrollMargin
+	if st.ScrollMargin > 0 {
+		scrollMargin = st.ScrollMargin
+	} else if st.ScrollMargin < 0 {
+		scrollMargin = 0
+	}
 	return options{
 		readOnly: st.ReadOnly, font: st.Font, lineHeight: st.LineHeight, tabSize: st.TabSize, indent: st.Indent,
 		wrap: st.SoftWrap, wrapColumn: st.WrapColumn, lineNumbers: st.LineNumbers, whitespace: st.Whitespace,
-		wrapGuides: st.WrapGuides, indentGuides: !st.NoIndentGuides, scrollPastEnd: !st.NoScrollPastEnd && !st.FitContent,
+		wrapGuides: st.WrapGuides, indentGuides: !st.NoIndentGuides,
+		scrollPastEnd: !st.NoScrollPastEnd && !st.FitContent, scrollMargin: scrollMargin,
 		keepScrollbars: st.KeepScrollbars, hideScrollbars: st.NoScrollbars, scrollbar: st.Scrollbar,
 		autoClose: !st.NoAutoClose, folding: !st.NoFolding, activeLine: !st.NoActiveLine, cursorShape: st.CursorShape, fitContent: st.FitContent,
 		placeholder: st.Placeholder, label: st.Label, theme: st.Theme, bindings: st.Bindings, gutterMarks: st.GutterMarks,

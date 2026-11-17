@@ -3,15 +3,24 @@
 package windows
 
 import (
+	"time"
 	"unsafe"
 
 	"github.com/egoist/mygo/internal/platform"
 )
 
-// Pens and fingers come as WM_POINTER messages, which the surface leaves
-// to DefWindowProc to make mouse messages of, as it does for windows that
-// handle none: the surface reads their pressure from them, and the mouse
-// messages that follow tell what device they come of.
+// Pens and fingers come as WM_POINTER messages. The surface leaves a
+// pen's to DefWindowProc to make mouse messages of, as it does for windows
+// that handle none: the surface reads its pressure from them, and the
+// mouse messages that follow tell what device they come of. A finger's it
+// takes (fingerMessage), so that DefWindowProc makes no mouse of the first
+// finger, and gives them to a platform.TouchGesture: a finger dragging
+// scrolls, two pinch, a tap clicks and press and hold right-clicks, as on
+// Linux. A finger landing on a web view embedded in the content is left
+// to DefWindowProc, whose mouse messages the web view gets
+// (forwardMouse), as is one landing on a drag region of a title bar the
+// content draws, whose press moves the window. Every finger is also sent
+// on its own (sendFinger), for the views that follow each.
 var (
 	procGetMessageExtraInfo = user32.NewProc("GetMessageExtraInfo")
 	procGetPointerType      = user32.NewProc("GetPointerType")
@@ -27,8 +36,10 @@ const (
 	// took the pointer, whose WM_POINTERUP comes there.
 	wmPointerCaptureChanged = 0x024C
 
-	// pointerMessageFlagCanceled is POINTER_MESSAGE_FLAG_CANCELED, in the
-	// high word of a WM_POINTER message's wParam.
+	// pointerMessageFlagPrimary and pointerMessageFlagCanceled are
+	// POINTER_MESSAGE_FLAG_PRIMARY and _CANCELED, in the high word of a
+	// WM_POINTER message's wParam.
+	pointerMessageFlagPrimary  = 0x2000
 	pointerMessageFlagCanceled = 0x8000
 	// pointerMessageFlagInContact is POINTER_MESSAGE_FLAG_INCONTACT.
 	pointerMessageFlagInContact = 0x0004
@@ -114,19 +125,28 @@ func pointerPressure(id uint32) (pressure float64, kind platform.PointerKind, at
 	return 0, 0, point{}, false
 }
 
-// pointerMessage notes the pressure of a WM_POINTER message, which the
-// mouse messages Windows makes of it carry (mouseDevice). A pen pressing
-// harder or softer where it stands makes no mouse message: the surface
-// moves the pointer where it is, with the new pressure, as Pointer Events
-// fire pointermove.
-func (s *surface) pointerMessage(m uint32, wp uintptr) {
+// pointerMessage handles a WM_POINTER message, and reports whether it
+// took it, of which DefWindowProc then makes no mouse: a finger's goes to
+// the gesture (fingerMessage). Of a pen's, or a finger's the gesture
+// leaves, it notes the pressure, which the mouse messages Windows makes of
+// it carry (mouseDevice). A pen pressing harder or softer where it stands
+// makes no mouse message: the surface moves the pointer where it is, with
+// the new pressure, as Pointer Events fire pointermove.
+func (s *surface) pointerMessage(m uint32, wp uintptr) bool {
 	pressure, kind, at, ok := pointerPressure(uint32(loword(wp)))
 	if !ok {
 		s.pressure = 0
-		return
+		return false
 	}
 	if kind == platform.PointerTouch {
-		s.touchMessage(m, wp, at, pressure)
+		pt := at
+		procScreenToClient.Call(s.hwnd, uintptr(unsafe.Pointer(&pt)))
+		x, y := s.toDIP(pt.X), s.toDIP(pt.Y)
+		t, _, _ := procGetMessageTime.Call()
+		if s.fingerMessage(m, wp, x, y, pressure, uint32(t)) {
+			return true
+		}
+		s.sendFinger(m, wp, x, y, pressure)
 	}
 	if m == wmPointerUpdate && s.buttons != 0 && at == s.pointerAt && pressure != s.pressure {
 		pt := at
@@ -134,14 +154,16 @@ func (s *surface) pointerMessage(m uint32, wp uintptr) {
 		s.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: s.toDIP(pt.X), Y: s.toDIP(pt.Y), Mods: mods(), Pointer: kind, Pressure: pressure})
 	}
 	s.pressure, s.pointerAt = pressure, at
+	return false
 }
 
-// touchMessage sends a finger's WM_POINTER message, at at on the screen,
-// with the contact of the touchInfo pointerPressure read, as a touch, for
-// the views that follow each finger (platform.TouchDown): its pointer ID
-// stays with the finger until it lifts. The mouse messages
-// Windows makes of the first finger come as before.
-func (s *surface) touchMessage(m uint32, wp uintptr, at point, pressure float64) {
+// sendFinger sends a finger's WM_POINTER message, at x, y in DIPs, with
+// the contact of the touchInfo pointerPressure read, as a touch, for the
+// views that follow each finger (platform.TouchDown): its pointer ID stays
+// with the finger until it lifts. They come besides the taps, scrolls and
+// pinches of the gesture, or the mouse messages Windows makes of a finger
+// the gesture leaves.
+func (s *surface) sendFinger(m uint32, wp uintptr, x, y, pressure float64) {
 	kind := platform.TouchMove
 	switch {
 	case m == wmPointerDown:
@@ -153,9 +175,85 @@ func (s *surface) touchMessage(m uint32, wp uintptr, at point, pressure float64)
 	case hiword(wp)&pointerMessageFlagInContact == 0:
 		return // hovering over the screen, as some can tell
 	}
-	procScreenToClient.Call(s.hwnd, uintptr(unsafe.Pointer(&at)))
 	w, h := touchContact(&touchInfo)
-	s.send(platform.SurfaceEvent{Kind: kind, ID: uint64(loword(wp)), X: s.toDIP(at.X), Y: s.toDIP(at.Y), Mods: mods(), Pressure: pressure, Width: s.toDIP(w), Height: s.toDIP(h)})
+	s.send(platform.SurfaceEvent{Kind: kind, ID: uint64(loword(wp)), X: x, Y: y, Mods: mods(), Pressure: pressure, Width: s.toDIP(w), Height: s.toDIP(h)})
+}
+
+// fingerMessage gives a finger's WM_POINTERDOWN, UPDATE or UP, at x, y in
+// DIPs, pressing with pressure at time t, to the surface's gesture, and
+// sends the finger and what the gesture makes of it. It reports whether
+// it took the message: a finger landing on an embedded web view, or on a
+// drag region of the content (platform.DragRegionAt), it leaves to
+// DefWindowProc, whose mouse the web view gets, or which moves the window
+// as the mouse's press does there.
+func (s *surface) fingerMessage(m uint32, wp uintptr, x, y, pressure float64, t uint32) bool {
+	id := uintptr(loword(wp))
+	var evs []platform.SurfaceEvent
+	switch {
+	case m == wmPointerDown:
+		if hiword(wp)&pointerMessageFlagPrimary != 0 {
+			// The first finger of new touches: no other is down,
+			// whatever ended unseen.
+			s.touch.Reset()
+		}
+		if !s.touch.Holds(id) && s.leavesFinger(x, y) {
+			return false
+		}
+		evs = s.touch.Begin(id, x, y, t)
+	case !s.touch.Holds(id):
+		return false
+	case m == wmPointerUpdate:
+		evs = s.touch.Move(id, x, y)
+	default:
+		evs = s.touch.End(id, x, y, t, pointerCanceled(wp))
+	}
+	s.sendFinger(m, wp, x, y, pressure)
+	s.sendTouch(evs, pressure, t)
+	return true
+}
+
+// leavesFinger reports whether a finger landing at x, y is left to
+// DefWindowProc's mouse: on an embedded web view, or on an element of a
+// title bar the content draws that moves the window, whose press
+// StartDrag makes the system's move, which a tap, pressing only as the
+// finger lifts, could not start.
+func (s *surface) leavesFinger(x, y float64) bool {
+	if s.layer != nil && s.webViewAt(x, y) != nil {
+		return true
+	}
+	return s.send(platform.SurfaceEvent{Kind: platform.DragRegionAt, X: x, Y: y})
+}
+
+// touchCaptureLost ends with no tap the finger of a
+// WM_POINTERCAPTURECHANGED, whose window took it, and reports whether it
+// was the gesture's.
+func (s *surface) touchCaptureLost(wp uintptr) bool {
+	id := uintptr(loword(wp))
+	if !s.touch.Holds(id) {
+		return false
+	}
+	s.sendTouch(s.touch.End(id, 0, 0, 0, true), 0, 0)
+	return true
+}
+
+// sendTouch sends the events of the gesture, by a finger pressing with
+// pressure at time t: a tap focuses the surface, as a click does, and
+// counts its presses as a mouse's, though taps land further apart.
+func (s *surface) sendTouch(evs []platform.SurfaceEvent, pressure float64, t uint32) {
+	for _, ev := range evs {
+		ev.Mods = mods()
+		ev.Pointer, ev.Pressure = platform.PointerTouch, pressure
+		if ev.Kind == platform.PointerDown {
+			procSetFocus.Call(s.hwnd)
+			// The count is in the window's pixels, as the mouse's.
+			scale := float64(s.dpi()) / 96
+			ms, _, _ := procGetDoubleClickTime.Call()
+			w, h := systemMetric(smCxDoubleClk, s.hwnd), systemMetric(smCyDoubleClk, s.hwnd)
+			dc := platform.DoubleClick{Time: time.Duration(ms) * time.Millisecond, DX: max(float64(w)/2, platform.TouchSlop*scale), DY: max(float64(h)/2, platform.TouchSlop*scale)}
+			ev.Clicks = s.clicks.Press(ev.Button, ev.X*scale, ev.Y*scale, t, dc)
+		}
+		s.send(ev)
+	}
 }
 
 // touchContact returns the size of a finger's contact with the screen,

@@ -51,6 +51,48 @@ func TestSelectableContainerMultiClick(t *testing.T) {
 	}
 }
 
+// TestSelectableTripleClickSelectsParagraph checks that a triple click
+// selects the paragraph to its newline, not the line it wrapped onto, and
+// that its drag extends by paragraphs, in a container and on a Text alone.
+func TestSelectableTripleClickSelectsParagraph(t *testing.T) {
+	const first = "The first paragraph is long enough to wrap onto lines of its own.\n"
+	const s = first + "Second.\nThird one."
+	for _, shared := range []bool{true, false} {
+		tt := coreNewTester(func(c *context) {
+			col := coreColumn(c).Width(160)
+			if shared {
+				col.Selectable().Children(func() { coreText(c, s) })
+			} else {
+				col.Children(func() { coreText(c, s).Selectable() })
+			}
+		}, 300, 400)
+		at := strings.Index(first, "lines") // ASCII: bytes are runes
+		if ed := tt.rt.texts[0].editor; ed.layout.LineAt(at) == 0 {
+			t.Fatalf("shared %v: %q did not wrap before %d", shared, first, at)
+		}
+		x, y := selectableAt(t, tt, s, at)
+		tt.clicks = platform.ClickCounter{}
+		for range 3 {
+			tt.ClickAt(x, y)
+		}
+		tt.Key(Cmd, KeyC)
+		if tt.Clipboard() != first {
+			t.Fatalf("shared %v: a triple click copied %q, want %q", shared, tt.Clipboard(), first)
+		}
+		tt.clicks = platform.ClickCounter{}
+		tt.ClickAt(x, y)
+		tt.ClickAt(x, y)
+		tt.Press(x, y)
+		x, y = selectableAt(t, tt, s, len(s)-2)
+		tt.Move(x, y)
+		tt.Release(x, y)
+		tt.Key(Cmd, KeyC)
+		if tt.Clipboard() != s {
+			t.Fatalf("shared %v: a triple click's drag copied %q, want %q", shared, tt.Clipboard(), s)
+		}
+	}
+}
+
 func TestSelectableContainerOrderAndOverlap(t *testing.T) {
 	tt := coreNewTester(func(c *context) {
 		coreBox(c).Selectable().Size(300, 150).Children(func() {

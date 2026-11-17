@@ -1290,6 +1290,37 @@ func TestEvalWindowCloses(t *testing.T) {
 	}
 }
 
+// TestEvalAnsweredByNextPage: an eval sent just before a navigation
+// commits may run in the page that comes next, as one sent right after
+// opening a window may run in the page it loads rather than the empty one
+// it starts with: the navigation leaves it be, and Eval returns the
+// answer of that page.
+func TestEvalAnsweredByNextPage(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{})
+	replies := make(chan func(string, error), 1)
+	fw.AsyncCallback = func(body string, reply func(string, error)) { replies <- reply }
+	type res struct {
+		v   any
+		err error
+	}
+	done := make(chan res, 1)
+	go func() {
+		v, err := w.Page().Eval("navigator.userAgent")
+		done <- res{v, err}
+	}()
+	reply := <-replies
+	onMain(func() { fw.H.NavigationCommitted("app://localhost/") })
+	onMain(func() { reply(`{"ok":true,"v":"Agent"}`, nil) })
+	select {
+	case r := <-done:
+		if r.v != "Agent" || r.err != nil {
+			t.Errorf("Eval = %v, %v", r.v, r.err)
+		}
+	case <-time.After(wait.Guard):
+		t.Fatal("Eval did not return the answer of the page that came next")
+	}
+}
+
 // TestEvalWebViewDestroyed is TestEvalWindowCloses for a web view's page.
 func TestEvalWebViewDestroyed(t *testing.T) {
 	show := true

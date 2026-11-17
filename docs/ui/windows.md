@@ -62,6 +62,10 @@ if side.WindowDoubleClicked() {
 }
 ```
 
+On Windows a finger on a touchscreen moves the window from a handle too,
+as the mouse does, but scrolls a handle that can scroll, as that sidebar
+once its items overflow it, or one inside a scroll container that can.
+
 To draw the window controls too, where the view wants them, add
 `HideWindowButtons: true` to the hidden title bar: the system's controls go,
 `c.TitleBar()` is zero, and the window keeps its title bar's edges, which

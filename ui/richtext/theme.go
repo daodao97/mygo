@@ -76,6 +76,12 @@ type HeadingStyle struct {
 	// Top is the room above them in ems of their size, unless they start
 	// the text: 0.6. Bottom is that below them in ems of the text: 0.25.
 	Top, Bottom float32
+	// LineHeight is the height of their lines in ems of their size, as a
+	// type scale gives a heading tighter leading than the text's; zero
+	// takes the text's (EditorOptions.Font.LineHeight). A line is never
+	// shorter than its font's ascent and descent, which differ from one
+	// platform's font to another's (Segoe UI's are 1.33 ems).
+	LineHeight float32
 }
 
 // headingSizes are the default sizes of headings, in ems.

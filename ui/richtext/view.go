@@ -79,12 +79,16 @@ type EditorOptions struct {
 	SpansVersion int
 	// Space is given paragraph p (from 0) and returns the room in DIPs to
 	// leave above it, more than the theme's, as a list opens a place
-	// where an item dragged would go. It is asked as the paragraphs are
-	// laid out, each frame for those in view, so that what it returns can
-	// change from frame to frame and the paragraphs below move with it.
-	// While the editor has the keyboard and is scrolled down its text,
-	// room that opens between the top of the view and the caret moves the
-	// paragraphs above it up instead, so that the line being typed stays.
+	// where an item dragged would go. Less than zero takes room away from
+	// the theme's, down to none, as a rule sits closer to the text around
+	// it than a line of text would. Above the first paragraph of a block
+	// of code, the room is a margin outside the block's background. It is
+	// asked as the paragraphs are laid out, each frame for those in view,
+	// so that what it returns can change from frame to frame and the
+	// paragraphs below move with it. While the editor has the keyboard and
+	// is scrolled down its text, room that opens between the top of the
+	// view and the caret moves the paragraphs above it up instead, so that
+	// the line being typed stays.
 	Space func(p int) float32
 	// NoScrollbar draws no scroll bar of the editor's own, and a press
 	// where it would be goes to the text: an app that makes the editor as
@@ -593,6 +597,9 @@ func (v *view) paraFont(st ParagraphStyle) ui.Font {
 		h := v.look.heading(st.Heading)
 		f.Size *= h.Size
 		f.Weight = h.Weight
+		if h.LineHeight > 0 {
+			f.LineHeight = h.LineHeight
+		}
 	case st.CodeBlock:
 		f.Family = v.look.CodeFont
 		f.Size *= v.look.CodeSize
@@ -686,7 +693,7 @@ func (v *view) space(p int, st ParagraphStyle) (above, below float32) {
 		}
 	}
 	if v.opts.Space != nil {
-		above += max(0, v.opts.Space(p))
+		above = max(0, above+v.opts.Space(p))
 	}
 	return above, below
 }
