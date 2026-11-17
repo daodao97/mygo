@@ -232,15 +232,26 @@ func (rt *engine) showEditMenu(s *state) {
 	if len(actions) == 0 {
 		return
 	}
-	var x, y float64
-	if _, a, b, _, ok := rt.handles(); ok {
-		x, y = (a.X+b.X)/2, a.Y
-	} else {
-		r := transformRect(s.world, Rect{s.x, s.y, s.w, s.h})
-		w := rt.toWindow(platform.RectF{X: float64(r.X + r.W/2), Y: float64(r.Y)})
-		x, y = w.X, w.Y
-	}
+	x, y := rt.editMenuPoint(s)
 	rt.touchSurface(func(ts platform.TouchSurface) { ts.ShowEditMenu(x, y, actions) })
+}
+
+// editMenuPoint is where the edit menu points, in the window: above the
+// selection of the focused input, or of read-only text, else above s.
+func (rt *engine) editMenuPoint(s *state) (x, y float64) {
+	if _, a, b, _, ok := rt.handles(); ok {
+		return (a.X + b.X) / 2, a.Y
+	}
+	if a, b, ok := rt.selectionHandles(); ok {
+		if b.Y > a.Y+a.H/2 {
+			// Over several lines: above its first, which starts at a.
+			return a.X, a.Y
+		}
+		return (a.X + b.X) / 2, a.Y
+	}
+	r := transformRect(s.world, Rect{s.x, s.y, s.w, s.h})
+	w := rt.toWindow(platform.RectF{X: float64(r.X + r.W/2), Y: float64(r.Y)})
+	return w.X, w.Y
 }
 
 // textTapped notes a finger's tap on the text input s, which it placed the

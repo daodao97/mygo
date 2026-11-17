@@ -598,6 +598,13 @@ func TestReadOnlySelectionHandles(t *testing.T) {
 	if !ok || end.X <= start.X {
 		t.Fatalf("handles %v %v %v", start, end, ok)
 	}
+	// The menu points at the word, not at the top of the paragraph.
+	if s := tt.rt.states[a.id]; s != nil {
+		mx, my := tt.rt.editMenuPoint(s)
+		if my != start.Y || mx < start.X || mx > end.X {
+			t.Fatalf("menu at %v, %v; selection %v to %v", mx, my, start, end)
+		}
+	}
 	if h := tt.rt.handleAt(float32(end.X), float32(end.Y+end.H)); h != handleEnd {
 		t.Fatalf("the end handle is not where it draws: %d", h)
 	}
