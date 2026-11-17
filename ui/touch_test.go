@@ -927,3 +927,34 @@ func TestKeepFocusTapIsNoCaretTap(t *testing.T) {
 		t.Fatal("a tap on Send was taken for a tap on the caret")
 	}
 }
+
+// A tap on the caret shows the edit menu, the next puts it away, as UIKit's
+// text fields do.
+func TestCaretTapTogglesEditMenu(t *testing.T) {
+	value := "hello"
+	tt := NewTester(func(c *Context) {
+		Column(c).Padding(20).Children(func() { TextInput(c, &value).Label("Message").Size(300, 44) })
+	}, 400, 200)
+	tt.Frame()
+	r, _ := tt.Find("Message")
+	x, y := r.X+r.W-10, r.Y+r.H/2
+	tap := func() {
+		tt.FingerDown(x, y)
+		tt.FingerUp(x, y)
+		tt.Advance(500 * time.Millisecond)
+	}
+	tap() // focuses it, and places the caret
+	if tt.rt.touchText.menu {
+		t.Fatal("the first tap showed the menu")
+	}
+	for i, want := range []bool{true, false, true} {
+		tap()
+		if tt.rt.touchText.menu != want {
+			t.Fatalf("tap %d on the caret: menu %v, want %v", i+2, tt.rt.touchText.menu, want)
+		}
+	}
+	tt.Type("x")
+	if tt.rt.touchText.menu {
+		t.Fatal("typing left the menu")
+	}
+}

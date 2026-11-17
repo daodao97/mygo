@@ -160,6 +160,9 @@ type touchPan struct {
 	// inputHolds is the input handler a long press goes to first, and
 	// inputHeld the one that took the finger (touch.go).
 	inputHolds, inputHeld uint64
+	// menuWas says the edit menu showed as the finger landed, which the
+	// system puts away then: a tap on the caret only hides it.
+	menuWas bool
 }
 
 type touchSample struct {
@@ -185,7 +188,10 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 	t := &rt.touch
 	switch ev.Kind {
 	case platform.PointerDown:
+		menuWas := rt.touchText.menu
+		rt.touchText.menu = false
 		*t = touchPan{down: true, x0: x, y0: y, lx: x, ly: y, at: rt.now(), aimX: t.aimX, aimY: t.aimY}
+		t.menuWas = menuWas
 		t.sample(rt.now(), x, y)
 		rt.catchBounces()
 		if h := rt.handleAt(x, y); h != handleNone {
@@ -447,6 +453,11 @@ func (rt *engine) afterTap(was *touchPan) {
 		}
 	}
 	if !on {
+		return
+	}
+	if was.menuWas {
+		// A tap with the menu showing puts it away, as UIKit's does.
+		rt.touchText.id, rt.touchText.caretAt = s.id, rt.now()
 		return
 	}
 	rt.textTapped(s, was.textBefore == rt.focused, was.selBefore)

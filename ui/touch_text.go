@@ -37,6 +37,9 @@ type touchText struct {
 	caretAt time.Time
 	// held is the handle a finger holds.
 	held int
+	// menu says the edit menu shows, which a finger landing or a key puts
+	// away.
+	menu bool
 }
 
 // handles returns the input whose handles show and the places of its selection
@@ -232,6 +235,7 @@ func (rt *engine) showEditMenu(s *state) {
 	if len(actions) == 0 {
 		return
 	}
+	rt.touchText.menu = true
 	x, y := rt.editMenuPoint(s)
 	rt.touchSurface(func(ts platform.TouchSurface) { ts.ShowEditMenu(x, y, actions) })
 }
@@ -266,7 +270,7 @@ func (rt *engine) textTapped(s *state, focused bool, sel platform.TextRange) {
 }
 
 // textKeyed hides the handles as keys type: what they point at moved.
-func (rt *engine) textKeyed() { rt.touchText.caretAt = time.Time{} }
+func (rt *engine) textKeyed() { rt.touchText.caretAt, rt.touchText.menu = time.Time{}, false }
 
 // revealFocus scrolls the input with the focus into view, as the keyboard
 // covers part of the window.
