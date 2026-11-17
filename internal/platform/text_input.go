@@ -38,6 +38,12 @@ type TextInputClient interface {
 	IndexForPoint(x, y float64) (int, bool)
 }
 
+// TextSelectionSetter is a TextInputClient whose selection a native text
+// service may move, as phones' keyboards do with their space bar's cursor.
+type TextSelectionSetter interface {
+	SetTextSelection(TextRange)
+}
+
 // InputComposition preserves the native end-preedit/commit ordering without
 // owning text. Some input methods unmark before delivering their result.
 type InputComposition struct{ pending *TextRange }

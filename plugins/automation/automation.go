@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -17,20 +18,46 @@ import (
 // window opens, so that the content of every window of native UI comes to
 // the plugin as it attaches.
 func init() {
+	if runtime.GOOS == "android" {
+		// Android's host sets the environment after this package's init, as
+		// the library has to load to run anything: the variable shows by the
+		// time the app is ready, before any window opens.
+		a := newApp()
+		surface.Automate = a.attached
+		mygo.App.WhenReady(func() {
+			close(a.ready)
+			if path := os.Getenv("MYGO_AUTOMATION"); path != "" {
+				a.listen(path)
+			}
+		})
+		return
+	}
 	path := os.Getenv("MYGO_AUTOMATION")
 	if path == "" {
 		return
 	}
+	a := newApp()
+	if !a.listen(path) {
+		return
+	}
+	surface.Automate = a.attached
+	mygo.App.WhenReady(func() { close(a.ready) })
+}
+
+func newApp() *app {
+	return &app{ready: make(chan struct{}), targets: map[*mygo.Window]target{}}
+}
+
+// listen serves requests on the socket at path, and reports whether it can.
+func (a *app) listen(path string) bool {
 	l, err := listen(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mygo: automation:", err)
-		return
+		return false
 	}
-	a := &app{ready: make(chan struct{}), targets: map[*mygo.Window]target{}}
-	surface.Automate = a.attached
-	mygo.App.WhenReady(func() { close(a.ready) })
 	mygo.App.OnQuit(func() { l.Close() })
 	go serve(l, a)
+	return true
 }
 
 // app drives the running app's windows.

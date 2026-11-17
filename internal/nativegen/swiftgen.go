@@ -20,7 +20,7 @@ func GenerateSwift(m *Module) []byte {
 	var b bytes.Buffer
 	g := &swiftGen{m: m, b: &b, w: newWire(m)}
 	g.p("%s// %s\n//\n// The declarations of package %s, which the implementation conforms to,\n// and the functions Go calls. See docs/native-modules.md.\n\n", swiftHeader, SourceLine(m.Hash), m.Package)
-	g.p("import Foundation\n#if canImport(IOSurface)\nimport CoreVideo\nimport IOSurface\n#endif\n#if canImport(AppKit)\nimport AppKit\n#endif\n")
+	g.p("import Foundation\n#if canImport(IOSurface)\nimport CoreVideo\nimport IOSurface\n#endif\n#if canImport(AppKit)\nimport AppKit\n#elseif canImport(UIKit)\nimport UIKit\n#endif\n")
 	imports := map[string]bool{}
 	for _, d := range m.Deps {
 		imports[d.Name] = true
@@ -175,9 +175,9 @@ func swiftType(t *Type) string {
 	case InterfaceType:
 		return "any " + qualified(t)
 	case Window:
-		return "NSWindow"
+		return "NativeWindow"
 	case View:
-		return "NSView"
+		return "NativeView"
 	case Rect:
 		return "CGRect"
 	case Buffer:
@@ -262,7 +262,7 @@ func (g *swiftGen) protocol(it *Interface) {
 	g.p("\n%s", docComment(it.Doc, ""))
 	inherits := "AnyObject"
 	if it.View {
-		inherits = "NSView"
+		inherits = "NativeView"
 	}
 	if it.Closer {
 		inherits += ", Closer"
@@ -372,7 +372,7 @@ func (g *swiftGen) readArgs(m *Method) (stmts []string, vals []string) {
 		case Window:
 			v = fmt.Sprintf("_mygoWindow(%s)", v)
 		case View:
-			v = fmt.Sprintf("(_mygoObject(%s) as NSView)", v)
+			v = fmt.Sprintf("(_mygoObject(%s) as NativeView)", v)
 		case Rect:
 			for j, q := range m.Params {
 				if q.Type.Kind == Window {
@@ -580,10 +580,10 @@ public func _mygo_close(_ obj: UInt64, _ args: UnsafeRawPointer?, _ n: Int, _ ca
     _mygoRun { _ in
         let o = _mygoAnyObject(obj)
         if let c = o as? any Closer { try c.close() }
-        #if canImport(AppKit)
+        #if canImport(AppKit) || canImport(UIKit)
         // A view closed leaves the windows showing it; Go closes views on
         // the main thread.
-        if let v = o as? NSView { MainActor.assumeIsolated { v.removeFromSuperview() } }
+        if let v = o as? NativeView { MainActor.assumeIsolated { v.removeFromSuperview() } }
         #endif
     }
 }

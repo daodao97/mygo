@@ -1,9 +1,10 @@
 # SQLite
 
 SQLite for MyGo, with Go connections and the `@mygo-plugins/sqlite`
-TypeScript client. Its SQLite is a native module written in Zig
-(`internal/sqlitecore`), published prebuilt for each platform, so apps
-build without cgo, a C compiler or Zig.
+TypeScript client. Its SQLite is a native module (`internal/sqlitecore`),
+written in Zig on desktops, published prebuilt for each platform, so apps
+build without cgo, a C compiler or Zig, and in Swift on iOS and Kotlin on
+Android, which build with the app.
 
 Register `mygo.Use(sqlite.Plugin)` only when the web frontend uses
 `@mygo-plugins/sqlite`. Go and native UI apps call `sqlite.Open` directly;
@@ -59,6 +60,16 @@ go run ./cmd/mygo native build -upload plugins/sqlite/internal/sqlitecore
 ```
 
 Linux targets glibc 2.28 or later; macOS targets 12 or later.
+
+On iOS, `internal/sqlitecore/swift` links the same SQLite, built with the
+same options by `swift/build-xcframework.sh` on a Mac into
+`CSQLite-3.53.4.xcframework.zip`, an asset of the release
+`native-sqlitecore` whose checksum `Package.swift` pins. On Android,
+`internal/sqlitecore/kotlin` compiles it with CMake, which downloads the
+amalgamation and checks its SHA-256. Upgrading SQLite changes the
+version and hash in `build.zig.zon`, `build-xcframework.sh` and
+`kotlin/src/main/c/CMakeLists.txt`, and the XCFramework's URL and
+checksum.
 
 SQLite is public domain; the plugin and its module use the repository's MIT
 license. FTS5, RTree and JSON are enabled, with foreign keys on by default.

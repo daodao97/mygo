@@ -120,8 +120,9 @@ type InputEvent struct {
 	DX, DY   float32
 	Precise  bool
 	Momentum bool
-	// Scale is what InputZoom zooms by.
-	Scale float32
+	// Scale is what InputZoom zooms by, and Rotation the radians clockwise
+	// two fingers turned, on touch screens.
+	Scale, Rotation float32
 	// Start and End are the runes InputSelect selects.
 	Start, End int
 	// Time is when the event came, by the clock of the window's frames

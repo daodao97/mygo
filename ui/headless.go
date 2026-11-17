@@ -43,6 +43,8 @@ type headless struct {
 	opened        []string
 	// escapes counts the Escapes nothing handled.
 	escapes int
+	// stack is the system's stack of screens tests give the window.
+	stack platform.StackSurface
 	// titleDoubles counts the double clicks a DragWindow handle left to
 	// the window.
 	titleDoubles int
@@ -54,6 +56,7 @@ type headless struct {
 	// posts them to the main thread.
 	later  []func()
 	bar    TitleBar
+	inset  platform.Insets
 	access *platform.AccessTree
 	// told are the announcements of the trees, and announced those the
 	// view made; alerts are what the trees told to read at once, and
@@ -195,6 +198,7 @@ func (h *headless) preferences() platform.Preferences { return h.prefs }
 func (h *headless) locale() string                    { return h.lang }
 func (h *headless) region() i18n.Region               { return h.reg }
 func (h *headless) titleBar() TitleBar                { return h.bar }
+func (h *headless) insets() platform.Insets           { return h.inset }
 func (h *headless) vibrancy() bool                    { return h.material }
 func (h *headless) active() bool                      { return !h.inactive }
 func (h *headless) invalidate() {
@@ -430,6 +434,9 @@ func (t *Tester) send(ev platform.SurfaceEvent) {
 	switch ev.Kind {
 	case platform.PointerMove, platform.PointerDown, platform.PointerUp:
 		ev.Pointer, ev.Pressure = platform.PointerKind(t.pointer), float64(t.pressure)
+		if ev.Touch {
+			ev.Pointer = platform.PointerTouch // TouchDown
+		}
 	}
 	if ev.Kind == platform.PointerDown && ev.Clicks == 0 {
 		// Counted as a backend counts.
@@ -485,6 +492,15 @@ func (t *Tester) SetZoom(z float32) {
 // title bar take, which Context.TitleBar returns.
 func (t *Tester) SetTitleBar(bar TitleBar) {
 	t.h.bar = bar
+	t.Frame()
+}
+
+// SetInsets sets how far in from each edge the window is covered, in DIPs,
+// as a phone's bars, cutout and keyboard cover its screen: the view lays
+// out inside them.
+func (t *Tester) SetInsets(top, right, bottom, left float32) {
+	enableTouch()
+	t.h.inset = platform.Insets{Top: float64(top), Right: float64(right), Bottom: float64(bottom), Left: float64(left)}
 	t.Frame()
 }
 
@@ -928,6 +944,34 @@ func (t *Tester) webViewPress(x, y float32, button int, mods platform.Modifiers)
 	return true
 }
 
+// FingerDown puts a finger on a touch screen at (x, y); FingerMove moves it
+// and FingerUp lifts it: a press that moves pans what scrolls under it,
+// and lifted as it moves it flings it on, which advancing the clock
+// (Advance) shows.
+func (t *Tester) FingerDown(x, y float32) {
+	enableTouch()
+	t.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: float64(x), Y: float64(y), Touch: true})
+	t.send(platform.SurfaceEvent{Kind: platform.PointerDown, X: float64(x), Y: float64(y), Clicks: 1, Touch: true})
+}
+
+// FingerMove moves the finger on the screen to (x, y).
+func (t *Tester) FingerMove(x, y float32) {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerMove, X: float64(x), Y: float64(y), Touch: true})
+}
+
+// FingerUp lifts the finger at (x, y).
+func (t *Tester) FingerUp(x, y float32) {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: float64(x), Y: float64(y), Clicks: 1, Touch: true})
+	t.send(platform.SurfaceEvent{Kind: platform.PointerLeave, Touch: true})
+}
+
+// FingerCancel ends the finger as the system does when it takes it away: as a
+// system gesture starts, or a call comes.
+func (t *Tester) FingerCancel() {
+	t.send(platform.SurfaceEvent{Kind: platform.PointerUp, X: -1e6, Y: -1e6, Touch: true, Canceled: true})
+	t.send(platform.SurfaceEvent{Kind: platform.PointerLeave, Touch: true})
+}
+
 // UsePointer has the pointer's presses and moves from now on come from
 // the device pointer pressing with pressure, from 0 to 1, as a pen's, which
 // a system tells: 0 is a mouse's, which tells none. The Tester starts with
@@ -1207,3 +1251,5 @@ func (t *Tester) Focused(s string) bool {
 	}
 	return false
 }
+
+func (h *headless) stackSurface() platform.StackSurface { return h.stack }

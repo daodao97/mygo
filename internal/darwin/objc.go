@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && !ios
 
 // Package darwin implements the macOS backend (AppKit + WKWebView) in pure
 // Go: Objective-C is driven through the runtime with purego, no cgo.

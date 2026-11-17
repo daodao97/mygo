@@ -265,6 +265,23 @@ func (w *widgetTextInput) UnmarkText() {
 	w.publish()
 }
 
+// SetTextSelection moves the selection, as an on-screen keyboard does.
+func (w *widgetTextInput) SetTextSelection(r TextInputRange) {
+	w.prepare()
+	ed := w.ed
+	if ed.password {
+		return
+	}
+	ed.commitCompose()
+	a, z := ed.buf.runeAtUTF16(r.Start), ed.buf.runeAtUTF16(r.End)
+	ed.anchor, ed.caret = a, z
+	ed.hasDesired = false
+	if ed.area != nil {
+		ed.area.reveal = true
+	}
+	w.publish()
+}
+
 func (w *widgetTextInput) layout() *text.Layout {
 	ed := w.ed
 	if ed.layout != nil && (ed.layoutVersion != ed.buf.version || ed.layoutCompose != ed.compose || ed.layoutPassword != ed.password || ed.layoutGeneration != ed.sys.Generation()) {

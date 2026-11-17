@@ -75,7 +75,11 @@ func portable(m *Module, lang string) error {
 			return
 		}
 		switch t.Kind {
-		case Window, View, Texture:
+		case Window, View:
+			if lang != "Kotlin" {
+				problems = append(problems, fmt.Sprintf("%s uses %s, which only Swift and Kotlin implement", where, t.Go))
+			}
+		case Texture:
 			problems = append(problems, fmt.Sprintf("%s uses %s, which only Swift implements", where, t.Go))
 		case InterfaceType:
 			if t.Pkg != nil {
@@ -99,8 +103,8 @@ func portable(m *Module, lang string) error {
 		noBuffer(t.Elem, where)
 	}
 	for _, it := range m.Interfaces {
-		if it.View {
-			problems = append(problems, fmt.Sprintf("%s is a view, which only Swift implements", it.Name))
+		if it.View && lang != "Kotlin" {
+			problems = append(problems, fmt.Sprintf("%s is a view, which only Swift and Kotlin implement", it.Name))
 		}
 		for _, me := range it.Methods {
 			where := it.Name + "." + me.Name

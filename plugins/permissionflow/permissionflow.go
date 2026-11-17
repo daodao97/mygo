@@ -11,7 +11,10 @@
 // and, on the pages whose list takes apps dragged into it, shows a panel
 // under the window of System Settings, which follows it, with the app to
 // drag into the list, as PermissionFlow does for Swift apps. On Windows,
-// it opens the page of Settings (Privacy & security). Linux and browsers
+// it opens the page of Settings (Privacy & security). On phones, Request is the
+// system's prompt and Guide opens the app's page of the system's settings, for
+// what the user turned down: the camera, the microphone, photos, contacts,
+// notifications and on Android location and Bluetooth. Linux and browsers
 // keep no such permissions for apps, and return errors.ErrUnsupported.
 //
 // Every function is safe to call from any goroutine. OpenSettings and
@@ -81,6 +84,19 @@ const (
 	// MediaAppleMusic lets the app use the user's Apple Music library.
 	// macOS only, and Check can't tell.
 	MediaAppleMusic Permission = "media-apple-music"
+	// Photos lets the app read the user's library of photos: iOS and Android.
+	// The system's picker needs it not (plugins/imagepicker). iOS needs
+	// NSPhotoLibraryUsageDescription in the Info.plist, and Android
+	// READ_MEDIA_IMAGES among android.permissions.
+	Photos Permission = "photos"
+	// Contacts lets the app read the user's contacts: iOS and Android. iOS
+	// needs NSContactsUsageDescription, Android READ_CONTACTS.
+	Contacts Permission = "contacts"
+	// Notifications lets the app show notifications: iOS and Android.
+	Notifications Permission = "notifications"
+	// Location lets the app know where the device is while it is in use:
+	// Android (plugins/location asks on both).
+	Location Permission = "location"
 )
 
 // All returns every permission, in the order of System Settings.
@@ -90,6 +106,11 @@ func All() []Permission {
 		AppManagement, DeveloperTools, Microphone, Camera, Calendars,
 		Reminders, Bluetooth, MediaAppleMusic,
 	}
+}
+
+// OnPhones returns the permissions phones keep.
+func OnPhones() []Permission {
+	return []Permission{Camera, Microphone, Photos, Contacts, Notifications, Location, Bluetooth, Calendars}
 }
 
 var titles = map[Permission]string{
@@ -107,11 +128,22 @@ var titles = map[Permission]string{
 	MediaAppleMusic: "Media & Apple Music",
 }
 
+// phoneTitles names the permissions only phones keep.
+var phoneTitles = map[Permission]string{
+	Photos:        "Photos",
+	Contacts:      "Contacts",
+	Notifications: "Notifications",
+	Location:      "Location",
+}
+
 // Title returns the name of the permission as the system's settings show
 // it, in the language the app shows: "Screen Recording" in English.
 func (p Permission) Title() string {
 	if _, ok := titles[p]; ok {
 		return title(p, localizedTitle(p, i18n.Locale()))
+	}
+	if t, ok := phoneTitles[p]; ok {
+		return t
 	}
 	return string(p)
 }
@@ -151,7 +183,10 @@ func localizedTitle(p Permission, locale string) string {
 func (p Permission) String() string { return string(p) }
 
 func (p Permission) valid() bool {
-	_, ok := titles[p]
+	if _, ok := titles[p]; ok {
+		return true
+	}
+	_, ok := phoneTitles[p]
 	return ok
 }
 

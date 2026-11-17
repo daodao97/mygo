@@ -1,4 +1,4 @@
-//go:build !js && !(linux && (amd64 || arm64))
+//go:build !js && !(linux && !android && (amd64 || arm64))
 
 package e2e
 

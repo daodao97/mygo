@@ -371,7 +371,7 @@ type node struct {
 	// The layout reads it of every child it walks, next to the flags it
 	// reads there too, so that the walk reads one cache line.
 	hidden bool
-	laid    uint64
+	laid   uint64
 	// hold is the element's entry in the engine's holds (0 for none):
 	// what a measuring pass resolved for its in-flow children, which a
 	// commit pass at the same size uses instead of building them again.

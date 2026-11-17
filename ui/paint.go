@@ -109,6 +109,9 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	p.cull = !rt.inkStale && !rt.noCull
 	p.element(root)
 	p.cull = false
+	if touchPaint != nil {
+		touchPaint(rt, p)
+	}
 	if rt.insp.open {
 		rt.insp.paintHighlight(rt, p, h)
 	}
@@ -496,6 +499,9 @@ func (p *Painter) element(e *node) {
 	}
 	if e.scrolls() && own {
 		p.scrollbars(e)
+		if refreshPainter != nil {
+			refreshPainter(p, e)
+		}
 	}
 	if own && borderOver {
 		p.border(e, box)
@@ -1505,11 +1511,24 @@ func (p *Painter) scrollbars(e *node) {
 		// The bars show on hover (hoverNeeds).
 		st.hoverLook = true
 	}
+	// A finger is no pointer hovering, on it or after it, however it ended: only
+	// a mouse or a trackpad, as on a tablet, shows them by being over them.
+	hovered = hovered && !rt.lastPointerTouch
 	st.barsShown = !hide && (keep || hovered || dragging)
+	style := *st.barStyle
+	fade := float32(1)
 	if !st.barsShown {
-		return
+		// A finger shows a thin thumb on no track for a moment as it moves
+		// the content, and it fades: no press takes it.
+		if touchBars == nil {
+			return
+		}
+		fade = touchBars(st, rt)
+		if hide || fade <= 0 {
+			return
+		}
+		style.TrackWidth, style.ThumbWidth, style.Track = touchIndicatorWidth, touchIndicatorWidth, Color{}
 	}
-	style := st.barStyle
 	w, h := st.contentW, st.contentH
 	x, y := st.scrollX, st.scrollY
 	if dragging {
@@ -1520,7 +1539,9 @@ func (p *Painter) scrollbars(e *node) {
 		x = rescale(x, e.contentW-float64(e.w), w-float64(e.w))
 		y = rescale(y, e.contentH-float64(e.h), h-float64(e.h))
 	}
-	g := st.scrollbarGeometry(e.x, e.y, w, h, x, y)
+	g := scrollBars(Rect{e.x, e.y, st.w, st.h}, st.barInset, float32(w), float32(h), float32(x), float32(y), st.flags, style, st.rtl)
+	g.vertical = g.vertical && st.barFlags&flagScrollY != 0
+	g.horizontal = g.horizontal && st.barFlags&flagScrollX != 0
 	if style.Track.A > 0 {
 		if g.vertical {
 			p.Fill(g.vTrack, style.Track, 0)
@@ -1550,6 +1571,10 @@ func (p *Painter) scrollbars(e *node) {
 		horizontal = style.Active
 	case keep || overH:
 		horizontal = style.Hover
+	}
+	if fade < 1 {
+		vertical.A = uint8(float32(vertical.A) * fade)
+		horizontal.A = uint8(float32(horizontal.A) * fade)
 	}
 	grow := style.ThumbWidth+2 <= style.TrackWidth
 	if g.vertical {

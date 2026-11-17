@@ -127,6 +127,7 @@ func (a *textInputAdapter) changed() { a.rt.requestFrame(); a.rt.updateTextInput
 func (a *textInputAdapter) ReplaceText(r *platform.TextRange, s string) {
 	if c, _ := a.client(); c != nil {
 		c.ReplaceText(r, s)
+		a.rt.textKeyed()
 		a.changed()
 	}
 }
@@ -161,4 +162,23 @@ func (a *textInputAdapter) IndexForPoint(x, y float64) (int, bool) {
 		return c.IndexForPoint(Point{lx, ly})
 	}
 	return 0, false
+}
+
+// SetTextSelection moves the selection of a client that can, as an
+// on-screen keyboard's cursor does (platform.TextSelectionSetter).
+func (a *textInputAdapter) SetTextSelection(r platform.TextRange) {
+	c, _ := a.client()
+	if c == nil {
+		return
+	}
+	if set, ok := c.(TextInputSelectionSetter); ok {
+		set.SetTextSelection(platform.NormalizeTextRange(r))
+		a.changed()
+	}
+}
+
+// TextInputSelectionSetter is a TextInputClient whose selection on-screen
+// keyboards can move, as with iOS's space bar held down.
+type TextInputSelectionSetter interface {
+	SetTextSelection(TextInputRange)
 }

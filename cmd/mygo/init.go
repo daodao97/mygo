@@ -112,7 +112,7 @@ func runInit(args []string) error {
 		}
 	}
 
-	fmt.Printf("\nCreated %s. Next steps:\n\n  cd %s\n  bun run dev      # develop with live reload\n  bun run build    # package the app\n\n", data.Name, relPath(dir))
+	fmt.Printf("\nCreated %s. Next steps:\n\n  cd %s\n  bun run dev      # develop with live reload\n  bun run dev:ios      # on the iOS simulator (needs Xcode)\n  bun run dev:android  # on an Android device or emulator (needs Android Studio)\n  bun run build    # package the app\n\n", data.Name, relPath(dir))
 	return nil
 }
 
@@ -145,7 +145,7 @@ func initNative(dir string, data templateData, local string) error {
 	if err := writeProject(dir, nativeTemplate, data, local, true); err != nil {
 		return err
 	}
-	fmt.Printf("\nCreated %s. Next steps:\n\n  cd %s\n  go tool mygo dev      # develop with live reload\n  go test               # test the view without a window\n  go tool mygo build    # package the app\n\n", data.Name, relPath(dir))
+	fmt.Printf("\nCreated %s. Next steps:\n\n  cd %s\n  go tool mygo dev      # develop with live reload\n  go tool mygo dev -platform ios      # on the iOS simulator (needs Xcode)\n  go tool mygo dev -platform android  # on an Android device or emulator (needs Android Studio)\n  go test               # test the view without a window\n  go tool mygo build    # package the app\n\n", data.Name, relPath(dir))
 	return nil
 }
 

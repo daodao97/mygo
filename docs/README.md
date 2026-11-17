@@ -101,9 +101,10 @@ What every app has, whether its windows show native UI or web pages.
   shell, displays, dark mode, power, the network status, secrets, watching
   files and global shortcuts.
 - [Native modules](native-modules.md) (experimental): Go interfaces implemented in
-  Swift, Rust or Zig, without cgo, for macOS's frameworks and views, Rust
-  crates and Zig and C libraries, which the CLI builds, puts into apps and
-  publishes for the users of your Go packages.
+  Swift, Kotlin, Rust or Zig, without cgo, for the frameworks and views of
+  macOS, iOS and Android, Rust crates and Zig and C libraries, which the
+  CLI builds, puts into apps and publishes for the users of your Go
+  packages.
 - [Clipboard and drag data](data-transfer.md): multiple representations,
   file lists, custom formats, lazy providers, and clipboard persistence.
 - [Audio](audio.md): sound effects, streamed music and sound an app makes
@@ -127,6 +128,20 @@ components, from buttons to tables.
   typed events and the generated TypeScript client.
 - [Plugins](plugins.md): features that come in a Go package and an npm
   package, such as the official plugins, and writing your own.
+
+## Phones and tablets
+
+- [Phones and tablets](mobile/README.md): the same app on iOS and
+  Android, what you need, developing on a simulator, an emulator or a
+  device, and how apps behave on phones.
+- [Building and publishing for phones](mobile/building.md): signed `.ipa`,
+  `.apk` and `.aab` files, App Store Connect and Google Play, links, icons
+  and launch screens.
+- [Interfaces on phones](mobile/interface.md): the system's tabs and
+  stacks, fingers, the keyboard, the widgets of phones, and testing.
+- [Device APIs and plugins](mobile/plugins.md): haptics, sharing, the
+  battery, the official plugins for maps, the camera, location and more,
+  and writing your own in Swift and Kotlin.
 
 ## Shipping
 

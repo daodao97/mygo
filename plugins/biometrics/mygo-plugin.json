@@ -1,0 +1,16 @@
+{
+  "mobile": {
+    "id": "biometrics",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "BiometricsPlugin",
+      "frameworks": ["LocalAuthentication"],
+      "infoPlist": {"NSFaceIDUsageDescription": "This app confirms it's you."}
+    },
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "BiometricsPlugin",
+      "permissions": ["USE_BIOMETRIC"]
+    }
+  }
+}

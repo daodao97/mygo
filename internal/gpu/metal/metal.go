@@ -90,6 +90,7 @@ const (
 
 	usageShaderRead   = 1
 	usageRenderTarget = 4
+	storageShared     = 0
 	storageManaged    = 1
 
 	loadActionDontCare     = 0
@@ -531,7 +532,7 @@ func New(layer uintptr) (r *Renderer, err error) {
 		}
 		ml := send(send(class("CAMetalLayer"), "alloc"), "init")
 		if err = need(ml, "CAMetalLayer", "setDevice:", "setPixelFormat:", "setFramebufferOnly:", "setPresentsWithTransaction:",
-			"setColorspace:", "setDrawableSize:", "setContentsScale:", "setFrame:", "setAutoresizingMask:", "nextDrawable"); err != nil {
+			"setColorspace:", "setDrawableSize:", "setContentsScale:", "setFrame:", "nextDrawable"); err != nil {
 			release(&ml)
 			return
 		}
@@ -559,12 +560,27 @@ func New(layer uintptr) (r *Renderer, err error) {
 		}
 		// The first frame shows with the window's other changes; render
 		// decides for each frame.
-		send(ml, "setPresentsWithTransaction:", 1)
-		r.synced = true
+		if runtime.GOOS != "ios" {
+			send(ml, "setPresentsWithTransaction:", 1)
+			r.synced = true
+		}
 		send(ml, "setColorspace:", srgb)
 		send(ml, "setOpaque:", 0)
-		send(ml, "setAutoresizingMask:", layerWidthSizable|layerHeightSizable)
-		send(layer, "addSublayer:", ml)
+		if runtime.GOOS != "ios" {
+			// iOS's layers have no autoresizing: fit sizes it each frame.
+			send(ml, "setAutoresizingMask:", layerWidthSizable|layerHeightSizable)
+		}
+		if runtime.GOOS == "ios" {
+			// In a transaction of its own: the thread has no run loop to
+			// commit the one Core Animation would begin.
+			tx := class("CATransaction")
+			send(tx, "begin")
+			send(layer, "addSublayer:", ml)
+			send(tx, "commit")
+			flushTransactions()
+		} else {
+			send(layer, "addSublayer:", ml)
+		}
 		r.layer, r.superlayer = ml, layer
 	})
 	if err != nil {
@@ -885,7 +901,9 @@ func (r *Renderer) effectPipeline(e *scene.Effect) id {
 			lib = shared
 		}
 	}
-	if lib == 0 && len(e.Metal.Compiled) > 0 && e.Metal.Sum == gpu.SourceSum(src) {
+	// Effects compile ahead of time for macOS only: iOS compiles them as
+	// they first draw.
+	if lib == 0 && runtime.GOOS != "ios" && len(e.Metal.Compiled) > 0 && e.Metal.Sum == gpu.SourceSum(src) {
 		lib = r.libraryFromData(e.Metal.Compiled)
 	}
 	if lib == 0 {
@@ -955,6 +973,16 @@ func (r *Renderer) libraryFromData(code []byte) id {
 	return send(r.device, "newLibraryWithData:error:", data, uintptr(unsafe.Pointer(&errObj)))
 }
 
+// flushTransactions commits the transaction Core Animation began itself
+// for what changed on this thread, as a run loop would: on iOS frames draw
+// on Go's thread, which has none, and the layers it changed would never
+// reach the screen.
+func flushTransactions() {
+	if runtime.GOOS == "ios" {
+		send(class("CATransaction"), "flush")
+	}
+}
+
 func respondsTo(obj id, method string) bool {
 	return byte(send(obj, "respondsToSelector:", uintptr(sel(method)))) != 0
 }
@@ -968,7 +996,13 @@ func (r *Renderer) newTexture(w, h int, format, usage uint, pix []byte, stride i
 	}
 	send(desc, "setUsage:", uintptr(usage))
 	if usage&usageRenderTarget != 0 {
-		send(desc, "setStorageMode:", storageManaged)
+		// iOS's GPUs share the memory with the CPU, and have no managed
+		// textures, which keep a copy on each side.
+		if runtime.GOOS == "ios" {
+			send(desc, "setStorageMode:", storageShared)
+		} else {
+			send(desc, "setStorageMode:", storageManaged)
+		}
 	}
 	tex := send(r.device, "newTextureWithDescriptor:", desc)
 	if tex != 0 && len(pix) > 0 {
@@ -1753,6 +1787,11 @@ func (r *Renderer) render(s *scene.Scene) error {
 	// transaction for each.
 	holes := hasHoles(s)
 	sync := changed || holes || r.holes
+	if runtime.GOOS == "ios" {
+		// The frames draw on Go's thread, apart from UIKit's, which has
+		// no run loop to commit a transaction they would present with.
+		sync = false
+	}
 	r.holes = holes
 	if sync {
 		// A drawable fetched before the layer changed, or to present
@@ -1932,6 +1971,7 @@ func (r *Renderer) fit(w, h int, scale float64) (changed bool) {
 	msgSetFloat(r.layer, sel("setContentsScale:"), scale)
 	msgSetSize(r.layer, sel("setDrawableSize:"), cgSize{float64(w), float64(h)})
 	send(tx, "commit")
+	flushTransactions()
 	r.w, r.h, r.scale, r.bounds, r.trimmed = w, h, scale, bounds, false
 	return true
 }
@@ -1977,7 +2017,10 @@ const trimAfter = 2 * time.Second
 // armTrim has the renderer's timer trim the drawables once it draws
 // nothing for trimAfter.
 func (r *Renderer) armTrim() {
-	if r.trimArmed {
+	// The timer fires on the main run loop, which on iOS is UIKit's
+	// thread, not the one drawing: the system's memory warnings trim there
+	// instead (Renderer.Trim).
+	if r.trimArmed || runtime.GOOS == "ios" {
 		return
 	}
 	if r.trimTimer == 0 {
@@ -2048,9 +2091,11 @@ func (r *Renderer) renderOffscreen(s *scene.Scene) (pix []byte, err error) {
 		if cb, err = r.encode(s, tex); err != nil {
 			return
 		}
-		blit := send(cb, "blitCommandEncoder")
-		send(blit, "synchronizeResource:", tex)
-		send(blit, "endEncoding")
+		if runtime.GOOS != "ios" {
+			blit := send(cb, "blitCommandEncoder")
+			send(blit, "synchronizeResource:", tex)
+			send(blit, "endEncoding")
+		}
 		send(cb, "commit")
 		send(cb, "waitUntilCompleted")
 		if int(send(cb, "status")) == statusError {

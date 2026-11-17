@@ -28,8 +28,10 @@ import (
 )
 
 type gallery struct {
-	win *mygo.Window
-	md  markdownDemo
+	// compact is set while the window is a phone's width (compactView).
+	compact bool
+	win     *mygo.Window
+	md      markdownDemo
 	// router shows the pages: "/overview", "/list", and a row of the list,
 	// "/list/42".
 	router *ui.Router
@@ -347,63 +349,16 @@ func pageOf(path string) string {
 }
 
 func (g *gallery) view(c *ui.Context) {
-	root := ui.Row(c)
-	if g.rtl {
-		// Given first, so that what is built inside reads it.
-		root.Direction(ui.RightToLeft)
+	w, _ := c.Size()
+	g.compact = w < compactWidth
+	// On a phone, the system's stack shows the pages, under its own bar:
+	// in the compact view alone, where the pages fill the window.
+	g.router.SystemStack = g.compact
+	if g.compact {
+		g.compactView(c)
+	} else {
+		g.wideView(c)
 	}
-	root.Fill().AlignItems(ui.Stretch).Children(func() {
-		g.sidebar(c)
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			g.toolbar(c)
-			// The pages, which keep their place in the history: back on one,
-			// it is scrolled where it was.
-			g.router.View(c, func(r *ui.Route) {
-				ui.Scroll(c).Grow(1).Padding(12, 32, 28).Gap(18).Children(func() {
-					if r.Match("/list/{row}") {
-						g.listRow(c, r)
-						return
-					}
-					page := pageOf(r.Path())
-					if page == "" {
-						r.Title("Not found")
-						ui.Text(c, "Not found").FontSize(26).Bold()
-						return
-					}
-					r.Title(page)
-					ui.Text(c, page).FontSize(26).Bold()
-					switch page {
-					case "Overview":
-						g.overview(c)
-					case "Controls":
-						g.controls(c)
-					case "Text":
-						g.text(c)
-					case "Rich Text":
-						g.richText(c)
-					case "List":
-						g.list(c)
-					case "Charts":
-						g.charts(c)
-					case "Markdown":
-						g.markdownPage(c)
-					case "Styling":
-						g.styling(c)
-					case "Drawing":
-						g.drawing(c)
-					case "Glass":
-						g.glassPage(c)
-					case "Overlays":
-						g.overlays(c)
-					case "Motion":
-						g.motion(c)
-					case "Languages":
-						g.languages(c)
-					}
-				})
-			})
-		})
-	})
 	// Ctrl+1…9 (Cmd on macOS) switch to the first nine pages.
 	for i, p := range pages[:min(len(pages), 9)] {
 		if c.Shortcut(ui.Cmd, ui.Key1+ui.Key(i)) {
@@ -425,6 +380,149 @@ func (g *gallery) view(c *ui.Context) {
 		c.SetMenuPresentation(ui.PopoverMenus)
 	} else {
 		c.SetMenuPresentation(ui.SystemMenus)
+	}
+}
+
+func (g *gallery) wideView(c *ui.Context) {
+	root := ui.Row(c)
+	if g.rtl {
+		// Given first, so that what is built inside reads it.
+		root.Direction(ui.RightToLeft)
+	}
+	root.Fill().AlignItems(ui.Stretch).Children(func() {
+		g.sidebar(c)
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			g.toolbar(c)
+			// The pages, which keep their place in the history: back on one,
+			// it is scrolled where it was.
+			g.router.View(c, func(r *ui.Route) {
+				ui.Scroll(c).Grow(1).Padding(12, 32, 28).Gap(18).Children(func() { g.page(c, r) })
+			})
+		})
+	})
+}
+
+// compactWidth is the width under which the gallery is a phone's: a list
+// of the pages, each pushed over it under a bar with a back button.
+const compactWidth = 640
+
+// compactView shows the pages as a phone's app does: the list of them at
+// "/", from which a page slides in, and back to it. On phones the system's
+// navigation bar shows the title and the back button; elsewhere the
+// gallery draws its own.
+func (g *gallery) compactView(c *ui.Context) {
+	ui.Column(c).Fill().Children(func() {
+		path := g.router.Path()
+		if !g.router.InSystemStack(c) {
+			g.compactBar(c, path)
+		}
+		g.router.View(c, func(r *ui.Route) {
+			if r.Match("/") {
+				r.Title("MyGo UI")
+				g.pageList(c)
+				return
+			}
+			ui.Scroll(c).Grow(1).Padding(8, 16, 24).Gap(18).Children(func() { g.page(c, r) })
+		})
+	})
+}
+
+// compactBar is the compact view's bar where the system shows none: a back
+// button and the title of the page.
+func (g *gallery) compactBar(c *ui.Context, path string) {
+	ui.Row(c).Height(48).Padding(0, 8).Gap(4).AlignItems(ui.Center).Shrink(0).Children(func() {
+		if path != "/" {
+			if g.router.CanGoBack() {
+				ui.BackButton(c, g.router)
+			} else if ui.Button(c, "‹ Pages").Clicked() {
+				g.router.Push("/")
+			}
+		}
+		title := g.router.Title()
+		if path == "/" || title == "" {
+			title = "MyGo UI"
+		}
+		ui.Text(c, title).FontSize(17).Bold().Grow(1).SingleLine()
+	})
+}
+
+// pageList lists the pages, in their sections, as a phone's settings do.
+func (g *gallery) pageList(c *ui.Context) {
+	t := c.Theme()
+	ui.Scroll(c).Grow(1).Padding(8, 16, 24).Gap(20).Children(func() {
+		for _, section := range []struct {
+			title string
+			pages []string
+		}{{"Widgets", pages[:6]}, {"Look", pages[6:]}} {
+			ui.Column(c.Key(section.title)).Gap(6).Children(func() {
+				ui.Text(c, section.title).FontSize(13).Bold().TextColor(t.TextMuted).Padding(0, 4)
+				ui.Column(c).Radius(12).Background(t.Surface).Children(func() {
+					for i, p := range section.pages {
+						if i > 0 {
+							ui.Divider(c).MarginStart(50)
+						}
+						row := ui.Row(c.Key(p)).Padding(12, 16).Gap(14).AlignItems(ui.Center).Label(p)
+						row.Children(func() {
+							ui.Icon(c, pageIcons[p]).Size(20, 20).TextColor(t.Accent)
+							ui.Text(c, p).Grow(1)
+							if p == "List" {
+								ui.Badge(c, "10k")
+							}
+							ui.Text(c, "›").FontSize(20).TextColor(t.TextMuted)
+						})
+						if row.Clicked() {
+							g.router.Push(pagePath(p))
+						}
+					}
+				})
+			})
+		}
+	})
+}
+
+// page builds the page of route r.
+func (g *gallery) page(c *ui.Context, r *ui.Route) {
+	if r.Match("/list/{row}") {
+		g.listRow(c, r)
+		return
+	}
+	page := pageOf(r.Path())
+	if page == "" {
+		r.Title("Not found")
+		ui.Text(c, "Not found").FontSize(26).Bold()
+		return
+	}
+	r.Title(page)
+	if !g.compact { // the compact view's bar shows it
+		ui.Text(c, page).FontSize(26).Bold()
+	}
+	switch page {
+	case "Overview":
+		g.overview(c)
+	case "Controls":
+		g.controls(c)
+	case "Text":
+		g.text(c)
+	case "Rich Text":
+		g.richText(c)
+	case "List":
+		g.list(c)
+	case "Charts":
+		g.charts(c)
+	case "Markdown":
+		g.markdownPage(c)
+	case "Styling":
+		g.styling(c)
+	case "Drawing":
+		g.drawing(c)
+	case "Glass":
+		g.glassPage(c)
+	case "Overlays":
+		g.overlays(c)
+	case "Motion":
+		g.motion(c)
+	case "Languages":
+		g.languages(c)
 	}
 }
 
@@ -467,7 +565,9 @@ func (g *gallery) listRow(c *ui.Context, r *ui.Route) {
 		return
 	}
 	r.Title(fmt.Sprintf("Row %d", n))
-	ui.Text(c, fmt.Sprintf("Row %d", n)).FontSize(26).Bold()
+	if !g.compact { // the compact view's bar shows it
+		ui.Text(c, fmt.Sprintf("Row %d", n)).FontSize(26).Bold()
+	}
 	card(c, "", func() {
 		for _, f := range []struct {
 			label string
@@ -1954,7 +2054,11 @@ func (g *gallery) overlays(c *ui.Context) {
 }
 
 func main() {
-	g := &gallery{router: ui.NewRouter("/overview"), items: []motionItem{{1, "Item 1"}, {2, "Item 2"}, {3, "Item 3"}}, nextItem: 3, size: "Medium", fruit: "Apple", cardZoom: "Medium", plan: "Pro", volume: 35, picked: -1, starred: map[int]bool{}, split: 160, copies: 1, tree: map[string]bool{"ui": true}, birthday: time.Date(1815, 12, 10, 0, 0, 0, 0, time.UTC), now: time.Now(), font: "Helvetica", tags: []string{"go", "native"}, sections: [3]bool{true}, sectionsOpen: [2]bool{true, true}, stars: 4, battery: 35, quality: 75, priceLow: 100, priceHigh: 350, meeting: time.Date(2026, 10, 15, 9, 30, 0, 0, time.Local), due: time.Date(2026, 10, 29, 0, 0, 0, 0, time.Local), tint: ui.Hex("#2563eb"), lens: [2]float32{110, 190}, glassEdge: 1, notes: 12, notifyMail: true, pathDepth: 4, chart: newCharts()}
+	start := "/overview"
+	if runtime.GOOS == "ios" || runtime.GOOS == "android" {
+		start = "/" // the list of the pages, as a phone's app starts
+	}
+	g := &gallery{router: ui.NewRouter(start), items: []motionItem{{1, "Item 1"}, {2, "Item 2"}, {3, "Item 3"}}, nextItem: 3, size: "Medium", fruit: "Apple", cardZoom: "Medium", plan: "Pro", volume: 35, picked: -1, starred: map[int]bool{}, split: 160, copies: 1, tree: map[string]bool{"ui": true}, birthday: time.Date(1815, 12, 10, 0, 0, 0, 0, time.UTC), now: time.Now(), font: "Helvetica", tags: []string{"go", "native"}, sections: [3]bool{true}, sectionsOpen: [2]bool{true, true}, stars: 4, battery: 35, quality: 75, priceLow: 100, priceHigh: 350, meeting: time.Date(2026, 10, 15, 9, 30, 0, 0, time.Local), due: time.Date(2026, 10, 29, 0, 0, 0, 0, time.Local), tint: ui.Hex("#2563eb"), lens: [2]float32{110, 190}, glassEdge: 1, notes: 12, notifyMail: true, pathDepth: 4, chart: newCharts()}
 	// The languages of the Languages page's menu.
 	mygo.App.SetLanguages(galleryLanguages...)
 	mygo.App.WhenReady(func() {

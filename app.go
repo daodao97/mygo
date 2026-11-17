@@ -86,6 +86,9 @@ type Application struct {
 	onWillQuit        listeners[func(*QuitEvent)]
 	onQuitCanceled    listeners[func()]
 	onQuit            listeners[func()]
+	onMemoryWarning   listeners[func()]
+	saveState         func() []byte
+	keepingState      bool
 	onActivate        listeners[func(bool)]
 	onDidBecomeActive listeners[func()]
 	onDidResignActive listeners[func()]
@@ -114,6 +117,7 @@ func (a *Application) Run() error {
 	if out := os.Getenv("MYGO_GENERATE"); out != "" {
 		return writeClient(out)
 	}
+	takeDevMarker()
 	if !isMainThread() {
 		return errors.New("mygo: App.Run must be called from the main goroutine")
 	}
@@ -605,6 +609,32 @@ func (a *Application) OnQuitCanceled(fn func()) (off func()) {
 // last hook, and must finish its work synchronously.
 func (a *Application) OnQuit(fn func()) (off func()) { return a.onQuit.add(fn, false) }
 
+// OnSaveState has fn give what the app needs to come back as it was, called on
+// the main thread as a phone's app goes to the background, where the system may
+// end it without a word. The next launch finds it in RestoredState. Keep it
+// small: it is written before the app may do no more. Desktops never call it,
+// but under mygo dev, which restarts the app as the code changes: it is called
+// every second there, for the app to come back as it was on every platform.
+func (a *Application) OnSaveState(fn func() []byte) {
+	a.saveState = fn
+	a.keepStateInDevelopment()
+}
+
+// RestoredState returns what OnSaveState gave as the app went to the background,
+// if the system ended it there. Android tells when the user meant to leave, which
+// gives nil. iOS doesn't say by the time the app starts: an app the user force-quit
+// from the background gets it too. An end while the app is on screen, as a crash,
+// gives nil.
+func (a *Application) RestoredState() []byte { return restoredState() }
+
+// OnMemoryWarning is called on the main thread when the system is short of
+// memory: let go of what can be made again, as caches. Phones end apps that
+// keep too much; desktops do not report it. Native UI drops its own caches
+// after these listeners ran, and the garbage collector returns what it can.
+func (a *Application) OnMemoryWarning(fn func()) (off func()) {
+	return a.onMemoryWarning.add(fn, false)
+}
+
 // OnActivate is called when the application is re-activated, for example by
 // clicking its Dock icon (macOS). Apps usually open a window when
 // hasVisibleWindows is false.
@@ -785,9 +815,18 @@ func (appHandler) ThemeChanged() {
 	// media queries do not tell them.
 	sendPreferences()
 }
-func (appHandler) DisplaysChanged()              { Screen.changed() }
-func (appHandler) LocaleChanged()                { App.localeChangedFromSystem() }
-func (appHandler) PowerEvent(event string)       { Power.event(event) }
+func (appHandler) MemoryWarning()   { fire(&App.onMemoryWarning) }
+func (appHandler) DisplaysChanged() { Screen.changed() }
+func (appHandler) LocaleChanged()   { App.localeChangedFromSystem() }
+func (appHandler) PowerEvent(event string) {
+	switch event {
+	case "suspend":
+		App.writeState()
+	case "resume":
+		forgetKeptState()
+	}
+	Power.event(event)
+}
 func (appHandler) HotkeyPressed(id int)          { GlobalShortcut.pressed(id) }
 func (appHandler) NotificationClicked(id string) { notificationClicked(id) }
 

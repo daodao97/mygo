@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": {{json (print .Mygo " dev")}},
+    "dev:ios": {{json (print .Mygo " dev -platform ios")}},
+    "dev:android": {{json (print .Mygo " dev -platform android")}},
     "build": {{json (print .Mygo " build")}},
     "generate": {{json (print .Mygo " generate")}},
     "dev:web": "vite",

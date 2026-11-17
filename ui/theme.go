@@ -175,8 +175,13 @@ func (t *Theme) Rem(n float32) float32 {
 }
 
 func defaultFontSize() float32 {
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
 		return 13
+	case "ios":
+		return 17 // UIFont's body
+	case "android":
+		return 16 // Material's body large
 	}
 	return 14
 }

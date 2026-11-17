@@ -20,6 +20,8 @@ func (l *library) sym(m *Module, name string) (uintptr, error) { return 0, error
 
 func (l *library) direct(fn uintptr, h uint64, args []uintptr) uintptr { return 0 }
 
+func (l *library) directSym(m *Module, name string, h uint64, args []uintptr) uintptr { return 0 }
+
 func freeBlock(uintptr) {}
 
 func (l *library) release(m *Module, h uint64)                              {}

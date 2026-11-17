@@ -58,8 +58,10 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	held := rt.buttons
 	switch ev.Kind {
 	case platform.PointerMove, platform.PointerUp:
+		rt.lastPointerTouch = ev.Touch
 		rt.pointerDevice(ev)
 	case platform.PointerDown:
+		rt.lastPointerTouch = ev.Touch
 		// It presses once it came where it presses (pointerDevice).
 		rt.pointerType = PointerType(ev.Pointer)
 	case platform.SurfaceBlur, platform.PointerCancel:
@@ -69,6 +71,12 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	}
 	if rt.insp.pointer(rt, ev, x, y) {
 		return true
+	}
+	if ev.Touch && touchInput != nil {
+		x, y = rt.aimTouch(ev.Kind, x, y)
+		if touchInput(rt, ev, x, y) {
+			return false
+		}
 	}
 	switch ev.Kind {
 	case platform.PointerMove, platform.PointerDown, platform.PointerUp, platform.PointerScroll, platform.PointerZoom:
@@ -125,7 +133,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise, ev.Momentum)
 	case platform.PointerZoom:
 		rt.pointerMove(x, y)
-		rt.zoom(float32(ev.Scale), Modifiers(ev.Mods))
+		rt.zoom(float32(ev.Scale), float32(ev.Rotation), Modifiers(ev.Mods))
 	case platform.KeyPressed:
 		rt.modsChanged(Modifiers(ev.Mods))
 		rt.holdKey(Modifiers(ev.Mods), Key(ev.Key), Key(ev.PhysicalKey))
@@ -567,6 +575,9 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 		newFocus := uint64(0)
 		if focus != nil {
 			newFocus = focus.id
+			if rt.touch.down && focus.textClient != nil {
+				rt.ime.show++
+			}
 		}
 		if newFocus != rt.focused {
 			rt.focused = newFocus
@@ -927,13 +938,13 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 
 // zoom gives a pinch to the element under the pointer that handles its
 // input; no element zooms of its own.
-func (rt *engine) zoom(scale float32, mods Modifiers) {
-	if scale <= 0 || scale == 1 {
+func (rt *engine) zoom(scale, rotation float32, mods Modifiers) {
+	if scale <= 0 || scale == 1 && rotation == 0 {
 		return
 	}
 	chain := rt.appendHitChain(rt.chain[:0], rt.pointerX, rt.pointerY)
 	rt.chain = chain[:0]
-	rt.deliver(rt.handler(chain), InputEvent{Kind: InputZoom, Scale: scale, Mods: mods})
+	rt.deliver(rt.handler(chain), InputEvent{Kind: InputZoom, Scale: scale, Rotation: rotation, Mods: mods})
 }
 
 // dragTo returns the offset of content whose thumb moved by moved DIPs
@@ -1197,7 +1208,10 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 	}
 	rt.keys = append(rt.keys, k)
 	rt.requestFrame()
-	return false
+	// The keys that go back, which a shortcut takes in the next frame:
+	// the system leaves them alone then, as Android's back then goes back
+	// in the app rather than out of it.
+	return (key == KeyBack || key == KeyEscape) && mods == 0 && rt.claimed(k)
 }
 
 // typePause is how long after a letter typed to choose a row the next
@@ -1535,6 +1549,15 @@ func (rt *engine) updateTextInput() {
 		t.Active, t.NoInputMethod = true, s.noIME
 		r := transformRect(s.world, Rect{s.x + s.caret.X, s.y + s.caret.Y, s.caret.W, s.caret.H})
 		t.Caret = rt.toWindow(platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)})
+	}
+	if t.Active {
+		if s := rt.states[rt.focused]; s != nil {
+			t.Traits = s.traits
+			if s.editor != nil {
+				t.Traits.Multiline, t.Traits.Secure = s.editor.multiline, s.editor.password
+			}
+		}
+		t.ShowKeyboard = rt.ime.show
 	}
 	if t != rt.ime.state {
 		if t.Client != rt.ime.state.Client {

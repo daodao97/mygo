@@ -17,6 +17,7 @@ type inspector struct {
 }
 
 func (in *inspector) contentWidth(w float32) float32                                { return w }
+func (in *inspector) contentHeight(w, h float32) float32                            { return h }
 func (in *inspector) lap(int)                                                       {}
 func (in *inspector) repainted(time.Duration)                                       {}
 func (in *inspector) noteSource()                                                   {}

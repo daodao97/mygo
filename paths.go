@@ -102,6 +102,10 @@ func defaultPath(name PathName) (path string, create bool, err error) {
 	case PathTemp:
 		return os.TempDir(), false, nil
 	case PathResources:
+		if runtime.GOOS == "android" {
+			// The APK's assets, which are no files, copied by the host.
+			return os.Getenv("MYGO_RESOURCES"), false, nil
+		}
 		exe, err := os.Executable()
 		if err != nil {
 			return "", false, err

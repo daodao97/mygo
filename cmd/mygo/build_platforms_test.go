@@ -17,12 +17,12 @@ func TestBuildRejectsInvalidPlatformsBeforeProjectWork(t *testing.T) {
 }
 
 func TestBuildPlatforms(t *testing.T) {
-	const raw = " darwin/universal, linux/amd64, windows/arm64, web, js/wasm "
+	const raw = " darwin/universal, linux/amd64, windows/arm64, web, js/wasm, ios, ios/simulator, android/arm64 "
 	targets, err := buildPlatforms(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(targets, ","); got != "darwin/universal,linux/amd64,windows/arm64,web,js/wasm" {
+	if got := strings.Join(targets, ","); got != "darwin/universal,linux/amd64,windows/arm64,web,js/wasm,ios,ios/simulator,android/arm64" {
 		t.Fatalf("targets = %s", got)
 	}
 }

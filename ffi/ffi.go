@@ -140,6 +140,8 @@ func EnvVar(name string) string {
 //     build` and `mygo dev` put it, signed with the app on macOS;
 //   - on macOS, the one in the app's Contents/Frameworks, where Swift
 //     libraries go;
+//   - on iOS, the framework named after the library in the app's
+//     Frameworks, where `mygo build` puts a native module's Swift;
 //   - the one next to the executable;
 //
 // and, in programs that are not packaged apps, as under `go run` and `go
@@ -166,6 +168,12 @@ func (l *Library) Path() (string, error) {
 		dirs = append(dirs, dir)
 	}
 	if exe, err := os.Executable(); err == nil {
+		if runtime.GOOS == "ios" {
+			p := filepath.Join(filepath.Dir(exe), "Frameworks", l.name+".framework", l.name)
+			if info, err := os.Stat(p); err == nil && info.Mode().IsRegular() {
+				return p, nil
+			}
+		}
 		if runtime.GOOS == "darwin" {
 			dirs = append(dirs, filepath.Join(filepath.Dir(exe), "..", "Frameworks"))
 		}

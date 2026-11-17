@@ -154,6 +154,37 @@ See [Windows](distribution.md#windows).
 
 See [Linux](distribution.md#linux).
 
+## ios
+
+| Field | Default | |
+|---|---|---|
+| `minimumSystemVersion` | `"17.0"` | the oldest iOS the app runs on |
+| `team` | | the ID of the Apple developer team that signs the app for devices |
+| `provisioningProfile` | the installed one that best fits | the profile to sign with: its name, UUID or the path of a `.mobileprovision` |
+| `distribution` | `"app-store"` | what the build is for: `app-store` (and TestFlight), `ad-hoc`, `development` or `enterprise` |
+| `buildNumber` | `version` | `CFBundleVersion`, which must grow with every upload of a version |
+| `orientations` | both | the orientations the app turns to on iPhones, `portrait` and `landscape`; iPads take every one |
+| `multipleWindows` | `false` | lets `WindowOptions.OwnScene` open windows of the system's own on iPad |
+| `associatedDomains` | | the hosts of universal links, as `example.com`, which reach `App.OnOpenURL`; the profile needs the capability Associated Domains |
+| `launchScreen` | | what shows as the app launches: `background`, a color, and `image`, a file |
+| `backgroundModes` | | the app's `UIBackgroundModes`, as `audio`, with those its plugins ask for |
+| `infoPlist` | | extra keys of Info.plist, which replace MyGo's own, as usage descriptions |
+
+## android
+
+| Field | Default | |
+|---|---|---|
+| `minSdk` | `26` | the oldest Android API level the app runs on |
+| `versionCode` | from `version` | the integer version Google Play orders uploads by: major × 10000 + minor × 100 + patch |
+| `permissions` | | permissions the manifest declares besides INTERNET and notifications, as `CAMERA` |
+| `keystore` | the debug key | the keystore of the upload key that signs release builds, its passwords from `MYGO_ANDROID_KEYSTORE_PASSWORD` and `MYGO_ANDROID_KEY_PASSWORD` |
+| `keyAlias` | | the alias of the upload key in the keystore |
+| `appLinks` | | the domains the app opens links of, as `example.com` |
+| `adaptiveIcon` | | the launcher's icon, in layers: `foreground`, a square PNG, and `background`, a color |
+| `splash` | the theme's | the color that shows as the app launches, as `#102030` |
+
+See [Building and publishing for phones](mobile/building.md).
+
 ## Computed configuration
 
 The configuration is code, so it can compute fields: read the version from

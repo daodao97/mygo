@@ -17,6 +17,12 @@ func setProcessGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
+// detachProcess starts the command apart from this one, which it outlives:
+// Ctrl+C on the terminal does not reach it.
+func detachProcess(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+}
+
 // terminate asks a command started with setProcessGroup, and the processes
 // it started, to exit.
 func terminate(cmd *exec.Cmd) { signalGroup(cmd, syscall.SIGTERM) }

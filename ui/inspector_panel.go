@@ -91,8 +91,13 @@ func (rt *engine) buildInspector(c *context, appW, w, h float32) {
 	// developer tools do.
 	panel := coreColumn(c).Key(inspectorKey).Direction(LeftToRight)
 	in.panel = panel.id
-	panel.Absolute().Left(appW).Top(0).Width(w-appW).Height(h).Background(pal.bg).
-		BorderWidth(0, 0, 0, 1).BorderColor(pal.border).FontSize(12).TextColor(pal.text).Label("Developer tools")
+	if inspectorBelow(w) {
+		// Along the bottom of a phone, its toolbar's height for a finger.
+		panel.Absolute().Left(0).Top(in.appH).Width(w).Height(h-in.appH).BorderWidth(1, 0, 0, 0)
+	} else {
+		panel.Absolute().Left(appW).Top(0).Width(w-appW).Height(h).BorderWidth(0, 0, 0, 1)
+	}
+	panel.Background(pal.bg).BorderColor(pal.border).FontSize(12).TextColor(pal.text).Label("Developer tools")
 	panel.Children(func() {
 		in.resizer(c)
 		in.toolbar(c, rt)

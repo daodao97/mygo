@@ -131,6 +131,8 @@ public final class NativeTexture: @unchecked Sendable {
         present(s)
     }
 
+#endif
+#if os(macOS)
     /// Calls f on each refresh of the display, with the host time the
     /// frame will show at, in seconds (as CACurrentMediaTime counts),
     /// until the link is invalidated.
@@ -140,7 +142,7 @@ public final class NativeTexture: @unchecked Sendable {
 #endif
 }
 
-#if canImport(IOSurface)
+#if os(macOS)
 /// Calls back on each refresh of the display, until invalidated.
 public final class NativeDisplayLink: @unchecked Sendable {
     private var link: CVDisplayLink?
@@ -491,6 +493,12 @@ func _mygoRelease(_ h: UInt64) {
 }
 
 #if canImport(AppKit)
+/// The views of native UI's windows, which views of the module are, and
+/// the windows methods take: AppKit's on macOS, UIKit's on iOS, where a
+/// window is its view controller.
+public typealias NativeView = NSView
+public typealias NativeWindow = NSWindow
+
 @MainActor func _mygoWindow(_ h: UInt64) -> NSWindow {
     let w: NSWindow = _mygoObject(h)
     return w
@@ -502,6 +510,22 @@ func _mygoRelease(_ h: UInt64) {
     guard let v = w.contentView, !v.isFlipped else { return r }
     return CGRect(x: r.minX, y: v.bounds.height - r.minY - r.height, width: r.width, height: r.height)
 }
+#elseif canImport(UIKit)
+public typealias NativeView = UIView
+public typealias NativeWindow = UIViewController
+
+/// The view controller of a window of the app, which the host keeps by its
+/// number: Go's handle of it.
+@MainActor func _mygoWindow(_ h: UInt64) -> UIViewController {
+    guard let windows = NSClassFromString("MyGoWindows") as? NSObject.Type,
+          let c = windows.perform(NSSelectorFromString("controller:"), with: NSNumber(value: h))?.takeUnretainedValue() as? UIViewController else {
+        fatalError("MODULE: the window Go passed is gone")
+    }
+    return c
+}
+
+/// UIKit's coordinates are native UI's: from the top-left.
+@MainActor func _mygoFlip(_ r: CGRect, in w: UIViewController) -> CGRect { r }
 #endif
 
 final class _MygoTable<V>: @unchecked Sendable {

@@ -1,9 +1,10 @@
-//go:build linux && (amd64 || arm64)
+//go:build linux
 
-package linux
+package inotify
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,9 +16,9 @@ import (
 
 func TestWatchInotifyParser(t *testing.T) {
 	record := make([]byte, 20)
-	binary.LittleEndian.PutUint32(record, 5)
-	binary.LittleEndian.PutUint32(record[8:], 77)
-	binary.LittleEndian.PutUint32(record[12:], 4)
+	binary.NativeEndian.PutUint32(record, 5)
+	binary.NativeEndian.PutUint32(record[8:], 77)
+	binary.NativeEndian.PutUint32(record[12:], 4)
 	copy(record[16:], "abc")
 	got, err := parseInotify(record)
 	if err != nil || len(got) != 1 || got[0].name != "abc" || got[0].cookie != 77 || got[0].wd != 5 {
@@ -33,7 +34,7 @@ func TestWatchInotifyParser(t *testing.T) {
 	if _, err := parseInotify(malformed); err == nil {
 		t.Fatal("accepted unterminated name")
 	}
-	binary.LittleEndian.PutUint32(malformed[12:], 0xffffffff)
+	binary.NativeEndian.PutUint32(malformed[12:], 0xffffffff)
 	if _, err := parseInotify(malformed); err == nil {
 		t.Fatal("accepted oversized name")
 	}
@@ -46,7 +47,7 @@ func TestInotifyWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	notices := make(chan platform.FileWatchNotice, 16)
-	w, err := (&Backend{}).NewFileWatch(func(n platform.FileWatchNotice) { notices <- n })
+	w, err := New(func(n platform.FileWatchNotice) { notices <- n })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,18 +70,13 @@ func TestInotifyWatch(t *testing.T) {
 	}
 	next := func(want platform.FileWatchNotice) {
 		t.Helper()
-		timeout := time.After(5 * time.Second)
 		for {
-			select {
-			case n := <-notices:
-				if n == want {
-					return
-				}
-				if n.Err != nil || n.Kind == platform.FileWatchLost {
-					t.Fatalf("notice %+v", n)
-				}
-			case <-timeout:
-				t.Fatalf("no notice %+v", want)
+			n := wait.For(t, fmt.Sprintf("notice %+v", want), notices)
+			if n == want {
+				return
+			}
+			if n.Err != nil || n.Kind == platform.FileWatchLost {
+				t.Fatalf("notice %+v", n)
 			}
 		}
 	}
@@ -119,7 +115,7 @@ func TestInotifyShared(t *testing.T) {
 	watch := func() (platform.FileWatch, chan platform.FileWatchNotice) {
 		t.Helper()
 		notices := make(chan platform.FileWatchNotice, 16)
-		w, err := (&Backend{}).NewFileWatch(func(n platform.FileWatchNotice) { notices <- n })
+		w, err := New(func(n platform.FileWatchNotice) { notices <- n })
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,6 +1,7 @@
 package mygo
 
 import (
+	"os"
 	"strings"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -166,6 +167,49 @@ func (DialogModule) Open(opts OpenDialogOptions) ([]string, error) {
 	}
 	r := await(ch)
 	return r.paths, r.err
+}
+
+// SaveCopy has the user choose where a copy of the file at path goes, under
+// name, and returns where it went, or "" when canceled: the save dialog and a
+// copy on desktops; on phones, whose apps have no paths of other apps'
+// folders, the system's picker (Files on iOS, the storage access framework on
+// Android, which answers with a content URI). It suits an app that has made
+// the file already, as an export.
+func (d DialogModule) SaveCopy(path, name string) (string, error) {
+	needsApp("Dialog.SaveCopy")
+	type result struct {
+		path string
+		err  error
+	}
+	ch := make(chan result, 1)
+	var phone bool
+	if !postMain(func() {
+		dev, ok := device()
+		if !ok {
+			deliver(ch, result{})
+			return
+		}
+		phone = true
+		dev.SaveFile(path, name, func(saved string, err error) { deliver(ch, result{saved, err}) })
+	}) {
+		return "", errLoopStopped
+	}
+	r := await(ch)
+	if phone {
+		return r.path, r.err
+	}
+	to, err := d.Save(SaveDialogOptions{DefaultPath: name})
+	if err != nil || to == "" {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(to, data, 0o644); err != nil {
+		return "", err
+	}
+	return to, nil
 }
 
 // Save shows a dialog to choose where to save a file and returns the path,

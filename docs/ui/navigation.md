@@ -90,6 +90,13 @@ whose right click lists the pages to go back or forward to, by their
 titles. The keys go to the router holding the keyboard focus, else to the
 first of the window.
 
+On phones, `router.SystemStack = true` shows the history as the system's
+own stack of screens, under its navigation bar with each page's title and
+a back button: UIKit moves the pages on iOS, with its swipe from the left
+edge, and Android shows Material's toolbar over them. `InSystemStack`
+tells the view to show no bar of its own then (see
+[Interfaces on phones](../mobile/interface.md#tabs-and-stacks)).
+
 In a [browser](browsers.md), the first router a window shows follows the
 tab's history, in the URL's fragment (`#/notes/42`): going to a page adds
 an entry to the browser's history, its back and forward buttons go through

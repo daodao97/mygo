@@ -254,3 +254,18 @@ if w, h := ui.ImageSize(pic); w > 0 && h > 0 {
 
 Images are decorations that assistive technology does not see, unless
 `Label` names them, as a photo that matters.
+
+## Pictures from the network
+
+`ui/netimage` downloads, caches and shows them, with a placeholder until they
+come:
+
+```go
+netimage.Image(c, url, netimage.Options{MaxSide: 240}).Size(80, 80).Radius(8)
+```
+
+They stay in memory while there is room and on disk across runs, as their
+servers' caching headers say. `MaxSide` bounds the bitmap kept: give about what
+it shows at, so that a list of thumbnails doesn't hold its photos. `netimage.Load`
+returns the picture to draw it some other way, `netimage.Preload` downloads what's
+about to show, and `netimage.Forget` and `netimage.Clear` let go of them.

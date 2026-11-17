@@ -1,6 +1,6 @@
 # SQLite
 
-SQLite 插件为网页和 Go 提供本地数据库，包括原生 UI 应用。它的 SQLite 是一个用 Zig 编写的[原生模块](../native-modules.md)，按平台发布预构建版本，所以应用构建时不需要 cgo、C 编译器或 Zig。它支持 macOS、Linux 和 Windows 上的 amd64 与 arm64。
+SQLite 插件为网页和 Go 提供本地数据库，包括原生 UI 应用。它的 SQLite 是一个[原生模块](../native-modules.md)：在桌面上用 Zig 编写，按平台发布预构建版本，所以应用构建时不需要 cgo、C 编译器或 Zig；在 iOS 上用 Swift、在 Android 上用带 C 的 Kotlin 编写，随应用一起构建。它支持 macOS、Linux 和 Windows 上的 amd64 与 arm64，iOS 16 及以上，以及 Android。
 
 ## 使用页面插件
 
@@ -103,6 +103,8 @@ Go 的 `Open` 直接接受路径；其父目录必须存在。连接可以从任
 ## 构建与发布
 
 SQLite 在原生模块 `plugins/sqlite/internal/sqlitecore` 中运行：一个 Go 接口 `Engine`，其 Zig 实现通过编译 SQLite 的合并源码（amalgamation）来实现该接口，`zig/build.zig.zon` 用哈希固定这份源码。`mygo dev` 和 `mygo build` 把该平台的模块库放进应用的资源中，在 macOS 上与应用一起签名；应用的 `go run` 和 `go test` 则会下载它。打包的应用从不在运行时下载原生代码。
+
+手机运行的是同一个 SQLite，版本为 3.53.4，编译选项相同，随应用一起构建（[手机](../native-modules.md#手机)）。在 iOS 上，它的 Swift 从 `CSQLite.xcframework` 链接 SQLite：这个 XCFramework 由 `swift/build-xcframework.sh` 从合并源码构建，存放在发布版本 `native-sqlitecore` 中，由 `Package.swift` 中的校验和固定。系统自带的 SQLite 在较旧的 iOS 上版本更旧，编译选项也不同。在 Android 上，它的 Kotlin 通过 CMake 从合并源码构建的 C 调用 SQLite，合并源码由 SHA-256 固定，需要 Android SDK Manager 中的 CMake。
 
 在这个仓库中，模块用 Zig 0.16.0 从源代码构建：
 

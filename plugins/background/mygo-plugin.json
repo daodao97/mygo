@@ -1,0 +1,19 @@
+{
+  "mobile": {
+    "id": "background",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "BackgroundPlugin",
+      "frameworks": ["BackgroundTasks"],
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch", "processing"],
+        "BGTaskSchedulerPermittedIdentifiers": ["$(IDENTIFIER).mygo.refresh", "$(IDENTIFIER).mygo.processing"]
+      }
+    },
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "BackgroundPlugin",
+      "dependencies": ["androidx.work:work-runtime:2.10.1"]
+    }
+  }
+}

@@ -128,6 +128,15 @@ jobs:
           go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/web ./internal/gpu/gl
           # The canvas engine's line breaking, with a canvas of its test's.
           go test -exec "$(go env GOROOT)/lib/wasm/go_js_wasm_exec" -run 'TestCanvas|TestKeepWords' ./internal/text
+      # Phones link with their own toolchains (cgo): Xcode's clang for iOS,
+      # the NDK's for Android, which the macOS runners have.
+      - name: Vet iOS and Android
+        if: runner.os == 'macOS'
+        run: |
+          sdk=$(xcrun --sdk iphoneos --show-sdk-path)
+          GOOS=ios GOARCH=arm64 CGO_ENABLED=1 CC="$(xcrun --sdk iphoneos --find clang) -isysroot $sdk -arch arm64 -miphoneos-version-min=16.0" go vet ./...
+          ndk=$(ls -d "$ANDROID_NDK_LATEST_HOME"/toolchains/llvm/prebuilt/*/bin)
+          GOOS=android GOARCH=arm64 CGO_ENABLED=1 CC=$ndk/aarch64-linux-android26-clang go vet ./...
       # The plugins' tests load the native libraries their mygo-plugin.json
       # pins, and on Windows the installer tests run the NSIS that
       # internal/nsis pins, all of which they download into the user's cache
@@ -343,3 +352,101 @@ jobs:
         env:
           MYGO_E2E: 1
         run: go test -run 'TestContentWindow' ./internal/e2e
+
+  # The hosts of phones are in Swift and Kotlin, which go vet does not read:
+  # building an app compiles them, with the Go code linked in. One target of
+  # each is enough, as the host's source is the same for the others.
+  mobile:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: iOS app, os: macos-latest, platform: ios/simulator }
+          - { name: Android app, os: ubuntu-latest, platform: android/arm64 }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v6
+        if: runner.os == 'Linux'
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v4
+        if: runner.os == 'Linux'
+        with:
+          packages: platform-tools platforms;android-36 ndk;27.1.12297006 cmake;3.22.1
+      - name: Build the app
+        run: go run ./cmd/mygo build -platform ${{ matrix.platform }} examples/counter-native
+
+  # Native modules on phones, which go test does not reach: the round trip
+  # of every kind of value through a module's Swift on the iOS simulator
+  # and its Kotlin on Android's emulator, in an app that runs the checks
+  # of its tests (native/internal/roundtrip/app) and logs how they went.
+  phone-modules:
+    name: Native modules on ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: iOS, os: macos-latest }
+          - { name: Android, os: ubuntu-latest }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v6
+        if: runner.os == 'Linux'
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v4
+        if: runner.os == 'Linux'
+        with:
+          packages: platform-tools platforms;android-36 ndk;27.1.12297006 cmake;3.22.1
+      - name: Run on the iOS simulator
+        if: runner.os == 'macOS'
+        run: |
+          go run ./cmd/mygo build -platform ios/simulator native/internal/roundtrip/app
+          udid=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" native/internal/roundtrip/app/dist/ios-simulator/Roundtrip.app
+          start=$(date '+%Y-%m-%d %H:%M:%S')
+          xcrun simctl launch "$udid" dev.mygo.roundtrip
+          for i in $(seq 120); do
+            xcrun simctl spawn "$udid" log show --start "$start" --style compact --predicate 'eventMessage CONTAINS "roundtrip:"' > log.txt 2>/dev/null || true
+            if grep -qE 'roundtrip: (PASS|FAIL)$' log.txt; then break; fi
+            sleep 2
+          done
+          grep 'roundtrip:' log.txt || true
+          grep -q 'roundtrip: PASS$' log.txt
+      - name: Enable KVM
+        if: runner.os == 'Linux'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Build for Android
+        if: runner.os == 'Linux'
+        run: go run ./cmd/mygo build -platform android/amd64 native/internal/roundtrip/app
+      - name: Run on Android's emulator
+        if: runner.os == 'Linux'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            adb install -r native/internal/roundtrip/app/dist/android/roundtrip-0.1.0.apk
+            adb logcat -c
+            adb shell monkey -p dev.mygo.roundtrip -c android.intent.category.LAUNCHER 1
+            for i in $(seq 120); do adb logcat -d -s mygo:* > log.txt; if grep -qE 'roundtrip: (PASS|FAIL)' log.txt; then break; fi; sleep 2; done; grep 'roundtrip:' log.txt || true; grep -q 'roundtrip: PASS' log.txt

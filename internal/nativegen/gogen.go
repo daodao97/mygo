@@ -19,8 +19,8 @@ func SourceLine(hash string) string { return "mygo:native " + Version + " " + ha
 
 // GenerateGo writes the Go side: the module's description, a constructor
 // per entry point and the values that call the implementation, which is
-// in the languages langs.
-func GenerateGo(m *Module, langs []string, minMacOS string) ([]byte, error) {
+// in the languages langs; sp are the platforms of its Swift.
+func GenerateGo(m *Module, langs []string, sp SwiftPlatforms) ([]byte, error) {
 	var b bytes.Buffer
 	g := &goGen{m: m, b: &b, w: newWire(m)}
 	fmt.Fprintf(&b, "%s// %s\n\npackage %s\n\nIMPORTS\n", goHeader, SourceLine(m.Hash), m.Package)
@@ -31,9 +31,16 @@ func GenerateGo(m *Module, langs []string, minMacOS string) ([]byte, error) {
 	for _, path := range slices.Sorted(maps.Keys(m.Deps)) {
 		deps = append(deps, fmt.Sprintf("%q", m.Deps[path].Name))
 	}
+	kotlin := ""
+	if slices.Contains(langs, "kotlin") {
+		kotlin = KotlinClass(m.ImportPath)
+	}
+	if !slices.Contains(langs, "swift") {
+		sp = SwiftPlatforms{}
+	}
 	fmt.Fprintf(&b, `
 // _module describes the module to the runtime.
-var _module = &_native.Module{Name: %q, Symbol: %q, Langs: []string{%s}, MinMacOS: %q, Dir: _dir(), Errors: []*_native.Error{%s}, Deps: []string{%s}}
+var _module = &_native.Module{Name: %q, Symbol: %q, Langs: []string{%s}, SwiftOS: []string{%s}, MinMacOS: %q, MinIOS: %q, Kotlin: %q, Dir: _dir(), Errors: []*_native.Error{%s}, Deps: []string{%s}}
 
 // _dir returns the package's directory when the binary knows it, where
 // mygo dev builds the implementation for go test and go run.
@@ -44,7 +51,7 @@ func _dir() string {
 	}
 	return _filepath.Dir(file)
 }
-`, m.Name, m.Package, quoteAll(langs), minMacOS, strings.Join(errs, ", "), strings.Join(deps, ", "))
+`, m.Name, m.Package, quoteAll(langs), quoteAll(sp.OS), sp.MinMacOS, sp.MinIOS, kotlin, strings.Join(errs, ", "), strings.Join(deps, ", "))
 	// The values of the platform's interfaces, which other modules wrap
 	// by name.
 	var wraps []string

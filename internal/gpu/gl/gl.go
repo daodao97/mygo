@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || js
+//go:build (linux && !android && (amd64 || arm64)) || js || android
 
 // Package gl draws scenes with OpenGL 3.3, OpenGL ES 3.0 or WebGL 2 into
 // the framebuffer bound when Render is called: the one GTK's GtkGLArea

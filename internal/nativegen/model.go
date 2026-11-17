@@ -1,8 +1,10 @@
 // Package nativegen reads the Go side of a native module, an interface
 // that a platform's own language implements, and writes what each side
 // needs from it: the Go constructors and proxies (<package>_native.go),
-// and for Apple's platforms the Swift protocols, types and the @_cdecl
-// functions Go calls (<Module>.mygo.swift). See docs/native-modules.md.
+// for Apple's platforms the Swift protocols, types and the @_cdecl
+// functions Go calls (<Module>.mygo.swift), for Android the Kotlin
+// interfaces, types and the object Go calls (<Module>.mygo.kt), and the
+// same for Rust and Zig. See docs/native-modules.md.
 package nativegen
 
 import (
@@ -13,13 +15,16 @@ import (
 
 // Version changes when the generated code changes for the same interface,
 // so that `mygo build` regenerates what an older generator wrote.
-const Version = "2"
+const Version = "3"
 
 // Module is the Go package of a native module.
 type Module struct {
 	Dir     string // the package's directory
 	Package string // the Go package name: language
-	Name    string // the Swift module: Language
+	// ImportPath is the package's import path, from its go.mod, which
+	// names its Kotlin package.
+	ImportPath string
+	Name       string // the Swift module: Language
 	// Files are the package's own Go files, without the generated one.
 	Files []string
 	// Hash identifies the declarations the generated files came from.

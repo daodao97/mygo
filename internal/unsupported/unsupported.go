@@ -33,16 +33,16 @@ func (*Backend) NewWindow(*platform.WindowOptions, platform.WindowHandler) (plat
 func (*Backend) SetApplicationMenu(*platform.Menu)                          {}
 func (*Backend) PopupMenu(*platform.Menu, platform.Window, *platform.Point) {}
 func (*Backend) UpdateMenuItem(*platform.MenuItem)                          {}
-func (*Backend) App() platform.AppController                                { return app{} }
-func (*Backend) Dialogs() platform.Dialogs                                  { return dialogs{} }
-func (*Backend) Clipboard() platform.Clipboard                              { return clipboard{} }
-func (*Backend) Shell() platform.Shell                                      { return shell{} }
-func (*Backend) Screen() platform.Screen                                    { return screen{} }
-func (*Backend) Theme() platform.Theme                                      { return theme{} }
-func (*Backend) Power() platform.Power                                      { return power{} }
-func (*Backend) Network() platform.Network                                  { return network{} }
-func (*Backend) NowPlaying() platform.NowPlaying                            { return nowPlaying{} }
-func (*Backend) Secrets() platform.Secrets                                  { return secrets{} }
+func (*Backend) App() platform.AppController                                { return App{} }
+func (*Backend) Dialogs() platform.Dialogs                                  { return Dialogs{} }
+func (*Backend) Clipboard() platform.Clipboard                              { return Clipboard{} }
+func (*Backend) Shell() platform.Shell                                      { return Shell{} }
+func (*Backend) Screen() platform.Screen                                    { return Screen{} }
+func (*Backend) Theme() platform.Theme                                      { return Theme{} }
+func (*Backend) Power() platform.Power                                      { return Power{} }
+func (*Backend) Network() platform.Network                                  { return Network{} }
+func (*Backend) NowPlaying() platform.NowPlaying                            { return NowPlaying{} }
+func (*Backend) Secrets() platform.Secrets                                  { return Secrets{} }
 func (*Backend) NewTray(string, platform.TrayHandler) (platform.Tray, error) {
 	return nil, errUnsupported
 }
@@ -58,146 +58,156 @@ func (*Backend) ShowNotification(_ *platform.Notification, done func(error)) {
 
 func (*Backend) RemoveAllNotifications() {}
 
-type app struct{}
+// App does nothing, or reports that it cannot.
+type App struct{}
 
-func (app) SetActivationPolicy(string)                        {}
-func (app) Activate()                                         {}
-func (app) AllowForeground()                                  {}
-func (app) WithActivationToken(_ string, fn func())           { fn() }
-func (app) Hide()                                             {}
-func (app) Unhide()                                           {}
-func (app) IsHidden() bool                                    { return false }
-func (app) IsActive() bool                                    { return false }
-func (app) SetBadge(string)                                   {}
-func (app) Badge() string                                     { return "" }
-func (app) Bounce(bool) int                                   { return 0 }
-func (app) CancelBounce(int)                                  {}
-func (app) SetDockIcon([]byte) error                          { return errUnsupported }
-func (app) ShowAboutPanel(platform.AboutPanelOptions)         {}
-func (app) PreferredLanguages() []string                      { return []string{"en-US"} }
-func (app) Region() platform.Region                           { return platform.Region{FirstWeekday: -1} }
-func (app) SavedLocale() (string, bool)                       { return "", false }
-func (app) SaveLocale(string) bool                            { return false }
-func (app) SetLanguages([]string, bool)                       {}
-func (app) Package() (platform.PackageInfo, bool)             { return platform.PackageInfo{}, false }
-func (app) RegisterURLScheme(string, string, string) error    { return errUnsupported }
-func (app) UnregisterURLScheme(string, string, string) error  { return errUnsupported }
-func (app) IsURLSchemeRegistered(string, string, string) bool { return false }
-func (app) SetOpenAtLogin(bool, string, string, string) error { return errUnsupported }
-func (app) OpenAtLogin(string, string, string) bool           { return false }
-func (app) OpenedAtLogin() bool                               { return false }
-func (app) SetDockMenu(*platform.Menu)                        {}
-func (app) ClearBrowsingData(_ platform.DataStore, _ platform.SiteData, done func(error)) {
+func (App) SetActivationPolicy(string)                        {}
+func (App) Activate()                                         {}
+func (App) AllowForeground()                                  {}
+func (App) WithActivationToken(_ string, fn func())           { fn() }
+func (App) Hide()                                             {}
+func (App) Unhide()                                           {}
+func (App) IsHidden() bool                                    { return false }
+func (App) IsActive() bool                                    { return false }
+func (App) SetBadge(string)                                   {}
+func (App) Badge() string                                     { return "" }
+func (App) Bounce(bool) int                                   { return 0 }
+func (App) CancelBounce(int)                                  {}
+func (App) SetDockIcon([]byte) error                          { return errUnsupported }
+func (App) ShowAboutPanel(platform.AboutPanelOptions)         {}
+func (App) PreferredLanguages() []string                      { return []string{"en-US"} }
+func (App) Region() platform.Region                           { return platform.Region{FirstWeekday: -1} }
+func (App) SavedLocale() (string, bool)                       { return "", false }
+func (App) SaveLocale(string) bool                            { return false }
+func (App) SetLanguages([]string, bool)                       {}
+func (App) Package() (platform.PackageInfo, bool)             { return platform.PackageInfo{}, false }
+func (App) RegisterURLScheme(string, string, string) error    { return errUnsupported }
+func (App) UnregisterURLScheme(string, string, string) error  { return errUnsupported }
+func (App) IsURLSchemeRegistered(string, string, string) bool { return false }
+func (App) SetOpenAtLogin(bool, string, string, string) error { return errUnsupported }
+func (App) OpenAtLogin(string, string, string) bool           { return false }
+func (App) OpenedAtLogin() bool                               { return false }
+func (App) SetDockMenu(*platform.Menu)                        {}
+func (App) ClearBrowsingData(_ platform.DataStore, _ platform.SiteData, done func(error)) {
 	done(errUnsupported)
 }
-func (app) NewDataStore(platform.DataStoreOptions) (platform.DataStore, error) {
+func (App) NewDataStore(platform.DataStoreOptions) (platform.DataStore, error) {
 	return nil, errUnsupported
 }
-func (app) AddRecentDocument(string) error      { return errUnsupported }
-func (app) ClearRecentDocuments() error         { return errUnsupported }
-func (app) SetJumpList(platform.JumpList) error { return errUnsupported }
+func (App) AddRecentDocument(string) error      { return errUnsupported }
+func (App) ClearRecentDocuments() error         { return errUnsupported }
+func (App) SetJumpList(platform.JumpList) error { return errUnsupported }
 
-func (app) ListCookies(_ platform.DataStore, _ string, done func([]platform.Cookie, error)) {
+func (App) ListCookies(_ platform.DataStore, _ string, done func([]platform.Cookie, error)) {
 	done(nil, platform.ErrUnsupported)
 }
-func (app) SetCookie(_ platform.DataStore, _ platform.Cookie, done func(error)) {
+func (App) SetCookie(_ platform.DataStore, _ platform.Cookie, done func(error)) {
 	done(platform.ErrUnsupported)
 }
-func (app) DeleteCookie(_ platform.DataStore, _ platform.CookieKey, done func(error)) {
+func (App) DeleteCookie(_ platform.DataStore, _ platform.CookieKey, done func(error)) {
 	done(platform.ErrUnsupported)
 }
-func (app) ClearCookies(_ platform.DataStore, done func(error)) { done(platform.ErrUnsupported) }
-func (app) CompileContentRules(_, _, _ string, done func(any, error)) {
+func (App) ClearCookies(_ platform.DataStore, done func(error)) { done(platform.ErrUnsupported) }
+func (App) CompileContentRules(_, _, _ string, done func(any, error)) {
 	done(nil, platform.ErrUnsupported)
 }
 
-type dialogs struct{}
+// Dialogs does nothing, or reports that it cannot.
+type Dialogs struct{}
 
-func (dialogs) ShowOpenDialog(_ platform.Window, _ *platform.OpenDialogOptions, cb func([]string, error)) {
+func (Dialogs) ShowOpenDialog(_ platform.Window, _ *platform.OpenDialogOptions, cb func([]string, error)) {
 	cb(nil, errUnsupported)
 }
-func (dialogs) ShowSaveDialog(_ platform.Window, _ *platform.SaveDialogOptions, cb func(string, error)) {
+func (Dialogs) ShowSaveDialog(_ platform.Window, _ *platform.SaveDialogOptions, cb func(string, error)) {
 	cb("", errUnsupported)
 }
-func (dialogs) ShowMessageBox(_ platform.Window, _ *platform.MessageBoxOptions, cb func(platform.MessageBoxResult, error)) {
+func (Dialogs) ShowMessageBox(_ platform.Window, _ *platform.MessageBoxOptions, cb func(platform.MessageBoxResult, error)) {
 	cb(platform.MessageBoxResult{}, errUnsupported)
 }
 
-type clipboard struct{}
+// Clipboard does nothing, or reports that it cannot.
+type Clipboard struct{}
 
-func (clipboard) WatchChanges(func()) (func(), error) {
+func (Clipboard) WatchChanges(func()) (func(), error) {
 	return nil, platform.ErrUnsupported
 }
 
-func (clipboard) ReadData([]transfer.Format) (transfer.Data, error) {
+func (Clipboard) ReadData([]transfer.Format) (transfer.Data, error) {
 	return transfer.Data{}, errUnsupported
 }
-func (clipboard) WriteData(transfer.Data, bool, func()) error { return errUnsupported }
-func (clipboard) Formats() []transfer.Format                  { return nil }
-func (clipboard) Flush() error                                { return errUnsupported }
-func (clipboard) Close()                                      {}
+func (Clipboard) WriteData(transfer.Data, bool, func()) error { return errUnsupported }
+func (Clipboard) Formats() []transfer.Format                  { return nil }
+func (Clipboard) Flush() error                                { return errUnsupported }
+func (Clipboard) Close()                                      {}
 
-func (clipboard) ReadText() string           { return "" }
-func (clipboard) WriteText(string)           {}
-func (clipboard) ReadHTML() string           { return "" }
-func (clipboard) WriteHTML(string)           {}
-func (clipboard) ReadImage() []byte          { return nil }
-func (clipboard) WriteImage([]byte) error    { return errUnsupported }
-func (clipboard) Clear()                     {}
-func (clipboard) AvailableFormats() []string { return nil }
+func (Clipboard) ReadText() string           { return "" }
+func (Clipboard) WriteText(string)           {}
+func (Clipboard) ReadHTML() string           { return "" }
+func (Clipboard) WriteHTML(string)           {}
+func (Clipboard) ReadImage() []byte          { return nil }
+func (Clipboard) WriteImage([]byte) error    { return errUnsupported }
+func (Clipboard) Clear()                     {}
+func (Clipboard) AvailableFormats() []string { return nil }
 
-type shell struct{}
+// Shell does nothing, or reports that it cannot.
+type Shell struct{}
 
-func (shell) OpenExternal(string) error              { return errUnsupported }
-func (shell) OpenPath(string) error                  { return errUnsupported }
-func (shell) ShowItemInFolder(string)                {}
-func (shell) TrashItem(string) error                 { return errUnsupported }
-func (shell) TrashItemResult(string) (string, error) { return "", platform.ErrUnsupported }
-func (shell) PreviewItem(string) error               { return errUnsupported }
-func (shell) Beep()                                  {}
-func (shell) FileIcon(string, int) ([]byte, error)   { return nil, errUnsupported }
-func (shell) TypeIcon(string, int) ([]byte, error)   { return nil, errUnsupported }
-func (shell) OpenApplication(string) error           { return errUnsupported }
-func (shell) DefaultApp(string) (platform.Application, error) {
+func (Shell) OpenExternal(string) error              { return errUnsupported }
+func (Shell) OpenPath(string) error                  { return errUnsupported }
+func (Shell) ShowItemInFolder(string)                {}
+func (Shell) TrashItem(string) error                 { return errUnsupported }
+func (Shell) TrashItemResult(string) (string, error) { return "", platform.ErrUnsupported }
+func (Shell) PreviewItem(string) error               { return errUnsupported }
+func (Shell) Beep()                                  {}
+func (Shell) FileIcon(string, int) ([]byte, error)   { return nil, errUnsupported }
+func (Shell) TypeIcon(string, int) ([]byte, error)   { return nil, errUnsupported }
+func (Shell) OpenApplication(string) error           { return errUnsupported }
+func (Shell) DefaultApp(string) (platform.Application, error) {
 	return platform.Application{}, errUnsupported
 }
 
 func (*Backend) Applications() ([]platform.Application, error) { return nil, errUnsupported }
 
-type screen struct{}
+// Screen does nothing, or reports that it cannot.
+type Screen struct{}
 
-func (screen) Displays() []platform.Display { return nil }
-func (screen) CursorPoint() platform.Point  { return platform.Point{} }
+func (Screen) Displays() []platform.Display { return nil }
+func (Screen) CursorPoint() platform.Point  { return platform.Point{} }
 
-type theme struct{}
+// Theme does nothing, or reports that it cannot.
+type Theme struct{}
 
-func (theme) IsDark() bool     { return false }
-func (theme) SetSource(string) {}
-func (theme) UIFont() string   { return "" }
+func (Theme) IsDark() bool     { return false }
+func (Theme) SetSource(string) {}
+func (Theme) UIFont() string   { return "" }
 
-func (theme) FontRendering() platform.FontRendering { return platform.FontRendering{} }
+func (Theme) FontRendering() platform.FontRendering { return platform.FontRendering{} }
 
-func (theme) Preferences() platform.Preferences { return platform.Preferences{} }
+func (Theme) Preferences() platform.Preferences { return platform.Preferences{} }
 
-type power struct{}
+// Power does nothing, or reports that it cannot.
+type Power struct{}
 
-func (power) Watch()                        {}
-func (power) KeepAwake(bool, string) func() { return func() {} }
-func (power) KeepRunning(string) func()     { return func() {} }
-func (power) OnBattery() bool               { return false }
-func (power) IdleTime() time.Duration       { return 0 }
+func (Power) Watch()                        {}
+func (Power) KeepAwake(bool, string) func() { return func() {} }
+func (Power) KeepRunning(string) func()     { return func() {} }
+func (Power) OnBattery() bool               { return false }
+func (Power) IdleTime() time.Duration       { return 0 }
 
-type nowPlaying struct{}
+// NowPlaying does nothing, or reports that it cannot.
+type NowPlaying struct{}
 
-func (nowPlaying) Set(*platform.NowPlayingInfo) {}
+func (NowPlaying) Set(*platform.NowPlayingInfo) {}
 
-type network struct{}
+// Network does nothing, or reports that it cannot.
+type Network struct{}
 
-func (network) Watch()                         {}
-func (network) Status() platform.NetworkStatus { return platform.NetworkStatus{} }
+func (Network) Watch()                         {}
+func (Network) Status() platform.NetworkStatus { return platform.NetworkStatus{} }
 
-type secrets struct{}
+// Secrets does nothing, or reports that it cannot.
+type Secrets struct{}
 
-func (secrets) SetSecret(string, string, []byte) error { return platform.ErrUnsupported }
-func (secrets) Secret(string, string) ([]byte, error)  { return nil, platform.ErrUnsupported }
-func (secrets) DeleteSecret(string, string) error      { return platform.ErrUnsupported }
+func (Secrets) SetSecret(string, string, []byte) error { return platform.ErrUnsupported }
+func (Secrets) Secret(string, string) ([]byte, error)  { return nil, platform.ErrUnsupported }
+func (Secrets) DeleteSecret(string, string) error      { return platform.ErrUnsupported }

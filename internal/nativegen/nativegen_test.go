@@ -51,12 +51,12 @@ func TestModuleUsingAnother(t *testing.T) {
 		t.Fatalf("deps %v", m.Deps)
 	}
 	swift := string(GenerateSwift(m))
-	for _, want := range []string{"import Language\n", "a: any Language.Analyzer", "public protocol Map: NSView"} {
+	for _, want := range []string{"import Language\n", "a: any Language.Analyzer", "public protocol Map: NativeView"} {
 		if !strings.Contains(swift, want) {
 			t.Errorf("the Swift lacks %q", want)
 		}
 	}
-	src, err := GenerateGo(m, nil, "")
+	src, err := GenerateGo(m, nil, SwiftPlatforms{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestExampleUpToDate(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := Load(example)
-	src, err := GenerateGo(m, ModuleLangs(m.Dir), MinMacOS(m.Dir))
+	src, err := GenerateGo(m, ModuleLangs(m.Dir), SwiftPlatformsOf(m.Dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,5 +272,47 @@ func TestNamesDontClash(t *testing.T) {
 	out, err = exec.Command("swift", "build", "--package-path", filepath.Join(dir, "swift")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("swift build: %v\n%s", err, out)
+	}
+}
+
+func TestKotlinNames(t *testing.T) {
+	for in, want := range map[string]string{
+		"github.com/acme/go-battery":                                "com.github.acme.go_battery",
+		"github.com/egoist/mygo/native/x":                           "com.github.egoist.mygo.native_.x",
+		"example.com/2d/package":                                    "com.example._2d.package_",
+		"local/Mixed.Case":                                          "local.mixed_case",
+		"github.com/egoist/mygo/plugins/sqlite/internal/sqlitecore": "com.github.egoist.mygo.plugins.sqlite.internal.sqlitecore",
+	} {
+		if got := KotlinPackage(in); got != want {
+			t.Errorf("KotlinPackage(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := kotlinIdent("object"); got != "`object`" {
+		t.Errorf("kotlinIdent = %q", got)
+	}
+}
+
+// TestKotlinUpToDate checks the committed Kotlin of the modules that have
+// it, which no test compiles here: CI builds it into an app.
+func TestKotlinUpToDate(t *testing.T) {
+	for _, dir := range []string{"../../native/internal/roundtrip", "../../plugins/sqlite/internal/sqlitecore"} {
+		m, err := Load(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := GenerateKotlin(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		have, err := os.ReadFile(filepath.Join(KotlinDir(m), KotlinFile(m)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(have) != string(want) {
+			t.Errorf("%s: the generated Kotlin is out of date: run go run ./cmd/mygo native check %s", dir, dir)
+		}
+		if !strings.Contains(string(want), "package "+KotlinPackage(m.ImportPath)+"\n") || !strings.Contains(string(want), "object MygoModule") {
+			t.Errorf("%s: the Kotlin is not in its package, or has no MygoModule", dir)
+		}
 	}
 }

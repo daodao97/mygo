@@ -22,6 +22,10 @@ type Automated interface {
 	Settle()
 }
 
+// DevLaunched tells that mygo dev launched the app, which restarts it as the code
+// changes: package ui then keeps what its windows show across restarts.
+var DevLaunched bool
+
 // Automate is set by plugins/automation, in an app that links it and
 // whose MYGO_AUTOMATION asks for it, before any window opens. Package ui
 // then calls it on the main thread with the connection and the content of
