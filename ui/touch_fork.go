@@ -275,3 +275,21 @@ func (rt *engine) gestureEvent(ev platform.SurfaceEvent) bool {
 	rt.buildNext()
 	return true
 }
+
+// ownsSafeArea reports whether the window's view pads by the safe area
+// itself (mygo.WindowOptions.ExtendIntoSafeArea), which the root then does not.
+func (rt *engine) ownsSafeArea() bool {
+	o, ok := rt.host.(interface{ ownsSafeArea() bool })
+	return ok && o.ownsSafeArea()
+}
+
+func (h *windowHost) ownsSafeArea() bool { return h.conn.OwnSafeArea }
+
+func (h *headless) ownsSafeArea() bool { return h.ownSafe }
+
+// SetExtendIntoSafeArea has the window's view lay out under its insets
+// (SetInsets), as mygo.WindowOptions.ExtendIntoSafeArea does.
+func (t *Tester) SetExtendIntoSafeArea(on bool) {
+	t.h.ownSafe = on
+	t.Frame()
+}

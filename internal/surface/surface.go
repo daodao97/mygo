@@ -69,6 +69,9 @@ type Conn struct {
 	// the content shows (Window.Update, Window.Invalidate); the content
 	// sets it, else the window asks the surface for a frame.
 	Changed func()
+	// OwnSafeArea says the content lays out under what covers the window's
+	// edges, padding by them itself (WindowOptions.ExtendIntoSafeArea).
+	OwnSafeArea bool
 	// FrameSubmitted tells that a frame was committed for display. Backends
 	// with native presentation callbacks report their completion separately.
 	FrameSubmitted func()

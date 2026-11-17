@@ -374,6 +374,9 @@ const (
 	KeyboardPhone
 	KeyboardURL
 	KeyboardSearch
+	// KeyboardASCII is a keyboard of ASCII letters only, as for a
+	// terminal: the fork's (FORK.md).
+	KeyboardASCII
 )
 
 // ReturnKeyKind is what the return key of an on-screen keyboard says.

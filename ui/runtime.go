@@ -2002,6 +2002,9 @@ const cursorUnknown Cursor = 255
 // there, and as far again, for its end to come out from under it. What
 // does not scroll stays clear of it.
 func (rt *engine) extendUnderBottom(root *node, h float32) {
+	if rt.ownsSafeArea() {
+		return
+	}
 	hs, ok := rt.host.(interface{ insets() platform.Insets })
 	if !ok {
 		return
@@ -2047,6 +2050,9 @@ func (rt *engine) padInsets(root *node) {
 		rt.revealFocus()
 	}
 	rt.keyboardWas = in.Bottom
+	if rt.ownsSafeArea() {
+		return // the view pads by SafeArea itself
+	}
 	if in == (platform.Insets{}) {
 		return
 	}

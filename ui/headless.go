@@ -54,10 +54,12 @@ type headless struct {
 	clipboardErr error
 	// later are what the view asked to run after the frame, as a window
 	// posts them to the main thread.
-	later  []func()
-	bar    TitleBar
-	inset  platform.Insets
-	access *platform.AccessTree
+	later []func()
+	bar   TitleBar
+	inset platform.Insets
+	// ownSafe is SetExtendIntoSafeArea's.
+	ownSafe bool
+	access  *platform.AccessTree
 	// told are the announcements of the trees, and announced those the
 	// view made; alerts are what the trees told to read at once, and
 	// screenReader is set once assistive technology is on

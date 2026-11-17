@@ -186,3 +186,28 @@ func TestGestures(t *testing.T) {
 		t.Fatalf("ended and tapped: %+v", got)
 	}
 }
+
+// A window that extends into the safe area keeps its root out of the insets'
+// padding, and still reads them.
+func TestExtendIntoSafeArea(t *testing.T) {
+	for _, own := range []bool{false, true} {
+		var top, bottom float32
+		tt := NewTester(func(c *Context) {
+			top, _, bottom, _ = c.SafeArea()
+			Box(c).Size(100, 20).Label("first")
+		}, 300, 600)
+		tt.SetExtendIntoSafeArea(own)
+		tt.SetInsets(44, 0, 300, 0)
+		r, ok := tt.Find("first")
+		if !ok {
+			t.Fatal("no box")
+		}
+		want := float32(44)
+		if own {
+			want = 0
+		}
+		if r.Y != want || top != 44 || bottom != 300 {
+			t.Errorf("own=%v: box at %v, want %v; safe area %v, %v", own, r.Y, want, top, bottom)
+		}
+	}
+}

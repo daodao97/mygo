@@ -336,6 +336,7 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
         case "phone": kb = .phonePad
         case "url": kb = .URL
         case "search": kb = .webSearch
+        case "ascii": kb = .asciiCapable
         default: kb = .default
         }
         let ret: UIReturnKeyType

@@ -20,7 +20,7 @@ const textWindow = 1 << 12
 
 // The hosts' names of what platform.TextTraits numbers.
 var (
-	keyboardNames    = [...]string{"", "email", "number", "decimal", "phone", "url", "search"}
+	keyboardNames    = [...]string{"", "email", "number", "decimal", "phone", "url", "search", "ascii"}
 	returnNames      = [...]string{"", "done", "go", "next", "search", "send"}
 	capitalizeNames  = [...]string{"", "none", "words", "sentences", "characters"}
 	autocorrectNames = [...]string{"", "on", "off"}

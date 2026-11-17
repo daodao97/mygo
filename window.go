@@ -156,6 +156,11 @@ type WindowOptions struct {
 	// On iOS it also fills the surrounding safe area. Without an explicit
 	// color, native UI's opaque root background fills that area automatically.
 	BackgroundColor string
+	// ExtendIntoSafeArea has native UI lay out under a phone's bars, cutout
+	// and keyboard, which the window's root otherwise keeps it out of: the
+	// view pads by ui.Context.SafeArea itself where it should. The fork's
+	// (FORK.md). Other platforms have no safe area.
+	ExtendIntoSafeArea bool
 	// Vibrancy puts a translucent, blurred material behind a transparent
 	// page, or behind native UI where it draws no background (macOS and
 	// Windows 11 22H2), e.g. VibrancySidebar; ui.Context.Vibrancy tells
@@ -317,8 +322,10 @@ func (a *Application) ClearWindowStates() error { return onMainValue(clearWindow
 // Window is a native window hosting a web page, or the Content of package
 // ui. Create windows with NewWindow once the application is ready.
 type Window struct {
-	id     int
-	parent *Window
+	// extendIntoSafeArea is WindowOptions.ExtendIntoSafeArea.
+	extendIntoSafeArea bool
+	id                 int
+	parent             *Window
 	// flyout places a window NewFlyout created, at flyoutSize, the size
 	// it asked for. Main thread only.
 	flyout     *platform.Flyout
@@ -640,7 +647,7 @@ func newWindow(opts WindowOptions, bg, tint *background, native uintptr, flyout 
 	id := windows.nextID
 	windows.Unlock()
 
-	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), stateKey: opts.StateKey, background: bg, vibrancyTint: tint, content: opts.Content != nil, panel: opts.Panel && flyout == nil, active: true}
+	w := &Window{extendIntoSafeArea: opts.ExtendIntoSafeArea, id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), stateKey: opts.StateKey, background: bg, vibrancyTint: tint, content: opts.Content != nil, panel: opts.Panel && flyout == nil, active: true}
 	w.pg = &Page{w}
 	if flyout != nil {
 		w.fit = flyout.fit

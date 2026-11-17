@@ -414,6 +414,9 @@ const (
 	KeyboardPhone   = platform.KeyboardPhone
 	KeyboardURL     = platform.KeyboardURL
 	KeyboardSearch  = platform.KeyboardSearch
+	// KeyboardASCII is ASCII letters only, as for a terminal: the
+	// fork's (FORK.md).
+	KeyboardASCII = platform.KeyboardASCII
 )
 
 // ReturnKeyType is what the return key of an on-screen keyboard says.

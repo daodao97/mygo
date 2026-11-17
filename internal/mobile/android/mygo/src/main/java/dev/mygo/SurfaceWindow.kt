@@ -505,6 +505,8 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
             "phone" -> InputType.TYPE_CLASS_PHONE
             "email" -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
             "url" -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            // Android has no ASCII keyboard: this variation has keyboards show Latin letters, unsuggested.
+            "ascii" -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
             else -> InputType.TYPE_CLASS_TEXT
         }
         if (c.secure) {
