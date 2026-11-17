@@ -350,3 +350,22 @@ func (rt *engine) dragSelectionHandle(x, y float32) {
 	rt.askBuild()
 	rt.requestFrame()
 }
+
+// menuCommandDone notes a command chosen in the edit menu, which closed: a
+// copy of selected read-only text deselects it, as phones' apps do with what
+// is not edited; an input keeps its selection, as UIKit's fields do.
+func (rt *engine) menuCommandDone(command string) {
+	rt.touchText.menu = false
+	if command != "copy" {
+		return
+	}
+	if _, _, _, _, ok := rt.handles(); ok {
+		return
+	}
+	if _, _, selected := rt.textSelectionBounds(); selected {
+		rt.selection = textSelection{}
+		rt.touchText.id = 0
+		rt.askBuild()
+		rt.requestFrame()
+	}
+}

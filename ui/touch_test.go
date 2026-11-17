@@ -958,3 +958,37 @@ func TestCaretTapTogglesEditMenu(t *testing.T) {
 		t.Fatal("typing left the menu")
 	}
 }
+
+// Copy from the edit menu of selected read-only text copies it and deselects it.
+func TestMenuCopyDeselectsReadOnlyText(t *testing.T) {
+	tt := NewTester(func(c *Context) {
+		Column(c).Selectable().Padding(20).Children(func() {
+			Text(c, "alpha bravo charlie")
+		})
+	}, 400, 200)
+	tt.Frame()
+	r, _ := tt.Find("alpha bravo charlie")
+	x, y := r.X+r.W*0.5, r.Y+r.H/2
+	tt.FingerDown(x, y)
+	tt.Advance(700 * time.Millisecond)
+	tt.FingerUp(x, y)
+	tt.Frame()
+	if _, _, selected := tt.rt.textSelectionBounds(); !selected || !tt.rt.touchText.menu {
+		t.Fatalf("long press: selected %v, menu %v", selected, tt.rt.touchText.menu)
+	}
+	var want string
+	for _, p := range tt.rt.selectedTexts(tt.rt.selection.scope) {
+		want += string([]rune(p.Text)[p.Start:p.End])
+	}
+	tt.Command("copy")
+	tt.Frame()
+	if got := tt.Clipboard(); got == "" || got != want {
+		t.Fatalf("copied %q, selected %q", got, want)
+	}
+	if _, _, selected := tt.rt.textSelectionBounds(); selected {
+		t.Fatal("the copied text stayed selected")
+	}
+	if _, _, ok := tt.rt.selectionHandles(); ok {
+		t.Fatal("the handles stayed")
+	}
+}
