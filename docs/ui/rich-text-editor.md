@@ -205,6 +205,10 @@ made through the document. `EditorOptions` set:
   a block of code by its language or spaces the letters; change
   `SpansVersion` when what it does changes, for the paragraphs to be laid
   out again;
+- `Space`, given a paragraph and returning the room in DIPs to leave
+  above it, more than the theme's, as a list opens a place where an item
+  dragged would go; less than zero takes room away from the theme's, down
+  to none, as a rule's paragraph sits closer to the text around it;
 - `Theme`, how the text looks (see [Theme](#theme)).
 
 The keys are those of word processors, with Control in place of Command off
@@ -252,10 +256,10 @@ focus. Paste and Match Style pastes plain text in the typing attributes.
 `EditorOptions.Theme` sets how the text looks: the colors of text, muted
 text, links, the caret and the selection; the font, size and colors of
 code, within text and in blocks, and the corners and room of blocks of
-code; each level of heading's size, weight, color and room above and
-below; the first-line indent of body paragraphs and the room between
-them; the indentation of lists, the colors of their markers and check
-boxes; the bar and text of quotations; and the padding of `Editor`,
+code; each level of heading's size, weight, color, line height and room
+above and below; the first-line indent of body paragraphs and the room
+between them; the indentation of lists, the colors of their markers and
+check boxes; the bar and text of quotations; and the padding of `Editor`,
 which replaces the window theme's. What it leaves zero takes the
 value of `DefaultTheme` for the window's theme, so that a theme sets only
 what it changes, and follows the window into dark mode:
@@ -284,6 +288,23 @@ default, as in notes. For prose, set them apart in either of two ways:
   indented.
 - `ParagraphSpacing` puts room between two body paragraphs, as prose on
   screens does. Headings keep their own room above and below.
+
+A heading's lines take the text's line height, `Font.LineHeight`, times
+its size, unless its `LineHeight` sets another, in ems of its size: a type
+scale gives large headings tighter leading than the text. A line is never
+shorter than its font's ascent and descent, which differ from one
+platform's font to another's: Segoe UI's on Windows are 1.33 ems, so lines
+of 30 under a heading of 24 come out 31.9 there.
+
+```go
+// Text of 15 on lines of 22, a first heading of 24 on lines of 30.
+richtext.Editor(c, doc, richtext.EditorOptions{
+	Font: ui.Font{Size: 15, LineHeight: 22.0 / 15},
+	Theme: &richtext.Theme{Headings: [6]richtext.HeadingStyle{
+		{Size: 24.0 / 15, LineHeight: 30.0 / 24},
+	}},
+})
+```
 
 ```go
 richtext.EditorBase(c, app.doc, richtext.EditorOptions{Theme: &richtext.Theme{

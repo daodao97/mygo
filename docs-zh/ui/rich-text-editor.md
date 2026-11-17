@@ -145,6 +145,7 @@ app.doc.Edit(func(e *richtext.Edit) {
 - `Menu`，用它代替编辑器自带的菜单构建上下文菜单，适合有自己菜单的应用；
 - `OnKey`，在编辑器处理按键前调用，供应用先行处理，例如让位于 `Document.CaretRect` 的补全列表接管方向键、Enter 和 Escape；返回 true 表示已处理该按键；
 - `Spans`，接收绘制段落所用的 span，可以返回拆分、改色或调整间距后的 span，但不能改变文本，例如按语言高亮代码块，或调整字距；回调的处理逻辑变化时，修改 `SpansVersion` 以触发段落重新排版；
+- `Space`，接收段落序号，返回在主题的间距之外还要在该段上方留出的间距（DIP），例如列表在拖动项将要落下的位置让出空间；返回负数会从主题的间距中扣除，最少扣到零，例如让分隔线所在段落离上下文字更近；
 - `Theme`，文本的外观（见[主题](#主题)）。
 
 按键与文字处理器相同，macOS 之外用 Control 代替 Command：
@@ -175,7 +176,7 @@ Markdown 输入快捷方式会自动设置格式：在段落开头，`# ` 到 `#
 
 ## 主题
 
-`EditorOptions.Theme` 设置文本的外观：文本、弱化文本、链接、插入符和选区的颜色；代码（行内和代码块中）的字体、字号和颜色，以及代码块的圆角和留白；各级标题的字号、字重、颜色和上下留白；正文段落的首行缩进和段间距；列表的缩进、其标记和复选框的颜色；引用的竖条和文字；以及 `Editor` 的内边距，它会取代窗口主题中的内边距。留作零值的项采用窗口主题下 `DefaultTheme` 的值，因此主题只需设置自己改动的部分，也能跟随窗口进入深色模式：
+`EditorOptions.Theme` 设置文本的外观：文本、弱化文本、链接、插入符和选区的颜色；代码（行内和代码块中）的字体、字号和颜色，以及代码块的圆角和留白；各级标题的字号、字重、颜色、行高和上下留白；正文段落的首行缩进和段间距；列表的缩进、其标记和复选框的颜色；引用的竖条和文字；以及 `Editor` 的内边距，它会取代窗口主题中的内边距。留作零值的项采用窗口主题下 `DefaultTheme` 的值，因此主题只需设置自己改动的部分，也能跟随窗口进入深色模式：
 
 ```go
 violet := ui.Hex("#7c3aed")
@@ -192,6 +193,18 @@ richtext.Editor(c, doc, richtext.EditorOptions{Theme: &richtext.Theme{
 
 - `FirstLineIndent` 设置正文段落的首行缩进，类似印刷小说（约 1.2 em）。标题、列表、代码块、空段落或采用其他对齐方式的段落（例如居中的场景分隔符 “* * *”）之后的第一段不缩进；引用的第一段也不缩进，因为这些位置无需再靠缩进区分。只有按起始侧对齐的段落才会缩进。
 - `ParagraphSpacing` 在正文段落之间留出间距，屏幕上排版的散文常这样做。标题保留自己的上下间距。
+
+标题的行高默认是正文行高 `Font.LineHeight` 乘以标题字号；设置标题的 `LineHeight`（以标题字号的 em 计）可以另给行高，例如字号大的标题行距更紧。行高不会小于字体自身的上伸加下伸，而各平台的字体不同：Windows 上 Segoe UI 是 1.33 em，所以 24 号标题设行高 30，在那里实际是 31.9。
+
+```go
+// 正文 15 号、行高 22，一级标题 24 号、行高 30。
+richtext.Editor(c, doc, richtext.EditorOptions{
+	Font: ui.Font{Size: 15, LineHeight: 22.0 / 15},
+	Theme: &richtext.Theme{Headings: [6]richtext.HeadingStyle{
+		{Size: 24.0 / 15, LineHeight: 30.0 / 24},
+	}},
+})
+```
 
 ```go
 richtext.EditorBase(c, app.doc, richtext.EditorOptions{Theme: &richtext.Theme{
