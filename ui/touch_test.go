@@ -992,3 +992,62 @@ func TestMenuCopyDeselectsReadOnlyText(t *testing.T) {
 		t.Fatal("the handles stayed")
 	}
 }
+
+// A finger that lands on content still flinging stops it and, moving, drags
+// it on at once, as UIKit's scroll views do: the slow end of a fling looks
+// stopped, and a swipe there must not do nothing. Held still, it taps nothing.
+func TestCatchingAFlingPansOn(t *testing.T) {
+	clicks := 0
+	var scroll ScrollState
+	tt := NewTester(func(c *Context) {
+		Scroll(c).Fill().TrackScroll(&scroll).Children(func() {
+			for range 100 {
+				if Button(c, "Row").Height(48).FillWidth().Clicked() {
+					clicks++
+				}
+			}
+		})
+	}, 300, 600)
+	tt.Frame()
+	fling := func() {
+		tt.FingerDown(150, 500)
+		for y := float32(460); y >= 300; y -= 40 {
+			tt.Advance(10 * time.Millisecond)
+			tt.FingerMove(150, y)
+		}
+		tt.FingerUp(150, 300)
+		tt.Advance(100 * time.Millisecond)
+		if !tt.rt.flinging.on {
+			t.Fatal("the swipe left nothing flinging")
+		}
+	}
+	fling()
+	tt.FingerDown(150, 400)
+	if !tt.rt.touch.caught {
+		t.Fatal("the finger did not catch the fling")
+	}
+	caught := scroll.Y
+	for y := float32(380); y >= 250; y -= 30 {
+		tt.Advance(16 * time.Millisecond)
+		tt.FingerMove(150, y)
+	}
+	if scroll.Y-caught < 100 {
+		t.Fatalf("the swipe that caught the fling moved the content %v", scroll.Y-caught)
+	}
+	tt.FingerUp(150, 250)
+	tt.Advance(3 * time.Second)
+
+	// From the top again, for the fling not to end at the bottom.
+	scroll.Y = 0
+	tt.Frame()
+	fling()
+	tt.FingerDown(150, 400)
+	if !tt.rt.touch.caught {
+		t.Fatal("the finger did not catch the second fling")
+	}
+	tt.FingerUp(150, 400)
+	tt.Advance(time.Second)
+	if clicks != 0 {
+		t.Fatalf("catching a fling clicked %d times", clicks)
+	}
+}
