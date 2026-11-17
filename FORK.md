@@ -176,6 +176,17 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 **验证（2026-11-17，`sync-940`）：** macOS/Linux/Windows 的 `go build ./...`（含 `CGO_ENABLED=0`）与 `go vet ./...`，`go vet -tags mygo_noinspector ./...`，js/wasm vet；iOS（iphoneos SDK）和 Android（NDK r28 clang）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet；`go test -short`（除 `internal/e2e`）全部通过，`go generate ./ui` 与 `uimigrate` 已更新。未做：发布体积、e2e、真机。
 
+#### 2026-11-18 移植回 Miya 依赖的功能
+
+在 `sync-940` 上把 Miya 用到的 fork 移动端功能逐项接到 #940 上（`9e11578a..822fd36e`），Miya 迁移在它自己的 `sync-940` 分支（`8b7b842`，未推送）。
+
+- **插件**（`mygo.Native` + Swift/Kotlin，iOS 模拟器和 Android arm64 均编译通过）：`biometrics` 加回细分错误（`ErrUnavailable` 等七个，包着 `NativeError`）；`push.SetPresentation` 经 iOS 宿主新增的可选钩子 `PluginHost.presentation`（`willPresent` 里问，3 秒不答照常显示），本地通知的 Data 由核心按 ID 提供（`pushhub.LocalData`）；`microphone`（AVAudioEngine / AudioRecord，16 kHz PCM 事件）、`network.Prepare`（URLSession HEAD；Android 无事可做）与新的 `network.Interfaces`（Android 经 Java 列网卡，供 Miya 的 netmon）、`browser.Open`（SFSafariViewController / Custom Tab）、`scanner`（AVCaptureMetadataOutput / 拍照或相册 + ZXing）。根包的 `Microphone`、`Scanner`、`Network.Prepare`、`OpenInAppBrowser` 删除。`speech` 走自定义 provider 时不经平台，无需改动；内置 `apple` provider 在手机上仍返回不支持。
+- **触摸**（`ui/touch_fork.go`，不改 #940 默认行为）：`InputLongPress` 先交给指下的输入处理器，接了就拿走这根手指（之后 `InputPointerMove`、`InputPointerUp`/取消）；文本要 `TouchSelection()` 才收到，且这时按下推迟到抬起；`TouchPointer()` 让手指像鼠标一样拖动；`KeyboardDismiss` 在开始平移时收起键盘；`Gestures()` 收双指 pinch/rotate/pan/tap，由 `internal/mobile/gesture_fork.go` 识别（没有元素要时仍发 `PointerZoom`）；`Router.DisableBackGesture` 关掉边缘侧滑。这些开关存在每帧的 `node` 上、`commitElement` 时复制（共用帧戳会让不再要的开关残留）。终端的长按选择恢复。
+- **其他**：`WindowOptions.ExtendIntoSafeArea`（根元素不按 inset 内缩，`Context.SafeArea` 仍按 #940 含键盘）、`KeyboardASCII`（iOS `.asciiCapable`，Android 用 visible-password 变体）作为 fork 扩展加回。
+- **Miya**：`InteractiveBack` → `DisableBackGesture`；去掉 `TouchScroll`，远程桌面触控板/指针模式用 `TouchPointer`；`main_android.go` 只剩 netmon（启动、日志由宿主负责）；文件浏览器改为 Miya 自己的插件 `internal/mobile/miyanative`（也声明 `keychain-access-groups`，团队前缀写死，因 #940 CLI 不展开 `$(AppIdentifierPrefix)`）；`mygo.json` 的 `ios` 换成 #940 字段，**最低 iOS 升到 17.0**（#940 宿主本身要求，2026-11-18 决定）；桌面面板的终端排除出手机构建（libghostty-vt 无 iOS/Android 构建）；`build-android.sh` 改调 `mygo build -platform android/arm64`。测试改用 `Tester.Finger*`，`setSafeInsets` 同时开 `SetExtendIntoSafeArea`。
+- **验证**：mygo 三桌面 build/vet、wasm vet、iOS/Android vet，`ui`、根包、`internal/mobile`、插件测试通过；Miya `go test -short ./...` 只剩迁移前就失败的 `TestDiscoverProjectWebServicesWithRealListeners`、`TestDesktopPageRendersLiveConnectingAndEnded`；Miya iOS 模拟器包、Android apk 构建通过，模拟器上启动到配对页并弹出通知授权。**未做**：真机（iPhone、Android 设备）实测、发布体积复测、e2e。
+- **仍未移植**：App Group/widget、后台刷新、Live Activity、推送发送端 CLI（`mygo push`）、Miya 以外的 fork 移动端功能。
+
 ## 差异分类
 
 ### A. 移动端（保留，不提交上游）
