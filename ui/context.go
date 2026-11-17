@@ -870,7 +870,7 @@ type state struct {
 	// fingersFrame is the frame that last asked for longPress or refresh.
 	fingersFrame uint64
 	// The fork's touch extensions the last frame asked for, and the
-	// gestures since it (touch_fork.go).
+	// gestures since it (touch.go).
 	touchHold, touchPointer, gestureEnabled bool
 	keyboardDismiss                         KeyboardDismissMode
 	gestures                                []GestureEvent

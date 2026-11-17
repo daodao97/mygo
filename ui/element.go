@@ -497,7 +497,7 @@ type node struct {
 	// Input the element takes itself (HandleInput), and where the caret of
 	// the text it takes is (TextCaret).
 	inputFn func(InputEvent) bool
-	// The fork's touch extensions this frame asks for (touch_fork.go).
+	// The fork's touch extensions this frame asks for (touch.go).
 	touchHold, touchPointer, gestureEnabled bool
 	keyboardDismiss                         KeyboardDismissMode
 	observeFn                               func(InputEvent) // the input in it (ObserveInput)

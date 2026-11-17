@@ -297,3 +297,12 @@ func (rt *engine) focusHandler() *state {
 	}
 	return nil
 }
+
+// InputLongPress is a finger held still on the element for half a second, on
+// a touch screen, which the element's input handler hears before the press
+// does anything else. Taking it (returning true), the handler takes the
+// finger: it hears InputPointerMove as the finger moves and InputPointerUp as
+// it lifts, with Canceled as the system takes it, and nothing presses, pans
+// or selects. Editable and selectable text hears it only once it calls
+// TouchSelection.
+const InputLongPress InputKind = 64

@@ -1126,3 +1126,6 @@ func (h *windowHost) popupMenu(m *platform.Menu, x, y float32, chosen func(int))
 		h.conn.PopupMenu(m, float64(x), float64(y), chosen)
 	}
 }
+
+// ownsSafeArea is the window's WindowOptions.ExtendIntoSafeArea.
+func (h *windowHost) ownsSafeArea() bool { return h.conn.OwnSafeArea }

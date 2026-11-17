@@ -1270,3 +1270,12 @@ func (t *Tester) Focused(s string) bool {
 }
 
 func (h *headless) stackSurface() platform.StackSurface { return h.stack }
+
+func (h *headless) ownsSafeArea() bool { return h.ownSafe }
+
+// SetExtendIntoSafeArea has the window's view lay out under its insets
+// (SetInsets), as mygo.WindowOptions.ExtendIntoSafeArea does.
+func (t *Tester) SetExtendIntoSafeArea(on bool) {
+	t.h.ownSafe = on
+	t.Frame()
+}

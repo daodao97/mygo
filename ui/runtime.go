@@ -111,7 +111,7 @@ type host interface {
 type engine struct {
 	// inlineRects is placeInline's scratch, kept from frame to frame.
 	inlineRects []text.Rect
-	// forkGestures are the two-finger gestures in progress (touch_fork.go).
+	// forkGestures are the two-finger gestures in progress (touch.go).
 	forkGestures map[string]gestureCapture
 	// byPosition holds the keys whose press stood for its physical key
 	// (keyDownPhysical), until their release does the same.
@@ -2068,4 +2068,11 @@ func (rt *engine) padInsets(root *node) {
 	root.pad[1] += float32(in.Right) / z
 	root.pad[2] += float32(in.Bottom) / z
 	root.pad[3] += float32(in.Left) / z
+}
+
+// ownsSafeArea reports whether the window's view pads by the safe area
+// itself (mygo.WindowOptions.ExtendIntoSafeArea), which the root then does not.
+func (rt *engine) ownsSafeArea() bool {
+	o, ok := rt.host.(interface{ ownsSafeArea() bool })
+	return ok && o.ownsSafeArea()
 }
