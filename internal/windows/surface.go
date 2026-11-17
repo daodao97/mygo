@@ -140,6 +140,8 @@ type surface struct {
 	// pointerAt is where on the screen the last WM_POINTER message's
 	// pointer was, in pixels (pointerMessage).
 	pointerAt point
+	// touch follows the fingers on the surface (fingerMessage).
+	touch platform.TouchGesture
 	// canceledUp tells that the system took the press of the pen or the
 	// finger (cancelPress): the mouse button's release that follows is
 	// its, and goes nowhere.
@@ -813,8 +815,13 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		s.drawNow()
 		return 0, true
 	case wmPointerDown, wmPointerUpdate, wmPointerUp:
-		// A pen or a finger, whose mouse messages DefWindowProc makes.
-		s.pointerMessage(m, wp)
+		if s.pointerMessage(m, wp) {
+			// A finger the gesture follows, of which DefWindowProc makes
+			// no mouse.
+			return 0, true
+		}
+		// A pen, or a finger the gesture leaves, whose mouse messages
+		// DefWindowProc makes.
 		if m == wmPointerUp && pointerCanceled(wp) && s.buttons != 0 {
 			// The system took the pen or the finger, as for an edge's
 			// gesture: the press ends with no release, and the button
@@ -826,8 +833,12 @@ func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool
 		}
 		return 0, false
 	case wmPointerCaptureChanged:
-		// A finger another window took: its touch ends there.
+		// A finger another window took: its touch ends there, and the
+		// gesture's with no tap.
 		s.send(platform.SurfaceEvent{Kind: platform.TouchCancel, ID: uint64(loword(wp))})
+		if s.touchCaptureLost(wp) {
+			return 0, true
+		}
 		return 0, false
 	case wmMouseMove:
 		if !s.tracking {

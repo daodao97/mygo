@@ -12,7 +12,7 @@ scroll it, and notches in a row add up, until the app scrolls the
 container (a `ScrollState`, a `ListState`'s `ScrollTo`, `ScrollIntoView`
 and `ScrollToEnd`, or `ScrollIntoView` of an element in it), which takes
 over; a touchpad follows the fingers, as a finger dragged on a
-touchscreen does on Linux, and while the desktop asks for less
+touchscreen does on Linux and Windows, and while the desktop asks for less
 motion, a notch scrolls at once.
 
 ```go

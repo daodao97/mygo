@@ -17,6 +17,11 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		// A menu asking about its item changes nothing.
 		return rt.commandEnabled(ev.Text)
 	}
+	if ev.Kind == platform.DragRegionAt {
+		// A backend asking where a finger lands changes nothing either.
+		rt.fromWindow(&ev)
+		return rt.dragRegionAt(float32(ev.X), float32(ev.Y))
+	}
 	if ev.Kind >= platform.TouchDown && ev.Kind <= platform.TouchCancel {
 		// Fingers, which only views that ask follow (Touches): the
 		// pointer events the backend makes of them come on their own.
@@ -537,6 +542,30 @@ func (s *state) pointer(rt *engine) (x, y float32) {
 }
 
 const interactive = flagClickable | flagFocusable | flagEditable | flagSelectable | flagDragWindow | flagDraggable | flagTrackPointer
+
+// dragRegionAt reports whether a finger landing at x, y moves the
+// window, as a press of the first button does there (pointerDown): the
+// first interactive element under it is a drag region (DragWindow) and
+// nothing else, and nothing around it scrolls, as a sidebar that is a
+// drag region does, which the finger scrolls instead. An element's
+// handler (HandleInput) may still take the press there.
+func (rt *engine) dragRegionAt(x, y float32) bool {
+	drag := false
+	for _, id := range rt.hitChain(x, y) {
+		s := rt.states[id]
+		switch {
+		case s == nil:
+		case s.flags&flagScrollY != 0 && s.contentH > float64(s.h), s.flags&flagScrollX != 0 && s.contentW > float64(s.w):
+			return false
+		case !drag && s.flags&interactive != 0:
+			if s.flags&flagDragWindow == 0 || s.flags&(interactive&^flagDragWindow) != 0 {
+				return false
+			}
+			drag = true
+		}
+	}
+	return drag
+}
 
 func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks int) {
 	rt.downing++

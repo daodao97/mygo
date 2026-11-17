@@ -565,6 +565,15 @@ const (
 	TouchMove
 	TouchUp
 	TouchCancel
+	// DragRegionAt asks whether a finger landing at X, Y moves the
+	// window, as the mouse's press does on a drag region of a title bar
+	// the content draws (ui's DragWindow), but for one that scrolls, which
+	// the finger scrolls: WindowHandler.SurfaceEvent reports it, and
+	// changes nothing. A backend that makes taps of fingers itself
+	// (TouchGesture), which press only as they lift, asks as a finger
+	// lands, and leaves one that does to the system's mouse, whose press
+	// moves the window (Windows).
+	DragRegionAt
 )
 
 // EditCommands are the menu roles of edit commands, which native UI takes as
