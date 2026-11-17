@@ -1,0 +1,7 @@
+{
+  "mobile": {
+    "id": "browser",
+    "ios": {"sources": ["ios/*.swift"], "class": "BrowserPlugin", "frameworks": ["SafariServices"]},
+    "android": {"sources": ["android/*.kt"], "class": "BrowserPlugin", "dependencies": ["androidx.browser:browser:1.8.0"]}
+  }
+}

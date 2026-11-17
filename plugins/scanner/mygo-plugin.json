@@ -1,0 +1,16 @@
+{
+  "mobile": {
+    "id": "scanner",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "ScannerPlugin",
+      "frameworks": ["AVFoundation"],
+      "infoPlist": {"NSCameraUsageDescription": "This app scans QR codes with the camera."}
+    },
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "ScannerPlugin",
+      "dependencies": ["com.google.zxing:core:3.5.3", "androidx.core:core:1.13.1"]
+    }
+  }
+}

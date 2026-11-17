@@ -1,0 +1,7 @@
+{
+  "mobile": {
+    "id": "network",
+    "ios": {"sources": ["ios/*.swift"], "class": "NetworkPlugin"},
+    "android": {"sources": ["android/*.kt"], "class": "NetworkPlugin"}
+  }
+}

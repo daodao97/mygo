@@ -5,22 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"net/url"
 )
-
-// OpenInAppBrowser presents the system browser without leaving the application.
-// It returns when Done is pressed or ctx is canceled. iOS apps opt in with
-// ios.native.support: ["browser"]. Other platforms return ErrUnsupported.
-//
-// Deprecated: apps call browser.Open (plugins/browser), which calls this.
-func OpenInAppBrowser(ctx context.Context, raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return errors.New("mygo: browser requires an HTTP(S) URL without credentials")
-	}
-	_, err = mobileExperienceRequest(ctx, "browser", raw)
-	return err
-}
 
 // LiveActivityState is the fixed, public wire shape shared with the opt-in
 // MyGoLiveActivityAttributes Swift helper and ActivityKit push content-state.
