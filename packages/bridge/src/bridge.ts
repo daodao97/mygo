@@ -114,6 +114,13 @@ let rootStyle: HTMLStyleElement | null = null;
     if (fit) fit.again();
     notify("dom-ready");
   });
+  // WebKit runs the microtasks that scripts queued once a listener of an
+  // event returns. An eval (Page.Eval) that runs in the page just as a
+  // navigation away commits can leave its continuation queued: with no
+  // listener of pagehide, nothing runs it before WebKit freezes the page
+  // in its back/forward cache, and the eval answers only if Back shows the
+  // page again. Listening has it run as the page is left.
+  w.addEventListener("pagehide", () => {});
 
   const nativeRegion = typeof CSS !== "undefined" && CSS.supports("-webkit-app-region", "drag");
   const appRegion = (el: Element): string => {

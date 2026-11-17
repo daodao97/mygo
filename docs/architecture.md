@@ -1427,7 +1427,12 @@ if that fails to compile the code is not an expression, and it is run again as
 a function body. A compile error means nothing executed, so code never runs
 twice. The result travels as a JSON string and is decoded in Go. A page whose
 window closed never answers, so a window closing fails the evals waiting for
-it, and an eval with the quit under way fails at once.
+it, and an eval with the quit under way fails at once. WebKit runs the
+microtasks scripts queued once a listener of an event returns, and an eval
+that runs in a page just as a navigation away commits can leave its
+continuation, which answers, queued: the bridge listens to `pagehide`, so
+that it runs before WebKit freezes the page in its back/forward cache,
+where it would wait until Back shows the page again.
 
 ### Trust
 
