@@ -302,6 +302,12 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
 
     override var canBecomeFirstResponder: Bool { true }
 
+    /// No keyboard while nothing is edited: the view is the first responder
+    /// then only to show the edit menu of selected text (showMenu), which
+    /// would otherwise bring up a keyboard Go never asked for, and never closes.
+    private lazy var noKeyboard = UIView(frame: .zero)
+    override var inputView: UIView? { editing ? nil : noKeyboard }
+
     func setTextInput(_ c: SetTextInputCall) {
         let wasEditing = editing
         editing = c.active
@@ -321,7 +327,8 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
             becomeFirstResponder()
         } else if !editing && wasEditing && isFirstResponder {
             resignFirstResponder()
-        } else if editing && (traitsChanged || another) {
+        } else if editing && (traitsChanged || another || !wasEditing) {
+            // From the edit menu's first responder, without a keyboard, to one.
             reloadInputViews()
         }
         shows = c.show
