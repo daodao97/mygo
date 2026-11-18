@@ -284,6 +284,22 @@ func TestDeterministic(t *testing.T) {
 	}
 }
 
+// TestVideoWorkers draws a video without motion blur on one worker
+// unless asked for more.
+func TestVideoWorkers(t *testing.T) {
+	comp := boxes(32, 32, 10)
+	if n := videoWorkers(comp, Options{}).Workers; n != 1 {
+		t.Errorf("a video: %d workers, want 1", n)
+	}
+	if n := videoWorkers(comp, Options{Workers: 3}).Workers; n != 3 {
+		t.Errorf("a video asking for 3 workers: %d", n)
+	}
+	comp.MotionBlur.Samples = 4
+	if n := videoWorkers(comp, Options{}).Workers; n != 0 {
+		t.Errorf("a video with motion blur: %d workers, want those zero chooses", n)
+	}
+}
+
 // TestWorkers renders the frames on several workers as on one: ui's
 // animations, a range, motion blur, and every renderer.
 func TestWorkers(t *testing.T) {

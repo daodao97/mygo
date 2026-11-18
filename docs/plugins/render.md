@@ -94,7 +94,8 @@ from `time.Now`.
 ## Cores
 
 A render draws several frames at once, each on a worker of its own:
-`Options.Workers` of them, by default half the cores, up to 4. Worker
+`Options.Workers` of them, by default half the cores, up to 4, except a
+video without motion blur, which draws one frame at a time. Worker
 *k* of *n* draws frames *k*, *k*+*n*, *k*+2*n*…, and the frames go to
 the encoder in order, into one file. Each worker builds every frame before
 its last with a `ui.Recorder` of its own, drawing only its own, so what
@@ -103,7 +104,9 @@ the same whatever the number of workers. Building a frame costs a
 fraction of drawing it, reading it back and encoding it, which the
 workers do at once: twice as many frames a second with motion blur, or
 handed to `Frames`, on an Apple M5. A video without motion blur goes as
-fast as the system's encoder takes frames.
+fast as the system's encoder takes frames with one worker, which holds a
+quarter of the memory four do, and on macOS Metal draws into the
+encoder's buffers itself.
 
 The view then runs on several goroutines at once. What it reads, a
 `Sound`, a picture, data loaded before rendering, it must not change;

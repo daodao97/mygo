@@ -170,7 +170,9 @@ type Options struct {
 	Renderer Renderer
 	// Workers is how many frames are drawn at once, each by a worker of
 	// its own on a thread of its own: 1 draws them one after another, and
-	// zero chooses. See Composition.View for what a view does then.
+	// zero chooses: one for a video without motion blur, which goes as
+	// fast as its encoder takes frames, else half the cores, up to 4. See
+	// Composition.View for what a view does with more than one.
 	Workers int
 	// Progress is called after each frame written, on the goroutine
 	// rendering.

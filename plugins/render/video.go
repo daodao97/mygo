@@ -150,6 +150,7 @@ func Video(ctx context.Context, comp Composition, path string, o Options) error 
 	if spec.sound, err = soundtrack(ctx, comp, from, to); err != nil {
 		return err
 	}
+	o = videoWorkers(comp, o)
 	dir, base := filepath.Split(path)
 	ext := filepath.Ext(base)
 	tmp := filepath.Join(dir, "."+strings.TrimSuffix(base, ext)+".render-"+strconv.Itoa(os.Getpid())+ext)
@@ -166,4 +167,17 @@ func Video(ctx context.Context, comp Composition, path string, o Options) error 
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// videoWorkers returns o for a video of comp: one worker unless o or
+// motion blur asks for more. Its encoder takes frames as fast as one
+// draws them, on the GPU or the CPU (an Apple M5, a Windows runner;
+// GStreamer's x264 with llvmpipe gains 8% from four), while each worker
+// holds a renderer and ui's text system of its own, and Metal draws into
+// the encoder's buffers itself for one alone.
+func videoWorkers(comp Composition, o Options) Options {
+	if n, _ := comp.MotionBlur.shutter(); o.Workers == 0 && n <= 1 {
+		o.Workers = 1
+	}
+	return o
 }
