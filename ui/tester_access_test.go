@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -340,4 +341,151 @@ func TestTesterAccessLandmarks(t *testing.T) {
 			t.Errorf("%s: %+v", name, a)
 		}
 	}
+}
+
+// TestTesterAccessBoundsClipped checks that AccessInfo.Bounds returns the
+// clipped visible box, matching Find, also under content zoom.
+func TestTesterAccessBoundsClipped(t *testing.T) {
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Box(c).Size(60, 25).Shrink(0).Clip().Children(func() {
+			ui.ButtonBase(c).Label("Clipped").Size(120, 40)
+		})
+		ui.Scroll(c).Size(200, 80).Children(func() {
+			ui.Box(c).Size(200, 200).Shrink(0)
+			ui.ButtonBase(c).Label("Below").Size(100, 30)
+		})
+	}, 300, 200)
+
+	clipped := accessOf(t, tt, ui.RoleButton, "Clipped")
+	findClip, _ := tt.Find("Clipped")
+	if clipped.Bounds != (ui.Rect{X: 0, Y: 0, W: 60, H: 25}) || clipped.Bounds != findClip {
+		t.Errorf("Clipped Bounds = %v, Find = %v", clipped.Bounds, findClip)
+	}
+
+	below := accessOf(t, tt, ui.RoleButton, "Below")
+	findBelow, _ := tt.Find("Below")
+	if !below.Offscreen || below.Bounds.W != 0 || below.Bounds.H != 0 || below.Bounds != findBelow {
+		t.Errorf("Below Bounds = %v, Offscreen = %v, Find = %v", below.Bounds, below.Offscreen, findBelow)
+	}
+
+	tt.SetZoom(2)
+	zoomed := accessOf(t, tt, ui.RoleButton, "Clipped")
+	findZoomed, _ := tt.Find("Clipped")
+	if zoomed.Bounds != (ui.Rect{X: 0, Y: 0, W: 120, H: 50}) || zoomed.Bounds != findZoomed {
+		t.Errorf("zoomed Bounds = %v, Find = %v", zoomed.Bounds, findZoomed)
+	}
+}
+
+// TestTesterAccessBoundsClippedChildren checks that nodes without element
+// state (AccessChildren virtual nodes) and inline links inside texts are
+// clipped to their owning containers and scroll viewports, also under zoom.
+func TestTesterAccessBoundsClippedChildren(t *testing.T) {
+	t.Run("AccessChildrenClipAndBorder", func(t *testing.T) {
+		tt := ui.NewTester(func(c *ui.Context) {
+			ui.Box(c).Size(60, 25).Shrink(0).Border(2, ui.RGB(0, 0, 0)).Clip().
+				Role(ui.RoleGroup).Label("Host").
+				AccessChildren(func(parent *platform.AccessNode, add func(platform.AccessNode)) {
+					add(platform.AccessNode{
+						ID:     parent.ID ^ 1,
+						Role:   platform.RoleText,
+						Label:  "VirtualClipped",
+						Bounds: platform.RectF{X: parent.Bounds.X, Y: parent.Bounds.Y, W: 120, H: 40},
+					})
+				})
+		}, 300, 200)
+
+		got := accessOf(t, tt, ui.RoleText, "VirtualClipped")
+		if got.Bounds != (ui.Rect{X: 2, Y: 2, W: 56, H: 21}) {
+			t.Errorf("VirtualClipped Bounds = %v, want {2 2 56 21}", got.Bounds)
+		}
+
+		tt.SetZoom(2)
+		zoomed := accessOf(t, tt, ui.RoleText, "VirtualClipped")
+		if zoomed.Bounds != (ui.Rect{X: 4, Y: 4, W: 112, H: 42}) {
+			t.Errorf("zoomed VirtualClipped Bounds = %v, want {4 4 112 42}", zoomed.Bounds)
+		}
+	})
+
+	t.Run("AccessChildrenClipX", func(t *testing.T) {
+		tt := ui.NewTester(func(c *ui.Context) {
+			ui.Box(c).Size(60, 25).Shrink(0).ClipX().
+				Role(ui.RoleGroup).Label("Host").
+				AccessChildren(func(parent *platform.AccessNode, add func(platform.AccessNode)) {
+					add(platform.AccessNode{
+						ID:     parent.ID ^ 1,
+						Role:   platform.RoleText,
+						Label:  "VirtualClipX",
+						Bounds: platform.RectF{X: parent.Bounds.X, Y: parent.Bounds.Y, W: 120, H: 40},
+					})
+				})
+		}, 300, 200)
+
+		got := accessOf(t, tt, ui.RoleText, "VirtualClipX")
+		if got.Bounds != (ui.Rect{X: 0, Y: 0, W: 60, H: 40}) {
+			t.Errorf("VirtualClipX Bounds = %v, want {0 0 60 40}", got.Bounds)
+		}
+	})
+
+	t.Run("AccessChildrenScroll", func(t *testing.T) {
+		tt := ui.NewTester(func(c *ui.Context) {
+			ui.Scroll(c).Size(200, 80).Children(func() {
+				ui.Box(c).Size(200, 240).Shrink(0).
+					Role(ui.RoleGroup).Label("ScrolledHost").
+					AccessChildren(func(parent *platform.AccessNode, add func(platform.AccessNode)) {
+						add(platform.AccessNode{
+							ID:     parent.ID ^ 1,
+							Role:   platform.RoleText,
+							Label:  "VirtualPart",
+							Bounds: platform.RectF{X: parent.Bounds.X, Y: parent.Bounds.Y + 60, W: 100, H: 40},
+						})
+						add(platform.AccessNode{
+							ID:     parent.ID ^ 2,
+							Role:   platform.RoleText,
+							Label:  "VirtualOffscreen",
+							Bounds: platform.RectF{X: parent.Bounds.X, Y: parent.Bounds.Y + 180, W: 100, H: 30},
+						})
+					})
+			})
+		}, 300, 200)
+
+		part := accessOf(t, tt, ui.RoleText, "VirtualPart")
+		if part.Bounds != (ui.Rect{X: 0, Y: 60, W: 100, H: 20}) {
+			t.Errorf("VirtualPart Bounds = %v, want {0 60 100 20}", part.Bounds)
+		}
+		off := accessOf(t, tt, ui.RoleText, "VirtualOffscreen")
+		if off.Bounds.W != 0 || off.Bounds.H != 0 {
+			t.Errorf("VirtualOffscreen Bounds = %v, want 0 size", off.Bounds)
+		}
+
+		tt.Scroll(100, 40, 0, 160)
+		shown := accessOf(t, tt, ui.RoleText, "VirtualOffscreen")
+		if shown.Bounds != (ui.Rect{X: 0, Y: 20, W: 100, H: 30}) {
+			t.Errorf("scrolled VirtualOffscreen Bounds = %v, want {0 20 100 30}", shown.Bounds)
+		}
+	})
+
+	t.Run("InlineLink", func(t *testing.T) {
+		tt := ui.NewTester(func(c *ui.Context) {
+			ui.Box(c).Size(40, 25).Shrink(0).Clip().Children(func() {
+				ui.RichText(c).NoWrap().Children(func() {
+					ui.Link(c, "InlineClippedLink", "https://example.com")
+				})
+			})
+			ui.Scroll(c).Size(200, 80).Children(func() {
+				ui.Box(c).Size(200, 200).Shrink(0)
+				ui.RichText(c).Children(func() {
+					ui.Link(c, "InlineBelowLink", "https://example.com")
+				})
+			})
+		}, 300, 200)
+
+		clipped := accessOf(t, tt, ui.RoleLink, "InlineClippedLink")
+		if clipped.Bounds.W != 40 || clipped.Bounds.H <= 0 || clipped.Bounds.H > 25 {
+			t.Errorf("InlineClippedLink Bounds = %v, want W=40 and 0<H<=25", clipped.Bounds)
+		}
+		below := accessOf(t, tt, ui.RoleLink, "InlineBelowLink")
+		if !below.Offscreen || below.Bounds.W != 0 || below.Bounds.H != 0 {
+			t.Errorf("InlineBelowLink Bounds = %v, Offscreen = %v", below.Bounds, below.Offscreen)
+		}
+	})
 }

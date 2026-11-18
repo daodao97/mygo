@@ -1378,12 +1378,40 @@ func TestDiffSplitHeaderKeepsToOldSide(t *testing.T) {
 	tt.Move(0, 200)
 	tt.Release(0, 200)
 	tt.Frame()
-	old, _, _ := sideWidths(d)
+	old, _, newX := sideWidths(d)
 	if old > 200 {
 		t.Fatalf("dragged to the left edge, the old side is %v wide", old)
 	}
-	if r := headerBox(tt); r.X+r.W > old {
-		t.Fatalf("the header's text spans %v to %v, past the old side's right edge at %v", r.X, r.X+r.W, old)
+	sep, ok := tt.AccessByRole(ui.RoleGroup, header)
+	if !ok {
+		t.Fatalf("no separator %q in %q", header, tt.Texts())
+	}
+	img := tt.Image()
+	s := float32(img.Bounds().Dx()) / 901
+	barMidY := int((sep.Bounds.Y + sep.Bounds.H/2) * s)
+	barBg := img.RGBAAt(int((sep.Bounds.X+sep.Bounds.W-20)*s), barMidY)
+	edBg := img.RGBAAt(int((newX+20)*s), int((sep.Bounds.Y+sep.Bounds.H+10)*s))
+	if barBg == edBg {
+		t.Fatalf("the header bar does not span the new side: bar=%v, editor=%v", barBg, edBg)
+	}
+	y0, y1 := int((sep.Bounds.Y+6)*s), int((sep.Bounds.Y+sep.Bounds.H-6)*s)
+	oldInk := false
+	for py := y0; py < y1; py++ {
+		for px := int(6 * s); px < int(old*s); px++ {
+			if img.RGBAAt(px, py) != barBg {
+				oldInk = true
+				break
+			}
+		}
+		for px := int((newX + 1) * s); px < int((sep.Bounds.X+sep.Bounds.W-12)*s); px++ {
+			if got := img.RGBAAt(px, py); got != barBg {
+				t.Fatalf("the header's text drew at (%v, %v) past the old side's right edge %v: %v != %v",
+					float32(px)/s, float32(py)/s, old, got, barBg)
+			}
+		}
+	}
+	if !oldInk {
+		t.Fatal("the header's text drew nothing on the old side")
 	}
 
 	// Unified, nothing cuts it: it is as wide as in a view twice as wide.
