@@ -286,11 +286,99 @@ func TestTrimDrawables(t *testing.T) {
 		if !r.trimmed {
 			t.Error("idle trim did not shrink the drawables")
 		}
+		// The presenter fetched a drawable of the new size, which has the
+		// layer let go of those of the old one (#2040).
+		if d := r.pre.take(); d == 0 {
+			t.Error("trimming fetched no drawable of the new size")
+		} else {
+			tex := send(d, "texture")
+			if w, h := int(send(tex, "width")), int(send(tex, "height")); w != 1 || h != 1 {
+				t.Errorf("trimming fetched a drawable of %d×%d, want 1×1", w, h)
+			}
+			send(d, "release")
+		}
 		r.fit(800, 600, 1)
 		if r.trimmed {
 			t.Error("next frame did not restore the drawables")
 		}
 	})
+}
+
+// TestOccludedTrim checks that a window nothing of which shows gives back
+// its drawables occludedTrimAfter after its last frame, rather than
+// trimAfter, and has nothing more to give back once it did (#2040).
+func TestOccludedTrim(t *testing.T) {
+	if err := load(); err != nil {
+		t.Skip("no Metal:", err)
+	}
+	var layer id
+	pool(func() { layer = send(class("CALayer"), "new") })
+	if layer == 0 {
+		t.Skip("no Core Animation")
+	}
+	defer pool(func() { release(&layer) })
+	r, err := New(uintptr(layer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Release()
+	pool(func() { r.fit(800, 600, 1) })
+	// armed reports whether the trim fires after from the time between
+	// before and now.
+	armed := func(before time.Time, after time.Duration) bool {
+		return r.trimArmed && !r.trimAt.Before(before.Add(after)) && !r.trimAt.After(time.Now().Add(after))
+	}
+	before := time.Now()
+	r.lastRender = before
+	r.armTrim()
+	if !armed(before, trimAfter) {
+		t.Errorf("a window that shows trims in %v, want %v", r.trimAt.Sub(before), trimAfter)
+	}
+	before = time.Now()
+	r.SetOccluded(true)
+	if !armed(before, occludedTrimAfter) {
+		t.Errorf("out of sight, the trim fires in %v, want %v", r.trimAt.Sub(before), occludedTrimAfter)
+	}
+	r.lastRender = time.Now().Add(-time.Hour)
+	r.trimIfIdle()
+	if !r.trimmed {
+		t.Fatal("a window out of sight kept its drawables")
+	}
+	// Trimmed, it has nothing to give back until it draws again.
+	r.SetOccluded(false)
+	r.SetOccluded(true)
+	if r.trimArmed {
+		t.Error("a window trimmed armed its trim again as it went out of sight")
+	}
+	r.pre.drain()
+	pool(func() { r.fit(800, 600, 1) })
+	if r.trimmed {
+		t.Error("the next frame did not make the drawables again")
+	}
+}
+
+func TestTrimWait(t *testing.T) {
+	for _, c := range []struct {
+		since          time.Duration
+		occluded, busy bool
+		want           time.Duration
+	}{
+		{0, false, false, trimAfter},
+		{time.Second, false, false, trimAfter - time.Second},
+		{trimAfter, false, false, 0},
+		{0, true, false, occludedTrimAfter},
+		{occludedTrimAfter, true, false, 0},
+		{time.Second, true, false, 0},
+		// A frame waiting for its drawable, or a fetch in flight, puts
+		// the trim off.
+		{trimAfter, false, true, occludedTrimAfter},
+		{time.Second, true, true, occludedTrimAfter},
+		{100 * time.Millisecond, true, true, occludedTrimAfter - 100*time.Millisecond},
+	} {
+		if got := trimWait(c.since, c.occluded, c.busy); got != c.want {
+			t.Errorf("trimWait(%v, occluded %v, busy %v) = %v, want %v", c.since, c.occluded, c.busy, got, c.want)
+		}
+	}
 }
 
 // TestChangedSince checks what frames drawn in memory copy into the

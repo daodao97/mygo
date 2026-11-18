@@ -365,6 +365,9 @@ func (h *windowHost) event(ev platform.SurfaceEvent) bool {
 			r.Invalidate()
 		}
 	}
+	if ev.Kind == platform.SurfaceHidden || ev.Kind == platform.SurfaceShown {
+		h.tellOccluded()
+	}
 	if ev.Kind == platform.SurfaceFrame {
 		if ev.Paced && h.waitDisplay(time.Now()) {
 			return true
@@ -422,6 +425,11 @@ type gpuRenderer interface {
 // size, as a GtkGLArea makes its buffers anew as GTK allocates it:
 // Invalidate has the next frame draw whole.
 type invalidator interface{ Invalidate() }
+
+// occludedRenderer is a GPU renderer that gives back the memory of its
+// frames sooner while nothing of the window shows (Metal's, whose
+// drawables are each as large as the window): SetOccluded tells it.
+type occludedRenderer interface{ SetOccluded(bool) }
 
 // wideRenderer is a GPU renderer that can draw the colors of scenes outside
 // the sRGB gamut (Metal's).
@@ -673,9 +681,18 @@ func (h *windowHost) makeGPU() {
 	}
 	h.gpu, h.gpuSince = r, time.Now()
 	h.wide = false // the renderer draws sRGB until told otherwise
+	h.tellOccluded()
 	if p, ok := r.(interface{ SetPost(func(func())) }); ok && h.conn.Post != nil {
 		// Frames waiting for the display draw through the main thread.
 		p.SetPost(h.conn.Post)
+	}
+}
+
+// tellOccluded tells the GPU renderer whether nothing of the window shows,
+// as the surface sends SurfaceHidden and SurfaceShown, and as it is made.
+func (h *windowHost) tellOccluded() {
+	if r, ok := h.gpu.(occludedRenderer); ok {
+		r.SetOccluded(h.occluded())
 	}
 }
 

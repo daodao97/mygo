@@ -496,12 +496,15 @@ type Renderer struct {
 	checked bool
 
 	// lastRender is when the last frame drew; trimTimer trims the
-	// drawables once none has for a while, armed until it fires, and
-	// trimmed is whether it did.
+	// drawables once none has for a while, armed until it fires (at
+	// trimAt), and trimmed is whether it did. occluded tells that nothing
+	// of the window shows (SetOccluded): the while is shorter then.
 	lastRender         time.Time
 	trimTimer          uintptr
 	trimHandle         uintptr
+	trimAt             time.Time
 	trimArmed, trimmed bool
+	occluded           bool
 
 	// diff finds what changed since the last frame drawn, and ages what
 	// changed since each drawable was (see gpu.Ages); redrew is how much
@@ -2041,13 +2044,41 @@ func (r *Renderer) releaseTextures() {
 // go: about when the Metal driver frees its own memory of frames.
 const trimAfter = 2 * time.Second
 
+// occludedTrimAfter is that time while nothing of the window shows
+// (SetOccluded), as a background tab, a minimized window or one on
+// another Space: it draws nothing then but after input or for a capture,
+// so its drawables, as large as the window, go as soon as the frame it
+// drew as it went out of sight is done, rather than costing every window
+// out of sight two or three frames of memory (#2040). Long enough that
+// keys typed into a key window that others cover do not make them again
+// for each.
+const occludedTrimAfter = 500 * time.Millisecond
+
+// SetOccluded tells the renderer whether nothing of its window shows on
+// screen, so that it gives back its spare drawables occludedTrimAfter
+// after its last frame rather than trimAfter. The layer keeps the frame
+// it shows, which the Dock shows of a minimized window, Mission Control
+// and a Space sliding in show of the others, and captures of the window
+// see, until a frame drawn once some of it shows replaces it, whole and
+// at the window's size.
+func (r *Renderer) SetOccluded(on bool) {
+	if on == r.occluded {
+		return
+	}
+	r.occluded = on
+	if on && !r.trimmed && !r.lastRender.IsZero() {
+		r.armTrim()
+	}
+}
+
 // armTrim has the renderer's timer trim the drawables once it draws
-// nothing for trimAfter.
+// nothing for trimAfter, or occludedTrimAfter while occluded, unless it is
+// armed to fire sooner.
 func (r *Renderer) armTrim() {
 	// The timer fires on the main run loop, which on iOS is UIKit's
 	// thread, not the one drawing: the system's memory warnings trim there
 	// instead (Renderer.Trim).
-	if r.trimArmed || runtime.GOOS == "ios" {
+	if runtime.GOOS == "ios" {
 		return
 	}
 	if r.trimTimer == 0 {
@@ -2063,25 +2094,67 @@ func (r *Renderer) armTrim() {
 		mainLoop, _, _ := purego.SyscallN(cfRunLoopGetMain)
 		purego.SyscallN(cfRunLoopAddTimer, mainLoop, r.trimTimer, commonModes)
 	}
-	cfRunLoopTimerSetNextFireDate(r.trimTimer, cfAbsoluteTimeGetCurrent()+trimAfter.Seconds())
-	r.trimArmed = true
+	after := trimAfter
+	if r.occluded {
+		after = occludedTrimAfter
+	}
+	if at := time.Now().Add(after); !r.trimArmed || at.Before(r.trimAt) {
+		r.setTrimTimer(at)
+	}
 }
 
-// trimIfIdle trims the drawables if the window drew nothing for trimAfter,
-// and waits for that time otherwise.
+// setTrimTimer has the trim timer fire at at.
+func (r *Renderer) setTrimTimer(at time.Time) {
+	r.trimAt, r.trimArmed = at, true
+	cfRunLoopTimerSetNextFireDate(r.trimTimer, cfAbsoluteTimeGetCurrent()+time.Until(at).Seconds())
+}
+
+// trimIfIdle trims the drawables if the window drew nothing for the time
+// trimWait gives, and waits for the rest of it otherwise.
 func (r *Renderer) trimIfIdle() {
-	if wait := trimAfter - time.Since(r.lastRender); wait > 0 {
-		cfRunLoopTimerSetNextFireDate(r.trimTimer, cfAbsoluteTimeGetCurrent()+wait.Seconds())
+	r.trimArmed = false
+	if wait := trimWait(time.Since(r.lastRender), r.occluded, r.pending.cb != 0 || r.pre.busy()); wait > 0 {
+		r.setTrimTimer(time.Now().Add(wait))
 		return
 	}
-	r.trimArmed = false
 	cfRunLoopTimerSetNextFireDate(r.trimTimer, cfAbsoluteTimeGetCurrent()+1e9)
 	r.trim()
 }
 
-// trim gives back the drawables the layer does not show. Shrinking them
-// frees those, and Core Animation keeps showing the last frame; the next
-// makes them again at full size.
+// trimWait returns how long a renderer whose last frame drew since ago
+// waits yet before trimming its drawables, 0 for none: until trimAfter
+// after that frame, or occludedTrimAfter while nothing of the window shows
+// (occluded). A frame waiting for its drawable, or a drawable being
+// fetched (busy), puts it off by occludedTrimAfter: trimming would drop
+// that frame, which the window would then never show, as nothing asks
+// for another, or wait on the main thread for the fetch, which waits up
+// to a second for a drawable the display holds.
+func trimWait(since time.Duration, occluded, busy bool) time.Duration {
+	after := trimAfter
+	if occluded {
+		after = occludedTrimAfter
+	}
+	switch {
+	case since < after:
+		return after - since
+	case busy:
+		return occludedTrimAfter
+	}
+	return 0
+}
+
+// trim gives back the drawables the layer does not show, and what the
+// GPU's frames use. Core Animation keeps showing the last frame; the next
+// frame makes the drawables again at full size, and draws whole.
+//
+// Shrinking the drawables frees those of the old size once the layer
+// hands out one of the new size, which it may not do before: the
+// presenter fetches one, a pixel big, off the main thread, which the next
+// frame lets go of unpresented (#2040). The layer's contents, the frame
+// shown, stay: without them, a window minimized would show nothing in the
+// Dock, nor one covered in Mission Control or a capture, and a window
+// showing again, as a Space slides in, would show nothing until its next
+// frame, which comes once the window server told that it shows.
 func (r *Renderer) trim() {
 	if r.layer == 0 || r.trimmed {
 		return
@@ -2099,6 +2172,7 @@ func (r *Renderer) trim() {
 		msgSetSize(r.layer, sel("setDrawableSize:"), cgSize{1, 1})
 		send(tx, "commit")
 	})
+	r.pre.start(r.layer)
 	r.trimmed = true
 }
 

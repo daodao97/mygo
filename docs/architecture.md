@@ -5901,10 +5901,28 @@ either.
     (#1566). Function constant
     indices 0 through 7 belong to the renderer; effects start their own at 8.
     Two seconds after the last frame, as the
-    driver frees its own memory of frames, a timer shrinks the drawables,
-    which frees all but the one shown, until the next frame makes them
-    again, and releases GPU instance buffers, atlas/image textures and
-    backdrop textures: an idle window keeps one frame of memory. Its
+    driver frees its own memory of frames, a timer shrinks the drawables
+    to a pixel, until the next frame makes them again, and releases GPU
+    instance buffers, atlas/image textures and backdrop textures: an idle
+    window keeps one frame of memory. Core Animation may keep the
+    drawables of the old size until it hands out one of the new, so the
+    presenter's goroutine then fetches one, a pixel big, which the next
+    frame lets go of unpresented. A window nothing of which shows
+    (`SurfaceHidden`, which `windowHost` passes on to the renderer,
+    `SetOccluded`: a background tab, minimized, on another Space or
+    covered) shrinks them half a second after its last frame instead,
+    the one it drew as it went out of sight, so that windows out of sight
+    cost a frame each, not two or three (#2040); a frame waiting for its
+    drawable, or a drawable being fetched, puts it off rather than be
+    dropped or waited for. The frame shown stays, as the layer's
+    contents: the Dock shows it for a minimized window, Mission Control,
+    a Space sliding in and captures for the others, and a window showing
+    again shows it until the window server tells that it shows, rather
+    than nothing. The next frame draws whole, at the window's size.
+    Lowering `maximumDrawableCount` to two out of sight would save a
+    frame only for that half second after a frame drawn out of sight, as
+    Core Animation makes drawables as frames need them, and the third
+    keeps animations from waiting for one once the window shows. Its
     drawables are not `framebufferOnly`, as effects sample the drawable
     for their backdrops.
     A frame draws only what changed since its drawable was drawn. Core

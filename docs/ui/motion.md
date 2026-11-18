@@ -583,7 +583,11 @@ window another app's window covers), when assistive technology turns on,
 and for `Window.CapturePage`, so that a capture shows the window as it is
 now. Windows and X11 tell MyGo of a window minimized and of no more, and
 Wayland of nothing, so a window that others cover, or one on another
-desktop, draws there as it always did.
+desktop, draws there as it always did. On macOS a window out of sight
+also gives back the GPU's memory of its frames half a second after its
+last, keeping only the frame it shows, which the Dock, Mission Control
+and captures of the window show: a window in a background tab costs one
+frame of memory, as large as the window, rather than two or three.
 
 What this means for motion:
 
