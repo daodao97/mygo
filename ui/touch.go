@@ -131,6 +131,10 @@ type touchPan struct {
 	// swallow drops what the finger does: it went down to stop a fling,
 	// which takes no tap.
 	swallow bool
+	// caught says it went down on a fling, which it stopped: past the
+	// slop it pans as any finger does, as UIKit's scroll views follow
+	// the finger that stops their deceleration.
+	caught bool
 	// waiting is a press held back until pressDelay passed (at), on what
 	// scrolls, with its clicks.
 	waiting bool
@@ -192,7 +196,7 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 		if rt.flinging.on {
 			// A finger stops content flinging, and taps nothing.
 			rt.flinging.on = false
-			t.swallow = true
+			t.swallow, t.caught = true, true
 			return true
 		}
 		t.holds = rt.longPressTarget(x, y)
@@ -212,7 +216,10 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 			return true
 		}
 		if t.swallow {
-			return true
+			if !t.caught || math.Hypot(float64(x-t.x0), float64(y-t.y0)) < touchSlop {
+				return true
+			}
+			t.swallow, t.caught = false, false
 		}
 		if t.dragging {
 			return false
@@ -845,8 +852,8 @@ func (rt *engine) flingStep(now time.Time) {
 		return
 	}
 	ms := float32(now.Sub(f.at).Seconds() * 1000)
-	f.at = now
 	if ms <= 0 {
+		f.at = now
 		rt.animating = true
 		return
 	}
@@ -854,6 +861,14 @@ func (rt *engine) flingStep(now time.Time) {
 	k := float32(math.Pow(flingDecay, float64(ms)))
 	scale := (1 - k) / -float32(math.Log(flingDecay)) / 1000
 	dx, dy := f.vx*scale, f.vy*scale
+	if dx == 0 && dy == 0 {
+		// Too soon after the last to move it (k rounds to 1): the time
+		// adds up to the next frame, rather than ending the fling as if
+		// it could go no further.
+		rt.animating = true
+		return
+	}
+	f.at = now
 	f.vx, f.vy = f.vx*k, f.vy*k
 	axes := Orientation(0)
 	if f.vx != 0 {
