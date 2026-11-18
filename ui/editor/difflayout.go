@@ -314,14 +314,18 @@ func sticky(blks []block) []block {
 // setSide gives side i its hidden lines and blocks, keeping those it has
 // when they are the same, as typing within a line leaves them: the
 // heights take them without work, and the view, whose separators and
-// buttons stand on them, is not built again (blocksV).
+// buttons stand on them, is not built again (blocksV). The hidden lines
+// keep a version of theirs (hideV), for what follows only them, as the
+// diff's find does.
 func (d *DiffState) setSide(i int, hide []lineSpan, blks []block) {
 	s := &d.sides[i]
-	if slices.Equal(s.hide, hide) && slices.Equal(s.blks, blks) {
-		return
+	if !slices.Equal(s.hide, hide) {
+		s.hide, s.hideV = hide, s.hideV+1
 	}
-	s.hide, s.blks = hide, blks
-	d.blocksV++
+	if !slices.Equal(s.blks, blks) {
+		s.blks = blks
+		d.blocksV++
+	}
 }
 
 // wrapLineNow measures the wraps of a line, if not yet, as laying it out

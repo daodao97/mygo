@@ -17,6 +17,9 @@ type diffSide struct {
 	unified bool
 	hide    []lineSpan
 	blks    []block
+	// hideV counts how often the side's hidden lines changed (setSide):
+	// what the diff's find keys its matches on, for the shown lines only.
+	hideV int
 }
 
 func (s *diffSide) hidden() []lineSpan { return s.hide }

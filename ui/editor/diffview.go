@@ -615,8 +615,10 @@ func DiffView(c *ui.Context, d *DiffState) ui.Element {
 	t := c.Theme()
 	ct := d.Theme.resolve(t)
 	opts := d.sideOptions
-	d.sides[0] = diffSide{d: d, old: true, hide: d.sides[0].hide, blks: d.sides[0].blks}
-	d.sides[1] = diffSide{d: d, unified: d.Layout == DiffUnified, hide: d.sides[1].hide, blks: d.sides[1].blks}
+	// The sides are made again each build, and keep the version of their
+	// hidden lines across them, for the find bar's matches to hold of it.
+	d.sides[0] = diffSide{d: d, old: true, hide: d.sides[0].hide, blks: d.sides[0].blks, hideV: d.sides[0].hideV}
+	d.sides[1] = diffSide{d: d, unified: d.Layout == DiffUnified, hide: d.sides[1].hide, blks: d.sides[1].blks, hideV: d.sides[1].hideV}
 	if d.Layout == DiffUnified {
 		d.oldView.setTheme(ct)
 		d.oldView.setBuffer(d.Old)

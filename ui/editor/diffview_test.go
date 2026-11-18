@@ -504,6 +504,137 @@ func TestDiffScrollsOverSeparator(t *testing.T) {
 	}
 }
 
+// A diff's find matches the lines it shows: the lines a gap collapses
+// hold no matches, and the matches come and go as the user expands and
+// collapses the gaps, in both layouts.
+func TestDiffFindMatchesTheShownLines(t *testing.T) {
+	var a []string
+	for i := range 600 {
+		a = append(a, "line "+strconv.Itoa(i))
+	}
+	b := append([]string(nil), a...)
+	b[0] = "changed"
+	for _, layout := range []DiffLayout{DiffSplit, DiffUnified} {
+		d := &DiffState{Old: NewBuffer(strings.Join(a, "\n")), New: NewBuffer(strings.Join(b, "\n"))}
+		d.Layout = layout
+		tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 600)
+		tt.Frame()
+		tt.Frame()
+		d.Find("line 500")
+		tt.Frame()
+		if ed := &d.eds[1]; len(ed.find.matches) != 0 {
+			t.Fatalf("%v: matches in the collapsed lines: %v", layout, ed.find.matches)
+		}
+		d.ExpandAll()
+		tt.Frame()
+		tt.Frame()
+		ed := &d.eds[1]
+		if len(ed.find.matches) == 0 || ed.find.matches[0].start != ed.view.text.LineStart(500) {
+			t.Fatalf("%v: no match in the lines the expand shows: %v", layout, ed.find.matches)
+		}
+		d.CollapseAll()
+		tt.Frame()
+		tt.Frame()
+		if ed := &d.eds[1]; len(ed.find.matches) != 0 {
+			t.Fatalf("%v: matches stayed over the collapsed lines: %v", layout, ed.find.matches)
+		}
+		// The shown lines keep matching: the change, in view from the start.
+		d.Find("changed")
+		tt.Frame()
+		if ed := &d.eds[1]; len(ed.find.matches) != 1 {
+			t.Fatalf("%v: the shown change matched %v, want once", layout, ed.find.matches)
+		}
+		// A regular expression's anchors hold at the shown lines' own
+		// ends: three line starts hold "line", one line ends in "3", and
+		// the collapsed lines' worth of both hold nothing.
+		d.eds[1].find.regex = true
+		d.Find(`^line`)
+		tt.Frame()
+		ed = &d.eds[1]
+		if len(ed.find.matches) != 3 || ed.find.matches[0].start != ed.view.text.LineStart(1) {
+			t.Fatalf("%v: ^line matched %v, want the three shown line starts", layout, ed.find.matches)
+		}
+		d.Find(`3$`)
+		tt.Frame()
+		if ed := &d.eds[1]; len(ed.find.matches) != 1 {
+			t.Fatalf("%v: 3$ matched %v, want the shown line's own end", layout, ed.find.matches)
+		}
+		d.Find(`a*`)
+		tt.Frame()
+		// a* holds the one a of "changed" and skips its empties.
+		ed = &d.eds[1]
+		if len(ed.find.matches) != 1 || ed.find.matches[0].start != ed.view.text.LineStart(0)+2 {
+			t.Fatalf("%v: a* matched %v, want the shown change's a", layout, ed.find.matches)
+		}
+		d.Find(`\bline\b`)
+		tt.Frame()
+		// \b holds at the line ends: three whole words of line.
+		if len(ed.find.matches) != 3 {
+			t.Fatalf("%v: \\bline\\b matched %v, want the three shown lines", layout, ed.find.matches)
+		}
+	}
+	// The old side finds by its own hidden lines: the same query over the
+	// same gap of its text (split).
+	d := &DiffState{Old: NewBuffer(strings.Join(a, "\n")), New: NewBuffer(strings.Join(b, "\n"))}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 600)
+	tt.Frame()
+	tt.Frame()
+	d.oldActive = true
+	d.Find("line 500")
+	tt.Frame()
+	if ed := d.editorOf(DiffOld); len(ed.find.matches) != 0 {
+		t.Fatalf("the old side matched the collapsed lines: %v", ed.find.matches)
+	}
+	d.ExpandAll()
+	tt.Frame()
+	tt.Frame()
+	if ed := d.editorOf(DiffOld); len(ed.find.matches) == 0 {
+		t.Fatal("the old side found nothing in the lines the expand shows")
+	}
+}
+
+// Typing in a shown line of an editable diff, with gaps before and after
+// it, searches the touched lines by their own: no panic, and the matches
+// are those of a search of the whole text.
+func TestDiffSearchLinesOfAnEdit(t *testing.T) {
+	var a []string
+	for i := range 600 {
+		a = append(a, "line "+strconv.Itoa(i))
+	}
+	b := append([]string(nil), a...)
+	b[300] = "changed"
+	d := &DiffState{Old: NewBuffer(strings.Join(a, "\n")), New: NewBuffer(strings.Join(b, "\n")), Editable: true}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 600)
+	tt.Frame()
+	tt.Frame()
+	d.Find("line 30")
+	tt.Frame()
+	// Type in a shown line: 301, a line of context the gaps leave shown
+	// before and after.
+	off := d.eds[1].view.text.LineStart(301)
+	d.New.Edit(Edit{Start: off, End: off + 1, Text: "x"})
+	tt.Frame()
+	ed := &d.eds[1]
+	f := &ed.find
+	// Searching only the lines the edit touched (searchLines) holds the
+	// same matches as the whole text has: the edited line is dirty, of
+	// the version the view is at, and the gaps around it lie past the
+	// line's window — the path where the hidden spans search a slice of
+	// the text.
+	f.version = ed.view.version
+	f.hiddenVer = ed.o.decor.(*diffSide).hideV
+	f.dirty = []lineSpan{{301, 302}}
+	tt.Frame()
+	got := slices.Clone(f.matches)
+	// The matches are those of a search of the whole text. The edit also
+	// widens the hunk around it, and the context's own matches with it.
+	f.stale = true
+	tt.Frame()
+	if !slices.Equal(got, f.matches) {
+		t.Fatalf("the touched lines matched %v, a full search %v", got, f.matches)
+	}
+}
+
 // A filler's stripes are those in sight, however high it is, at -45°
 // every 8 DIPs from its bottom-left corner, which they keep to as it
 // scrolls.
