@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -71,6 +72,46 @@ func TestWindowHiddenBuilds(t *testing.T) {
 		o.frame()
 		if o.s.requested == asked || o.builds != built+1 || hidden {
 			t.Fatalf("asks %v: shown again, asked for %d frames, built %d, hidden %v", asks, o.s.requested-asked, o.builds-built, hidden)
+		}
+	}
+}
+
+// TestShownDrawsHeldFrame hides and shows a window again and again, as a
+// popover flyout's Hide and Show do, while what it shows changes out of
+// sight, as a clock's ticker has it: each show draws what changed, built
+// once with the window no longer hidden, without waiting for the next
+// change (#2053).
+func TestShownDrawsHeldFrame(t *testing.T) {
+	o := newOccludedHost(t, false)
+	var hidden bool
+	view := o.rt.view
+	o.rt.view = func(c *context) {
+		hidden = c.WindowHidden()
+		view(c)
+	}
+	o.frame()
+	for i := range 3 {
+		o.s.occluded = true
+		o.event(platform.SurfaceEvent{Kind: platform.SurfaceHidden})
+		o.frame()
+		built := o.builds
+		for range 2 {
+			o.count++
+			o.rt.changed()
+			o.frame()
+		}
+		if o.builds != built || !o.rt.held {
+			t.Fatalf("%d: changes out of sight built %d times, held %v", i, o.builds-built, o.rt.held)
+		}
+		o.s.occluded = false
+		asked := o.s.requested
+		o.event(platform.SurfaceEvent{Kind: platform.SurfaceShown})
+		if o.s.requested == asked {
+			t.Fatalf("%d: shown again, it asked for no frame", i)
+		}
+		o.frame()
+		if want := fmt.Sprint(o.count); o.builds != built+1 || hidden || o.shows() != want {
+			t.Fatalf("%d: shown again, built %d times, hidden %v, showing %q, want %q", i, o.builds-built, hidden, o.shows(), want)
 		}
 	}
 }
