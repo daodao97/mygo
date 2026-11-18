@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -144,10 +145,9 @@ func DatePicker(c *ui.Context, value *time.Time) ui.Element {
 		v := *value
 		year0 := v.Year() - 100
 		month, day, year := int(v.Month())-1, v.Day()-1, v.Year()-year0
-		months := make([]string, 12)
-		for i := range months {
-			months[i] = time.Month(i + 1).String()
-		}
+		// The months as the app's language names them, with the user's formats.
+		names := i18n.Months(c.Region().FormatLocale(c.Locale()), i18n.Wide, true)
+		months := names[:]
 		last := time.Date(v.Year(), v.Month()+1, 0, 0, 0, 0, 0, v.Location()).Day()
 		changed := Wheel(c.Key("mo"), &month, months).Grow(2).Basis(0).Changed()
 		if Wheel(c.Key("d"), &day, numbers(1, last, "%d")).Grow(1).Basis(0).Changed() {
