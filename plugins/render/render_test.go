@@ -249,6 +249,8 @@ func TestDeterministic(t *testing.T) {
 		},
 	}
 	render := func(o Options) []*image.RGBA {
+		// The view keeps its values: one worker builds the frames.
+		o.Workers = 1
 		values = values[:0]
 		var out []*image.RGBA
 		if err := Frames(context.Background(), comp, o, func(_ int, img *image.RGBA) error {
@@ -278,6 +280,80 @@ func TestDeterministic(t *testing.T) {
 		if maxDiff(img, a[20+i]) != 0 {
 			t.Errorf("frame %d of a range differs from the whole render's", 20+i)
 		}
+	}
+}
+
+// TestWorkers renders the frames on several workers as on one: ui's
+// animations, a range, motion blur, and every renderer.
+func TestWorkers(t *testing.T) {
+	comp := Composition{
+		Width: 96, Height: 40, FPS: 60, Frames: 23,
+		View: func(c *ui.Context, f Frame) {
+			b := ui.Box(c).Size(40, 40).Background(ui.RGB(0, 128, 0))
+			target := float32(0)
+			if f.Index >= 4 {
+				target = 1
+			}
+			b.Opacity(b.AnimateWith("o", target, 200*time.Millisecond, ui.Linear))
+			ui.Text(c, "MyGo").FontSize(12).Translate(float32(2*f.Exact()), 0)
+		},
+	}
+	render := func(o Options) ([]*image.RGBA, []int) {
+		var out []*image.RGBA
+		var order []int
+		if err := Frames(context.Background(), comp, o, func(i int, img *image.RGBA) error {
+			out, order = append(out, img), append(order, i)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return out, order
+	}
+	for _, blur := range []int{0, 3} {
+		comp.MotionBlur = MotionBlur{Samples: blur}
+		for _, r := range []Renderer{CPU, GPU} {
+			if r == GPU {
+				if _, err := Still(comp, 0, Options{Renderer: GPU}); err != nil {
+					t.Log("no GPU:", err)
+					continue
+				}
+			}
+			for _, span := range [][2]int{{0, 0}, {5, 17}} {
+				o := Options{Renderer: r, From: span[0], To: span[1], Workers: 1}
+				one, _ := render(o)
+				for _, n := range []int{2, 3, 50} {
+					o.Workers = n
+					many, order := render(o)
+					if len(many) != len(one) {
+						t.Fatalf("%v, blur %d, frames %v: %d frames on %d workers, %d on one", r, blur, span, len(many), n, len(one))
+					}
+					for k, img := range many {
+						if order[k] != span[0]+k {
+							t.Fatalf("%v, blur %d, frames %v, %d workers: frame %d came %dth", r, blur, span, n, order[k], k)
+						}
+						if d := maxDiff(img, one[k]); d != 0 {
+							t.Errorf("%v, blur %d, frames %v: frame %d differs by %d on %d workers", r, blur, span, span[0]+k, d, n)
+						}
+					}
+				}
+			}
+		}
+	}
+	// What stops a render stops its workers.
+	ctx, cancel := context.WithCancel(context.Background())
+	n := 0
+	err := Frames(ctx, boxes(32, 32, 100), Options{Renderer: CPU, Workers: 4}, func(int, *image.RGBA) error {
+		if n++; n == 5 {
+			cancel()
+		}
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) || n > 6 {
+		t.Errorf("canceled after 5 frames: %v, %d frames", err, n)
+	}
+	stop := errors.New("stop")
+	if err := Frames(context.Background(), boxes(32, 32, 10), Options{Workers: 4}, func(int, *image.RGBA) error { return stop }); err != stop {
+		t.Errorf("fn's error: %v", err)
 	}
 }
 

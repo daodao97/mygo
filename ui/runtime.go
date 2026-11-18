@@ -702,9 +702,11 @@ type keyEvent struct {
 
 func newRuntime(view func(*context), h host) *engine {
 	// A phone's host sets the environment after the package's variables
-	// took it.
-	if !frameStatsOn {
-		frameStatsThreshold, frameStatsOn = frameStatsSetting(os.Getenv("MYGO_FRAME_STATS"))
+	// took it. Read, not kept: Recorders and Testers are made on many
+	// goroutines at once.
+	statsThreshold, statsOn := frameStatsThreshold, frameStatsOn
+	if !statsOn {
+		statsThreshold, statsOn = frameStatsSetting(os.Getenv("MYGO_FRAME_STATS"))
 	}
 	rt := &engine{view: view, host: h, text: h.textSystem(), states: map[uint64]*state{}, windowFocused: true}
 	rt.c.rt = rt
@@ -712,8 +714,8 @@ func newRuntime(view func(*context), h host) *engine {
 	rt.arena = &elementOwner{rt: rt}
 	rt.public = &Context{rt: rt, services: Services{owner: rt.owner}}
 	rt.handleChecks = developmentHandles
-	if frameStatsOn {
-		rt.stats = newFrameStats(frameStatsThreshold)
+	if statsOn {
+		rt.stats = newFrameStats(statsThreshold)
 	}
 	return rt
 }

@@ -56,7 +56,10 @@ type Composition struct {
 	// that a 1920×1080 video at scale 2 is laid out as a 960×540 window
 	// of a Retina display.
 	Scale float32
-	// View builds the frame f.
+	// View builds the frame f. It runs on several goroutines at once, one
+	// a worker (Options.Workers), each building every frame: it must
+	// build the same frame the same way each time, and read what it
+	// shares, never change it.
 	View func(c *ui.Context, f Frame)
 
 	// Background fills the frames behind the view; zero is the theme's
@@ -165,6 +168,10 @@ type Options struct {
 	From, To int
 	// Renderer chooses what draws the frames.
 	Renderer Renderer
+	// Workers is how many frames are drawn at once, each by a worker of
+	// its own on a thread of its own: 1 draws them one after another, and
+	// zero chooses. See Composition.View for what a view does then.
+	Workers int
 	// Progress is called after each frame written, on the goroutine
 	// rendering.
 	Progress func(Progress)
@@ -378,6 +385,9 @@ func run(ctx context.Context, comp Composition, o Options, open func(*session, d
 	from, to, err := comp.span(o)
 	if err != nil {
 		return err
+	}
+	if n := o.workers(comp, to-from); n > 1 {
+		return runWorkers(ctx, comp, o, from, to, n, open)
 	}
 	// One thread draws: OpenGL's context is current on it.
 	runtime.LockOSThread()

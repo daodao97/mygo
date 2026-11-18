@@ -156,7 +156,9 @@ func (o *Offscreen) Release() {
 // Frames draws frames one after another into a window that never shows,
 // for videos (plugins/render): Draw draws one and copies it into a
 // staging texture kept from frame to frame, without waiting for the GPU;
-// Read waits for it and copies its pixels.
+// Read waits for it and copies its pixels. Each Frames has a device of
+// its own (ownDevice), so that Frames on several threads draw at once,
+// beside the windows' renderers.
 type Frames struct {
 	r       *Renderer
 	hwnd    uintptr
@@ -170,7 +172,7 @@ func NewFrames(w, h int) (*Frames, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := New(hwnd)
+	r, err := newRenderer(hwnd, false, true)
 	if err != nil {
 		destroyWindow(hwnd)
 		return nil, err
