@@ -158,3 +158,7 @@ The app then finds the executable at
 `context.applicationInfo.nativeLibraryDir + "/lib<name>.so"`. The libraries
 ship compressed, and take space again once extracted, so leave it off unless
 the app execs one.
+
+Link such an executable for 16 KB pages (`-Wl,-z,max-page-size=16384`), as
+Android's own libraries are: on a device or emulator with 16 KB pages, one
+linked for 4 KB pages crashes as it starts.
