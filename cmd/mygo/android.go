@@ -419,6 +419,14 @@ func writeResFiles(res string, files map[string]string) error {
 	return nil
 }
 
+// packagingProps sets the Gradle properties of how the APK holds the app's
+// native libraries.
+func (o Android) packagingProps(props map[string]string) {
+	if o.ExtractNativeLibs {
+		props["mygoExtractNativeLibs"] = "true"
+	}
+}
+
 // versionCode is the integer version Google Play orders uploads by.
 func (o Android) versionCode(version string) int {
 	if o.VersionCode > 0 {
@@ -496,6 +504,7 @@ func (t *androidToolchain) gradle(ctx context.Context, c, dc *Config, dir, work,
 	if hasIcon {
 		props["mygoIcon"] = "@mipmap/ic_launcher"
 	}
+	dc.Android.packagingProps(props)
 	if ks := dc.Android.Keystore; ks != "" {
 		pass := os.Getenv("MYGO_ANDROID_KEYSTORE_PASSWORD")
 		if pass == "" {

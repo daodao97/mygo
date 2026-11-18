@@ -47,7 +47,12 @@ android {
             prop("mygoManifest")?.let { manifest.srcFile(it) }
         }
     }
-    packaging { jniLibs { useLegacyPackaging = false } }
+    // Native libraries stay in the APK, uncompressed, unless the app sets
+    // android.extractNativeLibs, for an executable it ships as lib<name>.so:
+    // then they are compressed and the installer extracts them to
+    // nativeLibraryDir, the one place the app may exec them from. AGP writes
+    // android:extractNativeLibs into the manifest from this.
+    packaging { jniLibs { useLegacyPackaging = prop("mygoExtractNativeLibs") == "true" } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

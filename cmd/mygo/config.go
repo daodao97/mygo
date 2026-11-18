@@ -337,6 +337,12 @@ type Android struct {
 	// Splash is the color of the screen the system shows while the app
 	// starts, as "#102030" (default: the theme's).
 	Splash string `json:"splash"`
+	// ExtractNativeLibs has the installer extract the app's native
+	// libraries to nativeLibraryDir, the one place an app may exec its own
+	// files from: for an executable that ships as lib<name>.so in a native
+	// module's jniLibs. By default they stay in the APK, uncompressed, and
+	// are loaded from it.
+	ExtractNativeLibs bool `json:"extractNativeLibs"`
 }
 
 // AndroidAdaptiveIcon is an icon of two layers.

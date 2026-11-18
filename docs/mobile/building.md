@@ -137,3 +137,24 @@ app's icon.
 
 **Background modes**: `ios.backgroundModes` are the app's
 `UIBackgroundModes`, with those its plugins ask for.
+
+## Executables
+
+An app that runs a program of its own beside its Go code, as a VPN client
+runs its proxy core, ships it on Android as a native library: a native
+module carries it as `kotlin/src/main/jniLibs/arm64-v8a/lib<name>.so`, one per
+ABI. Android lets an app exec only its files in `nativeLibraryDir` (W^X, from
+targetSdk 29), and by default the app's libraries stay in the APK,
+uncompressed, and are loaded from it, so that directory is empty.
+`android.extractNativeLibs` has the installer extract them there:
+
+```json
+{
+  "android": { "extractNativeLibs": true }
+}
+```
+
+The app then finds the executable at
+`context.applicationInfo.nativeLibraryDir + "/lib<name>.so"`. The libraries
+ship compressed, and take space again once extracted, so leave it off unless
+the app execs one.

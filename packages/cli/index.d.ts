@@ -366,6 +366,13 @@ export interface AndroidConfig {
   adaptiveIcon?: AndroidAdaptiveIcon;
   /** The color of the screen the system shows while the app starts, as `#102030` (default: the theme's). */
   splash?: string;
+  /**
+   * Has the installer extract the app's native libraries to `nativeLibraryDir`,
+   * the one place an app may exec its own files from: for an executable that
+   * ships as `lib<name>.so` in a native module's `jniLibs` (default: `false`,
+   * they stay in the APK).
+   */
+  extractNativeLibs?: boolean;
 }
 
 /** An icon of two layers. */

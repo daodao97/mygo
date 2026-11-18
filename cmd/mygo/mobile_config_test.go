@@ -6,11 +6,14 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	androidHost "github.com/egoist/mygo/internal/mobile/android"
 )
 
 func solidPNG(t *testing.T, size int, c color.Color) []byte {
@@ -377,5 +380,34 @@ func TestSigningEntitlements(t *testing.T) {
 	}
 	if _, err := p.signingEntitlements(c); err == nil || !strings.Contains(err.Error(), "Associated Domains") {
 		t.Errorf("without the capability: %v", err)
+	}
+}
+
+// android.extractNativeLibs reaches the host's Gradle build as a property,
+// which turns on the legacy packaging of jniLibs: AGP then writes
+// android:extractNativeLibs="true", which a module's manifest cannot.
+func TestAndroidExtractNativeLibs(t *testing.T) {
+	dir := t.TempDir()
+	writeBytes(t, filepath.Join(dir, jsonConfig), []byte(`{"android": {"extractNativeLibs": true}}`))
+	c, err := loadConfig(dir)
+	if err != nil || !c.Android.ExtractNativeLibs {
+		t.Fatalf("%+v, %v", c.Android, err)
+	}
+	src, err := fs.ReadFile(androidHost.Files, "app/build.gradle.kts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `useLegacyPackaging = prop("mygoExtractNativeLibs") == "true"`; !strings.Contains(string(src), want) {
+		t.Errorf("build.gradle.kts has no %s", want)
+	}
+	props := map[string]string{}
+	c.Android.packagingProps(props)
+	if props["mygoExtractNativeLibs"] != "true" {
+		t.Errorf("props %v", props)
+	}
+	props = map[string]string{}
+	Android{}.packagingProps(props)
+	if len(props) != 0 {
+		t.Errorf("off by default, props %v", props)
 	}
 }
