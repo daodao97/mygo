@@ -871,6 +871,9 @@ object HostImpl : HostCalls {
     private fun surface(id: Long) = windows[id] as? SurfaceWindow
 
     override fun requestFrame(c: RequestFrameCall) { surface(c.id)?.requestFrame() }
+    // Choreographer ticks at the display's rate: the content draws nothing
+    // on the refreshes between the frames it asked for.
+    override fun setFrameRate(c: SetFrameRateCall) {}
     override fun setTextInput(c: SetTextInputCall) { surface(c.id)?.setTextInput(c) }
     override fun setCursor(c: SetCursorCall) { surface(c.id)?.setCursor(c.cursor) }
     override fun accessibilityChanged(c: AccessibilityChangedCall) { surface(c.id)?.accessibilityChanged(c.focus) }

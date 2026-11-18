@@ -54,7 +54,7 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
         isMultipleTouchEnabled = true
         backgroundColor = .systemBackground
         let l = CADisplayLink(target: self, selector: #selector(tick))
-        l.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+        l.preferredFrameRateRange = SurfaceWindow.displayRate
         l.isPaused = true
         l.add(to: .main, forMode: .common)
         link = l
@@ -131,6 +131,17 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
     }
 
     func requestFrame() { link?.isPaused = false }
+
+    /// The link's rate while the content asks for a frame each refresh.
+    private static let displayRate = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+
+    /// Has the link tick fps times a second while frames follow each other,
+    /// or at the display's rate for 0: a ProMotion display then refreshes as
+    /// often, and a drawing asking for fewer frames wakes the app no more.
+    func setFrameRate(_ fps: Double) {
+        let f = Float(fps)
+        link?.preferredFrameRateRange = fps > 0 ? CAFrameRateRange(minimum: f, maximum: f, preferred: f) : SurfaceWindow.displayRate
+    }
 
     @objc private func tick() {
         // One frame per request: Go asks again while it animates.

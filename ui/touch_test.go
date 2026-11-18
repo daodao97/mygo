@@ -83,6 +83,115 @@ func TestTouchPans(t *testing.T) {
 	}
 }
 
+// A finger that lands on a fling stops it and taps nothing, but pans once
+// it moves past the slop, as UIKit's scroll views follow the finger that
+// stops their deceleration: flicking again and again keeps the content
+// going (#2003).
+func TestTouchPansAfterCatchingFling(t *testing.T) {
+	var s ScrollState
+	clicks := 0
+	tt := coreNewTester(func(c *context) {
+		coreScroll(c).Fill().TrackScroll(&s).Children(func() {
+			if coreBox(c).Height(5000).Shrink(0).Clicked() {
+				clicks++
+			}
+		})
+	}, 200, 200)
+	flick := func() {
+		tt.FingerDown(100, 150)
+		tt.Advance(16 * time.Millisecond)
+		tt.FingerMove(100, 100)
+		tt.Advance(16 * time.Millisecond)
+		tt.FingerUp(100, 40)
+	}
+	flick()
+	// Whole frames (60 Hz), for the frame of the finger's landing not to
+	// come too soon after the last, which TestTouchFlingSurvivesFrameTooSoon
+	// tests.
+	tt.Advance(3 * (time.Second / 60))
+	if !tt.rt.flinging.on {
+		t.Fatalf("no fling after a flick: at %v", s.Y)
+	}
+	// The finger stops it.
+	tt.FingerDown(100, 150)
+	caught := s.Y
+	tt.Advance(50 * time.Millisecond)
+	if tt.rt.flinging.on || s.Y != caught {
+		t.Fatalf("the finger did not stop the fling: at %v, was %v", s.Y, caught)
+	}
+	// Within the slop it moves nothing; past it, the content follows it
+	// from there.
+	tt.FingerMove(100, 146)
+	tt.FingerMove(100, 140)
+	if s.Y != caught {
+		t.Errorf("within and at the slop: at %v, was %v", s.Y, caught)
+	}
+	tt.Advance(16 * time.Millisecond)
+	tt.FingerMove(100, 100)
+	if s.Y != caught+40 {
+		t.Errorf("dragged 40 up after catching the fling: at %v, want %v", s.Y, caught+40)
+	}
+	// Lifted as it moves, it flings again, and clicked nothing.
+	tt.Advance(16 * time.Millisecond)
+	tt.FingerUp(100, 40)
+	if !tt.rt.flinging.on {
+		t.Errorf("no fling after the second flick")
+	}
+	tt.Advance(10 * time.Second)
+	if clicks != 0 {
+		t.Errorf("flicks clicked: %d clicks", clicks)
+	}
+	// A finger that catches a fling and lifts without moving still taps
+	// nothing, and stays swallowed within the slop.
+	s.Y = 0
+	tt.Frame()
+	tt.Advance(time.Second)
+	flick()
+	tt.Advance(16 * time.Millisecond)
+	tt.FingerDown(100, 100)
+	tt.FingerMove(100, 95)
+	stopped := s.Y
+	tt.FingerUp(100, 95)
+	tt.Advance(time.Second)
+	if s.Y != stopped || clicks != 0 {
+		t.Errorf("a tap on a fling: moved from %v to %v, %d clicks", stopped, s.Y, clicks)
+	}
+}
+
+// A frame too soon after the last to move a fling (its decay rounds to
+// none in float32) leaves the fling going, its time adding up to the next
+// frame, rather than ending it as if the content had reached its end
+// (#2003).
+func TestTouchFlingSurvivesFrameTooSoon(t *testing.T) {
+	var s ScrollState
+	tt := coreNewTester(func(c *context) {
+		coreScroll(c).Fill().TrackScroll(&s).Children(func() {
+			coreBox(c).Height(5000).Shrink(0)
+		})
+	}, 200, 200)
+	tt.FingerDown(100, 150)
+	tt.Advance(16 * time.Millisecond)
+	tt.FingerMove(100, 100)
+	tt.Advance(16 * time.Millisecond)
+	tt.FingerUp(100, 40)
+	f := &tt.rt.flinging
+	if !f.on {
+		t.Fatalf("no fling after a flick")
+	}
+	at, vy, was := f.at, f.vy, s.Y
+	tt.rt.flingStep(at.Add(time.Nanosecond))
+	if !f.on {
+		t.Fatalf("a frame 1ns after the last ended the fling")
+	}
+	if f.at != at || f.vy != vy || s.Y != was {
+		t.Errorf("a frame that moved nothing changed the fling: at %v (was %v), vy %v (was %v), scrolled to %v (was %v)", f.at, at, f.vy, vy, s.Y, was)
+	}
+	tt.Advance(50 * time.Millisecond)
+	if s.Y <= was {
+		t.Errorf("the fling did not go on: at %v, was %v", s.Y, was)
+	}
+}
+
 // A scroll container reaching the bottom of the safe area goes on under
 // the bottom inset, as UIKit's under a floating tab bar, and scrolls as
 // far again; what does not scroll stays clear of the insets.
@@ -1133,64 +1242,5 @@ func TestMenuCopyDeselectsReadOnlyText(t *testing.T) {
 	}
 	if _, _, ok := tt.rt.selectionHandles(); ok {
 		t.Fatal("the handles stayed")
-	}
-}
-
-// A finger that lands on content still flinging stops it and, moving, drags
-// it on at once, as UIKit's scroll views do: the slow end of a fling looks
-// stopped, and a swipe there must not do nothing. Held still, it taps nothing.
-func TestCatchingAFlingPansOn(t *testing.T) {
-	clicks := 0
-	var scroll ScrollState
-	tt := NewTester(func(c *Context) {
-		Scroll(c).Fill().TrackScroll(&scroll).Children(func() {
-			for range 100 {
-				if Button(c, "Row").Height(48).FillWidth().Clicked() {
-					clicks++
-				}
-			}
-		})
-	}, 300, 600)
-	tt.Frame()
-	fling := func() {
-		tt.FingerDown(150, 500)
-		for y := float32(460); y >= 300; y -= 40 {
-			tt.Advance(10 * time.Millisecond)
-			tt.FingerMove(150, y)
-		}
-		tt.FingerUp(150, 300)
-		tt.Advance(100 * time.Millisecond)
-		if !tt.rt.flinging.on {
-			t.Fatal("the swipe left nothing flinging")
-		}
-	}
-	fling()
-	tt.FingerDown(150, 400)
-	if !tt.rt.touch.caught {
-		t.Fatal("the finger did not catch the fling")
-	}
-	caught := scroll.Y
-	for y := float32(380); y >= 250; y -= 30 {
-		tt.Advance(16 * time.Millisecond)
-		tt.FingerMove(150, y)
-	}
-	if scroll.Y-caught < 100 {
-		t.Fatalf("the swipe that caught the fling moved the content %v", scroll.Y-caught)
-	}
-	tt.FingerUp(150, 250)
-	tt.Advance(3 * time.Second)
-
-	// From the top again, for the fling not to end at the bottom.
-	scroll.Y = 0
-	tt.Frame()
-	fling()
-	tt.FingerDown(150, 400)
-	if !tt.rt.touch.caught {
-		t.Fatal("the finger did not catch the second fling")
-	}
-	tt.FingerUp(150, 400)
-	tt.Advance(time.Second)
-	if clicks != 0 {
-		t.Fatalf("catching a fling clicked %d times", clicks)
 	}
 }

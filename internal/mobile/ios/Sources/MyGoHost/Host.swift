@@ -632,6 +632,7 @@ final class Host: NSObject, HostCalls, UNUserNotificationCenterDelegate, UIDocum
     func surface(_ id: Int) -> SurfaceWindow? { windows[id] as? SurfaceWindow }
 
     func requestFrame(_ c: RequestFrameCall) { surface(c.id)?.requestFrame() }
+    func setFrameRate(_ c: SetFrameRateCall) { surface(c.id)?.setFrameRate(c.fps) }
     func setTextInput(_ c: SetTextInputCall) { surface(c.id)?.setTextInput(c) }
     func setCursor(_ c: SetCursorCall) { surface(c.id)?.setCursor(c.cursor) }
     func accessibilityChanged(_ c: AccessibilityChangedCall) { surface(c.id)?.accessibilityChanged(focus: c.focus) }

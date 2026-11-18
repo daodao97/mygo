@@ -68,9 +68,10 @@ func xcrun(args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
-// iosApp builds the app bundle for t into dir and returns its path. dc is
-// the configuration to bundle (the development app's in mygo dev).
-func (t *iosToolchain) buildApp(ctx context.Context, c, dc *Config, tk *task, opts buildOptions, dir string) (string, error) {
+// iosApp builds the app bundle for t into dir, with the extensions exts,
+// and returns its path. dc is the configuration to bundle (the development
+// app's in mygo dev).
+func (t *iosToolchain) buildApp(ctx context.Context, c, dc *Config, tk *task, opts buildOptions, dir string, exts []*iosExtension) (string, error) {
 	work := filepath.Join(opts.work, "ios-"+t.sdkName)
 	if err := os.MkdirAll(work, 0o755); err != nil {
 		return "", err
@@ -169,6 +170,9 @@ func (t *iosToolchain) buildApp(ctx context.Context, c, dc *Config, tk *task, op
 		return "", err
 	}
 	if err := copyResources(res, bundle); err != nil {
+		return "", err
+	}
+	if err := embedExtensions(bundle, exts); err != nil {
 		return "", err
 	}
 	manifest, err := privacyManifest(c, filepath.Join(bundle, exe))
@@ -584,6 +588,10 @@ func buildIOS(c *Config, opts buildOptions, simulator bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	exts, err := iosExtensions(c, c)
+	if err != nil {
+		return nil, err
+	}
 	var prof *profile
 	if !simulator {
 		// Before building: no point building for a profile that isn't there.
@@ -594,6 +602,12 @@ func buildIOS(c *Config, opts buildOptions, simulator bool) ([]string, error) {
 			return nil, err
 		}
 		logf("Signing with %q (%s, team %s) as %s", prof.name, prof.kind, prof.team, prof.identityName)
+		if err := pickExtensionProfiles(c, exts, c.IOS.Distribution, "", prof); err != nil {
+			return nil, err
+		}
+		for _, e := range exts {
+			logf("Signing %s with %q (%s)", e.name, e.prof.name, e.prof.kind)
+		}
 	}
 	name := "ios-arm64"
 	if simulator {
@@ -607,7 +621,7 @@ func buildIOS(c *Config, opts buildOptions, simulator bool) ([]string, error) {
 	}
 	defer os.RemoveAll(stage)
 	tk := con.start("Building for iOS" + map[bool]string{true: " (simulator)"}[simulator])
-	bundle, err := t.buildApp(context.Background(), c, c, tk, opts, stage)
+	bundle, err := t.buildApp(context.Background(), c, c, tk, opts, stage, exts)
 	if err == nil {
 		err = checkPrivateAPIs(filepath.Join(bundle, c.executableName()))
 	}
@@ -616,7 +630,7 @@ func buildIOS(c *Config, opts buildOptions, simulator bool) ([]string, error) {
 		if simulator {
 			err = signForSimulator(bundle)
 		} else {
-			err = prof.sign(opts.work, bundle, c)
+			err = prof.sign(opts.work, bundle, c, exts)
 		}
 	}
 	artifact := bundle
@@ -836,14 +850,21 @@ func chooseProfile(all []*profile, ids map[string]string, w profileWant) (*profi
 // named for a release does not sign a development build, which asks for
 // another kind and identifier.
 func pickProfile(c *Config, dist, device string) (*profile, error) {
-	want := c.IOS.namedProfile(dist)
+	want := profileWant{team: c.IOS.Team, identifier: c.Identifier, name: c.IOS.namedProfile(dist), dist: dist, device: device}
+	return findProfile(c, want, identities(), "ios.provisioningProfile")
+}
+
+// findProfile finds the provisioning profile want asks for, whose
+// certificate is among ids; key is the setting that names one.
+func findProfile(c *Config, want profileWant, ids map[string]string, key string) (*profile, error) {
+	want.now = time.Now()
 	var all []*profile
-	if strings.HasSuffix(want, ".mobileprovision") {
-		p, err := readProfile(c.path(want))
+	if strings.HasSuffix(want.name, ".mobileprovision") {
+		p, err := readProfile(c.path(want.name))
 		if err != nil {
 			return nil, err
 		}
-		all, want = []*profile{p}, ""
+		all, want.name = []*profile{p}, ""
 	} else {
 		for _, d := range profileDirs() {
 			files, _ := filepath.Glob(filepath.Join(d, "*.mobileprovision"))
@@ -854,16 +875,16 @@ func pickProfile(c *Config, dist, device string) (*profile, error) {
 			}
 		}
 	}
-	best, near := chooseProfile(all, identities(), profileWant{team: c.IOS.Team, identifier: c.Identifier, name: want, dist: dist, device: device, now: time.Now()})
+	best, near := chooseProfile(all, ids, want)
 	if best != nil {
 		return best, nil
 	}
-	msg := fmt.Sprintf("no %s provisioning profile for %s", dist, c.Identifier)
+	msg := fmt.Sprintf("no %s provisioning profile for %s", want.dist, want.identifier)
 	if len(near) > 0 {
 		sort.Strings(near)
 		msg += "; close ones: " + strings.Join(near, ", ")
 	}
-	return nil, errors.New(msg + ". Make one for the identifier in Xcode (Settings › Accounts) or at developer.apple.com, and set ios.team, or ios.provisioningProfile in " + c.configName())
+	return nil, errors.New(msg + ". Make one for the identifier in Xcode (Settings › Accounts) or at developer.apple.com, and set ios.team, or " + key + " in " + c.configName())
 }
 
 // namedProfile is the profile the configuration names for dist: it names the
@@ -897,6 +918,15 @@ func (p *profile) allowsAssociatedDomains() bool {
 	return ok
 }
 
+// appIDPrefix is the prefix of the profile's app ID, the team's.
+func (p *profile) appIDPrefix() string {
+	prefix, _, ok := strings.Cut(p.appID, ".")
+	if !ok {
+		prefix = p.team // older app IDs have a prefix of their own
+	}
+	return prefix
+}
+
 // signingEntitlements are those the app is signed with: the profile's, whose
 // wildcards become the app's identifier and domains.
 func (p *profile) signingEntitlements(c *Config) (map[string]any, error) {
@@ -905,11 +935,7 @@ func (p *profile) signingEntitlements(c *Config) (map[string]any, error) {
 		ent[k] = v
 	}
 	// A wildcard profile's app ID becomes the app's.
-	prefix, _, ok := strings.Cut(p.appID, ".")
-	if !ok {
-		prefix = p.team // older app IDs have a prefix of their own
-	}
-	ent["application-identifier"] = prefix + "." + c.Identifier
+	ent["application-identifier"] = p.appIDPrefix() + "." + c.Identifier
 	// A plugin's need shows now, not as the app first asks for it on a phone.
 	if plugins, err := c.mobilePlugins("ios"); err == nil {
 		for k := range plugins.entitlements() {
@@ -928,9 +954,10 @@ func (p *profile) signingEntitlements(c *Config) (map[string]any, error) {
 	return ent, nil
 }
 
-// sign embeds the profile, signs the bundle with its entitlements and
-// verifies the signature.
-func (p *profile) sign(work, bundle string, c *Config) error {
+// sign embeds the profile, signs the bundle with its entitlements, after
+// its frameworks and its extensions exts with theirs, and verifies the
+// signature.
+func (p *profile) sign(work, bundle string, c *Config, exts []*iosExtension) error {
 	data, err := os.ReadFile(p.path)
 	if err != nil {
 		return err
@@ -949,10 +976,13 @@ func (p *profile) sign(work, bundle string, c *Config) error {
 	if err := signFrameworks(bundle, p.identity); err != nil {
 		return err
 	}
-	if err := runQuiet("codesign", "--force", "--sign", p.identity, "--entitlements", ent, "--generate-entitlement-der", bundle); err != nil {
+	if err := signExtensions(work, bundle, exts); err != nil {
 		return err
 	}
-	return runQuiet("codesign", "--verify", "--deep", "--strict", bundle)
+	if err := iosCodesign("--force", "--sign", p.identity, "--entitlements", ent, "--generate-entitlement-der", bundle); err != nil {
+		return err
+	}
+	return iosCodesign("--verify", "--deep", "--strict", bundle)
 }
 
 var _ fs.FS = iosHost.Files

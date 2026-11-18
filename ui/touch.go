@@ -132,9 +132,9 @@ type touchPan struct {
 	// swallow drops what the finger does: it went down to stop a fling,
 	// which takes no tap.
 	swallow bool
-	// caught says it went down on content flinging, which it stopped: it
-	// taps and holds nothing, but pans as it moves, as UIKit's scroll
-	// views let a finger that caught them drag on at once.
+	// caught says it went down on a fling, which it stopped: past the
+	// slop it pans as any finger does, as UIKit's scroll views follow
+	// the finger that stops their deceleration.
 	caught bool
 	// waiting is a press held back until pressDelay passed (at), on what
 	// scrolls, with its clicks.
@@ -179,10 +179,6 @@ type touchSample struct {
 
 // fling is content going on after a finger lifted as it panned.
 type fling struct {
-	// rx, ry are distance a frame too close to the last could not move, as
-	// less than a pixel: the next frame moves it, and only distance that
-	// cannot move tells the content's end.
-	rx, ry float32
 	on     bool
 	target uint64
 	x, y   float32 // where, for what handles its input
@@ -214,11 +210,9 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 			t.selBefore = s.textAdapter.Selection().Range
 		}
 		if rt.flinging.on {
-			// A finger stops content flinging, and taps nothing; moving, it
-			// pans on. The end of a fling is slow enough to look stopped,
-			// and a swipe there must not do nothing.
+			// A finger stops content flinging, and taps nothing.
 			rt.flinging.on = false
-			t.caught = true
+			t.swallow, t.caught = true, true
 			return true
 		}
 		t.holds = rt.longPressTarget(x, y)
@@ -239,7 +233,10 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 			return true
 		}
 		if t.swallow {
-			return true
+			if !t.caught || math.Hypot(float64(x-t.x0), float64(y-t.y0)) < touchSlop {
+				return true
+			}
+			t.swallow, t.caught = false, false
 		}
 		if t.dragging {
 			return false
@@ -321,7 +318,7 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 			rt.requestFrame()
 			return true
 		}
-		if was.swallow || was.caught && !was.panning {
+		if was.swallow {
 			return true
 		}
 		if was.dragging {
@@ -907,8 +904,8 @@ func (rt *engine) flingStep(now time.Time) {
 		return
 	}
 	ms := float32(now.Sub(f.at).Seconds() * 1000)
-	f.at = now
 	if ms <= 0 {
+		f.at = now
 		rt.animating = true
 		return
 	}
@@ -916,6 +913,14 @@ func (rt *engine) flingStep(now time.Time) {
 	k := float32(math.Pow(flingDecay, float64(ms)))
 	scale := (1 - k) / -float32(math.Log(flingDecay)) / 1000
 	dx, dy := f.vx*scale, f.vy*scale
+	if dx == 0 && dy == 0 {
+		// Too soon after the last to move it (k rounds to 1): the time
+		// adds up to the next frame, rather than ending the fling as if
+		// it could go no further.
+		rt.animating = true
+		return
+	}
+	f.at = now
 	f.vx, f.vy = f.vx*k, f.vy*k
 	axes := Orientation(0)
 	if f.vx != 0 {
@@ -924,15 +929,7 @@ func (rt *engine) flingStep(now time.Time) {
 	if f.vy != 0 {
 		axes |= Vertical
 	}
-	dx, dy = dx+f.rx, dy+f.ry
 	moved := rt.pan(f.target, axes, f.x, f.y, dx, dy, true)
-	f.rx, f.ry = 0, 0
-	if !moved && math.Hypot(float64(dx), float64(dy)) < 1 {
-		// Too little to move: kept for the next frame, not the end.
-		f.rx, f.ry = dx, dy
-		rt.animating = true
-		return
-	}
 	if !moved {
 		if s := rt.states[f.target]; s != nil && !rt.preferences().ReduceMotion {
 			vx, vy := float32(0), float32(0)

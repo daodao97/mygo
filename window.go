@@ -407,6 +407,10 @@ type Window struct {
 	// once it settled. Main thread only.
 	stateKey   string
 	stateTimer *time.Timer
+	// devSlot is the place, from 1, of a window without a stateKey in
+	// what mygo dev keeps of the windows (restoreDevWindow), 0 for none.
+	// Main thread only.
+	devSlot int
 
 	// trusted reports whether the current page may call bound methods.
 	// Main thread only.
@@ -684,6 +688,8 @@ func newWindow(opts WindowOptions, bg, tint *background, native uintptr, flyout 
 	w.devTools = popts.DevTools
 	if w.stateKey != "" {
 		restoreWindowState(w.stateKey, popts)
+	} else {
+		w.restoreDevWindow(popts, native)
 	}
 	w.title = popts.Title
 	if s := opts.Page.Session; s != nil && opts.Content == nil {
@@ -705,7 +711,7 @@ func newWindow(opts WindowOptions, bg, tint *background, native uintptr, flyout 
 		// reaches it in between.
 		nw.SetIgnoreMouseEvents(true)
 	}
-	if w.stateKey != "" {
+	if w.stateKey != "" || w.devSlot > 0 {
 		w.initState(popts)
 	}
 	if w.content {

@@ -127,9 +127,27 @@ func (s *surface) RequestFrame() {
 
 func (s *surface) RefreshRate() float64 { return s.refresh }
 
-// frame draws the frame the content asked for, at a refresh.
+// frame draws the frame the content asked for, at a refresh. Frames
+// following each other come at the display's refreshes (Paced), as macOS's
+// display link's do: one the GPU renderer cannot draw yet, as the drawable
+// it fetches for the last is not free until the display lets one go, waits
+// for it off the main thread and draws once it is (FrameNow), rather than
+// block Go's main thread most of a refresh, while the fingers that move
+// meanwhile wait for it.
 func (s *surface) frame() {
 	s.pending = false
+	s.draw(true)
+}
+
+// FrameNow draws a frame at once, for one a refresh left to draw until the
+// renderer had a drawable (platform.PacedSurface).
+func (s *surface) FrameNow() { s.draw(false) }
+
+var _ platform.PacedSurface = (*surface)(nil)
+
+// draw sends the content a frame, paced or not, unless there is nothing
+// to draw on.
+func (s *surface) draw(paced bool) {
 	if s.gone || s.handle == 0 || s.w.width == 0 {
 		return
 	}
@@ -139,7 +157,7 @@ func (s *surface) frame() {
 		s.deferred = true
 		return
 	}
-	s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+	s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame, Paced: paced})
 	if s.text.Active {
 		s.syncText()
 	}
@@ -152,6 +170,21 @@ func (s *surface) foreground() {
 		s.RequestFrame()
 	}
 }
+
+// SetFrameRate has the host's display link tick fps times a second while
+// frames follow each other, or at the display's rate for 0
+// (platform.FrameRateSurface): on a ProMotion display, the display then
+// refreshes as often, and a drawing asking for fewer frames
+// (Painter.AnimationFrameRate) wakes the app no more often than it draws.
+// Android's Choreographer ticks at the display's rate whatever it is told.
+func (s *surface) SetFrameRate(fps float64) {
+	if s.gone {
+		return
+	}
+	s.w.b.call(&wire.SetFrameRate{ID: s.w.id, FPS: fps}, nil)
+}
+
+var _ platform.FrameRateSurface = (*surface)(nil)
 
 // PresentPixels has nothing to show frames drawn in memory on: phones
 // draw with their GPUs.

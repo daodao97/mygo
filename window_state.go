@@ -193,29 +193,39 @@ func onDisplay(r Rectangle, displays []platform.Display) bool {
 // p. A window that starts maximized or full screen has not shown its normal
 // bounds yet, so they are the requested ones.
 func (w *Window) initState(p *platform.WindowOptions) {
+	if w.stateKey == "" {
+		w.captureDevWindow()
+		return
+	}
 	if windowStates.cleared {
 		return
 	}
 	if _, ok := windowStates.byKey[w.stateKey]; !ok && (p.Maximized || p.FullScreen) {
-		st := WindowState{X: p.X, Y: p.Y, Width: p.Width, Height: p.Height, Maximized: p.Maximized, FullScreen: p.FullScreen}
-		if p.Center {
-			for _, d := range backend().Screen().Displays() {
-				if d.Primary {
-					st.X = d.WorkArea.X + (d.WorkArea.Width-st.Width)/2
-					st.Y = d.WorkArea.Y + (d.WorkArea.Height-st.Height)/2
-				}
-			}
-		}
-		windowStates.byKey[w.stateKey] = st
+		windowStates.byKey[w.stateKey] = requestedState(p)
 		windowStates.dirty = true
 		return
 	}
 	w.captureState()
 }
 
+// requestedState is the state of a window that the options p ask for,
+// centered on the primary display for Center.
+func requestedState(p *platform.WindowOptions) WindowState {
+	st := WindowState{X: p.X, Y: p.Y, Width: p.Width, Height: p.Height, Maximized: p.Maximized, FullScreen: p.FullScreen}
+	if p.Center {
+		for _, d := range backend().Screen().Displays() {
+			if d.Primary {
+				st.X = d.WorkArea.X + (d.WorkArea.Width-st.Width)/2
+				st.Y = d.WorkArea.Y + (d.WorkArea.Height-st.Height)/2
+			}
+		}
+	}
+	return st
+}
+
 // stateChanged captures the window's state once it stopped changing.
 func (w *Window) stateChanged() {
-	if w.stateKey == "" {
+	if w.stateKey == "" && w.devSlot == 0 {
 		return
 	}
 	if w.stateTimer != nil {
@@ -227,6 +237,10 @@ func (w *Window) stateChanged() {
 
 // captureState records the window's current state under its key.
 func (w *Window) captureState() {
+	if w.devSlot > 0 {
+		w.captureDevWindow()
+		return
+	}
 	n := w.native
 	if w.stateKey == "" || n == nil || windowStates.cleared {
 		return

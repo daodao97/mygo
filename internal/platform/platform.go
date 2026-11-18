@@ -222,9 +222,12 @@ type AppOptions struct {
 	// may draw with its DMA-BUF renderer. Only meaningful on Linux.
 	DMABUFRenderer string
 	// Background starts the app without bringing it to the front, as
-	// `mygo dev -background` asks. Only meaningful on macOS, where an
-	// executable that is no bundle is brought there as it starts; the
-	// core shows the windows without the focus everywhere.
+	// `mygo dev -background` asks: on macOS, where an executable that is
+	// no bundle is brought there as it starts, it does not activate, and
+	// on macOS and Windows ShowInactive orders a window in behind the
+	// active app's windows, rather than over them, while another app is
+	// the active one. The core shows the windows without the focus
+	// everywhere.
 	Background bool
 }
 

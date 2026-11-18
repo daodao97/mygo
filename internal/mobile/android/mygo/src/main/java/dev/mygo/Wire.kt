@@ -1216,6 +1216,16 @@ class RegisterFontReply(
     }
 }
 
+class SetFrameRateCall(
+    @JvmField var id: Long = 0L,
+    @JvmField var fps: Double = 0.0,
+) {
+    constructor(r: WireReader) : this() {
+        id = r.int()
+        fps = r.float()
+    }
+}
+
 class SetAppBadgeCall(
     @JvmField var count: Long = 0L,
 ) {
@@ -1357,6 +1367,8 @@ interface HostCalls {
     fun drawText(c: DrawTextCall): DrawTextReply
     /** adds a font file under Family, or its own family when empty */
     fun registerFont(c: RegisterFontCall): RegisterFontReply
+    /** how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface) */
+    fun setFrameRate(c: SetFrameRateCall)
     /** the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges */
     fun setAppBadge(c: SetAppBadgeCall)
 }
@@ -1451,7 +1463,8 @@ fun dispatchCall(h: HostCalls, buf: ByteArray): ByteArray? {
         83 -> { h.textAdvances(TextAdvancesCall(r)).encode(w); return w.toByteArray() }
         84 -> { h.drawText(DrawTextCall(r)).encode(w); return w.toByteArray() }
         85 -> { h.registerFont(RegisterFontCall(r)).encode(w); return w.toByteArray() }
-        86 -> h.setAppBadge(SetAppBadgeCall(r))
+        86 -> h.setFrameRate(SetFrameRateCall(r))
+        87 -> h.setAppBadge(SetAppBadgeCall(r))
     }
     return null
 }

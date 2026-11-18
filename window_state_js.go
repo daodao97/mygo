@@ -17,6 +17,8 @@ func restoreWindowState(key string, p *platform.WindowOptions) {}
 
 func (w *Window) initState(p *platform.WindowOptions) {}
 
+func (w *Window) restoreDevWindow(p *platform.WindowOptions, native uintptr) {}
+
 func (w *Window) stateChanged() {}
 
 func (w *Window) captureState() {}

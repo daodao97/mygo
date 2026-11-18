@@ -19,10 +19,14 @@ import (
 // Backend is the Windows (Win32 + WebView2) implementation of
 // platform.Backend.
 type Backend struct {
-	h       platform.AppHandler
-	name    string
-	appHwnd uintptr // hidden window receiving app level messages
-	running bool
+	h    platform.AppHandler
+	name string
+	// background is AppOptions.Background (mygo dev -background):
+	// ShowInactive orders windows in behind another app's foreground
+	// window (behindForeground).
+	background bool
+	appHwnd    uintptr // hidden window receiving app level messages
+	running    bool
 	// exiting is set by Exiting: the windows get only the default
 	// window procedure while they are destroyed.
 	exiting bool
@@ -149,6 +153,7 @@ func (b *Backend) IsMainThread() bool { return currentThreadID() == mainThreadID
 func (b *Backend) Init(h platform.AppHandler, opts platform.AppOptions) error {
 	b.h = h
 	b.name = opts.Name
+	b.background = opts.Background
 	theBackend = b
 	procCoInitializeEx.Call(0, coinitApartmentThreaded)
 	if has(procSetProcessDpiAwarenessContext) {

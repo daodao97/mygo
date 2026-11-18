@@ -1197,6 +1197,16 @@ public struct RegisterFontReply {
     }
 }
 
+public struct SetFrameRateCall {
+    public var id: Int = 0
+    public var fps: Double = 0
+    public init() {}
+    init(_ r: inout WireReader) {
+        id = r.int()
+        fps = r.float()
+    }
+}
+
 public struct SetAppBadgeCall {
     public var count: Int = 0
     public init() {}
@@ -1338,6 +1348,8 @@ public protocol HostCalls: AnyObject {
     func drawText(_ c: DrawTextCall) -> DrawTextReply
     /// adds a font file under Family, or its own family when empty
     func registerFont(_ c: RegisterFontCall) -> RegisterFontReply
+    /// how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface)
+    func setFrameRate(_ c: SetFrameRateCall)
     /// the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges
     func setAppBadge(_ c: SetAppBadgeCall)
 }
@@ -1603,6 +1615,9 @@ public func dispatchCall(_ h: HostCalls, _ buf: UnsafeRawBufferPointer) -> [UInt
         h.registerFont(RegisterFontCall(&r)).encode(&w)
         return w.buf
     case 86:
+        h.setFrameRate(SetFrameRateCall(&r))
+        return nil
+    case 87:
         h.setAppBadge(SetAppBadgeCall(&r))
         return nil
     default:

@@ -168,6 +168,7 @@ See [Linux](distribution.md#linux).
 | `associatedDomains` | | the hosts of universal links, as `example.com`, which reach `App.OnOpenURL`; the profile needs the capability Associated Domains |
 | `launchScreen` | | what shows as the app launches: `background`, a color, and `image`, a file |
 | `backgroundModes` | | the app's `UIBackgroundModes`, as `audio`, with those its plugins ask for |
+| `extensions` | | prebuilt app extensions, as a Network Extension, each `path`, its `.appex`, and `provisioningProfile`: copied into `PlugIns/` and signed with their own profiles (see [App extensions](mobile/building.md#app-extensions)) |
 | `infoPlist` | | extra keys of Info.plist, which replace MyGo's own, as usage descriptions |
 
 ## android
@@ -182,6 +183,7 @@ See [Linux](distribution.md#linux).
 | `appLinks` | | the domains the app opens links of, as `example.com` |
 | `adaptiveIcon` | | the launcher's icon, in layers: `foreground`, a square PNG, and `background`, a color |
 | `splash` | the theme's | the color that shows as the app launches, as `#102030` |
+| `extractNativeLibs` | `false` | extracts the native libraries on install, so the app can exec an executable it ships as `lib<name>.so` (see [Executables](mobile/building.md#executables)) |
 
 See [Building and publishing for phones](mobile/building.md).
 

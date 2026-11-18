@@ -1332,7 +1332,10 @@ fake host. Desktop files of `darwin` and `linux` exclude `ios` and
   measures (`getTextRunAdvances`) and whose clusters it draws. These calls go
   straight to the host on the caller's thread (`callHere`, which joins the
   JVM), a screen of new text being hundreds of them. Frames come
-  at the display's refreshes (CADisplayLink, Choreographer) when asked.
+  at the display's refreshes (CADisplayLink, Choreographer) when asked,
+  paced (`platform.PacedSurface`): on iOS, one that comes while the Metal
+  renderer fetches a drawable draws once it has it (`FrameNow`), rather
+  than Go's main thread waiting for it, and the fingers with it.
 - **Input.** A finger is the pointer while it touches (`SurfaceEvent.Touch`,
   the first one; two pinch), and `ui` pans what scrolls under one that
   moves and flings it on (`ui/touch.go`, reached only where touches come:
@@ -3771,11 +3774,12 @@ either.
   anything else in the window asks for each: `Painter.AnimationFrame`, a
   pose moving, the view animating. The refreshes between draw nothing
   (`paceSkips`) unless something else asked for a frame since, and the
-  surface is told of the rate (`platform.FrameRateSurface`): macOS sets
-  its display link's `preferredFrameRateRange`, which has a ProMotion
-  display refresh as often while nothing else on it asks for more. A
-  surface whose frames asked for come at once rather than at the next
-  refresh (`platform.ImmediateFrameSurface`: Windows, where presenting
+  surface is told of the rate (`platform.FrameRateSurface`): macOS and
+  iOS (`SetFrameRate` of `internal/mobile`) set their display link's
+  `preferredFrameRateRange`, which has a ProMotion display refresh as
+  often while nothing else on it asks for more; Android's Choreographer
+  ticks at the display's rate whatever it is told. A surface whose frames asked for come at once rather than at the
+  next refresh (`platform.ImmediateFrameSurface`: Windows, where presenting
   paces frames) would ask again and again until the frame is due: the
   repaint timer asks for it then instead, and the frame it brings keeps
   the pace's times, as the timer fires a little late. With the display's
@@ -6801,7 +6805,22 @@ make it work, and phones a fourth:
     the app does not come to the front as it launches
     (`AppOptions.Background`, macOS), and its windows show as
     `ShowInactive` would (`backgroundShow`) until a window takes the
-    focus or the app becomes active.
+    focus or the app becomes active. With `AppOptions.Background`,
+    `ShowInactive` orders a window in behind the active app's windows
+    while another app is active, rather than over them: `orderFront:`
+    in place of `orderFrontRegardless` on macOS, and on Windows the
+    window goes right behind another process's foreground window
+    (`behindForeground`) before and after `SW_SHOWNOACTIVATE`.
+  - *Windows' frames.* Desktop builds get `MYGO_DEV_WINDOWS`, a file in
+    `.mygo/dev` that mygo dev removes as a session starts, taken out of
+    the environment as `MYGO_DEV` (`window_state_dev.go`). The app keeps
+    in it the state of each top-level window without a `StateKey`, by
+    the order it creates them in, with the frame its options asked for,
+    captured as `StateKey`'s are and written as it changes; the next
+    build's window of the same place, whose options ask for the same
+    frame, is restored there (`restoreWindowStateFrom`). A window whose
+    options changed gets them. Child windows, panels and flyouts take
+    no part. Production builds ignore it.
     A build counts as started once its process is: one that crashes on
     start is reported as it exits.
   - *Reload.* A change (polling every 250 ms, debounced) rebuilds;

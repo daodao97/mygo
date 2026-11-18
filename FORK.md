@@ -43,6 +43,13 @@
   验证：macOS/Linux/Windows `CGO_ENABLED=0` 编译与 `go vet ./...`、wasm、iOS/Android 交叉 vet；根包、`ui`、`ui/editor`、`ui/richtext`、`internal/mobile`、`internal/windows`、终端插件、`uimigrate` 测试通过；`go generate ./ui` 无差异。
 - 2026-11-18 第二次同步上游 5 个提交（`55b50cfa..e88574c8`，含 0.10.0）。冲突 1 处：`internal/darwin/testhooks.go`，上游 #1946 加了 `TestDropFilesFrom`（拖入点与松手点分开，测试拖到网页视图），fork 加了 `TestDropFileReferences`（Finder 的 file-reference URL）。两者不是同一功能，都保留：内部的 `testDropFiles` 同时带 `overX, overY` 和 `references`，三个导出函数都调它。对照这批新增检查了 fork 代码：#1946 让拖到 native UI 中网页视图的文件交给 WebKit，fork 在 `surface_drag.go` 的改动是 native UI 自己的 `DataDrop` 用 NSURL 解析 file-reference URL，路径不同、不重叠；`Painter.RichText` 缓存（#1979）、canvas 字形保留（#1977）、WebView2 创建与 Linux 资源释放（#1978）在 fork 中没有同功能实现。`go generate ./ui` 无差异。
   验证：macOS/Linux/Windows 的 `go build ./...`，`go vet . ./ui ./internal/darwin ./internal/e2e`、Linux/Windows 后端 vet；`go test . ./ui ./internal/darwin ./internal/gpu/metal` 通过；`../Miya` 的 `go build ./...` 通过。
+- 2026-11-18 第三次同步上游 6 个提交（`e88574c8..d8fc2b07`）。冲突 5 个文件：
+  - `internal/mobile/wire/gen/spec.go` 两边各加了一个 call，都保留：上游的 `SetFrameRate`（`b528dac4`，iOS display link 按内容要的帧率走，`platform.FrameRateSurface`）在前，fork 的 `SetAppBadge` 排到最后，编号由 86 变为 87。
+  - `msgs.go`、`Wire.swift`、`Wire.kt` 由 `go generate ./internal/mobile/wire` 重新生成，没有手工挑选。
+  - `ui/touch.go`：上游 #2005（接住惯性的手指过了 slop 继续平移，相隔极近的帧不再结束惯性）和 fork 的 `0c497b7e` 是同一修复，按规则 1 改用上游的写法：按下时 `swallow, caught = true, true`，移动时过了 slop 解除，`flingStep` 在位移为 0 时不更新 `f.at`。删掉 fork 的 `fling.rx/ry` 余量、抬起时的 `caught && !panning` 判断和测试 `TestCatchingAFlingPansOn`，上游的 `TestTouchPansAfterCatchingFling`、`TestTouchFlingSurvivesFrameTooSoon` 覆盖同样的行为。
+
+  对照这批新增检查了 fork 代码：`mygo dev` 重建后窗口留在原位（`window_state_dev.go`，只管没有 `StateKey` 的窗口）与 fork 的 `PersistState`（应用自己的数据）不同层；`ios.extensions`、`android.extractNativeLibs` 是 #940 CLI 的配置，fork 的 iOS 打包已在第二阶段删除；Windows/macOS 的 `ShowInactive` 排到当前应用之后在 fork 中没有对应实现。Android 宿主的 `setFrameRate` 是空操作（上游如此）。
+  验证：macOS/Linux/Windows 与 `CGO_ENABLED=0` 的 `go build ./...`；`go vet . ./ui ./internal/mobile/... ./cmd/mygo`；`go test . ./ui ./ui/editor ./ui/richtext ./internal/mobile/... ./internal/platform ./internal/text ./plugins/terminal/...`（13,007 项）与 `go test -short ./cmd/mygo`（287 项）通过；`go generate ./ui` 无差异；iOS（iphoneos SDK）与 Android（NDK 28.2）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet、`../Miya` 的 `go build ./...` 通过。
 - 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
 
 ## 规则

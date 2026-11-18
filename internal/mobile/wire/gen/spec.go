@@ -174,6 +174,8 @@ var calls = []msg{
 		reply: []field{f("Left", "int"), f("Top", "int"), f("Width", "int"), f("Height", "int"), f("Color", "bool"), f("Pixels", "bytes")}},
 	{name: "RegisterFont", doc: "adds a font file under Family, or its own family when empty", wait: true,
 		args: []field{f("Data", "bytes"), f("Family", "string")}, reply: []field{f("Family", "string"), f("Error", "string")}},
+	{name: "SetFrameRate", doc: "how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface)",
+		args: []field{f("ID", "int"), f("FPS", "float")}},
 	{name: "SetAppBadge", doc: "the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges", args: []field{f("Count", "int")}},
 }
 

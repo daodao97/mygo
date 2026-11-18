@@ -1161,7 +1161,31 @@ func (w *window) ShowInactive() {
 		procShowWindow.Call(w.hwnd, swShowMaximized)
 		return
 	}
+	if !theBackend.background {
+		procShowWindow.Call(w.hwnd, swShowNoActivate)
+		return
+	}
+	// Ordered in before it shows, so that it never shows over that
+	// window, and again after, in case showing it raised it.
+	w.behindForeground()
 	procShowWindow.Call(w.hwnd, swShowNoActivate)
+	w.behindForeground()
+}
+
+// behindForeground puts the window right behind the foreground window,
+// over the others, when another app's window is in the foreground, as the
+// editor of a user who saves while mygo dev -background runs the app: a
+// window shown without activating would show over it. Not behind a
+// topmost window, which would make it topmost too.
+func (w *window) behindForeground() {
+	fg, _, _ := procGetForegroundWindow.Call()
+	if fg == 0 || fg == w.hwnd || windowLong(fg, gwlExStyle)&wsExTopmost != 0 {
+		return
+	}
+	if t, _, _ := procGetWindowThreadProcessId.Call(fg, 0); uint32(t) == currentThreadID() {
+		return // the app's own window
+	}
+	procSetWindowPos.Call(w.hwnd, fg, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
 }
 func (w *window) Hide() { procShowWindow.Call(w.hwnd, swHide) }
 

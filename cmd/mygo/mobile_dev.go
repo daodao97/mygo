@@ -105,10 +105,14 @@ func (s *devSession) buildAndLaunchMobile(ctx context.Context, t *task, running 
 
 	var app string
 	var prof *profile
+	var exts []*iosExtension
 	switch s.device.platform {
 	case "ios":
 		tc, err := newIOSToolchain(c, !s.device.physical)
 		if err != nil {
+			return nil, sum, err
+		}
+		if exts, err = iosExtensions(c, dc); err != nil {
 			return nil, sum, err
 		}
 		if s.device.physical {
@@ -122,8 +126,11 @@ func (s *devSession) buildAndLaunchMobile(ctx context.Context, t *task, running 
 				d.IOS.AssociatedDomains = nil
 				dc = &d
 			}
+			if err := pickExtensionProfiles(dc, exts, "development", s.device.id, prof); err != nil {
+				return nil, sum, err
+			}
 		}
-		if app, err = tc.buildApp(ctx, c, dc, t, opts, stage); err != nil {
+		if app, err = tc.buildApp(ctx, c, dc, t, opts, stage, exts); err != nil {
 			return nil, sum, err
 		}
 	case "android":
@@ -149,7 +156,7 @@ func (s *devSession) buildAndLaunchMobile(ctx context.Context, t *task, running 
 	if s.device.platform == "ios" {
 		t.set("signing")
 		if prof != nil {
-			err = prof.sign(work, app, dc)
+			err = prof.sign(work, app, dc, exts)
 		} else {
 			err = signForSimulator(app)
 		}
