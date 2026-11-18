@@ -107,6 +107,12 @@ locks or web view profile at once. A build that fails to compile keeps the
 running one. Frontend changes are the dev server's to handle. Quitting the app, or
 Ctrl+C, ends mygo dev (press Ctrl+C again not to wait for the app to quit),
 and `App.Relaunch` restarts the app, with the arguments it passes.
+Within a session, each build's windows come back where the previous
+build's were, at their size, maximized or full screen as they were, so
+that a window kept on another display stays there: those without a
+[`StateKey`](windows.md#remember-where-windows-were), which keep their state themselves, by the order
+the app creates them in. A window whose code asks for another position or
+size than the previous build's did gets what it asks for.
 
 On a terminal, each step shows a spinner with what it does, such as the Go
 packages being compiled, then how long it took; what the dev server and the
@@ -150,7 +156,7 @@ compiles. `o` opens the page again.
 | `-port` | with `-web`, the port to serve the app at, or the next free one (default: 5174) |
 | `-open` | with `-web`, opens the app in the browser (default: true) |
 | `-lang` | runs the app in a language, such as `de` or `zh-Hant`, or a pseudo locale, `en-XA` or `ar-XB`, without changing the language it keeps; see [trying a language](i18n.md#trying-a-language) |
-| `-background` | starts the app, and again after each rebuild, without bringing it to the front: its windows show without the focus until you click one, so the editor keeps it as you save (a maximized window on Windows still takes it) |
+| `-background` | starts the app, and again after each rebuild, without bringing it to the front: its windows show without the focus until you click one, so the editor keeps it as you save (a maximized window on Windows still takes it), and on macOS and Windows behind the app you are in rather than over it |
 
 ## mygo build
 

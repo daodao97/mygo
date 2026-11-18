@@ -43,6 +43,8 @@ Changes to the Go code, mygo.json or mygo.config.ts, the icon, the
 resources or the catalogs of messages rebuild the app, regenerate the
 TypeScript client and the accessors of the catalogs, and relaunch it. A build that fails to compile keeps the previous one running; the next
 change tries again. Frontend changes are left to the dev server. Quitting the app ends mygo dev.
+Each build's windows come back where the previous build's were, unless
+their code asks for another position or size.
 
 On a terminal, type r and Enter to rebuild and restart the app, c to clear
 the console, q to quit, h for help.
@@ -89,6 +91,10 @@ keep it: the app's own setting is left as it is.`)
 	switch *platform {
 	case "":
 		s.sign = devSign(c, *sign)
+		// Each build's windows come back where the last one's were
+		// (mygo's window_state_dev.go), from the session's start.
+		_ = os.Remove(s.windowsFile())
+		s.env = append(s.env, "MYGO_DEV_WINDOWS="+s.windowsFile())
 	case "ios":
 		if s.device, err = iosRunTarget(*device); err != nil {
 			return err
@@ -949,6 +955,12 @@ func (s *devSession) launch(exe string, args ...string) (*devProcess, error) {
 // again writes the arguments it passes.
 func (s *devSession) relaunchFile() string {
 	return filepath.Join(s.root, ".mygo", "dev", "relaunch-args")
+}
+
+// windowsFile is where a build keeps the frames of its windows, for the
+// next build to show its windows there.
+func (s *devSession) windowsFile() string {
+	return filepath.Join(s.root, ".mygo", "dev", "windows.json")
 }
 
 // takeRelaunchArgs returns the arguments that the build that exited with

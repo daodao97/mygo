@@ -62,6 +62,10 @@ func (w *window) showAboveParent(key bool) {
 		}
 	case key:
 		send(w.win, "makeKeyAndOrderFront:", 0)
+	case w.b.background && !sendBool(w.b.app, "isActive"):
+		// mygo dev -background: over the app's other windows but not
+		// over the active app's, as the editor the user types in.
+		send(w.win, "orderFront:", 0)
 	default:
 		send(w.win, "orderFrontRegardless")
 	}

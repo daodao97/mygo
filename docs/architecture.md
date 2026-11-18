@@ -6499,7 +6499,22 @@ make it work, and phones a fourth:
     the app does not come to the front as it launches
     (`AppOptions.Background`, macOS), and its windows show as
     `ShowInactive` would (`backgroundShow`) until a window takes the
-    focus or the app becomes active.
+    focus or the app becomes active. With `AppOptions.Background`,
+    `ShowInactive` orders a window in behind the active app's windows
+    while another app is active, rather than over them: `orderFront:`
+    in place of `orderFrontRegardless` on macOS, and on Windows the
+    window goes right behind another process's foreground window
+    (`behindForeground`) before and after `SW_SHOWNOACTIVATE`.
+  - *Windows' frames.* Desktop builds get `MYGO_DEV_WINDOWS`, a file in
+    `.mygo/dev` that mygo dev removes as a session starts, taken out of
+    the environment as `MYGO_DEV` (`window_state_dev.go`). The app keeps
+    in it the state of each top-level window without a `StateKey`, by
+    the order it creates them in, with the frame its options asked for,
+    captured as `StateKey`'s are and written as it changes; the next
+    build's window of the same place, whose options ask for the same
+    frame, is restored there (`restoreWindowStateFrom`). A window whose
+    options changed gets them. Child windows, panels and flyouts take
+    no part. Production builds ignore it.
     A build counts as started once its process is: one that crashes on
     start is reported as it exits.
   - *Reload.* A change (polling every 250 ms, debounced) rebuilds;
