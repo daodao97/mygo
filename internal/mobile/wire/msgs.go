@@ -89,6 +89,7 @@ const (
 	CallTextAdvances           = 83
 	CallDrawText               = 84
 	CallRegisterFont           = 85
+	CallSetAppBadge            = 86
 )
 
 // Numbers of events.
@@ -1740,6 +1741,19 @@ func (m *RegisterFontReply) Decode(r *Reader) {
 	m.Family = r.String()
 	m.Error = r.String()
 }
+
+// SetAppBadge is the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges.
+type SetAppBadge struct {
+	Count int
+}
+
+func (m *SetAppBadge) Encode(w *Writer) {
+	w.Uvarint(CallSetAppBadge)
+	w.Int(m.Count)
+}
+
+// Wait reports whether the caller waits for the host to run it.
+func (*SetAppBadge) Wait() bool { return false }
 
 // ReadyEvent is the app finished launching.
 type ReadyEvent struct {

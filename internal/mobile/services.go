@@ -4,7 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/egoist/mygo/internal/mobile/wire"
 	"github.com/egoist/mygo/internal/platform"
@@ -18,6 +20,34 @@ type appController struct {
 }
 
 func (a appController) IsActive() bool { return a.b.front() != nil }
+
+// appBadge is the count App.SetBadgeCount last set; the process has one
+// icon.
+var appBadge atomic.Int32
+
+// SetBadge shows the count label holds on the app's icon; "" clears it.
+// The icon shows only numbers: other text is ignored. A push's badge sets
+// the same number, so this also corrects one a missed push left behind.
+func (a appController) SetBadge(label string) {
+	n := 0
+	if label != "" {
+		v, err := strconv.Atoi(label)
+		if err != nil || v < 0 {
+			return
+		}
+		n = v
+	}
+	appBadge.Store(int32(n))
+	a.b.call(&wire.SetAppBadge{Count: n}, nil)
+}
+
+// Badge returns the label SetBadge last showed.
+func (appController) Badge() string {
+	if n := appBadge.Load(); n > 0 {
+		return strconv.Itoa(int(n))
+	}
+	return ""
+}
 
 func (a appController) PreferredLanguages() []string {
 	if l := a.b.appInfo().Languages; len(l) > 0 {

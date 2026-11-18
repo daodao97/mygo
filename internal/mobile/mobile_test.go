@@ -260,3 +260,27 @@ func TestMessageBox(t *testing.T) {
 		t.Errorf("Response = %d, want 1", r)
 	}
 }
+
+// The app's badge reaches the host, which sets the icon, and is what Badge
+// reports; text that is not a count leaves it as it was.
+func TestAppBadge(t *testing.T) {
+	b, h := startBackend(t)
+	badge := func(label string) string {
+		got := make(chan string, 1)
+		onMain(b, func() {
+			b.App().SetBadge(label)
+			got <- b.App().Badge()
+		})
+		return wait.For(t, "the badge", got)
+	}
+	if got := badge("3"); got != "3" {
+		t.Errorf("Badge = %q, want 3", got)
+	}
+	wait.Until(t, "the host to set the badge", func() bool { return h.called(wire.CallSetAppBadge) })
+	if got := badge("new"); got != "3" {
+		t.Errorf("Badge after text = %q, want 3", got)
+	}
+	if got := badge(""); got != "" {
+		t.Errorf("Badge after clearing = %q, want none", got)
+	}
+}

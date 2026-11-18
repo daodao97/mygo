@@ -1197,6 +1197,14 @@ public struct RegisterFontReply {
     }
 }
 
+public struct SetAppBadgeCall {
+    public var count: Int = 0
+    public init() {}
+    init(_ r: inout WireReader) {
+        count = r.int()
+    }
+}
+
 /// The calls Go makes of the host, on the main thread.
 public protocol HostCalls: AnyObject {
     /// the app's bundle and the system's settings, asked once at start
@@ -1330,6 +1338,8 @@ public protocol HostCalls: AnyObject {
     func drawText(_ c: DrawTextCall) -> DrawTextReply
     /// adds a font file under Family, or its own family when empty
     func registerFont(_ c: RegisterFontCall) -> RegisterFontReply
+    /// the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges
+    func setAppBadge(_ c: SetAppBadgeCall)
 }
 
 /// Runs a call on h and encodes its reply, nil for a call not waited for.
@@ -1592,6 +1602,9 @@ public func dispatchCall(_ h: HostCalls, _ buf: UnsafeRawBufferPointer) -> [UInt
     case 85:
         h.registerFont(RegisterFontCall(&r)).encode(&w)
         return w.buf
+    case 86:
+        h.setAppBadge(SetAppBadgeCall(&r))
+        return nil
     default:
         return nil
     }

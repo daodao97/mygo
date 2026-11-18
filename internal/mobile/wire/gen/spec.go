@@ -174,6 +174,7 @@ var calls = []msg{
 		reply: []field{f("Left", "int"), f("Top", "int"), f("Width", "int"), f("Height", "int"), f("Color", "bool"), f("Pixels", "bytes")}},
 	{name: "RegisterFont", doc: "adds a font file under Family, or its own family when empty", wait: true,
 		args: []field{f("Data", "bytes"), f("Family", "string")}, reply: []field{f("Family", "string"), f("Error", "string")}},
+	{name: "SetAppBadge", doc: "the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges", args: []field{f("Count", "int")}},
 }
 
 // events go from the host to Go.

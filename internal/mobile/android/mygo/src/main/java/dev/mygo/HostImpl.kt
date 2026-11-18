@@ -862,6 +862,10 @@ object HostImpl : HostCalls {
         v.performHapticFeedback(k)
     }
 
+    // Launchers draw a badge from the app's notifications, and Android has no
+    // call that sets a count: the badge leaves with the notifications.
+    override fun setAppBadge(c: SetAppBadgeCall) {}
+
     // Native UI.
 
     private fun surface(id: Long) = windows[id] as? SurfaceWindow

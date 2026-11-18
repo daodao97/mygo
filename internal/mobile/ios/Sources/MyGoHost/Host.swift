@@ -614,6 +614,19 @@ final class Host: NSObject, HostCalls, UNUserNotificationCenterDelegate, UIDocum
         }
     }
 
+    // The icon's badge, which App.SetBadgeCount sets. A push's badge sets the
+    // same number, so the app can correct one that a missed push left behind.
+    func setAppBadge(_ c: SetAppBadgeCall) {
+        let count = max(0, c.count)
+        if #available(iOS 16.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(count) { error in
+                if let error { NSLog("mygo: badge: %@", error.localizedDescription) }
+            }
+        } else {
+            UIApplication.shared.applicationIconBadgeNumber = count
+        }
+    }
+
     // Native UI.
 
     func surface(_ id: Int) -> SurfaceWindow? { windows[id] as? SurfaceWindow }
