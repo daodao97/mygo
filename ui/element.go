@@ -392,7 +392,12 @@ type node struct {
 	// The layout reads it of every child it walks, next to the flags it
 	// reads there too, so that the walk reads one cache line.
 	hidden bool
-	laid   uint64
+	// insetSet says the element has insets, which move it out of the flow
+	// of its container: the layout reads this of every child it places,
+	// in the line it writes the box in, and not in the line the insets
+	// are in.
+	insetSet bool
+	laid     uint64
 
 	parent *node
 	first  *node
@@ -1250,18 +1255,38 @@ func (e *node) markAbsolute() {
 // Top, Right, Bottom and Left place an Absolute element. On an element in
 // its parent's layout, they move it from where the layout put it, as CSS's
 // relative positioning does, without moving its siblings.
-func (e *node) Top(v float32) *node    { e.inset[0] = px(v); return e }
-func (e *node) Right(v float32) *node  { e.inset[1] = px(v); e.unlog(1, logInset); return e }
-func (e *node) Bottom(v float32) *node { e.inset[2] = px(v); return e }
-func (e *node) Left(v float32) *node   { e.inset[3] = px(v); e.unlog(3, logInset); return e }
+func (e *node) Top(v float32) *node { e.inset[0] = px(v); e.insetSet = true; return e }
+func (e *node) Right(v float32) *node {
+	e.inset[1] = px(v)
+	e.insetSet = true
+	e.unlog(1, logInset)
+	return e
+}
+func (e *node) Bottom(v float32) *node { e.inset[2] = px(v); e.insetSet = true; return e }
+func (e *node) Left(v float32) *node {
+	e.inset[3] = px(v)
+	e.insetSet = true
+	e.unlog(3, logInset)
+	return e
+}
 
 // TopPercent, RightPercent, BottomPercent and LeftPercent place the
 // element as Top, Right, Bottom and Left do, by a percentage of the
 // parent's height or width.
-func (e *node) TopPercent(p float32) *node    { e.inset[0] = percent(p); return e }
-func (e *node) RightPercent(p float32) *node  { e.inset[1] = percent(p); e.unlog(1, logInset); return e }
-func (e *node) BottomPercent(p float32) *node { e.inset[2] = percent(p); return e }
-func (e *node) LeftPercent(p float32) *node   { e.inset[3] = percent(p); e.unlog(3, logInset); return e }
+func (e *node) TopPercent(p float32) *node { e.inset[0] = percent(p); e.insetSet = true; return e }
+func (e *node) RightPercent(p float32) *node {
+	e.inset[1] = percent(p)
+	e.insetSet = true
+	e.unlog(1, logInset)
+	return e
+}
+func (e *node) BottomPercent(p float32) *node { e.inset[2] = percent(p); e.insetSet = true; return e }
+func (e *node) LeftPercent(p float32) *node {
+	e.inset[3] = percent(p)
+	e.insetSet = true
+	e.unlog(3, logInset)
+	return e
+}
 
 // Anchor is a point of a box: a corner, the middle of a side, or the
 // center.

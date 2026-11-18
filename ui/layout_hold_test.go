@@ -127,6 +127,24 @@ var holdTrees = []func() (*Tester, *node){
 		}, 300, 400)
 		return tt, root
 	},
+	func() (*Tester, *node) {
+		var root *node
+		tt := coreNewTester(func(c *context) {
+			root = coreColumn(c).Size(300, 400).Children(func() {
+				coreRow(c).Width(280).Children(func() {
+					// A child whose height is absolute, and bounded by a
+					// percentage of the row's height: the bound applies
+					// at the height the row is committed at, and not at the
+					// indefinite height it was measured at, so the size
+					// it is given at another height is not the one it was
+					// measured at.
+					coreBox(c).Width(60).Height(100).Shrink(0)
+					coreBox(c).Width(60).Height(10).MinHeightPercent(50).Shrink(0)
+				})
+			})
+		}, 300, 400)
+		return tt, root
+	},
 }
 
 // boxesOf returns the box of every element under root, in the order the

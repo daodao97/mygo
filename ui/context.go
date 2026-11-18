@@ -223,6 +223,7 @@ func (c *context) overlayRoot() *node {
 		o.flags = flagAbsolute | flagPassThrough
 		o.dir = c.root.dir
 		o.inset = [4]length{px(0), px(0), px(0), px(0)}
+		o.insetSet = true
 		o.depth = 1
 		o.st = c.rt.stateFor(o.id)
 		c.overlay = o

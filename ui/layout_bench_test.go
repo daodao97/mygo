@@ -223,6 +223,7 @@ func TestChildWalkFitsCacheLines(t *testing.T) {
 	var n node
 	offs := [...]uintptr{
 		unsafe.Offsetof(n.flags), unsafe.Offsetof(n.hidden),
+		unsafe.Offsetof(n.insetSet),
 		unsafe.Offsetof(n.first), unsafe.Offsetof(n.next),
 		unsafe.Offsetof(n.st), unsafe.Offsetof(n.laid),
 		unsafe.Offsetof(n.x), unsafe.Offsetof(n.y),
