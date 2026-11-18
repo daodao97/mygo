@@ -46,10 +46,12 @@ type worker struct {
 }
 
 // drawn is a frame a worker drew: its pixels, valid until it is given
-// its next turn, and the name of what drew it; or the error that stopped
-// the worker.
+// its next turn, or held, for a frame that shows what the frame before
+// showed, which the sink holds (holder); and the name of what drew it; or
+// the error that stopped the worker.
 type drawn struct {
 	pix  []byte
+	held bool
 	name string
 	err  error
 }
@@ -67,6 +69,7 @@ func runWorkers(ctx context.Context, comp Composition, o Options, from, to, n in
 			out.abort()
 		}
 	}()
+	hold := o.holder(out)
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
 	ws := make([]*worker, n)
@@ -74,7 +77,7 @@ func runWorkers(ctx context.Context, comp Composition, o Options, from, to, n in
 		w := &worker{done: make(chan drawn, 1), free: make(chan struct{}, 1)}
 		w.free <- struct{}{}
 		ws[k] = w
-		wg.Go(func() { w.run(comp, o.Renderer, from, from+k, to, n, stop) })
+		wg.Go(func() { w.run(comp, o.Renderer, from, from+k, to, n, hold != nil, stop) })
 	}
 	// The workers stop and release their drawers before the sink is
 	// given up.
@@ -97,7 +100,12 @@ func runWorkers(ctx context.Context, comp Composition, o Options, from, to, n in
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := out.frame(i, f.pix); err != nil {
+		if f.held {
+			err = hold.hold(i)
+		} else {
+			err = out.frame(i, f.pix)
+		}
+		if err != nil {
 			return err
 		}
 		w.free <- struct{}{}
@@ -111,8 +119,9 @@ func runWorkers(ctx context.Context, comp Composition, o Options, from, to, n in
 // run draws frames first, first+step, ... before to, and builds the
 // others before its last as a render on one thread does: those before
 // from at their times, those from from at the times of their motion
-// blur's samples too.
-func (w *worker) run(comp Composition, r Renderer, from, first, to, step int, stop <-chan struct{}) {
+// blur's samples too. A frame that shows what the frame before showed is
+// held, and not drawn, when holds: the sink holds it (holder).
+func (w *worker) run(comp Composition, r Renderer, from, first, to, step int, holds bool, stop <-chan struct{}) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	send := func(f drawn) bool {
@@ -124,13 +133,15 @@ func (w *worker) run(comp Composition, r Renderer, from, first, to, step int, st
 		}
 	}
 	s := newSession(comp)
+	s.track = true
 	defer s.rec.Close()
-	d, err := newDrawer(r, comp.Width, comp.Height)
+	raw, err := newDrawer(r, comp.Width, comp.Height)
 	if err != nil {
 		send(drawn{err: err})
 		return
 	}
-	defer d.release()
+	defer raw.release()
+	d := &kept{drawer: raw}
 	samples, shutter := comp.MotionBlur.shutter()
 	last := first + (to-1-first)/step*step
 	for i := 0; i <= last; i++ {
@@ -157,12 +168,20 @@ func (w *worker) run(comp Composition, r Renderer, from, first, to, step int, st
 			return
 		}
 		var pix []byte
+		held := false
 		if samples > 1 {
 			pix, err = s.blurred(i, d)
-		} else if err = d.submit(s.build(i)); err == nil {
-			pix, err = d.pixels()
+			held = holds && i > from && s.held(i)
+		} else {
+			sc := s.build(i)
+			// A frame showing what the drawer holds is not drawn again.
+			if held = holds && i > from && s.held(i); !held {
+				if err = s.drawn(d, sc); err == nil {
+					pix, err = d.pixels()
+				}
+			}
 		}
-		if !send(drawn{pix: pix, name: d.name(), err: err}) || err != nil {
+		if !send(drawn{pix: pix, held: held, name: d.name(), err: err}) || err != nil {
 			return
 		}
 	}

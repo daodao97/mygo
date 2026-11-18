@@ -30,12 +30,14 @@ var (
 
 	msgAppendPixels func(obj objc.ID, s objc.SEL, pb uintptr, t cmTime) bool
 	msgStartSession func(obj objc.ID, s objc.SEL, t cmTime)
+	msgEndSession   func(obj objc.ID, s objc.SEL, t cmTime)
 	msgBool         func(obj objc.ID, s objc.SEL) bool
 	msgSetBool      func(obj objc.ID, s objc.SEL, v bool)
 	msgInt          func(obj objc.ID, s objc.SEL) int
 
 	cvPoolCreatePixelBuffer   func(alloc, pool uintptr, out *uintptr) int32
 	cvPixelBufferRelease      func(pb uintptr)
+	cvPixelBufferRetain       func(pb uintptr) uintptr
 	cvPixelBufferGetIOSurface func(pb uintptr) uintptr
 	cvLock                    func(pb uintptr, flags uint64) int32
 	cvUnlock                  func(pb uintptr, flags uint64) int32
@@ -108,6 +110,7 @@ func loadAV() error {
 		}
 		purego.RegisterFunc(&msgAppendPixels, msgSend)
 		purego.RegisterFunc(&msgStartSession, msgSend)
+		purego.RegisterFunc(&msgEndSession, msgSend)
 		purego.RegisterFunc(&msgBool, msgSend)
 		purego.RegisterFunc(&msgSetBool, msgSend)
 		purego.RegisterFunc(&msgInt, msgSend)
@@ -115,6 +118,7 @@ func loadAV() error {
 		purego.RegisterLibFunc(&poolPop, objcLib, "objc_autoreleasePoolPop")
 		purego.RegisterLibFunc(&cvPoolCreatePixelBuffer, cv, "CVPixelBufferPoolCreatePixelBuffer")
 		purego.RegisterLibFunc(&cvPixelBufferRelease, cv, "CVPixelBufferRelease")
+		purego.RegisterLibFunc(&cvPixelBufferRetain, cv, "CVPixelBufferRetain")
 		purego.RegisterLibFunc(&cvPixelBufferGetIOSurface, cv, "CVPixelBufferGetIOSurface")
 		purego.RegisterLibFunc(&cvLock, cv, "CVPixelBufferLockBaseAddress")
 		purego.RegisterLibFunc(&cvUnlock, cv, "CVPixelBufferUnlockBaseAddress")
@@ -224,8 +228,12 @@ type avSink struct {
 	writer, video, adaptor, snd objc.ID
 	pool, format                uintptr
 	// frames are the frames the video input did not take yet, in order.
-	frames  []avFrame
-	written int64 // video frames queued
+	frames []avFrame
+	// written is the number of the next frame from the first, counting
+	// those held (hold), which show the one before longer; last is the
+	// frame queued last, its pixel buffer retained.
+	written int64
+	last    avFrame
 	samples int64 // frames of the sound track given to the writer
 	// soundDone is set once the sound input is finished.
 	soundDone bool
@@ -402,15 +410,27 @@ func (s *avSink) frame(i int, pix []byte) error {
 			copy(unsafe.Slice((*byte)(unsafe.Add(base, y*stride)), row), pix[y*row:(y+1)*row])
 		}
 		cvUnlock(pb, 0)
-		return s.queueFrame(pb)
+		f := avFrame{pb, s.written}
+		s.written++
+		return s.queueFrame(f)
 	})
 }
 
-// queueFrame gives the writer the pixel buffer of the next frame, which
-// it owns.
-func (s *avSink) queueFrame(pb uintptr) error {
-	s.frames = append(s.frames, avFrame{pb, s.written})
+// hold shows the frame before for the time of one more: the writer gives
+// a frame the time to the next one's, and the last the time to the end of
+// the session (close).
+func (s *avSink) hold(int) error {
 	s.written++
+	return nil
+}
+
+// queueFrame gives the writer a frame, whose pixel buffer it owns.
+func (s *avSink) queueFrame(f avFrame) error {
+	if s.last.pb != 0 {
+		cvPixelBufferRelease(s.last.pb)
+	}
+	s.last = avFrame{cvPixelBufferRetain(f.pb), f.n}
+	s.frames = append(s.frames, f)
 	return s.pump(3)
 }
 
@@ -508,6 +528,15 @@ func (s *avSink) pump(frames int) error {
 
 func (s *avSink) close() error {
 	return pooled(func() error {
+		// A video ending with frames held ends with the last frame
+		// again, at the time of the last: players read a video's length
+		// off its frames, which the end of the session (below) cannot
+		// lengthen.
+		if f := s.last; f.pb != 0 && f.n < s.written-1 {
+			if err := s.queueFrame(avFrame{cvPixelBufferRetain(f.pb), s.written - 1}); err != nil {
+				return err
+			}
+		}
 		// The frames, then the rest of the sound, which the writer takes
 		// only once the video is finished.
 		if err := s.pump(0); err != nil {
@@ -519,6 +548,9 @@ func (s *avSink) close() error {
 				return err
 			}
 		}
+		// The last frame lasts to the end of the video, the frames held
+		// after it too.
+		msgEndSession(s.writer, sel("endSessionAtSourceTime:"), cmTime{Value: s.written * s.spec.den, Timescale: int32(s.spec.num), Flags: cmTimeValid})
 		done := make(chan struct{})
 		block := objc.NewBlock(func(objc.Block) { close(done) })
 		send(s.writer, "finishWritingWithCompletionHandler:", block)
@@ -546,10 +578,12 @@ func (s *avSink) abort() {
 
 // release frees what the sink holds.
 func (s *avSink) release() {
-	for _, f := range s.frames {
-		cvPixelBufferRelease(f.pb)
+	for _, f := range append(s.frames, s.last) {
+		if f.pb != 0 {
+			cvPixelBufferRelease(f.pb)
+		}
 	}
-	s.frames = nil
+	s.frames, s.last = nil, avFrame{}
 	if s.format != 0 {
 		cfRelease(s.format)
 		s.format = 0
@@ -578,9 +612,10 @@ func (s *avSceneSink) scene(i int, sc *scene.Scene) error {
 			cvPixelBufferRelease(pb)
 			return err
 		}
-		prev := s.pending.pb
-		s.pending.pb = pb
-		if prev != 0 {
+		prev := s.pending
+		s.pending = avFrame{pb, s.written}
+		s.written++
+		if prev.pb != 0 {
 			return s.queueFrame(prev)
 		}
 		return nil
@@ -591,12 +626,12 @@ func (s *avSceneSink) flush() error {
 	if err := s.d.f.Wait(); err != nil {
 		return err
 	}
-	pb := s.pending.pb
-	s.pending.pb = 0
-	if pb == 0 {
+	f := s.pending
+	s.pending = avFrame{}
+	if f.pb == 0 {
 		return nil
 	}
-	return pooled(func() error { return s.queueFrame(pb) })
+	return pooled(func() error { return s.queueFrame(f) })
 }
 
 func (s *avSceneSink) abort() {

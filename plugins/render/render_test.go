@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -961,7 +962,206 @@ func TestMotionBlurOfUI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tracks := mp4Tracks(t, filepath.Join(dir, "blur.mp4")); tracks["vide"] != 12 {
-		t.Errorf("a video with motion blur: %v", tracks)
+	// The box stops once its animation ends: the frames after it are
+	// held.
+	if frames, length := mp4Frames(t, filepath.Join(dir, "blur.mp4"), 30); len(frames) < 3 || length != 12 {
+		t.Errorf("a video with motion blur: frames %v, %d frames long", frames, length)
+	}
+}
+
+// mp4Frames returns the frames of the video track of the MP4 at path at
+// fps whose pictures it holds, in order, from 0, as each sample's time of
+// presentation (its decoding's and its offset) has them, and the track's
+// length in frames, as its edit list presents it, or its samples without
+// one: a sample held lasts to the next.
+func mp4Frames(t *testing.T, path string, fps float64) (frames []int, length int) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type track struct {
+		handler        string
+		scale          uint32
+		deltas, offset []int64
+		// edits is the length of the edit list, in the movie's scale.
+		edits  int64
+		edited bool
+	}
+	var video track
+	var movieScale uint32
+	var walk func(b []byte, tr *track)
+	walk = func(b []byte, tr *track) {
+		for len(b) >= 8 {
+			size := int(binary.BigEndian.Uint32(b))
+			kind := string(b[4:8])
+			head := 8
+			if size == 1 && len(b) >= 16 {
+				size, head = int(binary.BigEndian.Uint64(b[8:])), 16
+			} else if size == 0 {
+				size = len(b)
+			}
+			if size < head || size > len(b) {
+				return
+			}
+			body := b[head:size]
+			switch {
+			case kind == "moov", kind == "mdia", kind == "minf", kind == "stbl", kind == "edts":
+				walk(body, tr)
+			case kind == "mvhd" && len(body) >= 24:
+				at := 12
+				if body[0] == 1 {
+					at = 20
+				}
+				movieScale = binary.BigEndian.Uint32(body[at:])
+			case kind == "trak":
+				var found track
+				walk(body, &found)
+				if found.handler == "vide" {
+					video = found
+				}
+			case tr == nil:
+			case kind == "hdlr" && len(body) >= 12 && tr.handler == "":
+				tr.handler = string(body[8:12])
+			case kind == "mdhd" && len(body) >= 24:
+				at := 12
+				if body[0] == 1 {
+					at = 20
+				}
+				tr.scale = binary.BigEndian.Uint32(body[at:])
+			case kind == "stts" && len(body) >= 8:
+				for e := body[8:]; len(e) >= 8; e = e[8:] {
+					for range binary.BigEndian.Uint32(e) {
+						tr.deltas = append(tr.deltas, int64(binary.BigEndian.Uint32(e[4:])))
+					}
+				}
+			case kind == "elst" && len(body) >= 8:
+				tr.edited = true
+				size := 12
+				if body[0] == 1 {
+					size = 20
+				}
+				for e := body[8:]; len(e) >= size; e = e[size:] {
+					if body[0] == 1 {
+						tr.edits += int64(binary.BigEndian.Uint64(e))
+					} else {
+						tr.edits += int64(binary.BigEndian.Uint32(e))
+					}
+				}
+			case kind == "ctts" && len(body) >= 8:
+				// Signed in version 1, and in practice in version 0 too.
+				for e := body[8:]; len(e) >= 8; e = e[8:] {
+					for range binary.BigEndian.Uint32(e) {
+						tr.offset = append(tr.offset, int64(int32(binary.BigEndian.Uint32(e[4:]))))
+					}
+				}
+			}
+			b = b[size:]
+		}
+	}
+	walk(data, nil)
+	if video.scale == 0 || len(video.deltas) == 0 {
+		t.Fatalf("%s: no video track", path)
+	}
+	var times []int64
+	dts, total := int64(0), int64(0)
+	for i, d := range video.deltas {
+		pts := dts
+		if i < len(video.offset) {
+			pts += video.offset[i]
+		}
+		times = append(times, pts)
+		dts += d
+		total += d
+	}
+	slices.Sort(times)
+	frame := func(ts int64) int { return int(math.Round(float64(ts) * fps / float64(video.scale))) }
+	for _, ts := range times {
+		frames = append(frames, frame(ts-times[0]))
+	}
+	if video.edited && movieScale != 0 {
+		return frames, int(math.Round(float64(video.edits) * fps / float64(movieScale)))
+	}
+	return frames, frame(total)
+}
+
+// TestHeldFrames writes a frame that shows what the frame before showed
+// as that one lasting longer, drawing and encoding neither, as the GPU,
+// the CPU, workers and motion blur make them; a video ending held ends
+// with its last frame again. Frames and ConstantRate have every frame.
+func TestHeldFrames(t *testing.T) {
+	comp := Composition{
+		Width: 160, Height: 96, FPS: 30, Frames: 30, Background: ui.RGB(255, 255, 255),
+		View: func(c *ui.Context, f Frame) {
+			// Moving, still from 9 to 19, moving, still from 24.
+			x := min(f.Exact(), 9)
+			if f.Exact() > 19 {
+				x = 9 + min(f.Exact(), 24) - 19
+			}
+			ui.Box(c).Size(16, 16).Background(ui.RGB(0, 0, 255)).Translate(float32(4*x), 0)
+		},
+	}
+	moving := func(blur bool) []int {
+		var f []int
+		for i := range 30 {
+			// With motion blur, the first frame still differs from the one
+			// before, blurred. GStreamer encodes the frames held at the end
+			// (gstSink.close), others the last frame again.
+			if i <= 9 || i >= 20 && i <= 24 || blur && (i == 10 || i == 25) || runtime.GOOS == "linux" && i > 24 {
+				f = append(f, i)
+			}
+		}
+		if runtime.GOOS != "linux" {
+			f = append(f, 29)
+		}
+		return f
+	}
+	every := make([]int, 30)
+	for i := range every {
+		every[i] = i
+	}
+	dir := t.TempDir()
+	for _, blur := range []bool{false, true} {
+		comp.MotionBlur = MotionBlur{}
+		if blur {
+			comp.MotionBlur.Samples = 3
+		}
+		for _, c := range []struct {
+			name string
+			o    Options
+			want []int
+		}{
+			{"auto", Options{Workers: 1}, moving(blur)},
+			{"cpu", Options{Renderer: CPU, Workers: 1}, moving(blur)},
+			{"workers", Options{Workers: 3}, moving(blur)},
+			{"constant", Options{Workers: 1, ConstantRate: true}, every},
+		} {
+			path := filepath.Join(dir, c.name+".mp4")
+			err := Video(context.Background(), comp, path, c.o)
+			if errors.Is(err, errors.ErrUnsupported) {
+				t.Skip(err)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if frames, length := mp4Frames(t, path, 30); !slices.Equal(frames, c.want) || length != 30 {
+				t.Errorf("blur %v, %s: frames %v, %d frames long; want %v, 30", blur, c.name, frames, length, c.want)
+			}
+		}
+		// Frames has every frame, those drawn again or not as alone.
+		for _, o := range []Options{{Renderer: CPU, Workers: 1}, {Renderer: CPU, Workers: 3}, {Workers: 1}} {
+			if err := Frames(context.Background(), comp, o, func(i int, img *image.RGBA) error {
+				want, err := Still(comp, i, Options{Renderer: o.Renderer})
+				if err != nil {
+					return err
+				}
+				if d := maxDiff(img, want); d != 0 {
+					t.Errorf("blur %v, %v: frame %d differs by %d from the frame alone", blur, o, i, d)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }
