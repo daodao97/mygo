@@ -216,6 +216,33 @@ func TestNoFramesInBackground(t *testing.T) {
 	wait.Until(t, "the frame to be asked for", func() bool { return h.called(wire.CallRequestFrame) })
 }
 
+// The display's refreshes send paced frames, which the content may leave to
+// draw once the renderer has a drawable, off the main thread; FrameNow draws
+// that one at once, not paced.
+func TestRefreshesArePaced(t *testing.T) {
+	b, h := startBackend(t)
+	w, wh := surfaceWindow(t, b, h)
+	h.onUI(func() {
+		deliver(encodeEvent(func(wr *wire.Writer) {
+			wr.Uvarint(wire.EventFrame)
+			wr.Int(w.id)
+		}), true)
+	})
+	onMain(b, func() {})
+	onMain(b, func() { w.s.FrameNow() })
+	wh.mu.Lock()
+	defer wh.mu.Unlock()
+	var paced []bool
+	for _, e := range wh.events {
+		if e.Kind == platform.SurfaceFrame {
+			paced = append(paced, e.Paced)
+		}
+	}
+	if len(paced) != 2 || !paced[0] || paced[1] {
+		t.Fatalf("frames paced: %v, want [true false]", paced)
+	}
+}
+
 // A link the app is opened with, sent before the app made its backend, reaches
 // it.
 func TestEarlyEvents(t *testing.T) {

@@ -1097,7 +1097,10 @@ fake host. Desktop files of `darwin` and `linux` exclude `ios` and
   measures (`getTextRunAdvances`) and whose clusters it draws. These calls go
   straight to the host on the caller's thread (`callHere`, which joins the
   JVM), a screen of new text being hundreds of them. Frames come
-  at the display's refreshes (CADisplayLink, Choreographer) when asked.
+  at the display's refreshes (CADisplayLink, Choreographer) when asked,
+  paced (`platform.PacedSurface`): on iOS, one that comes while the Metal
+  renderer fetches a drawable draws once it has it (`FrameNow`), rather
+  than Go's main thread waiting for it, and the fingers with it.
 - **Input.** A finger is the pointer while it touches (`SurfaceEvent.Touch`,
   the first one; two pinch), and `ui` pans what scrolls under one that
   moves and flings it on (`ui/touch.go`, reached only where touches come:
