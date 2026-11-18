@@ -169,6 +169,21 @@ func (s *surface) foreground() {
 	}
 }
 
+// SetFrameRate has the host's display link tick fps times a second while
+// frames follow each other, or at the display's rate for 0
+// (platform.FrameRateSurface): on a ProMotion display, the display then
+// refreshes as often, and a drawing asking for fewer frames
+// (Painter.AnimationFrameRate) wakes the app no more often than it draws.
+// Android's Choreographer ticks at the display's rate whatever it is told.
+func (s *surface) SetFrameRate(fps float64) {
+	if s.gone {
+		return
+	}
+	s.w.b.call(&wire.SetFrameRate{ID: s.w.id, FPS: fps}, nil)
+}
+
+var _ platform.FrameRateSurface = (*surface)(nil)
+
 // PresentPixels has nothing to show frames drawn in memory on: phones
 // draw with their GPUs.
 func (s *surface) PresentPixels([]byte, int, int, int) {}

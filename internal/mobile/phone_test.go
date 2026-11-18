@@ -2,6 +2,7 @@ package mobile
 
 import (
 	"bytes"
+	"slices"
 	"sync"
 	"testing"
 
@@ -356,5 +357,37 @@ func TestFourFingers(t *testing.T) {
 	}
 	if n := wh.kinds(platform.KeyPressed); n != 1 {
 		t.Errorf("with them, %d keys", n)
+	}
+}
+
+// The frame rate the content asks for reaches the host, for its display link
+// to tick as often, and 0 has it tick at the display's rate again.
+func TestFrameRateReachesHost(t *testing.T) {
+	b, h := startBackend(t)
+	w, _ := surfaceWindow(t, b, h)
+	var mu sync.Mutex
+	var rates []float64
+	h.mu.Lock()
+	h.answer = func(op uint64, r *wire.Reader) []byte {
+		if op == wire.CallSetFrameRate && r.Int() == w.id {
+			mu.Lock()
+			rates = append(rates, r.Float())
+			mu.Unlock()
+		}
+		return nil
+	}
+	h.mu.Unlock()
+	onMain(b, func() {
+		w.s.SetFrameRate(30)
+		w.s.SetFrameRate(0)
+	})
+	got := func() []float64 {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(rates)
+	}
+	wait.Until(t, "the host to hear of both rates", func() bool { return len(got()) == 2 })
+	if r := got(); r[0] != 30 || r[1] != 0 {
+		t.Errorf("rates %v, want [30 0]", r)
 	}
 }

@@ -89,6 +89,7 @@ const (
 	CallTextAdvances           = 83
 	CallDrawText               = 84
 	CallRegisterFont           = 85
+	CallSetFrameRate           = 86
 )
 
 // Numbers of events.
@@ -1740,6 +1741,21 @@ func (m *RegisterFontReply) Decode(r *Reader) {
 	m.Family = r.String()
 	m.Error = r.String()
 }
+
+// SetFrameRate is how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface).
+type SetFrameRate struct {
+	ID  int
+	FPS float64
+}
+
+func (m *SetFrameRate) Encode(w *Writer) {
+	w.Uvarint(CallSetFrameRate)
+	w.Int(m.ID)
+	w.Float(m.FPS)
+}
+
+// Wait reports whether the caller waits for the host to run it.
+func (*SetFrameRate) Wait() bool { return false }
 
 // ReadyEvent is the app finished launching.
 type ReadyEvent struct {

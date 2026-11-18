@@ -1197,6 +1197,16 @@ public struct RegisterFontReply {
     }
 }
 
+public struct SetFrameRateCall {
+    public var id: Int = 0
+    public var fps: Double = 0
+    public init() {}
+    init(_ r: inout WireReader) {
+        id = r.int()
+        fps = r.float()
+    }
+}
+
 /// The calls Go makes of the host, on the main thread.
 public protocol HostCalls: AnyObject {
     /// the app's bundle and the system's settings, asked once at start
@@ -1330,6 +1340,8 @@ public protocol HostCalls: AnyObject {
     func drawText(_ c: DrawTextCall) -> DrawTextReply
     /// adds a font file under Family, or its own family when empty
     func registerFont(_ c: RegisterFontCall) -> RegisterFontReply
+    /// how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface)
+    func setFrameRate(_ c: SetFrameRateCall)
 }
 
 /// Runs a call on h and encodes its reply, nil for a call not waited for.
@@ -1592,6 +1604,9 @@ public func dispatchCall(_ h: HostCalls, _ buf: UnsafeRawBufferPointer) -> [UInt
     case 85:
         h.registerFont(RegisterFontCall(&r)).encode(&w)
         return w.buf
+    case 86:
+        h.setFrameRate(SetFrameRateCall(&r))
+        return nil
     default:
         return nil
     }

@@ -3517,11 +3517,12 @@ either.
   anything else in the window asks for each: `Painter.AnimationFrame`, a
   pose moving, the view animating. The refreshes between draw nothing
   (`paceSkips`) unless something else asked for a frame since, and the
-  surface is told of the rate (`platform.FrameRateSurface`): macOS sets
-  its display link's `preferredFrameRateRange`, which has a ProMotion
-  display refresh as often while nothing else on it asks for more. A
-  surface whose frames asked for come at once rather than at the next
-  refresh (`platform.ImmediateFrameSurface`: Windows, where presenting
+  surface is told of the rate (`platform.FrameRateSurface`): macOS and
+  iOS (`SetFrameRate` of `internal/mobile`) set their display link's
+  `preferredFrameRateRange`, which has a ProMotion display refresh as
+  often while nothing else on it asks for more; Android's Choreographer
+  ticks at the display's rate whatever it is told. A surface whose frames asked for come at once rather than at the
+  next refresh (`platform.ImmediateFrameSurface`: Windows, where presenting
   paces frames) would ask again and again until the frame is due: the
   repaint timer asks for it then instead, and the frame it brings keeps
   the pace's times, as the timer fires a little late. With the display's
