@@ -35,6 +35,37 @@ export default defineConfig({
 });
 ```
 
+## App extensions
+
+An app extension, as a VPN client's Network Extension (its packet tunnel
+provider), is a bundle of its own in the app's `PlugIns/`, with its own
+provisioning profile and entitlements. Build it apart, with Xcode, and name
+it in `ios.extensions`:
+
+```json
+{
+  "identifier": "com.example.vpn",
+  "ios": {
+    "extensions": [
+      { "path": "build/PacketTunnel.appex", "provisioningProfile": "PacketTunnel App Store" }
+    ]
+  }
+}
+```
+
+The CLI copies each into `PlugIns/` and signs it before the app, with the
+app's certificate: its profile goes in it as `embedded.mobileprovision`, and
+it is signed with that profile's entitlements. `provisioningProfile` is its
+name, UUID or the path of a `.mobileprovision`; without one, the installed
+profile that best fits the extension's identifier and `ios.distribution`.
+The identifier must start with the app's and a dot, as
+`com.example.vpn.tunnel`, or iOS refuses to install it, and its version and
+build number should be the app's, which App Store Connect checks. The
+simulator's build signs extensions ad hoc. `mygo dev` on a device signs them
+with development profiles, and the development app, `com.example.vpn.dev`,
+carries the extension as `com.example.vpn.dev.tunnel`: derive the extension's
+identifier in the app's code from `Bundle.main.bundleIdentifier`.
+
 ## Publishing
 
 `mygo publish` uploads what `mygo build` wrote for this version, or `-file`.

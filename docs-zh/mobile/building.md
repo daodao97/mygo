@@ -24,6 +24,23 @@ export default defineConfig({
 });
 ```
 
+## 应用扩展
+
+应用扩展（如 VPN 客户端的 Network Extension，即它的 packet tunnel provider）是应用 `PlugIns/` 中一个独立的包，有自己的描述文件和权限。用 Xcode 单独构建它，然后在 `ios.extensions` 中列出：
+
+```json
+{
+  "identifier": "com.example.vpn",
+  "ios": {
+    "extensions": [
+      { "path": "build/PacketTunnel.appex", "provisioningProfile": "PacketTunnel App Store" }
+    ]
+  }
+}
+```
+
+CLI 把每个扩展复制进 `PlugIns/`，并在签名应用之前用应用的证书为它签名：它的描述文件作为 `embedded.mobileprovision` 放进扩展中，扩展以该描述文件的权限签名。`provisioningProfile` 是描述文件的名称、UUID 或 `.mobileprovision` 的路径；不设置时，使用已安装的、最符合扩展标识符和 `ios.distribution` 的那个。标识符必须以应用的标识符加一个点开头，如 `com.example.vpn.tunnel`，否则 iOS 拒绝安装；它的版本号和构建号应与应用的相同，App Store Connect 会检查。模拟器的构建以 ad hoc 方式为扩展签名。在设备上运行 `mygo dev` 时用开发描述文件为它们签名，开发应用 `com.example.vpn.dev` 以 `com.example.vpn.dev.tunnel` 携带扩展：在应用的代码中从 `Bundle.main.bundleIdentifier` 得出扩展的标识符。
+
 ## 发布
 
 `mygo publish` 上传 `mygo build` 为当前版本生成的产物，或 `-file` 指定的文件。

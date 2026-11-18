@@ -5,15 +5,31 @@ import (
 	"path/filepath"
 )
 
-// signForSimulator signs the bundle for a simulator, with no identity. Entitlements
-// don't go in such a signature, which the simulator then refuses to launch: they're
-// in the executable (simulatorEntitlements), as Xcode has them.
+// signForSimulator signs the bundle for a simulator, with no identity, after its
+// frameworks and extensions. Entitlements don't go in such a signature, which the
+// simulator then refuses to launch: they're in the executable
+// (simulatorEntitlements), as Xcode has them.
 func signForSimulator(bundle string) error {
 	if err := signFrameworks(bundle, "-"); err != nil {
 		return err
 	}
-	return runQuiet("codesign", "--force", "--sign", "-", bundle)
+	exts, err := filepath.Glob(filepath.Join(bundle, "PlugIns", "*.appex"))
+	if err != nil {
+		return err
+	}
+	for _, dir := range exts {
+		if err := signFrameworks(dir, "-"); err != nil {
+			return err
+		}
+		if err := iosCodesign("--force", "--sign", "-", dir); err != nil {
+			return err
+		}
+	}
+	return iosCodesign("--force", "--sign", "-", bundle)
 }
+
+// iosCodesign runs codesign for iOS bundles, which tests replace.
+var iosCodesign = func(args ...string) error { return runQuiet("codesign", args...) }
 
 // simulatorEntitlements returns the flags that link what the plugins need the app
 // signed with into a simulator's executable.
@@ -37,7 +53,7 @@ func signFrameworks(bundle, identity string) error {
 		return err
 	}
 	for _, dir := range dirs {
-		if err := runQuiet("codesign", "--force", "--sign", identity, dir); err != nil {
+		if err := iosCodesign("--force", "--sign", identity, dir); err != nil {
 			return err
 		}
 	}

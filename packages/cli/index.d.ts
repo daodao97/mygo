@@ -320,6 +320,20 @@ export interface IOSConfig {
   launchScreen?: IOSLaunchScreen;
   /** The app's `UIBackgroundModes`, as `audio`, `fetch` or `remote-notification`, with those its plugins ask for. */
   backgroundModes?: string[];
+  /**
+   * App extensions built apart, as a Network Extension's packet tunnel built
+   * with Xcode, which the app carries in `PlugIns/`, each signed with its own
+   * provisioning profile before the app.
+   */
+  extensions?: IOSExtension[];
+}
+
+/** A prebuilt app extension of the iOS app. */
+export interface IOSExtension {
+  /** The `.appex`, whose identifier starts with the app's and a dot, as `com.example.app.tunnel`. */
+  path: string;
+  /** The profile to sign it with for `distribution`: its name, UUID or the path of a `.mobileprovision` (default: the installed profile that best fits its identifier and the distribution, with the app's certificate). */
+  provisioningProfile?: string;
 }
 
 /** The launch screen of the iOS app: at least one of its fields. */

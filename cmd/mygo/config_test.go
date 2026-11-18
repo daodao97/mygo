@@ -146,6 +146,7 @@ func TestConfigTypes(t *testing.T) {
 		"IOSConfig":           reflect.TypeFor[IOS](),
 		"AndroidConfig":       reflect.TypeFor[Android](),
 		"IOSLaunchScreen":     reflect.TypeFor[IOSLaunchScreen](),
+		"IOSExtension":        reflect.TypeFor[IOSExtension](),
 		"AndroidAdaptiveIcon": reflect.TypeFor[AndroidAdaptiveIcon](),
 	} {
 		m := regexp.MustCompile(`(?s)export interface ` + name + ` \{\n(.*?)\n\}`).FindSubmatch(src)
