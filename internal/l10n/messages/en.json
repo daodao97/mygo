@@ -182,6 +182,7 @@
   "ok": "OK",
   "open": "Open",
   "selectFolder": "Select Folder",
+  "notAFolder": "This location can’t be chosen. Choose a folder instead.",
   "clearTerminal": "Clear",
   "clipboardRead": "A program wants to read the clipboard",
   "clipboardReadAllow": "Allow",

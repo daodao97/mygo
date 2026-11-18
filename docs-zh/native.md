@@ -37,7 +37,7 @@ if res.Button == 1 { /* Delete */ }
 mygo.Dialog.Error("Import failed", err.Error())
 ```
 
-`OpenDialogOptions` 还可以选择目录（`Directory`）、显示隐藏文件，以及在 macOS 上显示消息和“新建文件夹”按钮。
+`OpenDialogOptions` 还可以选择目录（`Directory`）、显示隐藏文件，以及在 macOS 上显示消息和“新建文件夹”按钮。在 Windows 上，在选择目录的对话框中选择库（例如“文档”）时，选中的是该库保存到的文件夹。
 
 过滤器也可以按类型选取文件，类似 HTML 的 `accept`：可以用 `MIMETypes` 指定 `"application/pdf"` 这样的类型，也可以用 `"image/*"` 指定一整类；系统选择器会按自己认识的类型来匹配，而不需要逐一列出所有扩展名：
 

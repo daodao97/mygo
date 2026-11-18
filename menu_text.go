@@ -28,7 +28,7 @@ func appLanguage() string {
 func platformTexts(locale string) platform.Texts {
 	tx := l10n.In(locale)
 	return platform.Texts{OK: tx.Ok(), Cancel: tx.Cancel(), Open: tx.Open(), Save: tx.Save(),
-		SelectFolder: tx.SelectFolder(), About: tx.MenuAbout("\x00")}
+		SelectFolder: tx.SelectFolder(), About: tx.MenuAbout("\x00"), NotAFolder: tx.NotAFolder()}
 }
 
 // relabelMenus gives the items whose label is their role's the role's

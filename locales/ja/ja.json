@@ -183,6 +183,7 @@
   "ok": "OK",
   "open": "開く",
   "selectFolder": "フォルダを選択",
+  "notAFolder": "この場所は選択できません。フォルダを選択してください。",
   "clearTerminal": "消去",
   "clipboardRead": "プログラムがクリップボードの読み取りを求めています",
   "clipboardReadAllow": "許可",

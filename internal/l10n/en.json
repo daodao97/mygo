@@ -900,6 +900,10 @@
   "@selectFolder": {
     "description": "The title of the dialog that chooses a folder."
   },
+  "notAFolder": "This location can’t be chosen. Choose a folder instead.",
+  "@notAFolder": {
+    "description": "What the dialog that chooses a folder says on Windows, staying open, when the user chooses a place that is not a folder of a disk or a network share, as This PC."
+  },
   "clearTerminal": "Clear",
   "@clearTerminal": {
     "description": "An item of a terminal's menu, which clears the lines scrolled out of view and the screen above the prompt, as Command-K does."
