@@ -120,7 +120,7 @@ ui.Checkbox(c.Key(todo.ID), &todo.Done, todo.Title)
 ui.TextInput(c.Key("search"), &app.query)
 ```
 
-同级元素的键必须唯一，比较规则与 Go 的 map 键相同：指针按所指对象的身份比较，与对象内容无关，因此条目的指针和 ID 一样，都可以用作键。Go 无法比较的键（如切片），或与自身不相等的键（如 NaN），会按打印后的值比较。`Element.Key` 可在构建容器的子元素或局部状态前，为容器设置键。有状态的控件和自定义基础控件则使用 `Context.Key`。
+同级元素的键必须唯一，比较规则与 Go 的 map 键相同：指针按所指对象的身份比较，与对象内容无关，因此条目的指针和 ID 一样，都可以用作键。Go 无法比较的键（如切片），或与自身不相等的键（如 NaN），会按打印后的值比较。`Element.Key` 可在读取或绑定元素状态（如 `Local`、`Clicked`、`Hovered`、`Focused`、`OnUnmount`、`AnimateTo` 等）之前为容器设置键；之后再调用会在应用中记录警告，并在 `Tester` 中 panic。有状态的控件和自定义基础控件应在构建前使用 `Context.Key`。
 
 `Context.Key` 为下一个控件设置一个待应用的键；再次调用会替换掉它。`c.Key("account").Key("secret")` 只使用 `"secret"`。创建一个带键的父元素，就能给它的子元素一个独立的身份作用域：
 

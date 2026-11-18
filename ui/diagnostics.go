@@ -35,6 +35,32 @@ func (rt *engine) duplicateKey(id uint64, k any) {
 	rt.warn(msg)
 }
 
+// lateKey reports an element given a key after its state or ID was
+// already read while building: the read saw the element's positional
+// state rather than the key's. A Tester panics (engine.strict), so that
+// tests fail where the key was given; apps log it once, and the
+// inspector lists it.
+func (rt *engine) lateKey(id uint64, k any) {
+	if !rt.strict {
+		if rt.lateKeys == nil {
+			rt.lateKeys = map[uint64]bool{}
+		}
+		if rt.lateKeys[id] {
+			return
+		}
+		rt.lateKeys[id] = true
+	}
+	msg := fmt.Sprintf("ui: Key(%#v) after the element's state was read: call Key before reading state, or use Context.Key before construction", k)
+	if at := callSite(); at != "" {
+		msg += " (" + at + ")"
+	}
+	if rt.strict {
+		panic(msg)
+	}
+	log.Print(msg)
+	rt.warn(msg)
+}
+
 // warn notes a warning for the inspector.
 func (rt *engine) warn(msg string) {
 	if len(rt.warnings) == maxWarnings {

@@ -480,6 +480,9 @@ type node struct {
 	// inside it are unavailable, while they keep the focus, the pointer
 	// and their look (AccessDisabled).
 	accessDisabled bool
+	// stateRead tells that the build read or bound the element's state or
+	// identity before Key ran.
+	stateRead bool
 
 	// Painting.
 	bg          Color
@@ -970,12 +973,14 @@ func (e *node) Children(fn func()) *node {
 // Key identifies the element among its siblings by k instead of by its
 // position, so that its state (focus, scrolling, text being edited, …)
 // follows it when the siblings before it change. Call it right after
-// creating the element. Widgets that handle their input as they are
-// created (Checkbox, Radio, Switch, Slider, Select, Link, List, TextInput
-// and TextArea) cannot take a key, and Key panics: give it to an element
-// around them instead, as Row(c).Key(k).Children(...) does. Siblings need
-// keys of their own: two elements with one key share one state, which
-// MyGo logs, and a Tester panics for.
+// creating the element, before reading its state, or pass it with
+// Context.Key before construction. Widgets that handle their input as they
+// are created (Checkbox, Radio, Switch, Slider, Select, Link, List,
+// TextInput and TextArea) cannot take a key, and Key panics: use
+// Context.Key before construction instead. Calling Key after the
+// element's state was read logs a warning in apps and panics in Tester.
+// Siblings need keys of their own: two elements with one key share one
+// state, which MyGo logs, and a Tester panics for.
 func (e *node) Key(k any) *node {
 	if e.widget != "" {
 		panic("ui: Key on a " + e.widget + ", whose state was initialized: use Context.Key before construction")
@@ -2109,6 +2114,15 @@ func (e *node) disabled() bool {
 // It cannot recognize an old pointer whose arena slot has been reused.
 func (e *node) hasState() bool {
 	return e != nil && e.c != nil && e.c.rt != nil && e.st != nil && !e.c.rt.closed
+}
+
+// markStateRead records that the build read or bound the element's state
+// or identity, so a later Key reports it. Reads during painting or
+// journaling leave stateRead unset.
+func (e *node) markStateRead() {
+	if e != nil && e.c != nil && e.c.rt != nil && !e.c.rt.journal.on && !e.c.rt.painting {
+		e.stateRead = true
+	}
 }
 
 // Focusable lets the element take the keyboard focus, by a click or Tab.

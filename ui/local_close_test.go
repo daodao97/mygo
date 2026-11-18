@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"io"
+	"log"
+	"os"
 	"slices"
 	"testing"
 	"time"
@@ -335,16 +337,32 @@ func TestSelectShownValueNotClosed(t *testing.T) {
 }
 
 // Locals made on an element's place before Key gave it its identity are
-// its no more: they close after the frame.
+// its no more: in a running app (non-strict), Key logs a warning and the
+// discarded locals still close after the frame.
 func TestLocalClosesBeforeKey(t *testing.T) {
+	prevOut := log.Writer()
+	log.SetOutput(io.Discard)
+	defer func() {
+		if prevOut == nil {
+			log.SetOutput(os.Stderr)
+		} else {
+			log.SetOutput(prevOut)
+		}
+	}()
 	var closed []string
-	NewTester(func(c *Context) {
-		e := Box(c).Size(10, 10)
-		Local(e, "early", func() *feed { return &feed{name: "early", closed: &closed} })
+	h := &headless{w: 100, h: 100, scale: 1}
+	rt := newRuntime(func(c *context) {
+		e := coreBox(c).Size(10, 10)
+		coreLocal(e, "early", func() *feed { return &feed{name: "early", closed: &closed} })
 		e.Key("late")
-	}, 100, 100)
+	}, h)
+	defer rt.close()
+	rt.runFrame()
 	if !slices.Equal(closed, []string{"early"}) {
 		t.Fatalf("closed %v", closed)
+	}
+	if len(rt.warnings) != 1 {
+		t.Fatalf("warnings = %q, want 1", rt.warnings)
 	}
 }
 

@@ -32,6 +32,17 @@ type tooltips struct {
 	dismissed uint64
 	// lastShown is when a tip last showed, or went.
 	lastShown time.Time
+	// pending holds the Tooltip modifiers queued during the view pass so
+	// they run after any chained Key.
+	pending []pendingTip
+}
+
+type pendingTip struct {
+	anchor *node
+	text   string
+	theme  *Theme
+	dir    uint8
+	inert  bool
 }
 
 // TooltipBase shows a tip without a look by anchor: fn styles the tip and
@@ -123,17 +134,54 @@ func (e *node) Tooltip(s string) *node {
 	if s == "" {
 		return e
 	}
+	e.flags |= flagHover
+	e.tip = true
 	c := e.c
-	t := c.theme
-	fill, text := t.inverse()
-	tooltipBase(c, e, func(tip *node) {
-		tip.MaxWidth(t.Space(80)).Padding(t.Space(1.25), t.Space(2)).Radius(t.Space(1.25)).
-			Background(fill).TextColor(text).FontSize(t.FontSize - 1)
-		tip.Shadow(0, 2, 8, 0, RGBA(0, 0, 0, 0.2))
-		tip.Children(func() { coreText(c, s) })
-		tip.AttachTo(e, AnchorTop, AnchorBottom).Margin(0, 0, t.Space(1.5), 0)
+	dir := e.dir
+	if c.parent != nil {
+		dir = c.parent.dir
+	}
+	// Replace an earlier Tooltip on the same node in this pass.
+	if n := len(c.rt.tips.pending); n > 0 && c.rt.tips.pending[n-1].anchor == e {
+		c.rt.tips.pending[n-1] = pendingTip{anchor: e, text: s, theme: c.theme, dir: dir, inert: c.inert}
+		return e
+	}
+	c.rt.tips.pending = append(c.rt.tips.pending, pendingTip{
+		anchor: e,
+		text:   s,
+		theme:  c.theme,
+		dir:    dir,
+		inert:  c.inert,
 	})
 	return e
+}
+
+// buildTooltips builds the Tooltip overlays queued during the view pass,
+// after any chained Key has given each anchor its final ID and state.
+func (rt *engine) buildTooltips(c *context) {
+	if len(rt.tips.pending) == 0 {
+		return
+	}
+	savedParent, savedTheme, savedInert := c.parent, c.theme, c.inert
+	savedDir := c.root.dir
+	for _, p := range rt.tips.pending {
+		t := p.theme
+		fill, text := t.inverse()
+		c.theme, c.inert = t, p.inert
+		c.parent = c.root
+		c.root.dir = p.dir
+		tooltipBase(c, p.anchor, func(tip *node) {
+			tip.MaxWidth(t.Space(80)).Padding(t.Space(1.25), t.Space(2)).Radius(t.Space(1.25)).
+				Background(fill).TextColor(text).FontSize(t.FontSize - 1)
+			tip.Shadow(0, 2, 8, 0, RGBA(0, 0, 0, 0.2))
+			tip.Children(func() { coreText(c, p.text) })
+			tip.AttachTo(p.anchor, AnchorTop, AnchorBottom).Margin(0, 0, t.Space(1.5), 0)
+		})
+	}
+	c.root.dir = savedDir
+	c.parent, c.theme, c.inert = savedParent, savedTheme, savedInert
+	clear(rt.tips.pending)
+	rt.tips.pending = rt.tips.pending[:0]
 }
 
 // showTooltip returns the element whose tip shows in the frame, deciding it

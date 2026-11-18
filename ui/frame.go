@@ -126,8 +126,9 @@ func (e Element) Children(fn func()) Element {
 	return e
 }
 
-// Key keys a container before its children or local state are built.
-// For a stateful control, use Context.Key before construction instead.
+// Key keys a container before its state is read or bound; calling it
+// afterward logs a warning in apps and panics in Tester. For a stateful
+// control, use Context.Key before construction instead.
 func (e Element) Key(key any) Element {
 	if n := e.node(); n != nil {
 		n.Key(key)
