@@ -32,12 +32,12 @@ func signForSimulator(bundle string) error {
 var iosCodesign = func(args ...string) error { return runQuiet("codesign", args...) }
 
 // simulatorEntitlements returns the flags that link what the plugins need the app
-// signed with into a simulator's executable.
-func (ps mobilePlugins) simulatorEntitlements(work string) ([]string, error) {
+// signed with into a simulator's executable, with the app's identifier, as Xcode
+// has it: without one, the keychain refuses the app (errSecMissingEntitlement).
+func (ps mobilePlugins) simulatorEntitlements(work, identifier string) ([]string, error) {
 	ent := ps.entitlements()
-	if len(ent) == 0 {
-		return nil, nil
-	}
+	ent["application-identifier"] = identifier
+	ent["keychain-access-groups"] = []any{identifier}
 	path := filepath.Join(work, "simulator.entitlements")
 	if err := os.WriteFile(path, plistBytes(ent), 0o644); err != nil {
 		return nil, err
