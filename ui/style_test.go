@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/egoist/mygo/internal/scene"
 )
 
 // boxes lays out view in a window w×h and returns the boxes of the
@@ -599,6 +601,81 @@ func TestTextDecorations(t *testing.T) {
 		if n, rows := reds(tt.Image(), Rect{r.X, r.Y, r.W, r.H + 4}); !tc.test(n, rows) {
 			t.Errorf("%s: %d red pixels on %d rows", tc.name, n, len(rows))
 		}
+	}
+}
+
+// TestDottedUnderline checks that a dotted underline is drawn as dots:
+// along the row of a solid underline under the same text, some of its
+// pixels are lit and some are not, set on the text or above it.
+func TestDottedUnderline(t *testing.T) {
+	red := RGB(255, 0, 0)
+	// lit returns the red pixels of the reddest row under the text, and
+	// how wide that row's run from its first to its last red pixel is.
+	lit := func(view func(c *context)) (n, span int) {
+		t.Helper()
+		tt := coreNewTester(view, 300, 60)
+		r, ok := tt.Find("t")
+		if !ok {
+			t.Fatal("no text")
+		}
+		img := tt.Image()
+		for y := int(r.Y); y < int(r.Y+r.H+4); y++ {
+			count, first, last := 0, -1, -1
+			for x := int(r.X); x < int(r.X+r.W); x++ {
+				if c := img.RGBAAt(x, y); c.R > 200 && c.G < 60 && c.B < 60 {
+					count++
+					if first < 0 {
+						first = x
+					}
+					last = x
+				}
+			}
+			if count > n {
+				n, span = count, last-first+1
+			}
+		}
+		return n, span
+	}
+	solid, _ := lit(func(c *context) { coreText(c, "Hello world").Underline().DecorationColor(red).Label("t") })
+	for _, v := range []struct {
+		name string
+		view func(c *context)
+	}{
+		{"text", func(c *context) {
+			coreText(c, "Hello world").DottedUnderline().DecorationColor(red).Label("t")
+		}},
+		{"inherited", func(c *context) {
+			coreBox(c).DottedUnderline().DecorationColor(red).Children(func() { coreText(c, "Hello world").Label("t") })
+		}},
+	} {
+		n, span := lit(v.view)
+		if n == 0 || span < solid*3/4 || n > span*2/3 {
+			t.Errorf("%s: %d dotted pixels over %d, a solid underline %d", v.name, n, span, solid)
+		}
+	}
+}
+
+// TestMorphDottedUnderline: text morphing keeps its underline dotted, a
+// fill a dot rather than one a line.
+func TestMorphDottedUnderline(t *testing.T) {
+	red := RGB(255, 0, 0)
+	s := "Hello"
+	a := Animation{Duration: 100 * time.Millisecond, Ease: Linear}
+	tt, now := clockTester(func(c *context) {
+		keep("text", coreText(c, s)).DottedUnderline().DecorationColor(red).ContentTransition(ContentTransition{Morph: true, Animation: &a})
+	}, 200, 60)
+	s = "Hello world"
+	tt.Frame()
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	fills := 0
+	for _, op := range tt.h.last.Ops {
+		if op.Kind == scene.OpFill && op.Color == red.scene() {
+			fills++
+		}
+	}
+	if fills < 10 {
+		t.Errorf("halfway, the underline paints %d fills, want a dot each", fills)
 	}
 }
 

@@ -135,6 +135,7 @@ func (v *view) forgetLines(a, b int) {
 		}
 	}
 	v.heights.wraps.forget(from, to)
+	v.measured.forget(from, to)
 	v.wrapAt = min(v.wrapAt, from)
 	v.replHiddenOK = false
 }

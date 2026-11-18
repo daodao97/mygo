@@ -22,7 +22,8 @@ import (
 // holding it.
 //
 // Renderers draw on the main thread, one frame at a time, so the context
-// they share needs no lock of theirs, and each frame binds all the state it
+// they share needs no lock of theirs (Frames, which draws on threads of
+// its own, has a device of its own: ownDevice), and each frame binds all the state it
 // draws with. The device is multithread protected all the same
 // (ID3D10Multithread): Direct3D then serializes each call to the context
 // with DXGI's calls on the device's swap chains, so that a swap chain may
@@ -105,6 +106,26 @@ func acquireDevice() (*sharedDevice, error) {
 		devices.current = d
 	}
 	d.refs++
+	return d, nil
+}
+
+// ownDevice returns a device of the caller's own, which no other renderer
+// shares, for a renderer drawing on a thread of its own, as Frames does
+// for videos, on as many threads as a render draws frames at once: the
+// immediate context of a shared device is drawn with on the main thread
+// alone. Multithread protection serializes each call to it, not the
+// calls that set a frame's state and draw with it, which would interleave
+// with another thread's. The caller releases it with releaseDevice.
+func ownDevice() (*sharedDevice, error) {
+	dev, ctx, warp, err := device.New()
+	if err != nil {
+		return nil, err
+	}
+	d, err := newSharedDevice(dev, ctx, warp)
+	if err != nil {
+		return nil, err
+	}
+	d.refs = 1
 	return d, nil
 }
 

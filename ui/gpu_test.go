@@ -245,6 +245,65 @@ func TestNoGPUFromTheStart(t *testing.T) {
 	}
 }
 
+// occludableSurface is a test surface that tells whether nothing of its
+// window shows, as macOS's does.
+type occludableSurface struct {
+	testSurface
+	occluded bool
+}
+
+func (s *occludableSurface) Occluded() bool { return s.occluded }
+
+// occludedGPU is a GPU renderer that hears whether nothing of the window
+// shows, as Metal's does.
+type occludedGPU struct {
+	testGPU
+	told []bool
+}
+
+func (g *occludedGPU) SetOccluded(on bool) { g.told = append(g.told, on) }
+
+// TestGPUToldOccluded checks that the GPU renderer hears when nothing of
+// the window shows any more and when some of it shows again, and one made
+// while none shows hears it as it is made, so that Metal's gives back its
+// drawables, each as large as the window, for windows out of sight
+// (#2040).
+func TestGPUToldOccluded(t *testing.T) {
+	t.Setenv("MYGO_GPU", "")
+	var made []*occludedGPU
+	newGPU = func(platform.SurfaceNative) (gpuRenderer, error) {
+		g := &occludedGPU{}
+		made = append(made, g)
+		return g, nil
+	}
+	t.Cleanup(func() { newGPU = newGPURenderer })
+	s := &occludableSurface{}
+	h := &windowHost{conn: &surface.Conn{Surface: s}}
+	h.rt = newRuntime(func(c *context) { coreText(c, "Hello") }, h)
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
+	if len(made) != 1 || !slices.Equal(made[0].told, []bool{false}) {
+		t.Fatalf("first frame: %d renderers, the first told %v", len(made), made[0].told)
+	}
+	g := made[0]
+	s.occluded = true
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceHidden})
+	s.occluded = false
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceShown})
+	if want := []bool{false, true, false}; !slices.Equal(g.told, want) {
+		t.Errorf("hidden then shown: told %v, want %v", g.told, want)
+	}
+
+	// The renderer made again while the window is out of sight, as after
+	// the GPU went away, hears it at once.
+	s.occluded = true
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceHidden})
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
+	h.makeGPU()
+	if len(made) != 2 || !slices.Equal(made[1].told, []bool{true}) {
+		t.Errorf("made out of sight: %d renderers, the last told %v", len(made), made[len(made)-1].told)
+	}
+}
+
 // TestEveryFrameOnTheGPU checks that with a GPU, every frame draws on it:
 // the first, one changing little after a pause, and one changing little
 // while frames follow each other.

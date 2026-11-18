@@ -34,11 +34,15 @@ type finder struct {
 	version  uint64
 	searched string
 	options  [4]bool
-	err      error
-	lower    string // the text lowered, for searching without case
-	lowerVer uint64
-	scrollTo bool
-	builtW   float32 // the editor's width the bar was built for
+	// hiddenVer is the version of the diff's hidden lines the matches
+	// were found of (hideV): they change with the gaps, not with the
+	// text.
+	hiddenVer int
+	err       error
+	lower     string // the text lowered, for searching without case
+	lowerVer  uint64
+	scrollTo  bool
+	builtW    float32 // the editor's width the bar was built for
 }
 
 // maxMatches bounds the matches a search finds.
@@ -96,7 +100,17 @@ func (f *finder) update(ed *editor) {
 // the others' matches having moved with them (moved).
 func (f *finder) search(ed *editor) {
 	opts := [4]bool{f.caseSens, f.wholeWord, f.regex, f.inSelection}
-	if !f.stale && f.version == ed.view.version && f.searched == f.query && f.options == opts {
+	// A diff's shown lines change with its gaps, and with nothing short
+	// of the text: the matches follow them too (hiddenVer).
+	hv := 0
+	if ds, ok := ed.o.decor.(*diffSide); ok {
+		hv = ds.hideV
+	}
+	// The gaps moved under the same query of the same text: the matches
+	// are found again around the caret, as a different set they are.
+	same := f.version == ed.view.version && f.searched == f.query && f.options == opts
+	reanchor := same && f.hiddenVer != hv
+	if !f.stale && same && f.hiddenVer == hv {
 		if len(f.dirty) > 0 {
 			f.searchLines(ed)
 		}
@@ -107,7 +121,7 @@ func (f *finder) search(ed *editor) {
 		f.scope = nil
 	}
 	f.stale, f.dirty = false, nil
-	f.version, f.searched, f.options = ed.view.version, f.query, opts
+	f.version, f.searched, f.options, f.hiddenVer = ed.view.version, f.query, opts, hv
 	f.matches, f.subs = f.matches[:0], f.subs[:0]
 	f.err = nil
 	if f.query == "" {
@@ -133,22 +147,96 @@ func (f *finder) search(ed *editor) {
 		}
 		return len(f.matches) < maxMatches
 	})
-	f.current = min(f.current, max(0, len(f.matches)-1))
+	if reanchor {
+		f.current = f.nearest(ed.primary().start())
+	} else {
+		f.current = min(f.current, max(0, len(f.matches)-1))
+	}
 }
 
 // scan finds the query in text, which starts at byte base of the editor's
 // text (lower its lowered ASCII, when known), and calls found with each
 // match it keeps, and a regular expression's submatches, until found
-// returns false.
+// returns false. The lines a diff collapses hold no matches: its find
+// runs over the lines it shows, one shown range at a time, and a jump to
+// a match of theirs would land on the gap's separator.
 func (f *finder) scan(ed *editor, text, lower string, base int, found func(m diffRange, sub []int) bool) {
+	// The query's matcher, made once for the shown ranges of one search.
+	var re *regexp.Regexp
+	switch {
+	case f.regex:
+		pat := f.query
+		if !f.caseSens {
+			pat = "(?i)" + pat
+		}
+		var err error
+		if re, err = regexp.Compile("(?m)" + pat); err != nil {
+			f.err = err
+			return
+		}
+	case !(f.caseSens || isASCII(f.query)):
+		re = regexp.MustCompile("(?i)" + regexp.QuoteMeta(f.query))
+	case !f.caseSens && isASCII(f.query) && lower == "":
+		// The shown ranges slice the lowered text.
+		lower = asciiLower(text)
+	}
+	var hidden []diffRange
+	if ds, ok := ed.o.decor.(*diffSide); ok {
+		r := &ed.view.text
+		for _, sp := range ds.hidden() {
+			from, to := max(0, min(sp.from, r.LineCount()-1)), max(0, min(sp.to, r.LineCount()-1))
+			end := r.LineEnd(to)
+			if to+1 < r.LineCount() {
+				// The gap's last line's newline hides with it, for the
+				// shown range after it to start at a line start.
+				end = r.LineStart(to + 1)
+			}
+			// The spans are of the whole text, and the search of a slice
+			// of it, as the lines an edit touched search again
+			// (searchLines), clips them to its window.
+			hidden = append(hidden, diffRange{r.LineStart(from), end})
+		}
+	}
+	from, to := base, base+len(text)
+	for _, h := range hidden {
+		start, end := max(h.start, base), min(h.end, to)
+		if end <= start {
+			continue
+		}
+		if start <= from {
+			from = max(from, end)
+			continue
+		}
+		if from >= to {
+			break
+		}
+		if !f.scanShown(ed, text, lower, re, base, from, start, found) {
+			return
+		}
+		from = end
+	}
+	f.scanShown(ed, text, lower, re, base, min(from, to), to, found)
+}
+
+// scanShown finds the query in the shown range [from, to) of the editor's
+// text, which text holds from base, and whether to keep going: the range
+// starts and ends at line starts, for a regular expression's anchors to
+// mean in it what they mean in the whole text ($ and \z match empty at a
+// gap's edge, and empty matches hold nothing), and the cap counts the
+// matches kept, of the lines the diff shows (scan).
+func (f *finder) scanShown(ed *editor, text, lower string, re *regexp.Regexp, base, from, to int, found func(m diffRange, sub []int) bool) bool {
+	if to <= from {
+		return true
+	}
+	seg := text[from-base : to-base]
 	extra := ed.wordChars()
 	keep := func(a, b int) bool {
-		if f.wholeWord && !isWholeWord(text, a, b, extra) {
+		if f.wholeWord && !isWholeWord(seg, a, b, extra) {
 			return false
 		}
 		if f.inSelection && len(f.scope) > 0 {
 			for _, s := range f.scope {
-				if base+a >= s.start() && base+b <= s.end() {
+				if from+a >= s.start() && from+b <= s.end() {
 					return true
 				}
 			}
@@ -158,50 +246,43 @@ func (f *finder) scan(ed *editor, text, lower string, base int, found func(m dif
 	}
 	switch {
 	case f.regex:
-		pat := f.query
-		if !f.caseSens {
-			pat = "(?i)" + pat
-		}
-		re, err := regexp.Compile("(?m)" + pat)
-		if err != nil {
-			f.err = err
-			return
-		}
-		for _, m := range re.FindAllStringSubmatchIndex(text, maxMatches) {
+		for _, m := range re.FindAllStringSubmatchIndex(seg, maxMatches) {
 			if m[1] == m[0] || !keep(m[0], m[1]) {
 				continue
 			}
-			if !found(diffRange{base + m[0], base + m[1]}, m) {
-				return
+			for j := range m {
+				if m[j] >= 0 {
+					m[j] += from
+				}
+			}
+			if !found(diffRange{m[0], m[1]}, m) {
+				return false
 			}
 		}
 	case f.caseSens || isASCII(f.query):
-		q, in := f.query, text
+		q, in := f.query, seg
 		if !f.caseSens {
-			if lower == "" {
-				lower = asciiLower(text)
-			}
-			q, in = asciiLower(f.query), lower
+			q, in = asciiLower(f.query), lower[from-base:to-base]
 		}
 		for at := 0; ; {
 			i := strings.Index(in[at:], q)
 			if i < 0 {
-				return
+				return true
 			}
 			a, b := at+i, at+i+len(q)
-			if keep(a, b) && !found(diffRange{base + a, base + b}, nil) {
-				return
+			if keep(a, b) && !found(diffRange{from + a, from + b}, nil) {
+				return false
 			}
 			at = b
 		}
 	default:
-		re := regexp.MustCompile("(?i)" + regexp.QuoteMeta(f.query))
-		for _, m := range re.FindAllStringIndex(text, maxMatches) {
-			if keep(m[0], m[1]) && !found(diffRange{base + m[0], base + m[1]}, nil) {
-				return
+		for _, m := range re.FindAllStringIndex(seg, maxMatches) {
+			if keep(m[0], m[1]) && !found(diffRange{from + m[0], from + m[1]}, nil) {
+				return false
 			}
 		}
 	}
+	return true
 }
 
 // moved follows edits of the text the matches were found in: those an

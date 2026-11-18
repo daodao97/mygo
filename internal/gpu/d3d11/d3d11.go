@@ -445,20 +445,26 @@ var noPartial = os.Getenv("MYGO_PARTIAL") == "0"
 // New creates a renderer drawing into the window hwnd, on the GPU or, when
 // there is none, with Windows' software rasterizer (WARP). Its frames are
 // opaque: what they leave transparent shows black.
-func New(hwnd uintptr) (*Renderer, error) { return newRenderer(hwnd, false) }
+func New(hwnd uintptr) (*Renderer, error) { return newRenderer(hwnd, false, false) }
 
 // NewComposed creates a renderer whose frames show on the window hwnd
 // through DirectComposition, premultiplied by their alpha, over what is
 // behind the window's content: in a window without a redirection bitmap
 // (WS_EX_NOREDIRECTIONBITMAP), its system backdrop, as Mica.
-func NewComposed(hwnd uintptr) (*Renderer, error) { return newRenderer(hwnd, true) }
+func NewComposed(hwnd uintptr) (*Renderer, error) { return newRenderer(hwnd, true, false) }
 
-func newRenderer(hwnd uintptr, composed bool) (*Renderer, error) {
+// newRenderer creates a renderer of hwnd, on the device renderers share,
+// or on one of its own when own (ownDevice).
+func newRenderer(hwnd uintptr, composed, own bool) (*Renderer, error) {
 	if hwnd == 0 {
 		return nil, errors.New("d3d11: no window")
 	}
 	r := &Renderer{hwnd: hwnd, composed: composed, uncapped: pacing.Uncapped, images: map[uint64]*texture{}}
-	d, err := acquireDevice()
+	acquire := acquireDevice
+	if own {
+		acquire = ownDevice
+	}
+	d, err := acquire()
 	if err != nil {
 		return nil, err
 	}

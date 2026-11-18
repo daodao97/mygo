@@ -111,9 +111,12 @@ type window struct {
 	// popover shows a flyout with the look of AppKit's popovers
 	// (Flyout.Popover), in its window, win while it shows; popoverClosing
 	// tells that the backend closes it, not the user; popoverHeld that
-	// a window was modal to it as it showed (holdPopover).
+	// a window was modal to it as it showed (holdPopover); popoverShown
+	// whether its surface was last told that some of it shows
+	// (tellPopoverOcclusion).
 	popover, popoverController  id
 	popoverClosing, popoverHeld bool
+	popoverShown                bool
 	// ignoreMouse is SetIgnoreMouseEvents', and inputRegion
 	// SetInputRegion's (input_region.go), nil for none, whose tracking
 	// area is regionTracking; ignoring is whether the window lets the
@@ -2479,6 +2482,12 @@ func registerWindowClasses() {
 			}),
 			method("windowDidChangeOcclusionState:", func(self id, _ objc.SEL, n id) {
 				if w := b().windowFor(self); w != nil && w.surface != nil {
+					if w.popover != 0 {
+						// Its popover's window, from the notification
+						// center (adoptPopoverWindow).
+						w.tellPopoverOcclusion()
+						return
+					}
 					kind := platform.SurfaceShown
 					if !w.surface.visible() {
 						kind = platform.SurfaceHidden

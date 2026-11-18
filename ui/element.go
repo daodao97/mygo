@@ -392,7 +392,12 @@ type node struct {
 	// The layout reads it of every child it walks, next to the flags it
 	// reads there too, so that the walk reads one cache line.
 	hidden bool
-	laid   uint64
+	// insetSet says the element has insets, which move it out of the flow
+	// of its container: the layout reads this of every child it places,
+	// in the line it writes the box in, and not in the line the insets
+	// are in.
+	insetSet bool
+	laid     uint64
 
 	parent *node
 	first  *node
@@ -480,6 +485,9 @@ type node struct {
 	// inside it are unavailable, while they keep the focus, the pointer
 	// and their look (AccessDisabled).
 	accessDisabled bool
+	// stateRead tells that the build read or bound the element's state or
+	// identity before Key ran.
+	stateRead bool
 
 	// Painting.
 	bg          Color
@@ -973,12 +981,14 @@ func (e *node) Children(fn func()) *node {
 // Key identifies the element among its siblings by k instead of by its
 // position, so that its state (focus, scrolling, text being edited, …)
 // follows it when the siblings before it change. Call it right after
-// creating the element. Widgets that handle their input as they are
-// created (Checkbox, Radio, Switch, Slider, Select, Link, List, TextInput
-// and TextArea) cannot take a key, and Key panics: give it to an element
-// around them instead, as Row(c).Key(k).Children(...) does. Siblings need
-// keys of their own: two elements with one key share one state, which
-// MyGo logs, and a Tester panics for.
+// creating the element, before reading its state, or pass it with
+// Context.Key before construction. Widgets that handle their input as they
+// are created (Checkbox, Radio, Switch, Slider, Select, Link, List,
+// TextInput and TextArea) cannot take a key, and Key panics: use
+// Context.Key before construction instead. Calling Key after the
+// element's state was read logs a warning in apps and panics in Tester.
+// Siblings need keys of their own: two elements with one key share one
+// state, which MyGo logs, and a Tester panics for.
 func (e *node) Key(k any) *node {
 	if e.widget != "" {
 		panic("ui: Key on a " + e.widget + ", whose state was initialized: use Context.Key before construction")
@@ -1248,18 +1258,38 @@ func (e *node) markAbsolute() {
 // Top, Right, Bottom and Left place an Absolute element. On an element in
 // its parent's layout, they move it from where the layout put it, as CSS's
 // relative positioning does, without moving its siblings.
-func (e *node) Top(v float32) *node    { e.inset[0] = px(v); return e }
-func (e *node) Right(v float32) *node  { e.inset[1] = px(v); e.unlog(1, logInset); return e }
-func (e *node) Bottom(v float32) *node { e.inset[2] = px(v); return e }
-func (e *node) Left(v float32) *node   { e.inset[3] = px(v); e.unlog(3, logInset); return e }
+func (e *node) Top(v float32) *node { e.inset[0] = px(v); e.insetSet = true; return e }
+func (e *node) Right(v float32) *node {
+	e.inset[1] = px(v)
+	e.insetSet = true
+	e.unlog(1, logInset)
+	return e
+}
+func (e *node) Bottom(v float32) *node { e.inset[2] = px(v); e.insetSet = true; return e }
+func (e *node) Left(v float32) *node {
+	e.inset[3] = px(v)
+	e.insetSet = true
+	e.unlog(3, logInset)
+	return e
+}
 
 // TopPercent, RightPercent, BottomPercent and LeftPercent place the
 // element as Top, Right, Bottom and Left do, by a percentage of the
 // parent's height or width.
-func (e *node) TopPercent(p float32) *node    { e.inset[0] = percent(p); return e }
-func (e *node) RightPercent(p float32) *node  { e.inset[1] = percent(p); e.unlog(1, logInset); return e }
-func (e *node) BottomPercent(p float32) *node { e.inset[2] = percent(p); return e }
-func (e *node) LeftPercent(p float32) *node   { e.inset[3] = percent(p); e.unlog(3, logInset); return e }
+func (e *node) TopPercent(p float32) *node { e.inset[0] = percent(p); e.insetSet = true; return e }
+func (e *node) RightPercent(p float32) *node {
+	e.inset[1] = percent(p)
+	e.insetSet = true
+	e.unlog(1, logInset)
+	return e
+}
+func (e *node) BottomPercent(p float32) *node { e.inset[2] = percent(p); e.insetSet = true; return e }
+func (e *node) LeftPercent(p float32) *node {
+	e.inset[3] = percent(p)
+	e.insetSet = true
+	e.unlog(3, logInset)
+	return e
+}
 
 // Anchor is a point of a box: a corner, the middle of a side, or the
 // center.
@@ -2112,6 +2142,15 @@ func (e *node) disabled() bool {
 // It cannot recognize an old pointer whose arena slot has been reused.
 func (e *node) hasState() bool {
 	return e != nil && e.c != nil && e.c.rt != nil && e.st != nil && !e.c.rt.closed
+}
+
+// markStateRead records that the build read or bound the element's state
+// or identity, so a later Key reports it. Reads during painting or
+// journaling leave stateRead unset.
+func (e *node) markStateRead() {
+	if e != nil && e.c != nil && e.c.rt != nil && !e.c.rt.journal.on && !e.c.rt.painting {
+		e.stateRead = true
+	}
 }
 
 // Focusable lets the element take the keyboard focus, by a click or Tab.

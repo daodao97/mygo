@@ -119,10 +119,13 @@ class WebWindow(context: Context, c: CreateWindowCall) : HostWindow(context, c.i
         web.loadDataWithBaseURL(base.ifEmpty { null }, html, "text/html", "utf-8", null)
     }
 
+    // A body that does not compile reports String(e), "SyntaxError: …" with
+    // the error's name, which Eval looks for to run a script of statements as
+    // a function body; e.message alone leaves the name out.
     fun callAsync(req: Long, body: String) {
         val js = "(function(){var r=$req;try{var F=Object.getPrototypeOf(async function(){}).constructor;" +
             "new F(${JSONObject.quote(body)})().then(function(v){mygoAndroid.asyncResult(r,String(v),'')}," +
-            "function(e){mygoAndroid.asyncResult(r,'',String(e&&e.message||e))})}catch(e){mygoAndroid.asyncResult(r,'',String(e&&e.message||e))}})()"
+            "function(e){mygoAndroid.asyncResult(r,'',String(e&&e.message||e))})}catch(e){mygoAndroid.asyncResult(r,'',String(e))}})()"
         web.evaluateJavascript(js, null)
     }
 

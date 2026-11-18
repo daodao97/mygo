@@ -545,12 +545,12 @@ func TestContentDirection(t *testing.T) {
 func TestBackendTexts(t *testing.T) {
 	localeTest(t, []string{"en", "zh-Hans"}, "en")
 	onMain(func() {})
-	if got := platform.CurrentTexts(); got.OK != "OK" || got.Cancel != "Cancel" || got.About != "About \x00" {
+	if got := platform.CurrentTexts(); got.OK != "OK" || got.Cancel != "Cancel" || got.About != "About \x00" || got.NotAFolder != platform.DefaultTexts.NotAFolder {
 		t.Fatalf("in English: %+v", got)
 	}
 	App.SetLocale("zh-Hans")
 	onMain(func() {})
-	if got := platform.CurrentTexts(); got.OK != "好" || got.Cancel != "取消" || got.Open != "打开" || got.SelectFolder != "选择文件夹" || got.About != "关于\x00" {
+	if got := platform.CurrentTexts(); got.OK != "好" || got.Cancel != "取消" || got.Open != "打开" || got.SelectFolder != "选择文件夹" || got.About != "关于\x00" || got.NotAFolder != "无法选择此位置。请改为选择文件夹。" {
 		t.Errorf("in Chinese: %+v", got)
 	}
 	var buttons []string

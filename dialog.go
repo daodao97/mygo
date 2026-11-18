@@ -45,7 +45,9 @@ type OpenDialogOptions struct {
 	// Message is shown above the file list (macOS).
 	Message string
 	Filters []FileFilter
-	// Directory selects directories instead of files.
+	// Directory selects directories instead of files. On Windows,
+	// choosing a library, such as Documents, selects the folder it saves
+	// to.
 	Directory bool
 	// Multiple allows selecting several entries.
 	Multiple        bool

@@ -91,6 +91,47 @@ builds them again as it seeks. Load what the view shows, pictures,
 fonts, data, before rendering, and read the time from the frame, not
 from `time.Now`.
 
+## Cores
+
+A render draws several frames at once, each on a worker of its own:
+`Options.Workers` of them, by default half the cores, up to 4, except a
+video without motion blur, which draws one frame at a time. Worker
+*k* of *n* draws frames *k*, *k*+*n*, *k*+2*n*…, and the frames go to
+the encoder in order, into one file. Each worker builds every frame before
+its last with a `ui.Recorder` of its own, drawing only its own, so what
+`ui` animates is where a render on one thread has it, and the frames are
+the same whatever the number of workers. Building a frame costs a
+fraction of drawing it, reading it back and encoding it, which the
+workers do at once: twice as many frames a second with motion blur, or
+handed to `Frames`, on an Apple M5. A video without motion blur goes as
+fast as the system's encoder takes frames with one worker, which holds a
+quarter of the memory four do, and on macOS Metal draws into the
+encoder's buffers itself.
+
+The view then runs on several goroutines at once. What it reads, a
+`Sound`, a picture, data loaded before rendering, it must not change;
+`Workers: 1` builds and draws every frame on one thread, for a view that
+keeps state of its own across frames. With more than one worker, Metal
+no longer draws into the encoder's buffers itself: the frames are read
+back, as Direct3D's and OpenGL's are.
+
+## Frames that hold still
+
+A frame that shows what the frame before showed is neither drawn nor
+encoded: the frame before lasts longer, one sample of the video, as a
+slide held while a narrator speaks, a title waiting for the next scene.
+Each frame is still built, for what `ui` animates, and compared with the
+one before as the renderers compare frames to redraw only what changed.
+A video of slides that animate in and hold for a few seconds is made six
+times as fast; one where something always moves, as fast as before. A
+video ending held ends with its last frame again, so that players find its
+length; GStreamer encodes the frames held at its end, which its muxer
+needs.
+
+`Options{ConstantRate: true}` encodes every frame, for a video editor
+that takes constant frame rates alone. `Frames` and `Images` hand over
+every frame either way, those that hold still without drawing them again.
+
 ## Motion blur
 
 `MotionBlur` blurs what moves, as a camera's shutter does, as Remotion's
@@ -147,6 +188,7 @@ video whose frames play no sound has no sound track.
 
 `Options` choose the frames, `From` up to before `To`; the `Renderer`:
 `Auto`, the GPU, or the CPU where no GPU renderer starts, `GPU`, or `CPU`;
+how many `Workers` draw frames at once ([Cores](#cores));
 the `Codec`, `Bitrate` and `AudioBitrate`; and `Progress`, called after
 each frame with how far the render is and what draws it, as
 `Metal (Apple M2)`. Canceling `ctx` stops the render.

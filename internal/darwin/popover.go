@@ -138,6 +138,12 @@ func (w *window) highlightTray(on bool) {
 }
 
 // adoptPopoverWindow makes the window the popover shows in the flyout's.
+// The flyout's delegate is the popover's, not that window's, so it hears
+// the window's occlusion changes (windowDidChangeOcclusionState:) from the
+// notification center instead, until it forgets the window: package ui
+// holds the frames asked for while the flyout is hidden (holdFrame), and
+// draws them once the surface tells it shows (SurfaceShown), as for
+// MyGo's own windows (#2053).
 func (w *window) adoptPopoverWindow() {
 	win := send(w.view, "window")
 	if win == 0 || win == w.win {
@@ -148,15 +154,54 @@ func (w *window) adoptPopoverWindow() {
 	w.b.byNSWindow[win] = w
 	if w.surface != nil {
 		send(win, "makeFirstResponder:", uintptr(w.surface.view))
+		send(send(class("NSNotificationCenter"), "defaultCenter"), "addObserver:selector:name:object:", uintptr(w.delegate),
+			uintptr(sel("windowDidChangeOcclusionState:")), uintptr(nsString(occlusionNotification)), uintptr(win))
+		w.tellPopoverOcclusion()
 	}
 }
+
+const occlusionNotification = "NSWindowDidChangeOcclusionStateNotification"
 
 func (w *window) forgetPopoverWindow() {
 	if w.win == 0 {
 		return
 	}
+	if w.surface != nil {
+		send(send(class("NSNotificationCenter"), "defaultCenter"), "removeObserver:name:object:", uintptr(w.delegate),
+			uintptr(nsString(occlusionNotification)), uintptr(w.win))
+	}
 	delete(w.b.byNSWindow, w.win)
 	w.win = 0
+	// Without its window the flyout shows nothing (surface.visible).
+	w.tellPopoverOcclusion()
+}
+
+// tellPopoverOcclusion tells a popover flyout's surface whether some of it
+// shows, as its window's occlusion changes, as the popover shows
+// (popoverDidShow:), in case AppKit tells nothing of its window's
+// occlusion, and as the flyout forgets its window: only when that changed
+// since it last told (popoverShown), as each of these may tell the same.
+func (w *window) tellPopoverOcclusion() {
+	if w.surface == nil {
+		return
+	}
+	if kind, ok := occlusionChange(&w.popoverShown, w.surface.visible()); ok {
+		w.surface.send(platform.SurfaceEvent{Kind: kind})
+	}
+}
+
+// occlusionChange returns the event that tells a surface last told shown
+// or hidden (shown) that it is visible or not now, and records it; ok is
+// false when it was told so already.
+func occlusionChange(shown *bool, visible bool) (kind platform.SurfaceEventKind, ok bool) {
+	if *shown == visible {
+		return 0, false
+	}
+	*shown = visible
+	if visible {
+		return platform.SurfaceShown, true
+	}
+	return platform.SurfaceHidden, true
 }
 
 // placePopover moves a popover that shows to the anchor, at the size.
@@ -269,6 +314,13 @@ func popoverDelegateMethods() []objc.MethodDef {
 				return w.h.ShouldClose()
 			}
 			return true
+		}),
+		// The popover's window shows, its opening animation over: what
+		// waited for it draws, unless its occlusion told so already.
+		method("popoverDidShow:", func(self id, _ objc.SEL, n id) {
+			if w := b().windowFor(self); w != nil {
+				w.tellPopoverOcclusion()
+			}
 		}),
 		method("popoverDidClose:", func(self id, _ objc.SEL, n id) {
 			if self == b().spareDelegate {

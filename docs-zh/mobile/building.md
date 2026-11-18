@@ -98,3 +98,5 @@ export default defineConfig({
 ```
 
 之后应用可以在 `context.applicationInfo.nativeLibraryDir + "/lib<name>.so"` 找到这个可执行文件。这些库会压缩发布，解压后会再占一份空间，所以除非应用要执行其中一个，否则不要开启。
+
+这样的可执行文件要按 16 KB 页链接（`-Wl,-z,max-page-size=16384`），和 Android 自己的库一样：在 16 KB 页的设备或模拟器上，按 4 KB 页链接的程序一启动就会崩溃。

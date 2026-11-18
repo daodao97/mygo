@@ -56,7 +56,10 @@ type Composition struct {
 	// that a 1920×1080 video at scale 2 is laid out as a 960×540 window
 	// of a Retina display.
 	Scale float32
-	// View builds the frame f.
+	// View builds the frame f. It runs on several goroutines at once, one
+	// a worker (Options.Workers), each building every frame: it must
+	// build the same frame the same way each time, and read what it
+	// shares, never change it.
 	View func(c *ui.Context, f Frame)
 
 	// Background fills the frames behind the view; zero is the theme's
@@ -165,6 +168,12 @@ type Options struct {
 	From, To int
 	// Renderer chooses what draws the frames.
 	Renderer Renderer
+	// Workers is how many frames are drawn at once, each by a worker of
+	// its own on a thread of its own: 1 draws them one after another, and
+	// zero chooses: one for a video without motion blur, which goes as
+	// fast as its encoder takes frames, else half the cores, up to 4. See
+	// Composition.View for what a view does with more than one.
+	Workers int
 	// Progress is called after each frame written, on the goroutine
 	// rendering.
 	Progress func(Progress)
@@ -186,6 +195,12 @@ type Options struct {
 	// Quality is that of the JPEGs of Images, from 1 to 100, 90 when
 	// zero.
 	Quality int
+	// ConstantRate has Video encode every frame. Otherwise a frame that
+	// shows what the frame before showed is neither drawn nor encoded: the
+	// one before lasts longer, as one sample of the video, so a video that
+	// holds still is made and played at little cost. Some video editors
+	// take constant frame rates alone.
+	ConstantRate bool
 }
 
 // Progress tells how a render goes.
@@ -253,6 +268,25 @@ type sink interface {
 	abort()
 }
 
+// A holder is a sink of a video, which shows a frame that shows what the
+// frame before showed by showing that one longer, rather than encoding it
+// again.
+type holder interface {
+	sink
+	// hold takes frame i, which shows what frame i-1 showed.
+	hold(i int) error
+}
+
+// holder returns out as a holder, unless it is none or o asks for every
+// frame (ConstantRate).
+func (o Options) holder(out sink) holder {
+	h, ok := out.(holder)
+	if !ok || o.ConstantRate {
+		return nil
+	}
+	return h
+}
+
 // A sceneSink draws frames itself into the buffers its encoder takes, on
 // the GPU of the drawer it was opened with: without copying them through
 // memory. A sink is one only when it can.
@@ -306,10 +340,26 @@ type session struct {
 	mix   *mixer
 	// acc sums the samples of motion blur.
 	acc accumulator
+
+	// track has the session follow what changes from scene to scene
+	// (follow), for the frames that show what the frame before showed
+	// (held), and the scenes its drawer holds already (current).
+	track bool
+	diff  scene.Differ
+	// cur is the frame built last; firstStill tells that its first scene
+	// showed what the scene before it showed, and moved that a later one
+	// (a sample of its motion blur) did not; wasMoved is moved of the
+	// frame before.
+	cur                         int
+	firstStill, moved, wasMoved bool
+	// current tells that the drawer holds the scene built last: it drew
+	// it, or a scene showing the same.
+	current bool
 }
 
 func newSession(comp Composition) *session {
-	s := &session{comp: comp}
+	s := &session{comp: comp, cur: -1}
+	s.diff.Wide = true
 	s.num, s.den = comp.rate()
 	s.mix = newMixer(s.num, s.den)
 	view := comp.View
@@ -350,24 +400,104 @@ func (s *session) buildAt(i int, sub float64) *scene.Scene {
 	if sub != 0 {
 		at = time.Duration(math.Round((float64(i) + sub) * float64(s.den) * float64(time.Second) / float64(s.num)))
 	}
-	return s.rec.Frame(at)
+	sc := s.rec.Frame(at)
+	if s.track {
+		s.follow(i, sc)
+	}
+	return sc
+}
+
+// follow notes whether sc, built for frame i, shows what the scene built
+// before it showed: the Differ that renderers redraw only what changed
+// with finds no change within the frame.
+func (s *session) follow(i int, sc *scene.Scene) {
+	still := false
+	if damage, known := s.diff.Diff(sc); known {
+		still = true
+		frame := image.Rect(0, 0, sc.Width, sc.Height)
+		for _, r := range damage {
+			if r.Overlaps(frame) {
+				still = false
+				break
+			}
+		}
+	}
+	s.diff.Remember(sc)
+	if i != s.cur {
+		s.cur, s.firstStill, s.wasMoved, s.moved = i, still, s.moved, false
+	} else if !still {
+		s.moved = true
+	}
+	s.current = s.current && still
+}
+
+// held reports whether frame i, built last, shows what frame i-1 showed:
+// each of its scenes (its motion blur's samples) shows what the scene
+// before showed, and frame i-1's did after its first.
+func (s *session) held(i int) bool {
+	return s.track && s.cur == i && s.firstStill && !s.moved && !s.wasMoved
+}
+
+// drawn has d draw sc, the scene built last, unless it holds a scene
+// showing the same already.
+func (s *session) drawn(d drawer, sc *scene.Scene) error {
+	if s.current {
+		return nil
+	}
+	if err := d.submit(sc); err != nil {
+		return err
+	}
+	s.current = s.track
+	return nil
 }
 
 // blurred draws frame i as the mean of its motion blur's samples, the
-// earliest first, and returns its pixels, valid until the next call.
+// earliest first, and returns its pixels, valid until the next call. A
+// sample showing what the drawer holds already is not drawn again, and
+// a frame held (held) is the pixels of its samples, which all show the
+// same.
 func (s *session) blurred(i int, d drawer) ([]byte, error) {
 	n, shutter := s.comp.MotionBlur.shutter()
+	var pix []byte
 	for k := n - 1; k >= 0; k-- {
-		if err := d.submit(s.buildAt(i, -shutter*float64(k)/float64(n))); err != nil {
+		if err := s.drawn(d, s.buildAt(i, -shutter*float64(k)/float64(n))); err != nil {
 			return nil, err
 		}
-		pix, err := d.pixels()
-		if err != nil {
+		var err error
+		if pix, err = d.pixels(); err != nil {
 			return nil, err
 		}
 		s.acc.add(pix, k == n-1)
 	}
+	if s.held(i) {
+		return pix, nil
+	}
 	return s.acc.mean(n), nil
+}
+
+// kept is a drawer whose pixels are read once for each frame drawn: read
+// again, as for a frame that shows what the one before showed, they are
+// those read.
+type kept struct {
+	drawer
+	pix  []byte
+	read bool
+}
+
+func (k *kept) submit(s *scene.Scene) error {
+	k.read = false
+	return k.drawer.submit(s)
+}
+
+func (k *kept) pixels() ([]byte, error) {
+	if k.read {
+		return k.pix, nil
+	}
+	pix, err := k.drawer.pixels()
+	if err == nil {
+		k.pix, k.read = pix, true
+	}
+	return pix, err
 }
 
 // run renders the frames o chooses of comp into the sink open returns.
@@ -379,19 +509,24 @@ func run(ctx context.Context, comp Composition, o Options, open func(*session, d
 	if err != nil {
 		return err
 	}
+	if n := o.workers(comp, to-from); n > 1 {
+		return runWorkers(ctx, comp, o, from, to, n, open)
+	}
 	// One thread draws: OpenGL's context is current on it.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	s := newSession(comp)
+	s.track = true
 	defer s.rec.Close()
-	d, err := newDrawer(o.Renderer, comp.Width, comp.Height)
+	raw, err := newDrawer(o.Renderer, comp.Width, comp.Height)
 	if err != nil {
 		return err
 	}
-	defer d.release()
+	defer raw.release()
+	d := &kept{drawer: raw}
 	s.mix.start = from
-	out, err := open(s, d)
+	out, err := open(s, raw)
 	if err != nil {
 		return err
 	}
@@ -400,6 +535,7 @@ func run(ctx context.Context, comp Composition, o Options, open func(*session, d
 			out.abort()
 		}
 	}()
+	hold := o.holder(out)
 	scenes, _ := out.(sceneSink)
 	samples, _ := comp.MotionBlur.shutter()
 	if samples > 1 {
@@ -419,6 +555,8 @@ func run(ctx context.Context, comp Composition, o Options, open func(*session, d
 		}
 		s.build(i)
 	}
+	// prev is the frame drawn last, whose pixels are not written yet, or
+	// -1.
 	prev := -1
 	for i := from; i < to; i++ {
 		if err := ctx.Err(); err != nil {
@@ -429,14 +567,31 @@ func run(ctx context.Context, comp Composition, o Options, open func(*session, d
 			if err != nil {
 				return err
 			}
-			if err := out.frame(i, pix); err != nil {
+			if hold != nil && i > from && s.held(i) {
+				err = hold.hold(i)
+			} else {
+				err = out.frame(i, pix)
+			}
+			if err != nil {
 				return err
 			}
 			report(i)
 			continue
 		}
 		sc := s.build(i)
+		held := hold != nil && i > from && s.held(i)
 		if scenes != nil {
+			if held {
+				if err := hold.hold(i); err != nil {
+					return err
+				}
+				if prev >= 0 {
+					report(prev)
+					prev = -1
+				}
+				report(i)
+				continue
+			}
 			if err := scenes.scene(i, sc); err != nil {
 				return err
 			}
@@ -453,8 +608,18 @@ func run(ctx context.Context, comp Composition, o Options, open func(*session, d
 				return err
 			}
 			report(prev)
+			prev = -1
 		}
-		if err := d.submit(sc); err != nil {
+		if held {
+			if err := hold.hold(i); err != nil {
+				return err
+			}
+			report(i)
+			continue
+		}
+		// A frame showing what the one before showed is not drawn again:
+		// its pixels are those read.
+		if err := s.drawn(d, sc); err != nil {
 			return err
 		}
 		prev = i
@@ -465,13 +630,15 @@ func run(ctx context.Context, comp Composition, o Options, open func(*session, d
 		return out.close()
 	case scenes != nil:
 		err = scenes.flush()
-	default:
+	case prev >= 0:
 		err = writePixels(d, out, prev)
 	}
 	if err != nil {
 		return err
 	}
-	report(prev)
+	if prev >= 0 {
+		report(prev)
+	}
 	return out.close()
 }
 

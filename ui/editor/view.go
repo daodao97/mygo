@@ -53,6 +53,8 @@ type view struct {
 	// inlays are texts shown in lines that are not part of them, sorted
 	// by offset.
 	inlays []inlay
+	// inlayScratch keeps the inlays before they are set (keepInlays).
+	inlayScratch []inlay
 	// repls are the ranges of the text shown as something else, sorted
 	// and apart (State.SetReplacements), and replScratch the slice the
 	// next are kept in. replHidden are the lines they hide, while
@@ -66,11 +68,13 @@ type view struct {
 	replHiddenOK            bool
 	contents                int
 
-	lines   lineCache
-	shaped  shapeCache
-	widths  charWidths
-	maxLine float32 // the widest line laid out, for scrolling sideways
-	wrapAt  int     // the next line to measure the wraps of
+	lines  lineCache
+	shaped shapeCache
+	widths charWidths
+	// measured are the widths of the widest lines laid out, which the
+	// content scrolls sideways through.
+	measured lineWidths
+	wrapAt   int // the next line to measure the wraps of
 	// wrapHidden are the lines hidden as wraps were measured last, which
 	// were left: lines shown since are measured anew.
 	wrapHidden []lineSpan
@@ -415,7 +419,6 @@ func (v *view) setStyle(f ui.Font, lineHeight, scale float32, tabSize int) {
 	if v.style == style && v.lineHeight == lh && v.tabSize == tabSize && v.scale == scale && v.textGen == gen {
 		return
 	}
-	fontChanged := v.style != style || v.scale != scale || v.textGen != gen
 	if v.textGen != gen {
 		v.textGen = gen
 		v.widths.other = nil
@@ -429,9 +432,9 @@ func (v *view) setStyle(f ui.Font, lineHeight, scale float32, tabSize int) {
 	v.ascent, v.descent = a, d
 	v.widths.reset(style, sys)
 	v.charWidth = v.widths.of('0')
-	if fontChanged {
-		v.maxLine = 0
-	}
+	// Another font, tab size or line height, which replacements' elements
+	// are as wide as, makes lines of other widths.
+	v.measured.reset()
 	v.lines.m = nil
 	v.stylesDirty = true
 	if v.wrap {
@@ -458,6 +461,7 @@ func (v *view) setTheme(ct *Theme) {
 	if faces != v.faces {
 		v.faces, v.styled = faces, styled
 		v.lines.m = nil
+		v.measured.reset()
 	}
 }
 
@@ -473,6 +477,7 @@ func (v *view) setWrap(on bool, width float32) {
 	v.heights.dirty = true
 	v.wrapAt = 0
 	v.lines.m = nil
+	v.measured.reset()
 }
 
 // setBuffer shows another buffer.
@@ -484,7 +489,7 @@ func (v *view) setBuffer(b *Buffer) {
 	v.text, v.version = b.snapshot()
 	v.hl = nil
 	v.lines.m = nil
-	v.maxLine = 0
+	v.measured.reset()
 	v.heights.setLines(v.text.LineCount())
 	v.heights.wraps.reset(v.text.LineCount(), v.wrap)
 	v.wrapAt = 0
@@ -516,6 +521,10 @@ func (v *view) sync(moved func(cs []change)) bool {
 		v.heights.setLines(text.LineCount())
 		v.heights.wraps.reset(text.LineCount(), v.wrap)
 		v.wrapAt = 0
+		for _, c := range cs {
+			v.measured.splice(c.newLine, c.oldEndLine-c.oldLine+1, c.newEndLine-c.newLine+1)
+		}
+		v.measured.trim(text.LineCount())
 		for i := range v.inlays {
 			v.inlays[i].at = mapOffset(v.inlays[i].at, cs, biasRight)
 		}
@@ -531,6 +540,7 @@ func (v *view) sync(moved func(cs []change)) bool {
 		for _, c := range cs {
 			// Lines from the change's first are measured anew.
 			v.heights.wraps.splice(c.newLine, c.oldEndLine-c.oldLine+1, c.newEndLine-c.newLine+1)
+			v.measured.splice(c.newLine, c.oldEndLine-c.oldLine+1, c.newEndLine-c.newLine+1)
 			v.wrapAt = min(v.wrapAt, c.newLine)
 		}
 		for i := range v.inlays {
@@ -543,6 +553,7 @@ func (v *view) sync(moved func(cs []change)) bool {
 		}
 	}
 	v.settleLineStyles()
+	v.measured.trim(text.LineCount())
 	v.heights.setLines(text.LineCount())
 	v.heights.dirty = true
 	return true
@@ -571,6 +582,10 @@ func (v *view) followHighlighter() Highlighter {
 		v.hl = hl
 		v.lines.m = nil
 		v.hlGen++
+		if v.styled {
+			// Its tokens may show in other faces, of other widths.
+			v.measured.reset()
+		}
 	}
 	return hl
 }
@@ -586,7 +601,7 @@ func (v *view) line(n int) *lineLayout {
 			v.approx, child.approx = true, false
 		}
 		v.heights.wraps.set(n, len(l.rows))
-		v.maxLine = max(v.maxLine, l.width)
+		v.measured.set(n, l.width)
 		return l
 	}
 	if v.lines.m == nil {
@@ -602,6 +617,7 @@ func (v *view) line(n int) *lineLayout {
 				v.faceScratch = v.facesOf(l, v.faceScratch[:0])
 				if !slices.Equal(v.faceScratch, l.faces) {
 					delete(v.lines.m, n)
+					v.measured.forget(n, n)
 					return v.line(n)
 				}
 			}
@@ -626,10 +642,83 @@ func (v *view) line(n int) *lineLayout {
 	}
 	v.layoutRows(l)
 	v.lines.m[n] = l
-	if l.width > v.maxLine {
-		v.maxLine = l.width
-	}
+	v.measured.set(n, l.width)
 	return l
+}
+
+// lineWidths keeps the widths of the widest lines laid out, by line, which
+// the content scrolls sideways through: an edit forgets those of the lines
+// it changes and moves the others, so that a line out of view keeps its
+// width while its text and what shows in it are the same, and laying out
+// the lines in view after an edit tells how wide the content is. It keeps
+// only the widest few, so that following an edit costs as much in a long
+// text as in a short one: a narrower line is known again as it is laid
+// out (#2043).
+type lineWidths struct {
+	e []lineWidth // at most maxLineWidths, in no order
+}
+
+type lineWidth struct {
+	line  int
+	width float32
+}
+
+// maxLineWidths is how many lines lineWidths keeps the widths of.
+const maxLineWidths = 64
+
+// set notes that line is w wide. A line laid out again is as wide as it
+// was until forgotten, as a piece of it shaped as it showed may have made
+// it wider.
+func (lw *lineWidths) set(line int, w float32) {
+	least := -1
+	for i := range lw.e {
+		if e := &lw.e[i]; e.line == line {
+			e.width = max(e.width, w)
+			return
+		}
+		if least < 0 || lw.e[i].width < lw.e[least].width {
+			least = i
+		}
+	}
+	switch {
+	case w <= 0:
+	case len(lw.e) < maxLineWidths:
+		lw.e = append(lw.e, lineWidth{line, w})
+	case w > lw.e[least].width:
+		lw.e[least] = lineWidth{line, w}
+	}
+}
+
+// forget forgets the widths of the lines from to to, inclusive, as what
+// shows in them changed.
+func (lw *lineWidths) forget(from, to int) {
+	lw.e = slices.DeleteFunc(lw.e, func(e lineWidth) bool { return e.line >= from && e.line <= to })
+}
+
+// splice follows a change of lines, as wrapRows.splice: the lines from at
+// to at+removed replaced by added ones, not measured.
+func (lw *lineWidths) splice(at, removed, added int) {
+	lw.forget(at, at+removed-1)
+	for i := range lw.e {
+		if lw.e[i].line >= at+removed {
+			lw.e[i].line += added - removed
+		}
+	}
+}
+
+// trim forgets the lines from n on, past the end of a text of n lines.
+func (lw *lineWidths) trim(n int) { lw.forget(n, math.MaxInt) }
+
+// reset forgets the widths of all lines, as they all change.
+func (lw *lineWidths) reset() { lw.e = lw.e[:0] }
+
+// widest returns the width of the widest line known.
+func (lw *lineWidths) widest() float32 {
+	w := float32(0)
+	for _, e := range lw.e {
+		w = max(w, e.width)
+	}
+	return w
 }
 
 // endFrame forgets the lines and layouts no recent frame used.
@@ -1112,6 +1201,14 @@ func (v *view) piece(l *lineLayout, p *rowPiece) *text.Layout {
 	}
 	if p.l == nil {
 		p.l = v.shaped.getSpans(l.disp[p.from:p.to], v.spansOf(l, p.from, p.to), v.style)
+		// The text engine may set a piece's characters farther apart than
+		// their advances, which placed the pieces, add up to, as Core Text
+		// does between Han and Latin letters: an unwrapped line is as wide
+		// as its last piece ends, where a caret at its end shows.
+		if w := p.x + p.l.Width; !v.wrap && p.to == len(l.disp) && w > l.width {
+			l.width = w
+			v.measured.set(l.n, w)
+		}
 	}
 	return p.l
 }

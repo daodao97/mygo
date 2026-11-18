@@ -117,6 +117,22 @@ func TestOrderedIn(handle uintptr) bool {
 	return sendBool(id(handle), "isVisible")
 }
 
+// TestMetalDrawableSize returns the size of the drawables of the
+// CAMetalLayer the GPU renderer draws a window's surface into, a pixel
+// while it gave them back, and whether it has one.
+func TestMetalDrawableSize(handle uintptr) (width, height float64, ok bool) {
+	w := theBackend.byNSWindow[id(handle)]
+	if w == nil || w.surface == nil {
+		return 0, 0, false
+	}
+	l := w.surface.metalLayer()
+	if l == 0 {
+		return 0, 0, false
+	}
+	s := msgSize(l, sel("drawableSize"))
+	return s.Width, s.Height, true
+}
+
 // TestPerformClose closes a window as its close button does, which asks
 // the delegate first (performClose:).
 func TestPerformClose(handle uintptr) {

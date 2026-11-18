@@ -191,9 +191,17 @@ type mfSink struct {
 	spec         videoSpec
 	writer       uintptr
 	video, audio uint32
-	n, samples   int64
+	// n is the number of the next frame from the first, counting those
+	// held (hold); samples the sound's frames written.
+	n, samples int64
+	// pending is the sample of the last frame, written once the next that
+	// shows something else comes, or the end, with the sound up to then;
+	// buf is its buffer, and at its number. A sample lasts a frame: the
+	// writer stamps one lasting longer at its end, less a frame, and holds
+	// the frame before it to the next one's time itself.
+	pending, buf uintptr
+	at           int64
 	hasSound     bool
-	finalized    bool
 }
 
 func newVideoSink(spec videoSpec, _ drawer) (sink, error) {
@@ -327,29 +335,56 @@ func (s *mfSink) open() error {
 // write gives stream a sample of size bytes, which fill writes, at time t
 // for duration d, in 100 ns.
 func (s *mfSink) write(stream uint32, size int, fill func([]byte), t, d int64) error {
-	var buf, sample uintptr
-	if hr, _, _ := procMFCreateMemoryBuffer.Call(uintptr(size), uintptr(unsafe.Pointer(&buf))); failed(hr) {
-		return fmt.Errorf("render: Media Foundation: no buffer: %#x", uint32(hr))
+	buf, err := newBuffer(size, fill)
+	if err != nil {
+		return err
 	}
 	defer free(&buf)
-	var p uintptr
-	if hr := call(buf, bufferLock, uintptr(unsafe.Pointer(&p)), 0, 0); failed(hr) {
-		return fmt.Errorf("render: Media Foundation: cannot lock a buffer: %#x", uint32(hr))
-	}
-	fill(unsafe.Slice((*byte)(cptr(p)), size))
-	call(buf, bufferUnlock)
-	call(buf, bufferSetCurrentLength, uintptr(size))
-	if hr, _, _ := procMFCreateSample.Call(uintptr(unsafe.Pointer(&sample))); failed(hr) {
-		return fmt.Errorf("render: Media Foundation: no sample: %#x", uint32(hr))
+	sample, err := newSample(buf, t, d)
+	if err != nil {
+		return err
 	}
 	defer free(&sample)
-	call(sample, sampleAddBuffer, buf)
-	call(sample, sampleSetTime, uintptr(t))
-	call(sample, sampleSetDuration, uintptr(d))
+	return s.writeSample(stream, sample)
+}
+
+// writeSample writes sample into stream.
+func (s *mfSink) writeSample(stream uint32, sample uintptr) error {
 	if hr := call(s.writer, writerWriteSample, uintptr(stream), sample); failed(hr) {
 		return fmt.Errorf("render: Media Foundation cannot write a sample: %#x", uint32(hr))
 	}
 	return nil
+}
+
+// newBuffer returns a buffer of size bytes, which fill fills; the caller
+// frees it.
+func newBuffer(size int, fill func([]byte)) (uintptr, error) {
+	var buf uintptr
+	if hr, _, _ := procMFCreateMemoryBuffer.Call(uintptr(size), uintptr(unsafe.Pointer(&buf))); failed(hr) {
+		return 0, fmt.Errorf("render: Media Foundation: no buffer: %#x", uint32(hr))
+	}
+	var p uintptr
+	if hr := call(buf, bufferLock, uintptr(unsafe.Pointer(&p)), 0, 0); failed(hr) {
+		free(&buf)
+		return 0, fmt.Errorf("render: Media Foundation: cannot lock a buffer: %#x", uint32(hr))
+	}
+	fill(unsafe.Slice((*byte)(cptr(p)), size))
+	call(buf, bufferUnlock)
+	call(buf, bufferSetCurrentLength, uintptr(size))
+	return buf, nil
+}
+
+// newSample returns a sample of buf at t for d, in 100 ns; the caller
+// frees it.
+func newSample(buf uintptr, t, d int64) (uintptr, error) {
+	var sample uintptr
+	if hr, _, _ := procMFCreateSample.Call(uintptr(unsafe.Pointer(&sample))); failed(hr) {
+		return 0, fmt.Errorf("render: Media Foundation: no sample: %#x", uint32(hr))
+	}
+	call(sample, sampleAddBuffer, buf)
+	call(sample, sampleSetTime, uintptr(t))
+	call(sample, sampleSetDuration, uintptr(d))
+	return sample, nil
 }
 
 // soundTo writes the sound track up to frame `to` of it, in 0.1 s
@@ -374,21 +409,70 @@ func (s *mfSink) soundTo(to int64) error {
 	return nil
 }
 
+// time returns the time of frame n from the first, in 100 ns.
+func (s *mfSink) time(n int64) int64 { return n * s.spec.den * 10_000_000 / s.spec.num }
+
 func (s *mfSink) frame(_ int, pix []byte) error {
 	sp := s.spec
-	t := s.n * sp.den * 10_000_000 / sp.num
-	next := (s.n + 1) * sp.den * 10_000_000 / sp.num
+	buf, err := newBuffer(sp.w*sp.h*3/2, func(b []byte) { bgraToNV12(b, pix, sp.w, sp.h) })
+	if err != nil {
+		return err
+	}
+	sample, err := newSample(buf, s.time(s.n), s.time(s.n+1)-s.time(s.n))
+	if err == nil {
+		err = s.flush(s.n)
+	}
+	if err != nil {
+		free(&sample)
+		free(&buf)
+		return err
+	}
+	s.pending, s.buf, s.at = sample, buf, s.n
 	s.n++
+	return nil
+}
+
+// hold shows the frame before for the time of one more.
+func (s *mfSink) hold(int) error {
+	s.n++
+	return nil
+}
+
+// flush writes the pending frame, shown until frame to, with the sound up
+// to half a second ahead of that.
+func (s *mfSink) flush(to int64) error {
+	if s.pending == 0 {
+		return nil
+	}
+	defer free(&s.pending)
+	defer free(&s.buf)
 	if s.hasSound {
-		// The sound up to half a second ahead of the frame.
-		if err := s.soundTo(next*sampleRate/10_000_000 + sampleRate/2); err != nil {
+		if err := s.soundTo(s.time(to)*sampleRate/10_000_000 + sampleRate/2); err != nil {
 			return err
 		}
 	}
-	return s.write(s.video, sp.w*sp.h*3/2, func(b []byte) { bgraToNV12(b, pix, sp.w, sp.h) }, t, next-t)
+	return s.writeSample(s.video, s.pending)
 }
 
 func (s *mfSink) close() error {
+	if s.pending != 0 && s.at < s.n-1 {
+		// A video ending with frames held ends with the last frame again,
+		// at the time of the last: players read a video's length off its
+		// frames.
+		last, err := newSample(s.buf, s.time(s.n-1), s.time(s.n)-s.time(s.n-1))
+		if err != nil {
+			return err
+		}
+		// The frame before lasts to it; the sample holds the buffer.
+		if err := s.flush(s.n - 1); err != nil {
+			free(&last)
+			return err
+		}
+		s.pending, s.at = last, s.n-1
+	}
+	if err := s.flush(s.n); err != nil {
+		return err
+	}
 	if s.hasSound {
 		if err := s.soundTo(int64(len(s.spec.sound) / 2)); err != nil {
 			return err
@@ -402,4 +486,8 @@ func (s *mfSink) close() error {
 	return nil
 }
 
-func (s *mfSink) abort() { free(&s.writer) }
+func (s *mfSink) abort() {
+	free(&s.pending)
+	free(&s.buf)
+	free(&s.writer)
+}

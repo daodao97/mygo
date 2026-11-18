@@ -1181,3 +1181,39 @@ func TestHeightsZeroValue(t *testing.T) {
 		t.Fatalf("lineAt of the zero heights = %d, want 0", got)
 	}
 }
+
+// A caret alone cuts its line even when it is the last, which has no newline
+// of its own: the line goes, and the caret lands at the end of the one above.
+func TestCodeEditorCutLastLine(t *testing.T) {
+	ct := newEditorTest(t, "", "one\ntw|o")
+	ct.key(ui.Cmd, ui.KeyX)
+	ct.want("one|")
+	if got := ct.tt.Clipboard(); got != "two\n" {
+		t.Errorf("cut %q", got)
+	}
+	// An empty last line goes too, rather than cutting nothing.
+	ct = newEditorTest(t, "", "one\n|")
+	ct.key(ui.Cmd, ui.KeyX)
+	ct.want("one|")
+	// The only line is emptied, with nothing above to take.
+	ct = newEditorTest(t, "", "o|ne")
+	ct.key(ui.Cmd, ui.KeyX)
+	ct.want("|")
+	// A line in the middle still takes its own newline.
+	ct = newEditorTest(t, "", "one\nt|wo\nthree")
+	ct.key(ui.Cmd, ui.KeyX)
+	ct.want("one\n|three")
+}
+
+// Comment toggling on blank lines has nothing to uncomment, so it comments.
+func TestCodeEditorToggleCommentBlankLine(t *testing.T) {
+	ct := newEditorTest(t, "sql", "select 1;\n|")
+	ct.key(ui.Cmd, ui.KeySlash)
+	if got := ct.st.Buffer.String(); got != "select 1;\n-- " {
+		t.Fatalf("a blank line gave %q", got)
+	}
+	ct.key(ui.Cmd, ui.KeySlash)
+	if got := ct.st.Buffer.String(); got != "select 1;\n" {
+		t.Errorf("toggled back to %q", got)
+	}
+}

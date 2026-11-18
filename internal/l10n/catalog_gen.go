@@ -2690,6 +2690,24 @@ func (msgs Messages) SelectFolder() string {
 	return Catalog.Format(msgs.locale, "selectFolder", nil)
 }
 
+// NotAFolder says "This location can’t be chosen. Choose a folder instead."
+// in the language the app shows.
+//
+// What the dialog that chooses a folder says on Windows, staying open, when
+// the user chooses a place that is not a folder of a disk or a network
+// share, as This PC.
+func NotAFolder() string { return In(i18n.Locale()).NotAFolder() }
+
+// NotAFolder says "This location can’t be chosen. Choose a folder instead."
+// in the language of msgs.
+//
+// What the dialog that chooses a folder says on Windows, staying open, when
+// the user chooses a place that is not a folder of a disk or a network
+// share, as This PC.
+func (msgs Messages) NotAFolder() string {
+	return Catalog.Format(msgs.locale, "notAFolder", nil)
+}
+
 // ClearTerminal says "Clear"
 // in the language the app shows.
 //

@@ -10,7 +10,13 @@ import "github.com/egoist/mygo/internal/mobile/wire"
 func textCall(m message, reply interface{ Decode(*wire.Reader) }) bool {
 	b := current.Load()
 	if b == nil || b.t == nil {
-		return false
+		// No backend before App.Run, where an app's main registers its
+		// fonts: the host's glue, which start found, answers already.
+		h, ok := theHost.(hereCaller)
+		if ok {
+			callHost(h, m, reply)
+		}
+		return ok
 	}
 	if !callHere(b, m, reply) {
 		b.t.call(m, reply)
@@ -18,19 +24,25 @@ func textCall(m message, reply interface{ Decode(*wire.Reader) }) bool {
 	return true
 }
 
+// hereCaller is a host's glue that calls the host on the caller's thread.
+type hereCaller interface{ callHere(msg []byte) []byte }
+
 // callHere calls the host on the caller's thread, where the host's glue can.
 func callHere(b *Backend, m message, reply interface{ Decode(*wire.Reader) }) bool {
-	h, ok := b.t.h.(interface{ callHere(msg []byte) []byte })
-	if !ok {
-		return false
+	h, ok := b.t.h.(hereCaller)
+	if ok {
+		callHost(h, m, reply)
 	}
+	return ok
+}
+
+func callHost(h hereCaller, m message, reply interface{ Decode(*wire.Reader) }) {
 	var w wire.Writer
 	m.Encode(&w)
 	out := h.callHere(w.Buf)
 	if reply != nil {
 		reply.Decode(&wire.Reader{Buf: out})
 	}
-	return true
 }
 
 // The sound's output: blocking calls of the host on the audio's own thread,

@@ -611,6 +611,12 @@ func (e *node) InViewAmount(amount float32, margin ...float32) bool {
 func (rt *engine) visibleWithin(s *state, m [4]float32) Rect {
 	w, h, _ := rt.size()
 	v := intersect(transformRect(s.world, Rect{s.x, s.y, s.w, s.h}), outset(Rect{0, 0, w, h}, m))
+	return rt.clipAncestors(s, v, m)
+}
+
+// clipAncestors intersects v with the clips of the ancestors around s up to
+// a lifted layer, growing scroll containers by m.
+func (rt *engine) clipAncestors(s *state, v Rect, m [4]float32) Rect {
 	// The clips around an element flying stop at it, as it paints out of
 	// them (contains).
 	for p := rt.states[s.parent]; p != nil && !s.lifted && v.W > 0 && v.H > 0; p = rt.states[p.parent] {

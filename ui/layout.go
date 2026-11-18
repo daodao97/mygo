@@ -175,9 +175,9 @@ func place(e *node, x, y float32) {
 	}
 }
 
-// insetSet reports whether any of the element's insets is set: they are
+// insetAny reports whether any of the element's insets is set: they are
 // what place it, and their unit tells, as the inspector's does.
-func (e *node) insetSet() bool {
+func (e *node) insetAny() bool {
 	return e.inset[0].u != unitAuto || e.inset[1].u != unitAuto || e.inset[2].u != unitAuto || e.inset[3].u != unitAuto
 }
 
@@ -186,7 +186,7 @@ func (e *node) insetSet() bool {
 // and Right are set, Left wins, or Right in an element laid out right to
 // left, as in CSS.
 func (e *node) relative(cw, ch float32) (dx, dy float32) {
-	if !e.insetSet() {
+	if !e.insetSet {
 		return 0, 0 // nothing placed it: it is where the layout put it
 	}
 	if e.sticky && e.flags&flagAbsolute == 0 {
@@ -268,7 +268,7 @@ func (e *node) resolvedText() textStyle {
 			out.align = t.align
 		}
 		if take&setUnderline != 0 {
-			out.underline, out.wavy, out.solid = t.underline, t.wavy, t.solid
+			out.underline, out.wavy, out.dotted, out.solid = t.underline, t.wavy, t.dotted, t.solid
 		}
 		if take&setSpacing != 0 {
 			out.spacing = t.spacing
@@ -669,18 +669,21 @@ func computeBox(e *node, w, h float32) {
 
 // A flexItem is what the first walk over the children resolved of one,
 // so that the passes after it read the item, which sits next to it in
-// the scratch, and not the element again. It fills 64 bytes, a cache
-// line: larger, the items of deep trees take longer to lay out than
-// the walks over their elements they save.
+// the scratch, and not the element again. It fills exactly 64 bytes, a
+// cache line: a field more and the items of deep trees take longer to
+// lay out than the walks over their elements they save.
 type flexItem struct {
 	e                    *node
 	base, hyp            float32
-	pad                  float32 // padding and border along the main axis
 	minMain, maxMain     float32
 	main, cross          float32
-	violation            float32 // how far clamping moved main, resolving
 	marginMain, marginCr float32
-	grow, shrink         float32 // what the line's flexible lengths grow and shrink it by
+	// mainStart and crossStart are the margins at the start of the main
+	// axis and of the cross one, the automatic ones as zero. The passes
+	// after the first walk read them in the item, and not the element
+	// again, where the first walk read them.
+	mainStart, crossStart float32
+	grow, shrink          float32 // what the line's flexible lengths grow and shrink it by
 	// baseline is how far from the start of its margin box across the
 	// line the baseline of an item aligned by its baseline (byBaseline)
 	// is.
@@ -691,13 +694,17 @@ type flexItem struct {
 	// line's cross size is given to, frozen on those the flexible
 	// lengths have resolved, byBase on those aligned by their
 	// baselines, and laidOut on those of a row, laid out to find theirs.
-	flags uint8
+	flags uint16
 	// auto are the item's automatic margins: the ones at the start and
 	// the end of its main axis, and the ones at the start and the end of
 	// its cross axis. The first walk reads them with the margins it
 	// reads the sizes of, and the passes after it read them here, in the
 	// item, and not the element again.
 	auto uint8
+	// align is the item's own alignment across the line: the one it
+	// gives itself, or the line's. The placement reads it in the item,
+	// and not the element again.
+	align Align
 }
 
 // The automatic margins of a flexItem, in bits.
@@ -711,15 +718,28 @@ const (
 // The flags of a flexItem, in bits so that the item stays within a
 // cache line.
 const (
-	flagCrossKnown uint8 = 1 << iota
+	flagCrossKnown uint16 = 1 << iota
 	flagStretch
 	flagFrozen
 	flagByBase
 	flagLaidOut
+	// flagUp and flagDown are how the clamping of the flexible lengths
+	// moved the item: above its minimum, or below its maximum.
+	flagUp
+	flagDown
+	// flagCrossAbs says the size of the item across the line is
+	// absolute: a length in pixels, which is the same at any height, so
+	// that a commit pass at another height takes it from the item, and
+	// not from the element again.
+	flagCrossAbs
+	// flagCrossBound says the size of the item across the line is
+	// bounded: it has a minimum or a maximum across the line, which the
+	// pass that stretches it clamps it by, reading the element again.
+	flagCrossBound
 )
 
 // has reports whether the item has the flag f.
-func (it *flexItem) has(f uint8) bool { return it.flags&f != 0 }
+func (it *flexItem) has(f uint16) bool { return it.flags&f != 0 }
 
 // autoCross reports whether the item has an automatic margin across the
 // line, which keeps it from stretching and from lining up its baseline.
@@ -896,36 +916,51 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		}
 	}
 	if !taken {
+		// Whether the items break into lines, and the line they are on:
+		// they break as they come, and the lines are read again by the
+		// passes that follow.
+		wrap := e.wrap && finite(mainSize)
+		cur := flexLine{}
 		for c := e.first; c != nil; c = c.next {
 			if c.flags&flagAbsolute != 0 || c.hidden {
 				continue
 			}
 			it := flexItem{e: c}
-			// The automatic margins of the item, read here with the
-			// margins the layout reads the sizes of, so that the passes
-			// after this one read them in the item and not the element
-			// again.
-			if isAuto(c.margin[ms]) {
+			// The margins of the item, and which of them are automatic:
+			// read here with the margins the layout reads the sizes of,
+			// so that the passes after this one read them in the item
+			// and not the element again.
+			mStart, mEnd := c.margin[ms], c.margin[me]
+			cStart, cEnd := c.margin[cs], c.margin[ce]
+			if isAuto(mStart) {
 				it.auto |= autoMainStart
+				mStart = 0
 			}
-			if isAuto(c.margin[me]) {
+			if isAuto(mEnd) {
 				it.auto |= autoMainEnd
+				mEnd = 0
 			}
-			if isAuto(c.margin[cs]) {
+			if isAuto(cStart) {
 				it.auto |= autoCrossStart
+				cStart = 0
 			}
-			if isAuto(c.margin[ce]) {
+			if isAuto(cEnd) {
 				it.auto |= autoCrossEnd
+				cEnd = 0
 			}
-			stretch := stretches(c, align, it.autoCross())
+			it.mainStart, it.crossStart = mStart, cStart
+			it.marginMain, it.marginCr = mStart+mEnd, cStart+cEnd
+			// The alignment across the line, which the placement reads in
+			// the item, and not the element again.
+			it.align = selfAlign(c, align)
+			stretch := stretches(c, it.align, it.autoCross())
 			// resolveFlexible reads the flexible lengths of every item of
 			// the line in every round: it reads the item, which it has in
 			// order, and not the element again.
-			it.grow, it.shrink = c.grow, c.shrink
+			it.grow = c.grow
 			var own float32 // the size along the main axis the element gives itself
 			var owns bool
 			if row {
-				it.marginMain, it.marginCr = c.marginX(), c.marginY()
 				own, owns = c.width.resolve(base(cw))
 				// Across the row it is as high as it says, or as the row where
 				// it stretches to its one line, which measuring it first would
@@ -938,12 +973,17 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 				if ok {
 					it.cross = c.clampH(v, ch)
 					it.flags |= flagCrossKnown
+					if c.height.u == unitPx {
+						it.flags |= flagCrossAbs
+					}
 				} else if it.has(flagStretch) && finite(ch) && !e.wrap {
 					it.cross = c.clampH(ch-it.marginCr, ch)
 					it.flags |= flagCrossKnown
 				}
+				if c.minH.set != 0 || c.maxH.set != 0 {
+					it.flags |= flagCrossBound
+				}
 			} else {
-				it.marginMain, it.marginCr = c.marginY(), c.marginX()
 				own, owns = c.height.resolve(base(ch))
 				// Across the column it is as wide as it says, as the column
 				// where it stretches to it, or as its content. In a column
@@ -959,6 +999,9 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 					it.cross = c.clampW(cw-it.marginCr, cw)
 				} else {
 					it.cross = fitWidth(c, cw-it.marginCr, cw)
+				}
+				if c.minW.set != 0 || c.maxW.set != 0 {
+					it.flags |= flagCrossBound
 				}
 				it.flags |= flagCrossKnown
 			}
@@ -1009,30 +1052,34 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 				pad = c.padX()
 			}
 			// No size along it goes below the padding and border, as in CSS.
-			it.pad, it.base = pad, max(it.base, pad)
+			it.base = max(it.base, pad)
 			it.minMain, it.maxMain = max(it.minMain, pad), max(it.maxMain, pad)
 			it.hyp = max(it.minMain, min(it.base, it.maxMain))
+			// What it shrinks by is what it has of its own, less its
+			// padding and border (CSS flexbox §9.7): the passes that
+			// resolve the flexible lengths read it in the item.
+			it.shrink = c.shrink * max(it.base-pad, 0)
 			baselines = baselines || c.self == Baseline
 			// After the child's measures, which lay out containers in it.
 			scratch.items = append(scratch.items, it)
+			// The line the item is on, broken as the items come: the
+			// items of a line are read again by the passes that follow,
+			// and the walk over them is one fewer.
+			n := len(scratch.items) - firstItem - 1
+			outer := it.hyp + it.marginMain
+			if wrap && n > cur.start && cur.main+gap+outer > mainSize {
+				cur.end = n
+				scratch.lines = append(scratch.lines, cur)
+				cur = flexLine{start: n}
+			}
+			if n > cur.start {
+				cur.main += gap
+			}
+			cur.main += outer
 		}
 		items = scratch.items[firstItem:]
 
-		// Break into lines.
 		if len(items) > 0 {
-			cur := flexLine{}
-			for i := range items {
-				outer := items[i].hyp + items[i].marginMain
-				if e.wrap && finite(mainSize) && i > cur.start && cur.main+gap+outer > mainSize {
-					cur.end = i
-					scratch.lines = append(scratch.lines, cur)
-					cur = flexLine{start: i}
-				}
-				if i > cur.start {
-					cur.main += gap
-				}
-				cur.main += outer
-			}
 			cur.end = len(items)
 			scratch.lines = append(scratch.lines, cur)
 		}
@@ -1042,10 +1089,13 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		for li := range lines {
 			ln := &lines[li]
 			its := items[ln.start:ln.end]
-			for i := range its {
-				its[i].main = its[i].hyp
-			}
 			if !finite(mainSize) {
+				// The line takes the size each item has of its own: the
+				// flexible lengths are not resolved without a size to
+				// resolve them against.
+				for i := range its {
+					its[i].main = its[i].hyp
+				}
 				continue
 			}
 			gaps := gap * float32(len(its)-1)
@@ -1065,8 +1115,14 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		// column is only taken at the height it was measured at.
 		for i := range items {
 			it := &items[i]
+			if it.has(flagCrossAbs) && !it.has(flagCrossBound) {
+				// Its size across the line is absolute and unbounded: it
+				// is the same at this height as at the height it was
+				// measured at, and the element is not read again.
+				continue
+			}
 			c := it.e
-			stretch := stretches(c, align, it.autoCross())
+			stretch := stretches(c, it.align, it.autoCross())
 			v, ok := c.height.resolve(base(ch))
 			it.flags &^= flagStretch
 			if stretch && !ok && c.aspect == 0 {
@@ -1112,7 +1168,7 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		for i := ln.start; i < ln.end && baselines; i++ {
 			it := &items[i]
 			c := it.e
-			if !byBaselineItem(c, align, e, it.autoCross()) {
+			if !byBaselineItem(c, it.align, e, it.autoCross()) {
 				continue
 			}
 			switch {
@@ -1169,12 +1225,23 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 	for li := range lines {
 		ln := &lines[li]
 		for i := ln.start; i < ln.end; i++ {
-			if it := &items[i]; it.has(flagStretch) {
+			it := &items[i]
+			if !it.has(flagStretch) {
+				continue
+			}
+			if it.has(flagCrossBound) {
+				// Its size across the line is bounded: the bounds are of
+				// the element, which is read again for them.
 				if row {
 					it.cross = it.e.clampH(ln.cross-it.marginCr, ch)
 				} else {
 					it.cross = it.e.clampW(ln.cross-it.marginCr, cw)
 				}
+			} else if v := ln.cross - it.marginCr; v > it.cross {
+				// Unbounded, it fills the line: the line is at least as
+				// large as what the item already has, so it grows to it
+				// and never shrinks, as the clamp would not either.
+				it.cross = v
 			}
 		}
 	}
@@ -1208,12 +1275,6 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 	if !finite(contentCross) {
 		contentCross = usedCross
 	}
-	if flipMain {
-		ms, me = me, ms
-	}
-	if flipCross {
-		cs, ce = ce, cs
-	}
 	// The automatic margins of the items, which the first walk read of
 	// them, told by the ends they are at now that the axis may be
 	// flipped.
@@ -1243,7 +1304,13 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 		for i := range its {
 			it := &its[i]
 			c := it.e
-			startM, endM := c.m(ms), c.m(me)
+			// The margins at the start and the end of the main axis, as
+			// the axis may be flipped: the item carries them, and the
+			// element is not read again here.
+			startM, endM := it.mainStart, it.marginMain-it.mainStart
+			if flipMain {
+				startM, endM = endM, startM
+			}
 			if it.auto&autoStart != 0 {
 				startM = auto
 			}
@@ -1265,14 +1332,18 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 			case it.has(flagByBase):
 				crossOff = ln.baseline - it.baseline
 			default:
-				switch selfAlign(c, align) {
+				switch it.align {
 				case Center:
 					crossOff = free / 2
 				case End:
 					crossOff = free
 				}
 			}
-			crossOff += crossPos + c.m(cs)
+			crossStart := it.crossStart
+			if flipCross {
+				crossStart = it.marginCr - crossStart
+			}
+			crossOff += crossPos + crossStart
 			if flipCross {
 				crossOff = contentCross - crossOff - it.cross
 			}
@@ -1298,10 +1369,10 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 }
 
 // stretches reports whether c stretches across the line of a row (or a
-// column), as aligning by align asks, which icons do not, as they keep
-// their size, nor elements with automatic margins across it.
-func stretches(c *node, align Align, autoCross bool) bool {
-	return selfAlign(c, align) == Stretch && c.kind != kindIcon && !autoCross
+// column), as the alignment self gives itself asks, which icons do not,
+// as they keep their size, nor elements with automatic margins across it.
+func stretches(c *node, self Align, autoCross bool) bool {
+	return self == Stretch && c.kind != kindIcon && !autoCross
 }
 
 // byBaseline reports whether c, a child of the row (or grid) e, lines up
@@ -1317,10 +1388,11 @@ func byBaseline(c *node, align Align, e *node) bool {
 }
 
 // byBaselineItem reports whether the element c of the item lines up its
-// baseline with its siblings', as the item's automatic margins across the
-// line say: the same as byBaseline, which reads them of the element.
-func byBaselineItem(c *node, align Align, e *node, autoCross bool) bool {
-	return selfAlign(c, align) == Baseline && !autoCross && !e.wrapReverse
+// baseline with its siblings', as the alignment the item gives itself
+// says: the same as byBaseline, which reads it of the element, and the
+// item's automatic margins across the line say.
+func byBaselineItem(c *node, self Align, e *node, autoCross bool) bool {
+	return self == Baseline && !autoCross && !e.wrapReverse
 }
 
 // boxBaseline returns how far below the top of an element laid out its
@@ -1393,12 +1465,15 @@ func resolveFlexible(its []flexItem, space float32, growing bool) {
 	for i := range its {
 		it := &its[i]
 		it.flags &^= flagFrozen
+		// What every item starts from, which the rounds below give to
+		// the ones they resolve: where the factors sum to zero, no round
+		// runs, and an item that cannot grow or shrink keeps this.
+		it.main = it.hyp
 		factor := it.grow
 		if !growing {
-			factor = it.shrink * it.inner()
+			factor = it.shrink
 		}
 		if factor == 0 || (growing && it.base > it.hyp) || (!growing && it.base < it.hyp) {
-			it.main = it.hyp
 			it.flags |= flagFrozen
 			free -= it.main + it.marginMain
 			continue
@@ -1419,11 +1494,19 @@ func resolveFlexible(its []flexItem, space float32, growing bool) {
 			if growing {
 				it.main = it.base + free*it.grow/sum
 			} else {
-				it.main = it.base + free*it.shrink*it.inner()/sum
+				it.main = it.base + free*it.shrink/sum
 			}
 			clamped := max(it.minMain, min(it.main, it.maxMain))
-			it.violation = clamped - it.main
-			violation += it.violation
+			// How far clamping moved it, and which way: the rounds after
+			// this one freeze the items clamped the way the total moved.
+			it.flags &^= flagUp | flagDown
+			if clamped > it.main {
+				it.flags |= flagUp
+				violation += clamped - it.main
+			} else if clamped < it.main {
+				it.flags |= flagDown
+				violation += clamped - it.main
+			}
 			it.main = clamped
 		}
 		if violation == 0 {
@@ -1434,7 +1517,7 @@ func resolveFlexible(its []flexItem, space float32, growing bool) {
 		// the larger.
 		for i := range its {
 			it := &its[i]
-			if !it.has(flagFrozen) && (violation > 0 && it.violation > 0 || violation < 0 && it.violation < 0) {
+			if !it.has(flagFrozen) && (violation > 0 && it.has(flagUp) || violation < 0 && it.has(flagDown)) {
 				it.flags |= flagFrozen
 			}
 		}
@@ -1448,16 +1531,12 @@ func resolveFlexible(its []flexItem, space float32, growing bool) {
 				if growing {
 					sum += it.grow
 				} else {
-					sum += it.shrink * it.inner()
+					sum += it.shrink
 				}
 			}
 		}
 	}
 }
-
-// inner returns the item's flex base size less its padding and border,
-// which scales how much it shrinks (CSS flexbox §9.7).
-func (it *flexItem) inner() float32 { return max(it.base-it.pad, 0) }
 
 // justifyOffsets returns where the first item goes and the extra space
 // between items.

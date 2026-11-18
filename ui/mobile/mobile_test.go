@@ -233,3 +233,19 @@ func TestSheetReopens(t *testing.T) {
 		t.Errorf("reopened: open %v, its content shows at %v", open, top)
 	}
 }
+
+// The date's wheels name the months in the language the app shows, as
+// UIDatePicker does: 11月 in Japanese, not November.
+func TestDatePickerMonthNames(t *testing.T) {
+	SetLook(Cupertino)
+	defer SetLook(Automatic)
+	v := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	tt := ui.NewTester(func(c *ui.Context) { DatePicker(c, &v) }, 390, 240)
+	for lang, want := range map[string]string{"ja": "11月", "zh-Hans": "十一月", "en": "November"} {
+		tt.SetLocale(lang)
+		tt.Frame()
+		if !tt.HasText(want) {
+			t.Errorf("%s: no %q in %q", lang, want, tt.Texts())
+		}
+	}
+}

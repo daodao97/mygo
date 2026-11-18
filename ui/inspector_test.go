@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 )
 
 // pickLabel labels the inspector's picker.
@@ -426,5 +427,21 @@ func TestInspectorAccessHidden(t *testing.T) {
 	tt.Frame()
 	if v := ignored(); v != "true" {
 		t.Errorf("the button inside one hidden from assistive technology is ignored: %s", v)
+	}
+}
+
+func TestInspectorTooltipShows(t *testing.T) {
+	tt, _ := inspected(func(c *context) {
+		coreColumn(c).Padding(20).Children(func() { coreText(c, "Hello") })
+	})
+	openInspector(tt)
+	rtlRect, ok := tt.Find("RTL")
+	if !ok {
+		t.Fatal("inspector RTL button not found")
+	}
+	tt.Move(rtlRect.X+rtlRect.W/2, rtlRect.Y+rtlRect.H/2)
+	tt.Advance(time.Second)
+	if !tt.HasText("Lay the window out right to left") {
+		t.Fatalf("inspector tooltip did not show; texts %q", tt.Texts())
 	}
 }

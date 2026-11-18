@@ -150,7 +150,7 @@ func (t *iosToolchain) buildApp(ctx context.Context, c, dc *Config, tk *task, op
 	link := []string{"--sdk", t.sdkName, "swiftc", "-target", t.target, "-sdk", t.sdk, hostObject, lib, "-o", filepath.Join(bundle, exe), "-Xlinker", "-dead_strip", "-lresolv"}
 	link = append(link, frameworks...)
 	if t.simulator {
-		flags, err := plugins.simulatorEntitlements(work)
+		flags, err := plugins.simulatorEntitlements(work, dc.Identifier)
 		if err != nil {
 			return "", err
 		}

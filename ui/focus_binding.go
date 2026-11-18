@@ -50,6 +50,7 @@ func (e Element) FocusBind(field any, value any) Element {
 		}
 	}
 	n.Focusable()
+	n.markStateRead()
 	f.members = append(f.members, focusMember{value: value, element: e, id: n.id})
 	return e
 }

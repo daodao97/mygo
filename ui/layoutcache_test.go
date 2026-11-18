@@ -451,7 +451,7 @@ func TestLayoutInputs(t *testing.T) {
 	// or made volatile by sameLayout, and those it writes.
 	read := "flags ts cols rows spans image svg texture placeOn list form colFit overflow gridFit special leaving ghosts attach popover " +
 		"first last next nchild parent st c measured tl lay laid x y w h contentW contentH frags runes paragraph " +
-		"ownText merged spansKey collapsed rowMinW field hidden placed flips originAttached originX originY originSet edgeMargin edgeMarginSet " +
+		"ownText merged spansKey collapsed rowMinW field hidden insetSet placed flips originAttached originX originY originSet edgeMargin edgeMarginSet " +
 		"hold"
 	// Fields the layout never reads.
 	other := "gestureEnabled router routerLevel epoch key valueInput id depth track transform translatePct originX originY originSet world content contentSet " +
@@ -462,7 +462,7 @@ func TestLayoutInputs(t *testing.T) {
 		"listRow rowIndex rowsOf focusGroup groupSelects segment activeDescendant nameFrom nameJoin labelledBy focusTo " +
 		"keyShortcuts accGrid accSet " +
 		"setPos setSize choosesItems search description invalid readOnly multiline describedBy errorMessage followX sort level expandable " +
-		"chooseMany serial ignoreInput handleDoubleClick accessHidden accessDisabled themed lift ringOffset ringColor ringSet clipping zIndex zOrder " +
+		"chooseMany serial ignoreInput handleDoubleClick accessHidden accessDisabled stateRead themed lift ringOffset ringColor ringSet clipping zIndex zOrder " +
 		"roleDescription controls hasPopup popupSet " +
 		"touchHold touchPointer keyboardDismiss"
 	known := map[string]bool{}

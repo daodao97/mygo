@@ -32,6 +32,7 @@ var (
 	gstBusTimedPopFiltered func(bus uintptr, timeout uint64, types uint32) uintptr
 	gstMessageParseError   func(msg uintptr, gerr, debug *uintptr)
 	gstMiniObjectUnref     func(obj uintptr)
+	gstMiniObjectCopy      func(obj uintptr) uintptr
 	gstObjectUnref         func(obj uintptr)
 	gstBufferNewAllocate   func(alloc uintptr, size uint, params uintptr) uintptr
 	gstBufferFill          func(buf uintptr, offset uint, src unsafe.Pointer, size uint) uint
@@ -79,6 +80,7 @@ func loadGStreamer() error {
 		purego.RegisterLibFunc(&gstBusTimedPopFiltered, gst, "gst_bus_timed_pop_filtered")
 		purego.RegisterLibFunc(&gstMessageParseError, gst, "gst_message_parse_error")
 		purego.RegisterLibFunc(&gstMiniObjectUnref, gst, "gst_mini_object_unref")
+		purego.RegisterLibFunc(&gstMiniObjectCopy, gst, "gst_mini_object_copy")
 		purego.RegisterLibFunc(&gstObjectUnref, gst, "gst_object_unref")
 		purego.RegisterLibFunc(&gstBufferNewAllocate, gst, "gst_buffer_new_allocate")
 		purego.RegisterLibFunc(&gstBufferFill, gst, "gst_buffer_fill")
@@ -239,8 +241,15 @@ type gstSink struct {
 	video, audio uintptr
 	sound        sync.WaitGroup
 	soundErr     error
-	n            int64
-	stop         sync.Once
+	// n is the number of the next frame from the first, counting those
+	// held (hold).
+	n int64
+	// pending is the buffer of the last frame, not pushed until the next
+	// that shows something else, or the end, gives its duration; at is
+	// its number.
+	pending uintptr
+	at      int64
+	stop    sync.Once
 }
 
 func newVideoSink(spec videoSpec, _ drawer) (sink, error) {
@@ -331,11 +340,21 @@ func quote(s string) string {
 
 // push gives an appsrc a buffer of data at pts for duration, in ns.
 func push(src uintptr, data unsafe.Pointer, size int, pts, duration int64) int32 {
+	return gstAppSrcPushBuffer(src, newBuffer(data, size, pts, duration)) // takes the buffer
+}
+
+// newBuffer returns a buffer of data at pts for duration, in ns.
+func newBuffer(data unsafe.Pointer, size int, pts, duration int64) uintptr {
 	buf := gstBufferNewAllocate(0, uint(size), 0)
 	gstBufferFill(buf, 0, data, uint(size))
+	setTimes(buf, pts, duration)
+	return buf
+}
+
+// setTimes sets the time of buf, and its duration, in ns.
+func setTimes(buf uintptr, pts, duration int64) {
 	*(*int64)(unsafe.Add(cptr(buf), gstBufferPTSOffset)) = pts
 	*(*int64)(unsafe.Add(cptr(buf), gstBufferDurationOffset)) = duration
-	return gstAppSrcPushBuffer(src, buf) // takes the buffer
 }
 
 // pushSound gives the pipeline the sound track, on a goroutine of its own:
@@ -359,11 +378,35 @@ func (s *gstSink) pushSound() {
 	gstAppSrcEndOfStream(s.audio)
 }
 
+// time returns the time of frame n from the first, in ns.
+func (s *gstSink) time(n int64) int64 { return n * s.spec.den * 1_000_000_000 / s.spec.num }
+
 func (s *gstSink) frame(_ int, pix []byte) error {
-	pts := s.n * s.spec.den * 1_000_000_000 / s.spec.num
-	next := (s.n + 1) * s.spec.den * 1_000_000_000 / s.spec.num
+	buf := newBuffer(unsafe.Pointer(&pix[0]), len(pix), s.time(s.n), s.time(s.n+1)-s.time(s.n))
+	if err := s.flush(s.n); err != nil {
+		gstMiniObjectUnref(buf)
+		return err
+	}
+	s.pending, s.at = buf, s.n
 	s.n++
-	if r := push(s.video, unsafe.Pointer(&pix[0]), len(pix), pts, next-pts); r != 0 {
+	return nil
+}
+
+// hold shows the frame before for the time of one more.
+func (s *gstSink) hold(int) error {
+	s.n++
+	return nil
+}
+
+// flush pushes the pending frame, which lasts to frame to.
+func (s *gstSink) flush(to int64) error {
+	if s.pending == 0 {
+		return nil
+	}
+	buf := s.pending
+	s.pending = 0
+	setTimes(buf, s.time(s.at), s.time(to)-s.time(s.at))
+	if r := gstAppSrcPushBuffer(s.video, buf); r != 0 { // takes the buffer
 		if err := busError(s.bus, 0); err != nil {
 			return fmt.Errorf("render: GStreamer: %w", err)
 		}
@@ -376,6 +419,22 @@ func (s *gstSink) frame(_ int, pix []byte) error {
 }
 
 func (s *gstSink) close() error {
+	// The frames held at the end are pushed, as copies sharing the last
+	// frame's memory: the muxer ends the video where the sample decoded
+	// last ends, which an encoder reordering frames (B-frames) makes
+	// another than the last frame shown, so a frame again at the time of
+	// the last would not lengthen it.
+	for s.pending != 0 && s.at < s.n-1 {
+		next := gstMiniObjectCopy(s.pending)
+		if err := s.flush(s.at + 1); err != nil {
+			gstMiniObjectUnref(next)
+			return err
+		}
+		s.pending, s.at = next, s.at+1
+	}
+	if err := s.flush(s.n); err != nil {
+		return err
+	}
 	gstAppSrcEndOfStream(s.video)
 	err := busError(s.bus, gstClockNone)
 	if err != nil {
@@ -403,6 +462,10 @@ func (s *gstSink) free() {
 			gstElementSetState(s.pipe, gstStateNull)
 		}
 		s.sound.Wait()
+		if s.pending != 0 {
+			gstMiniObjectUnref(s.pending)
+			s.pending = 0
+		}
 		for _, o := range []uintptr{s.video, s.audio, s.bus, s.pipe} {
 			if o != 0 {
 				gstObjectUnref(o)

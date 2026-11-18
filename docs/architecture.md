@@ -2595,7 +2595,13 @@ as in Tauri:
   popover that has shown leaves its material's backdrop behind, a
   graphics surface a little larger than the popover. One still closing,
   as Hide's animation runs, waits until it tells it closed
-  (`popoverDidClose:`, to `spareDelegate`).
+  (`popoverDidClose:`, to `spareDelegate`). The flyout's delegate is the
+  popover's, not its window's: it hears that window's occlusion from the
+  notification center while it has it (`adoptPopoverWindow`), and tells
+  the surface shown or hidden as that changes, as the popover shows
+  (`popoverDidShow:`) and as it forgets the window
+  (`tellPopoverOcclusion`), so that the frames held while it was hidden
+  draw as it shows again (#2053).
   `Flyout.Tray` anchors one to a tray icon's `Bounds` instead, without a
   parent: the panel at `NSPopUpMenuWindowLevel` or an `NSPopover` shown
   from the status item's button (macOS), a topmost unowned popup
@@ -4726,6 +4732,18 @@ either.
     may count a row too few until they show. Closing CJK punctuation
     starts no row, nor opening punctuation ends one (`canBreak`). A new
     generation of the text system measures and shapes everything anew.
+    Unwrapped lines scroll sideways as far as the widest line known
+    (`lineWidths`): the widths of the widest 64 lines laid out, by line,
+    which edits move as wraps, forgetting the lines they change, as
+    other inlays, replacements and line styles forget theirs and another
+    font, tab size or theme all; a line laid out again is as wide as it
+    was until forgotten, and a long line's last piece, shaped as it
+    shows, can make it wider. So an edit lays out only the lines in
+    view, a line out of view keeps its width while it is unchanged, and
+    following an edit costs the same in a long text. Each frame lays out
+    the lines in view first and brings the offset sideways into the
+    range, which input before it takes as the last frame's at least, the
+    lines an edit changed not laid out yet.
   - *Replacements* (`replace.go`). A range shown as something else is a
     segment of a line's displayed text, as a tab or an inlay is: its Text,
     nothing, or for an element an object replacement character the text
@@ -6207,10 +6225,28 @@ either.
     (#1566). Function constant
     indices 0 through 7 belong to the renderer; effects start their own at 8.
     Two seconds after the last frame, as the
-    driver frees its own memory of frames, a timer shrinks the drawables,
-    which frees all but the one shown, until the next frame makes them
-    again, and releases GPU instance buffers, atlas/image textures and
-    backdrop textures: an idle window keeps one frame of memory. Its
+    driver frees its own memory of frames, a timer shrinks the drawables
+    to a pixel, until the next frame makes them again, and releases GPU
+    instance buffers, atlas/image textures and backdrop textures: an idle
+    window keeps one frame of memory. Core Animation may keep the
+    drawables of the old size until it hands out one of the new, so the
+    presenter's goroutine then fetches one, a pixel big, which the next
+    frame lets go of unpresented. A window nothing of which shows
+    (`SurfaceHidden`, which `windowHost` passes on to the renderer,
+    `SetOccluded`: a background tab, minimized, on another Space or
+    covered) shrinks them half a second after its last frame instead,
+    the one it drew as it went out of sight, so that windows out of sight
+    cost a frame each, not two or three (#2040); a frame waiting for its
+    drawable, or a drawable being fetched, puts it off rather than be
+    dropped or waited for. The frame shown stays, as the layer's
+    contents: the Dock shows it for a minimized window, Mission Control,
+    a Space sliding in and captures for the others, and a window showing
+    again shows it until the window server tells that it shows, rather
+    than nothing. The next frame draws whole, at the window's size.
+    Lowering `maximumDrawableCount` to two out of sight would save a
+    frame only for that half second after a frame drawn out of sight, as
+    Core Animation makes drawables as frames need them, and the third
+    keeps animations from waiting for one once the window shows. Its
     drawables are not `framebufferOnly`, as effects sample the drawable
     for their backdrops.
     A frame draws only what changed since its drawable was drawn. Core

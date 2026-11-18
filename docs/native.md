@@ -44,7 +44,9 @@ mygo.Dialog.Error("Import failed", err.Error())
 ```
 
 `OpenDialogOptions` also pick directories (`Directory`), show hidden files
-and, on macOS, a message and a New Folder button.
+and, on macOS, a message and a New Folder button. On Windows, choosing a
+library, such as Documents, in a directory picker picks the folder it saves
+to.
 
 A filter takes files by type too, as HTML's `accept`: `MIMETypes` such as
 `"application/pdf"`, or all of a kind, `"image/*"`, which the system's

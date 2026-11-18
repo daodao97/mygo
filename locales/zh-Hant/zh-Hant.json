@@ -183,6 +183,7 @@
   "ok": "好",
   "open": "開啟",
   "selectFolder": "選擇檔案夾",
+  "notAFolder": "無法選擇此位置。請改為選擇檔案夾。",
   "clearTerminal": "清除",
   "clipboardRead": "某個程式想要讀取剪貼簿",
   "clipboardReadAllow": "允許",

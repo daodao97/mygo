@@ -566,6 +566,34 @@ func TestReviewRegexReplace(t *testing.T) {
 	}
 }
 
+// A plain editor's regex find holds its anchors to the whole text, and
+// never runs past it on the empty matches an anchored or starred pattern
+// finds: $ of every line, ^ of every line, a* without an a at all, and a
+// word edge once per word.
+func TestEditorFindRegexAnchors(t *testing.T) {
+	for _, tc := range []struct {
+		text, query string
+		n           int
+	}{
+		{"foo\nbar\n", `$`, 0}, // empty matches hold nothing, as they did
+		{"foo\nbar\n", `^`, 0},
+		{"bbb", `a*`, 0},        // no a at all, and never a step past the text
+		{"aaa bbb", `a*`, 1},    // the run of a's, whole
+		{"xxxx", `\bx`, 1},      // one word edge, not one per letter
+		{"foo\nbar\n", `o$`, 1}, // the o before the first line's end
+	} {
+		ct := newEditorTest(t, "", "|"+tc.text)
+		f := &ct.st.ed.find
+		f.open, f.regex, f.query, f.stale = true, true, tc.query, true
+		ct.st.Find(tc.query)
+		ct.tt.Frame()
+		ct.tt.Frame()
+		if len(f.matches) != tc.n {
+			t.Fatalf("%q of %q: %v matches, want %d", tc.query, tc.text, f.matches, tc.n)
+		}
+	}
+}
+
 // After edits, the matches found by searching only the lines changed are
 // those of a search of the whole text.
 func TestReviewIncrementalFind(t *testing.T) {

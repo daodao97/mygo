@@ -223,6 +223,7 @@ func (c *context) overlayRoot() *node {
 		o.flags = flagAbsolute | flagPassThrough
 		o.dir = c.root.dir
 		o.inset = [4]length{px(0), px(0), px(0), px(0)}
+		o.insetSet = true
 		o.depth = 1
 		o.st = c.rt.stateFor(o.id)
 		c.overlay = o
@@ -273,6 +274,9 @@ func (c *context) rekey(e *node, k any) {
 	}
 	id := keyedID(parent, k)
 	rt := c.rt
+	if e.stateRead {
+		rt.lateKey(id, k)
+	}
 	if id != e.id {
 		rt.unlook(e.st)
 	}
@@ -662,6 +666,7 @@ func (c *context) ShortcutRepeated() bool { return c.rt.shortcutRepeat }
 // closed, and Close's error is ignored. Keep a value the element must not
 // close, as one the app shares, in the app's state.
 func coreLocal[T any](e *node, key any, init func() T) *T {
+	e.markStateRead()
 	v, made := keepLocal(e.st, key, init)
 	if made {
 		closeWithState(e.st, v)

@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.os.Build
 import java.io.File
 import java.nio.ByteBuffer
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -19,7 +20,8 @@ import kotlin.math.floor
  * (drawText).
  */
 object Text {
-    private val registered = HashMap<String, Typeface>()
+    // The faces the app registered under each family, a weight and style each.
+    private val registered = HashMap<String, ArrayList<Typeface>>()
     private val faces = HashMap<String, Typeface>()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
     private val bounds = Rect()
@@ -32,7 +34,7 @@ object Text {
         var base: Typeface? = null
         for (raw in families.split(',')) {
             val f = raw.trim().trim('"', '\'')
-            base = registered[f] ?: when (f.lowercase()) {
+            base = registered[f]?.let { nearest(it, weight, italic) } ?: when (f.lowercase()) {
                 "", "system-ui", "sans-serif", "ui-sans-serif", "-apple-system" -> Typeface.SANS_SERIF
                 "serif", "ui-serif" -> Typeface.SERIF
                 "monospace", "ui-monospace" -> Typeface.MONOSPACE
@@ -49,6 +51,17 @@ object Text {
         faces[key] = face
         return face
     }
+
+    /**
+     * The face of a family nearest a weight and style: Android makes it
+     * heavier or slants it as the text asks, which a lighter face drawn
+     * bold or a bold one drawn regular would get wrong.
+     */
+    private fun nearest(faces: List<Typeface>, weight: Long, italic: Boolean): Typeface =
+        faces.minBy { (if (it.isItalic == italic) 0 else 10_000) + abs(weightOf(it) - weight.toInt()) }
+
+    private fun weightOf(t: Typeface): Int =
+        if (Build.VERSION.SDK_INT >= 28) t.weight else if (t.isBold) 700 else 400
 
     private fun set(family: String, size: Double, weight: Long, italic: Boolean, noKern: Boolean = false): Paint {
         paint.typeface = typeface(family, weight, italic)
@@ -171,7 +184,7 @@ object Text {
             val face = Typeface.createFromFile(f)
             f.delete()
             val family = c.family.ifEmpty { "font${registered.size + 1}" }
-            registered[family] = face
+            registered.getOrPut(family) { ArrayList() }.add(face)
             faces.clear()
             r.family = family
         } catch (e: Exception) {

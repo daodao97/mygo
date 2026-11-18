@@ -6,6 +6,7 @@
 //	go run ./examples/render -o promo.mov -codec prores
 //	go run ./examples/render -o frames/%04d.png # PNGs
 //	go run ./examples/render -renderer cpu      # on the CPU
+//	go run ./examples/render -workers 1         # one frame at a time
 //	go run ./examples/render -preview           # plays it in a window
 //
 // The view is package ui's: text, boxes and real widgets, a switch, a
@@ -136,6 +137,7 @@ func main() {
 	renderer := flag.String("renderer", "auto", "auto, gpu or cpu")
 	preview := flag.Bool("preview", false, "play the video in a window")
 	ffmpeg := flag.Bool("ffmpeg", false, "encode with ffmpeg")
+	workers := flag.Int("workers", 0, "how many frames draw at once, 0 to choose")
 	flag.Parse()
 
 	comp := promo(newPluck())
@@ -147,6 +149,7 @@ func main() {
 		Renderer: map[string]render.Renderer{"auto": render.Auto, "gpu": render.GPU, "cpu": render.CPU}[*renderer],
 		Codec: map[string]render.Codec{"h264": render.H264, "hevc": render.HEVC, "prores": render.ProRes,
 			"prores4444": render.ProRes4444, "vp9": render.VP9}[*codec],
+		Workers: *workers,
 		Progress: func(p render.Progress) {
 			if p.Done%fps == 0 || p.Done == p.Frames {
 				fmt.Printf("\r%s: %d/%d frames, %.0f fps", p.Renderer, p.Done, p.Frames, float64(p.Done)/p.Elapsed.Seconds())

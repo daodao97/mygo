@@ -175,8 +175,11 @@ panes of a merge, and a minimap beside the editor shows where its view
 is. The scroll bars' thumbs show while the pointer is over the editor, or
 drags one, as a scroll container's do, or all the time with
 `KeepScrollbars`; the marks of changes, matches and diagnostics on the
-vertical one show all the time. `NoScrollbars` takes the bars and their
-marks away, and gives their room to the text.
+vertical one show all the time. The horizontal one shows while a line
+the editor has shown is wider than it, and goes once an edit, inlays,
+replacements or another tab size make the lines narrower, the text
+scrolling back to fit. `NoScrollbars` takes the bars and their marks
+away, and gives their room to the text.
 
 `OnInput` sees each input event before the editor does: keys, the text
 typed, edit commands and the pointer. Returning true takes the event, and

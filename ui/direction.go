@@ -217,12 +217,14 @@ func (e *node) BorderEndWidth(v float32) *node {
 // as relative positioning does.
 func (e *node) Start(v float32) *node {
 	e.inset[e.startSide()] = px(v)
+	e.insetSet = true
 	e.logical |= logInsetStart
 	return e
 }
 
 func (e *node) End(v float32) *node {
 	e.inset[e.endSide()] = px(v)
+	e.insetSet = true
 	e.logical |= logInsetEnd
 	return e
 }
@@ -231,12 +233,14 @@ func (e *node) End(v float32) *node {
 // a percentage of the parent's width.
 func (e *node) StartPercent(p float32) *node {
 	e.inset[e.startSide()] = percent(p)
+	e.insetSet = true
 	e.logical |= logInsetStart
 	return e
 }
 
 func (e *node) EndPercent(p float32) *node {
 	e.inset[e.endSide()] = percent(p)
+	e.insetSet = true
 	e.logical |= logInsetEnd
 	return e
 }
