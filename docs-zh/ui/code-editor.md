@@ -78,7 +78,7 @@ if ui.Button(c, "Format").Clicked() {
 }
 ```
 
-`Selections`、`SetSelections`、`Select`、`Cursor` 和 `CursorPos` 用于读取、设置插入符和选区，`Insert` 在每个插入符处输入，`GoTo` 移动插入符，`ScrollTo` 将指定行滚动到可见区域。`Find` 用指定查询打开查找栏，`FindMatches` 统计匹配项；`Fold`、`Unfold` 和 `Folded` 管理行折叠，`FoldImports` 折叠第一组连续的导入语句，可在打开文件时调用；`Focused` 报告编辑器是否有键盘焦点，`VisibleLines` 返回上一帧显示的首末行，可据此实现 Vim 的半页滚动。`ScrollY` 和 `SetScrollY` 读取、设置以 DIP 为单位的滚动距离，`ViewportHeight` 返回视口高度，`LineTop` 返回指定行相对于第一行的起始位置；将总行数传给 `LineTop`，可得到全部行的总高度。这些信息可用于同步滚动并排的编辑器、绘制合并视图各窗格之间连接对应行的条带，或在编辑器旁的代码缩略图中标出当前视口。与滚动容器一样，滚动条滑块只在指针位于编辑器上或拖动滑块时显示；设置 `KeepScrollbars` 可让它始终显示。垂直滚动条上的更改、匹配项和诊断标记始终可见。`NoScrollbars` 移除滚动条和标记，将其空间留给文本。
+`Selections`、`SetSelections`、`Select`、`Cursor` 和 `CursorPos` 用于读取、设置插入符和选区，`Insert` 在每个插入符处输入，`GoTo` 移动插入符，`ScrollTo` 将指定行滚动到可见区域。`Find` 用指定查询打开查找栏，`FindMatches` 统计匹配项；`Fold`、`Unfold` 和 `Folded` 管理行折叠，`FoldImports` 折叠第一组连续的导入语句，可在打开文件时调用；`Focused` 报告编辑器是否有键盘焦点，`VisibleLines` 返回上一帧显示的首末行，可据此实现 Vim 的半页滚动。`ScrollY` 和 `SetScrollY` 读取、设置以 DIP 为单位的滚动距离，`ViewportHeight` 返回视口高度，`LineTop` 返回指定行相对于第一行的起始位置；将总行数传给 `LineTop`，可得到全部行的总高度。这些信息可用于同步滚动并排的编辑器、绘制合并视图各窗格之间连接对应行的条带，或在编辑器旁的代码缩略图中标出当前视口。与滚动容器一样，滚动条滑块只在指针位于编辑器上或拖动滑块时显示；设置 `KeepScrollbars` 可让它始终显示。垂直滚动条上的更改、匹配项和诊断标记始终可见。水平滚动条在编辑器显示过的某一行比编辑器宽时出现；编辑、内联提示、替换或制表符宽度的变化让各行变窄后，它随之消失，文本也滚回可见范围。`NoScrollbars` 移除滚动条和标记，将其空间留给文本。
 
 `OnInput` 会在编辑器之前看到每个输入事件：按键、输入的文本、编辑命令和指针。返回 true 表示取走该事件，编辑器不再处理它；其余事件则照常交给编辑器。应用自己的编辑模式，例如 Vim 的普通模式，就以这种方式取走按键，同时编辑器仍然显示和移动插入符。在插入符处输入的字母以 `InputText` 到达：在某些系统上，它们的按键也会先以 `InputKeyDown` 到达，但取走按键并不会取走它对应的文本，所以这种模式要从 `InputText` 读取字母。输入法组合、提交或替换的内容——例如在 macOS 上按住按键，重音符号会替换插入符前的字母——只交给编辑器。`Bindings` 中组合键的第一个键之后的按键（例如 Cmd+K Cmd+0 中的第二个）归该组合键所有，就像 VS Code 会先解析组合键，再交给扩展的按键。
 

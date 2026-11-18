@@ -134,6 +134,18 @@ func (ed *editor) paint(p *ui.Painter, r ui.Rect) {
 		more = true
 	}
 	v.approx = false
+	// The lines in view laid out before the offset sideways is used: an
+	// edit, or other inlays, replacements or tab size, may have made the
+	// widest line narrower, or the window wider, and the offset comes back
+	// into the range the scroll bar shows (#2043). Painting them takes the
+	// same layouts.
+	for line := f.first; line <= f.last; line++ {
+		if !v.heights.isHidden(line) {
+			v.line(line)
+		}
+	}
+	ed.paintedW = v.measured.widest()
+	ed.scrollX = min(ed.scrollX, ed.maxScrollX())
 	if ct.Background.A > 0 {
 		p.Fill(r, ct.Background, 0)
 	}

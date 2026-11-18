@@ -397,6 +397,7 @@ func (v *view) markEnd(on bool, mark string) {
 	if i >= 0 && on && v.inlays[i].at == v.text.Len() && v.inlays[i].text == mark || i < 0 && !on {
 		return
 	}
+	old := v.keepInlays()
 	if i >= 0 {
 		v.inlays = slices.Delete(v.inlays, i, i+1)
 	}
@@ -404,6 +405,7 @@ func (v *view) markEnd(on bool, mark string) {
 		v.inlays = append(v.inlays, inlay{at: v.text.Len(), text: mark, kind: inlayNoNewline})
 		sortInlays(v.inlays)
 	}
+	v.inlaysChanged(old)
 	v.lines.m = nil
 }
 

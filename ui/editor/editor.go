@@ -161,8 +161,11 @@ type editor struct {
 	markedActive     bool
 	autoclosed       []autoclose
 
-	scrollY    float64
-	scrollX    float32
+	scrollY float64
+	scrollX float32
+	// paintedW is how wide the content was as the last frame painted it
+	// (contentWidth).
+	paintedW   float32
 	anchorLine int
 	anchorOff  float64
 	reveal     reveal
@@ -443,6 +446,7 @@ func (ed *editor) resetForBuffer() {
 	ed.gesture.active = false
 	ed.brackets = bracketCache{}
 	ed.scrollY, ed.scrollX, ed.anchorLine, ed.anchorOff = 0, 0, 0, 0
+	ed.paintedW = 0
 }
 
 // setSels sets the selections, noting the old ones for Undo Selection.
