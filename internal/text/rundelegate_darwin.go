@@ -22,28 +22,33 @@ type runDelegateCallbacks struct {
 	dealloc, ascent, descent, width uintptr
 }
 
-// delegates makes Core Text's run delegates, which give inline objects
-// their size, from metrics the engine keeps, pinned, until it lays out the
-// next text.
-type delegates struct {
+// runDelegate holds Core Text's run delegates, bound once with Core Text
+// (loadCoreText) and only read after: CTRunDelegateCreate, the name of
+// their attribute, and their callbacks, which a package variable keeps in
+// place.
+var runDelegate struct {
 	create    uintptr // CTRunDelegateCreate
 	attribute uintptr // kCTRunDelegateAttributeName
 	callbacks runDelegateCallbacks
-	metrics   [][3]float64
-	pinner    runtime.Pinner
 }
-
-var runDelegates delegates
 
 // initDelegates finds Core Text's run delegates in the framework text.
 func initDelegates(text uintptr, optional func(lib uintptr, name string) uintptr) {
-	d := &runDelegates
 	if sym, err := purego.Dlsym(text, "CTRunDelegateCreate"); err == nil {
-		d.create = sym
+		runDelegate.create = sym
 	}
-	d.attribute = optional(text, "kCTRunDelegateAttributeName")
+	runDelegate.attribute = optional(text, "kCTRunDelegateAttributeName")
 	dealloc, ascent, descent, width := runDelegateFuncs()
-	d.callbacks = runDelegateCallbacks{version: 1, dealloc: dealloc, ascent: ascent, descent: descent, width: width}
+	runDelegate.callbacks = runDelegateCallbacks{version: 1, dealloc: dealloc, ascent: ascent, descent: descent, width: width}
+}
+
+// delegates makes the run delegates of an engine's text, which give
+// inline objects their size, from metrics it keeps, pinned while Core
+// Text lays out the text (done). Each engine has its own: the engines of
+// Testers lay out text on goroutines of their own, at the same time.
+type delegates struct {
+	metrics [][3]float64
+	pinner  runtime.Pinner
 }
 
 // reset lets go of the metrics of the last text laid out, and makes room
@@ -53,17 +58,21 @@ func (d *delegates) reset(n int) {
 	d.metrics = make([][3]float64, n)
 	if n > 0 {
 		d.pinner.Pin(&d.metrics[0])
-		d.pinner.Pin(&d.callbacks)
 	}
 }
+
+// done unpins the metrics once Core Text let go of the text's delegates,
+// with its typesetter and lines: an engine dropped with metrics pinned,
+// as a Tester's is, would panic as its pinner is collected.
+func (d *delegates) done() { d.pinner.Unpin() }
 
 // delegate returns a run delegate, owned, giving object k its height
 // above the baseline, its descent below it and its width.
 func (d *delegates) delegate(k int, width, height, descent float32) uintptr {
-	if d.create == 0 || d.attribute == 0 || k >= len(d.metrics) {
+	if runDelegate.create == 0 || runDelegate.attribute == 0 || k >= len(d.metrics) {
 		return 0
 	}
 	d.metrics[k] = [3]float64{float64(height), float64(descent), float64(width)}
-	r, _, _ := purego.SyscallN(d.create, uintptr(unsafe.Pointer(&d.callbacks)), uintptr(unsafe.Pointer(&d.metrics[k])))
+	r, _, _ := purego.SyscallN(runDelegate.create, uintptr(unsafe.Pointer(&runDelegate.callbacks)), uintptr(unsafe.Pointer(&d.metrics[k])))
 	return r
 }

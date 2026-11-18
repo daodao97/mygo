@@ -415,6 +415,8 @@ type coreText struct {
 	// oblique maps an upright Font to its synthetic italic variant. Both
 	// are retained by fonts, and have distinct glyph/outline cache keys.
 	oblique map[*Font]*Font
+	// delegates size the inline objects of the text being laid out.
+	delegates delegates
 	// italic names an attribute that marks the runes of italic spans in a
 	// text that is not italic, owned, so that Core Text ends a run where
 	// italics start or stop even when both sides are in one font, as a
@@ -829,7 +831,7 @@ func (e *coreText) styleSpans(attributed uintptr, style Style, spans []Span, tex
 			objects += max(min(sp.End, len(text))-start, 0)
 		}
 	}
-	runDelegates.reset(objects)
+	e.delegates.reset(objects)
 	objects = 0
 	from := 0
 	for _, sp := range spans {
@@ -844,8 +846,8 @@ func (e *coreText) styleSpans(attributed uintptr, style Style, spans []Span, tex
 			// Each rune is an object of its own: a run Core Text sizes by
 			// its delegate.
 			for k := start; k < to; k++ {
-				if d := runDelegates.delegate(objects, sp.ObjectWidth, sp.ObjectHeight, sp.ObjectDescent); d != 0 {
-					ct.attributedSet(styled, cfRange{at[k], at[k+1] - at[k]}, runDelegates.attribute, d)
+				if d := e.delegates.delegate(objects, sp.ObjectWidth, sp.ObjectHeight, sp.ObjectDescent); d != 0 {
+					ct.attributedSet(styled, cfRange{at[k], at[k+1] - at[k]}, runDelegate.attribute, d)
 					ct.release(d)
 				}
 				objects++
@@ -991,6 +993,11 @@ func (e *coreText) shapeText(text []rune, style Style, spans []Span, width float
 	font := e.ctFont(style)
 	if font == 0 || len(text) == 0 {
 		return nil
+	}
+	if len(spans) > 0 {
+		// After the typesetter and its lines are released, deferred
+		// below.
+		defer e.delegates.done()
 	}
 	lang := style.Lang
 	if ct.languageName == 0 || !languageShapes(text, lang) {
@@ -1564,8 +1571,10 @@ func (e *coreText) inkInBand(f *Font, id uint32, lo, hi float32) (a, b float32, 
 }
 
 // The outline of a glyph, flattened into segments, as CGPathApply hands
-// its elements to the one callback made for it.
+// its elements to the one callback made for it. outlineMu serializes the
+// engines that read outlines, each System's on a goroutine of its own.
 var (
+	outlineMu   sync.Mutex
 	outlineOnce sync.Once
 	outlineFn   uintptr
 	outlineSegs [][4]float64
@@ -1579,8 +1588,10 @@ type cgPathElement struct {
 }
 
 // glyphOutline returns the outline of a glyph in points, y up, as line
-// segments. The text system's lock serializes its callers.
+// segments.
 func glyphOutline(font uintptr, glyph uint16) [][4]float64 {
+	outlineMu.Lock()
+	defer outlineMu.Unlock()
 	outlineOnce.Do(func() {
 		outlineFn = purego.NewCallback(func(_ uintptr, el *cgPathElement) uintptr {
 			pt := func(i int) [2]float64 {
