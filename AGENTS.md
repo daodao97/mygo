@@ -299,7 +299,7 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
 
 ## Fork and upstream
 
-This repository is MyGo Mobile, the daodao97/mygo-mobile fork (formerly daodao97/mygo) of egoist/mygo (remotes `origin` and
+This repository is MyGo Mobile, the daodao97/mygo fork (named daodao97/mygo-mobile from 2026-11-09 to 2026-11-18) of egoist/mygo (remotes `origin` and
 `upstream`). [FORK.md](FORK.md) records how the fork differs, what was already
 reconciled, the upstream PRs in flight and the workflow: read it before syncing
 upstream or porting fork commits, and keep it current.

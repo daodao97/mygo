@@ -1,6 +1,6 @@
 # Fork 与上游的差异
 
-本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo-mobile`（remote `origin`，2026-11-09 由 `daodao97/mygo` 更名为 MyGo Mobile，旧地址重定向）。Go 模块路径仍是 `github.com/egoist/mygo`，不随仓库更名，以便合并上游。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。数字为 2026-11-12 的快照，用文末的命令重新统计。
+本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`；2026-11-09 曾更名为 `daodao97/mygo-mobile`，2026-11-18 改回 `daodao97/mygo`，旧地址重定向）。Go 模块路径仍是 `github.com/egoist/mygo`，不随仓库更名，以便合并上游。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。数字为 2026-11-12 的快照，用文末的命令重新统计。
 
 ## 快照（2026-11-12）
 
@@ -56,7 +56,7 @@
 
 | 项目 | 依赖方式 | 影响 |
 |---|---|---|
-| Miya | `go.mod` 固定 fork 的伪版本（`replace github.com/egoist/mygo => github.com/daodao97/mygo-mobile <pseudo-version>`）；本地未提交的 `go.work` 用 `replace => ../mygo` | 本地开发时 fork `main` 的改动立即生效，CI 和打包用 `go.mod` 里的伪版本：fork 改动推送后要在 Miya 升级伪版本（`GOWORK=off go mod edit -replace …@<commit> && GOWORK=off go mod tidy`），用 `GOWORK=off go build ./...` 验证。改公开 API 前先编译 Miya。2026-11-10 起固定 `c558a806`（`v0.0.0-20261110103125-c558a8060974`，向 #940 收敛的缺口全部过完：Lifecycle 补 `Power` 的 suspend/resume、`plugins/keyboardbar`），Miya `3b594b5` 已提交，`GOWORK=off` 下编译、`internal/mobile` 测试通过 |
+| Miya | `go.mod` 固定 fork 的伪版本（`replace github.com/egoist/mygo => github.com/daodao97/mygo <pseudo-version>`）；本地未提交的 `go.work` 用 `replace => ../mygo` | 本地开发时 fork `main` 的改动立即生效，CI 和打包用 `go.mod` 里的伪版本：fork 改动推送后要在 Miya 升级伪版本（`GOWORK=off go mod edit -replace …@<commit> && GOWORK=off go mod tidy`），用 `GOWORK=off go build ./...` 验证。改公开 API 前先编译 Miya。2026-11-10 起固定 `c558a806`（`v0.0.0-20261110103125-c558a8060974`，向 #940 收敛的缺口全部过完：Lifecycle 补 `Power` 的 suspend/resume、`plugins/keyboardbar`），Miya `3b594b5` 已提交，`GOWORK=off` 下编译、`internal/mobile` 测试通过 |
 | myclash | `replace => ../mygo` | 同上；`build.noindex/` 下有旧的 mygo 源码备份，`go build ./...` 会报错，编译时排除 |
 | gorex、retty、gorex-workflows | 固定 fork 的伪版本（`80d5e6a3`、`d30cf320`） | 终端用的是自己的 `retty/internal/terminal` 副本，不依赖本仓库的 `plugins/terminal`；升级 mygo 时再检查 |
 

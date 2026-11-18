@@ -2,7 +2,7 @@
 
 **用 Go 写桌面和移动端应用：原生 UI 或网页前端，同一套代码跑在 macOS、Linux、Windows、iOS 和 Android 上。**
 
-MyGo Mobile 是 [egoist/mygo](https://github.com/egoist/mygo) 的 fork（仓库 `daodao97/mygo-mobile`，原名 `daodao97/mygo`，旧地址自动重定向）。上游提供桌面端的系统 webview 与 Go 原生 UI（无 cgo、单个二进制、类型化 IPC）；本 fork 在此之上增加了 **iOS / Android 原生 UI** 和一批桌面扩展，并持续合并上游。
+MyGo Mobile 是 [egoist/mygo](https://github.com/egoist/mygo) 的 fork（仓库 `daodao97/mygo`，曾用名 `daodao97/mygo-mobile`，旧地址自动重定向）。上游提供桌面端的系统 webview 与 Go 原生 UI（无 cgo、单个二进制、类型化 IPC）；本 fork 在此之上增加了 **iOS / Android 原生 UI** 和一批桌面扩展，并持续合并上游。
 与上游差异的完整记录、合并规则和进行中的 PR 见 [FORK.md](FORK.md)。
 
 ## 基于本 fork 的应用
@@ -92,7 +92,7 @@ MyGo Mobile 是 [egoist/mygo](https://github.com/egoist/mygo) 的 fork（仓库 
 模块路径仍是 `github.com/egoist/mygo`，在应用的 `go.mod` 里用 `replace` 指向本 fork：
 
 ```
-replace github.com/egoist/mygo => github.com/daodao97/mygo-mobile <version>
+replace github.com/egoist/mygo => github.com/daodao97/mygo <version>
 ```
 
 ## 文档
