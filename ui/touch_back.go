@@ -81,7 +81,6 @@ func (rt *engine) endEdgeSwipe(speed float32) {
 		return
 	}
 	rt.swipeRouter = nil
-	r.swiping = false
 	if r.swipe > 0.5 || speed > swipeThrow {
 		r.commitSwipe()
 		return

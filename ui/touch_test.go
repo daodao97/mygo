@@ -770,10 +770,19 @@ func TestTouchEdgeSwipeBack(t *testing.T) {
 	tt.FingerMove(300, 200)
 	tt.Frame()
 	tt.Advance(200 * time.Millisecond)
+	progress := r.swipe
 	tt.FingerUp(300, 200)
 	tt.Frame()
 	if r.Path() != "/a" {
 		t.Errorf("past half the way: at %s", r.Path())
+	}
+	if r.view.dir != -1 || r.view.progress.value != float64(progress) {
+		t.Fatalf("back slide starts at %v, want the finger's last position %v", r.view.progress.value, progress)
+	}
+	tt.Advance(16 * time.Millisecond)
+	tt.Frame()
+	if r.view.progress.value <= float64(progress) {
+		t.Fatalf("back slide did not continue from %v: %v", progress, r.view.progress.value)
 	}
 }
 
