@@ -424,11 +424,18 @@ func (ed *editor) copy(cut bool) {
 			line := r.LineOf(s.head)
 			a, z := r.LineStart(line), min(r.Len(), r.LineEnd(line)+1)
 			t := r.Slice(a, z)
+			from := a
 			if !strings.HasSuffix(t, "\n") {
 				t += "\n"
+				// The last line has no newline of its own to take along, so
+				// a cut would leave an empty line (or, when it is empty,
+				// nothing at all): take the one before it instead.
+				if line > 0 {
+					from = r.LineEnd(line - 1)
+				}
 			}
 			pieces, whole = append(pieces, t), append(whole, true)
-			edits = append(edits, Edit{Start: a, End: z})
+			edits = append(edits, Edit{Start: from, End: z})
 			continue
 		}
 		pieces, whole = append(pieces, r.Slice(s.start(), s.end())), append(whole, false)

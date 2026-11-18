@@ -373,13 +373,16 @@ func (ed *editor) toggleComment() bool {
 	spans := ed.selLines()
 	for _, sp := range spans {
 		minIndent := -1
-		all := true
+		// all is whether the lines are comments already, to take the prefix
+		// off: false for blank lines alone, which have none to take off.
+		all, any := true, false
 		for line := sp.from; line <= sp.to; line++ {
 			s := r.Line(line)
 			t := strings.TrimLeft(s, " \t")
 			if t == "" {
 				continue
 			}
+			any = true
 			if !strings.HasPrefix(t, prefix) {
 				all = false
 			}
@@ -387,6 +390,7 @@ func (ed *editor) toggleComment() bool {
 				minIndent = n
 			}
 		}
+		all = all && any
 		if minIndent < 0 {
 			minIndent = len(indentOf(r.Line(sp.from)))
 		}
