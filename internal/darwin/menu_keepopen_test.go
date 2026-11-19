@@ -509,3 +509,65 @@ func TestMenuKeepOpenBadgeDefaultAlign(t *testing.T) {
 		}
 	})
 }
+
+// TestMenuKeepOpenWidthFitsRow guards the two halves of the compact width:
+// the menu is as wide as its widest row's label and badge side by side, not
+// the widest label plus the widest badge, and a long label keeps its room
+// when its own badge is short while another row's is long.
+func TestMenuKeepOpenWidthFitsRow(t *testing.T) {
+	load()
+	registerMenuTarget()
+	withPool(func() {
+		b := &Backend{}
+		longLabel, wideBadge := "A very long node name here", "Connection refused (timeout)"
+		mk := func(id int, label, badge string) *platform.MenuItem {
+			// No BadgeAlign: right is the documented default, and the width
+			// and the badge's place must both follow it.
+			return &platform.MenuItem{ID: id, Label: label, Badge: badge, KeepOpen: true,
+				Type: platform.MenuItemRadio, BadgeShape: platform.BadgeShapeSquare,
+				BadgeColor: &platform.Color{R: 52, G: 199, B: 89, A: 255},
+				Visible:    true, Enabled: true}
+		}
+		items := []*platform.MenuItem{mk(1, longLabel, "12 ms"), mk(2, "HK", wideBadge)}
+		menu := b.buildMenu(&platform.Menu{Items: items}, "", 1)
+		defer dropOwner(1)
+
+		row := func(label, badge string) float64 {
+			return textWidth(label, menuFont()) + keepOpenBadgeGap +
+				keepOpenBadgeWidth(badge, platform.BadgeShapeSquare)
+		}
+		want := float64(menuKeepOpenLabelX) + max(row(longLabel, "12 ms"), row("HK", wideBadge)) + menuKeepOpenRight
+		if got := msgFloat(menu, sel("minimumWidth")); got < want-0.5 || got > want+0.5 {
+			t.Errorf("menu minimum width = %v, want %v (the widest row, not the widest label plus badge)", got, want)
+		}
+		// The menu itself follows: NSMenu adds its own margins to the minimum
+		// width and takes nothing from the hidden titles, so a menu sized
+		// from the widest label plus the widest badge would be much wider.
+		oldSum := float64(menuKeepOpenLabelX) + textWidth(longLabel, menuFont()) + menuBadgeGap +
+			keepOpenBadgeWidth(wideBadge, platform.BadgeShapeSquare) + menuKeepOpenRight
+		if size := msgSize(menu, sel("size")); size.Width > want+20 || size.Width >= oldSum-20 {
+			t.Errorf("menu size = %v, want about %v and well under the old sum %v", size.Width, want, oldSum)
+		}
+		view := send(send(menu, "itemAtIndex:", 0), "view")
+		field := send(view, "viewWithTag:", menuViewLabel)
+		if w := msgRect(field, sel("frame")).Size.Width; w < textWidth(longLabel, menuFont()) {
+			t.Errorf("label field width = %v, the %q label needs %v", w,
+				longLabel, textWidth(longLabel, menuFont()))
+		}
+		for i := range items {
+			v := send(send(menu, "itemAtIndex:", uintptr(i)), "view")
+			frame := msgRect(v, sel("frame"))
+			bf := msgRect(send(v, "viewWithTag:", menuViewBadge), sel("frame"))
+			if got := frame.Size.Width - (bf.Origin.X + bf.Size.Width); got < menuKeepOpenRight-0.01 || got > menuKeepOpenRight+0.01 {
+				t.Errorf("item %d: room after badge = %v, want %v", i, got, menuKeepOpenRight)
+			}
+		}
+		// A build and a later update must agree on the width: the first
+		// update after the menu opens used to drop it by the gap difference.
+		built := msgFloat(menu, sel("minimumWidth"))
+		b.UpdateMenuItem(items[0])
+		if got := msgFloat(menu, sel("minimumWidth")); got != built {
+			t.Errorf("minimum width after an unchanged update = %v, the build put it at %v", got, built)
+		}
+	})
+}
