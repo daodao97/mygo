@@ -469,3 +469,43 @@ func TestMenuKeepOpenViewFollowsMenuWidth(t *testing.T) {
 		}
 	})
 }
+
+// TestMenuKeepOpenBadgeDefaultAlign checks the documented default where it
+// actually broke: a view AppKit widened because the menu is wider than the
+// row was measured for. Built narrow, the badge lands at the right edge
+// either way (the offset already defaults to right); laid out again at the
+// wider frame, the anchor compared the raw alignment against
+// BadgeAlignRight, so an item that never set it kept the narrow column and
+// left a gap after the badge.
+func TestMenuKeepOpenBadgeDefaultAlign(t *testing.T) {
+	load()
+	registerMenuTarget()
+	withPool(func() {
+		b := &Backend{}
+		items := []*platform.MenuItem{
+			{ID: 1, Label: "HK", Badge: "失败", KeepOpen: true, Type: platform.MenuItemRadio,
+				BadgeShape: platform.BadgeShapeSquare,
+				BadgeColor: &platform.Color{R: 255, G: 69, B: 58, A: 255},
+				Visible:    true, Enabled: true},
+			{ID: 2, Label: "A much longer node name, which sets the menu's width", KeepOpen: true,
+				Visible: true, Enabled: true},
+		}
+		menu := b.buildMenu(&platform.Menu{Items: items}, "", 1)
+		defer dropOwner(1)
+		native := send(menu, "itemAtIndex:", 0)
+		view := send(native, "view")
+		frame := msgRect(view, sel("frame"))
+		wider := frame.Size.Width + 60
+		frame.Size.Width = wider
+		msgSetRect(view, sel("setFrame:"), frame)
+
+		// An update while the menu is open lays the row out again.
+		retabKeepOpenMenu(native, "HK", "失败", "")
+
+		badge := send(view, "viewWithTag:", menuViewBadge)
+		bf := msgRect(badge, sel("frame"))
+		if got := wider - (bf.Origin.X + bf.Size.Width); got < menuKeepOpenRight-0.01 || got > menuKeepOpenRight+0.01 {
+			t.Errorf("room after badge = %v, want %v", got, menuKeepOpenRight)
+		}
+	})
+}

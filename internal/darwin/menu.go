@@ -1055,6 +1055,11 @@ func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) {
 // layoutKeepOpenView places the label and badge of view in their columns
 // and makes room for width, the width the menu's views share.
 func layoutKeepOpenView(view id, label, badge string, start, badgeWidth, width, labelX float64, align platform.BadgeAlignment, style keepOpenBadgeStyle) {
+	if align == "" {
+		// The zero value is the documented default, right: the tab stops and
+		// the badge box already treat it so through their switch defaults.
+		align = platform.BadgeAlignRight
+	}
 	// A menu can be wider than its widest KeepOpen row, as a long item NSMenu
 	// draws itself sets the width; AppKit then widens the view to fill it.
 	// Lay out to the view's own width when that is wider, so the backdrop,
