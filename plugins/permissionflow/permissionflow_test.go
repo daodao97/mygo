@@ -181,6 +181,10 @@ func TestPermissionTitlesFollowLocale(t *testing.T) {
 		Bluetooth:       "蓝牙",
 		MediaAppleMusic: "媒体与 Apple Music",
 	}
+	// macOS 27 renamed Accessibility.
+	if title(Accessibility, "") != "" {
+		want[Accessibility] = "设备控制与数据访问"
+	}
 	for p, want := range want {
 		if got := p.Title(); got != want {
 			t.Errorf("%s.Title() = %q, want %q", p, got, want)
