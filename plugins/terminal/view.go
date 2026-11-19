@@ -27,9 +27,10 @@ import (
 // Other Command keys on macOS never reach the program, and go to the
 // app's shortcuts. The Edit menu's roles copy, paste and select all too.
 // The wheel scrolls the scrollback unless the program takes the mouse,
-// and zooms with Control held (Command on macOS; Options.OnZoom); scrolling
-// sideways goes on to the handlers and scroll containers around the view,
-// as the terminal has nothing to scroll sideways. Hold
+// and zooms with Control held (Command on macOS; Options.OnZoom). A
+// sideways wheel goes to a program that takes the mouse, and otherwise
+// on to the handlers and scroll containers around the view, as the
+// terminal has nothing to scroll sideways. Hold
 // Shift to select while a program takes the mouse, and Command (Control
 // elsewhere) to underline a link and open it on click: a hyperlink (OSC 8),
 // a URL printed as text, or a file path with Options.OpenLink. Alt+click
@@ -246,7 +247,8 @@ type view struct {
 	// released, as opening is.
 	copying    string
 	rightClick RightClickAction
-	scrolled   float32 // scrolling not yet a whole row
+	scrolled   float32 // vertical scrolling not yet a whole row
+	scrolledX  float32 // horizontal, while a program takes the mouse
 	zoomed     float32 // wheel with the zoom modifier not yet a notch
 	scrollZoom bool    // a touchpad scroll gesture zooms, from how it began
 	ticking    bool    // an autoscroll tick is due
@@ -1530,23 +1532,33 @@ func (v *view) scroll(ev ui.InputEvent) bool {
 		}
 		return true
 	}
-	// A terminal only scrolls vertically; leave horizontal scrolling (such as a
-	// trackpad swipe) to handlers around the view.
-	if ev.DX != 0 && (ev.DY == 0 || (ev.Precise && math.Abs(float64(ev.DX)) > math.Abs(float64(ev.DY)))) {
+	// A terminal only scrolls vertically. A sideways wheel goes to a program
+	// that asked for the mouse, as the wheel's left and right buttons, and
+	// otherwise to the handlers around the view, as a trackpad swipe.
+	horizontal := ev.DX != 0 && (ev.DY == 0 || (ev.Precise && math.Abs(float64(ev.DX)) > math.Abs(float64(ev.DY))))
+	t.mu.Lock()
+	tracked := horizontal && t.term != nil && v.wheelTracked(ev.Mods)
+	m := t.opts.ScrollMultiplier
+	t.mu.Unlock()
+	if horizontal && !tracked {
 		return false
 	}
 	ch := float32(v.cellH) / v.scale
-	t.mu.Lock()
-	m := t.opts.ScrollMultiplier
-	t.mu.Unlock()
-	v.scrolled += m.rows(ev.DY, ch, ev.Precise, runtime.GOOS) * ch
-	rows := int(v.scrolled / ch)
-	v.scrolled -= float32(rows) * ch
+	delta := ev.DY
+	acc := &v.scrolled
+	if horizontal {
+		delta = ev.DX
+		acc = &v.scrolledX
+	}
+	*acc += m.rows(delta, ch, ev.Precise, runtime.GOOS) * ch
+	rows := int(*acc / ch)
+	*acc -= float32(rows) * ch
 	if rows == 0 {
 		return true
 	}
 	// OnScroll runs unlocked: it may call the terminal's methods, as Feed.
-	if on := t.opts.OnScroll; on != nil && v.wheelScrollsBack(ev.Mods) && on(rows) {
+	// A sideways wheel is the program's, never a scroll of the scrollback.
+	if on := t.opts.OnScroll; on != nil && !horizontal && v.wheelScrollsBack(ev.Mods) && on(rows) {
 		return true
 	}
 	t.mu.Lock()
@@ -1565,7 +1577,12 @@ func (v *view) scroll(ev ui.InputEvent) bool {
 		}
 		v.mouse.Sync(t.term, v.ox*2+v.cols*v.cellW, v.oy*2+v.rows*v.cellH, v.cellW, v.cellH, v.ox, v.oy, false)
 		button := vt.WheelDown
-		if rows < 0 {
+		switch {
+		case horizontal && rows < 0:
+			button = vt.WheelLeft
+		case horizontal:
+			button = vt.WheelRight
+		case rows < 0:
 			button = vt.WheelUp
 		}
 		for range abs(rows) {
@@ -1573,6 +1590,10 @@ func (v *view) scroll(ev ui.InputEvent) bool {
 				t.in.push(append([]byte(nil), out...))
 			}
 		}
+	case horizontal:
+		// The program let go of the mouse since: arrows and the scrollback
+		// are only vertical.
+		return false
 	case v.wheelArrows():
 		// Full-screen programs scroll with the arrows (mode 1007).
 		if v.keys == nil {
