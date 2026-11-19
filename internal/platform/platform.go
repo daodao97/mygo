@@ -157,6 +157,24 @@ type InputRegionWindow interface {
 	SetInputRegion(region []Rect)
 }
 
+// ThumbButton is a button of a thumbnail toolbar (ThumbBarWindow): the core
+// resolves the buttons of the public SetThumbBar into these, in the order
+// the shell reports a click by (the button's index). Icon is always the
+// button's PNG; the backend compares it with the one it has.
+type ThumbButton struct {
+	Icon     []byte
+	ToolTip  string
+	Disabled bool
+	Hidden   bool
+}
+
+// ThumbBarWindow is a window with a thumbnail toolbar, the row of small
+// buttons Windows shows under a taskbar button's live preview
+// (SetThumbBar). Apart from Window, so that only apps setting one link it.
+type ThumbBarWindow interface {
+	SetThumbBar(buttons []ThumbButton) error
+}
+
 // WindowStateBackend restores windows at their pixels (Windows):
 // RestoreWindowState sets opts.StateBounds and returns true when pixels,
 // zero for none, would show on a connected display. Otherwise the core
@@ -1671,4 +1689,10 @@ type TabsHandler interface {
 // window off its stack (the back button, a swipe, Android's back).
 type NavigationHandler interface {
 	Popped()
+}
+
+// ThumbBarHandler is a WindowHandler told that the user clicked a button
+// of its window's thumbnail toolbar, by its ID (Windows).
+type ThumbBarHandler interface {
+	ThumbButtonClicked(id int)
 }

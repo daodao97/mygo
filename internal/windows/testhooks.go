@@ -1026,3 +1026,16 @@ func TestBackgroundThrottlingOff(hwnd uintptr, webView bool) (off bool, settings
 	}
 	return theBackend.envUnthrottled, 1
 }
+
+// TestThumbBarLive reports whether the shell has the window's thumbnail
+// toolbar, which it has once the taskbar button exists. Call on the main thread.
+func TestThumbBarLive(hwnd uintptr) bool {
+	w := theBackend.windows[hwnd]
+	return w != nil && w.thumb.live
+}
+
+// TestThumbButtonClicked posts the WM_COMMAND the shell sends when the
+// user clicks a thumbnail toolbar button, with the button's id.
+func TestThumbButtonClicked(hwnd uintptr, id int) {
+	procPostMessageW.Call(hwnd, wmCommand, uintptr(uint16(id))|uintptr(thbnClicked)<<16, 0)
+}

@@ -316,6 +316,24 @@ Other properties:
 - `FlashFrame(true)` asks for attention: the taskbar button flashes
   (Windows), the window is marked urgent (Linux) or the Dock icon bounces
   (macOS).
+- `SetThumbBar` puts a thumbnail toolbar under the window's live preview
+  in the taskbar (Windows): a row of up to 7 small buttons, each with a
+  PNG icon, a tooltip and a state:
+
+  ```go
+  win.SetThumbBar([]mygo.ThumbButton{
+      {Icon: back, ToolTip: "Back", Click: func(b *mygo.ThumbButton, win *mygo.Window) { goBack() }},
+      {Icon: play, ToolTip: "Play", Click: func(b *mygo.ThumbButton, win *mygo.Window) { play() }},
+  })
+  ```
+
+  The first call fixes the buttons' count and order (what the shell's
+  `ThumbBarAddButtons` allows); later calls update their icons (passing
+  new PNGs, or nil / the same PNGs to keep them), tooltips, `Disabled`
+  and `Hidden` state, and replace their `Click` functions. Buttons that
+  matter most come first: the toolbar is cut from the right where it does
+  not fit. The Click of a button runs on the main thread. On the other
+  platforms `SetThumbBar` reports `errors.ErrUnsupported`.
 
 ## Active and inactive windows
 

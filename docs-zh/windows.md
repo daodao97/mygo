@@ -192,6 +192,16 @@ win.Focus()             // Blur, IsFocused
   ```
 
 - `FlashFrame(true)` 请求注意：任务栏按钮闪烁（Windows）、窗口被标记为紧急（Linux）或 Dock 图标弹跳（macOS）。
+- `SetThumbBar` 在任务栏中窗口实时预览的下方放置缩略图工具栏（Windows）：一排最多 7 个小按钮，每个按钮有一个 PNG 图标、一段工具提示和一种状态：
+
+  ```go
+  win.SetThumbBar([]mygo.ThumbButton{
+      {Icon: back, ToolTip: "Back", Click: func(b *mygo.ThumbButton, win *mygo.Window) { goBack() }},
+      {Icon: play, ToolTip: "Play", Click: func(b *mygo.ThumbButton, win *mygo.Window) { play() }},
+  })
+  ```
+
+  首次调用确定按钮的数量和顺序（shell 的 `ThumbBarAddButtons` 只允许这样）；后续调用更新图标（传入新 PNG，或传 nil / 相同的 PNG 以保留原图标）、工具提示、`Disabled` 和 `Hidden` 状态，并替换 `Click` 函数。最重要的按钮放在前面：空间不足时工具栏从右侧截断。按钮的 `Click` 在主线程运行。其他平台上 `SetThumbBar` 返回 `errors.ErrUnsupported`。
 
 ## 活动与非活动窗口
 

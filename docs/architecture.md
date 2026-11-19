@@ -2110,7 +2110,14 @@ as in Tauri:
   the runtime's exit, and the runtime deadlocks (#1896).
 - Taskbar state on Windows (`taskbar.go`) lives on the window and is
   applied when Explorer sends `TaskbarButtonCreated` (first show, Explorer
-  restarts), so progress and a hidden button set before showing stick.
+  restarts), so progress and a hidden button set before showing stick. The
+  thumbnail toolbar (`thumbbar.go`) is applied the same way, added again
+  from the latest PNGs kept on the window: its button count and order are
+  fixed once set, and later changes update icons, tooltips and flags
+  (`ThumbBarUpdateButtons`). Like the notifications' images and the menu
+  icons, its code is linked when the app first sets one
+  (`LinkThumbBars`), since `applyTaskbar` and the window procedure run in
+  every app.
 - `WindowOptions.StateKey` (`window_state.go`) remembers a window's normal
   bounds and maximized/full screen state in `window-state.json` in
   `PathUserData`, like Tauri's window-state plugin, or in the app's
