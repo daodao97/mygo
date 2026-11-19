@@ -550,11 +550,12 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
             return true
         }
 
-        override fun commitCorrection(c: android.view.inputmethod.CorrectionInfo): Boolean {
-            val at = c.offset.toLong()
-            edit(Event.textReplace(wid, true, at, at + c.oldText.length, c.newText.toString()))
-            return true
-        }
+        // A correction the input method made is in the text already: it
+        // tells of it after committing the word itself, for the editor to
+        // flash it, as TextView does, with nothing to edit. Gboard tells of
+        // its corrections of words typed on a hardware keyboard: edited
+        // again, a word came twice and the cursor went back.
+        override fun commitCorrection(c: android.view.inputmethod.CorrectionInfo) = true
 
         override fun setComposingText(t: CharSequence, newCursorPosition: Int): Boolean {
             // The selection in the text composed, from the cursor Android
