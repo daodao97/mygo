@@ -497,6 +497,63 @@ as many as it needs.
 The [code editor example](../../examples/code-editor) has a live preview
 of its README.md.
 
+## Blocks between lines
+
+`SetBlocks` shows elements between the lines of the text, as Zed's blocks:
+an image under the line naming it, or a table in place of its source.
+They are no part of the text, which stays the buffer's.
+
+```go
+blocks := []editor.Block{{
+	Line: img.Line, Height: 200, Label: img.Alt,
+	Content: func(c *ui.Context, e ui.Element, b editor.Block) {
+		e.Children(func() { ui.Image(c, img.Source).Width(320) })
+	},
+}}
+app.code.SetBlocks(blocks)
+editor.View(c, app.code).Grow(1).FillWidth()
+```
+
+- **`Line`** and **`Above`** say where it goes: below the line, or above
+  it. Blocks move with their line's text. Deleting that line attaches
+  the block to the surviving line at that position, with `Above` unchanged.
+  Set them again as the text changes: those at the place of one shown
+  keep their elements and heights.
+- **`Content`** is given the element the editor places, using the text
+  layout's width, including its `WrapColumn` limit and minimum width, as
+  parts are (see [Bars and popups](#bars-and-popups)). It stays in place
+  as the text scrolls sideways.
+- **The height** is what the element lays out to. Only the blocks in view
+  are built, so a block not shown yet is taken to be `Height` high, or a
+  row, and measured as it shows, the lines in view staying where they are.
+- **Presses** on it go to the text, the caret to the line next to it,
+  unless `Interactive`; `Label` names it for assistive technology.
+
+A block on a line a [replacement](#replacing-ranges) hides shows in place
+of the lines the replacement covers, for a range showing nothing from the
+start of a line through a newline. A live preview does this for a table:
+
+```go
+if !hasCaret(table) {
+	rs = append(rs, editor.Replacement{Start: table.Start, End: table.End})
+	blocks = append(blocks, editor.Block{Line: table.FirstLine, Content: drawTable})
+}
+```
+
+Carets stop on such a block once, at the start of the range, showing
+before it, and a press on it puts the caret there: an app showing the
+source of what has a caret shows it then. `CursorShape` applies over the
+whole stand-in: a bar or block spans its height, and an underline sits
+at its bottom. The block and underline fit in the margin before the
+content; the bar keeps its insertion point. Without focus, only the
+block's outline stays visible.
+Selecting across it tints it,
+and deleting next to it deletes all of it. A fold hides the blocks of its
+lines.
+
+The [code editor example](../../examples/code-editor)'s live preview shows
+an image and a table this way.
+
 ## Line styles
 
 `SetLineStyles` draws lines in other fonts, as a Markdown editor's headings

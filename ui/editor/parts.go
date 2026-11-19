@@ -354,7 +354,7 @@ func (ed *editor) buildGoToLine(c *ui.Context) {
 	if line, col, ok := g.target(ed); ok && line != g.preview {
 		g.preview = line
 		if cr, ok := ed.caretRect(offsetOf(ed.view.text, Pos{line, col})); ok {
-			ed.setScroll(float64(cr.Y) - float64(ed.viewH-ed.view.lineHeight)/2)
+			ed.setScroll(float64(cr.Y) - float64(ed.viewH-min(cr.H, ed.viewH))/2)
 		}
 	}
 }

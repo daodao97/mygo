@@ -299,6 +299,74 @@ func benchNote(n int) (string, []Replacement) {
 	return b.String(), rs
 }
 
+// BenchmarkCodeEditorTypeBlocks types in 10,000 lines and renders the
+// frame, with blocks moved through edits or set again in every build.
+// The folded mode also exercises the unchanged folds on each layout.
+// The stand-in mode hides whole lines with empty replacements, sets both
+// replacements and blocks every build, and types in adjacent visible text.
+func BenchmarkCodeEditorTypeBlocks(b *testing.B) {
+	for _, mode := range []string{"source", "moved", "set", "set-folded", "set-stand-in"} {
+		b.Run(mode, func(b *testing.B) {
+			standIn := mode == "set-stand-in"
+			text, _ := benchNote(10_000)
+			var bs []Block
+			for line := 0; line < 10_000; line += 4 {
+				bs = append(bs, tall(line, false, 20, "Block"))
+			}
+			st := &State{Buffer: NewBuffer(text)}
+			if standIn {
+				var rs []Replacement
+				for _, block := range bs {
+					rs = append(rs, hide(st.Buffer.Offset(Pos{Line: block.Line}), st.Buffer.Offset(Pos{Line: block.Line + 1})))
+				}
+				st.SetReplacements(rs)
+			}
+			tt := ui.NewTester(func(c *ui.Context) {
+				if mode == "set" || mode == "set-folded" || standIn {
+					st.SetBlocks(bs)
+				}
+				if standIn {
+					// SetBlocks syncs edits first. Use moved ranges, not stale
+					// byte offsets after typing before later replacements.
+					st.SetReplacements(st.Replacements())
+				}
+				View(c, st).Fill().AutoFocus()
+			}, 1200, 800)
+			tt.SetScale(2)
+			tt.Frame()
+			if mode != "source" {
+				st.SetBlocks(bs)
+			}
+			if mode == "set-folded" {
+				st.ed.folds = []fold{{100, 200}, {8_000, 8_100}}
+			}
+			pos := Pos{Line: 5_000}
+			if standIn {
+				pos.Line++
+				pos.Col = 1
+			}
+			mid := st.Buffer.Offset(pos)
+			st.Select(mid, mid)
+			tt.Frame()
+			tt.Frame()
+			if standIn {
+				if _, ok := st.ed.standIn(pos.Line - 1); !ok || st.ed.view.heights.isHidden(pos.Line) {
+					b.Fatal("the benchmark needs a stand-in beside the visible typing line")
+				}
+			}
+			b.ReportAllocs()
+			for i := 0; b.Loop(); i++ {
+				if i%2 == 0 {
+					tt.Type("x")
+				} else {
+					tt.Key(0, ui.KeyBackspace)
+				}
+				tt.Frame()
+			}
+		})
+	}
+}
+
 // BenchmarkCodeEditorTypeReplacements types a character in the middle of
 // a note of 10,000 lines and renders the frame: with no replacements, as
 // its source shows; with those of a live preview, which the edits move;

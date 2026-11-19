@@ -166,7 +166,7 @@ func (ed *editor) build(c *ui.Context, buf *Buffer, o options) ui.Element {
 		if h.shown {
 			hoverAnchor, hasHover = anchor("code hover anchor", h.start)
 		}
-		ed.buildReplacements(c)
+		ed.buildElements(c)
 		if ds, ok := ed.o.decor.(*diffSide); ok {
 			ds.buildBlocks(c, ed)
 		} else {

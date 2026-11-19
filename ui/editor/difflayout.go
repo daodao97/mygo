@@ -318,6 +318,10 @@ func sticky(blks []block) []block {
 // keep a version of theirs (hideV), for what follows only them, as the
 // diff's find does.
 func (d *DiffState) setSide(i int, hide []lineSpan, blks []block) {
+	// Canonicalize once per preparation, so heights can compare values
+	// without sorting again. Preserve same-place separators, annotations
+	// and late blocks in their original order.
+	slices.SortStableFunc(blks, compareBlockPosition)
 	s := &d.sides[i]
 	if !slices.Equal(s.hide, hide) {
 		s.hide, s.hideV = hide, s.hideV+1

@@ -242,6 +242,64 @@ editor.View(c, app.code).Grow(1).FillWidth()
 
 [代码编辑器示例](../../examples/code-editor) 有一个 README.md 的实时预览。
 
+## 行间块
+
+`SetBlocks` 在文本行之间显示元素，类似 Zed 的块：可以在提到图片的行下方显示图片，也可以用表格代替它的源文本。块不属于文本，原文仍保留在缓冲区中。
+
+```go
+blocks := []editor.Block{{
+	Line: img.Line, Height: 200, Label: img.Alt,
+	Content: func(c *ui.Context, e ui.Element, b editor.Block) {
+		e.Children(func() { ui.Image(c, img.Source).Width(320) })
+	},
+}}
+app.code.SetBlocks(blocks)
+editor.View(c, app.code).Grow(1).FillWidth()
+```
+
+- **`Line` 和 `Above`** 决定位置：`Line` 从 0 开始，默认放在该行下方，`Above` 为 true 时放在上方。块随所属行的文本一起移动；该行被删除时，块会附到删除位置所在的保留行上，上下位置仍由原来的 `Above` 决定。文本变化时可以重新设置块：同一位置的块按顺序保留元素标识和已测量的高度。不存在的行或没有 `Content` 的块会被略去，`Blocks` 返回随编辑移动后的块。
+- **`Content`** 收到编辑器放置的元素，宽度遵循与文本排版相同的 `WrapColumn` 限制和最小宽度，和其他部件一样（见[栏与浮层](#栏与浮层)）。横向滚动文本时，块的横向位置不变。
+- **高度** 由构建出的元素布局决定。只构建视口中的块；尚未测量的块先采用 `Height`，它不大于 0 时按编辑器的一行高度估计。显示后测量实际高度，已经测量过的块保留上一次高度。上方块的测量高度变化时，编辑器会调整滚动位置，保持已可见文本的屏幕位置。
+- **按下事件** 默认落到文本上，把插入符放在块旁边的文本行；`Interactive` 为 true 时，事件留给块中的控件，滚轮仍滚动编辑器。给按钮设置 `KeepFocus`，可以让键盘焦点留在编辑器中。`Label` 是块向辅助技术提供的名称。
+
+块可以代替[替换区段](#替换区段)隐藏的源文本，但替换项必须从行首开始，至少覆盖一个换行符，并且 `Text` 为空、`Content` 为 nil。块所属行必须被该替换项完整隐藏，且未被折叠。从行中间开始或显示文本、元素的替换项不满足这个条件；它们隐藏的行上的块不会作为替代显示。表格的实时预览可以这样实现：
+
+```go
+if !hasCaret(table) {
+	// table.Start 是行首，table.End 是表格之后一行的起点。
+	rs = append(rs, editor.Replacement{Start: table.Start, End: table.End})
+	blocks = append(blocks, editor.Block{Line: table.FirstLine, Content: drawTable})
+}
+app.code.SetReplacements(rs)
+app.code.SetBlocks(blocks)
+```
+
+每次重建预览时重新收集 `rs` 和 `blocks`。插入符在这种替代块上停留一次，位置是替换区段的起点，显示在块前方；按下块也会把插入符放到那里。应用若只隐藏不含插入符的区段，就会在这时显示源文本以便编辑。`CursorShape` 也适用于整个替代区域：竖线和块覆盖其全部高度，下划线位于底部。块和下划线的宽度限制在内容前的留白内，竖线的位置不变；没有焦点时只有块的轮廓仍显示。选区跨过整个区段时会为块着上选区颜色，在它旁边删除会删掉整个区段。折叠会隐藏所属行上的块。
+
+[代码编辑器示例](../../examples/code-editor)的实时预览用这种方式显示图片和表格。
+
+## 行样式
+
+`SetLineStyles` 用其他字体绘制指定行，例如把 Markdown 标题显示得更大。缓冲区中的文本不变，改变的只是行的外观。
+
+```go
+var styles []editor.LineStyle
+for _, h := range headings(buf) { // 应用自己的解析器
+	styles = append(styles, editor.LineStyle{
+		Line: h.Line, Font: ui.Font{Size: 28 - 3*float32(h.Level), Weight: 700},
+	})
+}
+app.code.SetLineStyles(styles)
+```
+
+- **`Line`** 是从 0 开始的行号。不存在的行会被略去；同一行给出多个样式时，最后一个生效。
+- **`Font`** 的零值字段沿用编辑器的设置，所以只设置 `Size` 会保留字体族。**`LineHeight`** 和 `State.LineHeight` 一样，是字号的倍数；为 0 时沿用编辑器的倍数。
+- **显示行** 按该行字体决定高度，并用自己的字体软换行。插入符、选区、按下位置、查找匹配项和[替换项](#替换区段)的元素都会跟随布局；替换项没有指定 `Width` 时，元素宽度与该行的显示行高度相同。
+- **行号边栏** 仍用编辑器的字体绘制行号，基线对齐到该行的第一个显示行。
+- **只对视口中的行排版**：带样式的行高从字体度量取得，无需先做文本整形；软换行产生的显示行数量仍和普通行一样测量。
+
+样式随所属行的文本一起移动。文本变化时可以重新设置；相同样式不会触发重新排版，样式变化只重新排版受影响的行。`LineStyles` 返回随编辑移动后的样式。差异视图的两侧不使用这些行样式。[代码编辑器示例](../../examples/code-editor)的实时预览用它们显示 README.md 的标题。
+
 ## 代码片段
 
 补全的 `Insert` 始终是纯文本，即使设置了 `Kind: editor.CompletionSnippet`（这只决定图标）。要插入带可编辑占位符的代码模板，先解析模板，再设置 `Snippet`：

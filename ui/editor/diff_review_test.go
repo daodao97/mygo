@@ -132,6 +132,50 @@ func TestReviewDiffNoContext(t *testing.T) {
 	}
 }
 
+// Sticky deleted lines and spacers on collapsed lines keep the diff's
+// line lookup. They are not app blocks standing in for hidden source.
+func TestReviewDiffNoContextHitTest(t *testing.T) {
+	old := "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"
+	nw := strings.Replace(old, "f\n", "", 1)
+	for _, layout := range []DiffLayout{DiffUnified, DiffSplit} {
+		t.Run(fmt.Sprint(layout), func(t *testing.T) {
+			d := &DiffState{Old: NewBuffer(old), New: NewBuffer(nw), ContextLines: -1, Layout: layout}
+			tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 600, 400)
+			tt.Frame()
+			tt.Frame()
+			ed := &d.eds[1]
+			h := &ed.view.heights
+			kind := blockDeleted
+			if layout == DiffSplit {
+				kind = blockSpacer
+			}
+			seen := 0
+			ed.eachBlock(0, h.n-1, func(b *block, top float64) {
+				if b.kind != kind {
+					return
+				}
+				seen++
+				if !b.sticky || !h.isHidden(b.line) || b.line == 0 {
+					t.Fatalf("expected a sticky diff block on a collapsed line: %+v", b)
+				}
+				for _, y := range []float64{top, top + float64(b.height)/2} {
+					// With every unchanged line collapsed, lookup falls
+					// back to line 0, not the block's hidden line.
+					if got := h.lineAt(y); got != 0 {
+						t.Errorf("kind %d at height %v: line %d, want 0", b.kind, y, got)
+					}
+					if got, want := ed.offsetAt(0, y), ed.view.text.LineEnd(0); got != want {
+						t.Errorf("kind %d at height %v: offset %d, want %d", b.kind, y, got, want)
+					}
+				}
+			})
+			if seen == 0 {
+				t.Fatalf("no diff block of kind %d was tested", kind)
+			}
+		})
+	}
+}
+
 // Both sides of a split view wrap alike where their line counts have
 // different numbers of digits.
 func TestReviewDiffWrapGutters(t *testing.T) {
