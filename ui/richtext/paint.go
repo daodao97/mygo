@@ -22,6 +22,27 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		v.clipped = false
 	}
 	v.layout(w, h)
+	// Text scrolled partly out of the box is cut at its edges, not painted
+	// over what is around it or over the editor's border and corners:
+	// Element.Clip hides only what children draw, and the editor paints on
+	// itself.
+	b := v.border
+	p.Clip(ui.Rect{X: r.X + b, Y: r.Y + b, W: r.W - 2*b, H: r.H - 2*b}, max(v.radius-b, 0), func() { v.paintText(p, r, w) })
+	// The scroll bar while the pointer is over the editor or drags its
+	// thumb, as a scroll container's.
+	if !v.opts.NoScrollbar && (v.inView || v.thumb) {
+		v.barStyle = ui.ScrollbarStyle{}.Resolve(p.Theme())
+		bar := v.bar()
+		bar.Box.X, bar.Box.Y = r.X, r.Y
+		p.Scrollbar(bar, ui.ScrollbarState{Hovered: v.inView, Dragging: v.thumb})
+	}
+	v.moved()
+}
+
+// paintText paints the text of the box r, w wide inside its padding: the
+// placeholder, the paragraphs in view with their decorations, selection,
+// attachments and markers, the composition and the caret.
+func (v *view) paintText(p *ui.Painter, r ui.Rect, w float32) {
 	ox, oy := r.X+v.padX, r.Y+v.padY
 	look := &v.look
 	if v.shown.Len() == 0 && v.compose == "" && v.opts.Placeholder != "" {
@@ -84,15 +105,6 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 			p.Fill(ui.Rect{X: ox + cx, Y: oy + float32(cy-v.scroll), W: max(1/scale, 1), H: ch}, look.Caret, 0)
 		}
 	}
-	// The scroll bar while the pointer is over the editor or drags its
-	// thumb, as a scroll container's.
-	if !v.opts.NoScrollbar && (v.inView || v.thumb) {
-		v.barStyle = ui.ScrollbarStyle{}.Resolve(p.Theme())
-		bar := v.bar()
-		bar.Box.X, bar.Box.Y = r.X, r.Y
-		p.Scrollbar(bar, ui.ScrollbarState{Hovered: v.inView, Dragging: v.thumb})
-	}
-	v.moved()
 }
 
 // paintBlock paints what a paragraph of style st shows behind its text:
