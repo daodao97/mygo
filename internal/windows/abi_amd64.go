@@ -19,3 +19,17 @@ func putZoom(w *window, f float64) {
 }
 
 const zoomByScript = false
+
+// userZoomed takes the controller's zoom as the page's after it changed,
+// and reports whether it is new: a zoom the user chose (Ctrl+wheel, or
+// Ctrl+0 back to SetZoom's), or theirs dropped as the page navigated.
+// SetZoom's own is w.zoom already.
+func (w *window) userZoomed() bool {
+	var f float64
+	comCall(w.controller, ctlGetZoomFactor, uintptr(unsafe.Pointer(&f)))
+	if f <= 0 || f == w.zoom {
+		return false
+	}
+	w.zoom = f
+	return true
+}

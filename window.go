@@ -781,6 +781,7 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 		Autoplay:               po.Autoplay == AutoplayAllow,
 		SwipeNavigation:        po.SwipeNavigation,
 		PinchZoom:              po.PinchZoom,
+		ZoomControl:            po.ZoomControl,
 		Schemes:                Protocol.schemes(),
 		Panel:                  o.Panel,
 		PictureInPicture:       po.PictureInPicture,
@@ -2470,6 +2471,10 @@ func (h *windowHandler) AudibleChanged(audible bool) {
 	h.w.audible = audible
 	fire1(&h.w.onAudibleChanged, audible)
 }
+
+// ZoomChanged tells the page and its window of a zoom the user chose, as
+// SetZoomFactor does of the app's.
+func (h *windowHandler) ZoomChanged() { h.w.zoomChanged() }
 
 func (h *windowHandler) CaptureStateChanged(kind platform.CaptureKind, state platform.CaptureState) {
 	k := CaptureKind(kind)

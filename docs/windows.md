@@ -65,7 +65,7 @@ on the screen. Sizes and positions are in device-independent pixels.
 | `AutoHideMenuBar` | shows the menu bar only while the keyboard is in it, from Alt or F10 (Linux, Windows), see [the menu bar](menus.md#the-menu-bar) |
 | `Parent`, `Modal` | a child window, modal to its parent, a [flyout](#a-dialog-over-a-flyout) too; for one placed next to a part of it, see [flyouts](#flyouts) |
 | `Panel` | the window of a launcher or a quick entry, floating above all apps, see [panels](#panels) |
-| `Page` | the options of the window's [page](#pages): its preload script, trusted origins, web inspector, zoom, user agent and its suffix, swipes and pinches |
+| `Page` | the options of the window's [page](#pages): its preload script, trusted origins, web inspector, zoom, user agent and its suffix, swipes, pinches and the user's zoom |
 
 ## Show windows without flashing
 
@@ -840,6 +840,7 @@ mygo.NewWindow(mygo.WindowOptions{
 | `PictureInPicture` | lets the page's videos go into picture in picture, see [picture in picture](#picture-in-picture) (macOS; WebView2 lets them already) |
 | `SwipeNavigation` | a horizontal swipe goes back and forward through the page's history, as in browsers, see [gestures](#swipes-and-pinches) |
 | `PinchZoom` | a pinch magnifies the page, as in browsers, see [gestures](#swipes-and-pinches) |
+| `ZoomControl` | the user zooms the page with Ctrl+wheel, as in browsers, see [the user's zoom](#the-users-zoom) |
 | `UserAgentSuffix` | appended to the user agent instead of replacing it, which `UserAgent` does, such as `"MyApp/1.2"`; it appends to `UserAgent` too, and `SetUserAgent` keeps it, and leading and trailing spaces are trimmed |
 | `ContentRules` | rules that block what the page loads and hide parts of it, see [blocking content](#blocking-content) |
 | `BackgroundThrottling` | `ThrottlingOn` (the web view's own) or `ThrottlingOff`, which keeps the page running while its window is hidden, minimized or covered, see [background pages](#background-pages) |
@@ -907,6 +908,36 @@ size, as it is.
 
 WebKitGTK and WebView2 have pinches, and WebView2 swipes, on by default:
 MyGo turns them off unless the page asks for them.
+
+### The user's zoom
+
+A page zooms as the app zooms it, with `ZoomFactor` and `SetZoomFactor` or
+the zoom items of a View menu (`RoleZoomIn`, `RoleZoomOut` and
+`RoleResetZoom`, the default menu's on macOS too), and not as the user
+does in a browser, as desktop apps do: an app whose pages are its UI keeps
+them at the size it laid them out at. `ZoomControl` lets the user zoom the
+page too, for a window's page and a [web view's](ui/web-view.md) alike:
+
+```go
+mygo.NewWindow(mygo.WindowOptions{
+	URL:  "/manual/",
+	Page: mygo.PageOptions{ZoomControl: true},
+})
+```
+
+| | `ZoomControl` |
+|---|---|
+| Windows | Ctrl+wheel, and Ctrl+Plus and Ctrl+Minus where WebView2's own keys are on, which come with the [inspector](frontend.md#the-web-inspector) (`IsZoomControlEnabled`) |
+| macOS | nothing: WKWebView zooms on no key or wheel itself |
+| Linux | nothing: WebKitGTK zooms on no key or wheel itself |
+
+`Page.ZoomFactor` reports the user's zoom, and the page hears it as it
+hears `SetZoomFactor`'s. WebView2 keeps a zoom per site: as the page
+navigates to another site, it may put back the one that site had, and
+`ZoomFactor` follows that too.
+
+Before `ZoomControl`, WebView2 let the user zoom every page with Ctrl+wheel:
+a page that should still zoom so sets it.
 
 ### The theme color
 

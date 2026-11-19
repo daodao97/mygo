@@ -404,4 +404,4 @@ win.Page().SetWindowOpenHandler(func(req mygo.WindowOpenRequest) *mygo.WindowOpt
 
 在 Windows 上，应用会像其他 WebView2 应用一样读取 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 和 `WEBVIEW2_USER_DATA_FOLDER`。使用 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` 时，另一个进程可以通过 DevTools 协议驱动它的页面，如同测试运行器、Playwright 的 `connectOverCDP` 或智能体所做的那样。这在每个构建中都有效，与 Microsoft 的加载器一样：启动应用的人设置它的环境。
 
-在 Windows 上，WebView2 自带的按键随检查器一起提供：F5 和 Ctrl+R 重新加载页面（重新加载不会询问 [`OnWillNavigate`](windows.md#页面)），Ctrl+P 打印，Ctrl+F 查找，Ctrl+加号缩放，这些都只在检查器开启时有效。没有它时，如同生产构建，页面就没有这些按键，与 macOS 和 Linux 一样，只有应用的菜单项接受这些按键，例如“视图”菜单的菜单项（`RoleViewMenu`）。
+在 Windows 上，WebView2 自带的按键随检查器一起提供：F5 和 Ctrl+R 重新加载页面（重新加载不会询问 [`OnWillNavigate`](windows.md#页面)），Ctrl+P 打印，Ctrl+F 查找，Ctrl+加号缩放，这些都只在检查器开启时有效，而 Ctrl+加号还只在允许用户缩放的页面中有效（[`ZoomControl`](windows.md#用户的缩放)）。没有它时，如同生产构建，页面就没有这些按键，与 macOS 和 Linux 一样，只有应用的菜单项接受这些按键，例如“视图”菜单的菜单项（`RoleViewMenu`）。

@@ -146,6 +146,7 @@ type window struct {
 	programmatic bool
 	loading      bool
 	zoom         float64
+	userZoom     float64   // on ARM64, the controller's zoom, which the user's Ctrl+wheel sets, under the CSS one (abi_arm64.go); 0 for 1
 	muted        bool      // SetAudioMuted, which setUp applies to a web view made later
 	mutePut      time.Time // when the IsMuted put in flight was made, zero for none
 	devTools     bool

@@ -355,6 +355,20 @@ type PageOptions struct {
 	//   - Windows: a touchscreen's pinch (WebView2's IsPinchZoomEnabled); a
 	//     WebView2 Runtime without ICoreWebView2Settings5 always zooms.
 	PinchZoom bool
+	// ZoomControl lets the user zoom the page, as ZoomFactor does, with
+	// the wheel and the keys browsers zoom with. It is off by default, as
+	// in desktop apps and for PinchZoom; Page.SetZoomFactor zooms either
+	// way, as do the zoom items of the app's own menu (RoleZoomIn and its
+	// siblings), and Page.ZoomFactor follows the user's zoom:
+	//
+	//   - Windows: Ctrl+wheel, and Ctrl+Plus and Ctrl+Minus where the
+	//     browser's keys are on, which come with DevTools (WebView2's
+	//     IsZoomControlEnabled).
+	//   - macOS: nothing, as WKWebView zooms with no key or wheel of its
+	//     own; the zoom items of the default menu zoom any page.
+	//   - Linux: nothing, as WebKitGTK zooms with no key or wheel of its
+	//     own.
+	ZoomControl bool
 	// UserAgentSuffix appends to the page's user agent instead of
 	// replacing it, as UserAgent does: the app's name and version, such as
 	// "MyApp/1.2", for the sites that read them. It appends to UserAgent

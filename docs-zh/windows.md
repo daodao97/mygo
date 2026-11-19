@@ -58,7 +58,7 @@ mygo.NewWindow(mygo.WindowOptions{Title: "Inspector", Content: ui.View(app.view)
 | `AutoHideMenuBar` | 只在键盘焦点进入菜单栏时（按 Alt 或 F10）显示菜单栏（Linux、Windows），见[菜单栏](menus.md#菜单栏) |
 | `Parent`, `Modal` | 子窗口，对其父窗口模态，也可以是[叠在浮出窗口上的对话框](#叠在浮出窗口上的对话框)；对于紧挨其某一部分放置的窗口，见[浮出窗口](#浮出窗口) |
 | `Panel` | 启动器或快速输入的窗口，浮在所有应用之上，见[面板](#面板) |
-| `Page` | 窗口的[页面](#页面)选项：其预加载脚本、受信任的来源、Web 检查器、缩放、用户代理及其后缀、滑动和捏合 |
+| `Page` | 窗口的[页面](#页面)选项：其预加载脚本、受信任的来源、Web 检查器、缩放、用户代理及其后缀、滑动、捏合和用户的缩放 |
 
 ## 无闪烁地显示窗口
 
@@ -525,6 +525,7 @@ mygo.NewWindow(mygo.WindowOptions{
 | `PictureInPicture` | 让页面的视频进入画中画，见[画中画](#画中画)（macOS；WebView2 已经允许） |
 | `SwipeNavigation` | 水平滑动会在页面历史中后退和前进，如同浏览器，见[手势](#滑动和捏合) |
 | `PinchZoom` | 捏合会放大页面，如同浏览器，见[手势](#滑动和捏合) |
+| `ZoomControl` | 用户可以用 Ctrl+滚轮缩放页面，如同浏览器，见[用户的缩放](#用户的缩放) |
 | `UserAgentSuffix` | 附加到用户代理而不是替换它（`UserAgent` 会替换），如 `"MyApp/1.2"`；它也会附加到 `UserAgent`，`SetUserAgent` 会保留它，且会去掉首尾空格 |
 | `ContentRules` | 阻止页面加载的内容并隐藏页面一部分的规则，见[阻止内容](#阻止内容) |
 | `BackgroundThrottling` | `ThrottlingOn`（web view 自己的）或 `ThrottlingOff`，后者让页面在其窗口隐藏、最小化或被覆盖时继续运行，见[后台页面](#后台页面) |
@@ -583,6 +584,27 @@ mygo.NewWindow(mygo.WindowOptions{
 | Windows | 触摸屏上的滑动（`IsSwipeNavigationEnabled`） | 触摸屏的捏合（`IsPinchZoomEnabled`）；没有 `ICoreWebView2Settings5` 的 WebView2 Runtime 总是缩放 |
 
 WebKitGTK 和 WebView2 默认开启捏合，WebView2 还默认开启滑动：除非页面要求，MyGo 会关闭它们。
+
+### 用户的缩放
+
+页面按应用的缩放而缩放：通过 `ZoomFactor` 和 `SetZoomFactor`，或“视图”菜单中的缩放菜单项（`RoleZoomIn`、`RoleZoomOut` 和 `RoleResetZoom`，macOS 默认菜单中的也是），而不像在浏览器中那样随用户缩放，这与桌面应用的惯例一致：页面就是其界面的应用，会让页面保持它布局时的大小。`ZoomControl` 让用户也能缩放页面，窗口页面和 [web view](ui/web-view.md) 页面均适用：
+
+```go
+mygo.NewWindow(mygo.WindowOptions{
+	URL:  "/manual/",
+	Page: mygo.PageOptions{ZoomControl: true},
+})
+```
+
+| | `ZoomControl` |
+|---|---|
+| Windows | Ctrl+滚轮，以及在 WebView2 自带按键开启时的 Ctrl+加号和 Ctrl+减号，这些按键随[检查器](frontend.md#网页检查器)一起提供（`IsZoomControlEnabled`） |
+| macOS | 无：WKWebView 自身不会因任何按键或滚轮而缩放 |
+| Linux | 无：WebKitGTK 自身不会因任何按键或滚轮而缩放 |
+
+`Page.ZoomFactor` 会报告用户的缩放，页面也会像得知 `SetZoomFactor` 的缩放那样得知它。WebView2 会为每个站点记住一个缩放：页面导航到另一个站点时，它可能恢复该站点上次的缩放，`ZoomFactor` 也会随之变化。
+
+在有 `ZoomControl` 之前，WebView2 允许用户用 Ctrl+滚轮缩放每个页面：仍应如此缩放的页面需要设置它。
 
 ### 主题色
 

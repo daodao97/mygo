@@ -501,6 +501,11 @@ type WindowOptions struct {
 	// PinchZoom lets a pinch magnify the page; the backends turn it off
 	// where their webview has it on by default (mygo.PageOptions.PinchZoom).
 	PinchZoom bool
+	// ZoomControl lets the user zoom the page with the wheel and the
+	// browser's zoom keys, where the webview has them (Windows,
+	// mygo.PageOptions.ZoomControl); the backend reports the zoom
+	// through WindowHandler.ZoomChanged.
+	ZoomControl bool
 	// DataStore is the website data store of the page, one of
 	// AppController.NewDataStore; nil is the default store. A window
 	// opened by window.open has its opener's.
@@ -966,6 +971,10 @@ type WindowHandler interface {
 	RenderProcessGone(reason string)
 	// AudibleChanged is called when Page.IsAudible changes.
 	AudibleChanged(audible bool)
+	// ZoomChanged is called when the page's zoom changed from Window.Zoom
+	// without the core's SetZoom, as when the user zooms it
+	// (mygo.PageOptions.ZoomControl).
+	ZoomChanged()
 	// CaptureStateChanged is called when Page.CaptureState of kind may
 	// have changed, with its state.
 	CaptureStateChanged(kind CaptureKind, state CaptureState)
