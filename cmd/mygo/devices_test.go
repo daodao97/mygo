@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -400,5 +401,55 @@ func TestMobileNoiseOfDevicectl(t *testing.T) {
 	}
 	if mobileNoise("listening on :8080", "com.example.app") {
 		t.Error("the app's line is noise")
+	}
+}
+
+// TestAndroidLog: logcat's lines lose their tags, and a line that both the
+// runtime (Go) and the app's standard error (mygo) logged shows once, in
+// either order; a panic that only the runtime logged shows whole.
+func TestAndroidLog(t *testing.T) {
+	var a androidLog
+	var shown []string
+	for _, l := range []string{
+		"--------- beginning of main",
+		"I/mygo    : listening on :8080",
+		"E/Go      : println first",
+		"E/mygo    : println first",
+		"E/mygo    : log first",
+		"E/Go      : log first",
+		"E/mygo    : twice",
+		"E/mygo    : twice",
+		"E/Go      : twice",
+		"E/Go      : panic: boom",
+		"E/Go      : ",
+		"E/Go      :",
+		"E/Go      : goroutine 1 [running]:",
+		"E/AndroidRuntime: FATAL EXCEPTION: main",
+	} {
+		if text, show := a.line(l); show {
+			shown = append(shown, text)
+		}
+	}
+	want := []string{
+		"--------- beginning of main",
+		"listening on :8080",
+		"println first",
+		"log first",
+		"twice",
+		"twice",
+		"panic: boom",
+		"",
+		"",
+		"goroutine 1 [running]:",
+		"FATAL EXCEPTION: main",
+	}
+	if !slices.Equal(shown, want) {
+		t.Errorf("shown %q, want %q", shown, want)
+	}
+	for range androidLogMemory + 10 {
+		a.line("I/mygo    : again")
+	}
+	if n := len(a.order[1]); n > androidLogMemory {
+		t.Errorf("remembers %d lines, want at most %d", n, androidLogMemory)
 	}
 }

@@ -739,8 +739,10 @@ func (s *devSession) launchAndroid(dc *Config, app string, env []string) (*exec.
 	if out, err := adb(s.device.id, "shell", "am start -W -n "+dc.Identifier+"/dev.mygo.MyGoActivity --es mygo.env '"+quoted+"'").CombinedOutput(); err != nil {
 		return nil, nil, fmt.Errorf("adb am start: %v\n%s", err, bytes.TrimSpace(out))
 	}
-	// The app's log: what it writes (the tag mygo) and its crashes.
-	cmd := adb(s.device.id, "logcat", "-v", "raw", "-s", "mygo:V", "AndroidRuntime:E", "DEBUG:V")
+	// The app's log: what it writes (the tag mygo) and its crashes: the Go
+	// runtime's report of a panic (Go), Java's (AndroidRuntime) and native
+	// code's (DEBUG). androidLog reads it.
+	cmd := adb(s.device.id, "logcat", "-v", "tag", "-s", "mygo:V", "Go:V", "AndroidRuntime:E", "DEBUG:V")
 	serial, id := s.device.id, dc.Identifier
 	return cmd, func() { adb(serial, "shell", "am", "force-stop", id).Run() }, nil
 }
@@ -889,4 +891,63 @@ func lanAddress() (string, error) {
 	}
 	defer conn.Close()
 	return conn.LocalAddr().(*net.UDPAddr).IP.String(), nil
+}
+
+// androidLog reads the lines of logcat -v tag ("E/mygo: text") for the
+// console: their text, each line the app wrote once. The Go runtime writes
+// what it prints, as panics and println, both to the system's log (the tag
+// Go) and to the standard error, which the app's library sends there too
+// (the tag mygo), unless the app ends first, as a panic does. Of a line
+// both tags have, the second is dropped.
+type androidLog struct {
+	unmatched [2]map[string]int // by tag (0 Go, 1 mygo): lines the other has not had
+	order     [2][]string       // the oldest first, to forget beyond androidLogMemory
+}
+
+// androidLogMemory is how many lines of a tag androidLog waits for the
+// other to have.
+const androidLogMemory = 256
+
+// line returns the text of a line of logcat's and whether to show it.
+func (a *androidLog) line(l string) (string, bool) {
+	head, text, ok := strings.Cut(l, ": ")
+	if !ok && strings.HasSuffix(l, ":") { // an empty line, whose space logcat may trim
+		head, ok = l[:len(l)-1], true
+	}
+	if !ok || len(head) < 3 || head[1] != '/' {
+		return l, true
+	}
+	var tag int
+	switch strings.TrimSpace(head[2:]) {
+	case "Go":
+		tag = 0
+	case "mygo":
+		tag = 1
+	default:
+		return text, true
+	}
+	other := 1 - tag
+	if a.unmatched[other][text] > 0 {
+		a.forget(other, text)
+		return text, false
+	}
+	if a.unmatched[tag] == nil {
+		a.unmatched[tag] = map[string]int{}
+	}
+	a.unmatched[tag][text]++
+	a.order[tag] = append(a.order[tag], text)
+	if len(a.order[tag]) > androidLogMemory {
+		a.forget(tag, a.order[tag][0])
+	}
+	return text, true
+}
+
+// forget drops the oldest of tag's unmatched lines that are text.
+func (a *androidLog) forget(tag int, text string) {
+	if a.unmatched[tag][text]--; a.unmatched[tag][text] <= 0 {
+		delete(a.unmatched[tag], text)
+	}
+	if i := slices.Index(a.order[tag], text); i >= 0 {
+		a.order[tag] = slices.Delete(a.order[tag], i, i+1)
+	}
 }

@@ -128,6 +128,7 @@ func (a *Application) Run() error {
 	}
 	a.running = true
 	a.mu.Unlock()
+	logCrashes()
 	go cleanUpdateLeftovers()
 
 	b := backend()

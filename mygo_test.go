@@ -55,6 +55,12 @@ func TestMain(m *testing.M) {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	}
+	if dir := os.Getenv("MYGO_TEST_CRASH_LOG"); dir != "" {
+		// Helper process for TestCrashLog: a packaged app that panics.
+		App.SetPath(PathLogs, dir)
+		logCrashes()
+		panic("mygo test crash")
+	}
 	fb = fake.New()
 	backendOnce.Do(func() { theBackend = fb })
 	if os.Getenv("MYGO_TEST_STUCK_QUIT") == "1" {

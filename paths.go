@@ -131,14 +131,22 @@ func resourcesDir(exe, wd string) string {
 	if filepath.Base(dir) == "MacOS" && filepath.Base(filepath.Dir(dir)) == "Contents" {
 		return filepath.Join(filepath.Dir(dir), "Resources")
 	}
-	// go run and go test build into $WORK/b001/exe and $WORK/b001, where
-	// $WORK is a temporary go-build directory.
-	for d, i := dir, 0; i < 3; d, i = filepath.Dir(d), i+1 {
-		if strings.HasPrefix(filepath.Base(d), "go-build") {
-			return filepath.Join(wd, "resources")
-		}
+	if goBuildTemp(dir) {
+		return filepath.Join(wd, "resources")
 	}
 	return dir
+}
+
+// goBuildTemp reports whether dir, an executable's, is where go run and go
+// test build: $WORK/b001/exe and $WORK/b001, where $WORK is a temporary
+// go-build directory.
+func goBuildTemp(dir string) bool {
+	for d, i := dir, 0; i < 3; d, i = filepath.Dir(d), i+1 {
+		if strings.HasPrefix(filepath.Base(d), "go-build") {
+			return true
+		}
+	}
+	return false
 }
 
 // userDir resolves the user's standard folders, honoring the XDG user dirs
