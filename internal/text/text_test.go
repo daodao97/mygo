@@ -1346,6 +1346,56 @@ func TestRegisterAppFontReachesSystemsNewMakes(t *testing.T) {
 	}
 }
 
+// Registering an app's font again, the same data under the same family,
+// does nothing: neither Shared nor a System New makes registers it again,
+// as each Tester's would, which kept a font again in each (#1902). The
+// same data under another family is another font of the app's.
+func TestRegisterAppFontTwiceAddsItOnce(t *testing.T) {
+	const family = "MyGo Test Once App Mono"
+	count := func(family string) int {
+		appFonts.mu.Lock()
+		defer appFonts.mu.Unlock()
+		n := 0
+		for _, f := range appFonts.fonts {
+			if f.family == family {
+				n++
+			}
+		}
+		return n
+	}
+	if err := RegisterAppFont(gomono.TTF, family); err != nil {
+		t.Fatal(err)
+	}
+	shared := Shared().Generation()
+	// The same bytes, from another slice too.
+	for _, data := range [][]byte{gomono.TTF, slices.Clone(gomono.TTF)} {
+		if err := RegisterAppFont(data, family); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := count(family); n != 1 {
+		t.Errorf("%s is %d of the app's fonts, want 1", family, n)
+	}
+	if got := Shared().Generation(); got != shared {
+		t.Errorf("Shared registered the font again: generation %d, want %d", got, shared)
+	}
+	if err := RegisterAppFont(gomono.TTF, family+" Other"); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(family + " Other"); n != 1 {
+		t.Errorf("the same data under another family is %d of the app's fonts, want 1", n)
+	}
+	// Go Mono is monospaced, so "iiiiiiii" is as wide as "mmmmmmmm" only
+	// in it.
+	s := New()
+	width := func(text string) float32 {
+		return s.Layout(Params{Text: text, Style: Style{Size: 20, Family: family}}).Lines[0].Width
+	}
+	if i, m := width("iiiiiiii"), width("mmmmmmmm"); i < m-0.5 || i > m+0.5 {
+		t.Error("a System New makes does not use the app's font")
+	}
+}
+
 // TestRegisterFontUnderGivenFamilies tells apart faces of one family
 // registered under families the app gives, as two that declare the same
 // weight need: each family the app gives holds only the files registered

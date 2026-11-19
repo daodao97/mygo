@@ -37,7 +37,9 @@ func coreView(view func(c *context)) *Content { return &Content{view: view} }
 // RegisterFont adds a TrueType or OpenType font, or collection, that text
 // can use with Font(family). An empty family keeps the font's own name.
 // The fonts registered under a family make it up, apart from other fonts
-// of their own family. A Tester's window draws them too.
+// of their own family. A Tester's window draws them too. Registering the
+// same data under the same family again does nothing. RegisterFont keeps
+// data, which must not change afterwards.
 func RegisterFont(data []byte, family string) error {
 	return text.RegisterAppFont(data, family)
 }

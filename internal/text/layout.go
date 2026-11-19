@@ -1,6 +1,7 @@
 package text
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/binary"
 	"image"
@@ -617,10 +618,13 @@ func (s *System) Reuse() {
 }
 
 // appFonts are the fonts the app registered for all its text
-// (RegisterAppFont), which each System New makes takes in turn.
+// (RegisterAppFont), which each System New makes takes in turn, each
+// once: register serializes RegisterAppFont, which leaves out a font
+// already there.
 var appFonts struct {
-	mu    sync.Mutex
-	fonts []appFontData
+	mu       sync.Mutex
+	register sync.Mutex
+	fonts    []appFontData
 }
 
 type appFontData struct {
@@ -632,7 +636,17 @@ type appFontData struct {
 // and in every System New makes: before it lays out text, or at its next
 // layout when it was made before. A Tester's window, which shapes in a
 // System of its own, then draws the app's fonts as its windows do.
+//
+// Registering again the same data under the same family does nothing:
+// each System, Shared too, would otherwise register it again, as a test
+// package's Testers each would (#1902). The data is kept, and must not
+// change afterwards.
 func RegisterAppFont(data []byte, family string) error {
+	appFonts.register.Lock()
+	defer appFonts.register.Unlock()
+	if hasAppFont(data, family) {
+		return nil
+	}
 	if err := Shared().RegisterFont(data, family); err != nil {
 		return err
 	}
@@ -640,6 +654,16 @@ func RegisterAppFont(data []byte, family string) error {
 	appFonts.fonts = append(appFonts.fonts, appFontData{data, family})
 	appFonts.mu.Unlock()
 	return nil
+}
+
+// hasAppFont reports whether the app registered data under family
+// already (RegisterAppFont).
+func hasAppFont(data []byte, family string) bool {
+	appFonts.mu.Lock()
+	defer appFonts.mu.Unlock()
+	return slices.ContainsFunc(appFonts.fonts, func(f appFontData) bool {
+		return f.family == family && bytes.Equal(f.data, data)
+	})
 }
 
 // takeAppFonts registers in a System New made the app's fonts registered
