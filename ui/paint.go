@@ -570,13 +570,9 @@ func (p *Painter) holds(r Rect, opaque bool) bool {
 // not clip.
 func (e *node) clipRect() (Rect, [4]float32) {
 	r := Rect{e.x + e.border[3], e.y + e.border[0], e.w - e.border[1] - e.border[3], e.h - e.border[0] - e.border[2]}
-	var rad [4]float32
 	all := e.flags&(flagScrollX|flagScrollY) != 0 || e.flags&flagClip == flagClip
 	if all {
-		for i, side := range [4][2]int{{0, 3}, {0, 1}, {2, 1}, {2, 3}} {
-			rad[i] = max(e.radius[i]-max(e.border[side[0]], e.border[side[1]]), 0)
-		}
-		return r, rad
+		return r, e.innerRadii()
 	}
 	const far = 1e6
 	if e.flags&flagClipX == 0 {
@@ -585,7 +581,17 @@ func (e *node) clipRect() (Rect, [4]float32) {
 	if e.flags&flagClipY == 0 {
 		r.Y, r.H = -far, 2*far
 	}
-	return r, rad
+	return r, [4]float32{}
+}
+
+// innerRadii returns the radii of the corners inside the border: each
+// corner's radius less the wider of the borders that meet there.
+func (e *node) innerRadii() [4]float32 {
+	var rad [4]float32
+	for i, side := range [4][2]int{{0, 3}, {0, 1}, {2, 1}, {2, 3}} {
+		rad[i] = max(e.radius[i]-max(e.border[side[0]], e.border[side[1]]), 0)
+	}
+	return rad
 }
 
 // borders returns border widths in device pixels, whole ones at least one
