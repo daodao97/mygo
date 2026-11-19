@@ -293,6 +293,11 @@ func (w *window) setUp(controller uintptr) {
 		}
 	}
 	add(wvAddWindowCloseRequested, func(_, _ uintptr) { w.h.ClosedByPage() })
+	// An element the page makes full screen covers only the web view, so
+	// the window showing it goes full screen too, as WKWebView makes macOS
+	// do; the page leaving its full screen (Escape, exitFullscreen) takes
+	// the window out again (pageFullScreenChanged).
+	add(wvAddContainsFullScreenElementChanged, func(_, _ uintptr) { w.pageFullScreenChanged() })
 	add(wvAddProcessFailed, func(_, args uintptr) {
 		var kind int32
 		comCall(args, procFailedGetKind, uintptr(unsafe.Pointer(&kind)))
@@ -394,6 +399,39 @@ func (w *window) resizeWebView() {
 func (w *window) focusWebView() {
 	if w.controller != 0 {
 		comCall(w.controller, ctlMoveFocus, 0) // COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC
+	}
+}
+
+// pageFullScreenChanged takes the page's own full screen (an element
+// fullscreened by requestFullscreen, a video's button among them) to the
+// window showing the web view: to its own, or to its host's, for a web
+// view in native UI, which is the window whose whole client area the page
+// should then cover, as WKWebView promotes its window on macOS. The page
+// leaving its full screen takes the window out, unless the app had asked
+// for that full screen itself (setFullScreen).
+func (w *window) pageFullScreenChanged() {
+	if w.closed || w.webview == 0 {
+		return
+	}
+	var on int32
+	comCall(w.webview, wvGetContainsFullScreenElement, uintptr(unsafe.Pointer(&on)))
+	w.pageFull = on != 0
+	toplevel := w
+	for toplevel.host != nil {
+		toplevel = toplevel.host
+	}
+	toplevel.setFullScreen(w.pageFull, false)
+}
+
+// leavePageFullScreen takes the window's page and the pages shown in its
+// surface out of their own full screens: a window coming out of full
+// screen leaves the page's element out of it too, as WebKit's windows do
+// on macOS.
+func (w *window) leavePageFullScreen() {
+	for _, v := range append([]*window{w}, w.webViews...) {
+		if v.pageFull && !v.closed && v.webview != 0 {
+			v.Eval("if (document.fullscreenElement) document.exitFullscreen().catch(function () {});")
+		}
 	}
 }
 

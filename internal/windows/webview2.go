@@ -54,6 +54,8 @@ const (
 	wvAddDocumentTitleChanged                = 46
 	wvGetDocumentTitle                       = 48
 	wvOpenDevToolsWindow                     = 51
+	wvAddContainsFullScreenElementChanged    = 52
+	wvGetContainsFullScreenElement           = 54
 	wvAddWebResourceRequested                = 55
 	wvAddWebResourceRequestedFilter          = 57
 	wvRemoveWebResourceRequestedFilter       = 58
