@@ -1932,10 +1932,14 @@ func (e *node) focus(reveal bool) {
 }
 
 // AutoFocus gives the element the keyboard focus in the frame it appears,
-// as the first field of a dialog.
-func (e *node) AutoFocus() *node {
+// as the first field of a dialog. Its options, as Focus's, keep the scroll
+// where the user left it with PreventScroll.
+func (e *node) AutoFocus(options ...FocusOptions) *node {
+	if len(options) > 1 {
+		panic("ui: AutoFocus takes at most one FocusOptions")
+	}
 	if e.hasState() && e.st.born == e.c.rt.frame {
-		e.Focus()
+		e.Focus(options...)
 	}
 	return e
 }

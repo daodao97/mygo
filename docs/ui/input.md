@@ -222,11 +222,13 @@ alone. A click focuses an element where it is, and so does `Focus` while
 a pointer button is held, as for a line that takes the focus from a press
 on its grip. To line it up otherwise, call `ScrollIntoView` with its
 options in the frame it takes the focus. To keep the scroll where it is,
-as the web's `focus({ preventScroll: true })`, pass `ui.FocusOptions`:
+as the web's `focus({ preventScroll: true })`, pass `ui.FocusOptions` to
+`Focus`, `AutoFocus`, or a handle's `FocusWith`:
 `cell.Focus(ui.FocusOptions{PreventScroll: true})` gives the focus back to
-a cell of a grid when a dialog closes, without scrolling the grid. It holds
-through a field that gives the focus to its input. The zero options are
-those of `Focus()` without them.
+a cell of a grid when a dialog closes, without scrolling the grid, and
+`field.AutoFocus(ui.FocusOptions{PreventScroll: true})` focuses a newly
+mounted control in place. It holds through a field that gives the focus to
+its input. The zero options are those of `Focus()` without them.
 
 `TabStop(false)` makes an element focusable but out of Tab's order, as
 HTML's `tabindex="-1"`: it takes the focus from a click, from `Focus` and
@@ -296,7 +298,8 @@ ui.TextInput(c.Key("search"), &app.query).Bind(&app.search)
 ```
 
 Declare `search ui.Handle` in your app state. `app.search.Focus()` requests
-focus and waits while the control is hidden. `app.search.SelectAll()` does
+focus and waits while the control is hidden; `app.search.FocusWith(ui.FocusOptions{PreventScroll: true})`
+does the same without scrolling the containers around the control. `app.search.SelectAll()` does
 the same and selects all of the input's text, as Tab into it does, even when it
 has the focus already: a search box opened again selects its query, and typing
 replaces it. `CancelFocus()` cancels the request. `Focused(c)` and `FocusWithin(c)` read the control's identity before
@@ -306,7 +309,7 @@ between builds in an input callback. Closing a window cancels its focus
 request.
 
 A handle can bind in several windows. Queries take that window's Context;
-use `Focus(c)`, `SelectAll(c)` or `CancelFocus(c)` to select a window explicitly. The
+use `Focus(c)`, `FocusWith(options, c)`, `SelectAll(c)` or `CancelFocus(c)` to select a window explicitly. The
 no-argument focus form requires at most one open binding.
 
 ## Focus bound to data

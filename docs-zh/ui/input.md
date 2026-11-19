@@ -194,9 +194,11 @@ if !hovered {
 `Focus` 不会干扰用户的滚动。点击会让元素在原地获得焦点，按住指针按钮时调用
 `Focus` 也一样，例如一行通过按下它的手柄来获得焦点。要以其他方式让它对齐，
 就在它获得焦点的那一帧调用 `ScrollIntoView` 并带上它的选项。要让滚动留在
-原处，如 Web 的 `focus({ preventScroll: true })`，传入 `ui.FocusOptions`：
+原处，如 Web 的 `focus({ preventScroll: true })`，向 `Focus`、`AutoFocus` 或
+句柄的 `FocusWith` 传入 `ui.FocusOptions`：
 `cell.Focus(ui.FocusOptions{PreventScroll: true})` 在对话框关闭时把焦点还给
-网格的某个单元格，而不滚动网格。对于把焦点交给内部输入框的字段，这个选项也
+网格的某个单元格，而不滚动网格，`field.AutoFocus(ui.FocusOptions{PreventScroll: true})`
+则在原地聚焦新出现的控件。对于把焦点交给内部输入框的字段，这个选项也
 同样有效。零值选项等同于不带选项的 `Focus()`。
 
 `TabStop(false)` 让元素可聚焦但不在 Tab 顺序中，如同 HTML 的
@@ -261,13 +263,16 @@ ui.TextInput(c.Key("search"), &app.query).Bind(&app.search)
 ```
 
 在应用状态中声明 `search ui.Handle`。`app.search.Focus()` 请求焦点，并在
-控件隐藏时等待。`CancelFocus()` 取消请求。`Focused(c)` 和 `FocusWithin(c)`
+控件隐藏时等待；`app.search.FocusWith(ui.FocusOptions{PreventScroll: true})`
+同样如此，但不会滚动控件周围的容器。`app.search.SelectAll()` 也一样，并会
+全选输入框中的文本，如同按 Tab 切入那样，即使控件已有焦点也是如此：重新打开
+搜索框时会选中它的查询词，直接输入即可替换。`CancelFocus()` 取消请求。`Focused(c)` 和 `FocusWithin(c)`
 可在控件构建前后查询其焦点状态。`c.Resolve(app.search)` 只返回本次构建的
 元素。`app.search.Bounds(c)` 从已提交的帧读取控件边界，输入回调中及
 两次构建之间也可查询。关闭窗口会取消该窗口的焦点请求。
 
-一个句柄可以在多个窗口中绑定。查询时要用那个窗口的 Context；用 `Focus(c)`
-或 `CancelFocus(c)` 可以显式选择窗口。不带参数的焦点调用要求至多有一个
+一个句柄可以在多个窗口中绑定。查询时要用那个窗口的 Context；用 `Focus(c)`、
+`FocusWith(options, c)`、`SelectAll(c)` 或 `CancelFocus(c)` 可以显式选择窗口。不带参数的焦点调用要求至多有一个
 仍有效的窗口绑定。
 
 ## 绑定到数据的焦点

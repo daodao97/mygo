@@ -1750,7 +1750,9 @@ func Local[T any](e Element, key any, init func() T) *T {
 // Right opens a submenu and Left closes it, the other way round right to
 // left (Direction); Enter and Space choose an item, Escape closes the
 // submenu on top, and Tab and a press outside the menu close it. The
-// pointer highlights the item it moves onto, opening its submenu.
+// pointer highlights the item it moves onto, opening its submenu, but for
+// those it crosses heading for a submenu that shows, which stays open
+// until the pointer rests on one of them (menuAimGrace).
 // Assistive technology sees a menu button, expanded while its menu shows,
 // and a menu of items, check box items and radio items. PopoverMenuButton
 // draws its menu with these parts, in the theme's look.
@@ -3874,8 +3876,9 @@ func (_handle Element) AutoComplete(kind AutoComplete) Element {
 }
 
 // AutoFocus gives the element the keyboard focus in the frame it appears,
-// as the first field of a dialog.
-func (_handle Element) AutoFocus() Element {
+// as the first field of a dialog. Its options, as Focus's, keep the scroll
+// where the user left it with PreventScroll.
+func (_handle Element) AutoFocus(options ...FocusOptions) Element {
 	_node := _handle.node()
 	if _node == nil {
 		return Element{}
@@ -3883,7 +3886,7 @@ func (_handle Element) AutoFocus() Element {
 	_ctx := _node.c
 	_ = _ctx
 	_node.markStateRead()
-	return wrapElement(_node.AutoFocus())
+	return wrapElement(_node.AutoFocus(options...))
 }
 
 // Autocorrect turns an on-screen keyboard's corrections and suggestions on
