@@ -35,15 +35,17 @@ import (
 //	})
 //
 // The menu takes the focus as it opens and gives it back as it closes, to
-// the element that had it. Up and Down move among its items, past those
-// disabled, as do Home, End and typing the first letters of an item;
-// Right opens a submenu and Left closes it, the other way round right to
-// left (Direction); Enter and Space choose an item, Escape closes the
-// submenu on top, and a press outside the menu closes it. It shows below
-// and after where it opened, and on the other side where the window has
-// no room. Assistive technology sees a menu of items, check box items and
-// radio items, as the system's. ContextMenuBase is such a menu without a
-// look, for items of a layout of one's own.
+// the element that had it. Up and Down move among its items, as do Home,
+// End and typing the first letters of an item: past those disabled, as
+// macOS's and Linux's menus do, and onto them on Windows, as its menus do.
+// A disabled item shows its Tooltip as the pointer rests on it, and
+// choosing it does nothing. Right opens a submenu and Left closes it, the
+// other way round right to left (Direction); Enter and Space choose an
+// item, Escape closes the submenu on top, and a press outside the menu
+// closes it. It shows below and after where it opened, and on the other
+// side where the window has no room. Assistive technology sees a menu of
+// items, check box items and radio items, as the system's. ContextMenuBase
+// is such a menu without a look, for items of a layout of one's own.
 //
 // PopoverMenuButton draws the menu of a menu button so.
 //
@@ -525,19 +527,19 @@ func (m *menuParts) panel(level int, anchor *node, fn func(panel *node)) *node {
 // the menu, unless KeepOpen. Give it children; Disabled leaves it out of
 // the keys' way and of the pointer's. Assistive technology sees a menu
 // item.
-func (m *menuParts) Item() *node { return m.item(RoleMenuItem, false) }
+func (m *menuParts) Item() *node { return m.item(RoleMenuItem, false, false) }
 
 // CheckItem creates an item, as Item does, that assistive technology sees
 // as a check box item, checked while checked is set: flip what it shows
 // when it is Clicked.
 func (m *menuParts) CheckItem(checked bool) *node {
-	return m.item(RoleMenuItemCheckBox, false).Checked(checked)
+	return m.item(RoleMenuItemCheckBox, false, false).Checked(checked)
 }
 
 // RadioItem creates an item, as Item does, that assistive technology sees
 // as a radio item, the one chosen of its group while selected is set.
 func (m *menuParts) RadioItem(selected bool) *node {
-	return m.item(RoleMenuItemRadio, false).Checked(selected)
+	return m.item(RoleMenuItemRadio, false, false).Checked(selected)
 }
 
 // SubmenuItem creates an item, as Item does, that opens a submenu instead
@@ -545,7 +547,7 @@ func (m *menuParts) RadioItem(selected bool) *node {
 // Right, Enter or Space while it is highlighted. Build the submenu with
 // Submenu. Assistive technology sees a menu item that expands, expanded
 // while its submenu shows.
-func (m *menuParts) SubmenuItem() *node { return m.item(RoleMenuItem, true) }
+func (m *menuParts) SubmenuItem() *node { return m.item(RoleMenuItem, true, false) }
 
 // Group creates a group of the items that fn builds in the menu being
 // built, a row that fn styles: the keys take it as one item, Up and Down
@@ -608,12 +610,29 @@ func (m *menuParts) Submenu(item *node, fn func(panel *node)) {
 	b.subs = append(b.subs, submenu{item, fn})
 }
 
+// menusReachUnavailable tells whether the keys and the pointer move onto a
+// drawn menu's item that cannot be chosen, as Windows' menus do; macOS's
+// and Linux's skip it, as Qt's styles for each do
+// (SH_Menu_AllowActiveAndDisabled). Its tooltip shows under the pointer
+// either way.
+var menusReachUnavailable = runtime.GOOS == "windows"
+
+// reachedInMenu reports whether the keys and the pointer move onto the
+// item: one that cannot be chosen only where menusReachUnavailable.
+func (e *node) reachedInMenu() bool { return !e.unavailable || menusReachUnavailable }
+
 // item creates an item of the menu being built, with role, opening a
-// submenu when sub is set.
-func (m *menuParts) item(role Role, sub bool) *node {
+// submenu when sub is set, and one that cannot be chosen when unavailable
+// is: a drawn menu's disabled item, AccessDisabled and dimmed as if
+// Disabled, which stays under the pointer for its tooltip to say why.
+func (m *menuParts) item(role Role, sub, unavailable bool) *node {
 	c := m.c
 	row := coreRow(c).Role(role)
 	row.flags |= flagClickable | flagHover
+	if unavailable {
+		row.AccessDisabled(true)
+		row.unavailable = true
+	}
 	if m.level < 0 {
 		return row // outside a menu: an item of none
 	}
@@ -621,7 +640,7 @@ func (m *menuParts) item(role Role, sub bool) *node {
 	b := &m.built[level]
 	b.items = append(b.items, row)
 	lv := &s.levels[level]
-	if lv.first && !row.disabled() {
+	if lv.first && !row.disabled() && row.reachedInMenu() {
 		lv.hi, lv.first, b.first = row.id, false, true
 	}
 	open := sub && level+1 < len(s.levels) && s.levels[level+1].sub == row.id
@@ -632,27 +651,38 @@ func (m *menuParts) item(role Role, sub bool) *node {
 	if row.disabled() || m.closed {
 		return row
 	}
+	// A disabled submenu item (unavailable) never opens its submenu.
+	opens := sub && !row.unavailable
 	if m.moved && row.Hovered() && !m.aiming(level, row.id) {
 		// The pointer moved onto it: it is highlighted, and its submenu
 		// opens while those of the others close. The keys go on from it,
-		// and the focus is the pointer's again, as it shows no ring.
+		// and the focus is the pointer's again, as it shows no ring. One the
+		// keys skip highlights nothing and closes the submenu open, as Qt's
+		// menus do; its tip still shows.
 		m.moved = false
 		rt.focusVisible = false
 		s.pointer, s.aim = [2]float32{rt.pointerX, rt.pointerY}, time.Time{}
 		switch {
-		case sub && !open:
+		case !row.reachedInMenu():
+			if lv.hi != 0 || len(s.levels) > level+1 {
+				m.highlight(level, 0)
+			}
+		case opens && !open:
 			m.highlight(level, row.id)
 			m.openSubmenu(level, row.id, false)
-		case !sub && (lv.hi != row.id || len(s.levels) > level+1):
+		case !opens && (lv.hi != row.id || len(s.levels) > level+1):
 			m.highlight(level, row.id)
 		}
-		if rt.focused == row.id || !rt.within(rt.focused, row.id) {
+		if row.reachedInMenu() && (rt.focused == row.id || !rt.within(rt.focused, row.id)) {
 			// The menu takes the focus back, but from an element inside
 			// the item, as a text input of its content.
 			s.focus = level
 		}
 	}
-	if row.Clicked() {
+	if !row.reachedInMenu() {
+		return row
+	}
+	if !row.unavailable && row.Clicked() {
 		if sub {
 			m.highlight(level, row.id)
 			m.openSubmenu(level, row.id, false)
@@ -753,7 +783,7 @@ func (m *menuParts) finish(level int) {
 			pos++
 			it.setPos, it.setSize = pos, loose
 		}
-		if !it.IsDisabled() {
+		if !it.IsDisabled() && it.reachedInMenu() {
 			choices = append(choices, it)
 			groups = append(groups, group[i])
 		}
@@ -762,7 +792,7 @@ func (m *menuParts) finish(level int) {
 		}
 	}
 	stops := menuStops(choices, groups)
-	if hi != nil && hi.IsDisabled() || lv.first || b.first {
+	if hi != nil && (hi.IsDisabled() || !hi.reachedInMenu()) || lv.first || b.first {
 		// The first item to be chosen, which an item disabled after it was
 		// built is not, and of a group its item checked; the items build
 		// again unless it is the one highlighted as they were built.
@@ -913,7 +943,7 @@ func (m *menuParts) keys(level int, panel *node, choices []*node, groups, stops 
 	case grouped && panel.Shortcut(0, out):
 		within(-1)
 	case panel.Shortcut(0, into):
-		if at >= 0 && choices[at].expandable {
+		if at >= 0 && choices[at].expandable && !choices[at].unavailable {
 			m.openSubmenu(level, choices[at].id, true)
 		}
 	case panel.Shortcut(0, out):
@@ -923,7 +953,7 @@ func (m *menuParts) keys(level int, panel *node, choices []*node, groups, stops 
 	case panel.Shortcut(0, KeyEnter), panel.Shortcut(0, KeySpace):
 		switch {
 		case at < 0:
-		case choices[at].expandable:
+		case choices[at].expandable && !choices[at].unavailable:
 			m.openSubmenu(level, choices[at].id, true)
 		default:
 			// The item reports Clicked in the next pass, which builds it
@@ -1150,7 +1180,7 @@ func (rt *engine) drawnMenuBuilt(e *node, d *drawnMenu, m *Menu) *platform.MenuI
 			mi := run.items[it.ID-1]
 			row := parts.drawnItem(d, it, mi, marks, icons)
 			refs[row.id] = menuRef{seq: it.ID, label: it.Label, key: mi.key}
-			if sub := it.Submenu; it.Type == platform.MenuItemSubmenu && sub != nil {
+			if sub := it.Submenu; it.Type == platform.MenuItemSubmenu && sub != nil && it.Enabled {
 				parts.Submenu(row, func(panel *node) {
 					w, ok := run.widths[sub]
 					if !ok {
@@ -1160,7 +1190,7 @@ func (rt *engine) drawnMenuBuilt(e *node, d *drawnMenu, m *Menu) *platform.MenuI
 					panel.Margin(-t.Space(1)-1, 0, 0, 0)
 					items(sub, w)
 				})
-			} else if row.Clicked() {
+			} else if !row.unavailable && row.Clicked() {
 				chosen = it
 			}
 		}
@@ -1274,19 +1304,20 @@ func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, mi *MenuItem,
 		// The row is the item's wherever it goes among the others.
 		c.nextKey, c.keySet = menuItemKey{mi.key}, true
 	}
+	off := !it.Enabled
 	var row *node
 	switch {
 	case sub:
-		row = m.SubmenuItem()
+		row = m.item(RoleMenuItem, true, off)
 	case it.Type == platform.MenuItemCheckbox:
-		row = m.CheckItem(it.Checked)
+		row = m.item(RoleMenuItemCheckBox, false, off).Checked(it.Checked)
 	case it.Type == platform.MenuItemRadio:
-		row = m.RadioItem(it.Checked)
+		row = m.item(RoleMenuItemRadio, false, off).Checked(it.Checked)
 	default:
-		row = m.Item()
+		row = m.item(RoleMenuItem, false, off)
 	}
 	row.AlignItems(Center).Gap(t.Space(2)).Padding(t.Space(1.5), t.Space(2)).Radius(t.Radius).Shrink(0)
-	row.Label(it.Label).Disabled(!it.Enabled)
+	row.Label(it.Label)
 	// Assistive technology reads the subtitle, the trailing text and the
 	// tooltip, if any, as the item's description, and the shortcut as its
 	// keys.
@@ -1304,6 +1335,9 @@ func (m *menuParts) drawnItem(d *drawnMenu, it *platform.MenuItem, mi *MenuItem,
 	case !it.Enabled:
 		color = t.TextMuted
 		row.TextColor(color)
+		if row.highlighted {
+			row.Background(t.SurfaceHover)
+		}
 	case row.highlighted && row.expanded && m.s.levels[m.level+1].hi != 0:
 		// The way to the item highlighted in the submenu.
 		row.Background(t.SurfaceHover).TextColor(color)
@@ -1429,7 +1463,7 @@ func shortcutText(a string) string {
 		key = strings.ToUpper(key)
 	}
 	var b strings.Builder
-	if runtime.GOOS == "darwin" {
+	if platform.MacKeys {
 		// In the order of macOS's menus.
 		for _, m := range [...][2]string{{"Ctrl", "⌃"}, {"Alt", "⌥"}, {"Shift", "⇧"}, {"Super", "⌘"}} {
 			if slices.Contains(mods, m[0]) {

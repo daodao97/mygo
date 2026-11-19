@@ -132,6 +132,11 @@ func collectionBehavior(w *mygo.Window) (behavior uint, supported bool) {
 	return behavior, true
 }
 
+func becomesKeyOnlyIfNeeded(w *mygo.Window) (only, supported bool) {
+	mygo.RunOnMain(func() { only = darwin.TestBecomesKeyOnlyIfNeeded(w.NativeHandle()) })
+	return only, true
+}
+
 func material(w *mygo.Window) (class string, style int, radius float64, active bool, supported bool) {
 	mygo.RunOnMain(func() { class, style, radius, active = darwin.TestMaterial(w.NativeHandle()) })
 	return class, style, radius, active, true
@@ -276,6 +281,15 @@ func pressTab(w *mygo.Window, back bool) (ok bool) {
 // passes the key on as command (doCommandBySelector:), unless empty.
 func pressKeyComposing(w *mygo.Window, code uint16, chars, commit, command string) (ok bool) {
 	mygo.RunOnMain(func() { ok = darwin.TestKeyComposing(w.NativeHandle(), code, chars, commit, command) })
+	return ok
+}
+
+// pressKeyComposingOver is pressKeyComposing with commit replacing the
+// length UTF-16 units at from, unless from is negative.
+func pressKeyComposingOver(w *mygo.Window, code uint16, chars, commit, command string, from, length int) (ok bool) {
+	mygo.RunOnMain(func() {
+		ok = darwin.TestKeyComposingOver(w.NativeHandle(), code, chars, commit, command, from, length)
+	})
 	return ok
 }
 

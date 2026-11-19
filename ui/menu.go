@@ -306,6 +306,8 @@ func (m *Menu) MaxWidth(w float32) *Menu {
 }
 
 // Disabled shows the item grayed out when d is true: it cannot be chosen.
+// A menu drawn in the window (PopoverMenu, PopoverMenuButton) still shows
+// its Tooltip, which can say why.
 func (it *MenuItem) Disabled(d bool) *MenuItem {
 	it.disabled = d
 	if it.p != nil {
@@ -943,7 +945,7 @@ func (rt *engine) editCommands(s *state) []editItem {
 	switch {
 	case s.editor != nil && s.editor.readOnly:
 		commands = []command{copyText, separator, selectAll}
-	case runtime.GOOS == "darwin":
+	case platform.MacKeys:
 		commands = []command{cut, copyText, paste, separator, selectAll}
 	case runtime.GOOS == "windows":
 		commands = []command{undo, separator, cut, copyText, paste, del, separator, selectAll}

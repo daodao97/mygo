@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -398,6 +399,9 @@ type Window struct {
 	// hear the room the window controls take. Main thread only.
 	hiddenTitleBar bool
 	menu           *Menu
+	// thumbBar is what SetThumbBar set last; a button's Click is looked up
+	// here by the position the shell reports. Main thread only.
+	thumbBar []ThumbButton
 	// title is the title the app or the page set; representedFile and
 	// documentEdited are the document the window shows. Main thread only.
 	title           string
@@ -792,6 +796,7 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 		Autoplay:               po.Autoplay == AutoplayAllow,
 		SwipeNavigation:        po.SwipeNavigation,
 		PinchZoom:              po.PinchZoom,
+		ZoomControl:            po.ZoomControl,
 		Schemes:                Protocol.schemes(),
 		Panel:                  o.Panel,
 		PictureInPicture:       po.PictureInPicture,
@@ -1579,6 +1584,81 @@ func (w *Window) SetIcon(png []byte) error {
 	return err
 }
 
+// ThumbButton is a button of the window's thumbnail toolbar, the row of
+// small buttons Windows shows under a taskbar button's live preview. See
+// SetThumbBar.
+type ThumbButton struct {
+	// Icon is a PNG image for the button. On updates, nil keeps the
+	// button's existing icon.
+	Icon []byte
+	// ToolTip names the button for the user.
+	ToolTip string
+	// Disabled grays the button out; Hidden keeps it out of the toolbar.
+	Disabled bool
+	Hidden   bool
+	// Click is called on the main thread when the user clicks the button.
+	Click func(b *ThumbButton, win *Window)
+}
+
+// SetThumbBar sets the window's thumbnail toolbar (Windows):
+//
+//	win.SetThumbBar([]mygo.ThumbButton{
+//	    {Icon: back, ToolTip: "Back", Click: goBack},
+//	    {Icon: play, ToolTip: "Play", Click: play},
+//	})
+//
+// The first call fixes the buttons' count and order; later calls update
+// their icons (passing new PNGs, or nil to keep them),
+// tooltips, Disabled and Hidden state, and replace their Click functions.
+// The toolbar takes one to 7 buttons, and a later call that changes their
+// number fails with an error. A button's Click runs on the main thread.
+// Elsewhere SetThumbBar returns errors.ErrUnsupported.
+func (w *Window) SetThumbBar(buttons []ThumbButton) error {
+	if len(buttons) == 0 {
+		return errors.New("mygo: a thumbnail toolbar takes one or more buttons")
+	}
+	if len(buttons) > 7 {
+		return errors.New("mygo: a thumbnail toolbar takes at most 7 buttons")
+	}
+	var err error
+	w.do(func(n platform.Window) {
+		tb, ok := n.(platform.ThumbBarWindow)
+		if !ok {
+			err = platform.ErrUnsupported
+			return
+		}
+		// Link the backend hook on the main thread: WndProc and applyTaskbar
+		// read these vars on that thread.
+		linkThumbBars()
+		updating := len(w.thumbBar) != 0
+		if updating && len(buttons) != len(w.thumbBar) {
+			err = errors.New("mygo: the buttons of a thumbnail toolbar cannot change once they are set")
+			return
+		}
+		// The shell reports a click by the button's position.
+		updated := make([]ThumbButton, len(buttons))
+		native := make([]platform.ThumbButton, len(buttons))
+		for i, b := range buttons {
+			switch {
+			case len(b.Icon) > 0:
+				b.Icon = slices.Clone(b.Icon)
+			case updating:
+				b.Icon = w.thumbBar[i].Icon
+			default:
+				err = errors.New("mygo: a thumbnail toolbar button needs an icon")
+				return
+			}
+			updated[i] = b
+			native[i] = platform.ThumbButton{Icon: b.Icon, ToolTip: b.ToolTip,
+				Disabled: b.Disabled, Hidden: b.Hidden}
+		}
+		if err = tb.SetThumbBar(native); err == nil {
+			w.thumbBar = updated
+		}
+	})
+	return err
+}
+
 // SetMenu sets the menu bar of this window (Linux, Windows). On macOS the
 // menu bar belongs to the application; see Application.SetMenu.
 func (w *Window) SetMenu(m *Menu) {
@@ -2346,6 +2426,18 @@ func (h *windowHandler) MenuItemClicked(id int) {
 	}
 }
 
+// ThumbButtonClicked runs the Click of the thumbnail toolbar button at id,
+// the position SetThumbBar gave it. The shell only reports clicks of
+// buttons that are shown and enabled, and the toolbar's size keeps the
+// slice's, so the check is for the cross-layer id alone.
+func (h *windowHandler) ThumbButtonClicked(id int) {
+	if h.w.native != nil && id >= 0 && id < len(h.w.thumbBar) {
+		if b := &h.w.thumbBar[id]; b.Click != nil {
+			b.Click(b, h.w)
+		}
+	}
+}
+
 func (h *windowHandler) Resized()           { h.w.stateChanged(); h.w.placeFlyouts(); fire(&h.w.onResize) }
 func (h *windowHandler) Moved()             { h.w.stateChanged(); h.w.placeFlyouts(); fire(&h.w.onMove) }
 func (h *windowHandler) Minimized()         { h.w.stateChanged(); fire(&h.w.onMinimize) }
@@ -2507,6 +2599,10 @@ func (h *windowHandler) AudibleChanged(audible bool) {
 	h.w.audible = audible
 	fire1(&h.w.onAudibleChanged, audible)
 }
+
+// ZoomChanged tells the page and its window of a zoom the user chose, as
+// SetZoomFactor does of the app's.
+func (h *windowHandler) ZoomChanged() { h.w.zoomChanged() }
 
 func (h *windowHandler) CaptureStateChanged(kind platform.CaptureKind, state platform.CaptureState) {
 	k := CaptureKind(kind)

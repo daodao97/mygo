@@ -4,12 +4,37 @@ package windows
 
 import (
 	"bytes"
+	"encoding/binary"
 	"runtime"
 	"testing"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/egoist/mygo/transfer"
 )
+
+func TestTransferDataUnicodeText(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	dropOnce.Do(initDropTarget)
+
+	const text = "中文 𠮷\n\n第二行\r\n\t😀\r末尾"
+	const nativeText = "中文 𠮷\r\n\r\n第二行\r\n\t😀\r\n末尾"
+	object := newTransferData(transfer.TextData(text), "", true, false)
+	defer release(object)
+
+	var want []byte
+	for _, unit := range append(utf16.Encode([]rune(nativeText)), 0) {
+		want = binary.LittleEndian.AppendUint16(want, unit)
+	}
+	if got, err := oleDataBytes(object, cfUnicodeText); err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("CF_UNICODETEXT = %x, %v, want %x", got, err, want)
+	}
+	format := uint16(registerClipboardFormat(string(transfer.Text)))
+	if got, err := oleDataBytes(object, format); err != nil || string(got) != text {
+		t.Fatalf("text/plain = %q, %v, want %q", got, err, text)
+	}
+}
 
 func TestTransferDataStreamPosition(t *testing.T) {
 	runtime.LockOSThread()

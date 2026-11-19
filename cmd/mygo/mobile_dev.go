@@ -339,8 +339,19 @@ func (s *devSession) launchMobile(dc *Config, app string) (*devProcess, error) {
 		// The lines of the app's, without the system's noise about it.
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 4096), 1<<20)
+		var logcat *androidLog
+		if s.device.platform == "android" {
+			logcat = &androidLog{}
+		}
 		for sc.Scan() {
-			if l := sc.Text(); !mobileNoise(l, dc.Identifier) {
+			l := sc.Text()
+			if logcat != nil {
+				var show bool
+				if l, show = logcat.line(l); !show {
+					continue
+				}
+			}
+			if !mobileNoise(l, dc.Identifier) {
 				io.WriteString(out, l+"\n")
 			}
 		}

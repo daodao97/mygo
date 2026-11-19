@@ -197,14 +197,16 @@ func (e *node) insideReposed() bool {
 // the elements inside it, as commitElement sets them.
 func (e *node) updateWorld() {
 	w := e.transformAt(e.x, e.y)
+	var base scene.Affine
 	if e.parent != nil && e != e.c.overlay {
-		base := e.parent.world
+		base = e.parent.world
 		if contentStretch != nil && e.parent.scrolls() {
 			base = contentStretch(base, e.parent)
 		}
 		w = base.Mul(w)
 	}
 	e.world = w
+	e.pinWorld = pinsOnly(e, base)
 	if e.st != nil {
 		e.st.world, e.st.reposed = w, true
 	}

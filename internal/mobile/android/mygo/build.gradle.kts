@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -16,7 +18,9 @@ android {
     }
 }
 
-kotlin { jvmToolchain(17) }
+// Java 17 bytecode from whichever JDK runs Gradle, 17 or later, with no
+// toolchain of its own to find or download.
+kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.16.0")

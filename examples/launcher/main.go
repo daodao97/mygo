@@ -54,6 +54,9 @@ type launcher struct {
 	input   ui.Handle
 	icons   map[string]*ui.Bitmap // by app path; nil where the app has none
 	loading bool
+	// quitting is set while the app quits, when the panel closes rather
+	// than hides.
+	quitting bool
 }
 
 func (l *launcher) view(c *ui.Context) {
@@ -84,9 +87,15 @@ func (l *launcher) view(c *ui.Context) {
 	ui.Column(c).Fill().Children(func() {
 		ui.Row(c).Padding(16, 18).Gap(12).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, searchIcon).FontSize(20).TextColor(t.TextMuted)
-			if ui.TextInputBase(c, &l.query).Bind(&l.input).Grow(1).FontSize(22).
-				Placeholder("Search apps").Label("Search apps").Changed() {
+			input := ui.TextInputBase(c, &l.query).Bind(&l.input).Grow(1).FontSize(22).
+				Placeholder("Search apps").Label("Search apps")
+			if input.Changed() {
 				l.filter()
+			}
+			// The input takes Enter while it has the focus, before the
+			// shortcut above.
+			if input.Submitted() {
+				l.open()
 			}
 		})
 		ui.Divider(c)
@@ -306,8 +315,11 @@ func (l *launcher) ready() {
 	})
 	// Hide rather than close, on Escape, Cmd-W or Alt-F4, and when the user
 	// goes elsewhere: the panel shows again at once, as it was. Quitting
-	// destroys it.
+	// destroys it: a panel kept open then would cancel the quit.
 	l.panel.OnClose(func(e *mygo.CloseEvent) {
+		if l.quitting {
+			return
+		}
 		e.PreventDefault()
 		l.panel.Hide()
 	})
@@ -386,6 +398,8 @@ func main() {
 	mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
 	mygo.App.OnWindowAllClosed(func() {}) // keep running without windows
 	mygo.App.OnSecondInstance(func([]string, string) { l.show() })
+	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { l.quitting = true })
+	mygo.App.OnQuitCanceled(func() { l.quitting = false })
 	mygo.App.WhenReady(l.ready)
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)

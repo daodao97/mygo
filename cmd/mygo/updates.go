@@ -306,7 +306,11 @@ func writeDeltas(c *Config, key ed25519.PrivateKey, stage, target string, entrie
 	bases = bases[:min(len(bases), n)]
 	m.Previous = bases[:min(len(bases), n-1)]
 
-	work, err := os.MkdirTemp("", "mygo-delta-")
+	// The work sits in the stage, not the system temp directory: the archives
+	// it unpacks hold the app of an earlier version, whose executable an
+	// antivirus holds under quarantine when it reads it from %TEMP%, failing
+	// the read and with it that version's delta.
+	work, err := os.MkdirTemp(stage, ".delta-")
 	if err != nil {
 		return nil, err
 	}

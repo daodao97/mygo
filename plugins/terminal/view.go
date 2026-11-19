@@ -27,7 +27,9 @@ import (
 // Other Command keys on macOS never reach the program, and go to the
 // app's shortcuts. The Edit menu's roles copy, paste and select all too.
 // The wheel scrolls the scrollback unless the program takes the mouse,
-// and zooms with Control held (Command on macOS; Options.OnZoom). Hold
+// and zooms with Control held (Command on macOS; Options.OnZoom); scrolling
+// sideways goes on to the handlers and scroll containers around the view,
+// as the terminal has nothing to scroll sideways. Hold
 // Shift to select while a program takes the mouse, and Command (Control
 // elsewhere) to underline a link and open it on click: a hyperlink (OSC 8),
 // a URL printed as text, or a file path with Options.OpenLink. Alt+click
@@ -1574,6 +1576,11 @@ func (v *view) scroll(ev ui.InputEvent) bool {
 			v.oy += oldY - v.panY
 			return true
 		}
+	}
+	// A terminal only scrolls vertically; leave horizontal scrolling (such as a
+	// trackpad swipe) to handlers around the view.
+	if ev.DX != 0 && (ev.DY == 0 || (ev.Precise && math.Abs(float64(ev.DX)) > math.Abs(float64(ev.DY)))) {
+		return false
 	}
 	ch := float32(v.cellH) / v.scale
 	t.mu.Lock()

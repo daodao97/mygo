@@ -426,3 +426,17 @@ func TestWindowFitContent(t *testing.T) {
 		t.Errorf("a window without FitContent took its content's size: %dx%d", gw, gh)
 	}
 }
+
+// A zoom the backend reports, as the user's Ctrl+wheel on Windows
+// (ZoomControl), changes the CSS pixels of FitContent's limits as
+// SetZoomFactor's does.
+func TestUserZoomChanged(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{FitContent: true, MinWidth: 100, MinHeight: 40, MaxWidth: 300, MaxHeight: 200, Page: PageOptions{ZoomControl: true}})
+	page(fw, `{"t":"dom-ready"}`)
+	fw.SetZoom(2)
+	onMain(fw.H.ZoomChanged)
+	received(t, fw, fitLimitsEvent(50, 20, 150, 100))
+	if z := w.Page().ZoomFactor(); z != 2 {
+		t.Errorf("ZoomFactor after the user zoomed = %v", z)
+	}
+}

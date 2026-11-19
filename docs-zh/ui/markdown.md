@@ -157,6 +157,16 @@ app.md.LinkIcon = func(dest string, size float32) (markdown.InlineObject, bool) 
 }
 ```
 
+`LinkColor` 按目标地址为链接文本着色，返回 true 时用它给出的颜色代替 `Theme.Link`：比如聊天应用把引用来源显示成弱化的颜色，作为旁注；文档阅读器用颜色区分站外链接和站内链接。提及、引用和代码链接同样适用，悬停时链接照常显示下划线；仍在流式传入的链接要等目标地址完整后才着色，此前保持 `Theme.Link`。视图每次构建时都会为显示的每个链接调用它，因此只应查询应用手头已有的数据；它的返回值变化时，段落会随之更新：
+
+```go
+app.md.LinkColor = func(dest string) (ui.Color, bool) {
+	return ui.Hex("#6b7280"), app.isCitation(dest)
+}
+```
+
+`LinkIcon` 的图标颜色由它的 `Draw` 决定，上例用的是 `Theme.Link`。若要与 `LinkColor` 着色的链接一致，就用 `LinkColor` 为同一目标地址给出的颜色绘制图标。颜色变化的段落会重新构建，并再次请求它的图标。
+
 图像在 `LoadImage` 加载它们之前会显示描述文字，加载在各自的 goroutine 上进行；如果没有它，图像就一直只是描述文字，因为视图自身不会从网络加载任何内容。`FileImages(dir)` 加载一个目录中的文件。仅由图像组成的段落按它们原本的大小显示，最宽不超过视图。
 
 ```go

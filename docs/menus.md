@@ -53,7 +53,13 @@ A `MenuItem` has:
   macOS puts that column after the menu's longest label (and subtitle,
   where that follows it), and draws the badges in a monospaced-digit font,
   so a measure keeps its width as its digits change. The column moves when
-  a label, a badge or the visibility of an item changes. `BadgeShape` draws
+  a label, a badge or the visibility of an item changes. A menu whose items
+  keep it open and whose badges all have a background and a right (or
+  unset) alignment is the exception: each badge sits at its own row's
+  trailing edge, and the menu is as wide as its widest row's label and
+  badge side by side rather than the widest label plus the widest badge. A
+  text badge, or an alignment of left or center, keeps the shared column
+  and the menu uses the sum. `BadgeShape` draws
   a background behind the badge: `BadgeShapeSquare` on any macOS item, and
   `BadgeShapeRounded` or `BadgeShapePill` on `KeepOpen` items (other items
   show a square for any shape). `BadgeColor` (a CSS color) is the
@@ -552,10 +558,10 @@ Modifiers:
 
 | Modifier | Key |
 |---|---|
-| `CmdOrCtrl` (`CommandOrControl`) | Command on macOS, Control elsewhere |
-| `Cmd` (`Command`), `Super`, `Meta`, `Win` | Command on macOS, the Windows or Super key elsewhere |
+| `CmdOrCtrl` (`CommandOrControl`) | Command on macOS and iOS, Control elsewhere |
+| `Cmd` (`Command`), `Super`, `Meta`, `Win` | Command on macOS and iOS, the Windows or Super key elsewhere |
 | `Ctrl` (`Control`) | Control |
-| `Alt` (`Option`, `AltGr`) | Alt, or Option on macOS |
+| `Alt` (`Option`, `AltGr`) | Alt, or Option on macOS and iOS |
 | `Shift` | Shift |
 
 Keys:

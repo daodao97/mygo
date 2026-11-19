@@ -5,8 +5,9 @@
 // several carets and selections, soft wraps, folding, finding and
 // replacing, completions with editable snippets, hovers, diagnostics and
 // inlay hints from the
-// app or a language server, and the commands and key bindings of code
-// editors:
+// app or a language server, ranges shown as something else
+// (SetReplacements), elements between lines (SetBlocks), and the commands
+// and key bindings of code editors:
 //
 //	st := &editor.State{Buffer: editor.NewBuffer(src)}
 //	st.Buffer.SetLanguage(editor.LanguageFor("main.go"))

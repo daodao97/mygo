@@ -4,8 +4,8 @@
 
 ## 快照（2026-11-12）
 
-- fork `main` 已合并 `upstream/main` 到 `12e8babd`（2026-11-17）；只落后上游 1 个提交，即 #940（`6e712c6e`），有意留给第二阶段（见「向 #940 收敛」）。
-- 分支 `sync-940`（worktree `~/.cache/mygo-pr/sync-940`，基于 `main` 的 `25f0be9a`）合并了 #940，第二阶段第 1 步（换平台）完成，未推送，见「第二阶段进度（2026-11-17）」。
+- fork `main` 已合并 `upstream/main` 到 `7ba76ed9`（2026-11-20），含 #940（`6e712c6e`）。
+- 分支 `sync-940` 已于 2026-11-18 快进合入 `main`（`964d7b6f`），第二阶段的过程见「第二阶段进度（2026-11-17）」。
 - fork 独有的非合并提交：158 个；与上游的增删差异约 71,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
 - 2026-11-09 同步了上游 39 个提交（到 `6a730f12`）。冲突：`docs/architecture.md` 两边都保留（fork 的 iOS 段落、上游的 `ffi`）；`ui/runtime.go` 两边都保留（fork 的帧计时、上游的 `sweepVideos`）；`ui/layoutcache_test.go` 字段清单取并集；`internal/gpu/gl/load_linux.go` 只取上游新增的 `uploadElement`，`setShaderSource`/`shaderLog`/`programLog`/`infoLog` 在 fork 已移到 `load_common.go`（与 Android 共用）；终端 `urlPattern` 按规则 1 改用上游 #1481（URL 在第一个非 ASCII 字符处结束），fork 的写法删除；shader 二进制取上游后重新 `go generate`。上游 #1476 给 `platform.Clipboard.WriteData` 加了 `concealed` 参数，iOS/Android 后端已跟上签名，但还没有标记机密内容（iOS 的 `UIPasteboard` localOnly、Android 的 `EXTRA_IS_SENSITIVE`）。
@@ -53,6 +53,14 @@
 - 2026-11-18 第四次同步上游 20 个提交（`d8fc2b07..400ba3b1`）。冲突 1 处：`ui/layoutcache_test.go` 的字段清单取并集（上游 #1993 的 `stateRead`，fork 的 `touchHold`/`touchPointer`/`keyboardDismiss`）。`go generate ./ui` 用 fork 的生成器重建后，fork 独有的 `Element.Gestures`、`LoopFPS` 也带上了 #1993 的 `markStateRead()`（读每帧状态之后再设 `Key`，Tester 里会 panic），保留。
   对照这批新增检查了 fork 代码：#2040 在 Metal 窗口不可见半秒后归还 drawable，与 fork 的 `Renderer.SetPresentationHook`（`ui.Startup`/`OnFirstFrame` 判断首帧呈现）不是同一功能；`Page.Eval` 在手机上执行语句（`23b3b8d5`）、Android 字体注册（#2012 等）、模拟器按 application identifier 签名都在 #940 的代码里，fork 第二阶段后没有自己的版本；`DottedUnderline` 与 fork 的链接悬停整段下划线（`2ba0a0f9`）不同；render 的多核与静止帧跳过、编辑器剪切末行与横向滚动、diff 查找、WSL 文件夹对话框、日期滚轮的月份本地化、`Tester.AccessInfo.Bounds` 裁剪、布局 item 缓存在 fork 中没有同功能实现。
   验证：macOS/Linux/Windows 与 `CGO_ENABLED=0` 的 `go build ./...`；`go vet . ./ui ./internal/darwin ./internal/mobile/... ./internal/gpu/metal ./internal/text`；`go test . ./ui ./ui/editor ./ui/richtext ./internal/text ./internal/platform ./internal/mobile/... ./internal/darwin ./internal/gpu/metal ./internal/uigen ./plugins/render ./plugins/terminal/...`（13,524 项）与 `go test -short ./cmd/mygo`（288 项）通过；iOS（iphoneos SDK）与 Android（NDK 28.2）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet、`../Miya` 的 `go build ./...` 通过。
+- 2026-11-20 同步上游 42 个提交（`400ba3b1..7ba76ed9`）。冲突 4 个文件：
+  - `plugins/terminal/view.go`：两边都保留。fork 的固定网格先按滚动平移（平移了就吃掉事件），之后才是上游 `4b1aa44e` 的「横向为主的滚动交给外层处理器」，固定网格没有吃掉的横向滚动照上游放出去。
+  - `ui/keys.go`：`Cmd` 取上游 #2076 的 `platform.MacKeys`。fork 原来写的是 `GOOS == "darwin" || GOOS == "ios"`，是同一功能，按规则 1 以上游为准。
+  - `ui/layoutcache_test.go`：字段清单取上游的（`originX`/`originY`/`originSet` 移到布局读取的字段，新增 `pinned`/`pinWorld`），再加上 fork 的 `gestureEnabled`/`router`/`routerLevel`。
+  - `ui/window.go`：上游的 `renewed` 与 `platform.FirstFrameSurface` 是核心告诉 surface「首帧已画」（`SurfaceRenew` 后再告诉一次）；fork 的 `firstFramePresented`/`firstFrameOff` 是 `ui.Startup` 经 `conn.OnFirstFrame` 得知「显示器已呈现首帧」。方向相反，不是同一功能，都保留；`detach` 里两边的清理都做。
+
+  对照这批新增检查了 fork 代码。终端里 iOS 上 Ctrl+V 粘贴的分支是 fork 自己的（`c1b0ee50`），与 #2076 不是同一功能，保留。`internal/accelerator` 的 `darwin || ios` 是上游 #2076 自己的写法。`paths.go` 的 iOS 日志路径是 fork 的，管的是路径，#2076 明确不改。平台契约只新增了可选的 `ThumbBarWindow`、`FrameAheadSurface`，以及 `PageOptions.ZoomControl`/`ZoomChanged`，手机后端不用补方法。崩溃写 `crash.log`、`WasOpenedAtLogin`、编辑器光标下方的面板与光标矩形、行间元素、`ui.Table` 的列虚拟化与冻结列、`SplitGap`、Markdown `LinkColor`、`NumberInput` 外部赋值、Windows 缩略图工具栏，在 fork 中都没有同功能实现。iOS/Android 硬件键盘输入改在 #940 的宿主里，fork 第二阶段后没有自己的版本。`go generate ./ui` 无差异。
+  验证：macOS/Linux/Windows 的 `CGO_ENABLED=0 go build ./...`；`go vet . ./ui ./plugins/terminal/... ./internal/mobile/... ./internal/darwin`；`go test . ./ui ./ui/editor ./ui/richtext ./ui/markdown/... ./internal/text ./internal/platform ./internal/mobile/... ./internal/darwin ./internal/uigen ./plugins/terminal/...` 与 `go test -short ./cmd/mygo` 通过；iOS（iphoneos SDK）与 Android（NDK 28.2）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet、`../Miya` 的 `go build ./...` 通过。
 - 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
 
 ## 规则

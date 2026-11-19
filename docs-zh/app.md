@@ -198,6 +198,12 @@ db := filepath.Join(dir, "notes.db")
 
 `App.SetPath` 覆盖某个目录，例如把测试数据分开存放。
 
+## 崩溃
+
+没有被 recover 的 panic 或其他致命错误会结束应用，Go 运行时把经过连同各 goroutine 的栈写到标准错误。打包后的应用的标准错误哪里也不去：macOS 给从访达打开的应用 `/dev/null`，Windows 不给 GUI 应用标准错误。所以 `App.Run` 让运行时同时写到 `PathLogs` 中的 `crash.log`，每次崩溃接在之前的后面；日志超过 1 MB 时，应用启动时从头开始。`mygo dev`、`go run` 和 `go test` 运行的构建会显示标准错误，不写崩溃日志。要把崩溃记到别处，在应用就绪后（`App.WhenReady`）调用 `debug.SetCrashOutput`。
+
+在手机上，`mygo dev` 的控制台会显示崩溃：iOS 上和 Xcode 显示的一样，Android 上来自系统日志，运行时以标签 `Go` 写在那里。
+
 ## 名称与版本
 
 打包后的应用从配置得知自己的名称和版本，`mygo build` 把它们链接进去：`App.Name()` 和 `App.Version()`。用 `go run` 运行的程序具有可执行文件的名称，没有版本，除非它在 `Run` 之前调用 `App.SetName` 和 `App.SetVersion`。名称决定用户数据、缓存和日志目录以及单一实例锁。`mygo dev` 的开发构建命名为 `<Name> Dev`，以便它们的数据与已安装应用分开；调用 `SetName` 会把它们重新关联到一起。

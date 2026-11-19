@@ -38,8 +38,10 @@ type canvasEngine struct {
 	// its fillStyle.
 	current, kerning, fill string
 	fonts                  map[string]*Font
-	// names are the families the app registered fonts under.
-	names []string
+	// names are the families the app registered fonts under, and loaded
+	// runs as one of their faces has loaded (System.hearFontLoads).
+	names  []string
+	loaded func()
 	// image is the canvas's pixels read back, reused.
 	image []byte
 	w, h  int
@@ -307,6 +309,8 @@ func (e *canvasEngine) fontCount() int {
 func (e *canvasEngine) forgetFonts() {
 	clear(e.fonts)
 	e.forgetGlyphs()
+	// The context finds the font anew, as one may have loaded since.
+	e.current = ""
 }
 
 // releaseFonts has nothing to release: the browser keeps its fonts.
@@ -337,18 +341,49 @@ func (e *canvasEngine) systemFamilies() func() []FontFamily { return nil }
 
 // register adds a font file to the document's fonts, as a FontFace of
 // family, or of its own family when family is "" (which the browser does
-// not tell: the face needs a family). Browsers load faces in the
-// background: text laid out before draws with others.
+// not tell: the face needs a family), with the weights, widths and style
+// the file covers (faceDescriptorsOf): a variable font gives every weight
+// of its axis, and the files registered under one family are faces of
+// their own. Browsers load faces in the background: text laid out before
+// is laid out again once the face has loaded (System.fontLoaded).
 func (e *canvasEngine) register(data []byte, family string) error {
 	if family == "" {
 		return errNoFamily
 	}
 	buf := js.Global().Get("Uint8Array").New(len(data))
 	js.CopyBytesToJS(buf, data)
-	face := js.Global().Get("FontFace").New(family, buf.Get("buffer"))
+	desc := map[string]any{}
+	d := faceDescriptorsOf(data)
+	for _, kv := range [...][2]string{{"weight", d.weight}, {"stretch", d.stretch}, {"style", d.style}} {
+		if kv[1] != "" {
+			desc[kv[0]] = kv[1]
+		}
+	}
+	face := js.Global().Get("FontFace").New(family, buf.Get("buffer"), desc)
+	if face.Get("status").String() == "error" {
+		// A descriptor the browser does not parse: the face as it is.
+		face = js.Global().Get("FontFace").New(family, buf.Get("buffer"))
+	}
 	fonts := js.Global().Get("document").Get("fonts")
 	fonts.Call("add", face)
-	face.Call("load").Call("catch", js.Global().Get("Function").New(""))
+	var loaded, failed js.Func
+	done := e.loaded
+	loaded = js.FuncOf(func(js.Value, []js.Value) any {
+		loaded.Release()
+		failed.Release()
+		// The System's lock is not to be waited for on the browser's
+		// event loop.
+		if done != nil {
+			go done()
+		}
+		return nil
+	})
+	failed = js.FuncOf(func(js.Value, []js.Value) any {
+		loaded.Release()
+		failed.Release()
+		return nil
+	})
+	face.Call("load").Call("then", loaded, failed)
 	e.names = append(e.names, family)
 	clear(e.words)
 	return nil

@@ -194,7 +194,11 @@ func (ed *editor) addCursor(dir int) bool {
 	}
 	goal := p.goal
 	if goal < 0 {
-		if cr, ok := ed.caretRect(p.head); ok {
+		if rep, ok := ed.standIn(r.LineOf(p.head)); ok && p.head == rep.Start {
+			// A stand-in's margin cell stays fixed in the viewport.
+			// Its text-column goal is the start of the source line.
+			goal = 0
+		} else if cr, ok := ed.caretRect(p.head); ok {
 			goal = cr.X
 		}
 	}

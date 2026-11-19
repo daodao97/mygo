@@ -42,6 +42,14 @@ type Options struct {
 	// the link has none; a link still being written has none yet. It is
 	// asked again whenever the paragraph changes: keep what it makes.
 	LinkIcon func(dest string, size float32) (InlineObject, bool)
+	// LinkColor, when set, colors the text of a link to dest, a
+	// mention's, a reference's and code's included, in place of
+	// Theme.Link when it returns true: a citation, or an aside, in a
+	// muted color. A color of alpha 0 is none, Theme.Link's, and a link
+	// still being written has none yet. The link keeps its hover. It is
+	// asked for each link shown whenever the view builds, as Resolve is,
+	// and paragraphs follow when its answers change.
+	LinkColor func(dest string) (Color, bool)
 	// Anchor scrolls to the heading of this slug, with or without its "#",
 	// or to the block AnchorBlock finds for it, when the document first
 	// shows, when another document replaces it, and when Anchor changes:
@@ -579,6 +587,10 @@ func (st *viewState) para(i int, base spanStyle) *para {
 	sb.notes = st.noteNumber
 	sb.math = st.o.InlineMath
 	sb.linkIcon = st.o.LinkIcon
+	sb.linkColor = nil
+	if st.o.LinkColor != nil {
+		sb.linkColor = st.o.linkColor
+	}
 	sb.resolve, sb.resolvers = nil, st.o.resolvers()
 	if sb.resolvers != 0 {
 		sb.resolve = st.o.resolveInline
@@ -615,10 +627,27 @@ func (o *Options) resolveInline(in parser.Inline) (string, bool) {
 	return "", false
 }
 
+// linkColor returns the color LinkColor gives a link to dest, or none.
+func (o *Options) linkColor(dest string) Color {
+	if c, ok := o.LinkColor(dest); ok && c.A > 0 {
+		return c
+	}
+	return Color{}
+}
+
 // sameResolved reports whether the mentions, references and code of block i
 // resolve where they did as p was built, Options.Resolve and CodeLink set
-// or not alike.
+// or not alike, and whether its links take the colors they did,
+// Options.LinkColor set or not alike.
 func (st *viewState) sameResolved(i int, p *para) bool {
+	if (st.o.LinkColor != nil) != p.linkColor {
+		return false
+	}
+	for _, l := range p.colored {
+		if st.o.linkColor(l.dest) != l.color {
+			return false
+		}
+	}
 	if len(p.refs) == 0 {
 		return true
 	}
@@ -695,12 +724,13 @@ func (st *viewState) piece(c *ui.Context, block int, pc *piece) {
 			// or code, which Options.CodeLink did.
 			in.Dest, in.Auto = pc.dest, true
 		}
-		st.link(c, &in, func() { ui.RichText(c, pc.spans...) })
+		st.link(c, &in, pc.color, func() { ui.RichText(c, pc.spans...) })
 	}
 }
 
-// link builds a link to in.Dest whose text children builds.
-func (st *viewState) link(c *ui.Context, in *parser.Inline, children func()) {
+// link builds a link to in.Dest whose text children builds, in color, or
+// Theme.Link when it has none.
+func (st *viewState) link(c *ui.Context, in *parser.Inline, color Color, children func()) {
 	dest := in.Dest
 	var l ui.Element
 	switch {
@@ -724,7 +754,10 @@ func (st *viewState) link(c *ui.Context, in *parser.Inline, children func()) {
 	if st.o.LinkMenu != nil && !in.Pending && dest != "" && !strings.HasPrefix(dest, "#") {
 		l.ContextMenu(func(m *ui.Menu) { st.o.LinkMenu(m, dest) })
 	}
-	l.TextColor(st.th.Link)
+	if color.A == 0 {
+		color = st.th.Link
+	}
+	l.TextColor(color)
 	l.Children(children)
 	// What the tip says, which describes the link to assistive technology.
 	tip := in.Title

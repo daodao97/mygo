@@ -1,6 +1,7 @@
 package text
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/binary"
 	"image"
@@ -452,6 +453,9 @@ type System struct {
 	appFonts int
 	// fonts caches the font of each style.
 	fonts map[Style]*Font
+	// watchers hear of the fonts that loaded in the background, in
+	// browsers (WatchFonts).
+	watchers map[*func()]func()
 
 	// Layouts are kept by recency within a memory budget, not by how
 	// many frames a scrolling window has drawn.
@@ -539,7 +543,7 @@ type cached struct {
 var shared = sync.OnceValue(newSystem)
 
 func newSystem() *System {
-	return &System{
+	s := &System{
 		fonts:     map[Style]*Font{},
 		layouts:   map[Params]*cached{},
 		marks:     map[markKey]float32{},
@@ -549,11 +553,16 @@ func newSystem() *System {
 		masks:     map[uint64]*atlasEntry{},
 		transient: map[uint64]GlyphImage{},
 		recent:    map[uint64]uint64{},
-		MaskAtlas: scene.NewAtlas(1, 256, 256),
-		// Most interfaces have no color or subpixel glyphs. Keep just a
-		// transparent texel until one asks for room.
-		ColorAtlas: scene.NewAtlas(4, 1, 1),
 	}
+	s.MaskAtlas, s.ColorAtlas = newAtlases()
+	return s
+}
+
+// newAtlases returns the glyph atlases a System starts with.
+func newAtlases() (mask, color *scene.Atlas) {
+	// Most interfaces have no color or subpixel glyphs. Keep just a
+	// transparent texel until one asks for room.
+	return scene.NewAtlas(1, 256, 256), scene.NewAtlas(4, 1, 1)
 }
 
 // Shared returns the process-wide text system.
@@ -570,11 +579,52 @@ func New() *System {
 	return s
 }
 
+// Reuse readies a System New made, which a window drew in, for another
+// window, as a Tester takes the one an earlier Tester left (package ui
+// keeps them): what it made that depends on no window stays, so that the
+// next window need not make it again: its engine with the fonts it
+// found, the text it laid out, the widths of its ellipses. What the window
+// set goes, its language, and so do the glyph atlases: they start empty,
+// as a new System's, so that the next window fills them as it would a new
+// System's, through the same growth and room made. The window must have
+// set nothing else (SetUIFamily, SetFontRendering), as a Tester's sets
+// nothing else; the Use functions it called stay, which only let layouts
+// do what their Params ask for.
+func (s *System) Reuse() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lang != "" {
+		s.lang = ""
+		s.gen++
+		s.clearLayouts()
+		clear(s.marks)
+	}
+	// What the engine keeps of the last window's shaping (Core Text's
+	// typesetters) goes, as when windows go idle, and the layouts kept count
+	// as unused by the frames to come, as none of the next window's drew
+	// them: they don't take its live budget.
+	if k, ok := s.eng.(shapingKeeper); ok {
+		k.releaseShaping()
+	}
+	s.frame += liveLayoutFrames
+	s.MaskAtlas, s.ColorAtlas = newAtlases()
+	clear(s.glyphs)
+	clear(s.runs)
+	clear(s.masks)
+	clear(s.transient)
+	clear(s.recent)
+	s.forgetLeftOut()
+	s.rooms = 0
+}
+
 // appFonts are the fonts the app registered for all its text
-// (RegisterAppFont), which each System New makes takes in turn.
+// (RegisterAppFont), which each System New makes takes in turn, each
+// once: register serializes RegisterAppFont, which leaves out a font
+// already there.
 var appFonts struct {
-	mu    sync.Mutex
-	fonts []appFontData
+	mu       sync.Mutex
+	register sync.Mutex
+	fonts    []appFontData
 }
 
 type appFontData struct {
@@ -586,7 +636,17 @@ type appFontData struct {
 // and in every System New makes: before it lays out text, or at its next
 // layout when it was made before. A Tester's window, which shapes in a
 // System of its own, then draws the app's fonts as its windows do.
+//
+// Registering again the same data under the same family does nothing:
+// each System, Shared too, would otherwise register it again, as a test
+// package's Testers each would (#1902). The data is kept, and must not
+// change afterwards.
 func RegisterAppFont(data []byte, family string) error {
+	appFonts.register.Lock()
+	defer appFonts.register.Unlock()
+	if hasAppFont(data, family) {
+		return nil
+	}
 	if err := Shared().RegisterFont(data, family); err != nil {
 		return err
 	}
@@ -594,6 +654,16 @@ func RegisterAppFont(data []byte, family string) error {
 	appFonts.fonts = append(appFonts.fonts, appFontData{data, family})
 	appFonts.mu.Unlock()
 	return nil
+}
+
+// hasAppFont reports whether the app registered data under family
+// already (RegisterAppFont).
+func hasAppFont(data []byte, family string) bool {
+	appFonts.mu.Lock()
+	defer appFonts.mu.Unlock()
+	return slices.ContainsFunc(appFonts.fonts, func(f appFontData) bool {
+		return f.family == family && bytes.Equal(f.data, data)
+	})
 }
 
 // takeAppFonts registers in a System New made the app's fonts registered
@@ -627,6 +697,7 @@ func (s *System) engine() engine {
 			r := s.rendering
 			f.setFontRendering(r[0], r[1], r[2])
 		}
+		s.hearFontLoads()
 	}
 	return s.eng
 }

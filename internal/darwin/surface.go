@@ -171,9 +171,9 @@ type surface struct {
 	markedSel nsRange
 	keyDown   bool // in interpretKeyEvents: text typed with the key
 	// withheld is the key keyDown: kept from the content while the input
-	// method composed, during interpretKeyEvents: doCommandBySelector:
-	// sends it if the input method ends the composition and passes the
-	// key on.
+	// method composed, or Backspace, during interpretKeyEvents:
+	// doCommandBySelector: sends it if the input method ends the
+	// composition and passes the key on.
 	withheld *platform.SurfaceEvent
 	// refused: the content left the composition set in
 	// interpretKeyEvents, given up once it returns.
@@ -1443,9 +1443,12 @@ func registerSurfaceClass() {
 			// method's, as Enter choosing a candidate or Escape giving the
 			// composition up, as GTK's and IMM32's filtering keeps them on
 			// Linux and Windows, unless the input method passes it on
-			// (doCommandBySelector:).
+			// (doCommandBySelector:). So is Backspace while an input
+			// method is on: the Korean one composes without marked text,
+			// replacing the syllable before the caret, and takes a jamo
+			// back with Backspace the same way (한 → 하).
 			key := platform.SurfaceEvent{Kind: platform.KeyPressed, Key: eventKey(ev), PhysicalKey: physicalKey(ev), Code: eventKeyCode(ev), Mods: mods, Repeat: sendBool(ev, "isARepeat")}
-			withheld := ime && s.hasMarkedText()
+			withheld := ime && (s.hasMarkedText() || key.Key == platform.KeyBackspace)
 			if !withheld {
 				s.send(key)
 			}
@@ -1455,7 +1458,7 @@ func registerSurfaceClass() {
 			// for press and hold's accents to replace, as a terminal's
 			// input, which takes text itself (no Client): the accents
 			// menu, holding the repeats back, would type nothing there.
-			if ime && s.input.Client == nil && sendBool(ev, "isARepeat") && !s.hasMarkedText() {
+			if ime && s.input.Client == nil && sendBool(ev, "isARepeat") && !withheld {
 				if t := typedChars(stringOf(send(ev, "characters"))); t != "" {
 					s.insertText(t, nsRange{Location: nsNotFound})
 				}
@@ -1582,7 +1585,8 @@ func registerSurfaceClass() {
 		}),
 		// The input method passes on the key it was given (insertNewline:
 		// for Return, moveLeft: for the left arrow…), as the Korean one
-		// does once Return or an arrow committed the syllable it composed:
+		// does once Return or an arrow committed the syllable it composed,
+		// and Backspace (deleteBackward:) once it has no jamo to take back:
 		// the content gets the key it held back, as a text view acts on
 		// the command. Input methods that keep the key, as Return choosing
 		// a candidate in Japanese or Chinese, do not ask for its command,

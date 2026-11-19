@@ -22,12 +22,26 @@ const (
 	tbSetProgressValue = 9
 	tbSetProgressState = 10
 
+	// smCxIcon and smCxSmIcon name the system's big and small icon sizes.
+	smCxIcon, smCxSmIcon = 11, 49
+
 	tbpfNoProgress    = 0
 	tbpfIndeterminate = 1
 	tbpfNormal        = 2
 	tbpfError         = 4
 	tbpfPaused        = 8
 )
+
+// iconSize is a system icon size metric at a DPI, scaled from its default
+// at 96 DPI when the system does not say.
+func iconSize(metric uintptr, def, dpi int) int {
+	if has(procGetSystemMetricsForDpi) {
+		if n, _, _ := procGetSystemMetricsForDpi.Call(metric, uintptr(dpi)); n != 0 {
+			return int(n)
+		}
+	}
+	return def * dpi / 96
+}
 
 // taskbar returns the shell's ITaskbarList3, created on first use, or 0.
 func (b *Backend) taskbar() uintptr {
@@ -54,6 +68,16 @@ func (w *window) applyTaskbar() {
 		comCall(tl, tbDeleteTab, w.hwnd)
 		return
 	}
+	w.applyProgress(tl)
+	if thumbApply != nil {
+		thumbApply(w)
+	}
+}
+
+// applyProgress updates only the taskbar's progress, so frequent
+// SetProgressBar calls do not rebuild the toolbar's icons or call
+// ThumbBarAddButtons again.
+func (w *window) applyProgress(tl uintptr) {
 	flags := map[string]uintptr{"normal": tbpfNormal, "indeterminate": tbpfIndeterminate, "paused": tbpfPaused, "error": tbpfError}[w.progress.state]
 	comCall(tl, tbSetProgressState, w.hwnd, flags)
 	if flags != tbpfNoProgress && flags != tbpfIndeterminate {
@@ -64,7 +88,11 @@ func (w *window) applyTaskbar() {
 
 func (w *window) SetProgressBar(state string, value float64) {
 	w.progress.state, w.progress.value = state, value
-	w.applyTaskbar()
+	if !w.skipTaskbar {
+		if tl := w.b.taskbar(); tl != 0 {
+			w.applyProgress(tl)
+		}
+	}
 }
 
 func (w *window) SetSkipTaskbar(v bool) {
@@ -72,10 +100,19 @@ func (w *window) SetSkipTaskbar(v bool) {
 		return
 	}
 	w.skipTaskbar = v
-	if tl := w.b.taskbar(); tl != 0 && !v {
-		comCall(tl, tbAddTab, w.hwnd)
+	tl := w.b.taskbar()
+	if tl == 0 {
+		return
 	}
-	w.applyTaskbar()
+	if v {
+		comCall(tl, tbDeleteTab, w.hwnd)
+		// The button is gone, and with it the toolbar: a new one gets
+		// both again on TaskbarButtonCreated.
+		w.taskbarButton, w.thumb.live = false, false
+		return
+	}
+	comCall(tl, tbAddTab, w.hwnd)
+	w.applyProgress(tl)
 }
 
 func (w *window) FlashFrame(flash bool) {
@@ -96,21 +133,12 @@ func (w *window) SetVisibleOnAllWorkspaces(bool) {}
 func (w *window) SetIcon(png []byte) error {
 	var small, big uintptr
 	if png != nil {
-		const smCxIcon, smCxSmIcon = 11, 49
-		dpi := uintptr(dpiOf(w.hwnd))
-		size := func(metric uintptr, def int) int {
-			if has(procGetSystemMetricsForDpi) {
-				if n, _, _ := procGetSystemMetricsForDpi.Call(metric, dpi); n != 0 {
-					return int(n)
-				}
-			}
-			return def * int(dpi) / 96
-		}
+		dpi := dpiOf(w.hwnd)
 		var err error
-		if small, err = iconFromPNG(png, size(smCxSmIcon, 16)); err != nil {
+		if small, err = iconFromPNG(png, iconSize(smCxSmIcon, 16, dpi)); err != nil {
 			return err
 		}
-		if big, err = iconFromPNG(png, size(smCxIcon, 32)); err != nil {
+		if big, err = iconFromPNG(png, iconSize(smCxIcon, 32, dpi)); err != nil {
 			procDestroyIcon.Call(small)
 			return err
 		}

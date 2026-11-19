@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"net/url"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+	"weak"
 
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/transfer"
@@ -125,6 +127,11 @@ func utf16Bytes(s string) []byte {
 	return b
 }
 
+// unicodeTextToLF converts line endings from the native CF_UNICODETEXT format.
+func unicodeTextToLF(text string) string {
+	return strings.ReplaceAll(text, "\r\n", "\n")
+}
+
 func (c clipboard) ReadText() string {
 	if !c.open() {
 		return ""
@@ -135,7 +142,7 @@ func (c clipboard) ReadText() string {
 	for i := range u {
 		u[i] = binary.LittleEndian.Uint16(data[2*i:])
 	}
-	return string(utf16Decode(u))
+	return unicodeTextToLF(string(utf16Decode(u)))
 }
 
 func (c clipboard) WriteText(text string) { _ = c.WriteData(transfer.TextData(text), false, nil) }
@@ -195,7 +202,7 @@ func (c clipboard) ReadImage() []byte {
 	if data := clipboardData(cfPNG); len(data) > 0 {
 		return data
 	}
-	img := dibToImage(clipboardData(cfDIB))
+	img := dibToImage(clipboardData(uint32(clipboardBitmap())))
 	if img == nil {
 		return nil
 	}
@@ -206,12 +213,48 @@ func (c clipboard) ReadImage() []byte {
 	return buf.Bytes()
 }
 
+// clipboardBitmap returns which of CF_DIBV5 and CF_DIB ReadImage and
+// ReadData read from the open clipboard: the one its owner put there,
+// which is enumerated first, and 0 without a bitmap. CF_DIBV5 can carry
+// alpha, which CF_DIB cannot.
+//
+// Windows makes each of the other, and both of a CF_BITMAP, as PrintScreen
+// leaves. What it makes is not asked for: its CF_DIBV5 has no alpha mask
+// and repeats the color masks between its header and its pixels, and once
+// that one was asked for, its CF_DIB comes with its pixels three to the
+// right.
+func clipboardBitmap() uint16 {
+	for f := uintptr(0); ; {
+		f, _, _ = procEnumClipboardFormats.Call(f)
+		switch f {
+		case 0:
+			// Windows synthesizes DIBs for older clipboard owners.
+			if available, _, _ := procIsClipboardFormatAvailable.Call(cfDIB); available != 0 {
+				return cfDIB
+			}
+			return 0
+		case cfDIB, cfDIBV5:
+			return uint16(f)
+		}
+	}
+}
+
 func (c clipboard) WriteImage(data []byte) error {
 	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
 		return err
 	}
 	return c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, data))), false, nil)
 }
+
+// Bitmap headers: BITMAPINFOHEADER, 40 bytes, and BITMAPV5HEADER, 124.
+// Headers from BITMAPV3INFOHEADER's 56 bytes on have the alpha mask at 52.
+const (
+	dibHeaderSize   = 40
+	dibV5HeaderSize = 124
+	biBitfields     = 3
+	lcsSRGB         = 0x73524742 // 'sRGB'
+	lcsGMImages     = 4
+)
 
 // dibToImage decodes an uncompressed 24 or 32-bit device independent
 // bitmap.
@@ -230,9 +273,16 @@ func dibToImage(dib []byte) image.Image {
 	if offset < 40 || offset > len(dib) {
 		return nil
 	}
-	if compression == 3 && headerSize == 40 {
+	if compression == biBitfields && headerSize == dibHeaderSize {
 		offset += 12 // BI_BITFIELDS masks
 	}
+	// Pixels have alpha when the header says so: with BI_BITFIELDS,
+	// without which its masks mean nothing, and the masks of BGRA, the one
+	// layout read here. In a BITMAPINFOHEADER the fourth byte is reserved,
+	// and often zero.
+	alpha := bits == 32 && headerSize >= 56 && compression == biBitfields &&
+		le.Uint32(dib[40:]) == 0x00ff0000 && le.Uint32(dib[44:]) == 0x0000ff00 &&
+		le.Uint32(dib[48:]) == 0x000000ff && le.Uint32(dib[52:]) == 0xff000000
 	bottomUp := height > 0
 	if !bottomUp {
 		height = -height
@@ -248,6 +298,7 @@ func dibToImage(dib []byte) image.Image {
 	}
 	img := image.NewNRGBA(image.Rect(0, 0, width, height))
 	px := int(bits / 8)
+	seen := false
 	for y := 0; y < height; y++ {
 		row := y
 		if bottomUp {
@@ -257,36 +308,100 @@ func dibToImage(dib []byte) image.Image {
 		for x := 0; x < width; x++ {
 			p := line[x*px:]
 			a := uint8(255)
-			if bits == 32 && headerSize > 40 {
+			if alpha {
 				a = p[3]
+				seen = seen || a != 0
 			}
 			img.SetNRGBA(x, y, color.NRGBA{R: p[2], G: p[1], B: p[0], A: a})
+		}
+	}
+	// Alpha zero everywhere is an app that left it unset, not an image
+	// nobody can see.
+	if alpha && !seen {
+		for i := 3; i < len(img.Pix); i += 4 {
+			img.Pix[i] = 255
 		}
 	}
 	return img
 }
 
-// imageToDIB encodes a top-down 32-bit BITMAPINFOHEADER bitmap.
-func imageToDIB(img image.Image) []byte {
-	b := img.Bounds()
+// imageToDIB encodes a bottom-up 32-bit BITMAPINFOHEADER bitmap of img on
+// white. Apps that read CF_DIB ignore the fourth byte, so transparent
+// pixels would show whatever color they hold, often black.
+func imageToDIB(img *image.NRGBA) []byte {
+	return encodeDIB(img, dibHeaderSize, func(c color.NRGBA) color.NRGBA {
+		// Straight alpha over white: c·a + 255·(1−a), rounded.
+		over := func(v uint8) uint8 { return uint8((int(v)*int(c.A) + 255*(255-int(c.A)) + 127) / 255) }
+		return color.NRGBA{R: over(c.R), G: over(c.G), B: over(c.B), A: 255}
+	})
+}
+
+// imageToDIBV5 encodes a bottom-up 32-bit BITMAPV5HEADER bitmap with
+// straight alpha, in sRGB, for apps that read transparency from CF_DIBV5.
+func imageToDIBV5(img *image.NRGBA) []byte {
+	return encodeDIB(img, dibV5HeaderSize, func(c color.NRGBA) color.NRGBA { return c })
+}
+
+func encodeDIB(img *image.NRGBA, headerSize int, pixel func(color.NRGBA) color.NRGBA) []byte {
+	b := img.Rect
 	w, h := b.Dx(), b.Dy()
-	out := make([]byte, 40+4*w*h)
+	out := make([]byte, headerSize+4*w*h)
 	le := binary.LittleEndian
-	le.PutUint32(out, 40)
+	le.PutUint32(out, uint32(headerSize))
 	le.PutUint32(out[4:], uint32(w))
-	le.PutUint32(out[8:], uint32(int32(-h)))
+	le.PutUint32(out[8:], uint32(h))
 	le.PutUint16(out[12:], 1)
 	le.PutUint16(out[14:], 32)
 	le.PutUint32(out[20:], uint32(4*w*h))
-	i := 40
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		for x := b.Min.X; x < b.Max.X; x++ {
-			c := color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
+	if headerSize == dibV5HeaderSize {
+		le.PutUint32(out[16:], biBitfields)
+		le.PutUint32(out[40:], 0x00ff0000) // red
+		le.PutUint32(out[44:], 0x0000ff00) // green
+		le.PutUint32(out[48:], 0x000000ff) // blue
+		le.PutUint32(out[52:], 0xff000000) // alpha
+		le.PutUint32(out[56:], lcsSRGB)
+		le.PutUint32(out[108:], lcsGMImages)
+	}
+	i := headerSize
+	for y := b.Max.Y - 1; y >= b.Min.Y; y-- {
+		row := img.Pix[img.PixOffset(b.Min.X, y):]
+		for x := 0; x < 4*w; x += 4 {
+			c := pixel(color.NRGBA{R: row[x], G: row[x+1], B: row[x+2], A: row[x+3]})
 			out[i], out[i+1], out[i+2], out[i+3] = c.B, c.G, c.R, c.A
 			i += 4
 		}
 	}
 	return out
+}
+
+// decodedPNG decodes a PNG for the bitmaps the clipboard offers of it.
+// They are asked for one after another, by the clipboard's history and by
+// a flush, so they share one decoded image. It is held weakly: decoded, a
+// large image is too much to keep for as long as it is on the clipboard.
+type decodedPNG struct {
+	read func() ([]byte, error)
+	last weak.Pointer[image.NRGBA]
+}
+
+func (d *decodedPNG) image() (*image.NRGBA, error) {
+	if img := d.last.Value(); img != nil {
+		return img, nil
+	}
+	b, err := d.read()
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	img, ok := decoded.(*image.NRGBA)
+	if !ok {
+		img = image.NewNRGBA(decoded.Bounds())
+		draw.Draw(img, img.Rect, decoded, img.Rect.Min, draw.Src)
+	}
+	d.last = weak.Make(img)
+	return img, nil
 }
 
 func (c clipboard) Clear() { _ = c.WriteData(transfer.Data{}, false, nil) }

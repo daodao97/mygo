@@ -157,9 +157,16 @@ type editor struct {
 	// selUndo and selRedo are the selections Undo Selection takes back.
 	selUndo, selRedo [][]sel
 	folds            []fold
-	marked           []ui.TextInputRange // the composition, in bytes per selection
-	markedActive     bool
-	autoclosed       []autoclose
+	// foldSnapshot and foldHidden cache merged fold spans by value, so
+	// every mutation path, including an edit in place, is observed.
+	foldSnapshot []fold
+	foldHidden   []lineSpan
+	// hiddenScratch is separate: hiddenLines appends replacement and
+	// diff spans and merges them in place, without changing foldHidden.
+	hiddenScratch []lineSpan
+	marked        []ui.TextInputRange // the composition, in bytes per selection
+	markedActive  bool
+	autoclosed    []autoclose
 
 	scrollY float64
 	scrollX float32
@@ -168,6 +175,9 @@ type editor struct {
 	paintedW   float32
 	anchorLine int
 	anchorOff  float64
+	// anchorRows keeps visible text fixed when a partly visible app block
+	// above it changes height. Otherwise the anchor is the line's top.
+	anchorRows bool
 	reveal     reveal
 	r          ui.Rect // the element's box of the last frame, in the window
 	// laidW is the width the editor was laid out at last, which an editor
@@ -231,16 +241,19 @@ type editor struct {
 	complete completions
 	snippet  *snippetSession
 	hover    hover
+	popup    popup
 	diags    []Diagnostic
 	gitDiff  *gitDiff
 	brackets bracketCache
 
-	// placed are the elements of replacements the last build placed, at
-	// the scroll of placedScroll, which a frame painting them elsewhere
-	// builds again (replacementsMoved); placeScratch is where they are
-	// found anew.
+	// placed are the elements of replacements and blocks the last build
+	// placed, at the scroll of placedScroll, which a frame painting them
+	// elsewhere builds again (elementsMoved); placeScratch is where
+	// they are found anew.
 	placed, placeScratch []placed
 	placedScroll         [2]float64
+	// built are the elements of blocks the last build made.
+	built []builtBlock
 }
 
 // lastClip is what an editor last copied, which pasting its text in any
@@ -371,6 +384,14 @@ func (ed *editor) sync() {
 				}
 			}
 		}
+		// What Select Smaller takes back, and what a drag goes on from.
+		for i := range ed.larged {
+			ed.larged[i] = mapSel(ed.larged[i], cs)
+		}
+		ed.gesture.origin = mapSel(ed.gesture.origin, cs)
+		for i := range ed.gesture.others {
+			ed.gesture.others[i] = mapSel(ed.gesture.others[i], cs)
+		}
 		for i := range ed.find.scope {
 			ed.find.scope[i] = mapSel(ed.find.scope[i], cs)
 		}
@@ -439,6 +460,7 @@ func (ed *editor) resetForBuffer() {
 	ed.view.repls, ed.view.replCross = nil, nil
 	ed.view.lineStyles, ed.view.stylesDirty = nil, true
 	ed.view.replsChanged()
+	ed.view.blocks, ed.view.blocksStale = nil, true
 	ed.complete.close()
 	ed.hover.close()
 	ed.find.scope, ed.find.stale, ed.find.lowerVer, ed.find.lower = nil, true, 0, ""
@@ -446,6 +468,7 @@ func (ed *editor) resetForBuffer() {
 	ed.gesture.active = false
 	ed.brackets = bracketCache{}
 	ed.scrollY, ed.scrollX, ed.anchorLine, ed.anchorOff = 0, 0, 0, 0
+	ed.anchorRows = false
 	ed.paintedW = 0
 }
 
@@ -482,9 +505,14 @@ func (ed *editor) newSel(anchor, head int) sel {
 	return sel{anchor: anchor, head: head, goal: -1, id: ed.nextID}
 }
 
-// hiddenSpans returns the lines folds hide, merged.
+// hiddenSpans returns the lines folds hide, merged. The result is a
+// read-only cache, valid until the folds change.
 func (ed *editor) hiddenSpans() []lineSpan {
-	var spans []lineSpan
+	if slices.Equal(ed.folds, ed.foldSnapshot) {
+		return ed.foldHidden
+	}
+	ed.foldSnapshot = append(ed.foldSnapshot[:0], ed.folds...)
+	spans := ed.foldHidden[:0]
 	for _, f := range ed.folds {
 		if f.end > f.start {
 			spans = append(spans, lineSpan{f.start + 1, f.end})
@@ -499,19 +527,21 @@ func (ed *editor) hiddenSpans() []lineSpan {
 		}
 		out = append(out, s)
 	}
+	ed.foldHidden = out
 	return out
 }
 
 // hiddenLines returns every line that shows no rows: those folds hide,
 // those a diff collapses and those replacements hide, merged.
 func (ed *editor) hiddenLines() []lineSpan {
-	hidden := ed.hiddenSpans()
+	hidden := append(ed.hiddenScratch[:0], ed.hiddenSpans()...)
 	if ds, ok := ed.o.decor.(*diffSide); ok {
 		hidden = mergeSpans(append(hidden, ds.hidden()...))
 	}
 	if r := ed.view.replacedLines(); len(r) > 0 {
 		hidden = mergeSpans(append(hidden, r...))
 	}
+	ed.hiddenScratch = hidden
 	return hidden
 }
 
@@ -524,6 +554,9 @@ func (ed *editor) caretRect(off int) (ui.Rect, bool) {
 	v := &ed.view
 	line := v.text.LineOf(off)
 	if v.heights.isHidden(line) {
+		if r, ok := ed.standIn(line); ok && off == r.Start {
+			return ed.standInCaretRect(r), true
+		}
 		return ui.Rect{}, false
 	}
 	l := v.line(line)
@@ -544,6 +577,9 @@ func (ed *editor) offsetAt(x float32, y float64) int {
 	line := v.heights.lineAt(y)
 	g := v.heights.geometry(line)
 	if g.hidden {
+		if r, ok := ed.standIn(line); ok {
+			return r.Start
+		}
 		return v.text.LineEnd(line)
 	}
 	l := v.line(line)
@@ -606,6 +642,15 @@ func (ed *editor) overTrailingInlay(x float32, y float64) bool {
 func (ed *editor) verticalMove(off int, goal float32, rows int) (int, float32) {
 	v := &ed.view
 	line := v.text.LineOf(off)
+	// From a block standing in for lines, as from the last of them going
+	// down, and the first going up.
+	if r, ok := ed.standIn(line); ok {
+		line = v.text.LineOf(r.Start)
+		if rows > 0 {
+			line = v.text.LineOf(r.End) - 1
+		}
+		off = v.text.LineStart(line)
+	}
 	l := v.line(line)
 	d := l.toDisp(off-l.start, true)
 	ri := l.rowOf(d, false)
@@ -620,6 +665,14 @@ func (ed *editor) verticalMove(off int, goal float32, rows int) (int, float32) {
 			} else {
 				next := line + 1
 				for next < n && v.heights.isHidden(next) {
+					if r, ok := ed.standIn(next); ok {
+						// A block standing in for lines is a row to move by.
+						if rows--; rows == 0 {
+							return r.Start, goal
+						}
+						next = v.text.LineOf(r.End)
+						continue
+					}
 					next++
 				}
 				if next >= n {
@@ -633,11 +686,22 @@ func (ed *editor) verticalMove(off int, goal float32, rows int) (int, float32) {
 				ri--
 			} else {
 				prev := line - 1
+				first := v.text.LineStart(line)
 				for prev >= 0 && v.heights.isHidden(prev) {
+					if r, ok := ed.standIn(prev); ok {
+						first = r.Start
+						if rows++; rows == 0 {
+							return r.Start, goal
+						}
+						prev = v.text.LineOf(r.Start) - 1
+						continue
+					}
 					prev--
 				}
 				if prev < 0 {
-					return 0, goal
+					// Clamp to the first shown row or stand-in, not a
+					// hidden prefix, including one ending within a line.
+					return ed.overReplacements(0, first), goal
 				}
 				line, l = prev, v.line(prev)
 				ri = len(l.rows) - 1
@@ -662,8 +726,28 @@ func (ed *editor) scrollMax() float64 {
 func (ed *editor) setScroll(y float64) {
 	y = max(0, min(y, ed.scrollMax()))
 	ed.scrollY = y
-	ed.anchorLine = ed.view.heights.lineAt(y)
-	ed.anchorOff = y - ed.view.heights.top(ed.anchorLine)
+	h := &ed.view.heights
+	ed.anchorLine, ed.anchorRows = h.lineAt(y), false
+	// Inside an app block, anchor the text after it when that text is
+	// visible. An offset within the block cannot keep that text fixed
+	// when measurement changes the block's height.
+	if b, _, ok := ed.blockAt(y); ok && b.kind == blockApp {
+		line := ed.anchorLine
+		if b.below || h.isHidden(line) {
+			line++
+		}
+		for line < h.n && h.isHidden(line) {
+			line++
+		}
+		if line < h.n {
+			top := ed.rowTop(line)
+			if top >= y && top < y+float64(ed.viewH) {
+				ed.anchorLine, ed.anchorRows, ed.anchorOff = line, true, y-top
+				return
+			}
+		}
+	}
+	ed.anchorOff = y - h.top(ed.anchorLine)
 }
 
 // restoreScroll puts the scroll back where its line is, as the heights
@@ -671,7 +755,11 @@ func (ed *editor) setScroll(y float64) {
 func (ed *editor) restoreScroll() {
 	h := &ed.view.heights
 	line := min(ed.anchorLine, max(h.n-1, 0))
-	ed.scrollY = max(0, min(h.top(line)+ed.anchorOff, ed.scrollMax()))
+	top := h.top(line)
+	if ed.anchorRows {
+		top = ed.rowTop(line)
+	}
+	ed.scrollY = max(0, min(top+ed.anchorOff, ed.scrollMax()))
 }
 
 // doReveal scrolls the newest caret into view.
@@ -696,11 +784,12 @@ func (ed *editor) doReveal() {
 	lh := float64(v.lineHeight)
 	top, bottom := float64(cr.Y), float64(cr.Y+cr.H)
 	h := float64(ed.viewH)
-	margin := min(float64(ed.o.scrollMargin)*lh, max(0, (h-lh)/2))
+	height := min(float64(cr.H), h)
+	margin := min(float64(ed.o.scrollMargin)*lh, max(0, (h-height)/2))
 	switch mode {
 	case revealCenter:
 		if top < ed.scrollY || bottom > ed.scrollY+h {
-			ed.setScroll(top - (h-lh)/2)
+			ed.setScroll(top - (h-height)/2)
 		}
 	case revealTop:
 		ed.setScroll(top - margin)
@@ -713,7 +802,8 @@ func (ed *editor) doReveal() {
 	}
 	// Sideways.
 	w := ed.r.W - ed.textX - 8
-	if !v.wrap && w > 0 {
+	// A stand-in caret stays fixed horizontally with its block.
+	if !v.wrap && w > 0 && !v.heights.isHidden(line) {
 		x := cr.X
 		em := v.charWidth * 2
 		if x-em < ed.scrollX {

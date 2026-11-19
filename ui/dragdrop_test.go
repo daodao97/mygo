@@ -472,3 +472,49 @@ func TestDragTargetBuiltUnderPointer(t *testing.T) {
 		t.Fatalf("dropped %q", dropped)
 	}
 }
+
+// A button in a row DragRows leaves out, returning nil, keeps its click
+// when the press moves a little, as far as would start a drag: the row
+// has nothing to drag. A row that drags still takes the press.
+func TestDragRowsNilKeepsButtonClick(t *testing.T) {
+	items := []string{"header", "file"}
+	clicked := 0
+	var dropped []any
+	s := ListState{DragRows: func(rows []int) any {
+		if rows[0] == 0 {
+			return nil
+		}
+		return "file"
+	}}
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Fill().Children(func() {
+			coreList(c, &s, len(items), func(i int) {
+				coreRow(c).Padding(8).Gap(8).Children(func() {
+					coreText(c, items[i])
+					if coreButton(c, "Add "+items[i]).Clicked() && i == 0 {
+						clicked++
+					}
+				})
+			}).Height(200)
+			target := coreBox(c).Size(200, 60).Label("Target")
+			if v, ok := coreDrop[string](target); ok {
+				dropped = append(dropped, v)
+			}
+		})
+	}, 300, 400)
+	add, _ := tt.Find("Add header")
+	x, y := add.X+add.W/2, add.Y+add.H/2
+	tt.Press(x, y)
+	tt.Move(x+3, y+3)
+	tt.Move(x+6, y+5)
+	tt.Release(x+6, y+5)
+	if clicked != 1 {
+		t.Fatalf("a press moving 8 DIPs on a row that does not drag: %d clicks", clicked)
+	}
+	file, _ := tt.Find("Add file")
+	target, _ := tt.Find("Target")
+	drag(tt, file.X+4, file.Y+4, target.X+20, target.Y+20)
+	if len(dropped) != 1 || dropped[0] != "file" {
+		t.Errorf("the row that drags dropped %v", dropped)
+	}
+}

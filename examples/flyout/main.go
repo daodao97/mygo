@@ -158,8 +158,8 @@ func (a *app) editorView(c *ui.Context) {
 	c.Root().Background(ui.Transparent)
 	panel(c).Padding(12).Gap(8).Children(func() {
 		ui.Text(c, "Note").Bold()
-		ui.TextInput(c.Key("note"), &a.note).Placeholder("Write something").AutoFocus()
-		if c.Shortcut(0, ui.KeyEnter) {
+		// The input has the focus and takes Enter itself.
+		if ui.TextInput(c.Key("note"), &a.note).Placeholder("Write something").AutoFocus().Submitted() {
 			a.editor.Close()
 		}
 	})

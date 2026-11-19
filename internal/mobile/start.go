@@ -37,7 +37,14 @@ func drain() {
 // redirectOutput sends what the app writes to its standard output and
 // error to the system's log, line by line, where phones show nothing of
 // them.
+//
+// The report of a panic or fatal error that ends the app would not get
+// through: the runtime writes it to the pipe and exits before the line
+// reader runs. keepCrashOutput has it written, whole, where it shows as
+// well (on iOS App.Run sends it to the crash log instead, but in
+// development).
 func redirectOutput() {
+	keepCrashOutput()
 	for _, f := range []struct {
 		file **os.File
 		err  bool

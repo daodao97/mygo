@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -115,8 +116,8 @@ func (h *headless) framesAtOnce() bool                { return h.atOnce }
 func (h *headless) occluded() bool                    { return h.hidden }
 
 // textSystem returns the window's text system, making its own the first
-// time, as a Tester's window shapes and paints apart from the others'
-// shared one (#1722).
+// time, as a Recorder's window shapes and paints apart from the others'
+// shared one (#1722); a Tester's takes one before (testerTexts).
 func (h *headless) textSystem() *text.System {
 	if h.text == nil {
 		h.text = text.New()
@@ -271,7 +272,9 @@ func (h *headless) image() *image.RGBA {
 func coreRender(view func(c *context), width, height int, scale float32) *image.RGBA {
 	t := coreNewTester(view, width, height)
 	t.SetScale(scale)
-	return t.Image()
+	img := t.Image()
+	t.end()
+	return img
 }
 
 // Tester runs a view without a window, as a test drives it: it renders
@@ -294,6 +297,9 @@ type Tester struct {
 	// how hard it presses (UsePointer).
 	pointer  PointerType
 	pressure float32
+	// textLeft gives the window's text system back to the Testers after
+	// this one as it ends (keepText).
+	textLeft runtime.Cleanup
 }
 
 // NewTester starts testing view in a window of width×height DIPs. Two
@@ -321,8 +327,11 @@ type TesterOptions struct {
 //
 //	tt := ui.NewTesterWith(view, 400, 300, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true}})
 func coreNewTesterWith(view func(c *context), width, height int, o TesterOptions) *Tester {
-	h := &headless{w: float32(width), h: float32(height), scale: 1, prefs: platformPreferences(o.Preferences), dark: o.Dark}
+	// The window's text system is one an earlier Tester left, or its own
+	// (testerTexts).
+	h := &headless{w: float32(width), h: float32(height), scale: 1, prefs: platformPreferences(o.Preferences), dark: o.Dark, text: takeTesterText()}
 	t := &Tester{rt: newRuntime(view, h), h: h, now: time.Now()}
+	t.keepText()
 	t.rt.clock = t.Now
 	h.clock = t.Now
 	t.rt.collect = true

@@ -178,6 +178,24 @@ type InputRegionWindow interface {
 	SetInputRegion(region []Rect)
 }
 
+// ThumbButton is a button of a thumbnail toolbar (ThumbBarWindow): the core
+// resolves the buttons of the public SetThumbBar into these, in the order
+// the shell reports a click by (the button's index). Icon is always the
+// button's PNG; the backend compares it with the one it has.
+type ThumbButton struct {
+	Icon     []byte
+	ToolTip  string
+	Disabled bool
+	Hidden   bool
+}
+
+// ThumbBarWindow is a window with a thumbnail toolbar, the row of small
+// buttons Windows shows under a taskbar button's live preview
+// (SetThumbBar). Apart from Window, so that only apps setting one link it.
+type ThumbBarWindow interface {
+	SetThumbBar(buttons []ThumbButton) error
+}
+
 // WindowStateBackend restores windows at their pixels (Windows):
 // RestoreWindowState sets opts.StateBounds and returns true when pixels,
 // zero for none, would show on a connected display. Otherwise the core
@@ -522,6 +540,11 @@ type WindowOptions struct {
 	// PinchZoom lets a pinch magnify the page; the backends turn it off
 	// where their webview has it on by default (mygo.PageOptions.PinchZoom).
 	PinchZoom bool
+	// ZoomControl lets the user zoom the page with the wheel and the
+	// browser's zoom keys, where the webview has them (Windows,
+	// mygo.PageOptions.ZoomControl); the backend reports the zoom
+	// through WindowHandler.ZoomChanged.
+	ZoomControl bool
 	// DataStore is the website data store of the page, one of
 	// AppController.NewDataStore; nil is the default store. A window
 	// opened by window.open has its opener's.
@@ -987,6 +1010,10 @@ type WindowHandler interface {
 	RenderProcessGone(reason string)
 	// AudibleChanged is called when Page.IsAudible changes.
 	AudibleChanged(audible bool)
+	// ZoomChanged is called when the page's zoom changed from Window.Zoom
+	// without the core's SetZoom, as when the user zooms it
+	// (mygo.PageOptions.ZoomControl).
+	ZoomChanged()
 	// CaptureStateChanged is called when Page.CaptureState of kind may
 	// have changed, with its state.
 	CaptureStateChanged(kind CaptureKind, state CaptureState)
@@ -1689,4 +1716,10 @@ type TabsHandler interface {
 // window off its stack (the back button, a swipe, Android's back).
 type NavigationHandler interface {
 	Popped()
+}
+
+// ThumbBarHandler is a WindowHandler told that the user clicked a button
+// of its window's thumbnail toolbar, by its ID (Windows).
+type ThumbBarHandler interface {
+	ThumbButtonClicked(id int)
 }

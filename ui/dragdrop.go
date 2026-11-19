@@ -144,10 +144,13 @@ func (rt *engine) dragMove(x, y float32) {
 	if s == nil || rt.pressButton != 0 {
 		return
 	}
+	var value any
+	count, handed := 0, false
 	if !s.drags() {
-		if s = rt.handPress(x, y); s == nil {
+		if s, value, count = rt.handPress(x, y); s == nil {
 			return
 		}
+		handed = true
 	}
 	d := rt.drag
 	if d == nil {
@@ -156,12 +159,8 @@ func (rt *engine) dragMove(x, y float32) {
 		if dx*dx+dy*dy < dragStart*dragStart {
 			return
 		}
-		value, count := s.dragValue, 0
-		if s.dragFn != nil {
-			value = s.dragFn()
-		}
-		if c, ok := value.(countedDrag); ok {
-			value, count = c.value, c.n
+		if !handed {
+			value, count = s.valueToDrag()
 		}
 		if value == nil && s.dataSource == nil {
 			return
@@ -205,6 +204,19 @@ func (rt *engine) dragMove(x, y float32) {
 	rt.requestFrame()
 }
 
+// valueToDrag is the value a press on the element drags, and how many
+// things it stands for: nil for none, as for a row DragRows leaves out.
+func (s *state) valueToDrag() (any, int) {
+	value, count := s.dragValue, 0
+	if s.dragFn != nil {
+		value = s.dragFn()
+	}
+	if c, ok := value.(countedDrag); ok {
+		value, count = c.value, c.n
+	}
+	return value, count
+}
+
 // countedDrag is a value a source drags with how many things it stands
 // for, as a list's rows or a grid's items: the drag carries the value
 // alone, and shows the number.
@@ -243,22 +255,30 @@ func pressDragger(rt *engine, chain []uint64, target *state) uint64 {
 
 // handPress gives the press to the element around the one pressed that
 // drags a value, once the pointer moves as far as starts a drag: the
-// element pressed has no click then. It returns that element, or nil.
-func (rt *engine) handPress(x, y float32) *state {
+// element pressed has no click then. It returns that element with the
+// value it drags, or nil. An element with nothing to drag from there, as
+// a row DragRows leaves out, leaves the element pressed its press, and
+// its click.
+func (rt *engine) handPress(x, y float32) (*state, any, int) {
 	s, a := rt.pressed, rt.states[rt.pressDragger]
 	if a == nil || rt.drag != nil || !a.drags() {
-		return nil
+		return nil, nil, 0
 	}
 	px, py := s.world.Point(s.x+s.pressX, s.y+s.pressY)
 	if dx, dy := x-px, y-py; dx*dx+dy*dy < dragStart*dragStart {
-		return nil
+		return nil, nil, 0
+	}
+	value, count := a.valueToDrag()
+	if value == nil && a.dataSource == nil {
+		rt.pressDragger = 0
+		return nil, nil, 0
 	}
 	rt.pressed, rt.pressDragger = a, 0
 	s.pressed = false
 	a.pressed, a.pressButton, a.pressMods, a.pressPending = true, s.pressButton, s.pressMods, true
 	a.pressX, a.pressY = a.local(px, py)
 	a.drag.reset(rt.now(), px, py)
-	return a
+	return a, value, count
 }
 
 // retarget makes the element taking the value dragged under a pointer

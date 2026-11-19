@@ -169,6 +169,37 @@ func TestPageGestures(t *testing.T) {
 	}
 }
 
+// TestPageZoomControl passes ZoomControl to the backend for a window's
+// page and a web view's, off unless asked for.
+func TestPageZoomControl(t *testing.T) {
+	_, fw := testWindow(t, WindowOptions{})
+	if fw.Opts.ZoomControl {
+		t.Error("the user zooms a window's page by default")
+	}
+	_, fw = testWindow(t, WindowOptions{Page: PageOptions{ZoomControl: true}})
+	if !fw.Opts.ZoomControl {
+		t.Error("a window's page asked for ZoomControl, which the backend did not get")
+	}
+
+	w, _, s := contentWindow(t, func(c *ui.Context) {})
+	if _, err := w.NewWebView(WebViewOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.NewWebView(WebViewOptions{Page: PageOptions{ZoomControl: true}}); err != nil {
+		t.Fatal(err)
+	}
+	views := s.WebViews()
+	if len(views) != 2 {
+		t.Fatalf("%d web views", len(views))
+	}
+	if views[0].Opts.ZoomControl {
+		t.Error("the user zooms a web view by default")
+	}
+	if !views[1].Opts.ZoomControl {
+		t.Error("a web view asked for ZoomControl, which the backend did not get")
+	}
+}
+
 func TestWebViewNeedsContent(t *testing.T) {
 	w, _ := testWindow(t, WindowOptions{})
 	if _, err := w.NewWebView(WebViewOptions{}); !errors.Is(err, errNoContent) {

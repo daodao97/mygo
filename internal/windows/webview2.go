@@ -20,6 +20,7 @@ const (
 	ctlPutBounds                         = 6
 	ctlGetZoomFactor                     = 7
 	ctlPutZoomFactor                     = 8
+	ctlAddZoomFactorChanged              = 9
 	ctlMoveFocus                         = 12
 	ctlAddAcceleratorKeyPressed          = 19
 	ctlNotifyParentWindowPositionChanged = 23
@@ -54,6 +55,8 @@ const (
 	wvAddDocumentTitleChanged                = 46
 	wvGetDocumentTitle                       = 48
 	wvOpenDevToolsWindow                     = 51
+	wvAddContainsFullScreenElementChanged    = 52
+	wvGetContainsFullScreenElement           = 54
 	wvAddWebResourceRequested                = 55
 	wvAddWebResourceRequestedFilter          = 57
 	wvRemoveWebResourceRequestedFilter       = 58
@@ -66,6 +69,7 @@ const (
 	setPutIsStatusBarEnabled             = 10
 	setPutAreDevToolsEnabled             = 12
 	setPutAreDefaultContextMenusEnabled  = 14
+	setGetIsZoomControlEnabled           = 17
 	setPutIsZoomControlEnabled           = 18
 	set2GetUserAgent                     = 21
 	set2PutUserAgent                     = 22

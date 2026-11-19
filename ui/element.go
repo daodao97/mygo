@@ -515,8 +515,11 @@ type node struct {
 	opacity    float32
 	opacitySet bool
 	undimmed   bool // kept at its opacity while disabled (DimDisabled)
-	cursor     Cursor
-	paintFn    func(p *Painter, r Rect)
+	// unavailable marks a drawn menu's item that cannot be chosen, dimmed as
+	// if Disabled but still under the pointer (menuParts.item).
+	unavailable bool
+	cursor      Cursor
+	paintFn     func(p *Painter, r Rect)
 	// hitFn tells where in its box the element takes the pointer
 	// (HitTest).
 	hitFn func(x, y float32, r Rect) bool
@@ -768,6 +771,12 @@ type node struct {
 	// (zindex.go).
 	zIndex int32
 	zOrder bool
+	// pinned tells that the element's own transform is only the remainder
+	// a transition moving it carries to its resting pixels (snapTo), and
+	// pinWorld that its world is then only such remainders: a translation
+	// its text paints under as at rest (Painter.element). Beside zOrder,
+	// they keep to the bytes before serial.
+	pinned, pinWorld bool
 	// serial is the order the pass made the element in: of overlays, the
 	// one made last shows on top.
 	serial int32

@@ -172,6 +172,7 @@ func (t *Tester) accessEach(fn func(r Role, n *platform.AccessNode, info func() 
 	// The roles elements were given, by their IDs: several may share a
 	// node's role, as a list box and a list do.
 	given := map[uint64]Role{}
+	boundsID := map[uint64]uint64{}
 	var walk func(e *node)
 	walk = func(e *node) {
 		if e.role > RoleNone {
@@ -181,6 +182,9 @@ func (t *Tester) accessEach(fn func(r Role, n *platform.AccessNode, info func() 
 			if r, ok := e.accessRole(); ok && !(e.role == RoleListItem && r == platform.RoleRow) {
 				given[e.id] = e.role
 			}
+		}
+		if b := accessBoundsNode(e); b != e {
+			boundsID[e.id] = b.id
 		}
 		for ch := e.first; ch != nil; ch = ch.next {
 			walk(ch)
@@ -200,7 +204,11 @@ func (t *Tester) accessEach(fn func(r Role, n *platform.AccessNode, info func() 
 		}
 		info := func() AccessInfo {
 			a := accessInfoOf(r, n, tree.Focus)
-			if s := t.rt.states[n.ID]; s != nil {
+			sid := n.ID
+			if mapped, ok := boundsID[sid]; ok {
+				sid = mapped
+			}
+			if s := t.rt.states[sid]; s != nil {
 				a.Bounds = t.rt.windowRect(Rect{s.vx, s.vy, s.vw, s.vh})
 			} else {
 				a.Bounds = t.rt.clippedAccessBounds(tree, n, a.Bounds)

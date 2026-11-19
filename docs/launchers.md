@@ -68,16 +68,23 @@ panel := mygo.NewWindow(mygo.WindowOptions{
 	DisableResize: true,
 	Content:       ui.View(app.view), // or URL: "/launcher"
 })
+var quitting bool // a quit closes the panel
+mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 panel.OnClose(func(e *mygo.CloseEvent) { // Escape, Cmd-W, Alt-F4
-	e.PreventDefault()
-	panel.Hide()
+	if !quitting {
+		e.PreventDefault()
+		panel.Hide()
+	}
 })
 panel.OnBlur(panel.Hide) // the user went elsewhere
 ```
 
 An Escape that the page or native UI leaves closes a panel, which the
 `OnClose` listener turns into hiding it. Handle Escape yourself where it
-does something first, as clearing the query does in the example.
+does something first, as clearing the query does in the example. A quit
+closes the panel too, and a panel kept open cancels it: the listener lets
+those closes through, as a window that hides to the
+[tray](menus.md#tray-icons) does.
 
 Show it on the display the user is looking at, which the pointer tells,
 a third of the way down as Spotlight does, and give its search field the

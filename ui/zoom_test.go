@@ -407,3 +407,48 @@ func TestScrollHandlerAroundContainer(t *testing.T) {
 		t.Fatalf("the wheel alone: handler took %v, container scrolled %v; want 30, 30", zoomed, inner.Y)
 	}
 }
+
+// Pinching over an element whose handler leaves it goes on to the handler
+// around it, as scrolling does; one whose handler takes it stops it.
+func TestZoomPassesToOuterHandler(t *testing.T) {
+	var outer float32 = 1
+	var inner float32 = 1
+	takeInner, takeOuter := false, true
+	tt := NewTester(func(c *Context) {
+		Box(c).Size(200, 150).HandleInput(func(ev InputEvent) bool {
+			if ev.Kind != InputZoom || !takeOuter {
+				return false
+			}
+			outer *= ev.Scale
+			return true
+		}).Children(func() {
+			Box(c).Size(100, 50).HandleInput(func(ev InputEvent) bool {
+				if ev.Kind != InputZoom || !takeInner {
+					return false
+				}
+				inner *= ev.Scale
+				return true
+			})
+		})
+	}, 200, 200)
+	defer tt.rt.close()
+	tt.Frame()
+
+	tt.Pinch(20, 20, 2)
+	tt.Frame()
+	if outer != 2 || inner != 1 {
+		t.Fatalf("over the inner box: outer %v, inner %v; want 2, 1", outer, inner)
+	}
+	takeInner = true
+	tt.Pinch(20, 20, 3)
+	tt.Frame()
+	if outer != 2 || inner != 3 {
+		t.Fatalf("inner handler taking it: outer %v, inner %v; want 2, 3", outer, inner)
+	}
+	takeInner, takeOuter = false, false
+	tt.Pinch(20, 20, 2)
+	tt.Frame()
+	if outer != 2 || inner != 3 {
+		t.Fatalf("neither handler taking it: outer %v, inner %v; want 2, 3", outer, inner)
+	}
+}

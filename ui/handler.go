@@ -65,7 +65,8 @@ const (
 	// macOS, Linux on Wayland and browsers report pinches; Windows reports
 	// them as scrolling with Ctrl held, so there a touchpad's scrolling
 	// with Ctrl held comes as InputZoom too, and a mouse wheel's notches
-	// as InputScroll with Ctrl in Mods.
+	// as InputScroll with Ctrl in Mods. One the element leaves goes to the
+	// handlers around it, as InputScroll does.
 	InputZoom
 )
 

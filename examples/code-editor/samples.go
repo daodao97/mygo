@@ -111,5 +111,5 @@ if __name__ == "__main__":
     # TODO: take n from the command line.
     print(f"fib(30) = {fib(30)}, {fib_iter(30)!r}")
 `},
-	{"README.md", "# Code editor\n\nAn example of **MyGo**'s `ui.CodeEditor` and `ui.DiffViewer`.\n\n- Edit a file, then open *Changes*.\n- Press `Cmd+D` to select the next occurrence.\n- [ ] Turn on *Preview*, and click this box.\n- [x] See the [docs](docs/ui/code-editor.md).\n\n```go\nst := &ui.CodeEditorState{Buffer: ui.NewCodeBuffer(src)}\nui.CodeEditor(c, st).Fill()\n```\n"},
+	{"README.md", "# Code editor\n\nAn example of **MyGo**'s `ui.CodeEditor` and `ui.DiffViewer`.\n\n- Edit a file, then open *Changes*.\n- Press `Cmd+D` to select the next occurrence.\n- [ ] Turn on *Preview*, and click this box.\n- [x] See the [docs](docs/ui/code-editor.md).\n\n![The editor](editor.png)\n\n| Key | Does |\n| --- | --- |\n| Cmd+D | Next occurrence |\n| Cmd+F | Find |\n\n```go\nst := &ui.CodeEditorState{Buffer: ui.NewCodeBuffer(src)}\nui.CodeEditor(c, st).Fill()\n```\n"},
 }

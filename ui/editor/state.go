@@ -377,6 +377,25 @@ func (st *State) LineTop(line int) float64 {
 	return st.ed.view.heights.top(line)
 }
 
+// Rect returns where the caret at byte offset off shows, in DIPs from the
+// top left of the editor's box, as the last frame laid it out, and whether
+// its line shows: a line a fold hides doesn't. It is as high as a row; the
+// row of off, with SoftWrap. A hosted frame around text draws its edges
+// from the Rect of its first and last offsets, in an element's DrawOver.
+// For a line far from the view with SoftWrap, Y may be an estimate for a
+// few frames, as LineTop's is.
+func (st *State) Rect(off int) (ui.Rect, bool) {
+	st.ensure()
+	off = max(0, min(off, st.ed.view.text.Len()))
+	r, ok := st.ed.caretRect(off)
+	if !ok {
+		return ui.Rect{}, false
+	}
+	r.X += st.ed.textX - st.ed.scrollX
+	r.Y -= float32(st.ed.scrollY)
+	return r, true
+}
+
 // Find opens the find bar with query, and selects its first match after
 // the caret.
 func (st *State) Find(query string) {
@@ -527,6 +546,33 @@ func (st *State) SetReplacements(rs []Replacement) {
 // Replacements returns the replacements shown, where the edits since
 // moved them.
 func (st *State) Replacements() []Replacement { return slices.Clone(st.ed.view.repls) }
+
+// SetBlocks shows elements between the lines of the text, as an image
+// under the line naming it: each as high as its element is laid out, and
+// only those in view built. They move with the edits until set again, a
+// block going with its line's text. Deleting that line attaches the block
+// to the surviving line at that position, with Above unchanged.
+// Set them again as the text changes: those at the place of one shown
+// keep their elements and heights, so this is cheap in every frame.
+// Blocks of lines that don't exist are left out.
+//
+// A block on a line a replacement hides shows in place of the lines the
+// replacement covers, as a table drawn in place of its source; a fold
+// hides the blocks of its lines.
+func (st *State) SetBlocks(blocks []Block) {
+	st.ensure()
+	st.ed.setBlocks(blocks)
+}
+
+// Blocks returns the blocks shown, where the edits since moved them.
+func (st *State) Blocks() []Block {
+	st.ensure()
+	out := make([]Block, len(st.ed.view.blocks))
+	for i := range out {
+		out[i] = st.ed.view.blocks[i].Block
+	}
+	return out
+}
 
 // SetLineStyles draws lines in other fonts, as a Markdown editor's
 // headings in larger type: each line's rows are as high as its style

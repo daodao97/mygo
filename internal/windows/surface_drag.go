@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"image"
-	"image/png"
 	"slices"
 	"strings"
 	"syscall"
@@ -19,6 +18,8 @@ import (
 
 const (
 	tymedStream        = 4
+	tymedGDI           = 16
+	cbmInit            = 4
 	dataEnumFormatEtc  = 8
 	dataSetData        = 7
 	dvFormatEtc        = 0x80040064
@@ -45,6 +46,9 @@ var (
 	dragSources          = map[uintptr]*oleDragSource{}
 	formatEnums          = map[uintptr]*formatEnum{}
 )
+
+// CF_UNICODETEXT uses CRLF line endings. Match CRLF before a lone CR or LF.
+var unicodeTextLineEndings = strings.NewReplacer("\r\n", "\r\n", "\r", "\r\n", "\n", "\r\n")
 
 type dragDataObject struct {
 	vtbl      *[12]uintptr
@@ -104,6 +108,9 @@ func initDataSource() {
 			d := dragObjects[this]
 			f := *(*formatEtc)(native(format))
 			*(*stgMedium)(native(medium)) = stgMedium{}
+			if f.Format == cfBitmap && d.providers[cfBitmap] != nil {
+				return d.renderBitmap(f, (*stgMedium)(native(medium)))
+			}
 			if !validDataFormat(f) {
 				return dvFormatEtc
 			}
@@ -153,6 +160,12 @@ func initDataSource() {
 		syscall.NewCallback(func(this, format uintptr) uintptr {
 			d := dragObjects[this]
 			f := *(*formatEtc)(native(format))
+			if f.Format == cfBitmap && d.providers[cfBitmap] != nil {
+				if bitmapFormat(f) {
+					return sOK
+				}
+				return dvFormatEtc
+			}
 			if validDataFormat(f) && (d.providers[f.Format] != nil || (f.Tymed&tymedHGlobal != 0 && d.extra[f.Format].Handle != 0)) {
 				return sOK
 			}
@@ -193,7 +206,9 @@ func initDataSource() {
 			var formats []formatEtc
 			for _, f := range dragObjects[this].formats {
 				format := nativeFormat(f)
-				if dragObjects[this].providers[f] != nil {
+				if provider := dragObjects[this].providers[f]; provider != nil && f == cfBitmap {
+					format.Tymed = tymedGDI
+				} else if provider != nil {
 					format.Tymed |= tymedStream
 				}
 				formats = append(formats, format)
@@ -281,6 +296,40 @@ func nativeFormat(f uint16) formatEtc {
 func validDataFormat(f formatEtc) bool {
 	return f.Aspect == dvaspectContent && f.Index == -1 && f.Tymed&(tymedHGlobal|tymedStream) != 0
 }
+
+// bitmapFormat reports whether f asks for CF_BITMAP the one way it comes:
+// as a GDI bitmap, not in memory.
+func bitmapFormat(f formatEtc) bool {
+	return f.Format == cfBitmap && f.Aspect == dvaspectContent && f.Index == -1 && f.Tymed&tymedGDI != 0
+}
+
+// renderBitmap makes CF_BITMAP, a device-dependent bitmap, of the
+// BITMAPINFOHEADER bitmap its provider returns.
+func (d *dragDataObject) renderBitmap(f formatEtc, medium *stgMedium) uintptr {
+	if !bitmapFormat(f) {
+		return dvFormatEtc
+	}
+	dib, err := d.providers[cfBitmap]()
+	if err != nil {
+		d.err = err
+		return eFail
+	}
+	if len(dib) <= dibHeaderSize {
+		return eFail
+	}
+	dc, _, _ := procGetDC.Call(0)
+	if dc == 0 {
+		return eFail
+	}
+	defer procReleaseDC.Call(0, dc)
+	header := uintptr(unsafe.Pointer(&dib[0]))
+	bmp, _, _ := procCreateDIBitmap.Call(dc, header, cbmInit, uintptr(unsafe.Pointer(&dib[dibHeaderSize])), header, 0)
+	if bmp == 0 {
+		return eFail
+	}
+	*medium = stgMedium{Tymed: tymedGDI, Handle: bmp}
+	return sOK
+}
 func dataGlobal(b []byte) uintptr {
 	h, _, _ := procGlobalAlloc.Call(gmemMoveable|0x40, uintptr(max(len(b), 1)))
 	if h == 0 {
@@ -336,23 +385,35 @@ func setTransferProviders(d *dragDataObject, data transfer.Data, session string)
 		}
 		switch f {
 		case transfer.Text:
-			add(cfUnicodeText, func() ([]byte, error) { b, err := data.Read(transfer.Text); return utf16Bytes(string(b)), err })
+			add(cfUnicodeText, func() ([]byte, error) {
+				b, err := data.Read(transfer.Text)
+				if err != nil {
+					return nil, err
+				}
+				return utf16Bytes(unicodeTextLineEndings.Replace(string(b))), nil
+			})
 		case transfer.HTML:
 			add(uint16(cfHTML), func() ([]byte, error) { b, err := data.Read(transfer.HTML); return htmlData(string(b)), err })
 		case transfer.PNG:
 			add(uint16(cfPNG), func() ([]byte, error) { return data.Read(transfer.PNG) })
 			if d.clipboard {
-				add(cfDIB, func() ([]byte, error) {
-					b, err := data.Read(transfer.PNG)
-					if err != nil {
-						return nil, err
+				// For apps that paste bitmaps: CF_DIBV5 with the image's
+				// alpha first, then CF_DIB and CF_BITMAP, which have none,
+				// on white. Without a CF_BITMAP of its own, Windows would
+				// make one from CF_DIBV5 and show transparent pixels black.
+				decoded := &decodedPNG{read: func() ([]byte, error) { return data.Read(transfer.PNG) }}
+				bitmap := func(encode func(*image.NRGBA) []byte) func() ([]byte, error) {
+					return func() ([]byte, error) {
+						img, err := decoded.image()
+						if err != nil {
+							return nil, err
+						}
+						return encode(img), nil
 					}
-					img, err := png.Decode(bytes.NewReader(b))
-					if err != nil {
-						return nil, err
-					}
-					return imageToDIB(img), nil
-				})
+				}
+				add(cfDIBV5, bitmap(imageToDIBV5))
+				add(cfDIB, bitmap(imageToDIB))
+				add(cfBitmap, bitmap(imageToDIB))
 			}
 		case transfer.URIList:
 			add(uint16(registerClipboardFormat("UniformResourceLocatorW")), func() ([]byte, error) {

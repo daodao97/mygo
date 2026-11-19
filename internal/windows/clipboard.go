@@ -100,10 +100,12 @@ func (clipboard) WriteData(data transfer.Data, concealed bool, released func()) 
 func clipboardFormats() ([]transfer.Format, map[transfer.Format]uint16) {
 	var offered []transfer.Format
 	nativeFormats := map[transfer.Format]uint16{}
+	bitmap := clipboardBitmap()
 	add := func(id uint16) {
 		f := oleFormat(id)
 		if id == cfDIB || id == cfDIBV5 {
-			f = transfer.PNG
+			// One bitmap is read as PNG, the one ReadImage reads.
+			f, id = transfer.PNG, bitmap
 		}
 		if f == "" || privateClipboardFormat(f) || strings.ContainsAny(string(f), "\x00\r\n") {
 			return
@@ -296,7 +298,7 @@ func readClipboardRep(f transfer.Format, id uint16) ([]byte, error) {
 		}
 		switch id {
 		case cfUnicodeText:
-			b = []byte(oleText(b))
+			b = []byte(unicodeTextToLF(oleText(b)))
 		case uint16(cfHTML):
 			s := string(b)
 			start, end := htmlOffset(s, "StartFragment:"), htmlOffset(s, "EndFragment:")

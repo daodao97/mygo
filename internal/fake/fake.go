@@ -663,6 +663,8 @@ type Window struct {
 	// InputRegion is what SetInputRegion set last: nil for all of the
 	// window.
 	InputRegion []platform.Rect
+	// ThumbBar is what SetThumbBar set last.
+	ThumbBar []platform.ThumbButton
 	// AsyncFunction answers CallAsyncFunction.
 	AsyncFunction func(body string) (string, error)
 	// AsyncCallback, when set, receives CallAsyncFunction calls to answer
@@ -859,6 +861,13 @@ func (w *Window) SetActiveAppearance(v bool)      { w.mu.Lock(); w.active = v; w
 func (w *Window) SetWindowButtonsTheme(string) {}
 
 func (w *Window) SetInputRegion(r []platform.Rect) { w.mu.Lock(); w.InputRegion = r; w.mu.Unlock() }
+
+func (w *Window) SetThumbBar(buttons []platform.ThumbButton) error {
+	w.mu.Lock()
+	w.ThumbBar = append([]platform.ThumbButton(nil), buttons...)
+	w.mu.Unlock()
+	return nil
+}
 
 // ActiveAppearance reports what SetActiveAppearance set last.
 func (w *Window) ActiveAppearance() bool             { w.mu.Lock(); defer w.mu.Unlock(); return w.active }

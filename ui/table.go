@@ -3,6 +3,7 @@ package ui
 import (
 	"maps"
 	"slices"
+	"sort"
 	"strconv"
 )
 
@@ -23,7 +24,8 @@ type TableColumn struct {
 	// with ListState.Sort or SortBy.
 	Sortable bool
 	// Fixed keeps the column where it is and as wide as it is: the user
-	// neither moves nor resizes it.
+	// neither moves nor resizes it. It does not pin the column when the
+	// table scrolls sideways; that is Frozen.
 	Fixed bool
 	// RowHeader marks a column of row headers, as a spreadsheet's row
 	// numbers: in a table choosing cells (ListState.CellSelect), a click or
@@ -31,7 +33,21 @@ type TableColumn struct {
 	// click on its header chooses every row. It does not sort, and is
 	// never Cells.Cursor.
 	RowHeader bool
+	// Frozen pins the column at the start of the table while the others
+	// scroll sideways under it, and nothing else: unlike Fixed, the user
+	// still moves and resizes it. Only the columns from the first in a row
+	// are pinned, each with a Width (or one the user resized): a Frozen
+	// column after one that is not, or sharing the room left, scrolls as
+	// the others. What is pinned follows the order of the columns, so
+	// moving a Frozen column pins the one that takes its place if that one
+	// is Frozen too, and not otherwise. Give them room: the columns that
+	// scroll can only be seen in what the pinned ones leave.
+	Frozen bool
 }
+
+// stationary reports whether the user cannot move the column. Frozen has
+// no say: it is about scrolling only.
+func (col *TableColumn) stationary() bool { return col.Fixed }
 
 // sortable reports whether a click on the column's header sorts by it: a
 // RowHeader column does not.
@@ -66,7 +82,7 @@ func (l *TableLayout) arrange(columns []TableColumn) []int {
 	order := make([]int, 0, len(columns))
 	var named []int
 	for _, id := range l.Order {
-		if j := slices.IndexFunc(columns, func(col TableColumn) bool { return col.id() == id }); j >= 0 && !columns[j].Fixed && !slices.Contains(named, j) {
+		if j := slices.IndexFunc(columns, func(col TableColumn) bool { return col.id() == id }); j >= 0 && !columns[j].stationary() && !slices.Contains(named, j) {
 			named = append(named, j)
 		}
 	}
@@ -74,12 +90,12 @@ func (l *TableLayout) arrange(columns []TableColumn) []int {
 	// in theirs.
 	movable := append([]int(nil), named...)
 	for j := range columns {
-		if !columns[j].Fixed && !slices.Contains(named, j) {
+		if !columns[j].stationary() && !slices.Contains(named, j) {
 			movable = append(movable, j)
 		}
 	}
 	for j := range columns {
-		if columns[j].Fixed {
+		if columns[j].stationary() {
 			order = append(order, j)
 		} else {
 			order = append(order, movable[0])
@@ -178,7 +194,7 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 	t := c.theme
 	// The height of the header, and the least of the rows.
 	tableRow := t.Space(8)
-	table := coreColumn(c).Role(RoleTable).Focusable().Clip()
+	table := coreColumn(c).Role(RoleTable).Focusable().Clip().ColumnCount(len(columns))
 	table.widget = "Table"
 	if kind == treeTableList {
 		table.widget, table.role = "OutlineTable", RoleTree
@@ -230,12 +246,93 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 			least += max(columns[j].MinWidth, flexMin)
 		}
 	}
+	// Where each column starts, in the row, and how many lead pinned
+	// (Frozen); known only when the columns have widths.
+	starts, frozenN, frozenW := tableGeometry(layout, columns, order)
+	s.frozenN, s.frozenW = frozenN, frozenW
+	s.focusCol, s.focusColOn = s.focusColNext, s.focusColNextOn
+	s.focusColNext, s.focusColNextOn = "", false
 	// fitting are the cells of the column fitting its cells.
 	var fitting []*node
-	// cells builds a row's cells, with fill building the content of each.
-	cells := func(role Role, fill func(col int)) []*node {
+	var list *node
+	// window returns the columns a row builds, from lo to hi (not the
+	// pinned ones, which are always built), or false for all: the rows
+	// of columns that all have widths, with VirtualColumns, once the list
+	// has a width, in the scroll it has now (a row built as the list lays
+	// out sees the scroll of that frame).
+	// The rows of a frame see the same scroll and width unless the list
+	// is laying out and moves them, so what was found for them is kept.
+	var win struct {
+		x, w   float32
+		lo, hi int
+		ok     bool
+	}
+	window := func() (vlo, vhi int, ok bool) {
+		if !s.VirtualColumns || starts == nil || list == nil || list.st.w <= 0 {
+			return 0, 0, false
+		}
+		x, w := float32(list.st.scrollX), list.st.w
+		if win.ok && win.x == x && win.w == w {
+			return win.lo, win.hi, true
+		}
+		margin := w / 2
+		x0, x1 := x-margin, x+w+margin
+		n := len(order)
+		vlo = frozenN + sort.Search(n-frozenN, func(i int) bool { return starts[frozenN+i+1] > x0 })
+		vhi = frozenN + sort.Search(n-frozenN, func(i int) bool { return starts[frozenN+i] >= x1 })
+		win.x, win.w, win.lo, win.hi, win.ok = x, w, vlo, vhi, true
+		return vlo, vhi, true
+	}
+	// kept are the columns a row builds out of the window, as a List keeps
+	// the rows it needs built: the cell of the Cursor, the one a drag of
+	// the choice started in, and the one holding the keyboard, which would
+	// lose it, or be skipped by Tab, were it to go.
+	kept := [3]int{-1, -1, -1}
+	if cellSel {
+		kept[0] = cur
+		if s.dragSel.on {
+			kept[1] = s.colIndex(s.dragSel.fromCol)
+		}
+	}
+	if s.focusColOn {
+		kept[2] = slices.IndexFunc(order, func(j int) bool { return columns[j].id() == s.focusCol })
+	}
+	keep := func(k int) bool { return k >= 0 && (k == kept[0] || k == kept[1] || k == kept[2]) }
+	// cells builds a row's cells, with fill building the content of each;
+	// a row of the body, windowed, builds only the columns in view, and
+	// blocks as wide as the others stand for them.
+	cells := func(role Role, fill func(col int), windowed bool) []*node {
 		boxes := make([]*node, 0, len(order))
+		vlo, vhi, virt := 0, len(order), false
+		if windowed {
+			if l, h, ok := window(); ok {
+				vlo, vhi, virt = l, h, true
+			}
+		}
+		// A block as wide as a run of columns not built stands for it, where
+		// the run ends. Keyed by its side of the window and its place among
+		// those of the side, it stays the same element as the window moves.
+		run := -1
+		var gaps [2]int
+		flush := func(to int) {
+			if run >= 0 {
+				side := 0
+				if run >= vlo {
+					side = 1
+				}
+				coreBox(c).Key(gapKeys[side][gaps[side]]).Width(starts[to] - starts[run]).Shrink(0).Role(RoleNone)
+				gaps[side]++
+				run = -1
+			}
+		}
 		for k, j := range order {
+			if virt && k >= frozenN && (k < vlo || k >= vhi) && !keep(k) {
+				if run < 0 {
+					run = k
+				}
+				continue
+			}
+			flush(k)
 			col := &columns[j]
 			// Keyed by its column, a cell keeps its state as the columns
 			// move: a header being dragged keeps the press.
@@ -247,10 +344,20 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 			if role == RoleCell && col.RowHeader {
 				box.Role(RoleRowHeader) // naming its row
 			}
+			// Its place among all the columns, for assistive technology to
+			// pair it with its header as the ones not built leave a gap.
+			box.ColumnIndex(k + 1)
 			if w, ok := layout.width(col); ok {
 				box.Width(w)
 			} else {
 				box.Grow(1).Shrink(1).MinWidth(max(col.MinWidth, flexMin))
+			}
+			if k < frozenN {
+				// Pinned at its place from the start, over the columns
+				// scrolling under it, which it hides with the color its row
+				// shows.
+				box.Sticky().Start(starts[k])
+				box.styleFn = frozenStyle(t, k == 0)
 			}
 			switch col.Align {
 			case Center:
@@ -303,14 +410,17 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 					box.DrawOver(cursorBorder(table, border))
 				}
 			}
+			if s.VirtualColumns && role == RoleCell && box.FocusWithin() {
+				s.focusColNext, s.focusColNextOn = col.id(), true
+			}
 			if drag.fit != "" && drag.fit == col.id() {
 				fitting = append(fitting, box)
 			}
 			boxes = append(boxes, box)
 		}
+		flush(len(order))
 		return boxes
 	}
-	var list *node
 	table.Children(func() {
 		// The header, which scrolls sideways with the rows.
 		head := coreRow(c).Height(tableRow).Shrink(0).AlignItems(Stretch).Role(RoleRow).Clip()
@@ -332,7 +442,7 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 					}
 					sortArrow(c, descending, place)
 				}
-			})
+			}, false)
 			for k, j := range order {
 				if cellSel {
 					s.tableCols[k].head = heads[k].id
@@ -375,7 +485,7 @@ func table(c *context, s *ListState, columns []TableColumn, n int, cell func(row
 				}
 			}
 			row.Children(func() {
-				cells(RoleCell, func(j int) { cell(i, j) })
+				cells(RoleCell, func(j int) { cell(i, j) }, true)
 			})
 		}, kind)
 	})
@@ -404,9 +514,15 @@ func tableHeader(c *context, table, h *node, j int, s *ListState, drag *tableDra
 	sorts, choosesAll := s.sorts() && col.sortable(), col.RowHeader && s.choosesCells()
 	if sorts || choosesAll {
 		h.flags |= flagClickable | flagHover
+		// The hover first: a pinned header then composites it, if it is
+		// translucent, over what shows behind.
+		pinned := h.styleFn
 		h.styleFn = func(h *node) {
 			if h.Hovered() {
 				h.bg = t.SurfaceHover
+			}
+			if pinned != nil {
+				pinned(h)
 			}
 		}
 	}
@@ -430,7 +546,7 @@ func tableHeader(c *context, table, h *node, j int, s *ListState, drag *tableDra
 		h.Label(col.Title) // the title alone, not the place number beside it
 	}
 	// Moving the column, once the pointer went a few DIPs.
-	if dx, _, held := h.Dragged(); held && !col.Fixed {
+	if dx, _, held := h.Dragged(); held && !col.stationary() {
 		if drag.id != id {
 			*drag = tableDrag{id: id, from: s.Columns}
 		}
@@ -440,7 +556,14 @@ func tableHeader(c *context, table, h *node, j int, s *ListState, drag *tableDra
 		}
 		if drag.moving {
 			moveColumn(c, s, drag, heads, order, columns)
-			h.Left(drag.dx).Background(t.SurfacePressed).Opacity(0.9)
+			// A pinned header is held by its sticky inset, which Left would
+			// replace: it follows the pointer by a transform instead.
+			if h.sticky {
+				h.Translate(drag.dx, 0)
+			} else {
+				h.Left(drag.dx)
+			}
+			h.Background(t.SurfacePressed).Opacity(0.9)
 		}
 	} else if drag.id == id && !held {
 		// Released: a click, unless it moved the column, which the
@@ -569,7 +692,7 @@ func moveColumn(c *context, s *ListState, drag *tableDrag, heads []*node, order 
 			to = at - 1
 		}
 	}
-	if to == at || columns[order[to]].Fixed {
+	if to == at || columns[order[to]].stationary() {
 		return
 	}
 	// Under the pointer still: the column's place moved by the other's
@@ -732,4 +855,83 @@ func (e *node) Selected(on bool) *node {
 	e.checked = 2
 	e.Background(e.c.accent(t)).TextColor(t.AccentText)
 	return e
+}
+
+// gapKeys are the keys of the blocks standing for the columns not built, by
+// the side of the window they are on and their place there: at most three
+// columns are kept built out of it, which split a side into four runs.
+var gapKeys = [2][4]string{
+	{"\x00gap0", "\x00gap1", "\x00gap2", "\x00gap3"},
+	{"\x00gap4", "\x00gap5", "\x00gap6", "\x00gap7"},
+}
+
+// tableGeometry returns where each column of order starts in a row, with
+// one more for the row's end, or nil unless every column has a width; and
+// how many columns at the start are pinned (Frozen) and how wide they are
+// together.
+func tableGeometry(layout *TableLayout, columns []TableColumn, order []int) (starts []float32, frozenN int, frozenW float32) {
+	starts = make([]float32, 1, len(order)+1)
+	for _, j := range order {
+		w, ok := layout.width(&columns[j])
+		if !ok {
+			starts = nil
+			break
+		}
+		starts = append(starts, starts[len(starts)-1]+w)
+	}
+	// Only a run of Frozen columns with widths, from the first of order, is
+	// pinned: the user's moves change which.
+	for k, j := range order {
+		w, ok := layout.width(&columns[j])
+		if !columns[j].Frozen || !ok || k != frozenN {
+			break
+		}
+		frozenN++
+		frozenW += w
+	}
+	return starts, frozenN, frozenW
+}
+
+// frozenStyle is the styleFn of a pinned cell: it takes the background of
+// the nearest element around it that has one, or the theme's, for the cells
+// scrolling under it not to show through. A background that is itself
+// translucent (a selected or hovered row) is composited over the ones
+// behind it, down to an opaque one: taken as it is, it would let the cells
+// under the pinned one show through. The first of them, at the start of its
+// row, takes the row's corners there (RoundRows), which its own square
+// background would cover.
+func frozenStyle(t *Theme, first bool) func(*node) {
+	return func(e *node) {
+		if first && e.parent != nil {
+			r := e.parent.radius
+			if e.rtl() {
+				e.radius[1], e.radius[2] = r[1], r[2]
+			} else {
+				e.radius[0], e.radius[3] = r[0], r[3]
+			}
+		}
+		if e.bg != Transparent && e.bg.A == 255 {
+			return
+		}
+		var buf [4]Color
+		layers := buf[:0]
+		if e.bg != Transparent {
+			layers = append(layers, e.bg)
+		}
+		base := t.Background
+		for p := e.parent; p != nil; p = p.parent {
+			if p.bg == Transparent {
+				continue
+			}
+			if p.bg.A == 255 {
+				base = p.bg
+				break
+			}
+			layers = append(layers, p.bg)
+		}
+		for i := len(layers) - 1; i >= 0; i-- {
+			base = layers[i].Over(base)
+		}
+		e.bg = base
+	}
 }

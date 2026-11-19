@@ -195,6 +195,56 @@ func TestLineStylesGutterBaseline(t *testing.T) {
 	}
 }
 
+// Reveal and all centering paths use the styled row's full height, not
+// the editor's default row height. Oversized rows center at their top.
+func TestLineStylesCaretRevealAndCenter(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		height float32
+	}{{"fits", 120}, {"small_margin", 360}, {"taller_than_viewport", 600}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ct := newEditorTest(t, "", strings.Repeat("top\n", 20)+"heading\n"+strings.Repeat("end\n", 100))
+			ct.st.ScrollMargin = 3
+			ct.st.SetLineStyles([]LineStyle{{Line: 20, Font: ui.Font{Size: 40}, LineHeight: tc.height / 40}})
+			ct.styledFrames()
+			ed := &ct.st.ed
+			at := ct.st.Buffer.Offset(Pos{Line: 20})
+			top := float64(20 * ed.view.lineHeight)
+			cr, ok := ed.caretRect(at)
+			if !ok || cr.H != tc.height || float64(cr.Y) != top {
+				t.Fatalf("styled caret %+v (%v), want height %v at %v", cr, ok, tc.height, top)
+			}
+			ct.st.Select(at, at)
+			ct.styledFrames()
+			margin := min(3*ed.view.lineHeight, max(0, (ed.viewH-min(tc.height, ed.viewH))/2))
+			if want := top + float64(tc.height+margin-ed.viewH); ed.scrollY != want {
+				t.Fatalf("reveal scrolled to %v, want %v for the whole styled row and margin %v", ed.scrollY, want, margin)
+			}
+			center := max(0, (ed.viewH-tc.height)/2)
+			want := top - float64(center)
+			ct.run(ScrollCursorCenter)
+			if ed.scrollY != want {
+				t.Fatalf("center command scrolled to %v, want %v", ed.scrollY, want)
+			}
+			ct.st.SetScrollY(0)
+			ed.reveal = revealCenter
+			ct.styledFrames()
+			if ed.scrollY != want {
+				t.Fatalf("center reveal scrolled to %v, want %v", ed.scrollY, want)
+			}
+			ct.st.Select(0, 0)
+			ct.st.SetScrollY(0)
+			ct.styledFrames()
+			ct.run(GoToLine)
+			ed.goTo.text = "21" // Go-to line numbers start at 1.
+			ct.styledFrames()
+			if ed.goTo.preview != 20 || ed.scrollY != want || ct.st.Cursor() != 0 {
+				t.Fatalf("go-to preview %d at %v (caret %d), want line 20 at %v without moving the caret", ed.goTo.preview, ed.scrollY, ct.st.Cursor(), want)
+			}
+		})
+	}
+}
+
 // Another buffer takes none of the styles of the last.
 func TestLineStylesNewBuffer(t *testing.T) {
 	ct := newEditorTest(t, "", "one\ntwo")

@@ -44,6 +44,15 @@ as a press on the divider does.
 ui.Split(c, &app.sidebarWidth, func() { app.files(c) }, func() { app.editor(c) }).SplitReset(220).Fill()
 ```
 
+`SplitGap` spaces the two panes apart by a number of DIPs without drawing
+the 1 DIP line between them, as two cards side by side or panes that draw
+their own edges: `SplitGap(0)` puts them flush with no line, and a
+positive gap leaves that room between them, where the resize handle sits.
+
+```go
+ui.Split(c, &app.sidebarWidth, func() { app.files(c) }, func() { app.editor(c) }).SplitGap(8).Fill()
+```
+
 ## Accessibility
 
 Assistive technology sees the divider as a splitter named "Divider",

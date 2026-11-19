@@ -194,6 +194,7 @@ var (
 	procCreateCompatibleDC = gdi32.NewProc("CreateCompatibleDC")
 	procDeleteDC           = gdi32.NewProc("DeleteDC")
 	procCreateDIBSection   = gdi32.NewProc("CreateDIBSection")
+	procCreateDIBitmap     = gdi32.NewProc("CreateDIBitmap")
 	procSelectObject       = gdi32.NewProc("SelectObject")
 	procCreateFontW        = gdi32.NewProc("CreateFontW")
 	procGetTextFaceW       = gdi32.NewProc("GetTextFaceW")
@@ -427,6 +428,7 @@ const (
 	vkPacket     = 0xE7
 
 	cfUnicodeText = 13
+	cfBitmap      = 2
 	cfDIB         = 8
 	cfDIBV5       = 17
 	gmemMoveable  = 0x0002

@@ -267,6 +267,10 @@ func (ed *editor) textAt(x, y float32) int {
 		return -1
 	}
 	cx, cy := ed.toContent(x, y)
+	// An app's block is over no text.
+	if b, _, ok := ed.blockAt(cy); ok && b.kind == blockApp {
+		return -1
+	}
 	off := ed.offsetAt(cx, cy)
 	if cr, ok := ed.caretRect(off); !ok || float64(cy) > float64(cr.Y+cr.H) ||
 		off == ed.view.text.LineEnd(ed.view.text.LineOf(off)) && cx > cr.X+ed.view.charWidth/2 {

@@ -57,9 +57,14 @@ func loadEGL() error {
 }
 
 // Window is a window's surface (an ANativeWindow) and the context of
-// OpenGL ES 3 that draws into it.
+// OpenGL ES 3 that draws into it. The context, with the programs and
+// textures made in it, outlives the surface: Detach lets go of the
+// surface, as Android destroys the SurfaceView's as the app goes to the
+// background, and Attach makes one on the next ANativeWindow with the
+// same configuration, rather than a new context whose programs compile
+// again (#2055).
 type Window struct {
-	display, context, surface uintptr
+	display, config, context, surface uintptr
 }
 
 // NewWindow makes a context and a surface for an ANativeWindow, the
@@ -77,28 +82,60 @@ func NewWindow(native uintptr) (*Window, error) {
 	}
 	attribs := []int32{eglRenderableType, eglOpenGLES3Bit, eglSurfaceType, eglWindowBit,
 		eglRedSize, 8, eglGreenSize, 8, eglBlueSize, 8, eglAlphaSize, 8, eglNone}
-	var config uintptr
 	var n int32
-	if eglChooseConfig(w.display, &attribs[0], &config, 1, &n) == 0 || n == 0 {
+	if eglChooseConfig(w.display, &attribs[0], &w.config, 1, &n) == 0 || n == 0 {
 		return nil, fmt.Errorf("gl: EGL has no configuration of OpenGL ES 3 (%#x)", eglGetError())
 	}
 	ctxAttribs := []int32{eglContextVersion, 3, eglNone}
-	if w.context = eglCreateContext(w.display, config, 0, &ctxAttribs[0]); w.context == 0 {
+	if w.context = eglCreateContext(w.display, w.config, 0, &ctxAttribs[0]); w.context == 0 {
 		return nil, fmt.Errorf("gl: EGL cannot make a context (%#x)", eglGetError())
 	}
-	if w.surface = eglCreateWindowSurface(w.display, config, native, nil); w.surface == 0 {
-		eglDestroyContext(w.display, w.context)
-		return nil, fmt.Errorf("gl: EGL cannot make a window's surface (%#x)", eglGetError())
-	}
-	if !w.MakeCurrent() {
+	if err := w.Attach(native); err != nil {
 		w.Release()
-		return nil, fmt.Errorf("gl: EGL cannot make the context current (%#x)", eglGetError())
+		return nil, err
 	}
 	return w, nil
 }
 
+// Attach makes a surface for an ANativeWindow, after Detach, with the
+// configuration the context was made with, and makes the context current
+// drawing into it. On an error the window has no surface, its context
+// still made: Release lets go of it.
+func (w *Window) Attach(native uintptr) error {
+	if native == 0 {
+		return errors.New("gl: no window")
+	}
+	if w.context == 0 {
+		return errors.New("gl: the window was released")
+	}
+	w.Detach()
+	if w.surface = eglCreateWindowSurface(w.display, w.config, native, nil); w.surface == 0 {
+		return fmt.Errorf("gl: EGL cannot make a window's surface (%#x)", eglGetError())
+	}
+	if !w.MakeCurrent() {
+		err := fmt.Errorf("gl: EGL cannot make the context current (%#x)", eglGetError())
+		w.Detach()
+		return err
+	}
+	return nil
+}
+
+// Detach lets go of the surface, keeping the context and what was made
+// in it: the ANativeWindow is about to go. No context is current after.
+func (w *Window) Detach() {
+	if w.display == 0 {
+		return
+	}
+	eglMakeCurrent(w.display, 0, 0, 0)
+	if w.surface != 0 {
+		eglDestroySurface(w.display, w.surface)
+		w.surface = 0
+	}
+}
+
 // MakeCurrent makes the window's context current on this thread, drawing
-// into its surface.
+// into its surface; without one (Detach), only where EGL takes a context
+// with no surface (EGL_KHR_surfaceless_context), to delete its objects.
 func (w *Window) MakeCurrent() bool {
 	return eglMakeCurrent(w.display, w.surface, w.surface, w.context) != 0
 }

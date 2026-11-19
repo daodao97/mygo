@@ -458,6 +458,71 @@ func TestNumberInput(t *testing.T) {
 	}
 }
 
+// numberTester shows a NumberInput of *value in a field named Count.
+func numberTester(value *float64, lo, hi, step float64) *Tester {
+	return coreNewTester(func(c *context) {
+		coreColumn(c).Padding(10).AlignItems(Start).Children(func() {
+			coreField(c, "Count", func() { coreNumberInput(c, value, lo, hi, step) })
+		})
+	}, 400, 100)
+}
+
+// countShown returns the text of the input named Count.
+func countShown(t *testing.T, tt *Tester) string {
+	t.Helper()
+	a, ok := tt.AccessByRole(RoleTextField, "Count")
+	if !ok {
+		t.Fatal("no input named Count")
+	}
+	return a.Value
+}
+
+// A value the app sets shows in the frame that builds it, not in the one
+// after, as when the app loads settings: in place of what was typed too.
+func TestNumberInputShowsAValueTheAppSets(t *testing.T) {
+	v := 300.0
+	tt := numberTester(&v, 0, 1000, 1)
+	if s := countShown(t, tt); s != "300" {
+		t.Fatalf("300 shows as %q", s)
+	}
+	v = 512
+	tt.Frame()
+	if s := countShown(t, tt); s != "512" {
+		t.Errorf("the app set 512, the input shows %q", s)
+	}
+	tt.Click("Count")
+	tt.Key(Cmd, KeyA)
+	tt.Type("6")
+	v = 128
+	tt.Frame()
+	if s := countShown(t, tt); s != "128" || !tt.Focused("Count") {
+		t.Errorf("the app set 128 as 6 is typed: the input shows %q, focused %v", s, tt.Focused("Count"))
+	}
+}
+
+// A frame that sets no value, as the app refreshes, keeps what is typed,
+// and the focus.
+func TestNumberInputKeepsWhatIsTypedThroughARefresh(t *testing.T) {
+	v := 5.0
+	tt := numberTester(&v, 0, 10, 0.5)
+	tt.Click("Count")
+	tt.Key(Cmd, KeyA)
+	tt.Type("7.")
+	if v != 7 {
+		t.Fatalf("typed 7.: %v", v)
+	}
+	// The app sets the value it has again.
+	v = 7
+	tt.Frame()
+	if s := countShown(t, tt); s != "7." || !tt.Focused("Count") {
+		t.Fatalf("a refresh as 7. is typed: the input shows %q, focused %v", s, tt.Focused("Count"))
+	}
+	tt.Type("5")
+	if s := countShown(t, tt); v != 7.5 || s != "7.5" {
+		t.Errorf("typed 5 after 7.: %v, showing %q", v, s)
+	}
+}
+
 // A width given to a NumberInput or DecimalInput sizes the whole input,
 // buttons and all: the field gives up the room the buttons need rather
 // than pushing them over what comes after.

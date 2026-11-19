@@ -2378,6 +2378,65 @@ func TestOnZoomIgnoresMomentum(t *testing.T) {
 	}
 }
 
+// Horizontal trackpad scrolls over the terminal pass through to handlers around
+// the view, while vertical scrolls and Command+scroll stay with the terminal.
+func TestHorizontalScrollPassesToOuterHandler(t *testing.T) {
+	loadLib(t)
+	var scrolls []int
+	var zooms []Zoom
+	var outer []ui.InputEvent
+	term, err := New(Options{
+		Conn:     newPipe(),
+		OnZoom:   func(z Zoom) bool { zooms = append(zooms, z); return true },
+		OnScroll: func(rows int) bool { scrolls = append(scrolls, rows); return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Box(c).Fill().HandleInput(func(ev ui.InputEvent) bool {
+			if ev.Kind == ui.InputScroll {
+				outer = append(outer, ev)
+				return true
+			}
+			return false
+		}).Children(func() {
+			View(c, term).Fill().AutoFocus()
+		})
+	}, 400, 200)
+	tt.Frame()
+
+	// Pure horizontal and horizontal-dominant precise scrolls bubble to outer.
+	tt.Scroll(100, 100, 30, 0)
+	tt.Scroll(100, 100, -30, 5)
+	if len(outer) != 2 || outer[0].DX != 30 || outer[1].DX != -30 {
+		t.Fatalf("horizontal scrolls did not reach outer handler: %+v", outer)
+	}
+	if scrolls != nil {
+		t.Errorf("horizontal scrolls triggered terminal OnScroll: %v", scrolls)
+	}
+
+	// Vertical and vertical-dominant precise scrolls stay in the terminal.
+	outer = nil
+	tt.Scroll(100, 100, 0, 40)
+	tt.Scroll(100, 100, 5, 40)
+	if len(outer) != 0 {
+		t.Errorf("vertical scrolls leaked to outer handler: %+v", outer)
+	}
+	if len(scrolls) != 2 || scrolls[0] <= 0 || scrolls[1] <= 0 {
+		t.Errorf("vertical scrolls = %v, want two positive scrolls", scrolls)
+	}
+
+	// Command+scroll still zooms the terminal even with horizontal delta.
+	if !term.v.scroll(ui.InputEvent{Kind: ui.InputScroll, DX: 30, DY: -40, Mods: ui.Cmd}) {
+		t.Fatal("Command+scroll was not consumed by terminal zoom")
+	}
+	if !slices.Equal(zooms, []Zoom{{Steps: 1}}) {
+		t.Errorf("Command+scroll zoomed %v, want [{Steps:1}]", zooms)
+	}
+}
+
 // Command at the start of a touchpad scroll zooms through its momentum.
 func TestOnZoomKeepsMomentumOfZoomGesture(t *testing.T) {
 	loadLib(t)

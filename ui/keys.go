@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"runtime"
-
 	"github.com/egoist/mygo/internal/platform"
 )
 
@@ -252,10 +250,10 @@ const (
 	Super = Modifiers(platform.ModSuper)
 )
 
-// Cmd is the modifier of the platform's shortcuts: Command on macOS/iOS,
-// Control elsewhere, as in Cmd+C.
+// Cmd is the modifier of the platform's shortcuts: Command on macOS and
+// iOS, Control elsewhere, as in Cmd+C.
 var Cmd = func() Modifiers {
-	if runtime.GOOS == "darwin" || runtime.GOOS == "ios" {
+	if platform.MacKeys {
 		return Super
 	}
 	return Ctrl

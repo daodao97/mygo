@@ -1177,7 +1177,15 @@ gained one field, `SurfaceNative.Canvas`.
   texts. Glyphs blend in turn (`join` false), at quarter-pixel positions,
   as Skia draws them. Chrome picks the optical size of the system font
   inconsistently between pages and canvases, so text of native UI can be
-  wider or narrower than a page's in the same font.
+  wider or narrower than a page's in the same font. `RegisterFont` adds
+  a `FontFace` with the descriptors of what its file covers
+  (`fontface.go` reads them): the ranges of a variable font's `wght` and
+  `wdth` axes and its `ital`/`slnt` style, or a static font's OS/2 weight
+  and width classes and italic bits, so that a variable font gives every
+  weight and the files of one family are faces apart. Faces load in the
+  background: once one has, the System lets go of its fonts, glyphs and
+  layouts, measured with a fallback, and each window builds and lays out
+  a frame anew (`System.WatchFonts`).
 - **Input.** Pointer events (captured on press) are the pointer, with
   clicks counted from presses close in time and place, buttons 3 and 4
   the back and forward keys. Those of a pointer that is not the primary
@@ -1326,6 +1334,19 @@ fake host. Desktop files of `darwin` and `linux` exclude `ios` and
   nothing. Android draws with the GL renderer, OpenGL ES 3 in an EGL context
   of its own (`gl.NewWindow`) on the surface's ANativeWindow; the host
   waits for Go to let go of it before Android does (`SurfaceDestroyed`).
+  The context outlives the surface: as the app goes to the background and
+  the SurfaceView's surface goes, `SurfaceRenew` has the content keep its
+  renderer (`ui.renewableRenderer`), which destroys only its EGL surface
+  (`gl.Window.Detach`), keeping the context with its programs, atlases and
+  textures; the first frame on the next ANativeWindow makes an EGL surface
+  for it with the saved configuration and makes the same context current
+  (`Attach`), and draws whole, in milliseconds. Making the context and
+  compiling the shaders again took a second or more, past the second
+  Android's `SurfaceSyncGroup` waits for the window's first draw, which
+  showed black as the app came back (#2055). A renderer that cannot
+  attach is released and made anew; the one kept goes with the window
+  and with `SurfaceLowMemory`, so a backgrounded app keeps its GL objects
+  until the system is short of memory.
   Android's text is Minikin's and Skia's, through the host's `Paint`
   (`internal/text/paint_android.go`): an engine sharing the browsers'
   layout of grapheme clusters (`clusters.go`), whose words the host
@@ -1335,7 +1356,19 @@ fake host. Desktop files of `darwin` and `linux` exclude `ios` and
   at the display's refreshes (CADisplayLink, Choreographer) when asked,
   paced (`platform.PacedSurface`): on iOS, one that comes while the Metal
   renderer fetches a drawable draws once it has it (`FrameNow`), rather
-  than Go's main thread waiting for it, and the fingers with it.
+  than Go's main thread waiting for it, and the fingers with it. On
+  Android, a frame asked for crosses to the UI thread before Choreographer
+  asks for the next refresh: while the view animates (a fling, a glide),
+  each frame asks for the next as it starts (`platform.FrameAheadSurface`,
+  `engine.frameAhead`), not once presented, so a frame taking most of a
+  refresh does not halve the rate; the surface's `pending` and the host's
+  `framePending` coalesce the request the frame's end makes. The host asks
+  the display for its fastest mode (`Surface.setFrameRate`, always rather
+  than only where seamless from Android 12), tells Go the active mode's rate
+  as it changes, and has the window's first draw with a new surface wait
+  for Go's first frame on it (`surfaceRedrawNeededAsync`; Go tells it with
+  `FirstFrame`, again after each `SurfaceRenew`), as the splash does, for
+  4 seconds at most.
 - **Input.** A finger is the pointer while it touches (`SurfaceEvent.Touch`,
   the first one; two pinch), and `ui` pans what scrolls under one that
   moves and flings it on (`ui/touch.go`, reached only where touches come:
@@ -1664,7 +1697,15 @@ never waits on the main thread, which receives the acknowledgments.
 `Page.Eval(code)` uses the webview's native async-function API
 (`callAsyncJavaScript` on macOS, `webkit_web_view_call_async_javascript_function`
 on Linux), which awaits promises and ignores the page's Content Security
-Policy. The code is first wrapped as `return JSON.stringify({ok, v: await (code)})`;
+Policy. Android's `evaluateJavascript` takes a script, not a function: the
+body is compiled as part of that script, in an async function at its top
+level, which the CSP does not govern either (an AsyncFunction made from a
+string in the page is eval, which a CSP without `'unsafe-eval'` refuses). A
+script that does not compile answers null, the only thing taken as a compile
+error there: it reads "SyntaxError: the script does not compile", without
+V8's message or the position, which `evaluateJavascript` does not return,
+and an error the page reports itself never starts with `SyntaxError`. The
+code is first wrapped as `return JSON.stringify({ok, v: await (code)})`;
 if that fails to compile the code is not an expression, and it is run again as
 a function body. A compile error means nothing executed, so code never runs
 twice. The result travels as a JSON string and is decoded in Go. A page whose
@@ -2313,7 +2354,14 @@ as in Tauri:
   the runtime's exit, and the runtime deadlocks (#1896).
 - Taskbar state on Windows (`taskbar.go`) lives on the window and is
   applied when Explorer sends `TaskbarButtonCreated` (first show, Explorer
-  restarts), so progress and a hidden button set before showing stick.
+  restarts), so progress and a hidden button set before showing stick. The
+  thumbnail toolbar (`thumbbar.go`) is applied the same way, added again
+  from the latest PNGs kept on the window: its button count and order are
+  fixed once set, and later changes update icons, tooltips and flags
+  (`ThumbBarUpdateButtons`). Like the notifications' images and the menu
+  icons, its code is linked when the app first sets one
+  (`LinkThumbBars`), since `applyTaskbar` and the window procedure run in
+  every app.
 - `WindowOptions.StateKey` (`window_state.go`) remembers a window's normal
   bounds and maximized/full screen state in `window-state.json` in
   `PathUserData`, like Tauri's window-state plugin, or in the app's
@@ -2643,8 +2691,10 @@ as in Tauri:
   and tauri-nspanel found), never the main window, on every Space as a
   full-screen auxiliary, outside Mission Control and the window cycle, at
   the floating level (above it, input methods' candidate windows would
-  show behind the panel); `Show` and `Focus` make it key without
-  `activateIgnoringOtherApps:`, and its `cancelOperation:` does nothing
+  show behind the panel); `becomesKeyOnlyIfNeeded` is off, so `Show` and
+  `Focus` make it key without `activateIgnoringOtherApps:` even before a
+  page's field is first responder, and take key again on the next turn if
+  AppKit is still resigning active; its `cancelOperation:` does nothing
   (NSPanel's closes it past `windowShouldClose:`). The key window of a
   nonactivating panel gets the keys and the main menu its key
   equivalents, though the app is not frontmost (`NSApp.isActive` reports
@@ -3259,6 +3309,12 @@ either.
   alone, as Enter choosing a candidate: on macOS `keyDown:` sends no
   `KeyPressed` while there is marked text, as GTK's input method filters
   such keys on Linux and IMM32 makes them `VK_PROCESSKEY` on Windows.
+  Nor does it send Backspace while an input method is on: the Korean one
+  composes without marked text, replacing the syllable before the caret
+  (`insertText:replacementRange:`), and takes a jamo back with Backspace
+  the same way (한 → 하). A withheld key reaches the content when the
+  input method passes it on (`doCommandBySelector:`), as Backspace with
+  nothing to take back, in an empty input too.
   The guarantee is these filters' (in browsers, `isComposing`): a key
   that reaches the engine passed the input method, which may have left
   it with the composition still marked (IBus in sync mode gives one up
@@ -4751,10 +4807,20 @@ either.
     so that shaping, carets, selections and wraps need no case of their
     own, lines not laid out yet counting it too. Their elements are built
     over the text at the places the lines laid out give, a frame painting
-    them elsewhere building again (`replacementsMoved`). Lines covered
+    them elsewhere building again (`elementsMoved`). Lines covered
     through their newline join the hidden spans. Replacements move as
     selections do, and a change lays out again only the lines of those
     that differ, so that an app can set them every frame.
+  - *Blocks* (`blocks.go`). An app's elements between lines are the
+    display model's blocks (`blockApp`), the rows a diff has, sticky only on
+    whole lines hidden by an empty replacement starting at a line boundary,
+    so that they stand in for those lines. Their
+    elements are built over the text, without a height: a paint reads
+    the box layout gave each (`measureBlocks`), before placing the lines
+    around it, and a block moved by that builds again. Those not built
+    keep the last height measured, or `Height`, and the scroll's anchor
+    leaves what shows in place as they turn out otherwise. A block
+    standing in for lines is one stop for carets (`standIn`).
   - *Line styles* (`line_styles.go`). A styled line is laid out by a view
     of its own style (`styledView`), one per font and line height, which
     shares the editor's text, highlighter, inlays and replacements and
@@ -6484,6 +6550,16 @@ either.
   node's in the order of `Role`; a role added to both needs nothing
   there, a state a field. The fake backend's surface lets the core's
   tests drive content windows through `package mygo`.
+  A Tester's window shapes and paints in a text system of its own
+  (`text.New`), so that Testers running at once, as parallel tests do,
+  neither race over nor invalidate each other's atlases. Starting one
+  (its engine, and the shaping of every text shown) costs more than the
+  first frame of a window of 250 texts otherwise does, so a Tester
+  takes one an ended Tester left (`testerTexts`, `ui/tester_text.go`):
+  one ends as `Render` returns or as it becomes unreachable
+  (`runtime.AddCleanup`). `System.Reuse` keeps its engine, fonts and
+  layouts, and starts its language and atlases anew. At most GOMAXPROCS
+  wait idle; `BenchmarkTesterFirstFrame` measures a Tester's first frame.
   `BenchmarkFrame` in `ui` measures a frame of a large window on the CPU,
   and `BenchmarkListScroll` the frames scrolling a list of a million rows;
   `BenchmarkDiff*` the frames of a window as godiff's, two lists of texts
@@ -7600,6 +7676,7 @@ which npm allows only for packages that exist: the first release uses an
 | permissions | `WKUIDelegate` media capture (camera, microphone) | `permission-request` (camera, microphone, geolocation, notifications) | `PermissionRequested` (the same four; WebView2 asks about others) |
 | user agent | `customUserAgent`; `UserAgentSuffix` is the configuration's `applicationNameForUserAgent`, which a `window.open()` window does not inherit | `WebKitSettings:user-agent`; `UserAgentSuffix` appends application details, split at the first "/" | `ICoreWebView2Settings2`'s user agent, and a suffix appended to the settings' own user agent; a runtime without `Settings2` ignores both |
 | swipes and pinches (`SwipeNavigation`, `PinchZoom`) | `allowsBackForwardNavigationGestures` and `allowsMagnification` of the `WKWebView`, both off unless asked for | `WebKitSettings:enable-back-forward-navigation-gestures`; WebKitGTK has no setting for pinches, so the web view's `GtkGestureZoom`, which it keeps in its data as `wk-view-zoom-gesture` (2.38+), is given `GTK_PHASE_NONE` unless `PinchZoom`: it then sees neither a touchpad's pinch nor a touchscreen's | `ICoreWebView2Settings6`'s `IsSwipeNavigationEnabled` and `ICoreWebView2Settings5`'s `IsPinchZoomEnabled`, both on in WebView2 and put to the options' values in `setUp`, before the first navigation |
+| the user's zoom (`ZoomControl`) | none in `WKWebView` | none in WebKitGTK | `ICoreWebView2Settings`'s `IsZoomControlEnabled` (Ctrl+wheel, and Ctrl+Plus and Ctrl+Minus with the browser's keys), on in WebView2 and put to the option's value in `setUp`; the controller's `ZoomFactorChanged` keeps `zoom` (on ARM64 the CSS zoom over the controller's, `userZoom`) and calls `WindowHandler.ZoomChanged` when it is not `SetZoom`'s |
 | the browser's keys (reload, print, find, zoom) | none | none | WebView2's (F5, Ctrl+R, Ctrl+P, Ctrl+F, Ctrl+Plus, ...) only with the inspector (`ICoreWebView2Settings3`'s `AreBrowserAcceleratorKeysEnabled`); `AcceleratorKeyPressed` still gives the menus every key |
 | file associations | `CFBundleDocumentTypes`; files arrive with `application:openURLs:` | desktop entry `MimeType` (`%U`), a shared-mime-info package in the .deb and .rpm for types the app defines (`x-`) | ProgIDs and `OpenWithProgids` written by the installer |
 | document windows | `representedURL` (proxy icon, Command-click folder menu) and `setDocumentEdited:` (the dot), then the traffic lights are laid out again | the core puts `*` before the title | the core puts `*` before the title |

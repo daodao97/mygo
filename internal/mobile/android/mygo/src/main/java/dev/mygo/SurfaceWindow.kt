@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Rect
 import android.os.Bundle
 import android.text.InputType
+import android.hardware.display.DisplayManager
 import android.view.Choreographer
 import android.view.InputDevice
 import android.view.ActionMode
@@ -45,6 +46,64 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
     private val frame = Choreographer.FrameCallback {
         framePending = false
         Go.send(Event.frame(wid))
+    }
+
+    /** Whether Go presented a frame on the surface since it was made (FirstFrame). */
+    private var drawnOnSurface = false
+    /**
+     * What the SurfaceView waits for to show the window's draw with the
+     * surface, as surfaceRedrawNeededAsync gave them: Go's first frame on it.
+     */
+    private val redraws = ArrayList<Runnable>()
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val redrawTimeout = Runnable { finishRedraws() }
+    /** The display's refresh rate Go was last told, 0 for none yet. */
+    private var hz = 0.0
+    private var displayListening = false
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {}
+        override fun onDisplayRemoved(displayId: Int) {}
+        // The refresh rate changes as the display switches modes, as the
+        // rate preferFastest asks for takes effect.
+        override fun onDisplayChanged(displayId: Int) {
+            if (native != 0L && displayId == surface.display?.displayId) tellSurface(false)
+        }
+    }
+
+    /**
+     * Go presented its first frame on the surface (FirstFrame): the window's
+     * draw that waits for it shows, with the frame.
+     */
+    fun drawn() {
+        drawnOnSurface = true
+        finishRedraws()
+    }
+
+    private fun finishRedraws() {
+        main.removeCallbacks(redrawTimeout)
+        if (redraws.isEmpty()) return
+        val done = ArrayList(redraws)
+        redraws.clear()
+        for (r in done) r.run()
+    }
+
+    /**
+     * Tells Go the surface, and the display's refresh rate now: the active
+     * mode's, not the fastest it has, which it may not switch to. Only when
+     * the rate changed, unless created.
+     */
+    private fun tellSurface(created: Boolean) {
+        val rate = surface.display?.refreshRate?.toDouble()?.takeIf { it > 0 } ?: 60.0
+        if (!created && rate == hz) return
+        hz = rate
+        Go.send(Event.surfaceChanged(wid, native, surface.width / density, surface.height / density, density, rate))
+    }
+
+    private fun listenToDisplay(on: Boolean) {
+        if (on == displayListening) return
+        displayListening = on
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        if (on) dm.registerDisplayListener(displayListener, main) else dm.unregisterDisplayListener(displayListener)
     }
 
     // The input being edited, as Go last told it (SetTextInput): the text
@@ -166,6 +225,8 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
 
     override fun close() {
         if (framePending) Choreographer.getInstance().removeFrameCallback(frame)
+        listenToDisplay(false)
+        finishRedraws()
         releaseNative()
     }
 
@@ -309,7 +370,7 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
         return n
     }
 
-    private inner class Surface(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
+    private inner class Surface(context: Context) : SurfaceView(context), SurfaceHolder.Callback2 {
         init {
             holder.addCallback(this)
             isFocusable = true
@@ -318,8 +379,29 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
 
         override fun surfaceCreated(h: SurfaceHolder) {
             native = MyGoNative.nativeWindow(h.surface)
-            val hz = display?.supportedModes?.maxOfOrNull { it.refreshRate }?.toDouble() ?: display?.refreshRate?.toDouble() ?: 60.0
-            Go.send(Event.surfaceChanged(wid, native, width / density, height / density, density, hz))
+            drawnOnSurface = false
+            tellSurface(true)
+            listenToDisplay(true)
+        }
+
+        override fun surfaceRedrawNeeded(h: SurfaceHolder) {}
+
+        /**
+         * The window shows its draw with the surface once drawingFinished
+         * runs: for a surface just made, after Go's first frame on it (drawn),
+         * rather than with the surface empty, black, for a frame or more.
+         * Android's splash stays meanwhile. A surface Go drew on already, as
+         * one resized, is done at once, as by default; and should Go draw
+         * nothing, the window shows after a while all the same.
+         */
+        override fun surfaceRedrawNeededAsync(h: SurfaceHolder, drawingFinished: Runnable) {
+            if (drawnOnSurface || native == 0L) {
+                drawingFinished.run()
+                return
+            }
+            if (redraws.isEmpty()) main.postDelayed(redrawTimeout, FIRST_FRAME_WAIT_MS)
+            redraws.add(drawingFinished)
+            requestFrame()
         }
 
         override fun surfaceChanged(h: SurfaceHolder, format: Int, w: Int, ht: Int) {
@@ -328,12 +410,24 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
             requestFrame()
         }
 
-        /** Asks the display for its fastest refresh, which Choreographer then gives. */
+        /**
+         * Asks the display for its fastest refresh, which Choreographer then
+         * gives. From Android 12, the two-argument form switches only where
+         * the switch is seamless, which a switch from 60 Hz to 120 Hz often
+         * is not: the app asks for it always.
+         */
         private fun preferFastest(h: SurfaceHolder) {
             if (android.os.Build.VERSION.SDK_INT < 30) return
             val modes = display?.supportedModes ?: return
             val hz = modes.maxOfOrNull { it.refreshRate } ?: return
-            runCatching { h.surface.setFrameRate(hz, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT) }
+            val s = h.surface
+            runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    s.setFrameRate(hz, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT, android.view.Surface.CHANGE_FRAME_RATE_ALWAYS)
+                } else {
+                    s.setFrameRate(hz, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                }
+            }
         }
 
         // A mouse's pointer hovers.
@@ -344,7 +438,12 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
             return true
         }
 
-        override fun surfaceDestroyed(h: SurfaceHolder) = releaseNative()
+        override fun surfaceDestroyed(h: SurfaceHolder) {
+            listenToDisplay(false)
+            // Nothing is left to wait for on this surface.
+            finishRedraws()
+            releaseNative()
+        }
 
         // A finger on a view it holds passes through to it, under this view.
         override fun dispatchTouchEvent(e: MotionEvent): Boolean {
@@ -393,8 +492,12 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
             val text = if (e.unicodeChar > 0) String(Character.toChars(e.unicodeChar)) else ""
             val r = Go.ask(Event.key(wid, down, name, text, mods, e.repeatCount > 0)) ?: return false
             val handled = KeyReply(r).handled
-            // Keys typing text type it, which the content takes as text.
-            if (!handled && down && editing && text.isNotEmpty() && keyNames[code] == null) {
+            // Keys typing text type it, which the content takes as text,
+            // whatever Go answered: its text inputs take a printable key
+            // as handled, as the text comes after it, as on macOS. Space
+            // types too; keys with Control or Meta are shortcuts.
+            if (down && editing && text.isNotEmpty() && (keyNames[code] == null || code == KeyEvent.KEYCODE_SPACE) &&
+                !e.isCtrlPressed && !e.isMetaPressed) {
                 edit(Event.textReplace(wid, false, 0, 0, text))
                 return true
             }
@@ -548,11 +651,12 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
             return true
         }
 
-        override fun commitCorrection(c: android.view.inputmethod.CorrectionInfo): Boolean {
-            val at = c.offset.toLong()
-            edit(Event.textReplace(wid, true, at, at + c.oldText.length, c.newText.toString()))
-            return true
-        }
+        // A correction the input method made is in the text already: it
+        // tells of it after committing the word itself, for the editor to
+        // flash it, as TextView does, with nothing to edit. Gboard tells of
+        // its corrections of words typed on a hardware keyboard: edited
+        // again, a word came twice and the cursor went back.
+        override fun commitCorrection(c: android.view.inputmethod.CorrectionInfo) = true
 
         override fun setComposingText(t: CharSequence, newCursorPosition: Int): Boolean {
             // The selection in the text composed, from the cursor Android
@@ -763,6 +867,13 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
     }
 
     companion object {
+        /**
+         * How long a window waits for Go's first frame before it shows all
+         * the same: with the splash (MyGoActivity.holdSplash), or with a
+         * surface Go has not drawn on yet.
+         */
+        const val FIRST_FRAME_WAIT_MS = 4000L
+
         private val keyNames = mapOf(
             KeyEvent.KEYCODE_ENTER to "Enter", KeyEvent.KEYCODE_ESCAPE to "Escape", KeyEvent.KEYCODE_DEL to "Backspace",
             KeyEvent.KEYCODE_TAB to "Tab", KeyEvent.KEYCODE_SPACE to "Space", KeyEvent.KEYCODE_FORWARD_DEL to "Delete",

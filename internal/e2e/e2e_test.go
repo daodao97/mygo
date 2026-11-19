@@ -4060,6 +4060,57 @@ func TestContentWindowComposingReturn(t *testing.T) {
 	}
 }
 
+// TestContentWindowComposingBackspace presses Backspace in a text input
+// with the Korean input method on. It composes without marked text,
+// replacing the syllable before the caret, and takes a jamo back with
+// Backspace the same way: the key is the input method's, and 한 becomes
+// 하, not nothing. With no jamo to take back, the input method passes
+// Backspace on (deleteBackward:), and the input gets it, empty too, as it
+// does from the input method of the test's Mac.
+func TestContentWindowComposingBackspace(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		// Only AppKit's input methods compose over the text before the
+		// caret without marked text, which pressKeyComposingOver drives.
+		t.Skip("input method automation not available on this platform")
+	}
+	var frames atomic.Int32
+	name, backspaces := "", 0
+	view := func(c *ui.Context) {
+		frames.Add(1)
+		ui.TextInput(c, &name).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
+			if k.Key == ui.KeyBackspace {
+				backspaces++
+			}
+			return false
+		})
+	}
+	state := func() (n string, b int) {
+		mygo.RunOnMain(func() { n, b = name, backspaces })
+		return
+	}
+	w := newWindow(t, mygo.WindowOptions{Title: "Composing Backspace", Width: 400, Height: 200, Content: ui.View(view)})
+	eventually(t, "a frame", func() bool { return frames.Load() > 1 })
+
+	// 한, which Backspace takes a jamo of: 하 replaces it.
+	compose(w, "한", 0, true)
+	eventually(t, "the syllable", func() bool { n, _ := state(); return n == "한" })
+	if !pressKeyComposingOver(w, 51, "\x7f", "하", "", 0, 1) {
+		t.Skip("input method automation not available on this platform")
+	}
+	eventually(t, "a jamo taken back", func() bool { n, _ := state(); return n == "하" })
+	if _, b := state(); b != 0 {
+		t.Fatalf("the input got Backspace %d times while the input method took it", b)
+	}
+
+	// Nothing to take back: the input method passes Backspace on.
+	pressKeyComposing(w, 51, "\x7f", "", "deleteBackward:")
+	eventually(t, "Backspace passed on", func() bool { n, b := state(); return n == "" && b == 1 })
+	pressKeyComposing(w, 51, "\x7f", "", "deleteBackward:")
+	eventually(t, "Backspace in the empty input", func() bool { _, b := state(); return b == 2 })
+	pressKey(w, 51, "\x7f")
+	eventually(t, "Backspace through the input method", func() bool { _, b := state(); return b == 3 })
+}
+
 // TestContentWindowTextKeys has a composer's OnTextKey take Return and
 // Tab as the platform delivers them, reading the text typed before them:
 // the text area inserts no newline, and the focus stays.

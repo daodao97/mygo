@@ -89,6 +89,7 @@ func webViewAttached(*mygo.Window) (bool, bool) { return false, false }
 
 // Collection behaviors and deactivating the app are macOS's.
 func collectionBehavior(*mygo.Window) (uint, bool)               { return 0, false }
+func becomesKeyOnlyIfNeeded(*mygo.Window) (bool, bool)           { return false, false }
 func deactivateApp() bool                                        { return false }
 func material(*mygo.Window) (string, int, float64, bool, bool)   { return "", 0, 0, false, false }
 func materialState(*mygo.Window) (int, bool)                     { return 0, false }
@@ -335,6 +336,9 @@ func observe(*mygo.Window) (func(), bool) { return nil, false }
 func pressKey(*mygo.Window, uint16, string) bool { return false }
 
 func pressKeyComposing(*mygo.Window, uint16, string, string, string) bool { return false }
+func pressKeyComposingOver(*mygo.Window, uint16, string, string, string, int, int) bool {
+	return false
+}
 
 // X routes a drag to the window under the pointer, which
 // dropFiles, dropping on the content's, skips.

@@ -265,17 +265,77 @@ func TestReplacementsAcrossLines(t *testing.T) {
 	ct.key(0, ui.KeyLeft)
 	ct.wantCursor(1)
 
-	// All the first lines hidden, the caret goes on to the first shown.
+	// All the first lines hidden, the caret stays at the first shown.
 	ct = newEditorTest(t, "", "a\nb\nc")
 	ct.st.SetReplacements([]Replacement{hide(0, 4)})
 	ct.tt.Frame()
 	ct.caretTo(4)
 	ct.key(0, ui.KeyLeft)
 	ct.wantCursor(4)
+	if _, ok := ct.st.ed.caretRect(4); !ok {
+		t.Fatal("the first shown stop has no caret rectangle")
+	}
+	ct.caretTo(0)
+	ct.key(0, ui.KeyRight)
+	ct.wantCursor(4)
 }
 
-// Walking the text with a caret ends, every step going forward, whatever
-// the replacements: a step that makes no progress would never end.
+// A hidden prefix can end inside the first shown line. Its source stop
+// is the replacement's end, not the hidden line start or buffer zero.
+func TestReplacementsHiddenPrefixEndsWithinLine(t *testing.T) {
+	for _, prefix := range []string{"a\n", "\na\n"} {
+		for _, cmd := range []Command{MoveLeft, MoveUp, MovePageUp} {
+			t.Run(prefix+"/"+cmd.String(), func(t *testing.T) {
+				src := prefix + "bc"
+				want := len(prefix) + len("b")
+				ct := newEditorTest(t, "", src)
+				ct.st.SetReplacements([]Replacement{hide(0, want)})
+				ct.settle()
+				ct.caretTo(len(src))
+				for range 2 {
+					ct.run(cmd)
+					ct.wantCursor(want)
+					if _, ok := ct.st.ed.caretRect(ct.st.Cursor()); !ok {
+						t.Fatal("the backward boundary has no caret rectangle")
+					}
+				}
+				ct.caretTo(0)
+				ct.run(MoveRight)
+				ct.wantCursor(want)
+				ct.run(MoveRight)
+				ct.wantCursor(len(src))
+			})
+		}
+	}
+}
+
+// firstShownCaret finds the backward endpoint from display eligibility,
+// not from navigation: the first stand-in or the first shown text line.
+// A replacement can end within that line, so its hidden prefix is skipped.
+func firstShownCaret(t *testing.T, ed *editor) int {
+	t.Helper()
+	v := &ed.view
+	for line := range v.text.LineCount() {
+		if v.heights.isHidden(line) {
+			if r, ok := ed.standIn(line); ok {
+				return r.Start
+			}
+			continue
+		}
+		off := v.text.LineStart(line)
+		for _, r := range v.repls {
+			if r.Start < off && off < r.End {
+				off = r.End
+			}
+		}
+		return off
+	}
+	t.Fatal("the buffer has no shown caret stop")
+	return 0
+}
+
+// Walking ends only at the buffer's end going forward, or its first
+// shown caret stop going back. An arbitrary no-progress step is a failure.
 func TestReplacementsWalkEnds(t *testing.T) {
 	rng := rand.New(rand.NewPCG(1651, 1))
 	for range 200 {
@@ -312,8 +372,10 @@ func TestReplacementsWalkEnds(t *testing.T) {
 			cmd Command
 			fwd bool
 		}{{MoveRight, true}, {MoveLeft, false}} {
+			want := firstShownCaret(t, ed)
 			if step.fwd {
 				ct.st.Select(0, 0)
+				want = len(src)
 			} else {
 				ct.st.Select(len(src), len(src))
 			}
@@ -321,7 +383,13 @@ func TestReplacementsWalkEnds(t *testing.T) {
 				at := ct.st.Cursor()
 				ed.run(step.cmd)
 				to := ct.st.Cursor()
+				if _, ok := ed.caretRect(to); !ok {
+					t.Fatalf("%q with %+v: %v from %d left an invisible caret at %d", src, rs, step.cmd, at, to)
+				}
 				if to == at {
+					if to != want {
+						t.Fatalf("%q with %+v: %v stopped at %d, want endpoint %d, step %d", src, rs, step.cmd, to, want, n)
+					}
 					break
 				}
 				if (to > at) != step.fwd || n > len(src)+1 {
@@ -603,14 +671,14 @@ func TestReplacementsFollowScroll(t *testing.T) {
 	ct.tt.Frame()
 	ct.tt.Frame()
 	ed := &ct.st.ed
-	if ed.replacementsMoved() {
+	if ed.elementsMoved() {
 		t.Fatal("placed elements count as moved")
 	}
 	if ct.tt.FramePending() {
 		t.Fatal("placed elements keep asking for frames")
 	}
 	ed.scrollY += 10
-	if !ed.replacementsMoved() {
+	if !ed.elementsMoved() {
 		t.Fatal("scrolling doesn't count as moving them")
 	}
 }

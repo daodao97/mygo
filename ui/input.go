@@ -974,15 +974,21 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 	}
 }
 
-// zoom gives a pinch to the element under the pointer that handles its
-// input; no element zooms of its own.
+// zoom gives a pinch or twist to the innermost element under the pointer
+// that handles it; one whose handler leaves it passes it on to the handlers
+// around it, as scroll does. No element zooms of its own.
 func (rt *engine) zoom(scale, rotation float32, mods Modifiers) {
 	if scale <= 0 || scale == 1 && rotation == 0 {
 		return
 	}
 	chain := rt.appendHitChain(rt.chain[:0], rt.pointerX, rt.pointerY)
 	rt.chain = chain[:0]
-	rt.deliver(rt.handler(chain), InputEvent{Kind: InputZoom, Scale: scale, Rotation: rotation, Mods: mods})
+	ev := InputEvent{Kind: InputZoom, Scale: scale, Rotation: rotation, Mods: mods}
+	for _, id := range chain {
+		if s := rt.states[id]; s != nil && s.input != nil && s.flags&flagDisabled == 0 && rt.deliver(s, ev) {
+			return
+		}
+	}
 }
 
 // dragTo returns the offset of content whose thumb moved by moved DIPs
@@ -1055,9 +1061,9 @@ func (rt *engine) scrollKey(mods Modifiers, key Key) bool {
 		page = 1
 	case mods == 0 && key == KeyPageUp, mods == Shift && key == KeySpace:
 		page = -1
-	case (mods == 0 || mods == Cmd) && key == KeyHome, mods == Cmd && key == KeyUp && runtime.GOOS == "darwin":
+	case (mods == 0 || mods == Cmd) && key == KeyHome, mods == Cmd && key == KeyUp && platform.MacKeys:
 		dy = -far
-	case (mods == 0 || mods == Cmd) && key == KeyEnd, mods == Cmd && key == KeyDown && runtime.GOOS == "darwin":
+	case (mods == 0 || mods == Cmd) && key == KeyEnd, mods == Cmd && key == KeyDown && platform.MacKeys:
 		dy = far
 	default:
 		return false
@@ -1941,10 +1947,14 @@ func (e *node) focus(reveal bool) {
 }
 
 // AutoFocus gives the element the keyboard focus in the frame it appears,
-// as the first field of a dialog.
-func (e *node) AutoFocus() *node {
+// as the first field of a dialog. Its options, as Focus's, keep the scroll
+// where the user left it with PreventScroll.
+func (e *node) AutoFocus(options ...FocusOptions) *node {
+	if len(options) > 1 {
+		panic("ui: AutoFocus takes at most one FocusOptions")
+	}
 	if e.hasState() && e.st.born == e.c.rt.frame {
-		e.Focus()
+		e.Focus(options...)
 	}
 	return e
 }

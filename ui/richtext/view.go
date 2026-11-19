@@ -121,12 +121,15 @@ type EditorOptions struct {
 func Editor(c *ui.Context, doc *Document, options ...EditorOptions) ui.Element {
 	t := c.Theme()
 	e := build(c, doc, options, true)
-	e.Radius(t.Radius).Background(t.Surface).Border(1, t.Border).MinHeight(t.Space(30))
+	e.Radius(t.Radius).Background(t.Surface).Border(editorBorder, t.Border).MinHeight(t.Space(30))
 	if e.Focused() {
-		e.Border(1, t.Accent)
+		e.Border(editorBorder, t.Accent)
 	}
 	return e
 }
+
+// editorBorder is how wide the border of an Editor is, in DIPs.
+const editorBorder = 1
 
 // EditorBase creates an Editor without padding, background, border or
 // corners, for an editor of the app's own look.
@@ -156,7 +159,10 @@ type view struct {
 	// laidLook is the look the layouts were made in.
 	laidLook   lookKey
 	padX, padY float32
-	rect       ui.Rect
+	// border and radius are those of the element's box, which the text
+	// is clipped inside of.
+	border, radius float32
+	rect           ui.Rect
 	// clip is the part of the element the painter's clip showed in the
 	// last paint, from its top, while clipped is true: an editor as tall
 	// as its text, in a scroll container, shows a window of it.
@@ -366,8 +372,10 @@ func (v *view) setLook(t *ui.Theme, styled bool) {
 	}
 	if styled {
 		v.padX, v.padY = th.Padding[0], th.Padding[1]
+		v.border, v.radius = editorBorder, t.Radius
 	} else {
 		v.padX, v.padY = 0, 0
+		v.border, v.radius = 0, 0
 	}
 }
 

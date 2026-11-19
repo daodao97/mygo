@@ -71,6 +71,8 @@ type window struct {
 	topEdge                uintptr     // the window over the top resize border of one without a caption (topedge.go), or 0
 	noRedirect             bool        // no redirection bitmap, for a material behind the page
 	fullScreen             bool
+	fullByApp              bool     // the app asked for the full screen; the page's own does not end it
+	pageFull               bool     // the page has an element full screen (webview.go)
 	reframing              bool     // SetFullScreen is changing the frame
 	showMaximized          bool     // on the first show (WindowOptions.Maximized)
 	dropped                []string // DroppedFiles
@@ -80,6 +82,15 @@ type window struct {
 		value float64
 	}
 	icons [2]uintptr // small and big, from SetIcon
+	// thumb is the window's thumbnail toolbar (thumbbar.go): the buttons
+	// the core set last, and whether the shell has them (live).
+	thumb struct {
+		buttons []platform.ThumbButton
+		live    bool
+	}
+	// taskbarButton is whether Explorer has sent TaskbarButtonCreated for
+	// the window's current taskbar button.
+	taskbarButton bool
 	// placing is the rectangle, in pixels, that place is moving the window
 	// to, already in the DPI of its display: WM_DPICHANGED keeps it.
 	placing *rect
@@ -144,6 +155,7 @@ type window struct {
 	programmatic bool
 	loading      bool
 	zoom         float64
+	userZoom     float64   // on ARM64, the controller's zoom, which the user's Ctrl+wheel sets, under the CSS one (abi_arm64.go); 0 for 1
 	muted        bool      // SetAudioMuted, which setUp applies to a web view made later
 	mutePut      time.Time // when the IsMuted put in flight was made, zero for none
 	devTools     bool
@@ -488,6 +500,7 @@ func (w *window) monitor() uintptr {
 // message handles a window message; ok false lets DefWindowProc run.
 func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 	if m == w.b.taskbarButtonCreated && m != 0 {
+		w.taskbarButton = true
 		w.applyTaskbar()
 		return 0, true
 	}
@@ -645,6 +658,12 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 		}
 		return 0, false
 	case wmCommand:
+		if hiword(wp) == thbnClicked && lp == 0 { // a thumbnail toolbar button
+			if thumbClicked != nil {
+				thumbClicked(w, loword(wp))
+			}
+			return 0, true
+		}
 		if hiword(wp) == 0 && lp == 0 { // a menu item
 			w.b.menuCommand(loword(wp), w)
 			return 0, true
@@ -1284,9 +1303,29 @@ func (w *window) Restore() {
 
 // SetFullScreen takes the window's frame and menu bar away, or gives them
 // back. Each step sizes the window again: it is laid out once, at the end.
-func (w *window) SetFullScreen(v bool) {
+// The page's own full screen, if it has one, follows the window out.
+func (w *window) SetFullScreen(v bool) { w.setFullScreen(v, true) }
+
+// setFullScreen is SetFullScreen with byApp telling who asked: a window
+// the app made full screen stays so when the page comes out of its own
+// full screen, as AppKit leaves macOS windows that the user made full
+// screen while a video played in one. The page driving the window in and
+// out of full screen is webview.go's pageFullScreenChanged.
+func (w *window) setFullScreen(v bool, byApp bool) {
+	if v && byApp {
+		// Also when the page has the window full screen already: the app
+		// asking for it keeps it so after the page leaves its own.
+		w.fullByApp = true
+	}
 	if v == w.fullScreen {
 		return
+	}
+	if !v {
+		if !byApp && w.fullByApp {
+			return // the app has this window full screen; the page leaving its own is no leave
+		}
+		w.fullByApp = false
+		w.leavePageFullScreen()
 	}
 	if w.inMenu {
 		procEndMenu.Call() // its menus come from a bar that comes or goes

@@ -36,7 +36,8 @@ code of your own.
   Tools › NDK), on any system. The Go code is a shared library for each
   ABI, linked by the NDK's clang, and Gradle builds the app; the CLI finds
   the SDK in its usual place or `ANDROID_HOME`, the NDK in the SDK or
-  `ANDROID_NDK_HOME`, and Android Studio's JDK or `JAVA_HOME`.
+  `ANDROID_NDK_HOME`, and Android Studio's JDK or `JAVA_HOME`, any JDK
+  from 17 on.
 
 Desktop builds still need neither cgo nor these tools.
 

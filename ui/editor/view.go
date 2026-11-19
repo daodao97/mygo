@@ -67,6 +67,20 @@ type view struct {
 	replHidden              []lineSpan
 	replHiddenOK            bool
 	contents                int
+	// replVersion changes only when replacement layout or source changes.
+	replVersion uint64
+	// blocks are the app's elements between lines, sorted by where they
+	// go (State.SetBlocks), and blockScratch the slice the next are kept
+	// in; nextBlock is the last id given. rows are what they take in the
+	// heights, as of rowsHeight, rowsFolded and rowsRepls, unless block
+	// identity, order, line, placement or effective height changed.
+	blocks, blockScratch appBlocks
+	nextBlock            int
+	rows                 []block
+	rowsHeight           float32
+	rowsFolded           []lineSpan // independent snapshot of the fold cache
+	rowsRepls            uint64
+	blocksStale          bool
 
 	lines  lineCache
 	shaped shapeCache
@@ -529,6 +543,8 @@ func (v *view) sync(moved func(cs []change)) bool {
 			v.inlays[i].at = mapOffset(v.inlays[i].at, cs, biasRight)
 		}
 		v.moveRepls(cs)
+		v.moveBlocks(cs)
+		v.settleBlocks()
 		v.moveLineStyles(cs)
 		v.settleLineStyles()
 		if moved != nil {
@@ -547,11 +563,13 @@ func (v *view) sync(moved func(cs []change)) bool {
 			v.inlays[i].at = mapOffset(v.inlays[i].at, cs, biasRight)
 		}
 		v.moveRepls(cs)
+		v.moveBlocks(cs)
 		v.moveLineStyles(cs)
 		if moved != nil {
 			moved(cs)
 		}
 	}
+	v.settleBlocks()
 	v.settleLineStyles()
 	v.measured.trim(text.LineCount())
 	v.heights.setLines(text.LineCount())

@@ -1,7 +1,7 @@
 plugins {
-    id("com.android.application") version "8.12.0" apply false
-    id("com.android.library") version "8.12.0" apply false
-    id("org.jetbrains.kotlin.android") version "2.1.20" apply false
+    id("com.android.application") version "8.13.2" apply false
+    id("com.android.library") version "8.13.2" apply false
+    id("org.jetbrains.kotlin.android") version "2.2.21" apply false
 }
 
 // The native modules' libraries: their build sets only their namespace and
@@ -44,6 +44,8 @@ subprojects {
         }
     }
     plugins.withId("org.jetbrains.kotlin.android") {
-        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension> { jvmToolchain(17) }
+        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension> {
+            compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+        }
     }
 }

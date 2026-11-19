@@ -361,7 +361,7 @@ func (p *Painter) element(e *node) {
 		e.dropGroupLayer()
 	}
 	saved := p.opacity
-	if e.flags&flagDisabled != 0 && !e.undimmed && !p.Theme().DisableAutoDimming {
+	if (e.flags&flagDisabled != 0 || e.unavailable) && !e.undimmed && !p.Theme().DisableAutoDimming {
 		p.opacity *= 0.5
 	}
 	// In its layer (paintEffect, paintGroup), the layer takes its fade.
@@ -383,11 +383,13 @@ func (p *Painter) element(e *node) {
 	// What the element paints lands on an opaque background when all of
 	// it that shows does.
 	p.opaque = p.covered(intersect(box, p.clip))
-	if e.world.Set && (p.lifting == nil || !translates(e.world)) {
+	if e.world.Set && ((p.lifting == nil && !e.pinWorld) || !translates(e.world)) {
 		// Transformed glyphs are drawn with grayscale coverage; but those
 		// of an element flying, which a translation shows where it is
-		// (matches.pin), as at rest, which renderers make gray while it
-		// moves, so that they are the text at rest once there.
+		// (matches.pin), or moving in a transition, which only its
+		// remainders to its resting pixels translate (pinsOnly), as at
+		// rest, which renderers make gray while it moves, so that they are
+		// the text at rest once there.
 		p.opaque = false
 	}
 	margin := e.shadowMargin()
@@ -531,6 +533,18 @@ func (p *Painter) element(e *node) {
 	p.opaque, p.under = savedOpaque, p.under[:under]
 }
 
+// pinsOnly reports whether the world transform of e, with base the one
+// the elements around it give it, only moves it by the remainders that
+// transitions moving it, or the elements around it, carry to their
+// resting pixels (transition.apply): the glyphs of text at rest, which
+// renderers make gray while they move.
+func pinsOnly(e *node, base scene.Affine) bool {
+	if !e.world.Set || !translates(e.world) || e.translatePct != ([2]float32{}) || e.poseM.Set || e.transform.set() && !e.pinned {
+		return false
+	}
+	return !base.Set || e.parent.pinWorld && base == e.parent.world
+}
+
 // translates reports whether m only moves what it transforms.
 func translates(m scene.Affine) bool {
 	_, _, ok := m.Translation()
@@ -579,13 +593,9 @@ func (p *Painter) holds(r Rect, opaque bool) bool {
 // not clip.
 func (e *node) clipRect() (Rect, [4]float32) {
 	r := Rect{e.x + e.border[3], e.y + e.border[0], e.w - e.border[1] - e.border[3], e.h - e.border[0] - e.border[2]}
-	var rad [4]float32
 	all := e.flags&(flagScrollX|flagScrollY) != 0 || e.flags&flagClip == flagClip
 	if all {
-		for i, side := range [4][2]int{{0, 3}, {0, 1}, {2, 1}, {2, 3}} {
-			rad[i] = max(e.radius[i]-max(e.border[side[0]], e.border[side[1]]), 0)
-		}
-		return r, rad
+		return r, e.innerRadii()
 	}
 	const far = 1e6
 	if e.flags&flagClipX == 0 {
@@ -594,7 +604,17 @@ func (e *node) clipRect() (Rect, [4]float32) {
 	if e.flags&flagClipY == 0 {
 		r.Y, r.H = -far, 2*far
 	}
-	return r, rad
+	return r, [4]float32{}
+}
+
+// innerRadii returns the radii of the corners inside the border: each
+// corner's radius less the wider of the borders that meet there.
+func (e *node) innerRadii() [4]float32 {
+	var rad [4]float32
+	for i, side := range [4][2]int{{0, 3}, {0, 1}, {2, 1}, {2, 3}} {
+		rad[i] = max(e.radius[i]-max(e.border[side[0]], e.border[side[1]]), 0)
+	}
+	return rad
 }
 
 // borders returns border widths in device pixels, whole ones at least one

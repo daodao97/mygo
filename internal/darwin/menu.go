@@ -356,9 +356,11 @@ func (b *Backend) buildItem(it *platform.MenuItem, owner int, metrics menuMetric
 		tab := badgeTabFor(it.BadgeAlign, metrics.keepOpenStart, metrics.keepOpenWidth)
 		view := buildKeepOpenView(it, metrics)
 		send(item, "setView:", uintptr(view))
-		// The view replaces the title, but NSMenu sizes the menu by it: it
-		// holds the same label, tab stop and badge, so the menu is wide
-		// enough for the view.
+		// The view replaces the title. NSMenu takes the menu's width from
+		// the views' minimum width rather than from this title: with the
+		// badge column made narrower, the menu followed although this tab
+		// stop still points at the old column. The title stays so anything
+		// that reads the menu's items still finds the label and badge.
 		setItemTitle(item, keepOpenItemTitle(it), itemBadge(it), tab, it.BadgeAlign)
 		updateKeepOpenView(view, it, tab)
 	} else {
@@ -460,9 +462,12 @@ func keepOpenItem(it *platform.MenuItem) bool {
 	return it.KeepOpen && it.Submenu == nil
 }
 
-// menuBadgeGap is the least space between the longest title of a menu and
-// its badges' left edge.
+// menuBadgeGap is the least space between a row's title and its badge.
 const menuBadgeGap = 24
+
+// keepOpenBadgeGap is the space between a title and a badge that has a
+// background: the box carries its own padding, so the text keeps the air.
+const keepOpenBadgeGap = 12
 
 // badgeColumn returns where the badges of m start and how wide their column
 // is: past the menu's longest title, and as wide as its widest badge. Zero
@@ -852,33 +857,58 @@ func keepOpenMetrics(m *platform.Menu) (start, badgeWidth, viewWidth, labelX flo
 	}
 	labelFont := menuFont()
 	hasBadge := false
-	var maxLabel, maxBadge float64
+	shared := false
+	var maxLabel, maxBadge, content float64
 	for _, it := range m.Items {
 		if !it.Visible || !it.KeepOpen || it.Submenu != nil || it.Type == platform.MenuItemSeparator {
 			continue
 		}
-		maxLabel = max(maxLabel, textWidth(keepOpenItemTitle(it), labelFont))
+		w := textWidth(keepOpenItemTitle(it), labelFont)
+		maxLabel = max(maxLabel, w)
 		if it.Badge != "" {
 			hasBadge = true
-			maxBadge = max(maxBadge, keepOpenBadgeWidth(itemBadge(it), it.BadgeShape))
+			bw := keepOpenBadgeWidth(itemBadge(it), it.BadgeShape)
+			maxBadge = max(maxBadge, bw)
+			if it.BadgeShape == "" || (it.BadgeAlign != platform.BadgeAlignRight && it.BadgeAlign != "") {
+				shared = true
+			}
+			w += keepOpenRowGap(it.BadgeShape) + bw
 		}
+		content = max(content, w)
 	}
 	start = maxLabel
 	if hasBadge {
 		start = maxLabel + menuBadgeGap
+		// A badge without a background shares one tabbed column after the
+		// longest label, so its menu needs that sum; a background badge is
+		// anchored to its row's right edge and needs only its own label and
+		// badge side by side — the longest name and the widest badge rarely
+		// share a row, and summing them gives every menu the difference.
+		if shared {
+			content = max(content, maxLabel+menuBadgeGap+maxBadge)
+		}
 	}
-	viewWidth = keepOpenViewWidth(labelX, start, maxBadge)
+	viewWidth = keepOpenViewWidth(labelX, content)
 	return start, maxBadge, viewWidth, labelX
 }
 
+// keepOpenRowGap is the space before a row's badge: a box brings its own
+// padding, a plain text badge does not.
+func keepOpenRowGap(shape platform.BadgeShape) float64 {
+	if shape != "" {
+		return keepOpenBadgeGap
+	}
+	return menuBadgeGap
+}
+
 // keepOpenViewWidth is the width of the views of a menu's KeepOpen items:
-// the label column, the badge column, and the space after the badges. The
-// menu sizes itself from it (setMinimumWidth) and the badges are anchored
-// to the view's right edge, so this space is all that separates a badge
-// from the row's end: 8pt is the room a menu row keeps at its trailing
-// edge, and the badge box carries its own padding on top of it.
-func keepOpenViewWidth(labelX, start, badgeWidth float64) float64 {
-	return max(labelX+menuKeepOpenMinRoom, labelX+start+badgeWidth+menuKeepOpenRight)
+// content, the widest row measured from the label column's left, plus the
+// room after a badge. The menu sizes itself from it (setMinimumWidth) and
+// the badges are anchored to the view's right edge, so that room is all
+// that separates a badge from the row's end: 8pt is what a menu row keeps
+// at its trailing edge, and the badge box carries its own padding on top.
+func keepOpenViewWidth(labelX, content float64) float64 {
+	return max(labelX+menuKeepOpenMinRoom, labelX+content+menuKeepOpenRight)
 }
 
 // retabKeepOpenMenu lays the views of the KeepOpen items of the menu that
@@ -898,8 +928,9 @@ func retabKeepOpenMenu(item id, label, badge string, align platform.BadgeAlignme
 	var rows []row
 	labelFont := menuFont()
 	labelX := float64(menuKeepOpenLabelX)
-	var maxLabel, maxBadge float64
+	var maxLabel, maxBadge, content float64
 	hasBadge := false
+	shared := false
 	for _, x := range arrayItems(send(menu, "itemArray")) {
 		view := send(x, "view")
 		if view == 0 || sendBool(x, "isHidden") {
@@ -921,17 +952,27 @@ func retabKeepOpenMenu(item id, label, badge string, align platform.BadgeAlignme
 			continue
 		}
 		rows = append(rows, row{view, l, b, a, style})
-		maxLabel = max(maxLabel, textWidth(l, labelFont))
+		w := textWidth(l, labelFont)
+		maxLabel = max(maxLabel, w)
 		if b != "" {
 			hasBadge = true
-			maxBadge = max(maxBadge, keepOpenBadgeWidth(b, style.shape))
+			bw := keepOpenBadgeWidth(b, style.shape)
+			maxBadge = max(maxBadge, bw)
+			if style.shape == "" || (a != platform.BadgeAlignRight && a != "") {
+				shared = true
+			}
+			w += keepOpenRowGap(style.shape) + bw
 		}
+		content = max(content, w)
 	}
 	start := maxLabel
 	if hasBadge {
 		start = maxLabel + menuBadgeGap
+		if shared {
+			content = max(content, maxLabel+menuBadgeGap+maxBadge)
+		}
 	}
-	width := keepOpenViewWidth(labelX, start, maxBadge)
+	width := keepOpenViewWidth(labelX, content)
 	msgSetFloat(menu, sel("setMinimumWidth:"), width)
 	for _, r := range rows {
 		layoutKeepOpenView(r.view, r.label, r.badge, start, maxBadge, width, labelX, r.align, r.style)
@@ -1019,11 +1060,26 @@ func buildKeepOpenView(it *platform.MenuItem, metrics menuMetrics) id {
 	return view
 }
 
+// keepOpenIconShown reports whether the row shows an icon: its presence
+// moves every label in the menu between two columns.
+func keepOpenIconShown(view id) bool {
+	icon := send(view, "viewWithTag:", menuViewIcon)
+	return icon != 0 && !sendBool(icon, "isHidden")
+}
+
 // updateKeepOpenView follows the state of it in the view of a KeepOpen item.
-func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) {
+// It reports whether anything the row's layout depends on — its label, badge,
+// alignment or badge style — changed: a check mark or an enabled state does
+// not need the menu laid out again, and that layout is what an update costs.
+func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) (relayout bool) {
+	wantLabel, wantBadge := keepOpenItemTitle(it), itemBadge(it)
+	oldLabel, oldBadge, _ := keepOpenTitle(view)
+	oldStyle := keepOpenBadges[view]
 	send(view, "setIdentifier:", uintptr(nsString(strconv.Itoa(it.ID))))
 	style := setKeepOpenBadge(view, it)
-	if label := send(view, "viewWithTag:", menuViewLabel); label != 0 {
+	// The style holds the alignment, so a changed alignment shows up here too.
+	relayout = oldLabel != wantLabel || oldBadge != wantBadge || oldStyle != style
+	if label := send(view, "viewWithTag:", menuViewLabel); label != 0 && relayout {
 		if style.shape != "" && itemBadge(it) != "" {
 			send(label, "setAttributedStringValue:", uintptr(menuTitle(keepOpenItemTitle(it), "", 0, it.BadgeAlign)))
 		} else {
@@ -1050,11 +1106,17 @@ func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) {
 	}
 	msgSetFloat(view, sel("setAlphaValue:"), alpha)
 	setMenuViewColors(view)
+	return relayout
 }
 
 // layoutKeepOpenView places the label and badge of view in their columns
 // and makes room for width, the width the menu's views share.
 func layoutKeepOpenView(view id, label, badge string, start, badgeWidth, width, labelX float64, align platform.BadgeAlignment, style keepOpenBadgeStyle) {
+	if align == "" {
+		// The zero value is the documented default, right: the tab stops and
+		// the badge box already treat it so through their switch defaults.
+		align = platform.BadgeAlignRight
+	}
 	// A menu can be wider than its widest KeepOpen row, as a long item NSMenu
 	// draws itself sets the width; AppKit then widens the view to fill it.
 	// Lay out to the view's own width when that is wider, so the backdrop,
@@ -1070,11 +1132,25 @@ func layoutKeepOpenView(view id, label, badge string, start, badgeWidth, width, 
 		start = max(start, width-menuKeepOpenRight-badgeWidth-labelX)
 	}
 	background := style.shape != "" && badge != ""
+	// The box of a background badge, in the view's coordinates. A right
+	// aligned one pins to the row's right edge whatever the measured column
+	// says: the menu is as wide as the widest row's label and badge
+	// together, and the two widest rarely share a row. Left and center keep
+	// the shared column.
+	boxX, boxWidth := 0.0, 0.0
+	if background {
+		boxWidth = keepOpenBadgeWidth(badge, style.shape)
+		boxX = labelX + start + keepOpenBadgeOffset(align, badgeWidth, boxWidth)
+		if align == platform.BadgeAlignRight {
+			boxX = width - menuKeepOpenRight - boxWidth
+		}
+	}
 	if field := send(view, "viewWithTag:", menuViewLabel); field != 0 {
 		fieldWidth := width - labelX - 4
 		if background {
 			send(field, "setAttributedStringValue:", uintptr(menuTitle(label, "", 0, align)))
-			fieldWidth = max(start-4, 0)
+			// Up to this row's own box, never into another row's badge.
+			fieldWidth = max(boxX-labelX-4, 0)
 		} else {
 			tab := badgeTabFor(align, start, badgeWidth)
 			text := menuTitleStyled(label, badge, tab, align, menuBadgeStyle{fg: style.fg, hasFG: style.hasFG})
@@ -1087,9 +1163,8 @@ func layoutKeepOpenView(view id, label, badge string, start, badgeWidth, width, 
 	}
 	if field := send(view, "viewWithTag:", menuViewBadge); field != 0 {
 		if background {
-			boxWidth := keepOpenBadgeWidth(badge, style.shape)
 			msgSetRect(field, sel("setFrame:"), NSRect{
-				Origin: NSPoint{X: labelX + start + keepOpenBadgeOffset(align, badgeWidth, boxWidth),
+				Origin: NSPoint{X: boxX,
 					Y: (menuKeepOpenHeight - menuBadgeHeight) / 2},
 				Size: NSSize{Width: boxWidth, Height: menuBadgeHeight},
 			})
@@ -1296,6 +1371,7 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 				send(n.item, "setKeyEquivalentModifierMask:", uintptr(mods))
 				view = send(n.item, "view")
 			}
+			hiddenBefore := sendBool(n.item, "isHidden")
 			applyItemState(n.item, it)
 			if it.Type != platform.MenuItemSeparator {
 				setMenuBadgeStyle(n.item, it)
@@ -1303,8 +1379,14 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 			switch {
 			case it.Type == platform.MenuItemSeparator:
 			case view != 0:
-				updateKeepOpenView(view, it, 0)
-				retabKeepOpenMenu(n.item, keepOpenItemTitle(it), itemBadge(it), it.BadgeAlign)
+				// Hiding a row changes the menu's widest label and badge, and
+				// the first icon or the last one moves every label between two
+				// columns, so both need the menu laid out again.
+				iconBefore := keepOpenIconShown(view)
+				changed := updateKeepOpenView(view, it, 0)
+				if changed || iconBefore != keepOpenIconShown(view) || hiddenBefore != sendBool(n.item, "isHidden") {
+					retabKeepOpenMenu(n.item, keepOpenItemTitle(it), itemBadge(it), it.BadgeAlign)
+				}
 			default:
 				// The menu's widest title and badge may be this item's now.
 				retabMenu(n.item, itemTitle(it), itemBadge(it), it.BadgeAlign)
