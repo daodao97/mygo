@@ -1060,11 +1060,26 @@ func buildKeepOpenView(it *platform.MenuItem, metrics menuMetrics) id {
 	return view
 }
 
+// keepOpenIconShown reports whether the row shows an icon: its presence
+// moves every label in the menu between two columns.
+func keepOpenIconShown(view id) bool {
+	icon := send(view, "viewWithTag:", menuViewIcon)
+	return icon != 0 && !sendBool(icon, "isHidden")
+}
+
 // updateKeepOpenView follows the state of it in the view of a KeepOpen item.
-func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) {
+// It reports whether anything the row's layout depends on — its label, badge,
+// alignment or badge style — changed: a check mark or an enabled state does
+// not need the menu laid out again, and that layout is what an update costs.
+func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) (relayout bool) {
+	wantLabel, wantBadge := keepOpenItemTitle(it), itemBadge(it)
+	oldLabel, oldBadge, _ := keepOpenTitle(view)
+	oldStyle := keepOpenBadges[view]
 	send(view, "setIdentifier:", uintptr(nsString(strconv.Itoa(it.ID))))
 	style := setKeepOpenBadge(view, it)
-	if label := send(view, "viewWithTag:", menuViewLabel); label != 0 {
+	// The style holds the alignment, so a changed alignment shows up here too.
+	relayout = oldLabel != wantLabel || oldBadge != wantBadge || oldStyle != style
+	if label := send(view, "viewWithTag:", menuViewLabel); label != 0 && relayout {
 		if style.shape != "" && itemBadge(it) != "" {
 			send(label, "setAttributedStringValue:", uintptr(menuTitle(keepOpenItemTitle(it), "", 0, it.BadgeAlign)))
 		} else {
@@ -1091,6 +1106,7 @@ func updateKeepOpenView(view id, it *platform.MenuItem, tab float64) {
 	}
 	msgSetFloat(view, sel("setAlphaValue:"), alpha)
 	setMenuViewColors(view)
+	return relayout
 }
 
 // layoutKeepOpenView places the label and badge of view in their columns
@@ -1355,6 +1371,7 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 				send(n.item, "setKeyEquivalentModifierMask:", uintptr(mods))
 				view = send(n.item, "view")
 			}
+			hiddenBefore := sendBool(n.item, "isHidden")
 			applyItemState(n.item, it)
 			if it.Type != platform.MenuItemSeparator {
 				setMenuBadgeStyle(n.item, it)
@@ -1362,8 +1379,14 @@ func (b *Backend) UpdateMenuItem(it *platform.MenuItem) {
 			switch {
 			case it.Type == platform.MenuItemSeparator:
 			case view != 0:
-				updateKeepOpenView(view, it, 0)
-				retabKeepOpenMenu(n.item, keepOpenItemTitle(it), itemBadge(it), it.BadgeAlign)
+				// Hiding a row changes the menu's widest label and badge, and
+				// the first icon or the last one moves every label between two
+				// columns, so both need the menu laid out again.
+				iconBefore := keepOpenIconShown(view)
+				changed := updateKeepOpenView(view, it, 0)
+				if changed || iconBefore != keepOpenIconShown(view) || hiddenBefore != sendBool(n.item, "isHidden") {
+					retabKeepOpenMenu(n.item, keepOpenItemTitle(it), itemBadge(it), it.BadgeAlign)
+				}
 			default:
 				// The menu's widest title and badge may be this item's now.
 				retabMenu(n.item, itemTitle(it), itemBadge(it), it.BadgeAlign)

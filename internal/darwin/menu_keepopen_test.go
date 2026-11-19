@@ -571,3 +571,140 @@ func TestMenuKeepOpenWidthFitsRow(t *testing.T) {
 		}
 	})
 }
+
+// TestMenuKeepOpenUpdateSkipsLayout checks that an update which leaves the
+// label, badge, alignment and badge style alone reports no relayout: a check
+// mark or an enabled state does not change a row's width, and the relayout
+// is what an update costs.
+func TestMenuKeepOpenUpdateSkipsLayout(t *testing.T) {
+	load()
+	registerMenuTarget()
+	withPool(func() {
+		b := &Backend{}
+		item := &platform.MenuItem{ID: 1, Label: "Node", Badge: "25 ms", KeepOpen: true,
+			Type: platform.MenuItemRadio, Checked: true,
+			BadgeShape: platform.BadgeShapeSquare, BadgeAlign: platform.BadgeAlignRight,
+			BadgeColor: &platform.Color{R: 52, G: 199, B: 89, A: 255},
+			Visible:    true, Enabled: true}
+		menu := b.buildMenu(&platform.Menu{Items: []*platform.MenuItem{item}}, "", 1)
+		defer dropOwner(1)
+		view := send(send(menu, "itemAtIndex:", 0), "view")
+
+		if updateKeepOpenView(view, item, 0) {
+			t.Error("an unchanged update asked for a relayout")
+		}
+		item.Checked = false
+		if updateKeepOpenView(view, item, 0) {
+			t.Error("a check mark asked for a relayout")
+		}
+		item.Enabled = false
+		if updateKeepOpenView(view, item, 0) {
+			t.Error("an enabled state asked for a relayout")
+		}
+		item.Badge = "30 ms"
+		if !updateKeepOpenView(view, item, 0) {
+			t.Error("a new badge did not ask for a relayout")
+		}
+		// The real path lays the row out again, which is what renders the
+		// new badge; the next update then has nothing to do.
+		retabKeepOpenMenu(send(menu, "itemAtIndex:", 0), item.Label, item.Badge, item.BadgeAlign)
+		if updateKeepOpenView(view, item, 0) {
+			t.Error("the badge asked for a relayout twice")
+		}
+	})
+}
+
+// TestMenuKeepOpenCheckKeepsTextBadge checks a plain text badge — no
+// background — survives a check-only update. The update rewrote the title
+// with no tab stop (the row's tab is not passed on that path), and with the
+// relayout skipped nothing put the badge back; a radio group sends the check
+// update to every item, so a whole group lost its badges.
+func TestMenuKeepOpenCheckKeepsTextBadge(t *testing.T) {
+	load()
+	registerMenuTarget()
+	withPool(func() {
+		b := &Backend{}
+		item := &platform.MenuItem{ID: 1, Label: "Node", Badge: "45 ms", KeepOpen: true,
+			Type: platform.MenuItemRadio, Checked: true, Visible: true, Enabled: true}
+		menu := b.buildMenu(&platform.Menu{Items: []*platform.MenuItem{item}}, "", 1)
+		defer dropOwner(1)
+		view := send(send(menu, "itemAtIndex:", 0), "view")
+		field := send(view, "viewWithTag:", menuViewLabel)
+		read := func() string {
+			if v := send(field, "attributedStringValue"); v != 0 {
+				return goString(send(v, "string"))
+			}
+			return goString(send(field, "stringValue"))
+		}
+		before := read()
+		if before != "Node\t45 ms" {
+			t.Fatalf("title = %q, want %q", before, "Node\t45 ms")
+		}
+		item.Checked = false
+		b.UpdateMenuItem(item)
+		if got := read(); got != before {
+			t.Errorf("a check mark changed the title to %q, want %q", got, before)
+		}
+	})
+}
+
+// TestMenuKeepOpenHiddenRowRelayouts checks hiding a row lays the menu out
+// again: the column moves when the widest row stops showing.
+func TestMenuKeepOpenHiddenRowRelayouts(t *testing.T) {
+	load()
+	registerMenuTarget()
+	withPool(func() {
+		b := &Backend{}
+		mk := func(id int, label, badge string) *platform.MenuItem {
+			return &platform.MenuItem{ID: id, Label: label, Badge: badge, KeepOpen: true,
+				Type: platform.MenuItemRadio, BadgeShape: platform.BadgeShapeSquare,
+				BadgeAlign: platform.BadgeAlignRight,
+				BadgeColor: &platform.Color{R: 52, G: 199, B: 89, A: 255},
+				Visible:    true, Enabled: true}
+		}
+		wide, short := mk(1, "A much longer node name, the widest row", "12 ms"), mk(2, "HK", "9 ms")
+		menu := b.buildMenu(&platform.Menu{Items: []*platform.MenuItem{wide, short}}, "", 1)
+		defer dropOwner(1)
+		before := msgFloat(menu, sel("minimumWidth"))
+		wide.Visible = false
+		b.UpdateMenuItem(wide)
+		if got := msgFloat(menu, sel("minimumWidth")); got >= before {
+			t.Errorf("menu width after hiding the widest row = %v, want less than %v", got, before)
+		}
+	})
+}
+
+// TestMenuKeepOpenFirstIconShiftsLabels checks the first icon lays the menu
+// out again: icons move every label from the plain column to the icon one.
+func TestMenuKeepOpenFirstIconShiftsLabels(t *testing.T) {
+	load()
+	registerMenuTarget()
+	LinkMenuIcons()
+	defer func() { menuImage = nil }()
+	png, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	withPool(func() {
+		b := &Backend{}
+		mk := func(id int, label string) *platform.MenuItem {
+			return &platform.MenuItem{ID: id, Label: label, KeepOpen: true,
+				Type: platform.MenuItemRadio, Visible: true, Enabled: true}
+		}
+		first, second := mk(1, "Node"), mk(2, "Other")
+		menu := b.buildMenu(&platform.Menu{Items: []*platform.MenuItem{first, second}}, "", 1)
+		defer dropOwner(1)
+		labelX := func(i int) float64 {
+			view := send(send(menu, "itemAtIndex:", uintptr(i)), "view")
+			return msgRect(send(view, "viewWithTag:", menuViewLabel), sel("frame")).Origin.X
+		}
+		if got := labelX(0); got != menuKeepOpenLabelX {
+			t.Fatalf("label x = %v, want %v before any icon", got, float64(menuKeepOpenLabelX))
+		}
+		first.Icon = &platform.MenuIcon{PNG: png, Template: true}
+		b.UpdateMenuItem(first)
+		if got := labelX(1); got != menuKeepOpenIconLabelX {
+			t.Errorf("label x of a row without an icon = %v, want %v once one row has one", got, float64(menuKeepOpenIconLabelX))
+		}
+	})
+}
