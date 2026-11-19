@@ -315,6 +315,7 @@ ui.Row(c).Gap(4).FocusGroup(ui.Horizontal).Children(func() {
 `Element.Shortcut` 只在元素或它内部的某个元素有焦点时才报告，而且它优先。
 有焦点的按钮保留 Enter 和空格，链接保留 Enter，切换按钮保留空格，所以
 `c.Shortcut(0, ui.KeyEnter)` 可在焦点位于其他位置时按下对话框的默认按钮。
+文本输入框同样保留 Enter：单行输入框用 [`Submitted`](text-input.md) 报告它，文本区域则换行。
 
 ```go
 if c.Shortcut(ui.Cmd, ui.KeyS) {

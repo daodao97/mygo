@@ -359,7 +359,8 @@ modifiers anywhere in the window, and `Element.Shortcut` only while the
 element or one inside it has the focus, which comes first. A focused button
 keeps Enter and Space, a link Enter, and a toggle Space, so
 `c.Shortcut(0, ui.KeyEnter)` presses a dialog's default button wherever
-else the focus is.
+else the focus is. A text input keeps Enter as well: a single-line one
+reports it with [`Submitted`](text-input.md), a text area breaks the line.
 
 ```go
 if c.Shortcut(ui.Cmd, ui.KeyS) {

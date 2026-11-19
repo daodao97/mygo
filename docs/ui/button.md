@@ -58,7 +58,8 @@ if ui.PrimaryButton(c, "Sign in").Clicked() || c.Shortcut(0, ui.KeyEnter) {
 ```
 
 A focused button keeps Enter and Space for itself, so the shortcut fires
-only when the focus is elsewhere.
+only when the focus is elsewhere. A focused single-line text input takes
+Enter too: ask its `Submitted` as well, for Enter in a form's field.
 
 ## Style
 

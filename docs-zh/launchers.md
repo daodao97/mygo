@@ -52,14 +52,18 @@ panel := mygo.NewWindow(mygo.WindowOptions{
 	DisableResize: true,
 	Content:       ui.View(app.view), // or URL: "/launcher"
 })
+var quitting bool // a quit closes the panel
+mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 panel.OnClose(func(e *mygo.CloseEvent) { // Escape, Cmd-W, Alt-F4
-	e.PreventDefault()
-	panel.Hide()
+	if !quitting {
+		e.PreventDefault()
+		panel.Hide()
+	}
 })
 panel.OnBlur(panel.Hide) // the user went elsewhere
 ```
 
-页面或原生 UI 未处理的 Escape 会关闭面板，`OnClose` 监听器将关闭改为隐藏。如果 Escape 需要先执行其他操作，就自行处理，如示例中先清空查询。
+页面或原生 UI 未处理的 Escape 会关闭面板，`OnClose` 监听器将关闭改为隐藏。如果 Escape 需要先执行其他操作，就自行处理，如示例中先清空查询。退出应用时也会关闭面板，而保持打开的面板会取消退出：监听器放行这些关闭，和隐藏到[托盘](menus.md#托盘图标)的窗口一样。
 
 根据指针位置确定用户当前使用的显示器，像 Spotlight 那样将面板放在从上往下三分之一处，并让搜索框获得键盘焦点：
 

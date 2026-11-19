@@ -362,6 +362,8 @@ fl := mygo.NewFlyout(mygo.FlyoutOptions{
 ```go
 mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory) // no Dock icon (macOS)
 mygo.App.OnWindowAllClosed(func() {})                     // keep running with no window
+var quitting bool // a quit closes the panel
+mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 
 mygo.App.WhenReady(func() {
 	panel := mygo.NewWindow(mygo.WindowOptions{
@@ -375,10 +377,13 @@ mygo.App.WhenReady(func() {
 		URL:         "/launcher",
 	})
 	// Hide rather than close, so that it shows at once the next time:
-	// on Escape, Cmd-W or Alt-F4, and as the user goes elsewhere.
+	// on Escape, Cmd-W or Alt-F4, and as the user goes elsewhere. A quit
+	// closes it: a window kept open cancels the quit.
 	panel.OnClose(func(e *mygo.CloseEvent) {
-		e.PreventDefault()
-		panel.Hide()
+		if !quitting {
+			e.PreventDefault()
+			panel.Hide()
+		}
 	})
 	panel.OnBlur(panel.Hide)
 

@@ -44,7 +44,7 @@ if ui.PrimaryButton(c, "Sign in").Clicked() || c.Shortcut(0, ui.KeyEnter) {
 }
 ```
 
-具有焦点的按钮会自行处理 Enter 和 Space，因此快捷键只在焦点位于别处时触发。
+具有焦点的按钮会自行处理 Enter 和 Space，因此快捷键只在焦点位于别处时触发。具有焦点的单行文本输入框也会自行处理 Enter：表单的输入框里按 Enter，还要查询它的 `Submitted`。
 
 ## 样式
 
