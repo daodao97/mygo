@@ -40,6 +40,8 @@ func TestClipboardDIBRejectsInvalidGeometry(t *testing.T) {
 func TestClipboardReadDataSkipsUnreadable(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	const nativeText = "中文 𠮷\r\n\r\n\t😀"
+	const wantText = "中文 𠮷\n\n\t😀"
 	// A window of a predefined class owns the clipboard and renders nothing
 	// when asked for the representation it only promised.
 	hwnd := createWindow(0, "STATIC", "", 0, 0, 0, 0, 0, 0)
@@ -52,7 +54,7 @@ func TestClipboardReadDataSkipsUnreadable(t *testing.T) {
 		t.Fatal("cannot open the clipboard")
 	}
 	procEmptyClipboard.Call()
-	if !setClipboardData(cfUnicodeText, utf16Bytes("KERO_TEST_123")) {
+	if !setClipboardData(cfUnicodeText, utf16Bytes(nativeText)) {
 		closeClipboard()
 		t.Fatal("cannot put text on the clipboard")
 	}
@@ -74,8 +76,11 @@ func TestClipboardReadDataSkipsUnreadable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading everything offered: %v", err)
 	}
-	if text, _ := d.Read(transfer.Text); string(text) != "KERO_TEST_123" {
-		t.Fatalf("text %q, formats %q", text, d.Formats())
+	if text, err := d.Read(transfer.Text); err != nil || string(text) != wantText {
+		t.Fatalf("ReadData text = %q, %v, want %q", text, err, wantText)
+	}
+	if text := c.ReadText(); text != wantText {
+		t.Fatalf("ReadText = %q, want %q", text, wantText)
 	}
 	// Asked for by name, the unreadable representation is still an error.
 	if _, err := c.ReadData([]transfer.Format{"EnterpriseDataProtectionId"}); err == nil {

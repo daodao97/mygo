@@ -324,7 +324,7 @@ func (t *dropTarget) drop(data, pt, effect uintptr) {
 				b = buf
 				switch id {
 				case cfUnicodeText:
-					b = []byte(oleText(buf))
+					b = []byte(unicodeTextToLF(oleText(buf)))
 				case uint16(cfHTML):
 					text := string(buf)
 					start, end := htmlOffset(text, "StartFragment:"), htmlOffset(text, "EndFragment:")

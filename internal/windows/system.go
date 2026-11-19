@@ -125,6 +125,11 @@ func utf16Bytes(s string) []byte {
 	return b
 }
 
+// unicodeTextToLF converts line endings from the native CF_UNICODETEXT format.
+func unicodeTextToLF(text string) string {
+	return strings.ReplaceAll(text, "\r\n", "\n")
+}
+
 func (c clipboard) ReadText() string {
 	if !c.open() {
 		return ""
@@ -135,7 +140,7 @@ func (c clipboard) ReadText() string {
 	for i := range u {
 		u[i] = binary.LittleEndian.Uint16(data[2*i:])
 	}
-	return string(utf16Decode(u))
+	return unicodeTextToLF(string(utf16Decode(u)))
 }
 
 func (c clipboard) WriteText(text string) { _ = c.WriteData(transfer.TextData(text), false, nil) }

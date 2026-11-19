@@ -230,6 +230,8 @@ type ClipboardModule struct{}
 var Clipboard ClipboardModule
 
 // ReadText returns the plain text on the clipboard.
+// On Windows it converts CRLF line endings to LF. Read(transfer.Text)
+// preserves the original bytes of a registered text/plain representation.
 func (ClipboardModule) ReadText() string {
 	needsApp("Clipboard.ReadText")
 	return clipboardNativeValue(func() string { return backend().Clipboard().ReadText() })

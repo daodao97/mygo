@@ -46,6 +46,9 @@ var (
 	formatEnums          = map[uintptr]*formatEnum{}
 )
 
+// CF_UNICODETEXT uses CRLF line endings. Match CRLF before a lone CR or LF.
+var unicodeTextLineEndings = strings.NewReplacer("\r\n", "\r\n", "\r", "\r\n", "\n", "\r\n")
+
 type dragDataObject struct {
 	vtbl      *[12]uintptr
 	refs      int32
@@ -336,7 +339,13 @@ func setTransferProviders(d *dragDataObject, data transfer.Data, session string)
 		}
 		switch f {
 		case transfer.Text:
-			add(cfUnicodeText, func() ([]byte, error) { b, err := data.Read(transfer.Text); return utf16Bytes(string(b)), err })
+			add(cfUnicodeText, func() ([]byte, error) {
+				b, err := data.Read(transfer.Text)
+				if err != nil {
+					return nil, err
+				}
+				return utf16Bytes(unicodeTextLineEndings.Replace(string(b))), nil
+			})
 		case transfer.HTML:
 			add(uint16(cfHTML), func() ([]byte, error) { b, err := data.Read(transfer.HTML); return htmlData(string(b)), err })
 		case transfer.PNG:

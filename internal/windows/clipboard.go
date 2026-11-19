@@ -296,7 +296,7 @@ func readClipboardRep(f transfer.Format, id uint16) ([]byte, error) {
 		}
 		switch id {
 		case cfUnicodeText:
-			b = []byte(oleText(b))
+			b = []byte(unicodeTextToLF(oleText(b)))
 		case uint16(cfHTML):
 			s := string(b)
 			start, end := htmlOffset(s, "StartFragment:"), htmlOffset(s, "EndFragment:")
