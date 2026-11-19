@@ -1137,15 +1137,6 @@ func (m *matches) around(e *node) Point {
 	return Point{}
 }
 
-// snapTo returns where to place a box at pos, s pixels a DIP, so that it
-// sits on the pixels as one at rest does, and what is left of the way to
-// pos.
-func snapTo(pos, rest, s float32) (placed, left float32) {
-	d := (pos - rest) * s
-	left = (d - float32(math.Round(float64(d)))) / s
-	return pos - left, left
-}
-
 // paint paints the elements flying in layer over it, as move listed them,
 // as the copy of an element dragged paints: in the window's clip, as
 // opaque as they are, whatever the opacity of the elements around them,

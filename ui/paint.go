@@ -374,11 +374,13 @@ func (p *Painter) element(e *node) {
 	// What the element paints lands on an opaque background when all of
 	// it that shows does.
 	p.opaque = p.covered(intersect(box, p.clip))
-	if e.world.Set && (p.lifting == nil || !translates(e.world)) {
+	if e.world.Set && ((p.lifting == nil && !e.pinWorld) || !translates(e.world)) {
 		// Transformed glyphs are drawn with grayscale coverage; but those
 		// of an element flying, which a translation shows where it is
-		// (matches.pin), as at rest, which renderers make gray while it
-		// moves, so that they are the text at rest once there.
+		// (matches.pin), or moving in a transition, which only its
+		// remainders to its resting pixels translate (pinsOnly), as at
+		// rest, which renderers make gray while it moves, so that they are
+		// the text at rest once there.
 		p.opaque = false
 	}
 	margin := e.shadowMargin()
@@ -520,6 +522,18 @@ func (p *Painter) element(e *node) {
 		checkFlat(p, e, flat)
 	}
 	p.opaque, p.under = savedOpaque, p.under[:under]
+}
+
+// pinsOnly reports whether the world transform of e, with base the one
+// the elements around it give it, only moves it by the remainders that
+// transitions moving it, or the elements around it, carry to their
+// resting pixels (transition.apply): the glyphs of text at rest, which
+// renderers make gray while they move.
+func pinsOnly(e *node, base scene.Affine) bool {
+	if !e.world.Set || !translates(e.world) || e.translatePct != ([2]float32{}) || e.poseM.Set || e.transform.set() && !e.pinned {
+		return false
+	}
+	return !base.Set || e.parent.pinWorld && base == e.parent.world
 }
 
 // translates reports whether m only moves what it transforms.

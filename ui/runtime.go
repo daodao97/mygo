@@ -1684,13 +1684,15 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	// where nothing of the element paints.
 	rt.commitFade *= e.fade()
 	e.world = e.transformAt(e.x, e.y)
+	var base scene.Affine
 	if e.parent != nil && e != e.c.overlay {
-		w := e.parent.world
+		base = e.parent.world
 		if contentStretch != nil && e.parent.scrolls() {
-			w = contentStretch(w, e.parent)
+			base = contentStretch(base, e.parent)
 		}
-		e.world = w.Mul(e.world)
+		e.world = base.Mul(e.world)
 	}
+	e.pinWorld = pinsOnly(e, base)
 	s.world = e.world
 	s.laidX, s.laidY = s.scrollX, s.scrollY
 	s.clips = e.flags&(flagClipX|flagClipY|flagScrollX|flagScrollY) != 0

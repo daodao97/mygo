@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"math"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/egoist/mygo/internal/scene"
 )
 
 // clockTester returns a tester whose frames happen at the time it sets.
@@ -969,5 +973,234 @@ func TestTransitionEntersInListRows(t *testing.T) {
 	tt.Frame()
 	if in.h != 30 {
 		t.Errorf("once in, the row is %v high", in.h)
+	}
+}
+
+// A moving Transition pins its subtree to the target's resting pixel phase and
+// carries only the fractional remainder on its transform, so text and sibling
+// boxes move together without glyph shimmer or extra settle repaints.
+func TestTransitionPinsSubtreeToRestingPixels(t *testing.T) {
+	tr := ElementTransition{Duration: 150 * time.Millisecond, Ease: Linear, Position: true}
+	whole := func(v float32) bool { return within(v, float32(math.Round(float64(v))), 1e-3) }
+	markerFill := func(s *scene.Scene) (scene.Op, bool) {
+		for _, op := range s.Ops {
+			if op.Kind == scene.OpFill && op.Color.R > 200 && op.Color.G < 40 {
+				return op, true
+			}
+		}
+		return scene.Op{}, false
+	}
+
+	for _, scale := range []float32{2, 1.5} {
+		t.Run(fmt.Sprintf("scale-%v", scale), func(t *testing.T) {
+			x, y := float32(20), float32(20)
+			tt, now := clockTester(func(c *context) {
+				coreBox(c).Size(320, 160).Children(func() {
+					coreRow(c).Key("card").Absolute().Left(x).Top(y).Gap(4).Transition(tr).Children(func() {
+						coreBox(c).Size(6, 12).Background(RGB(220, 30, 30))
+						coreText(c, "W iii").FontSize(14).TextColor(RGB(0, 0, 0))
+					})
+				})
+			}, 320, 160)
+			tt.SetScale(scale)
+
+			// Capture the resting glyphs and sibling marker offset at target (33.3, 14.3).
+			x, y = 33.3, 14.3
+			tt.Frame()
+			*now = now.Add(200 * time.Millisecond)
+			tt.Frame()
+			restGlyphs := slices.Clone(tt.rt.scene.Glyphs)
+			restMark, ok := markerFill(&tt.rt.scene)
+			if !ok || len(restGlyphs) != 4 {
+				t.Fatalf("rest mark=%v glyphs=%d", ok, len(restGlyphs))
+			}
+			restGapX := restMark.Rect.X - restGlyphs[0].X
+
+			// Move back to (20, 20), wait for rest, then animate into (33.3, 14.3).
+			x, y = 20, 20
+			tt.Frame()
+			*now = now.Add(200 * time.Millisecond)
+			tt.Frame()
+
+			x, y = 33.3, 14.3
+			tt.Frame()
+
+			type frameSnap struct {
+				ops    []scene.Op
+				glyphs []scene.Glyph
+				mark   scene.Op
+			}
+			var moving []frameSnap
+			for range 12 {
+				*now = now.Add(16 * time.Millisecond)
+				tt.Frame()
+				ops := glyphOps(&tt.rt.scene)
+				mark, ok := markerFill(&tt.rt.scene)
+				if !ok || len(ops) != 1 {
+					t.Fatalf("expected 1 glyph op and marker fill, got %d ops, mark=%v", len(ops), ok)
+				}
+				moving = append(moving, frameSnap{
+					ops:    ops,
+					glyphs: slices.Clone(tt.rt.scene.Glyphs),
+					mark:   mark,
+				})
+				if !tt.rt.animating {
+					break
+				}
+			}
+			if tt.rt.animating || tt.rt.repainting || tt.FramePending() {
+				t.Fatalf("final transition frame did not settle: animating=%v repainting=%v pending=%v",
+					tt.rt.animating, tt.rt.repainting, tt.FramePending())
+			}
+
+			sawFractional := false
+			for f, snap := range moving[:len(moving)-1] {
+				op := snap.ops[0]
+				gs := snap.glyphs[op.Start:op.End]
+				for i, g := range gs {
+					r := restGlyphs[i]
+					if g.U != r.U || g.V != r.V || g.W != r.W || g.H != r.H || !whole(g.X-r.X) || !whole(g.Y-r.Y) {
+						t.Errorf("frame %d glyph %d: (%v,%v) uv=(%v,%v,%v,%v), want integer px from rest (%v,%v) uv=(%v,%v,%v,%v)",
+							f, i, g.X, g.Y, g.U, g.V, g.W, g.H, r.X, r.Y, r.U, r.V, r.W, r.H)
+					}
+					if !within((g.X-gs[0].X)-(r.X-restGlyphs[0].X), 0, 1e-4) {
+						t.Errorf("frame %d glyph %d: spacing %v != rest %v", f, i, g.X-gs[0].X, r.X-restGlyphs[0].X)
+					}
+				}
+				tr := op.Transform
+				if tr.Set {
+					sawFractional = true
+					if math.Abs(float64(tr.X)) > 0.501 || math.Abs(float64(tr.Y)) > 0.501 {
+						t.Errorf("frame %d: remainder transform (%v, %v) exceeds half pixel", f, tr.X, tr.Y)
+					}
+				}
+				// OpFill folds translations into Rect.X; OpGlyphs stays at g.X+tr.X when fractional.
+				gapX := snap.mark.Rect.X + snap.mark.Transform.X - (gs[0].X + tr.X)
+				if !within(gapX, restGapX, 1e-3) {
+					t.Errorf("frame %d: marker-to-glyph gap = %v px, want %v px", f, gapX, restGapX)
+				}
+			}
+			if !sawFractional {
+				t.Error("expected at least one moving frame with a fractional subpixel remainder")
+			}
+
+			last := moving[len(moving)-1]
+			if last.ops[0].Transform.Set {
+				t.Errorf("resting frame kept glyph transform: %+v", last.ops[0].Transform)
+			}
+		})
+	}
+}
+
+// What a transition moves paints on its opaque background as at rest,
+// with the subpixel glyphs text rests with (ClearType on Windows), under
+// the remainder that pins it to its resting pixels; what translates
+// itself inside it still paints gray.
+func TestTransitionPinKeepsTextOpaque(t *testing.T) {
+	tr := ElementTransition{Duration: 150 * time.Millisecond, Ease: Linear, Position: true}
+	x := float32(20)
+	opaque := map[string]bool{}
+	probe := func(c *context, name string) *node {
+		return coreBox(c).Size(10, 10).Draw(func(p *Painter, r Rect) { opaque[name] = p.opaque })
+	}
+	tt, now := clockTester(func(c *context) {
+		coreBox(c).Size(320, 160).Children(func() {
+			coreRow(c).Key("card").Absolute().Left(x).Top(20).Transition(tr).Children(func() {
+				probe(c, "pinned")
+				coreText(c, "W iii").FontSize(14).TextColor(RGB(0, 0, 0))
+				coreColumn(c).Translate(0.25, 0).Children(func() { probe(c, "translated") })
+			})
+		})
+	}, 320, 160)
+	tt.SetScale(2)
+	tt.Frame()
+
+	x = 33.3
+	tt.Frame()
+	pins := 0
+	for range 12 {
+		*now = now.Add(16 * time.Millisecond)
+		clear(opaque)
+		tt.Frame()
+		if ops := glyphOps(&tt.rt.scene); len(ops) == 1 && ops[0].Transform.Set {
+			pins++
+			if !opaque["pinned"] {
+				t.Errorf("frame %d: text under its transition's pin paints without its opaque background", pins)
+			}
+		}
+		if got, ok := opaque["translated"]; !ok || got {
+			t.Errorf("frame %d: text translated inside the moving element: opaque %v (painted %v), want false", pins, got, ok)
+		}
+		if !tt.rt.animating {
+			break
+		}
+	}
+	if pins == 0 {
+		t.Fatal("no moving frame carried a pin")
+	}
+	if !opaque["pinned"] {
+		t.Error("text at rest paints without its opaque background")
+	}
+}
+
+// Interrupting a moving element to Exit pins the exiting ghost to its starting
+// position without jumping from the prior frame's pin translation.
+func TestTransitionExitPinsMovingGhost(t *testing.T) {
+	show := true
+	x := float32(20)
+	tr := ElementTransition{
+		Duration:     100 * time.Millisecond,
+		Ease:         Linear,
+		Position:     true,
+		Exit:         &Motion{X: -33.3, Opacity: 1},
+		ExitDuration: 100 * time.Millisecond,
+		ExitEase:     Linear,
+	}
+	tt, now := clockTester(func(c *context) {
+		coreBox(c).Size(300, 100).Children(func() {
+			if show {
+				coreBox(c).Key("item").Absolute().Left(x).Top(20).Transition(tr).Children(func() {
+					coreText(c, "W iii").FontSize(14).TextColor(RGB(0, 0, 0))
+				})
+			}
+		})
+	}, 300, 100)
+	tt.SetScale(1.5)
+	tt.Frame()
+
+	// Start moving to 60.4, advance mid-flight, then trigger Exit.
+	x = 60.4
+	tt.Frame()
+	*now = now.Add(40 * time.Millisecond)
+	tt.Frame()
+	preOps := glyphOps(&tt.rt.scene)
+	preGS := tt.rt.scene.Glyphs[preOps[0].Start:preOps[0].End]
+	preVisX := preGS[0].X + preOps[0].Transform.X
+
+	show = false
+	tt.Frame()
+	*now = now.Add(16 * time.Millisecond)
+	tt.Frame()
+	exitOps := glyphOps(&tt.rt.scene)
+	if len(exitOps) != 1 {
+		t.Fatalf("expected 1 exit glyph op, got %d", len(exitOps))
+	}
+	exitGS := tt.rt.scene.Glyphs[exitOps[0].Start:exitOps[0].End]
+	exitVisX := exitGS[0].X + exitOps[0].Transform.X
+	// Over 16ms at -33.3 DIP / 100ms * 1.5 scale = -7.99 px (cannot jump back by old pin).
+	if !within(exitVisX-(preVisX-33.3*0.16*1.5), 0, 0.2) {
+		t.Fatalf("exiting ghost jumped: preVisX=%v exitVisX=%v", preVisX, exitVisX)
+	}
+	for i, g := range exitGS {
+		if !within((g.X-exitGS[0].X)-(preGS[i].X-preGS[0].X), 0, 1e-4) {
+			t.Errorf("exiting glyph %d spacing drifted: %v vs %v", i, g.X-exitGS[0].X, preGS[i].X-preGS[0].X)
+		}
+	}
+
+	*now = now.Add(200 * time.Millisecond)
+	tt.Frame()
+	if tt.rt.animating || tt.rt.repainting || tt.FramePending() {
+		t.Fatalf("exited transition did not settle: animating=%v repainting=%v pending=%v",
+			tt.rt.animating, tt.rt.repainting, tt.FramePending())
 	}
 }

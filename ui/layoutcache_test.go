@@ -454,7 +454,7 @@ func TestLayoutInputs(t *testing.T) {
 		"ownText merged spansKey collapsed rowMinW field hidden insetSet placed flips originAttached originX originY originSet edgeMargin edgeMarginSet " +
 		"hold"
 	// Fields the layout never reads.
-	other := "epoch key valueInput id depth track transform translatePct world content contentSet " +
+	other := "epoch key valueInput id depth track transform translatePct world pinned pinWorld content contentSet " +
 		"pose poseAnim poseSet poseM poseFade reposed ink noCull backface bg fill grad stripes borderC borderStyle radius " +
 		"shadows material effect effecting cache grads blur opacity opacitySet undimmed unavailable cursor paintFn hitFn objectFn styleFn paintAfterFn faces " +
 		"inputFn observeFn textClient caret takesText noIME copyData webView maximizeButton fit gray objectPos dismissed rotate label widget role " +

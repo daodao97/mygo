@@ -768,6 +768,12 @@ type node struct {
 	// (zindex.go).
 	zIndex int32
 	zOrder bool
+	// pinned tells that the element's own transform is only the remainder
+	// a transition moving it carries to its resting pixels (snapTo), and
+	// pinWorld that its world is then only such remainders: a translation
+	// its text paints under as at rest (Painter.element). Beside zOrder,
+	// they keep to the bytes before serial.
+	pinned, pinWorld bool
 	// serial is the order the pass made the element in: of overlays, the
 	// one made last shows on top.
 	serial int32
