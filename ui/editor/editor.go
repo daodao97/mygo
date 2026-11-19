@@ -371,6 +371,14 @@ func (ed *editor) sync() {
 				}
 			}
 		}
+		// What Select Smaller takes back, and what a drag goes on from.
+		for i := range ed.larged {
+			ed.larged[i] = mapSel(ed.larged[i], cs)
+		}
+		ed.gesture.origin = mapSel(ed.gesture.origin, cs)
+		for i := range ed.gesture.others {
+			ed.gesture.others[i] = mapSel(ed.gesture.others[i], cs)
+		}
 		for i := range ed.find.scope {
 			ed.find.scope[i] = mapSel(ed.find.scope[i], cs)
 		}
