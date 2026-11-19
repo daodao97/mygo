@@ -335,6 +335,9 @@ func observe(*mygo.Window) (func(), bool) { return nil, false }
 func pressKey(*mygo.Window, uint16, string) bool { return false }
 
 func pressKeyComposing(*mygo.Window, uint16, string, string, string) bool { return false }
+func pressKeyComposingOver(*mygo.Window, uint16, string, string, string, int, int) bool {
+	return false
+}
 
 // X routes a drag to the window under the pointer, which
 // dropFiles, dropping on the content's, skips.

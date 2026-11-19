@@ -1296,16 +1296,28 @@ func TestComposeOver(handle uintptr, text string, caret int, commit bool, from, 
 // Japanese one commits the candidate and asks for nothing. It reports
 // false for a window showing a web page.
 func TestKeyComposing(handle uintptr, code uint16, chars, commit, command string) bool {
+	return TestKeyComposingOver(handle, code, chars, commit, command, -1, 0)
+}
+
+// TestKeyComposingOver is TestKeyComposing with commit replacing the
+// length UTF-16 units of the input method's document at from, unless from
+// is negative, as the Korean input method takes a jamo back with
+// Backspace: it inserts 하 over the 한 before the caret.
+func TestKeyComposingOver(handle uintptr, code uint16, chars, commit, command string, from, length int) bool {
 	w := theBackend.byNSWindow[id(handle)]
 	if w == nil || w.surface == nil {
 		return false
 	}
 	loadTestInput()
+	replace := nsRange{Location: nsNotFound}
+	if from >= 0 {
+		replace = nsRange{Location: uint(from), Length: uint(length)}
+	}
 	interpret := interpretKeys
 	defer func() { interpretKeys = interpret }()
 	interpretKeys = func(view, ev id) {
 		if commit != "" {
-			msgInsertText(view, sel("insertText:replacementRange:"), nsString(commit), nsRange{Location: nsNotFound})
+			msgInsertText(view, sel("insertText:replacementRange:"), nsString(commit), replace)
 		}
 		if command != "" {
 			send(view, "doCommandBySelector:", uintptr(sel(command)))

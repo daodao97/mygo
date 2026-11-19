@@ -150,6 +150,9 @@ func pressKey(*mygo.Window, uint16, string) bool { return false }
 func pressTab(*mygo.Window, bool) bool           { return false }
 
 func pressKeyComposing(*mygo.Window, uint16, string, string, string) bool { return false }
+func pressKeyComposingOver(*mygo.Window, uint16, string, string, string, int, int) bool {
+	return false
+}
 
 func dragFiles(*mygo.Window, float64, float64, []string) (bool, bool) { return false, false }
 

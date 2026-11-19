@@ -364,6 +364,9 @@ func popupItemEnabled(label string) (enabled, ok bool) {
 func pressKey(*mygo.Window, uint16, string) bool { return false }
 
 func pressKeyComposing(*mygo.Window, uint16, string, string, string) bool { return false }
+func pressKeyComposingOver(*mygo.Window, uint16, string, string, string, int, int) bool {
+	return false
+}
 
 // dragFiles drags files from another application to (x, y) of a window of
 // native UI and drops them, as OLE does, waiting for the target to answer.

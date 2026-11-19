@@ -278,6 +278,15 @@ func pressKeyComposing(w *mygo.Window, code uint16, chars, commit, command strin
 	return ok
 }
 
+// pressKeyComposingOver is pressKeyComposing with commit replacing the
+// length UTF-16 units at from, unless from is negative.
+func pressKeyComposingOver(w *mygo.Window, code uint16, chars, commit, command string, from, length int) (ok bool) {
+	mygo.RunOnMain(func() {
+		ok = darwin.TestKeyComposingOver(w.NativeHandle(), code, chars, commit, command, from, length)
+	})
+	return ok
+}
+
 func compose(w *mygo.Window, text string, caret int, commit bool) (ok bool) {
 	mygo.RunOnMain(func() { ok = darwin.TestCompose(w.NativeHandle(), text, caret, commit) })
 	return ok

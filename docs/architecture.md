@@ -3043,6 +3043,12 @@ either.
   alone, as Enter choosing a candidate: on macOS `keyDown:` sends no
   `KeyPressed` while there is marked text, as GTK's input method filters
   such keys on Linux and IMM32 makes them `VK_PROCESSKEY` on Windows.
+  Nor does it send Backspace while an input method is on: the Korean one
+  composes without marked text, replacing the syllable before the caret
+  (`insertText:replacementRange:`), and takes a jamo back with Backspace
+  the same way (한 → 하). A withheld key reaches the content when the
+  input method passes it on (`doCommandBySelector:`), as Backspace with
+  nothing to take back, in an empty input too.
   The guarantee is these filters' (in browsers, `isComposing`): a key
   that reaches the engine passed the input method, which may have left
   it with the composition still marked (IBus in sync mode gives one up
