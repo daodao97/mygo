@@ -137,7 +137,10 @@ the element that had it, and has the keys of the system's menus:
 
 - Up and Down move among the items, past separators and those disabled,
   and round; Home and End go to the first and the last, and typing the
-  first letters of an item goes to it.
+  first letters of an item goes to it. On Windows they move onto
+  disabled items too, as its menus do. A disabled item shows its
+  `Tooltip` as the pointer rests on it, which can say why, but choosing
+  it does nothing.
 - Right opens the submenu of the item, and Left closes it, the other way
   round [right to left](right-to-left.md); the pointer opens it as it
   moves onto the item. Heading for a submenu that shows, the pointer can

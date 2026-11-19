@@ -7093,15 +7093,17 @@ func (_handle Element) PointerPosition() (float32, float32, bool) {
 //	})
 //
 // The menu takes the focus as it opens and gives it back as it closes, to
-// the element that had it. Up and Down move among its items, past those
-// disabled, as do Home, End and typing the first letters of an item;
-// Right opens a submenu and Left closes it, the other way round right to
-// left (Direction); Enter and Space choose an item, Escape closes the
-// submenu on top, and a press outside the menu closes it. It shows below
-// and after where it opened, and on the other side where the window has
-// no room. Assistive technology sees a menu of items, check box items and
-// radio items, as the system's. ContextMenuBase is such a menu without a
-// look, for items of a layout of one's own.
+// the element that had it. Up and Down move among its items, as do Home,
+// End and typing the first letters of an item: past those disabled, as
+// macOS's and Linux's menus do, and onto them on Windows, as its menus do.
+// A disabled item shows its Tooltip as the pointer rests on it, and
+// choosing it does nothing. Right opens a submenu and Left closes it, the
+// other way round right to left (Direction); Enter and Space choose an
+// item, Escape closes the submenu on top, and a press outside the menu
+// closes it. It shows below and after where it opened, and on the other
+// side where the window has no room. Assistive technology sees a menu of
+// items, check box items and radio items, as the system's. ContextMenuBase
+// is such a menu without a look, for items of a layout of one's own.
 //
 // PopoverMenuButton draws the menu of a menu button so.
 //

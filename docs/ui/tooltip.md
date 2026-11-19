@@ -25,7 +25,10 @@ only an icon, and to what a label alone does not explain.
 
 The focus counts for the element an element gives it to, its
 `ActiveDescendant`, as a menu drawn in the window gives it to the item the
-keys highlight: that one's tip shows.
+keys highlight: that one's tip shows. A `Disabled` element shows none, as
+it takes neither the pointer nor the focus; one that must still say why it
+is unavailable is `AccessDisabled`, which keeps both, and keeps its tip as
+it is pressed or clicked.
 
 The tip takes the theme's `Inverse` and `InverseText` colors, its text and
 background turned over unless the theme sets them (see

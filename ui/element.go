@@ -515,8 +515,11 @@ type node struct {
 	opacity    float32
 	opacitySet bool
 	undimmed   bool // kept at its opacity while disabled (DimDisabled)
-	cursor     Cursor
-	paintFn    func(p *Painter, r Rect)
+	// unavailable marks a drawn menu's item that cannot be chosen, dimmed as
+	// if Disabled but still under the pointer (menuParts.item).
+	unavailable bool
+	cursor      Cursor
+	paintFn     func(p *Painter, r Rect)
 	// hitFn tells where in its box the element takes the pointer
 	// (HitTest).
 	hitFn func(x, y float32, r Rect) bool
