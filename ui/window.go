@@ -112,6 +112,7 @@ func (v *Content) AttachContent(conn *surface.Conn) {
 	if devAttach != nil {
 		devAttach(h)
 	}
+	h.watchFonts()
 	// Load the fonts while the window shows up.
 	go text.Shared().Preload()
 	h.requestFrame()
@@ -162,6 +163,9 @@ type windowHost struct {
 	// afterT and repaintT are the timers of After and Painter.After.
 	afterT, repaintT *time.Timer
 	detached         bool
+	// stopFonts stops hearing of the faces that load in browsers
+	// (watchFonts).
+	stopFonts func()
 	// shown tells that a frame was presented, which makes the window
 	// ready to show.
 	shown bool
@@ -778,6 +782,9 @@ func (h *windowHost) fit() bool {
 
 func (h *windowHost) detach() {
 	h.detached = true
+	if h.stopFonts != nil {
+		h.stopFonts()
+	}
 	if h.idleTimer != nil {
 		h.idleTimer.Stop()
 	}

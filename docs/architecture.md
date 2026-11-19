@@ -942,7 +942,15 @@ gained one field, `SurfaceNative.Canvas`.
   texts. Glyphs blend in turn (`join` false), at quarter-pixel positions,
   as Skia draws them. Chrome picks the optical size of the system font
   inconsistently between pages and canvases, so text of native UI can be
-  wider or narrower than a page's in the same font.
+  wider or narrower than a page's in the same font. `RegisterFont` adds
+  a `FontFace` with the descriptors of what its file covers
+  (`fontface.go` reads them): the ranges of a variable font's `wght` and
+  `wdth` axes and its `ital`/`slnt` style, or a static font's OS/2 weight
+  and width classes and italic bits, so that a variable font gives every
+  weight and the files of one family are faces apart. Faces load in the
+  background: once one has, the System lets go of its fonts, glyphs and
+  layouts, measured with a fallback, and each window builds and lays out
+  a frame anew (`System.WatchFonts`).
 - **Input.** Pointer events (captured on press) are the pointer, with
   clicks counted from presses close in time and place, buttons 3 and 4
   the back and forward keys. Those of a pointer that is not the primary

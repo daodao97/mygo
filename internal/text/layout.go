@@ -452,6 +452,9 @@ type System struct {
 	appFonts int
 	// fonts caches the font of each style.
 	fonts map[Style]*Font
+	// watchers hear of the fonts that loaded in the background, in
+	// browsers (WatchFonts).
+	watchers map[*func()]func()
 
 	// Layouts are kept by recency within a memory budget, not by how
 	// many frames a scrolling window has drawn.
@@ -627,6 +630,7 @@ func (s *System) engine() engine {
 			r := s.rendering
 			f.setFontRendering(r[0], r[1], r[2])
 		}
+		s.hearFontLoads()
 	}
 	return s.eng
 }
