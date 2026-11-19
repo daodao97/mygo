@@ -126,6 +126,20 @@ The user arranges the columns, as in Finder:
 - **Scrolling sideways.** Columns wider than the table scroll sideways, the
   header with them.
 - **Fixed columns.** A `Fixed` column stays where it is, as wide as it is.
+- **Frozen columns.** A `Frozen` column stays at the start of the table (on
+  the right, right to left) while the others scroll sideways under it. It is not `Fixed`: the user still
+  moves and resizes it. Only the columns from the first in a row are pinned,
+  each with a `Width` (or one the user gave it), and the pinned ones follow
+  the order of the columns. Give them room: the columns that scroll can only
+  be seen in what they leave, so pinned columns as wide as the table, or wider,
+  leave nothing of the others to see. The table does not unpin them.
+
+`ListState.VirtualColumns` makes the table build, in each row, only the
+columns in view and half its width of them on both sides, as it builds only
+the rows in view; the others are blocks as wide as they are, so that it
+scrolls as with all of them. It needs a `Width` for every column, else the
+table builds them all. The headers are built whole, and the cell builder is
+not called for a column out of view.
 
 `ListState.Columns` keeps the order and the widths, by the columns' `ID`s
 (their titles by default): set it from saved settings to restore them, and

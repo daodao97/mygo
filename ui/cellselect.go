@@ -296,12 +296,23 @@ func (f *listFrame) revealColumn(k int) {
 	if h == nil || st == nil {
 		return
 	}
+	if k < f.s.frozenN {
+		return // pinned: always in view
+	}
+	// The columns scrolling are seen in what the pinned ones leave: the
+	// view without them, which are at its start, on the right right to left.
+	from, to := st.x, st.x+st.w
+	if st.rtl {
+		to -= f.s.frozenW
+	} else {
+		from += f.s.frozenW
+	}
 	var dx float32
 	switch {
-	case h.x < st.x:
-		dx = h.x - st.x
-	case h.x+h.w > st.x+st.w:
-		dx = min(h.x+h.w-(st.x+st.w), h.x-st.x)
+	case h.x < from:
+		dx = h.x - from
+	case h.x+h.w > to:
+		dx = min(h.x+h.w-to, h.x-from)
 	}
 	if dx != 0 && scrollBy(st, dx, 0) {
 		f.c.rt.consumed = true
