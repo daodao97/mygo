@@ -1437,7 +1437,15 @@ never waits on the main thread, which receives the acknowledgments.
 `Page.Eval(code)` uses the webview's native async-function API
 (`callAsyncJavaScript` on macOS, `webkit_web_view_call_async_javascript_function`
 on Linux), which awaits promises and ignores the page's Content Security
-Policy. The code is first wrapped as `return JSON.stringify({ok, v: await (code)})`;
+Policy. Android's `evaluateJavascript` takes a script, not a function: the
+body is compiled as part of that script, in an async function at its top
+level, which the CSP does not govern either (an AsyncFunction made from a
+string in the page is eval, which a CSP without `'unsafe-eval'` refuses). A
+script that does not compile answers null, the only thing taken as a compile
+error there: it reads "SyntaxError: the script does not compile", without
+V8's message or the position, which `evaluateJavascript` does not return,
+and an error the page reports itself never starts with `SyntaxError`. The
+code is first wrapped as `return JSON.stringify({ok, v: await (code)})`;
 if that fails to compile the code is not an expression, and it is run again as
 a function body. A compile error means nothing executed, so code never runs
 twice. The result travels as a JSON string and is decoded in Go. A page whose
