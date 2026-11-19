@@ -201,10 +201,6 @@ type windowHost struct {
 	refresh *refreshWaiter
 }
 
-// displayWaiter is a GPU renderer that waits for the display off the main
-// thread: a frame following the last one draws once the display can take
-// it (Direct3D's), or once the last, built while the display could not,
-// was drawn (Metal's). refreshWaiter is one for frames drawn in memory.
 // firstFramePresented reports whether the window presented its first frame
 // (ui.Startup), watching for it on the surface's hook where it has one.
 func (h *windowHost) firstFramePresented() bool {
@@ -230,6 +226,10 @@ func (h *windowHost) firstFramePresented() bool {
 	return h.firstFrameShown
 }
 
+// displayWaiter is a GPU renderer that waits for the display off the main
+// thread: a frame following the last one draws once the display can take
+// it (Direct3D's), or once the last, built while the display could not,
+// was drawn (Metal's). refreshWaiter is one for frames drawn in memory.
 type displayWaiter interface {
 	// Ready reports whether a frame can draw at once; otherwise wake runs,
 	// on any goroutine, once it can.
