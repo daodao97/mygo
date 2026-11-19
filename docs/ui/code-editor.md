@@ -425,6 +425,17 @@ app.code.SetDiagnostics(buf.Version(), app.lsp.Diagnostics())
   `NoDefinitionClick` leaves Cmd+click to the editor's other clicks, link
   and all, and F12 and the context menu still go to the definition;
   `NoDefinitionLink` keeps Cmd+click but shows no link.
+- `ShowPopup` shows a panel the app builds below the caret at an offset,
+  as the usages or implementations a go to finds, to choose one from. It
+  takes the keyboard as it opens, for the app's own keys
+  (`panel.Shortcut`); Escape, a press outside it, an edit or `ClosePopup`
+  closes it, and the keyboard goes back to the editor. An offset outside
+  the text is taken as its nearest end.
+- `Rect` returns where the caret at a byte offset shows, in DIPs from the
+  top left of the editor's box as the last frame laid it out, and whether
+  its line shows (a line a fold hides does not). An app draws what belongs
+  to a range of the text from the `Rect` of its first and last offsets, as a
+  frame around it, in an element's `DrawOver`.
 
 ## Replacing ranges
 

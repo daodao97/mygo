@@ -148,8 +148,18 @@ func (ed *editor) build(c *ui.Context, buf *Buffer, o options) ui.Element {
 			}
 			return ui.Box(c).Key(key).Absolute().Left(ed.textX+cr.X-ed.scrollX).Top(float32(float64(cr.Y)-ed.scrollY)).Size(1, cr.H).PassThrough(), true
 		}
-		var caretAnchor, hoverAnchor ui.Element
-		var hasCaret, hasHover bool
+		var caretAnchor, hoverAnchor, popupAnchor ui.Element
+		var hasCaret, hasHover, hasPopup bool
+		if ed.popup.shown && ed.popup.version != ed.view.version {
+			ed.closePopup()
+		}
+		if ed.popup.shown {
+			// A fold can hide the line it opened at, where there is nothing
+			// to attach it to.
+			if popupAnchor, hasPopup = anchor("code popup anchor", ed.popup.at); !hasPopup {
+				ed.closePopup()
+			}
+		}
 		if ed.completing() {
 			caretAnchor, hasCaret = anchor("code caret", ed.complete.at)
 		}
@@ -168,6 +178,9 @@ func (ed *editor) build(c *ui.Context, buf *Buffer, o options) ui.Element {
 		}
 		if hasHover {
 			ed.buildHover(c, hoverAnchor)
+		}
+		if hasPopup {
+			ed.buildPopup(c, popupAnchor)
 		}
 	})
 	// Once the hover has said whether the pointer or the keyboard is in

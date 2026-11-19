@@ -377,6 +377,25 @@ func (st *State) LineTop(line int) float64 {
 	return st.ed.view.heights.top(line)
 }
 
+// Rect returns where the caret at byte offset off shows, in DIPs from the
+// top left of the editor's box, as the last frame laid it out, and whether
+// its line shows: a line a fold hides doesn't. It is as high as a row; the
+// row of off, with SoftWrap. A hosted frame around text draws its edges
+// from the Rect of its first and last offsets, in an element's DrawOver.
+// For a line far from the view with SoftWrap, Y may be an estimate for a
+// few frames, as LineTop's is.
+func (st *State) Rect(off int) (ui.Rect, bool) {
+	st.ensure()
+	off = max(0, min(off, st.ed.view.text.Len()))
+	r, ok := st.ed.caretRect(off)
+	if !ok {
+		return ui.Rect{}, false
+	}
+	r.X += st.ed.textX - st.ed.scrollX
+	r.Y -= float32(st.ed.scrollY)
+	return r, true
+}
+
 // Find opens the find bar with query, and selects its first match after
 // the caret.
 func (st *State) Find(query string) {
