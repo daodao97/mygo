@@ -19,6 +19,7 @@ import (
 	"golang.org/x/image/font/gofont/gomediumitalic"
 	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/gofont/gosmallcaps"
 )
 
 func TestLayoutWraps(t *testing.T) {
@@ -1507,10 +1508,14 @@ func TestFontFamilies(t *testing.T) {
 		t.Error("listing again changed the families")
 	}
 	t.Logf("again in %v", time.Since(start))
-	if err := s.RegisterFont(gobold.TTF, ""); err != nil {
+	// Not Go, which a font registered under its own family would take from
+	// the faces other tests register under families of their own: the
+	// families given are the process's, as fontconfig's faces are.
+	if err := s.RegisterFont(gosmallcaps.TTF, ""); err != nil {
 		t.Fatal(err)
 	}
-	if i := slices.IndexFunc(s.FontFamilies(), func(f FontFamily) bool { return f.Name == "Go" }); i != 0 {
+	after := s.FontFamilies()
+	if i := slices.IndexFunc(after, func(f FontFamily) bool { return f.Name == "Go Smallcaps" }); i < 0 || i > len(app) || !after[i].Registered {
 		t.Errorf("a font registered after listing is at %d", i)
 	}
 
