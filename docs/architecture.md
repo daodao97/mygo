@@ -1099,6 +1099,19 @@ fake host. Desktop files of `darwin` and `linux` exclude `ios` and
   nothing. Android draws with the GL renderer, OpenGL ES 3 in an EGL context
   of its own (`gl.NewWindow`) on the surface's ANativeWindow; the host
   waits for Go to let go of it before Android does (`SurfaceDestroyed`).
+  The context outlives the surface: as the app goes to the background and
+  the SurfaceView's surface goes, `SurfaceRenew` has the content keep its
+  renderer (`ui.renewableRenderer`), which destroys only its EGL surface
+  (`gl.Window.Detach`), keeping the context with its programs, atlases and
+  textures; the first frame on the next ANativeWindow makes an EGL surface
+  for it with the saved configuration and makes the same context current
+  (`Attach`), and draws whole, in milliseconds. Making the context and
+  compiling the shaders again took a second or more, past the second
+  Android's `SurfaceSyncGroup` waits for the window's first draw, which
+  showed black as the app came back (#2055). A renderer that cannot
+  attach is released and made anew; the one kept goes with the window
+  and with `SurfaceLowMemory`, so a backgrounded app keeps its GL objects
+  until the system is short of memory.
   Android's text is Minikin's and Skia's, through the host's `Paint`
   (`internal/text/paint_android.go`): an engine sharing the browsers'
   layout of grapheme clusters (`clusters.go`), whose words the host
@@ -1108,7 +1121,19 @@ fake host. Desktop files of `darwin` and `linux` exclude `ios` and
   at the display's refreshes (CADisplayLink, Choreographer) when asked,
   paced (`platform.PacedSurface`): on iOS, one that comes while the Metal
   renderer fetches a drawable draws once it has it (`FrameNow`), rather
-  than Go's main thread waiting for it, and the fingers with it.
+  than Go's main thread waiting for it, and the fingers with it. On
+  Android, a frame asked for crosses to the UI thread before Choreographer
+  asks for the next refresh: while the view animates (a fling, a glide),
+  each frame asks for the next as it starts (`platform.FrameAheadSurface`,
+  `engine.frameAhead`), not once presented, so a frame taking most of a
+  refresh does not halve the rate; the surface's `pending` and the host's
+  `framePending` coalesce the request the frame's end makes. The host asks
+  the display for its fastest mode (`Surface.setFrameRate`, always rather
+  than only where seamless from Android 12), tells Go the active mode's rate
+  as it changes, and has the window's first draw with a new surface wait
+  for Go's first frame on it (`surfaceRedrawNeededAsync`; Go tells it with
+  `FirstFrame`, again after each `SurfaceRenew`), as the splash does, for
+  4 seconds at most.
 - **Input.** A finger is the pointer while it touches (`SurfaceEvent.Touch`,
   the first one; two pinch), and `ui` pans what scrolls under one that
   moves and flings it on (`ui/touch.go`, reached only where touches come:

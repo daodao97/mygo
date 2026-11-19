@@ -23,6 +23,7 @@ class MyGoActivity : ComponentActivity() {
         HostImpl.restoring = HostImpl.restoring || savedInstanceState != null
         HostImpl.attach(this)
         HostImpl.applyBars()
+        HostImpl.activityCreated()
         holdSplash()
         val back = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
@@ -49,11 +50,14 @@ class MyGoActivity : ComponentActivity() {
     /**
      * The system's splash stays until the window first draws: holding that back
      * until the app has drawn leaves no moment of an empty surface, black on a
-     * cold start. What shows no first frame goes on after a while.
+     * cold start, and on each Activity after it in a process kept alive, whose
+     * surfaces Go draws on anew (HostImpl.activityCreated). The surface's own
+     * draw waits for Go's frame on it too (SurfaceWindow's
+     * surfaceRedrawNeededAsync). What shows no first frame goes on after a while.
      */
     private fun holdSplash() {
         val content = findViewById<android.view.View>(android.R.id.content)
-        val until = android.os.SystemClock.uptimeMillis() + 4000
+        val until = android.os.SystemClock.uptimeMillis() + SurfaceWindow.FIRST_FRAME_WAIT_MS
         content.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
             override fun onPreDraw(): Boolean {
                 if (!HostImpl.drew && android.os.SystemClock.uptimeMillis() < until) return false

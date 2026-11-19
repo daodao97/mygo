@@ -722,3 +722,126 @@ func bitmapView(bm *Bitmap) func(c *context) {
 		})
 	}
 }
+
+// renewSurface is a test surface whose native objects go and come back,
+// as Android's SurfaceView's surface does as the app goes to the
+// background and returns, and which counts the first frames it is told of.
+type renewSurface struct {
+	testSurface
+	native      platform.SurfaceNative
+	firstFrames int
+}
+
+func (s *renewSurface) Native() platform.SurfaceNative { return s.native }
+func (s *renewSurface) FirstFrame()                    { s.firstFrames++ }
+
+// renewGPU is a GPU renderer that outlives the surface's native objects,
+// as Android's does (renewableRenderer); Attach fails while failAttach.
+type renewGPU struct {
+	testGPU
+	detached, invalidated int
+	attached              []platform.SurfaceNative
+	failAttach            bool
+}
+
+func (g *renewGPU) Detach()     { g.detached++ }
+func (g *renewGPU) Invalidate() { g.invalidated++ }
+func (g *renewGPU) Attach(n platform.SurfaceNative) error {
+	if g.failAttach {
+		return errors.New("no surface")
+	}
+	g.attached = append(g.attached, n)
+	return nil
+}
+
+// TestRendererKeptAcrossSurfaceRenew checks that a renderer that outlives
+// the surface's native objects is kept as they go (SurfaceRenew), rather
+// than released, and attached to the new ones by the next frame, which
+// draws whole with it and is told to the surface as its first frame on
+// them; as Android's EGL context and its programs stay while the app is
+// in the background, and the first frame on its return takes milliseconds
+// rather than the second that compiling them again took (#2055). One that
+// cannot attach is released and another made; one kept goes with the
+// system's low memory and with the window.
+func TestRendererKeptAcrossSurfaceRenew(t *testing.T) {
+	var made []*renewGPU
+	h, _, frame := gpuHost(t, func() (gpuRenderer, error) {
+		g := &renewGPU{}
+		made = append(made, g)
+		return g, nil
+	})
+	s := &renewSurface{native: platform.SurfaceNative{Window: 1}}
+	h.conn.Surface = s
+	frame()
+	if len(made) != 1 || made[0].frames != 1 || s.firstFrames != 1 {
+		t.Fatalf("first frame: %d renderers, %d first frames", len(made), s.firstFrames)
+	}
+	g := made[0]
+
+	// The surface goes: the renderer lets go of it and stays.
+	s.native = platform.SurfaceNative{}
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
+	if g.detached != 1 || g.released != 0 || h.gpu != nil || h.parked != g {
+		t.Fatalf("surface gone: detached %d, released %d times, renderer %v, kept %v", g.detached, g.released, h.gpu, h.parked)
+	}
+
+	// It comes back: the next frame draws with the same renderer, whole.
+	s.native = platform.SurfaceNative{Window: 2}
+	frame()
+	if len(made) != 1 || h.gpu != g || h.parked != nil || !slices.Equal(g.attached, []platform.SurfaceNative{s.native}) {
+		t.Fatalf("surface back: %d renderers, attached to %v", len(made), g.attached)
+	}
+	if g.invalidated != 1 || g.frames != 2 || s.firstFrames != 2 || s.pixels != 0 {
+		t.Fatalf("surface back: invalidated %d times, %d frames on the GPU, %d first frames, %d in memory", g.invalidated, g.frames, s.firstFrames, s.pixels)
+	}
+
+	// One that cannot attach to the new surface is released, and another
+	// made for it.
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
+	g.failAttach = true
+	s.native = platform.SurfaceNative{Window: 3}
+	frame()
+	if g.released != 1 || len(made) != 2 || h.gpu != made[1] || made[1].frames != 1 {
+		t.Fatalf("attach failed: released %d times, %d renderers", g.released, len(made))
+	}
+
+	// The system short of memory takes the one kept, as does the window
+	// closing.
+	g = made[1]
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceLowMemory})
+	if g.released != 1 || h.parked != nil {
+		t.Fatalf("low memory: released %d times, kept %v", g.released, h.parked)
+	}
+	frame()
+	if len(made) != 3 || made[2].frames != 1 {
+		t.Fatalf("after low memory: %d renderers", len(made))
+	}
+	g = made[2]
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
+	h.detach()
+	if g.released != 1 || h.parked != nil {
+		t.Errorf("closed: released %d times, kept %v", g.released, h.parked)
+	}
+}
+
+// TestRendererReleasedOnSurfaceRenew checks that a renderer that cannot
+// outlive the surface's native objects, as every desktop's, is released
+// as they change and made again by the next frame.
+func TestRendererReleasedOnSurfaceRenew(t *testing.T) {
+	var made []*testGPU
+	h, _, frame := gpuHost(t, func() (gpuRenderer, error) {
+		g := &testGPU{}
+		made = append(made, g)
+		return g, nil
+	})
+	frame()
+	h.event(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
+	if len(made) != 1 || made[0].released != 1 || h.gpu != nil || h.parked != nil {
+		t.Fatalf("renewed: %d renderers, released %d times", len(made), made[0].released)
+	}
+	frame()
+	if len(made) != 2 || made[1].frames != 1 {
+		t.Errorf("after: %d renderers", len(made))
+	}
+}

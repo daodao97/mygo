@@ -188,6 +188,9 @@ func (s *firstFrameSurface) FirstFrame() { s.firstFrames = append(s.firstFrames,
 // frame, as Windows' keeps its window out of sight until then, is told
 // once, as the frame reached it, before the window is ready to show: not
 // for a capture's frame, which never reaches it, nor for the frames after.
+// It is told again of the first frame on its new native objects, after a
+// SurfaceRenew, as Android's host holds the window's first draw until it
+// shows one; the window is not ready to show again.
 func TestFirstFrameTold(t *testing.T) {
 	o := newOccludedHost(t, false)
 	s := &firstFrameSurface{o: o}
@@ -202,6 +205,18 @@ func TestFirstFrameTold(t *testing.T) {
 	o.frame()
 	if len(s.firstFrames) != 1 || s.firstFrames[0] != 0 || o.ready != 1 {
 		t.Fatalf("told of the first frame %d times, when ready to show %v times; ready %d times", len(s.firstFrames), s.firstFrames, o.ready)
+	}
+
+	o.event(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
+	if len(s.firstFrames) != 1 {
+		t.Fatalf("renewed: told of a first frame before one")
+	}
+	o.frame()
+	o.count = 2
+	o.rt.changed()
+	o.frame()
+	if len(s.firstFrames) != 2 || o.ready != 1 {
+		t.Fatalf("renewed: told of the first frame %d times in all, ready %d times", len(s.firstFrames), o.ready)
 	}
 }
 

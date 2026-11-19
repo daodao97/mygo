@@ -200,11 +200,30 @@ object HostImpl : HostCalls {
         return r
     }
 
-    /** Whether the app has something on screen, which the splash waits for. */
+    /**
+     * Whether the app has something on screen in the Activity, which the
+     * splash waits for (MyGoActivity.holdSplash).
+     */
     @Volatile var drew = false
 
+    /**
+     * A new Activity shows the app's windows, and waits anew for something
+     * on screen (drew), as for none yet: a surface Go draws on is made anew
+     * with it, empty until Go's first frame on it, while a web view keeps
+     * the page it showed. The Activity is not attached yet: what shows is
+     * what is visible under the root.
+     */
+    fun activityCreated() {
+        val shown = windows.values.filter { w ->
+            generateSequence(w.view) { it.parent as? View }.takeWhile { it !== root }.all { it.visibility == View.VISIBLE }
+        }
+        drew = shown.isNotEmpty() && shown.all { it is WebWindow && it.pageShown }
+    }
+
+    /** Go presented its first frame on a window's surface, as it was made or made anew. */
     override fun firstFrame(c: FirstFrameCall) {
         drew = true
+        surface(c.id)?.drawn()
     }
 
     override fun appInfo(): AppInfoReply {

@@ -797,6 +797,7 @@ func (rt *engine) runFrame() {
 	if rt.listDrag != nil {
 		rt.listDrag(rt)
 	}
+	rt.frameAhead()
 	// What the scrolls since the last frame bring under the pointer
 	// hovers as the view builds.
 	rt.hoverScrolled()
@@ -1016,6 +1017,23 @@ func (rt *engine) runFrame() {
 	rt.c.finish()
 	clear(rt.byID)
 	rt.stats.end(rt)
+}
+
+// frameAhead asks for the next frame as this one starts, rather than once
+// it was presented (next), while what moved since the last (a fling, a
+// glide, a snap) goes on moving and some of the window shows, where the
+// surface asks the display for frames late (platform.FrameAheadSurface):
+// the frame after comes at the display's next refresh even when this one
+// takes most of one. next asks for it again, which the surface coalesces;
+// rt.animating, once set, stays set to the frame's end, so this asks for
+// no frame that next would not.
+func (rt *engine) frameAhead() {
+	if !rt.animating || rt.host.occluded() {
+		return
+	}
+	if a, ok := rt.host.(interface{ frameAhead() bool }); ok && a.frameAhead() {
+		rt.host.requestFrame()
+	}
 }
 
 // now returns the time, which a Tester sets (clock).
