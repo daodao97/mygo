@@ -283,3 +283,55 @@ e\_mail vis{\v hid}ible\par alpha\cell beta\cell\row {\field{\*\fldinst HYPERLIN
 		t.Errorf("link %q", l)
 	}
 }
+
+// TestParseHTMLLineBreaks checks that a <br> breaks a line as browsers
+// break it: the last content of a block adds no line after it.
+func TestParseHTMLLineBreaks(t *testing.T) {
+	for _, c := range []struct{ html, want string }{
+		{"<p>a</p><p></p><p>b</p>", "a\n\nb"},
+		{"<p>a</p><p><br></p><p>b</p>", "a\n\nb"},
+		{"<p><br></p><p>z</p>", "\nz"},
+		{"<p>a<br></p><p>z</p>", "a\nz"},
+		{"<p>a<br><br></p><p>z</p>", "a\n\nz"},
+		{"<p>a<br>b</p>", "a\nb"},
+		{"<p>a<br><br>b</p>", "a\n\nb"},
+		{"<p><b>a<br></b> </p><p>z</p>", "a\nz"},
+		{"<p>a<br></p><p></p><p>z</p>", "a\n\nz"},
+		{"<div>a</div><div><br></div><div>b</div>", "a\n\nb"},
+		{"<div>a<br></div><div>z</div>", "a\nz"},
+		{"<div>a<br><p>b</p></div>", "a\nb"},
+		{"<ul><li>a<br></li><li>b</li></ul>", "a\nb"},
+		{"<h1>a<br></h1><p>z</p>", "a\nz"},
+		{"<h2><br></h2><p>z</p>", "\nz"},
+		{"<blockquote><p><br></p></blockquote><p>z</p>", "\nz"},
+		{"a<br>b<br>", "a\nb"},
+	} {
+		if got := ParseHTML(c.html).String(); got != c.want {
+			t.Errorf("%s: %q, want %q", c.html, got, c.want)
+		}
+	}
+}
+
+// TestHTMLBlankParagraphs checks that blank paragraphs come back from
+// HTML as many as they were, not one more each time.
+func TestHTMLBlankParagraphs(t *testing.T) {
+	blank := Paragraph{}
+	a := Paragraph{Runs: []Run{{Text: "a"}}}
+	b := Paragraph{Runs: []Run{{Text: "b"}}}
+	for _, in := range []Text{
+		TextOf(a, blank, b),
+		TextOf(a, blank, blank, blank, b),
+		TextOf(blank, a),
+		TextOf(a, Paragraph{Style: ParagraphStyle{Heading: 2}}, b),
+		TextOf(a, Paragraph{Style: ParagraphStyle{Quote: true}}, b),
+	} {
+		html := in.HTML()
+		out := ParseHTML(html)
+		if !out.Equal(in) {
+			t.Errorf("%s: %q, want %q", html, out.String(), in.String())
+		}
+		if again := ParseHTML(out.HTML()); !again.Equal(in) {
+			t.Errorf("%s again: %q, want %q", html, again.String(), in.String())
+		}
+	}
+}
