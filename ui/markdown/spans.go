@@ -18,8 +18,10 @@ type piece struct {
 	link  int
 	spans []ui.Span
 	// dest is where a mention, a reference (Options.Resolve) or code
-	// (Options.CodeLink) goes.
-	dest string
+	// (Options.CodeLink) goes, and color the color Options.LinkColor
+	// gave the link, none for Theme.Link.
+	dest  string
+	color Color
 }
 
 // runMark notes that the text of a paragraph from rune comes from the
@@ -54,6 +56,11 @@ type para struct {
 	refs      []int
 	resolved  []string
 	resolvers uint8
+	// colored are the destinations of its links and the colors
+	// Options.LinkColor, which linkColor says was set, gave them: it
+	// builds anew when it answers otherwise.
+	colored   []coloredLink
+	linkColor bool
 	// width is the width of its text on one line, once measured.
 	width    float32
 	measured bool
@@ -92,15 +99,35 @@ type spanBuilder struct {
 	math func(tex string, size float32) (InlineObject, bool)
 	// linkIcon makes the objects at the start of links (Options.LinkIcon).
 	linkIcon func(dest string, size float32) (InlineObject, bool)
+	// linkColor colors links (Options.LinkColor).
+	linkColor func(dest string) Color
 	// resolve makes mentions, references and code links (Options.Resolve
 	// and CodeLink), and resolvers says which of those are set.
 	resolve   func(in parser.Inline) (string, bool)
 	resolvers uint8
 }
 
+// coloredLink is the color Options.LinkColor gave a link to dest.
+type coloredLink struct {
+	dest  string
+	color Color
+}
+
+// colorLink returns the color Options.LinkColor gives a link to dest,
+// none for Theme.Link, and notes it, for the paragraph to follow its
+// answers.
+func (sb *spanBuilder) colorLink(dest string) Color {
+	if sb.linkColor == nil || dest == "" {
+		return Color{}
+	}
+	c := sb.linkColor(dest)
+	sb.p.colored = append(sb.p.colored, coloredLink{dest, c})
+	return c
+}
+
 // build makes the paragraph of block i, of base style s.
 func (sb *spanBuilder) build(p *para, base spanStyle) {
-	*p = para{pieces: p.pieces[:0], marks: p.marks[:0], refs: p.refs[:0], resolved: p.resolved[:0], resolvers: sb.resolvers}
+	*p = para{pieces: p.pieces[:0], marks: p.marks[:0], refs: p.refs[:0], resolved: p.resolved[:0], resolvers: sb.resolvers, colored: p.colored[:0], linkColor: sb.linkColor != nil}
 	sb.p = p
 	sb.in = sb.d.Inlines(sb.block)
 	sb.html = sb.html[:0]
@@ -303,14 +330,15 @@ func (sb *spanBuilder) inlines(from, to int, s spanStyle) {
 				sb.addText(n, exact, sb.htmlStyle(s), link)
 				continue
 			}
+			c := sb.colorLink(dest)
 			cs := sb.htmlStyle(s)
-			cs.inLink, cs.color = true, Color{}
+			cs.inLink, cs.color = true, c
 			if n.Kind == parser.Mention {
 				// As GitHub shows them.
 				cs.weight = sb.th.StrongWeight
 			}
 			sb.addText(n, exact, cs, k)
-			sb.cur.dest = dest
+			sb.cur.dest, sb.cur.color = dest, c
 		case parser.Code:
 			cs := sb.htmlStyle(s)
 			cs.code = true
@@ -334,8 +362,12 @@ func (sb *spanBuilder) inlines(from, to int, s spanStyle) {
 			}
 			// A link of its own that keeps the code's look.
 			cs.inLink = true
+			c := sb.colorLink(dest)
+			if c.A > 0 {
+				cs.color = c
+			}
 			sb.add(n.Text, a, min(a+len(n.Text), z), z-a == len(n.Text), cs, k)
-			sb.cur.dest = dest
+			sb.cur.dest, sb.cur.color = dest, c
 		case parser.Emphasis:
 			cs := s
 			cs.italic = true
@@ -359,11 +391,23 @@ func (sb *spanBuilder) inlines(from, to int, s spanStyle) {
 			cs := s
 			cs.inLink, cs.pendingLink = true, n.Pending
 			cs.color = Color{} // the link's
+			if !n.Pending {
+				// A link still being written has none yet, as its icon.
+				cs.color = sb.colorLink(n.Dest)
+			}
 			save := sb.linkIndex
 			sb.linkIndex = k
+			first := len(sb.p.pieces)
 			sb.addLinkIcon(n, cs, k)
 			sb.inlines(k+1, n.Next, cs)
 			sb.linkIndex = save
+			if cs.color.A > 0 {
+				for i := first; i < len(sb.p.pieces); i++ {
+					if sb.p.pieces[i].link == k {
+						sb.p.pieces[i].color = cs.color
+					}
+				}
+			}
 		case parser.Image:
 			// Images within text show their description; a paragraph of
 			// images alone shows the images (see imagesOnly).
