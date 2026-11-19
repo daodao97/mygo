@@ -366,18 +366,21 @@ jobs:
         include:
           - { name: iOS app, os: macos-latest, platform: ios/simulator }
           - { name: Android app, os: ubuntu-latest, platform: android/arm64 }
+          # Windows runs Gradle through gradlew.bat and the NDK's .cmd
+          # compilers, which Linux never reaches.
+          - { name: Android app on Windows, os: windows-latest, platform: android/arm64 }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - uses: actions/setup-java@v6
-        if: runner.os == 'Linux'
+        if: startsWith(matrix.platform, 'android')
         with:
           distribution: temurin
           java-version: 17
       - uses: android-actions/setup-android@v4
-        if: runner.os == 'Linux'
+        if: startsWith(matrix.platform, 'android')
         with:
           packages: platform-tools platforms;android-36 ndk;27.1.12297006 cmake;3.22.1
       - name: Build the app

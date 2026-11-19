@@ -8,5 +8,5 @@ import "embed"
 
 // Files are the host's Gradle project.
 //
-//go:embed settings.gradle.kts build.gradle.kts gradle.properties gradlew gradle app mygo
+//go:embed settings.gradle.kts build.gradle.kts gradle.properties gradlew gradlew.bat gradle app mygo
 var Files embed.FS

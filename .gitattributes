@@ -1,1 +1,4 @@
 * text=auto eol=lf
+# Gradle's wrapper script for Windows keeps its CRLF line endings, which
+# cmd.exe needs, byte for byte as Gradle writes it (mygo embeds it).
+internal/mobile/android/gradlew.bat -text
