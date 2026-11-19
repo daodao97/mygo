@@ -392,7 +392,7 @@ GTK flags no repeat, so on Linux a press of a key held already, with no
 release between, is one, as X11 (with detectable auto-repeat, which GDK
 turns on) and Wayland send them.
 
-`ui.Cmd` is Command on macOS and Ctrl elsewhere. `ui.KeyBack` and
+`ui.Cmd` is Command on macOS and iOS, and Ctrl elsewhere. `ui.KeyBack` and
 `ui.KeyForward` are the back and forward buttons of a mouse and the keys of
 keyboards that have them, which a [router](navigation.md) takes. Shortcuts
 of [menus](../menus.md) still work, and the Edit menu's roles (cut, copy,
@@ -409,7 +409,7 @@ layout, stands for the key at its place on a US keyboard, so Cmd+ы is
 `ui.KeyS`. Typed without those modifiers, it stays text.
 
 A focused text input takes the editing keys of the platform first: on
-macOS, Option and Command with the arrows and Backspace, and Control with
+macOS and iOS, Option and Command with the arrows and Backspace, and Control with
 A, E, B, F, N, P, D, H and K, as in other Mac apps; elsewhere, it leaves Alt
 and the arrows, which go back and forward, and the function keys.
 

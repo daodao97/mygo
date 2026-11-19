@@ -1046,9 +1046,9 @@ func (rt *engine) scrollKey(mods Modifiers, key Key) bool {
 		page = 1
 	case mods == 0 && key == KeyPageUp, mods == Shift && key == KeySpace:
 		page = -1
-	case (mods == 0 || mods == Cmd) && key == KeyHome, mods == Cmd && key == KeyUp && runtime.GOOS == "darwin":
+	case (mods == 0 || mods == Cmd) && key == KeyHome, mods == Cmd && key == KeyUp && platform.MacKeys:
 		dy = -far
-	case (mods == 0 || mods == Cmd) && key == KeyEnd, mods == Cmd && key == KeyDown && runtime.GOOS == "darwin":
+	case (mods == 0 || mods == Cmd) && key == KeyEnd, mods == Cmd && key == KeyDown && platform.MacKeys:
 		dy = far
 	default:
 		return false

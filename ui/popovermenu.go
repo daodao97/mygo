@@ -1429,7 +1429,7 @@ func shortcutText(a string) string {
 		key = strings.ToUpper(key)
 	}
 	var b strings.Builder
-	if runtime.GOOS == "darwin" {
+	if platform.MacKeys {
 		// In the order of macOS's menus.
 		for _, m := range [...][2]string{{"Ctrl", "⌃"}, {"Alt", "⌥"}, {"Shift", "⇧"}, {"Super", "⌘"}} {
 			if slices.Contains(mods, m[0]) {

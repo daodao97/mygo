@@ -345,7 +345,7 @@ if c.Shortcut(0, ui.KeyT) && !c.ShortcutRepeated() {
 标记重复，所以在 Linux 上，一个已经按住的键再次按下（中间没有松开）就是一次
 重复，正如 X11（带可检测的自动重复，GDK 会打开它）和 Wayland 发送它们那样。
 
-`ui.Cmd` 在 macOS 上是 Command，在其他平台上是 Ctrl。`ui.KeyBack` 和
+`ui.Cmd` 在 macOS 和 iOS 上是 Command，在其他平台上是 Ctrl。`ui.KeyBack` 和
 `ui.KeyForward` 是鼠标的后退和前进按钮，以及有此键的键盘上的键，
 [路由器](navigation.md)会接受它们。[菜单](../menus.md)的快捷键仍然有效，
 编辑菜单的角色（剪切、复制、粘贴、全选、撤销、重做）作用于有焦点的文本输入。
@@ -358,7 +358,7 @@ if c.Shortcut(0, ui.KeyT) && !c.ShortcutRepeated() {
 时，某个键输入的不是 US 键位上的字母——如俄语布局上的 ы——它就代表 US 键盘
 上同一位置的键，所以 Cmd+ы 是 `ui.KeyS`。不加这些修饰键输入时，它仍是文本。
 
-有焦点的文本输入会先处理平台的编辑键：在 macOS 上，Option 和 Command 配合
+有焦点的文本输入会先处理平台的编辑键：在 macOS 和 iOS 上，Option 和 Command 配合
 方向键和 Backspace，以及 Control 配合 A、E、B、F、N、P、D、H 和 K，如同其他
 Mac 应用；在其他平台，它让出 Alt 和方向键（它们用于后退和前进）以及功能键。
 

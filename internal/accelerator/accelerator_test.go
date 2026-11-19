@@ -9,6 +9,7 @@ func TestParse(t *testing.T) {
 		want Accelerator
 	}{
 		{"CmdOrCtrl+Q", "darwin", Accelerator{Super, "q"}},
+		{"CmdOrCtrl+Q", "ios", Accelerator{Super, "q"}},
 		{"CmdOrCtrl+Q", "linux", Accelerator{Ctrl, "q"}},
 		{"CommandOrControl+Shift+Z", "windows", Accelerator{Ctrl | Shift, "z"}},
 		{"Alt+F4", "windows", Accelerator{Alt, "F4"}},

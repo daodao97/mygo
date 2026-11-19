@@ -552,10 +552,10 @@ Modifiers:
 
 | Modifier | Key |
 |---|---|
-| `CmdOrCtrl` (`CommandOrControl`) | Command on macOS, Control elsewhere |
-| `Cmd` (`Command`), `Super`, `Meta`, `Win` | Command on macOS, the Windows or Super key elsewhere |
+| `CmdOrCtrl` (`CommandOrControl`) | Command on macOS and iOS, Control elsewhere |
+| `Cmd` (`Command`), `Super`, `Meta`, `Win` | Command on macOS and iOS, the Windows or Super key elsewhere |
 | `Ctrl` (`Control`) | Control |
-| `Alt` (`Option`, `AltGr`) | Alt, or Option on macOS |
+| `Alt` (`Option`, `AltGr`) | Alt, or Option on macOS and iOS |
 | `Shift` | Shift |
 
 Keys:

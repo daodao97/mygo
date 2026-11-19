@@ -1,8 +1,7 @@
 package richtext
 
 import (
-	"runtime"
-
+	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/rope"
 	"github.com/egoist/mygo/internal/text"
 	"github.com/egoist/mygo/ui"
@@ -237,7 +236,7 @@ func (v *view) key(key ui.Key, mods ui.Modifiers) bool {
 	if cmd, ok := shortcut(key, mods); ok {
 		return v.run(cmd)
 	}
-	mac := runtime.GOOS == "darwin"
+	mac := platform.MacKeys
 	shift := mods&ui.Shift != 0
 	m := mods &^ ui.Shift
 	if mac && m == ui.Ctrl {
@@ -458,7 +457,7 @@ func (v *view) key(key ui.Key, mods ui.Modifiers) bool {
 // Notes and Google Docs have them, with Control in place of Command
 // elsewhere, where Ctrl+L, Ctrl+E, Ctrl+R align, as in Word.
 func shortcut(key ui.Key, mods ui.Modifiers) (string, bool) {
-	mac := runtime.GOOS == "darwin"
+	mac := platform.MacKeys
 	switch mods {
 	case ui.Cmd:
 		switch key {

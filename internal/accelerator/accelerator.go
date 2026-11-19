@@ -96,7 +96,7 @@ var namedKeys = map[string]string{
 }
 
 // Parse parses an accelerator for the given GOOS. "CmdOrCtrl" resolves to
-// Super (Command) on darwin and Ctrl elsewhere.
+// Super (Command) on darwin and ios, and Ctrl elsewhere.
 func Parse(s, goos string) (Accelerator, error) {
 	var a Accelerator
 	if strings.TrimSpace(s) == "" {
@@ -144,7 +144,7 @@ func modifier(p, goos string) (Modifiers, bool) {
 	case "control", "ctrl":
 		return Ctrl, true
 	case "commandorcontrol", "cmdorctrl":
-		if goos == "darwin" {
+		if goos == "darwin" || goos == "ios" {
 			return Super, true
 		}
 		return Ctrl, true

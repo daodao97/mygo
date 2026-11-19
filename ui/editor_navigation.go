@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"runtime"
 	"unicode/utf8"
 
+	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/text"
 )
 
@@ -43,7 +43,7 @@ func (ed *editor) wants(k keyEvent) bool {
 	case KeyLeft, KeyRight:
 		// But Alt and an arrow, which go back and forward outside of macOS,
 		// where they move by words.
-		return m != Alt || runtime.GOOS == "darwin"
+		return m != Alt || platform.MacKeys
 	case KeyHome, KeyEnd, KeyDelete:
 		return true
 	case KeyUp, KeyDown, KeyPageUp, KeyPageDown:
@@ -61,13 +61,13 @@ func (ed *editor) wants(k keyEvent) bool {
 			return true
 		}
 	}
-	if m == Ctrl && runtime.GOOS == "darwin" {
+	if m == Ctrl && platform.MacKeys {
 		if _, ok := emacsKeys[k.key]; ok || k.key == KeyA || k.key == KeyE || k.key == KeyK {
 			return true
 		}
 	}
 	// Printable keys type text, which comes as TextInput.
-	return m == 0 || m == Alt && runtime.GOOS == "darwin"
+	return m == 0 || m == Alt && platform.MacKeys
 }
 
 func (ed *editor) move(to int, extend bool) {
@@ -166,7 +166,7 @@ var emacsKeys = map[Key]Key{KeyB: KeyLeft, KeyF: KeyRight, KeyP: KeyUp, KeyN: Ke
 func (ed *editor) key(c *context, st *state, k editEvent) {
 	shift := k.mods&Shift != 0
 	m := k.mods &^ Shift
-	mac := runtime.GOOS == "darwin"
+	mac := platform.MacKeys
 	if mac && m == Ctrl {
 		if to, ok := emacsKeys[k.key]; ok {
 			k.key, m = to, 0

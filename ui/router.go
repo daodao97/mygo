@@ -3,10 +3,11 @@ package ui
 import (
 	"net/url"
 	"path"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/egoist/mygo/internal/platform"
 )
 
 // Router keeps the history of the pages of a window, or of a part of one,
@@ -662,7 +663,7 @@ func (r *Router) keys(c *context, box *node) {
 	// Right right to left, as in browsers.
 	left, right := box.arrows()
 	back, forward := [2]shortcut{{0, KeyBack}, {Alt, left}}, [2]shortcut{{0, KeyForward}, {Alt, right}}
-	if runtime.GOOS == "darwin" {
+	if platform.MacKeys {
 		back[1], forward[1] = shortcut{Super, KeyBracketLeft}, shortcut{Super, KeyBracketRight}
 	}
 	// Only while there is somewhere to go: the keys are the window's

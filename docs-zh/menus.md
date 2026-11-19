@@ -302,10 +302,10 @@ mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
 
 | 修饰键 | 按键 |
 |---|---|
-| `CmdOrCtrl` (`CommandOrControl`) | macOS 上为 Command，其他地方为 Control |
-| `Cmd` (`Command`), `Super`, `Meta`, `Win` | macOS 上为 Command，其他地方为 Windows 或 Super 键 |
+| `CmdOrCtrl` (`CommandOrControl`) | macOS 和 iOS 上为 Command，其他地方为 Control |
+| `Cmd` (`Command`), `Super`, `Meta`, `Win` | macOS 和 iOS 上为 Command，其他地方为 Windows 或 Super 键 |
 | `Ctrl` (`Control`) | Control |
-| `Alt` (`Option`, `AltGr`) | Alt，macOS 上为 Option |
+| `Alt` (`Option`, `AltGr`) | Alt，macOS 和 iOS 上为 Option |
 | `Shift` | Shift |
 
 按键：

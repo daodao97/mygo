@@ -943,7 +943,7 @@ func (rt *engine) editCommands(s *state) []editItem {
 	switch {
 	case s.editor != nil && s.editor.readOnly:
 		commands = []command{copyText, separator, selectAll}
-	case runtime.GOOS == "darwin":
+	case platform.MacKeys:
 		commands = []command{cut, copyText, paste, separator, selectAll}
 	case runtime.GOOS == "windows":
 		commands = []command{undo, separator, cut, copyText, paste, del, separator, selectAll}
