@@ -1600,6 +1600,7 @@ func (rt *engine) dropFrame() {
 	c := &rt.c
 	c.parent, c.root, c.overlay = nil, nil, nil
 	c.chunks, c.spare = nil, nil
+	c.splits = nil
 	c.used, c.dirty, c.spareDirty = 0, 0, 0
 	clear(rt.states)
 	rt.free = nil

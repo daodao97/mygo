@@ -2504,6 +2504,8 @@ func Spinner(c *Context) Element {
 // gives way, keeping *size for when there is room again. Changed reports a
 // move. Right to left (Direction), first is on the right. SplitReset makes
 // a double click on the divider put first back at a size the app chooses.
+// SplitGap spaces the panes apart by a number of DIPs without drawing the
+// 1 DIP divider line, including 0 for flush panes.
 //
 //	ui.Split(c, &app.sidebar, app.files, app.editor).Fill()
 func Split(c *Context, size *float32, first func(), second func()) Element {
@@ -8190,6 +8192,23 @@ func (_handle Element) Sort(dir SortDirection) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Sort(dir))
+}
+
+// SplitGap spaces the two panes of a Split apart by v DIPs without drawing
+// the 1 DIP divider line between them, as two cards side by side or panes
+// that draw their own edges: SplitGap(0) puts them flush with no line, and
+// a positive v leaves that room between them, where the resize handle sits.
+//
+//	ui.Split(c, &app.sidebar, app.files, app.editor).SplitGap(8).Fill()
+func (_handle Element) SplitGap(v float32) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	_node.markStateRead()
+	return wrapElement(_node.SplitGap(v))
 }
 
 // SplitReset makes a double click on the divider of a Split put the first

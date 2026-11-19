@@ -497,7 +497,20 @@ func roundedContains(r Rect, radii [4]float32, x, y float32) bool {
 	return raster.Contains(scene.Rect{X: r.X, Y: r.Y, W: r.W, H: r.H}, radii, continuousCorners, x, y)
 }
 
+// accessBoundsNode returns the node whose box e reports to assistive technology: a split's divider reports its handle's box.
+func accessBoundsNode(e *node) *node {
+	if e.widget == "Divider" && e.parent != nil {
+		for ch := e.parent.first; ch != nil; ch = ch.next {
+			if ch.placeOn == e {
+				return ch
+			}
+		}
+	}
+	return e
+}
+
 func accessBounds(e *node) platform.RectF {
+	e = accessBoundsNode(e)
 	r := e.visualRect(Rect{e.x, e.y, e.w, e.h})
 	return platform.RectF{X: float64(r.X), Y: float64(r.Y), W: float64(r.W), H: float64(r.H)}
 }

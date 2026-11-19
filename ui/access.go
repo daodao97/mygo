@@ -1017,7 +1017,7 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	}
 	// What a scroll container built out of view, as the rows of a list
 	// beyond its edges.
-	if st := e.st; (st.vw <= 0 || st.vh <= 0) && e.w > 0 && e.h > 0 {
+	if be := accessBoundsNode(e); (be.st.vw <= 0 || be.st.vh <= 0) && be.w > 0 && be.h > 0 {
 		n.States |= platform.AccessOffscreen
 	}
 	// An element of your own that shows a value it does not let the user
