@@ -18,7 +18,7 @@ mygo publish -platform android # the .aab to a track of Google Play
 ## 你需要什么
 
 - **iOS**：一台装有 Xcode 的 Mac。Go 代码用 Xcode 的 clang 链接（Go 为 iOS 链接时需要 cgo），CLI 编译应用的 Swift 宿主、图标和应用包，并为它签名，不需要 Xcode 项目。在设备上运行和上架 App Store 需要 Apple 开发者团队，以及与应用标识符匹配的描述文件（provisioning profile），可由 Xcode（设置 › 账户）或 developer.apple.com 生成。
-- **Android**：任意系统上装有 SDK 和 NDK 的 Android Studio（SDK Manager › SDK Tools › NDK）。Go 代码为每个 ABI 构建成一个共享库，由 NDK 的 clang 链接，再由 Gradle 构建应用；CLI 在 SDK 的常用位置或 `ANDROID_HOME` 中查找 SDK，在 SDK 中或 `ANDROID_NDK_HOME` 中查找 NDK，并使用 Android Studio 的 JDK 或 `JAVA_HOME`。
+- **Android**：任意系统上装有 SDK 和 NDK 的 Android Studio（SDK Manager › SDK Tools › NDK）。Go 代码为每个 ABI 构建成一个共享库，由 NDK 的 clang 链接，再由 Gradle 构建应用；CLI 在 SDK 的常用位置或 `ANDROID_HOME` 中查找 SDK，在 SDK 中或 `ANDROID_NDK_HOME` 中查找 NDK，并使用 Android Studio 的 JDK 或 `JAVA_HOME`，JDK 17 或更新版本均可。
 
 桌面构建仍然不需要 cgo，也不需要这些工具。
 
