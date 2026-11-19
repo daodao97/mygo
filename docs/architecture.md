@@ -6219,6 +6219,16 @@ either.
   node's in the order of `Role`; a role added to both needs nothing
   there, a state a field. The fake backend's surface lets the core's
   tests drive content windows through `package mygo`.
+  A Tester's window shapes and paints in a text system of its own
+  (`text.New`), so that Testers running at once, as parallel tests do,
+  neither race over nor invalidate each other's atlases. Starting one
+  (its engine, and the shaping of every text shown) costs more than the
+  first frame of a window of 250 texts otherwise does, so a Tester
+  takes one an ended Tester left (`testerTexts`, `ui/tester_text.go`):
+  one ends as `Render` returns or as it becomes unreachable
+  (`runtime.AddCleanup`). `System.Reuse` keeps its engine, fonts and
+  layouts, and starts its language and atlases anew. At most GOMAXPROCS
+  wait idle; `BenchmarkTesterFirstFrame` measures a Tester's first frame.
   `BenchmarkFrame` in `ui` measures a frame of a large window on the CPU,
   and `BenchmarkListScroll` the frames scrolling a list of a million rows;
   `BenchmarkDiff*` the frames of a window as godiff's, two lists of texts
