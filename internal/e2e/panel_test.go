@@ -32,6 +32,9 @@ func TestPanel(t *testing.T) {
 	if b, ok := collectionBehavior(panel); ok && b&(canJoinAllSpaces|ignoresCycle|auxiliary) != canJoinAllSpaces|ignoresCycle|auxiliary {
 		t.Errorf("collection behavior %#x, want CanJoinAllSpaces, IgnoresCycle and FullScreenAuxiliary", b)
 	}
+	if only, ok := becomesKeyOnlyIfNeeded(panel); ok && only {
+		t.Error("NSPanel becomes key only if needed; Show would leave it unfocused while another app is active")
+	}
 	if tool, topmost, owned, ok := panelStyles(panel); ok && !(tool && topmost && owned) {
 		t.Errorf("panel: tool window without a window menu %v, topmost %v, owned by the application window %v", tool, topmost, owned)
 	}
@@ -43,6 +46,9 @@ func TestPanel(t *testing.T) {
 	deactivated := deactivateApp()
 	if deactivated {
 		eventually(t, "the app deactivated", func() bool { active, _ := appActive(); return !active })
+		// Finder can be frontmost before AppKit resigns key (TestGlass).
+		// Show during that resign would take the keyboard and lose it.
+		eventually(t, "the other window resigned key", func() bool { return !other.IsFocused() })
 	}
 	panel.Show()
 	eventually(t, "the panel focused", panel.IsFocused)

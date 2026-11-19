@@ -841,6 +841,11 @@ func TestCollectionBehavior(handle uintptr) uint {
 	return uint(sendInt(id(handle), "collectionBehavior"))
 }
 
+// TestBecomesKeyOnlyIfNeeded reports an NSPanel's becomesKeyOnlyIfNeeded.
+func TestBecomesKeyOnlyIfNeeded(handle uintptr) bool {
+	return sendBool(id(handle), "becomesKeyOnlyIfNeeded")
+}
+
 // TestMaterial returns the class of a window's material (Vibrancy), its
 // style when glass, the corners its content view is cut to, and whether
 // the window draws as active.

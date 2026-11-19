@@ -2435,8 +2435,10 @@ as in Tauri:
   and tauri-nspanel found), never the main window, on every Space as a
   full-screen auxiliary, outside Mission Control and the window cycle, at
   the floating level (above it, input methods' candidate windows would
-  show behind the panel); `Show` and `Focus` make it key without
-  `activateIgnoringOtherApps:`, and its `cancelOperation:` does nothing
+  show behind the panel); `becomesKeyOnlyIfNeeded` is off, so `Show` and
+  `Focus` make it key without `activateIgnoringOtherApps:` even before a
+  page's field is first responder, and take key again on the next turn if
+  AppKit is still resigning active; its `cancelOperation:` does nothing
   (NSPanel's closes it past `windowShouldClose:`). The key window of a
   nonactivating panel gets the keys and the main menu its key
   equivalents, though the app is not frontmost (`NSApp.isActive` reports

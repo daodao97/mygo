@@ -131,6 +131,11 @@ func collectionBehavior(w *mygo.Window) (behavior uint, supported bool) {
 	return behavior, true
 }
 
+func becomesKeyOnlyIfNeeded(w *mygo.Window) (only, supported bool) {
+	mygo.RunOnMain(func() { only = darwin.TestBecomesKeyOnlyIfNeeded(w.NativeHandle()) })
+	return only, true
+}
+
 func material(w *mygo.Window) (class string, style int, radius float64, active bool, supported bool) {
 	mygo.RunOnMain(func() { class, style, radius, active = darwin.TestMaterial(w.NativeHandle()) })
 	return class, style, radius, active, true
