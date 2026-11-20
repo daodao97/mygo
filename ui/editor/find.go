@@ -69,6 +69,9 @@ func (f *finder) show(ed *editor, replace bool) {
 	f.focusQuery = true
 	f.stale = true
 	f.scrollTo = true
+	// The bar opens anew: its match comes into view again, even one the
+	// user scrolled away from.
+	ed.forgetReveal()
 	ed.needsBuild = true
 }
 
@@ -93,6 +96,7 @@ func (f *finder) update(ed *editor) {
 	if ed.o.sharedScroll == nil {
 		ed.doReveal()
 	}
+	ed.askReveal(m.start)
 }
 
 // search finds the matches of the query in the text again when either
@@ -382,6 +386,9 @@ func (f *finder) step(ed *editor, dir int) bool {
 	f.current = i
 	m := f.matches[i]
 	ed.setSels([]sel{ed.newSel(m.start, m.end)}, revealCenter)
+	// The user asked for this match: it comes into view again, even the
+	// one shown, which the user may have scrolled away from.
+	ed.askRevealNow(m.start)
 	return true
 }
 

@@ -1175,6 +1175,47 @@ func TestCodeEditorTokenFaces(t *testing.T) {
 	check(v, l)
 }
 
+// Finding a match left of the view shows the whole of it, not its end at
+// the left edge: the caret alone, at a match's end, would hide the start.
+func TestFindRevealsTheWholeMatchSideways(t *testing.T) {
+	long := strings.Repeat("x", 300) + " closeDate " + strings.Repeat("y", 300)
+	text := long + "\n" + "needle closeDate tail\n"
+	for _, fit := range []bool{false, true} {
+		st := &State{Buffer: NewBuffer(text), FitContent: fit}
+		tt := ui.NewTester(func(c *ui.Context) {
+			if fit {
+				ui.Scroll(c).Fill().Children(func() { View(c, st).Shrink(0) })
+				return
+			}
+			View(c, st).Fill()
+		}, 600, 400)
+		tt.Frame()
+		ed := &st.ed
+		// The user scrolled right, into the long first line.
+		ed.scrollX = 4000
+		tt.Frame()
+		tt.Frame()
+		st.Find("closeDate")
+		tt.Frame()
+		tt.Frame()
+		i := strings.Index(text, "closeDate")
+		r, ok := ed.caretRect(i)
+		if !ok {
+			t.Fatalf("FitContent %v: the match has no rectangle", fit)
+		}
+		if r.X < ed.scrollX {
+			t.Fatalf("FitContent %v: the match starts at %v, left of the view from %v", fit, r.X, ed.scrollX)
+		}
+		end, ok := ed.caretRect(i + len("closeDate"))
+		if !ok {
+			t.Fatalf("FitContent %v: the match's end has no rectangle", fit)
+		}
+		if end.X > ed.scrollX+ed.r.W-ed.textX {
+			t.Fatalf("FitContent %v: the match ends at %v, right of the view from %v wide", fit, end.X, ed.r.W)
+		}
+	}
+}
+
 // An editor as high as its lines, in a scroll view, shows its caret as it
 // takes the focus, not its first line.
 func TestFitContentFocusRevealsCaret(t *testing.T) {

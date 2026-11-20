@@ -93,7 +93,10 @@ the final newline adds the empty line after it, where typing goes.
   show or collapse them all.
 - `Wrap` wraps long lines, rows of each side keeping their partners
   aligned; `FitContent` makes the viewer as high as its lines, as the
-  files of a review in a scroll view.
+  files of a review in a scroll view. The containers around it scroll it,
+  so its find bar and go to line bring their text into view through those
+  containers, and the bars stick to the top of the part of the diff those
+  containers show.
 - `KeepScrollbars` and `NoScrollbars` are those of the code editor: the
   scroll bar stays with the pointer away, so that a diff filling the
   window shows how far down it is, or goes, with its room.

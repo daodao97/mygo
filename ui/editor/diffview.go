@@ -54,7 +54,10 @@ type DiffState struct {
 	// Wrap wraps long lines rather than scrolling them sideways.
 	Wrap bool
 	// FitContent makes the viewer as high as its lines, as a file of a
-	// list of them, rather than scrolling them itself.
+	// list of them, rather than scrolling them itself. The containers
+	// around it scroll it: its find bar and go to line bring their text
+	// into view through them, and the bars stick to the top of the part
+	// of the diff those containers show.
 	FitContent bool
 	// ScrollPastEnd lets the lines scroll up until the last is at the top,
 	// as State's do unless NoScrollPastEnd, so that GoToHunk can bring a

@@ -243,7 +243,10 @@ app.code.OnInput = func(ev ui.InputEvent) bool {
   hides those of indentation.
 - `ReadOnly` lets the text be selected and copied, not edited.
 - `FitContent` makes the editor as high as its lines, rather than
-  scrolling them, to show code in a scroll view or a list.
+  scrolling them, to show code in a scroll view or a list. The containers
+  around it scroll it, so its find bar and go to line bring their text
+  into view through those containers, and the bars themselves stick to
+  the top of the part of the text those containers show.
 - `KeepScrollbars` keeps the scroll bars' thumbs showing with the pointer
   away, as a scroll container's `KeepScrollbars`; `NoScrollbars` takes
   the bars away, with their room, the wheel and the keys still
@@ -668,7 +671,11 @@ presses from the text under it and the keyboard where the part needs it
 selected), and a handle to what the part shows and does. Style the element and build its
 content; its position can change too. The find bar comes with margins
 that keep it inside the editor, so `bar.Right(0)` leaves it the theme's
-`Space(4)` from the right edge; `bar.Margin(0)` takes them off. The editor's own looks are
+`Space(4)` from the right edge; `bar.Margin(0)` takes them off. An editor
+as high as its lines (`FitContent`) has no scroll of its own: the bars
+are built in a row over the whole editor, and stick to the top of the
+part of the text the containers around it show, so a bar an app builds
+inside `bar` moves with it. The editor's own looks are
 `DefaultFindBar`, `DefaultGoToLine`, `DefaultCompletions` and
 `DefaultHover`, which a render function can call and then restyle.
 
