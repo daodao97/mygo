@@ -5985,9 +5985,16 @@ either.
     buffer that last used it. Updating an atlas or image texture in place
     still waits for every frame in flight. Rendering a canvas into its
     texture stays ordered on the command queue. The layer keeps three
-    drawables, as Core Animation makes while a window animates: with two,
-    on a ProMotion display, frames waited for one most of each refresh,
-    and a fifth of the frames went undrawn. The third costs a frame of memory while a window animates.
+    drawables on a display faster than 60 Hz, as Core Animation makes
+    while a window animates: with two, on a ProMotion display, frames
+    waited for one most of each refresh, and a fifth of the frames went
+    undrawn. At 60 Hz or less it keeps two (`SetRefreshRate`, which the
+    window host calls before each frame drawn on the GPU): the scene of a
+    frame is built before its drawable is fetched, so two keep a frame for
+    each refresh while the GPU's part of one takes less than a refresh,
+    and the third, a frame of memory as large as the window (7.7 MB at
+    800×600 points on a Retina display), would only queue frames. Changing
+    the count forgets the frames drawn, whose drawables `gpu.Ages` holds.
     Waiting for a drawable remains separate from waiting for an instance
     buffer, so offscreen encode timings do not establish presentation latency.
     Opaque fill cores use an unblended pipeline in BGRA8; float16 keeps

@@ -479,6 +479,14 @@ type wideRenderer interface {
 	SetWide(on bool) bool
 }
 
+// refreshRenderer is a GPU renderer that keeps as many frames in memory as
+// the display's refresh rate needs (Metal's).
+type refreshRenderer interface {
+	// SetRefreshRate tells it the rate of the window's display, in Hz, or
+	// 0 when unknown.
+	SetRefreshRate(hz float64)
+}
+
 // A window whose screen shows more than sRGB, as a Mac's Display P3
 // screen, draws the colors of ui.Oklch outside the sRGB gamut once a frame
 // has some, on the GPU, whose drawables then hold float16 components, and
@@ -551,6 +559,9 @@ func (h *windowHost) present(s *scene.Scene) {
 	h.lastFrame = now
 	h.armIdle(frameIdle)
 	h.useWide(s, now)
+	if r, ok := h.gpu.(refreshRenderer); ok {
+		r.SetRefreshRate(h.conn.Surface.RefreshRate())
+	}
 	defer h.ready()
 	if h.render(s) {
 		h.path = "drawn on the GPU"
