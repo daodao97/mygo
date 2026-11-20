@@ -1696,8 +1696,7 @@ func (t *tray) Bounds() platform.Rect {
 }
 
 // noteClick keeps where on screen the copy of the item that the click ev was
-// on is: the pointer's place, less the click's place in the item's window,
-// which the copies share. An event in another window, which an action that no
+// on is (clickedItem). An event in another window, which an action that no
 // click sent leaves current, changes nothing.
 func (t *tray) noteClick(ev id) {
 	win := send(t.button, "window")
@@ -1705,8 +1704,21 @@ func (t *tray) noteClick(ev id) {
 		return
 	}
 	of := msgRect(win, sel("frame"))
-	t.clicked = clickedCopy(msgPoint(class("NSEvent"), sel("mouseLocation")), msgPoint(ev, sel("locationInWindow")), of.Size)
+	t.clicked = clickedItem(of, msgPoint(class("NSEvent"), sel("mouseLocation")), msgPoint(ev, sel("locationInWindow")))
 	t.of = of
+}
+
+// clickedItem is the frame on screen of the item a click hit, the pointer at
+// at and the click in at its window: the window's own, when the pointer is in
+// it, and else the copy's (clickedCopy). The click's place in the window
+// can't be trusted there: on macOS 26 and 27 it is the item's middle
+// wherever the click landed, which would move the item by as much as the
+// click was off it.
+func clickedItem(window NSRect, at, in NSPoint) NSRect {
+	if inRect(at, window) {
+		return window
+	}
+	return clickedCopy(at, in, window.Size)
 }
 
 // clickedCopy is the frame on screen of the copy of a menu bar item of size

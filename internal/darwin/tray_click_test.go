@@ -59,3 +59,17 @@ func TestItemFrame(t *testing.T) {
 		t.Errorf("window moved: %+v, want its new frame %+v", got, moved)
 	}
 }
+
+// TestClickedItem takes a click whose pointer is in the item's window as a
+// click on the item itself, whatever the click's place in the window says,
+// which macOS 26 and 27 make the item's middle wherever the click landed.
+func TestClickedItem(t *testing.T) {
+	window := NSRect{Origin: NSPoint{X: 159, Y: 1050}, Size: NSSize{Width: 54, Height: 24}}
+	if got := clickedItem(window, NSPoint{X: 190, Y: 1060}, NSPoint{X: 12, Y: 3}); got != window {
+		t.Errorf("click on the item: %+v, want the window's %+v", got, window)
+	}
+	want := NSRect{Origin: NSPoint{X: 2221, Y: 1410}, Size: window.Size}
+	if got := clickedItem(window, NSPoint{X: 2251, Y: 1422}, NSPoint{X: 30, Y: 12}); got != want {
+		t.Errorf("click on a copy: %+v, want %+v", got, want)
+	}
+}
