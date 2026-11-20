@@ -1130,10 +1130,13 @@ fake host. Desktop files of `darwin` and `linux` exclude `ios` and
   renderer fetches a drawable draws once it has it (`FrameNow`), rather
   than Go's main thread waiting for it, and the fingers with it. On
   Android, a frame asked for crosses to the UI thread before Choreographer
-  asks for the next refresh: while the view animates (a fling, a glide),
-  each frame asks for the next as it starts (`platform.FrameAheadSurface`,
-  `engine.frameAhead`), not once presented, so a frame taking most of a
-  refresh does not halve the rate; the surface's `pending` and the host's
+  asks for the next refresh: while the view animates, each frame asks for
+  the next as soon as it knows it moves (`platform.FrameAheadSurface`,
+  `engine.frameAhead`): as it starts for a fling or a glide, as the view
+  calls `Context.AnimationFrame`, once the build is done for what else it
+  started moving, and before it presents; once a frame, never once
+  presented, so a frame taking most of a refresh does not halve the rate
+  (#2131); the surface's `pending` and the host's
   `framePending` coalesce the request the frame's end makes. The host asks
   the display for its fastest mode (`Surface.setFrameRate`, always rather
   than only where seamless from Android 12), tells Go the active mode's rate

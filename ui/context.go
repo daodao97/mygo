@@ -533,7 +533,10 @@ func (c *context) Invalidate() { c.rt.host.invalidate() }
 // it, for something moving. Call it in every frame while it moves. A
 // drawing that moves while the layout stays asks with
 // Painter.AnimationFrame instead, whose frames do not build the view.
-func (c *context) AnimationFrame() { c.rt.animating = true }
+func (c *context) AnimationFrame() {
+	c.rt.animating = true
+	c.rt.frameAhead()
+}
 
 // DisableAnimations makes the values that animate in this frame
 // (AnimateTo, Animate, Spring), the element transitions and the pages of
