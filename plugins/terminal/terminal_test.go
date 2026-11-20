@@ -2437,6 +2437,61 @@ func TestHorizontalScrollPassesToOuterHandler(t *testing.T) {
 	}
 }
 
+// A program that asked for the mouse reads a sideways wheel as button 6 or
+// 7. The handlers around the view do not see it, and OnScroll does not
+// either. Without the mouse, the same scroll still passes outward.
+func TestHorizontalWheelReportsToMouseProgram(t *testing.T) {
+	loadLib(t)
+	conn := newPipe()
+	var scrolls []int
+	var outer []ui.InputEvent
+	term, err := New(Options{
+		Conn:     conn,
+		OnScroll: func(rows int) bool { scrolls = append(scrolls, rows); return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Box(c).Fill().HandleInput(func(ev ui.InputEvent) bool {
+			if ev.Kind == ui.InputScroll {
+				outer = append(outer, ev)
+				return true
+			}
+			return false
+		}).Children(func() {
+			View(c, term).Fill().AutoFocus()
+		})
+	}, 400, 200)
+	term.Feed([]byte("\x1b[?1000h\x1b[?1006h"))
+	tt.Frame()
+
+	tt.Wheel(100, 100, hostNotch(), 0)
+	tt.Scroll(100, 100, -40, 4)
+	if len(outer) != 0 {
+		t.Fatalf("sideways wheel reached the outer handler: %+v", outer)
+	}
+	if scrolls != nil {
+		t.Errorf("sideways wheel called OnScroll: %v", scrolls)
+	}
+	got := conn.take(term)
+	if n := strings.Count(got, "\x1b[<67;"); n != 3 {
+		t.Fatalf("wheel right sent %q, want three \\x1b[<67; reports", got)
+	}
+	if !strings.Contains(got, "\x1b[<66;") {
+		t.Fatalf("trackpad swipe left sent %q, want a \\x1b[<66; report", got)
+	}
+
+	term.Feed([]byte("\x1b[?1000l\x1b[?1006l"))
+	tt.Frame()
+	outer = nil
+	tt.Scroll(100, 100, 30, 0)
+	if len(outer) != 1 || outer[0].DX != 30 {
+		t.Fatalf("sideways scroll without the mouse did not reach the outer handler: %+v", outer)
+	}
+}
+
 // Command at the start of a touchpad scroll zooms through its momentum.
 func TestOnZoomKeepsMomentumOfZoomGesture(t *testing.T) {
 	loadLib(t)

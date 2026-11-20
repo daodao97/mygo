@@ -67,7 +67,10 @@ type State struct {
 	// underlines, as its pending operators do.
 	CursorShape CursorShape
 	// FitContent makes the editor as high as its lines, to show in a
-	// scroll view or a list, rather than scrolling them itself.
+	// scroll view or a list, rather than scrolling them itself. The
+	// containers around it scroll it: its find bar and go to line bring
+	// their text into view through them, and the bars stick to the top of
+	// the part of the text those containers show.
 	FitContent bool
 	// KeepScrollbars keeps the thumbs of the scroll bars, and the marks
 	// of the carets on the vertical one, showing while the text has
@@ -336,11 +339,13 @@ func (st *State) Run(cmd Command) bool {
 }
 
 // GoTo puts the caret at a line and column, from 0, and scrolls it to
-// the middle of the editor.
+// the middle of the editor: an editor as high as its lines has no scroll
+// of its own, so the containers around it take the line into view.
 func (st *State) GoTo(p Pos) {
 	st.ensure()
 	off := offsetOf(st.ed.view.text, p)
 	st.ed.setSels([]sel{st.ed.newSel(off, off)}, revealCenter)
+	st.ed.askRevealNow(off)
 }
 
 // ScrollTo scrolls a line to the top of the editor.

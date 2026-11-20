@@ -79,6 +79,8 @@ func (f *FindBar) ReplaceAll() { f.ed.find.replaceAll(f.ed) }
 // Close closes the bar, and gives the keyboard back to the text.
 func (f *FindBar) Close() {
 	f.ed.find.open = false
+	// The bar is gone: no match of it is on its way into view.
+	f.ed.revealAt = -1
 	f.ed.refocus = true
 }
 
@@ -231,6 +233,23 @@ func DefaultFindBar(c *ui.Context, bar ui.Element, f *FindBar) {
 	})
 }
 
+// barInRow builds the row a bar of a viewer as high as its lines sticks
+// in: over the whole of it, with the bar at the top of the part of the
+// text the containers around it show, which they take out of view
+// otherwise. justify places the bar across the viewer; newBar makes it,
+// as wide as its content, and build fills and renders it within the row,
+// as an app's render function may add elements beside the bar's own. An
+// editor that scrolls itself places its bars as it did: the find bar an
+// absolute box at its top right, Go to Line centered at its top.
+func (ed *editor) barInRow(c *ui.Context, rowKey string, justify ui.Align, newBar func() ui.Element, build func(ui.Element)) {
+	t := c.Theme()
+	row := ui.Row(c).Key(rowKey).Absolute().Top(0).Bottom(0).Left(0).Right(0).
+		Justify(justify).PassThrough()
+	row.Children(func() {
+		build(newBar().Sticky().Top(t.Space(1)).AlignSelf(ui.Start))
+	})
+}
+
 // buildFindBar places the find bar over the editor's top right corner,
 // no wider than the editor, and builds it. Its margins, unlike its insets,
 // narrow the room it fits its content in.
@@ -238,14 +257,24 @@ func (ed *editor) buildFindBar(c *ui.Context) {
 	f := &ed.find
 	f.update(ed)
 	t := c.Theme()
-	bar := ui.Box(c).Key("code find").Absolute().Top(t.Space(1)).Right(0).Margin(0, t.Space(4), 0, t.Space(1)).
-		Role(ui.RoleToolbar).Label(l10n.In(c.Locale()).Find()).Cursor(ui.CursorDefault).HandleInput(shield)
 	f.builtW = ed.fitWidth()
 	render := ed.o.renderFindBar
 	if render == nil {
 		render = DefaultFindBar
 	}
-	render(c, bar, &FindBar{c: c, ed: ed})
+	newBar := func() ui.Element {
+		return ui.Box(c).Key("code find").Role(ui.RoleToolbar).Label(l10n.In(c.Locale()).Find()).
+			Cursor(ui.CursorDefault).HandleInput(shield).Margin(0, t.Space(4), 0, t.Space(1))
+	}
+	if ed.o.fitContent {
+		ed.barInRow(c, "code find row", ui.End, newBar, func(bar ui.Element) {
+			render(c, bar, &FindBar{c: c, ed: ed})
+		})
+	} else {
+		// An editor that scrolls itself places its bar as it always has:
+		// absolute, so insets an app's render function sets place it.
+		render(c, newBar().Absolute().Top(t.Space(1)).Right(0), &FindBar{c: c, ed: ed})
+	}
 	// What the bar typed or toggled shows at once.
 	f.update(ed)
 	if isMac() {
@@ -314,6 +343,9 @@ func (g *GoToLineBar) Go() {
 		off := offsetOf(ed.view.text, Pos{line, col})
 		ed.goTo.open = false
 		ed.setSels([]sel{ed.newSel(off, off)}, revealCenter)
+		// The containers around a viewer as high as its lines scroll to
+		// the line; the viewer itself has no scroll of its own.
+		ed.askRevealNow(off)
 		ed.refocus = true
 	}
 }
@@ -338,22 +370,38 @@ func DefaultGoToLine(c *ui.Context, bar ui.Element, g *GoToLineBar) {
 // buildGoToLine places the go to line bar in the middle of the editor's
 // top, builds it, and shows the line typed.
 func (ed *editor) buildGoToLine(c *ui.Context) {
-	t := c.Theme()
 	g := &ed.goTo
-	ui.Row(c).Key("code go to line").Absolute().Top(t.Space(1)).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
-		bar := ui.Box(c).Role(ui.RoleDialog).Label(l10n.In(c.Locale()).GoToLine()).Cursor(ui.CursorDefault).HandleInput(shield)
-		render := ed.o.renderGoToLine
-		if render == nil {
-			render = DefaultGoToLine
-		}
-		render(c, bar, &GoToLineBar{c: c, ed: ed})
-	})
+	render := ed.o.renderGoToLine
+	if render == nil {
+		render = DefaultGoToLine
+	}
+	newBar := func() ui.Element {
+		return ui.Box(c).Role(ui.RoleDialog).Label(l10n.In(c.Locale()).GoToLine()).
+			Cursor(ui.CursorDefault).HandleInput(shield)
+	}
+	if ed.o.fitContent {
+		ed.barInRow(c, "code go to line", ui.Center, newBar, func(bar ui.Element) {
+			render(c, bar, &GoToLineBar{c: c, ed: ed})
+		})
+	} else {
+		// An editor that scrolls itself places its bar as it always has: a
+		// row at its top, the bar centered in it.
+		ui.Row(c).Key("code go to line").Absolute().Top(c.Theme().Space(1)).Left(0).Right(0).
+			Justify(ui.Center).PassThrough().Children(func() {
+			render(c, newBar(), &GoToLineBar{c: c, ed: ed})
+		})
+	}
 	if !g.open {
 		return
 	}
 	if line, col, ok := g.target(ed); ok && line != g.preview {
 		g.preview = line
-		if cr, ok := ed.caretRect(offsetOf(ed.view.text, Pos{line, col})); ok {
+		// A viewer as high as its lines cannot scroll itself, and the
+		// containers around it are not the editor's to move while the
+		// user types: Escape, which puts back the editor's own scroll,
+		// would leave them where the preview put them. Go takes the line
+		// into view.
+		if cr, ok := ed.caretRect(offsetOf(ed.view.text, Pos{line, col})); ok && !ed.o.fitContent {
 			ed.setScroll(float64(cr.Y) - float64(ed.viewH-min(cr.H, ed.viewH))/2)
 		}
 	}

@@ -179,7 +179,13 @@ type editor struct {
 	// above it changes height. Otherwise the anchor is the line's top.
 	anchorRows bool
 	reveal     reveal
-	r          ui.Rect // the element's box of the last frame, in the window
+	// revealAt is the offset of the text to bring into view, -1 for none:
+	// a find bar's match or a go to line, in a viewer as high as its
+	// lines, which has no scroll of its own. revealed is the offset asked
+	// for last, so that the same one is not asked again: the user may
+	// scroll away from it.
+	revealAt, revealed int
+	r                  ui.Rect // the element's box of the last frame, in the window
 	// laidW is the width the editor was laid out at last, which an editor
 	// as high as its content lays out at again as it builds: the element's,
 	// or the half of a split diff's its row's Draw gives it while the
@@ -320,6 +326,8 @@ func (ed *editor) init(buf *Buffer, o options, t *ui.Theme) {
 		ed.blinkStart = ed.frameNow
 		ed.hover.asked = -1
 		ed.hoverLine = -1
+		// No text has come into view yet: -1, not the text's start.
+		ed.revealAt, ed.revealed = -1, -1
 	}
 	if ed.view.lineHeight == 0 {
 		ed.view.setStyle(o.font, o.lineHeight, 1, ed.tabSize())
@@ -464,6 +472,8 @@ func (ed *editor) resetForBuffer() {
 	ed.complete.close()
 	ed.hover.close()
 	ed.find.scope, ed.find.stale, ed.find.lowerVer, ed.find.lower = nil, true, 0, ""
+	// The text of the old buffer is gone: none of it has come into view.
+	ed.revealed, ed.revealAt = -1, -1
 	ed.goTo.open = false
 	ed.gesture.active = false
 	ed.brackets = bracketCache{}
@@ -800,16 +810,24 @@ func (ed *editor) doReveal() {
 			ed.setScroll(bottom + margin - h)
 		}
 	}
-	// Sideways.
+	// Sideways, the whole of the selection: the caret at the left edge
+	// would hide the start of the text selected, as a find bar's match.
+	// The ends of a selection spanning lines are on their own lines: only
+	// the one on the caret's counts.
 	w := ed.r.W - ed.textX - 8
 	// A stand-in caret stays fixed horizontally with its block.
 	if !v.wrap && w > 0 && !v.heights.isHidden(line) {
-		x := cr.X
+		start, end := cr.X, cr.X
+		if p := ed.primary(); !p.empty() {
+			if r, ok := ed.caretRect(p.start()); ok && r.Y == cr.Y {
+				start = r.X
+			}
+		}
 		em := v.charWidth * 2
-		if x-em < ed.scrollX {
-			ed.scrollX = max(0, x-em)
-		} else if x+em > ed.scrollX+w {
-			ed.scrollX = x + em - w
+		if start-em < ed.scrollX {
+			ed.scrollX = max(0, start-em)
+		} else if end+em > ed.scrollX+w {
+			ed.scrollX = end + em - w
 		}
 	}
 }
@@ -817,6 +835,28 @@ func (ed *editor) doReveal() {
 func (ed *editor) unfoldLine(line int) {
 	ed.folds = slices.DeleteFunc(ed.folds, func(f fold) bool { return line > f.start && line <= f.end })
 }
+
+// askReveal asks the containers around the editor to bring the text at off
+// into view, unless that is the text they brought into view last: one the
+// app asks for again every frame would keep the user from scrolling it
+// away.
+func (ed *editor) askReveal(off int) {
+	if off == ed.revealed {
+		return
+	}
+	ed.askRevealNow(off)
+}
+
+// askRevealNow asks for the text at off to come into view, as the user
+// asked for it, even one that came into view before.
+func (ed *editor) askRevealNow(off int) {
+	ed.revealed, ed.revealAt = off, off
+}
+
+// forgetReveal makes the text at the next ask come into view, though it
+// did before: a bar opened anew shows its match, not where the user
+// scrolled away from it.
+func (ed *editor) forgetReveal() { ed.revealed = -1 }
 
 // gutterWidth returns the width of the gutter: the numbers, the fold
 // markers and the bars of changes.

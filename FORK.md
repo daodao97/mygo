@@ -4,7 +4,7 @@
 
 ## 快照（2026-11-12）
 
-- fork `main` 已合并 `upstream/main` 到 `7ba76ed9`（2026-11-20），含 #940（`6e712c6e`）。
+- fork `main` 已合并 `upstream/main` 到 `71f6c08b`（2026-11-20），含 #940（`6e712c6e`）。
 - 分支 `sync-940` 已于 2026-11-18 快进合入 `main`（`964d7b6f`），第二阶段的过程见「第二阶段进度（2026-11-17）」。
 - fork 独有的非合并提交：158 个；与上游的增删差异约 71,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
@@ -61,6 +61,12 @@
 
   对照这批新增检查了 fork 代码。终端里 iOS 上 Ctrl+V 粘贴的分支是 fork 自己的（`c1b0ee50`），与 #2076 不是同一功能，保留。`internal/accelerator` 的 `darwin || ios` 是上游 #2076 自己的写法。`paths.go` 的 iOS 日志路径是 fork 的，管的是路径，#2076 明确不改。平台契约只新增了可选的 `ThumbBarWindow`、`FrameAheadSurface`，以及 `PageOptions.ZoomControl`/`ZoomChanged`，手机后端不用补方法。崩溃写 `crash.log`、`WasOpenedAtLogin`、编辑器光标下方的面板与光标矩形、行间元素、`ui.Table` 的列虚拟化与冻结列、`SplitGap`、Markdown `LinkColor`、`NumberInput` 外部赋值、Windows 缩略图工具栏，在 fork 中都没有同功能实现。iOS/Android 硬件键盘输入改在 #940 的宿主里，fork 第二阶段后没有自己的版本。`go generate ./ui` 无差异。
   验证：macOS/Linux/Windows 的 `CGO_ENABLED=0 go build ./...`；`go vet . ./ui ./plugins/terminal/... ./internal/mobile/... ./internal/darwin`；`go test . ./ui ./ui/editor ./ui/richtext ./ui/markdown/... ./internal/text ./internal/platform ./internal/mobile/... ./internal/darwin ./internal/uigen ./plugins/terminal/...` 与 `go test -short ./cmd/mygo` 通过；iOS（iphoneos SDK）与 Android（NDK 28.2）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet、`../Miya` 的 `go build ./...` 通过。
+- 2026-11-20 第二次同步上游 3 个提交（`7ba76ed9..71f6c08b`）。冲突 1 个文件，`plugins/terminal/view.go`，来自上游 #2118（`024dd334`：程序接管鼠标时，横向滚轮作为滚轮的左右键报给程序，否则照旧交给外层处理器）：
+  - `view` 的字段：fork 早先把 `scrolled`/`zoomed`/`scrollZoom`/`ticking` 挪到了结构体前面，只在那里加上游新增的 `scrolledX`，不取上游重复的那一组。
+  - `scroll()`：fork 的固定网格平移仍在最前（平移了就吃掉事件），之后整段取上游的写法。fork 这边的「横向为主一律 `return false`」本来就是上游 `4b1aa44e` 的代码，被 #2118 替换，不是 fork 的设计。固定网格没有吃掉的横向滚轮现在也会报给接管鼠标的程序。
+
+  对照这批新增检查了 fork 代码：fork 在 `ui/editor` 没有自己的改动（与合并基点无差异），#2105（fitted 查看器的查找与跳转行滚入视野）没有重叠；#2119 只改 Windows 回收站的测试；终端里 fork 没有横向滚轮的另一套实现。平台契约没有变化，手机后端不用补方法。`go generate ./ui` 无差异。
+  验证：macOS/Linux/Windows 的 `CGO_ENABLED=0 go build ./...`；`go vet . ./ui ./ui/editor ./plugins/terminal/...` 与 Windows 的 `go vet ./internal/windows/...`；`go test . ./ui ./ui/editor ./ui/richtext ./internal/text ./internal/platform ./plugins/terminal/...`（13,321 项）通过；iOS（iphoneos SDK）与 Android（NDK 28.2）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet、`../Miya` 的 `go build ./...` 通过。
 - 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
 
 ## 规则
