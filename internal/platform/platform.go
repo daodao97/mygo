@@ -25,6 +25,11 @@ type unsupportedError struct{}
 func (unsupportedError) Error() string        { return "not supported on this platform" }
 func (unsupportedError) Is(target error) bool { return target == errors.ErrUnsupported }
 
+// ErrNavigated is what CallAsyncFunction fails with when the document the
+// body ran in went away before it answered, and what Page.Eval returns
+// then.
+var ErrNavigated = errors.New("mygo: the page navigated away before it answered")
+
 // ErrNotificationsDenied is what ShowNotification fails with when the user
 // does not allow the app to show notifications.
 var ErrNotificationsDenied = errors.New("mygo: the user does not allow notifications")
@@ -742,7 +747,9 @@ type Page interface {
 	// CallAsyncFunction runs body as the body of an async function in the
 	// main frame, awaits it and reports the returned value, which the
 	// caller arranges to be a string. err is non-nil when the body fails to
-	// compile or the evaluation fails natively. Page CSP does not apply.
+	// compile or the evaluation fails natively, and is ErrNavigated when
+	// the webview tells that the document it ran in went away. Page CSP
+	// does not apply.
 	CallAsyncFunction(body string, cb func(result string, err error))
 	SetZoom(factor float64)
 	Zoom() float64

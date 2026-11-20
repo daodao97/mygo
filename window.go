@@ -1930,7 +1930,9 @@ var errNoPage = errors.New("mygo: the window shows Content, not a web page")
 //	n, err := win.Page().Eval("const items = document.querySelectorAll('li'); return items.length")
 //
 // Eval is not subject to the page's Content Security Policy. It returns an
-// error when the window closes or the app quits before the page answers.
+// error when the page navigates away (a load, a reload, a change of
+// location), the window closes or the app quits before the page answers.
+// history.pushState and a new fragment stay in the page.
 func (p *Page) Eval(code string) (any, error) {
 	return p.EvalContext(context.Background(), code)
 }

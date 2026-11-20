@@ -678,6 +678,13 @@ features GTK 4 lacks become X11-only code beside it.
   with a base URL serves the document from that URL the same way.
 - **Eval** goes through the DevTools protocol (`Runtime.evaluate` with
   `awaitPromise`), which reports syntax errors and ignores the page's CSP.
+  A method that fails gives its caller the HRESULT and the protocol's
+  answer, whose message Eval's and `PrintToPDF`'s errors carry
+  (`devtoolsFailure`, which only they link: the default menus' Paste
+  calls the protocol in every app). An evaluation whose document went
+  away fails with code -32000, "Inspected target navigated or closed",
+  before the next document commits, which the backend reports as
+  `platform.ErrNavigated` (see "Eval").
   Edit roles run `document.execCommand` with a user gesture, except Paste:
   `Input.dispatchKeyEvent` carries Chromium's `paste` command on an
   `Unidentified` raw key-down, followed by key-up once it completes. The
@@ -1470,9 +1477,10 @@ script that does not compile answers null, the only thing taken as a compile
 error there: it reads "SyntaxError: the script does not compile", without
 V8's message or the position, which `evaluateJavascript` does not return,
 and an error the page reports itself never starts with `SyntaxError`. The
-code is first wrapped as `return JSON.stringify({ok, v: await (code)})`;
-if that fails to compile the code is not an expression, and it is run again as
-a function body. A compile error means nothing executed, so code never runs
+code is first wrapped as an async arrow function returning `(code)`, whose
+result goes back as `JSON.stringify({ok, v})`; if that fails to compile the
+code is not an expression, and it is run again as the arrow's body. A
+compile error means nothing executed, so code never runs
 twice. The result travels as a JSON string and is decoded in Go. A page whose
 window closed never answers, so a window closing fails the evals waiting for
 it, and an eval with the quit under way fails at once. WebKit runs the
@@ -1481,6 +1489,23 @@ that runs in a page just as a navigation away commits can leave its
 continuation, which answers, queued: the bridge listens to `pagehide`, so
 that it runs before WebKit freezes the page in its back/forward cache,
 where it would wait until Back shows the page again.
+
+A document that goes away never settles what it was waiting for, and WebKit
+answers for its promise only once the garbage collector takes it
+("Completion handler for function call is no longer reachable"), which
+never happens while the page keeps it, as the back-forward cache keeps a
+page whole. So until the code answers, the wrapper listens for the page's
+`pagehide`, which answers `{left: true}`, and Eval returns "the page
+navigated away". In the same process the old document hears `pagehide`
+before the next one commits, so its answer reaches the app before the
+commit, on the same connection. To another site WebKit swaps the web
+process, and the old one puts its page away after the new one commits;
+its answer comes later, which a core failing evals at the commit would
+drop. An eval that reaches the next document runs there, and `pushState`
+and fragments fire no `pagehide`, so only the evals of the document left
+fail. WebView2 fails such an evaluation itself before the next document
+commits, which can come before the page's answer; the backend reports
+that as `platform.ErrNavigated`, the error Eval returns either way.
 
 ### Trust
 

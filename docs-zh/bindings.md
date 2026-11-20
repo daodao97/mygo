@@ -316,4 +316,4 @@ title, err := mygo.EvalAs[string](win.Page(), "document.title")
 count, err := mygo.EvalAs[int](win.Page(), "const items = document.querySelectorAll('li'); return items.length")
 ```
 
-语句会作为异步函数的函数体运行，所以 `return` 产生值。抛出异常的脚本会返回 `*mygo.EvalError`。
+语句会作为异步函数的函数体运行，所以 `return` 产生值。抛出异常的脚本会返回 `*mygo.EvalError`。脚本仍在等待时，如果页面导航离开（加载、重新加载、更改 location）或窗口关闭，会返回错误；`history.pushState` 和新的片段（fragment）仍留在页面中。

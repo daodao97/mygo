@@ -439,4 +439,7 @@ count, err := mygo.EvalAs[int](win.Page(), "const items = document.querySelector
 ```
 
 Statements run as the body of an async function, so `return` produces the
-value. A script that throws returns an `*mygo.EvalError`.
+value. A script that throws returns an `*mygo.EvalError`. A script still
+waiting when the page navigates away (a load, a reload, a change of
+location) or its window closes returns an error; `history.pushState` and
+a new fragment stay in the page.
