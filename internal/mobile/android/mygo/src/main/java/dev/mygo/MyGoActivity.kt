@@ -110,6 +110,7 @@ class MyGoActivity : ComponentActivity() {
         val diff = old.diff(c)
         if (diff and (ActivityInfoChanges.UI_MODE or ActivityInfoChanges.FONT_SCALE) != 0) {
             HostImpl.applyBars()
+            Navigation.themeChanged()
             Go.send(Event.themeChanged())
         }
         if (diff and ActivityInfoChanges.LOCALE != 0) Go.send(Event.localeChanged())
