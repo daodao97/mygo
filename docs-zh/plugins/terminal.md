@@ -127,7 +127,7 @@ term, err := terminal.New(terminal.Options{
 - `OnClear` 在终端执行用户的清除操作前于主线程上调用：绑定到 `ActionClearScreen` 的按键和上下文菜单中的清除操作都会传入 `ClearScreen`。返回值表示是否接管操作；若接管，本地终端便不执行清除。显示服务器终端的窗口可接管操作，交由服务器端清除（见[在别处显示服务器的终端](#在别处显示服务器的终端)）。在全屏程序的屏幕上不会调用此回调。
 - `OnTitle`、`OnExit`、`OnBell` 和 `OnNotify` 在程序设置标题、结束、响铃或请求桌面通知时，于终端的 goroutine 上运行。它们可能在显示终端的窗口存在之前运行，而窗口由 `NewWindow` 在 `New` 之后创建：使用窗口的回调会等待它，如同终端示例所做（在 `win` 之前 `<-ready`，`NewWindow` 设置 `win` 后 `close(ready)`）。`Done` 在程序退出后关闭，`ExitCode` 返回其代码（无法启动的程序为 -1）；终端随后显示“[Process exited]”（使用 `Conn` 时为“[Disconnected]”）。
 - `NoExitMessage` 不写这一行，适用于自己提示程序已结束或直接关闭视图的应用：`OnExit`、`Done` 和 `ExitCode` 不受影响。
-- `OpenLink` 在主线程上接收 Command+click 打开的链接；有了它，也能接收作为文本打印的文件路径（`/abs/path`、`~/notes.md`、`./a.go`、`src/app.go:12:3`、`main.go:250`、`app.ts(12,3)`、`app.go#L12C3`、带空格且用引号括起的路径、中文行文中两侧没有空格的路径），无论文件中的位置原本怎样打印，都会以 `path:line:col` 给出，并去掉引号；相对路径相对于程序的 `Dir`。它报告是否打开了链接；它留下的超链接或 URL 会用系统打开，如同没有 `OpenLink` 时每个链接都会那样。应用可以用这种方式在自己的预览中打开远程 shell 的路径，而不是让系统在本地打开它们。
+- `OpenLink` 在主线程上接收 Command+click 打开的链接；有了它，也能接收作为文本打印的文件路径（`/abs/path`、`~/notes.md`、`./a.go`、`src/app.go:12:3`、`main.go:250`、`app.ts(12,3)`、从盘符开始的 `D:\dev\main.go` 与 `C:/Users/me/a.png`、`app.go#L12C3`、带空格且用引号括起的路径、中文行文中两侧没有空格的路径），无论文件中的位置原本怎样打印，都会以 `path:line:col` 给出，并去掉引号；相对路径相对于程序的 `Dir`。它报告是否打开了链接；它留下的超链接或 URL 会用系统打开，如同没有 `OpenLink` 时每个链接都会那样。应用可以用这种方式在自己的预览中打开远程 shell 的路径，而不是让系统在本地打开它们。
 - `OnPaste` 在按键、粘贴菜单项或次要点击触发剪贴板粘贴时于主线程上调用，参数为包含剪贴板所有格式的 `transfer.Data`。返回 true 表示接管操作，终端不再自行粘贴。驱动远程 shell 的应用可借此上传剪贴板中的文件（`d.Files()`）或图像（`d.Read(transfer.PNG)`），改用 `Paste` 粘贴远程路径：
 
   ```go

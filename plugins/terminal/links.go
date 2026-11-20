@@ -27,6 +27,16 @@ var pathToken = regexp.MustCompile(`[^\s"'<>` + "`" + proseDelimiters + `]+`)
 // or /usr/bin in PATH=/usr/bin:/bin.
 var pathInToken = regexp.MustCompile(`(?:(?:~|\.{1,2})?/[^\s:]+|[\p{L}\p{N}_.@+-]+(?:/[\p{L}\p{N}_.@+-]+)+/?)(?::\d+(?::\d+)?)?|[\p{L}\p{N}_@+-][\p{L}\p{N}_.@+-]*\.[\p{L}\p{N}_]+(?::\d+(?::\d+)?)?`)
 
+// drive starts a Windows path at a drive, as D:\dev or D:/dev. Its colon is
+// the path's, not a place's.
+var drive = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
+
+// windowsPath starts a Windows path, at a drive or a UNC server, as
+// \\server\share, whose backslashes are slashes: the whole of
+// D:\dev\main.go is the link, not main.go at its end. Elsewhere a backslash
+// is not a separator, so that hello\nworld and \d+ are not paths.
+var windowsPath = regexp.MustCompile(`^(?:[A-Za-z]:|\\\\[^\\/\s]+)[\\/]`)
+
 // quotedPlace finds the place after a quoted path, as "main.py":12.
 var quotedPlace = regexp.MustCompile(`^:\d+(?::\d+)?`)
 
@@ -36,8 +46,9 @@ var quotedPlace = regexp.MustCompile(`^:\d+(?::\d+)?`)
 var pathPlace = regexp.MustCompile(`:(\d+)(?::(\d+))?:?$|\((\d+)(?:,(\d+))?\)$|#L(\d+)(?:C(\d+))?$`)
 
 // pathAt returns the file path of text at column col, as urlAt, or "":
-// absolute, from ~, ./ or ../, with a slash, or a file name with an
-// extension or a line; the place in the file is written path:line:col
+// absolute, from ~, ./ or ../, with a slash, from a Windows drive, or a
+// file name with an extension or a line; the place in the file is written
+// path:line:col
 // however it was printed, and a quoted path loses its quotes.
 func pathAt(text []rune, cols []int, col int) (path string, x0, x1 int) {
 	s := string(text)
@@ -166,13 +177,22 @@ func pathOf(tok string) (path string, a, b int) {
 	if quoted {
 		name = name[1 : len(name)-1]
 	}
-	if name == "" || strings.ContainsAny(name, ":\x00\r\n") ||
+	// A path holds a colon only after its drive.
+	rest := name
+	if drive.MatchString(name) {
+		rest = name[2:]
+	}
+	if name == "" || strings.ContainsAny(rest, ":\x00\r\n") ||
 		strings.IndexFunc(name, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) < 0 {
 		return "", 0, 0
 	}
 	// Words are not paths: a name without a slash takes a letter, and an
 	// extension or a line, so that version 1.2.3 and 12:30 are neither.
-	if !strings.Contains(name, "/") {
+	separators := "/"
+	if windowsPath.MatchString(name) {
+		separators = `/\`
+	}
+	if !strings.ContainsAny(name, separators) {
 		dot := strings.LastIndexByte(name, '.')
 		if strings.IndexFunc(name, unicode.IsLetter) < 0 || line == 0 && (dot < 0 || dot == len(name)-1) {
 			return "", 0, 0
