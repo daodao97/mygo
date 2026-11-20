@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -15,8 +16,6 @@ import (
 	"testing"
 	"unsafe"
 )
-
-var procSHQueryRecycleBinW = shell32.NewProc("SHQueryRecycleBinW")
 
 func TestMain(m *testing.M) {
 	if path := os.Getenv("MYGO_TEST_TRASH_ITEM"); path != "" {
@@ -174,20 +173,48 @@ func trashItemInHelper(t *testing.T, path string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// recycled returns how many items the recycle bin of path's drive holds.
-func recycled(t *testing.T, path string) int64 {
+// inRecycleBin reports whether the recycle bin of path's drive holds the
+// item deleted from path, by the $I file Windows keeps for each item, which
+// names where it was deleted from. Counting the items would not tell: a
+// recycle bin fuller than its size drops its oldest items, at a moment of
+// its own, while an item is deleted or long after.
+func inRecycleBin(t *testing.T, path string) bool {
 	t.Helper()
-	info := struct {
-		Size  uint32
-		Bytes int64
-		Items int64
-	}{}
-	info.Size = uint32(unsafe.Sizeof(info))
-	root := filepath.VolumeName(path) + `\`
-	if r, _, _ := procSHQueryRecycleBinW.Call(uintptr(unsafe.Pointer(u16(root))), uintptr(unsafe.Pointer(&info))); failed(r) {
-		t.Fatalf("SHQueryRecycleBin(%s): %#x", root, r)
+	u, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
 	}
-	return info.Items
+	// The $I files name the item by its long path, which a temporary
+	// directory's (RUNNER~1) may not be.
+	dir, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, filepath.Base(path))
+	infos, err := filepath.Glob(filepath.Join(filepath.VolumeName(path)+`\`, "$Recycle.Bin", u.Uid, "$I*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, info := range infos {
+		// Version 2: the version, the item's size, when it was deleted,
+		// and the length of the path, NUL included, before the path.
+		b, err := os.ReadFile(info)
+		if err != nil || len(b) < 28 || binary.LittleEndian.Uint64(b) != 2 {
+			continue
+		}
+		n := int(binary.LittleEndian.Uint32(b[24:]))
+		if len(b) < 28+2*n {
+			continue
+		}
+		name := make([]uint16, n)
+		for i := range name {
+			name[i] = binary.LittleEndian.Uint16(b[28+2*i:])
+		}
+		if strings.EqualFold(syscall.UTF16ToString(name), want) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestTrashItem(t *testing.T) {
@@ -202,15 +229,14 @@ func TestTrashItem(t *testing.T) {
 	os.MkdirAll(filepath.Join(folder, "inner"), 0o755)
 	os.WriteFile(filepath.Join(folder, "inner", "a.txt"), []byte("a"), 0o644)
 	for _, path := range []string{file, folder} {
-		before := recycled(t, path)
 		if err := (shell{}).TrashItem(path); err != nil {
 			t.Fatalf("TrashItem(%s): %v", path, err)
 		}
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("%s is still there: %v", path, err)
 		}
-		if after := recycled(t, path); after != before+1 {
-			t.Errorf("TrashItem(%s): the recycle bin went from %d to %d items, not to the recycle bin", path, before, after)
+		if !inRecycleBin(t, path) {
+			t.Errorf("TrashItem(%s): not in the recycle bin", path)
 		}
 	}
 
@@ -261,7 +287,6 @@ func TestTrashItemKeepsAnItemTooBigForTheRecycleBin(t *testing.T) {
 		}
 	}
 	for _, path := range []string{file, folder} {
-		before := recycled(t, path)
 		if result := trashItemInHelper(t, path); result == "" || result == "<nil>" {
 			t.Errorf("TrashItem(%s) reported %q, want an error for an item bigger than the 1 MiB recycle bin", path, result)
 		} else {
@@ -282,8 +307,8 @@ func TestTrashItemKeepsAnItemTooBigForTheRecycleBin(t *testing.T) {
 		} else if size != 4<<20 {
 			t.Errorf("TrashItem(%s) left %d bytes, want %d", path, size, 4<<20)
 		}
-		if after := recycled(t, path); after != before {
-			t.Errorf("TrashItem(%s): the recycle bin went from %d to %d items, want unchanged", path, before, after)
+		if inRecycleBin(t, path) {
+			t.Errorf("TrashItem(%s): in the recycle bin, want it kept at its path", path)
 		}
 	}
 }
@@ -301,15 +326,14 @@ func TestTrashItemRecyclesAFileAsBigAsTheRecycleBin(t *testing.T) {
 	if err := os.WriteFile(path, make([]byte, 1<<20), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	before := recycled(t, path)
 	if result := trashItemInHelper(t, path); result != "<nil>" {
 		t.Errorf("TrashItem(%s) reported %q, want <nil> for an item that fits the recycle bin", path, result)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Errorf("TrashItem(%s) did not remove the item: %v", path, err)
 	}
-	if after := recycled(t, path); after != before+1 {
-		t.Errorf("TrashItem(%s): the recycle bin went from %d to %d items, want one more", path, before, after)
+	if !inRecycleBin(t, path) {
+		t.Errorf("TrashItem(%s): not in the recycle bin", path)
 	}
 }
 
