@@ -260,9 +260,8 @@ func TestShaderLibrary(t *testing.T) {
 	pool(func() { release(&lib) })
 }
 
-// TestTrimDrawables checks that a renderer keeps three drawables, two on a
-// display of 60 Hz, and that trimming them shrinks them until the next
-// frame.
+// TestTrimDrawables checks that a renderer keeps three drawables, and that
+// trimming them shrinks them until the next frame.
 func TestTrimDrawables(t *testing.T) {
 	if err := load(); err != nil {
 		t.Skip("no Metal:", err)
@@ -282,15 +281,6 @@ func TestTrimDrawables(t *testing.T) {
 		r.fit(800, 600, 1)
 		if n := send(r.layer, "maximumDrawableCount"); n != 3 {
 			t.Errorf("drawable count = %d, want 3", n)
-		}
-		for _, c := range []struct {
-			hz   float64
-			want uintptr
-		}{{60, 2}, {120, 3}, {50, 2}, {0, 3}} {
-			r.SetRefreshRate(c.hz)
-			if n := send(r.layer, "maximumDrawableCount"); n != c.want {
-				t.Errorf("drawable count at %v Hz = %d, want %d", c.hz, n, c.want)
-			}
 		}
 		r.trim()
 		if !r.trimmed {

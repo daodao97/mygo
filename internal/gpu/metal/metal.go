@@ -446,10 +446,8 @@ type Renderer struct {
 	// is why they cannot.
 	wide, layerWide bool
 	wideErr         error
-	// layer is the CAMetalLayer in superlayer, the view's; drawables is
-	// its maximumDrawableCount, or 0 where it has none (SetRefreshRate).
+	// layer is the CAMetalLayer in superlayer, the view's.
 	layer, superlayer id
-	drawables         int
 	w, h              int
 	bounds            cgRect
 	scale             float64
@@ -549,11 +547,13 @@ func New(layer uintptr) (r *Renderer, err error) {
 		// Effects read their backdrops from the drawable, which their
 		// passes sample then.
 		send(ml, "setFramebufferOnly:", 0)
-		// Three until SetRefreshRate tells of a display slow enough for
-		// two.
+		// Two drawables are too few: on a ProMotion display, frames
+		// waited for one most of each refresh. Three, as Core
+		// Animation makes while a window animates, also let both instance
+		// slots have a frame in flight while the display shows a third.
+		// They cost a frame of memory until the window idles (trim).
 		if respondsTo(ml, "setMaximumDrawableCount:") {
 			send(ml, "setMaximumDrawableCount:", 3)
-			r.drawables = 3
 		}
 		// Uncapped (MYGO_UNCAPPED), a drawable presents as soon as the
 		// GPU has drawn it, not at the display's next refresh, as
@@ -735,31 +735,6 @@ func (r *Renderer) SetWide(on bool) bool {
 	}
 	r.wide = on && r.wideErr == nil
 	return r.wide
-}
-
-// SetRefreshRate tells the renderer the refresh rate of the window's
-// display, in Hz, or 0 when unknown, for how many drawables the layer keeps:
-// each is a frame as large as the window in memory, 7.7 MB for a window of
-// 800×600 points on a Retina display.
-//
-// Three on a display refreshing faster than 60 Hz, as a ProMotion one: with
-// two, frames waited for one most of each refresh there. Three, as Core
-// Animation makes while a window animates, also let both instance slots
-// have a frame in flight while the display shows a third. At 60 Hz, two
-// keep the same pace, a frame for each refresh.
-func (r *Renderer) SetRefreshRate(hz float64) {
-	n := 3
-	if hz > 0 && hz <= 60 {
-		n = 2
-	}
-	if r.drawables == 0 || n == r.drawables {
-		return
-	}
-	r.drawables = n
-	pool(func() { send(r.layer, "setMaximumDrawableCount:", uintptr(n)) })
-	// The frames tracked hold the drawables they were drawn into, which
-	// the layer might no longer show.
-	r.forgetFrames()
 }
 
 // setLayerWide has the layer's drawables hold the colors outside the sRGB
