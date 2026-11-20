@@ -821,7 +821,13 @@ func TestUncappedHeldFrameGivenUp(t *testing.T) {
 	defer runtime.UnlockOSThread()
 	defer func(on bool) { pacing.Uncapped = on }(pacing.Uncapped)
 	defer func(d time.Duration) { settleDelay = d }(settleDelay)
-	settleDelay = time.Second
+	// The swap chain never settles: the frames after the one presented on
+	// another goroutine present paced, while it changes size. With a
+	// second, a runner that took settleDelay/2 from the resize's last
+	// change to one of them (Windows x64) had that frame settle the swap
+	// chain, ResizeBuffers put off on another goroutine, and it presented
+	// nothing.
+	settleDelay = 2 * wait.Guard
 	defer func(d time.Duration) { maxHeld = d }(maxHeld)
 	defer func(f func(_, _ time.Duration)) { awaitRefresh = f }(awaitRefresh)
 	awaitRefresh = func(_, _ time.Duration) {}
