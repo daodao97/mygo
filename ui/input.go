@@ -1113,10 +1113,20 @@ func (rt *engine) claimed(k keyEvent) bool { return rt.claimedBy(k, true) }
 // claimedBy reports whether an element around the focus handles the key as
 // a shortcut, or, when window is set, the window.
 func (rt *engine) claimedBy(k keyEvent, window bool) bool {
+	return rt.claimedAround(k, window, false)
+}
+
+// claimedAround is claimedBy, past the shortcuts of elements around the
+// focus that yield to a control inside them (yieldingShortcut) when
+// control is set: the focus is a control that acts on the key.
+func (rt *engine) claimedAround(k keyEvent, window, control bool) bool {
 	var chain []uint64
 	for _, r := range rt.regs {
 		if r.mods != k.mods || r.key != k.key || r.overlay {
 			continue // an overlay takes what the focus leaves
+		}
+		if control && r.yields && r.id != rt.focused {
+			continue
 		}
 		if r.id == 0 {
 			if window {
@@ -1211,7 +1221,7 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 		rt.requestFrame()
 		return false
 	}
-	if s := rt.states[rt.focused]; s != nil && s.flags&flagMenuButton != 0 && s.flags&flagDisabled == 0 && !rt.claimedBy(k, false) &&
+	if s := rt.states[rt.focused]; s != nil && s.flags&flagMenuButton != 0 && s.flags&flagDisabled == 0 && !rt.claimedAround(k, false, true) &&
 		(mods == 0 && (key == KeyEnter || key == KeySpace || key == KeyDown || key == KeyUp) || mods == Alt && key == KeyDown) {
 		rt.focusVisible = true
 		if key == KeyUp {
@@ -1228,7 +1238,7 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 		// page: Space scrolls as it does elsewhere.
 		s := rt.states[rt.focused]
 		window := s != nil && key == KeyEnter && s.flags&flagToggle != 0
-		if s != nil && !rt.claimedBy(k, window) && s.flags&flagClickable != 0 && s.flags&flagDisabled == 0 &&
+		if s != nil && !rt.claimedAround(k, window, true) && s.flags&flagClickable != 0 && s.flags&flagDisabled == 0 &&
 			(key == KeyEnter || s.role != RoleLink) {
 			s.click(0)
 			rt.focusVisible = true
@@ -1432,7 +1442,24 @@ func (rt *engine) settleKeys() {
 // shortcut registers that element id (0 for the window) handles mods+key
 // and reports whether such a key was delivered to it.
 func (rt *engine) shortcut(id uint64, mods Modifiers, key Key) bool {
-	rt.nextRegs = append(rt.nextRegs, shortcutReg{id: id, mods: mods, key: key})
+	return rt.register(shortcutReg{id: id, mods: mods, key: key})
+}
+
+// yieldingShortcut is Shortcut for a key the element takes only where a
+// control inside it, holding the focus, does nothing with it: a button
+// there clicks on it instead, as a list's Enter submitting the row
+// chosen leaves a button in a row clicking on Enter.
+func (e *node) yieldingShortcut(mods Modifiers, key Key) bool {
+	if e.disabled() {
+		return false
+	}
+	return e.c.rt.register(shortcutReg{id: e.id, mods: mods, key: key, yields: true})
+}
+
+// register registers r and reports whether its key was delivered to it.
+func (rt *engine) register(r shortcutReg) bool {
+	id, mods, key := r.id, r.mods, r.key
+	rt.nextRegs = append(rt.nextRegs, r)
 	for i, d := range rt.delivered {
 		if d.id == id && d.mods == mods && d.key == key {
 			rt.delivered = append(rt.delivered[:i], rt.delivered[i+1:]...)

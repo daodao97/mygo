@@ -413,7 +413,7 @@ func (s *GridState) keys(grid *node, n int) {
 		}
 		grid.st.markChanged()
 	}
-	if grid.Shortcut(0, KeyEnter) && in {
+	if grid.yieldingShortcut(0, KeyEnter) && in { // a button in an item clicks on it
 		grid.st.markSubmitted()
 	}
 	if st := grid.st; st.typing && st.typed != "" && s.Label != nil {

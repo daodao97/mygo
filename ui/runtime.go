@@ -689,6 +689,10 @@ type shortcutReg struct {
 	// made serial-th in its pass: the overlay made last is on top.
 	overlay bool
 	serial  int32
+	// yields marks a key an element takes only where a control inside it
+	// does nothing with it (yieldingShortcut): a button, link or menu
+	// button holding the focus inside it clicks or opens on it instead.
+	yields bool
 	// retried marks a key delivered, or left unrouted, in the frame after
 	// the one it came to (settleKeys): it is not retried again.
 	retried bool
