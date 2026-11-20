@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"image"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -100,6 +101,34 @@ func colorPixels(img *image.RGBA, r ui.Rect, c ui.Color) int {
 	return n
 }
 
+// tintedPixels counts the pixels of img in r that are c drawn over white
+// with at least a quarter of its coverage: an underline a fraction of a
+// pixel thick, as Pango's metrics are before 1.52 (Ubuntu 22.04, Debian
+// 12), draws faint, as GTK draws it.
+func tintedPixels(img *image.RGBA, r ui.Rect, c ui.Color) int {
+	n := 0
+	for y := int(r.Y); y < int(r.Y+r.H); y++ {
+		for x := int(r.X); x < int(r.X+r.W); x++ {
+			p := img.RGBAAt(x, y)
+			ch := [3][2]float64{{float64(p.R), float64(c.R)}, {float64(p.G), float64(c.G)}, {float64(p.B), float64(c.B)}}
+			a := 0.0
+			for _, v := range ch {
+				if 255-v[1] > 64 {
+					a = max(a, (255-v[0])/(255-v[1]))
+				}
+			}
+			ok := a >= 0.25
+			for _, v := range ch {
+				ok = ok && math.Abs(v[0]-(255-a*(255-v[1]))) <= 24
+			}
+			if ok {
+				n++
+			}
+		}
+	}
+	return n
+}
+
 func absDiff(a, b uint8) int {
 	if a > b {
 		return int(a - b)
@@ -129,9 +158,9 @@ func TestLinkColorDraws(t *testing.T) {
 		}
 	}
 	check("at first", asideRed, themeBlue)
-	before := colorPixels(tt.Image(), under, asideRed)
+	before := tintedPixels(tt.Image(), under, asideRed)
 	tt.Move(aside.X+aside.W/2, aside.Y+aside.H/2)
-	if after := colorPixels(tt.Image(), under, asideRed); after <= before {
+	if after := tintedPixels(tt.Image(), under, asideRed); after <= before {
 		t.Errorf("hovered, the aside's underline has %d pixels in its color, %d before", after, before)
 	}
 	tt.Move(0, 79)

@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"math"
 	"testing"
 )
@@ -38,7 +39,7 @@ func TestRichText(t *testing.T) {
 		return n, widest
 	}
 	isRed := func(r, g, b uint8) bool { return r > 200 && g < 80 && b < 80 }
-	isBlue := func(r, g, b uint8) bool { return b > 200 && r < 80 && g < 80 }
+	isBlue := func(r, g, b uint8) bool { return tinted(color.RGBA{r, g, b, 255}, blue) }
 	if n, _ := count(rich, isRed); n < 30 {
 		t.Errorf("%d red pixels in the red span", n)
 	}
