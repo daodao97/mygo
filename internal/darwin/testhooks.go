@@ -201,6 +201,18 @@ func TestHitView(handle uintptr, x, y float64) (cls string) {
 	return cls
 }
 
+// TestAcceptsFirstMouse asks the hit-tested content view whether an
+// activation press reaches it, at a point in the content's top-left origin.
+func TestAcceptsFirstMouse(handle uintptr, x, y float64) (accepts bool) {
+	withPool(func() {
+		content := send(id(handle), "contentView")
+		bounds := msgRect(content, sel("bounds"))
+		hit := msgHitTest(content, sel("hitTest:"), NSPoint{X: x, Y: bounds.Size.Height - y})
+		accepts = hit != 0 && objc.Send[bool](hit, sel("acceptsFirstMouse:"), id(0))
+	})
+	return accepts
+}
+
 // TestAppPress is half of TestAppClick: the left mouse down, or the up,
 // which a user's click handles apart, a frame or more later.
 func TestAppPress(handle uintptr, x, y float64, down bool) {

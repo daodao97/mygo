@@ -326,6 +326,15 @@ func TestWindowOptions(t *testing.T) {
 	}
 }
 
+func TestConsumeActivationClickOption(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		_, fw := testWindow(t, WindowOptions{ConsumeActivationClick: enabled})
+		if fw.Opts.ConsumeActivationClick != enabled {
+			t.Errorf("ConsumeActivationClick = %v, want %v", fw.Opts.ConsumeActivationClick, enabled)
+		}
+	}
+}
+
 func TestSafariTabFocusOption(t *testing.T) {
 	_, fw := testWindow(t, WindowOptions{Page: PageOptions{SafariTabFocus: true}})
 	if fw.Opts.TabFocusesLinks {

@@ -340,6 +340,7 @@ func (w *window) setUp(controller uintptr) {
 		w.resizeWebView()
 	}
 	w.layoutControls() // above the webview's window
+	w.syncWebViewEnabled()
 	if o.Zoom > 0 && o.Zoom != 1 {
 		w.SetZoom(o.Zoom)
 	}

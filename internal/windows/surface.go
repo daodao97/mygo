@@ -146,6 +146,9 @@ type surface struct {
 	// finger (cancelPress): the mouse button's release that follows is
 	// its, and goes nowhere.
 	canceledUp bool
+	// ateUp is the mouse button release of an activation press
+	// WM_MOUSEACTIVATE ate (MA_ACTIVATEANDEAT), which goes nowhere.
+	ateUp uint32
 
 	// keyTaken tells that the content took the key down, whose
 	// WM_SYSCHAR then opens no menu.
@@ -761,7 +764,26 @@ func (s *surface) pointer(kind platform.SurfaceEventKind, lp uintptr, button int
 	s.send(platform.SurfaceEvent{Kind: kind, X: s.toDIP(int32(x)), Y: s.toDIP(int32(y)), Button: button, Clicks: clicks, Mods: mods(), Pointer: pointer, Pressure: pressure})
 }
 
+// eatActivationRelease remembers the release of an activation press
+// WM_MOUSEACTIVATE ate (MA_ACTIVATEANDEAT), so the release that follows
+// does not reach the content or an embedded web view as half a click.
+func (s *surface) eatActivationRelease(down uint16) {
+	s.ateUp = releaseMessage(down)
+}
+
 func (s *surface) message(hwnd uintptr, m uint32, wp, lp uintptr) (uintptr, bool) {
+	switch m {
+	case wmLButtonDown, wmLButtonDblClk, wmRButtonDown, wmRButtonDblClk, wmMButtonDown, wmMButtonDblClk, wmXButtonDown, wmXButtonDblClk, wmKillFocus:
+		s.ateUp = 0
+	case wmCaptureChanged:
+		if lp != hwnd {
+			s.ateUp = 0
+		}
+	}
+	if m != 0 && m == s.ateUp {
+		s.ateUp = 0
+		return 0, true
+	}
 	switch m {
 	case wmMouseMove, wmLButtonDown, wmLButtonDblClk, wmLButtonUp, wmRButtonDown, wmRButtonDblClk, wmRButtonUp,
 		wmMButtonDown, wmMButtonDblClk, wmMButtonUp, wmXButtonDown, wmXButtonDblClk, wmXButtonUp, wmMouseWheel, wmMouseHWheel:

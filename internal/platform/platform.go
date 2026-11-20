@@ -452,6 +452,9 @@ type WindowOptions struct {
 	HasShadow      bool
 	Frameless      bool
 	Transparent    bool
+	// ConsumeActivationClick withholds the activation press from a
+	// window's content (macOS, Windows). Other platforms ignore it.
+	ConsumeActivationClick bool
 	// BackgroundColor is painted before the page renders; nil keeps the
 	// platform default.
 	BackgroundColor *Color

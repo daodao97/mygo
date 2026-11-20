@@ -496,10 +496,17 @@ func webViewMethods() []objc.MethodDef {
 		sendSuper(self, "MyGoWebView", cmd, uintptr(ev))
 	}
 	return []objc.MethodDef{
-		// The first click in a window that is not key is the page's, as it
-		// is native UI's (MyGoSurfaceView): WKWebView answers no, which
-		// spends the click on making the window key.
-		method("acceptsFirstMouse:", func(self id, _ objc.SEL, ev id) bool { return true }),
+		// An embedded page follows its host window's activation policy.
+		method("acceptsFirstMouse:", func(self id, _ objc.SEL, ev id) bool {
+			w := theBackend.byWebView[self]
+			if w == nil {
+				return true
+			}
+			if w.host != nil {
+				w = w.host
+			}
+			return !w.opts.ConsumeActivationClick
+		}),
 		method("scrollWheel:", func(self id, cmd objc.SEL, ev id) {
 			w := theBackend.byWebView[self]
 			if w == nil || w.host == nil || w.host.surface == nil || w.opts == nil || !w.opts.ScrollToContainer {
