@@ -106,6 +106,9 @@ type listener struct {
 }
 
 func (s *surface) send(ev platform.SurfaceEvent) bool {
+	// A finger's pointer events pan what scrolls under it and long-press
+	// in the content (Touch), as on phones.
+	ev.Touch = ev.Pointer == platform.PointerTouch
 	if !s.held.Track(ev) {
 		return false
 	}
@@ -225,13 +228,14 @@ func (s *surface) listen() {
 		}
 		x, y := s.point(e)
 		pointer, _ := device(e)
-		s.send(platform.SurfaceEvent{Kind: platform.PointerCancel, X: x, Y: y, Mods: s.mods(e), Pointer: pointer})
+		s.send(cancelEvent(pointer, x, y, s.mods(e)))
 	})
 	s.on(c, "pointerleave", true, func(e js.Value) {
 		if !primary(e) {
 			return
 		}
-		s.send(platform.SurfaceEvent{Kind: platform.PointerLeave})
+		pointer, _ := device(e)
+		s.send(platform.SurfaceEvent{Kind: platform.PointerLeave, Pointer: pointer})
 	})
 	// iOS sends a tap's mouse events even though its pointerdown was
 	// canceled: the mousedown would move the focus to the canvas, and the
@@ -483,6 +487,17 @@ func (s *surface) touch(e js.Value, kind platform.SurfaceEventKind) {
 	_, pressure := device(e)
 	w, h := contact(e)
 	s.send(platform.SurfaceEvent{Kind: kind, ID: uint64(e.Get("pointerId").Int()), X: x, Y: y, Mods: s.mods(e), Pressure: pressure, Width: w, Height: h})
+}
+
+// cancelEvent returns the event of a pointer the browser took (pointercancel)
+// at x, y: a finger lets go far outside what it pressed, as on phones, which
+// ends its pan, press and long press; a mouse's or a pen's buttons go up with
+// no release.
+func cancelEvent(pointer platform.PointerKind, x, y float64, mods platform.Modifiers) platform.SurfaceEvent {
+	if pointer == platform.PointerTouch {
+		return platform.SurfaceEvent{Kind: platform.PointerUp, X: -1e6, Y: -1e6, Mods: mods, Pointer: pointer, Canceled: true}
+	}
+	return platform.SurfaceEvent{Kind: platform.PointerCancel, X: x, Y: y, Mods: mods, Pointer: pointer}
 }
 
 // contact returns the size of a finger's contact of a pointer event, in
