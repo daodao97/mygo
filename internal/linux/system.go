@@ -245,8 +245,6 @@ func (shell) TrashItem(path string) error {
 	return nil
 }
 
-func (shell) TrashItemResult(string) (string, error) { return "", platform.ErrUnsupported }
-
 func (shell) PreviewItem(string) error { return platform.ErrUnsupported }
 
 func (shell) Beep() { gdkDisplayBeep(gdkDisplayGetDefault()) }

@@ -11,8 +11,6 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
-
-	"github.com/egoist/mygo/internal/platform"
 )
 
 // The recycle bin, through IFileOperation as Electron's shell.trashItem.
@@ -58,13 +56,15 @@ const (
 )
 
 // A trashSink is an IFileOperationProgressSink: PreDeleteItem refuses the
-// deletes that would not go to the recycle bin, and PostDeleteItem notes
-// one that did not all the same; the other methods succeed.
+// deletes that would not go to the recycle bin, PostDeleteItem notes one
+// that did not all the same and takes the path of the item the recycle
+// bin holds; the other methods succeed.
 type trashSink struct {
 	vtbl    *[19]uintptr
 	refs    int32
-	refused bool // a delete would not have gone to the recycle bin
-	deleted bool // an item was deleted for good all the same
+	refused bool   // a delete would not have gone to the recycle bin
+	deleted bool   // an item was deleted for good all the same
+	result  string // where the recycle bin put the first item it took
 }
 
 func initTrashSink() {
@@ -106,8 +106,15 @@ func initTrashSink() {
 		// and no new item, though nothing is deleted yet: the shell then
 		// deletes its items one by one.
 		cb(func(this, flags, item, hrDelete, newlyCreated uintptr) uintptr {
+			s := trashSinks[this]
 			if !failed(hrDelete) && uint32(hrDelete) != copyEngineSNotHandled && newlyCreated == 0 {
-				trashSinks[this].deleted = true
+				s.deleted = true
+			}
+			if newlyCreated != 0 && s.result == "" {
+				var name uintptr
+				if r := comCall(newlyCreated, siGetDisplayName, sigdnFileSysPath, uintptr(unsafe.Pointer(&name))); !failed(r) {
+					s.result = takeWstr(name)
+				}
 			}
 			return sOK
 		}),
@@ -119,15 +126,27 @@ func initTrashSink() {
 }
 
 func (shell) TrashItem(path string) error {
+	_, err := trashItem(path)
+	return err
+}
+
+func (shell) TrashItemResult(path string) (string, error) {
+	return trashItem(path)
+}
+
+// trashItem moves path to the recycle bin and returns where the bin put
+// it: the $R item whose $I file names path, which the shell's progress
+// sink reports as the delete's newly created item.
+func trashItem(path string) (string, error) {
 	if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
 		if capacity, ok := recycleBinCapacity(path); ok && uint64(info.Size()) > capacity<<20 {
-			return fmt.Errorf("mygo: cannot move %s to the recycle bin: it is larger than the recycle bin (%d MB)", path, capacity)
+			return "", fmt.Errorf("mygo: cannot move %s to the recycle bin: it is larger than the recycle bin (%d MB)", path, capacity)
 		}
 	}
 	trashSinkOnce.Do(initTrashSink)
 	var item uintptr
 	if r, _, _ := procSHCreateItemFromParsingName.Call(uintptr(unsafe.Pointer(u16(path))), 0, uintptr(unsafe.Pointer(&iidIShellItem)), uintptr(unsafe.Pointer(&item))); failed(r) || item == 0 {
-		return fmt.Errorf("mygo: cannot move %s to the recycle bin: %w", path, hresultError("SHCreateItemFromParsingName", r))
+		return "", fmt.Errorf("mygo: cannot move %s to the recycle bin: %w", path, hresultError("SHCreateItemFromParsingName", r))
 	}
 	defer release(item)
 	// The operation holds the sink until it is released, which the
@@ -138,32 +157,30 @@ func (shell) TrashItem(path string) error {
 	defer delete(trashSinks, p)
 	var op uintptr
 	if r, _, _ := procCoCreateInstance.Call(uintptr(unsafe.Pointer(&clsidFileOperation)), 0, clsctxInprocServer, uintptr(unsafe.Pointer(&iidIFileOperation)), uintptr(unsafe.Pointer(&op))); failed(r) || op == 0 {
-		return hresultError("CoCreateInstance(FileOperation)", r)
+		return "", hresultError("CoCreateInstance(FileOperation)", r)
 	}
 	defer release(op)
 	if r := comCall(op, foSetOperationFlags, fofNoUI|fofAllowUndo|fofxRecycleOnDelete|fofxAddUndoRecord); failed(r) {
-		return hresultError("IFileOperation.SetOperationFlags", r)
+		return "", hresultError("IFileOperation.SetOperationFlags", r)
 	}
 	if r := comCall(op, foDeleteItem, item, p); failed(r) {
-		return hresultError("IFileOperation.DeleteItem", r)
+		return "", hresultError("IFileOperation.DeleteItem", r)
 	}
 	r := comCall(op, foPerformOperations)
 	var aborted int32
 	comCall(op, foGetAnyOperationsAborted, uintptr(unsafe.Pointer(&aborted)))
 	switch {
 	case sink.refused:
-		return fmt.Errorf("mygo: cannot move %s to the recycle bin: it would be deleted permanently", path)
+		return "", fmt.Errorf("mygo: cannot move %s to the recycle bin: it would be deleted permanently", path)
 	case sink.deleted:
-		return fmt.Errorf("mygo: cannot move %s to the recycle bin: Windows deleted it permanently", path)
+		return "", fmt.Errorf("mygo: cannot move %s to the recycle bin: Windows deleted it permanently", path)
 	case failed(r):
-		return fmt.Errorf("mygo: cannot move %s to the recycle bin: %w", path, hresultError("IFileOperation.PerformOperations", r))
+		return "", fmt.Errorf("mygo: cannot move %s to the recycle bin: %w", path, hresultError("IFileOperation.PerformOperations", r))
 	case aborted != 0:
-		return fmt.Errorf("mygo: cannot move %s to the recycle bin", path)
+		return "", fmt.Errorf("mygo: cannot move %s to the recycle bin", path)
 	}
-	return nil
+	return sink.result, nil
 }
-
-func (shell) TrashItemResult(string) (string, error) { return "", platform.ErrUnsupported }
 
 // recycleBinKey returns the key, under HKEY_CURRENT_USER, of the settings
 // of the recycle bin of path's volume. A network share has none.
