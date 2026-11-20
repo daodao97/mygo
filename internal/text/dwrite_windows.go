@@ -3,6 +3,7 @@
 package text
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"hash/maphash"
@@ -82,12 +83,14 @@ var (
 	iidIDWriteFont1         = guid{0xacd16696, 0x8c14, 0x4f5d, [8]byte{0x87, 0x7e, 0xfe, 0x3f, 0xc1, 0xd3, 0x27, 0x38}}
 	iidIDWriteFontFace2     = guid{0xd8b768ff, 0x64bc, 0x4e66, [8]byte{0x98, 0x2b, 0xec, 0x8e, 0x87, 0xf6, 0x93, 0xf7}}
 	iidIDWriteFontFace3     = guid{0xd37d7598, 0x09be, 0x4222, [8]byte{0xa2, 0x36, 0x20, 0x81, 0x34, 0x1c, 0xc1, 0xf2}}
+	iidIDWriteFontFace5     = guid{0x98eff3a5, 0xb667, 0x479a, [8]byte{0xb1, 0x45, 0xe2, 0xfa, 0x5b, 0x9f, 0xdc, 0x29}}
 	iidIDWriteFactory3      = guid{0x9a1b41c3, 0xd3bb, 0x466a, [8]byte{0x87, 0xfc, 0xfe, 0x67, 0x55, 0x6a, 0x3b, 0x65}}
 	iidIDWriteRendParams1   = guid{0x94413cf4, 0xa6fc, 0x4248, [8]byte{0x8b, 0x50, 0x66, 0x74, 0x34, 0x8f, 0xca, 0xd3}}
 	iidIDWritePixelSnapping = guid{0xeaf3a2da, 0xecf4, 0x4d24, [8]byte{0xb6, 0x44, 0xb3, 0x4f, 0x68, 0x42, 0x02, 0x4b}}
 	iidIDWriteTextRenderer  = guid{0xef8a8135, 0x5cc6, 0x45fe, [8]byte{0x88, 0x25, 0xc5, 0xa0, 0x72, 0x4e, 0xb8, 0x19}}
 	iidIDWriteTextLayout1   = guid{0x9064d822, 0x80a7, 0x465c, [8]byte{0xa9, 0x86, 0xdf, 0x65, 0xf7, 0x8b, 0x8f, 0xeb}}
 	iidIDWriteTextFormat1   = guid{0x5f174b49, 0x0d8b, 0x4cfb, [8]byte{0x8b, 0xca, 0xf1, 0xcc, 0xe9, 0xd0, 0x6c, 0x67}}
+	iidIDWriteTextLayout4   = guid{0x05a9bf42, 0x223f, 0x4441, [8]byte{0xb5, 0xfb, 0x82, 0x63, 0x68, 0x5f, 0x55, 0xe9}}
 )
 
 // Vtable indices, from the Windows SDK headers.
@@ -135,6 +138,7 @@ const (
 	// IDWriteFont1
 	font1IsMonospacedFont = 17
 	// IDWriteFontFace
+	faceGetSimulations        = 6
 	faceGetMetrics            = 8
 	faceGetDesignGlyphMetrics = 10
 	faceGetGlyphIndices       = 11
@@ -143,6 +147,14 @@ const (
 	face2GetRecommendedRenderingMode = 34
 	// IDWriteFontFace3
 	face3GetRecommendedRenderingMode = 44
+	// IDWriteFontFace5
+	face5GetFontAxisValueCount = 53
+	face5GetFontAxisValues     = 54
+	face5GetFontResource       = 56
+	// IDWriteFontResource
+	resourceGetFontAxisCount  = 5
+	resourceGetFontAxisRanges = 7
+	resourceCreateFontFace    = 13
 	// IDWriteRenderingParams, and IDWriteRenderingParams1
 	paramsGetGamma                      = 3
 	paramsGetEnhancedContrast           = 4
@@ -176,6 +188,7 @@ const (
 	layoutGetClusterMetrics    = 62
 	layoutHitTestTextPosition  = 65
 	layout1SetCharacterSpacing = 69
+	layout4SetFontAxisValues   = 84
 	typographyAddFontFeature   = 3
 	glyphsGetAlphaTextureBound = 3
 	glyphsCreateAlphaTexture   = 4
@@ -405,7 +418,7 @@ type dwrite struct {
 	// fallbacks are the font fallbacks of family lists, 0 for a list of
 	// one family.
 	fallbacks map[string]uintptr
-	faces     map[faceKey]uintptr
+	faces     map[faceKey]dwFace
 	// fonts are the Fonts of faces at sizes, which hold a reference to
 	// their face until they are unreachable (nativeFonts).
 	fonts map[fontKey]*Font
@@ -486,6 +499,17 @@ type faceKey struct {
 	italic bool
 }
 
+// dwFace is the face of a family that a weight and style match.
+type dwFace struct {
+	face uintptr
+	// axis says the face is an instance of a variable font at the weight,
+	// on its weight axis, which none of the family's named instances has:
+	// DirectWrite matches weights against those (Segoe UI Variable's 500
+	// draws its Semibold, 600), so the text it draws takes the weight as
+	// the axis's value too (weightAxes, #2137).
+	axis bool
+}
+
 type fontKey struct {
 	face uintptr
 	size float32
@@ -503,7 +527,7 @@ func newDWrite() (*dwrite, error) {
 		exists:    map[string]bool{},
 		formats:   map[formatKey]uintptr{},
 		fallbacks: map[string]uintptr{},
-		faces:     map[faceKey]uintptr{},
+		faces:     map[faceKey]dwFace{},
 		fonts:     map[fontKey]*Font{},
 		numbers:   map[formatKey]*numberFont{},
 		wholes:    map[wholeKey]*keptWhole{},
@@ -759,16 +783,92 @@ func (e *dwrite) fallback(list string) uintptr {
 
 func (e *dwrite) font(style Style) *Font {
 	family, custom := e.family(style.Family)
-	key := faceKey{family, custom, style.weight(), style.Italic}
-	face, ok := e.faces[key]
-	if !ok {
-		face = e.matchFace(e.collection(custom), family, key.weight, key.italic)
-		e.faces[key] = face
-	}
+	face := e.face(family, custom, style.weight(), style.Italic).face
 	if face == 0 {
 		return nil
 	}
 	return e.fontOf(face, style.FontSize(), false, false)
+}
+
+// face returns the face of a family that a weight and style match: the
+// face DirectWrite matches, or the instance of its variable font at the
+// weight, when its named instances lack the weight and its weight axis
+// has it.
+func (e *dwrite) face(family string, custom bool, weight int, italic bool) dwFace {
+	key := faceKey{family, custom, weight, italic}
+	f, ok := e.faces[key]
+	if !ok {
+		f.face = e.matchFace(e.collection(custom), family, weight, italic)
+		if inst := weightInstance(f.face, weight); inst != 0 {
+			release(f.face)
+			f = dwFace{inst, true}
+		}
+		e.faces[key] = f
+	}
+	return f
+}
+
+// axisValue is a DWRITE_FONT_AXIS_VALUE, and axisRange a
+// DWRITE_FONT_AXIS_RANGE.
+type axisValue struct {
+	tag   uint32
+	value float32
+}
+
+type axisRange struct {
+	tag      uint32
+	min, max float32
+}
+
+const tagWght = 'w' | 'g'<<8 | 'h'<<16 | 't'<<24
+
+func weightAxis(weight int) axisValue {
+	return axisValue{tagWght, float32(weight)}
+}
+
+// weightInstance returns the instance of a variable font face at a value
+// of its weight axis other than its own, with the face's values of the
+// other axes (Segoe UI Variable Display's optical size among them); 0
+// when the face is not variable (or Windows older than 10 1803), its
+// weight axis lacks the weight, or the face is of the weight.
+func weightInstance(face uintptr, weight int) uintptr {
+	if face == 0 {
+		return 0
+	}
+	f5 := queryInterface(face, &iidIDWriteFontFace5)
+	if f5 == 0 {
+		return 0
+	}
+	defer release(f5)
+	n := uint32(call(f5, face5GetFontAxisValueCount))
+	if n == 0 {
+		return 0
+	}
+	values := make([]axisValue, n)
+	if failed(call(f5, face5GetFontAxisValues, uintptr(unsafe.Pointer(&values[0])), uintptr(n))) {
+		return 0
+	}
+	var res uintptr
+	if failed(call(f5, face5GetFontResource, uintptr(unsafe.Pointer(&res)))) {
+		return 0
+	}
+	defer release(res)
+	ranges := make([]axisRange, call(res, resourceGetFontAxisCount))
+	if len(ranges) == 0 || failed(call(res, resourceGetFontAxisRanges, uintptr(unsafe.Pointer(&ranges[0])), uintptr(len(ranges)))) {
+		return 0
+	}
+	w := float32(weight)
+	r := slices.IndexFunc(ranges, func(r axisRange) bool { return r.tag == tagWght })
+	v := slices.IndexFunc(values, func(v axisValue) bool { return v.tag == tagWght })
+	if r < 0 || v < 0 || w < ranges[r].min || w > ranges[r].max || values[v].value == w {
+		return 0
+	}
+	values[v].value = w
+	var inst uintptr
+	if failed(call(res, resourceCreateFontFace, call(face, faceGetSimulations), uintptr(unsafe.Pointer(&values[0])), uintptr(n), uintptr(unsafe.Pointer(&inst)))) {
+		return 0
+	}
+	return inst
 }
 
 // matchFace returns the face of a family that best matches a weight and
@@ -1241,6 +1341,7 @@ func (e *dwrite) typeset(objects *layoutObjects, layout uintptr, style Style, sp
 		return uintptr(units[from]) | uintptr(units[to]-units[from])<<32
 	}
 	all := textRange(0, len(text))
+	e.weightAxes(layout, style, spans, text, textRange)
 	e.spacing(layout, style.LetterSpacing, false, all)
 	e.typography(layout, style.Features, all)
 	from := 0
@@ -1291,6 +1392,80 @@ func (e *dwrite) typeset(objects *layoutObjects, layout uintptr, style Style, sp
 		}
 	}
 	setObjects(objects, layout, spans, units)
+}
+
+// weightAxes gives the runes that a variable font draws at a weight none
+// of its named instances has (dwFace.axis) that weight as the value of
+// its weight axis, which DirectWrite instances the font at. Only those
+// runes: the axis's value takes part in matching too, and families
+// without the axis match a weight differently with it, the fallback's
+// among them (Yu Gothic UI's 650 would draw its Semilight, 350, rather
+// than its Bold).
+func (e *dwrite) weightAxes(layout uintptr, style Style, spans []Span, text []rune, textRange func(from, to int) uintptr) {
+	faceOf := func(list string, weight int, italic bool) dwFace {
+		family, custom := e.family(list)
+		return e.face(family, custom, weight, italic)
+	}
+	type segment struct {
+		from, to, weight int
+		face             dwFace
+	}
+	base := segment{weight: style.weight(), face: faceOf(style.Family, style.weight(), style.Italic)}
+	var segments []segment
+	add := func(sg segment) {
+		if sg.face.axis && sg.to > sg.from {
+			segments = append(segments, sg)
+		}
+	}
+	from := 0
+	for _, sp := range spans {
+		to := max(from, min(sp.End, len(text)))
+		sg := base
+		if sp.Family != "" || sp.Weight > 0 || sp.Italic {
+			list := cmp.Or(sp.Family, style.Family)
+			if sp.Weight > 0 {
+				sg.weight = min(sp.Weight, 999)
+			}
+			sg.face = faceOf(list, sg.weight, style.Italic || sp.Italic)
+		}
+		sg.from, sg.to = from, to
+		add(sg)
+		from = to
+	}
+	base.from, base.to = from, len(text)
+	add(base)
+	if len(segments) == 0 {
+		return
+	}
+	l4 := queryInterface(layout, &iidIDWriteTextLayout4) // Windows 10 1803
+	if l4 == 0 {
+		return
+	}
+	defer release(l4)
+	for _, sg := range segments {
+		// The runes the face has a glyph for, which it draws.
+		runes := make([]uint32, sg.to-sg.from)
+		for i, r := range text[sg.from:sg.to] {
+			runes[i] = uint32(r)
+		}
+		glyphs := make([]uint16, len(runes))
+		if failed(call(sg.face.face, faceGetGlyphIndices, uintptr(unsafe.Pointer(&runes[0])), uintptr(len(runes)), uintptr(unsafe.Pointer(&glyphs[0])))) {
+			continue
+		}
+		v := weightAxis(sg.weight)
+		for i := 0; i < len(glyphs); {
+			if glyphs[i] == 0 {
+				i++
+				continue
+			}
+			j := i + 1
+			for j < len(glyphs) && glyphs[j] != 0 {
+				j++
+			}
+			call(l4, layout4SetFontAxisValues, uintptr(unsafe.Pointer(&v)), 1, textRange(sg.from+i, sg.from+j))
+			i = j
+		}
+	}
 }
 
 // spacing adds letter spacing to a range of a text layout, or, set, makes
