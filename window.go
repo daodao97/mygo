@@ -337,6 +337,13 @@ type Window struct {
 	flyoutSize platform.Size
 	// panel is WindowOptions.Panel.
 	panel bool
+	// cornerRadius is WindowOptions.CornerRadius: the content rounds its
+	// own corners to it where the system does not (Windows 10).
+	cornerRadius int
+	// transparent is WindowOptions.Transparent: the window shows what is
+	// behind it, so that the arc of its corners has something to show.
+	// frameless is WindowOptions.Frameless.
+	transparent, frameless bool
 	// active tells that the window is drawn as active (active.go);
 	// focusKnown, that it had the keyboard once or showed without it;
 	// keepActive, that SetActiveAppearance keeps it active. Main thread
@@ -657,7 +664,7 @@ func newWindow(opts WindowOptions, bg, tint *background, native uintptr, flyout 
 	id := windows.nextID
 	windows.Unlock()
 
-	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), stateKey: opts.StateKey, background: bg, vibrancyTint: tint, content: opts.Content != nil, panel: opts.Panel && flyout == nil, active: true}
+	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), stateKey: opts.StateKey, background: bg, vibrancyTint: tint, content: opts.Content != nil, panel: opts.Panel && flyout == nil, active: true, cornerRadius: opts.CornerRadius, transparent: opts.Transparent, frameless: opts.Frameless}
 	w.pg = &Page{w}
 	if flyout != nil {
 		w.fit = flyout.fit
@@ -1107,7 +1114,9 @@ func (w *Window) IsFocused() bool { return get(w, platform.Window.IsFocused) }
 // the one the system draws the window with, which depends on the system
 // and the title bar (on macOS 26, 26 with TitleBarHiddenInset's toolbar
 // and 16 without one); on Windows 11, the 8 of its rounded windows. It is 0 where the corners are square (full screen, a maximized
-// window on Windows, Linux, browsers) or the system does not tell it.
+// window on Windows, Linux, browsers) or the system does not tell it: a
+// transparent frameless window on Windows 10 rounds its content's corners
+// itself, at its WindowOptions.CornerRadius, as the system keeps them square.
 func (w *Window) CornerRadius() float64 { return get(w, platform.Window.CornerRadius) }
 
 // Minimize minimizes the window.
