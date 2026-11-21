@@ -1178,8 +1178,13 @@ fake host. Desktop files of `darwin` and `linux` exclude `ios` and
   desktops. iOS gives the holder a `-1` z position, under the renderer's layer;
   Android's `SurfaceView` goes over the window (`setZOrderOnTop`, made again the
   first time, off the call that asked: the surface going waits for Go, which
-  waits for the call). The hosts route fingers by the placements' boxes
-  themselves, without asking Go.
+  waits for the call). Android pauses a web view the content doesn't show
+  (`WebView.onPause`) and resumes it when it shows again: under a clip that is
+  gone its own visibility stays visible, the only one Chromium reads, so its
+  page would stay visible and go on drawing frames, on the renderer thread an
+  app's web views share. A paused page's scripts still run, with a hidden
+  page's timers, and its sound plays on. The hosts route fingers by the
+  placements' boxes themselves, without asking Go.
 - **The background.** `Background` is waited for: on iOS the GPU is off limits
   once `sceneDidEnterBackground` returns, and iOS ends what uses it. `frame`
   draws nothing in the background, and asks again on the way back.
