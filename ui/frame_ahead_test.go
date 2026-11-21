@@ -103,3 +103,63 @@ func TestFrameAheadOccluded(t *testing.T) {
 		t.Errorf("hidden: the glide is not held")
 	}
 }
+
+// TestFrameAheadAnimationFrame checks that a view asking for frames as it
+// builds (Context.AnimationFrame) asks for the next as it does, before the
+// rest of the frame and its present, once a frame however often it asks,
+// and that the frames stop once it stops asking (#2131).
+func TestFrameAheadAnimationFrame(t *testing.T) {
+	for _, ahead := range []bool{false, true} {
+		moving := true
+		var h *aheadHost
+		tt := coreNewTester(func(c *context) {
+			if moving {
+				c.AnimationFrame()
+				c.AnimationFrame()
+			}
+			if h != nil {
+				h.log = append(h.log, 'b') // the rest of the build
+			}
+			coreBox(c).Size(32, 32)
+		}, 200, 200)
+		h = &aheadHost{headless: tt.h, ahead: ahead}
+		tt.rt.host = h
+
+		h.log = nil
+		tt.Advance(time.Second / 60)
+		want := "bpr"
+		if ahead {
+			want = "rbpr"
+		}
+		if got := string(h.log); got != want {
+			t.Errorf("ahead %v: animating: %q, want %q", ahead, got, want)
+		}
+
+		// The frame that finds the view still asks for no frame.
+		moving = false
+		tt.Advance(time.Second / 60)
+		h.log = nil
+		tt.Advance(time.Second)
+		if tt.rt.animating || len(h.log) != 0 {
+			t.Errorf("ahead %v: frames after the view stopped: %q", ahead, h.log)
+		}
+	}
+}
+
+// TestFrameAheadAfterBuild checks that what the build starts moving
+// without Context.AnimationFrame asks for its frame ahead once the build
+// is done, before the frame presents.
+func TestFrameAheadAfterBuild(t *testing.T) {
+	var h *aheadHost
+	tt := coreNewTester(func(c *context) {
+		c.rt.animating = true // as a transition or a pose sets it
+		coreBox(c).Size(32, 32)
+	}, 200, 200)
+	h = &aheadHost{headless: tt.h, ahead: true}
+	tt.rt.host = h
+	h.log = nil
+	tt.Advance(time.Second / 60)
+	if got := string(h.log); got != "rpr" {
+		t.Errorf("%q, want %q", got, "rpr")
+	}
+}

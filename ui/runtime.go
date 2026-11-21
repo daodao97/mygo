@@ -470,7 +470,10 @@ type engine struct {
 	// what moves or what changed, waits for the window to show, and shown
 	// is when some of it last showed again (SurfaceShown); input tells
 	// that an event other than a frame's came since the last frame built.
+	// aheadDone tells that the frame asked for the next ahead, or found
+	// it should not (frameAhead).
 	animating  bool
+	aheadDone  bool
 	repainting bool
 	repaintAt  time.Time
 	redraw     bool
@@ -695,6 +698,10 @@ type shortcutReg struct {
 	// made serial-th in its pass: the overlay made last is on top.
 	overlay bool
 	serial  int32
+	// yields marks a key an element takes only where a control inside it
+	// does nothing with it (yieldingShortcut): a button, link or menu
+	// button holding the focus inside it clicks or opens on it instead.
+	yields bool
 	// retried marks a key delivered, or left unrouted, in the frame after
 	// the one it came to (settleKeys): it is not retried again.
 	retried bool
@@ -789,6 +796,7 @@ func (rt *engine) runFrame() {
 	rt.gen = rt.text.Generation()
 	rt.painted = [3]float32{w, h, scale}
 	rt.animating, rt.repainting, rt.repaintAt = false, false, time.Time{}
+	rt.aheadDone = false
 	rt.repaintRate, rt.repaintFull, rt.untracked = 0, false, false
 	rt.routeKeys()
 	rt.glideWheels(now)
@@ -905,6 +913,10 @@ func (rt *engine) runFrame() {
 	if rt.withinRead && rt.focused != focused {
 		rt.animating = true
 	}
+	// What the view's build animates (a transition, a pose, a scroll's
+	// glide that the build started) asks for its frame before the layout,
+	// the paint and the present take their time.
+	rt.frameAhead()
 	if rt.stats != nil {
 		rt.stats.passes = rt.pass + 1
 	}
@@ -973,6 +985,7 @@ func (rt *engine) runFrame() {
 	rt.stats.lap(phasePaint)
 	rt.insp.lap(2)
 	rt.syncStack()
+	rt.frameAhead() // what moved in the layout, as a drop target under a scroll
 	rt.host.present(&rt.scene)
 	rt.stackShown()
 	rt.placeWebViews()
@@ -1032,16 +1045,23 @@ func (rt *engine) runFrame() {
 	rt.stats.end(rt)
 }
 
-// frameAhead asks for the next frame as this one starts, rather than once
-// it was presented (next), while what moved since the last (a fling, a
-// glide, a snap) goes on moving and some of the window shows, where the
-// surface asks the display for frames late (platform.FrameAheadSurface):
-// the frame after comes at the display's next refresh even when this one
-// takes most of one. next asks for it again, which the surface coalesces;
-// rt.animating, once set, stays set to the frame's end, so this asks for
-// no frame that next would not.
+// frameAhead asks for the next frame as soon as this one knows it needs
+// one, rather than once it was presented (next), while some of the window
+// shows, where the surface asks the display for frames late
+// (platform.FrameAheadSurface): the frame after comes at the display's
+// next refresh even when this one takes most of one. The frame asks as it
+// starts, for what moved since the last (a fling, a glide, a snap), as
+// the view asks for frames while it builds (Context.AnimationFrame), once
+// the build is done, for what else the build started moving, and before
+// it presents; once a frame. next asks for it again, which the surface
+// coalesces; rt.animating, once set, stays set to the frame's end, so this
+// asks for no frame that next would not.
 func (rt *engine) frameAhead() {
-	if !rt.animating || rt.host.occluded() {
+	if !rt.inFrame || rt.aheadDone || !rt.animating {
+		return
+	}
+	rt.aheadDone = true
+	if rt.host.occluded() {
 		return
 	}
 	if a, ok := rt.host.(interface{ frameAhead() bool }); ok && a.frameAhead() {

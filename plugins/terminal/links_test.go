@@ -1,9 +1,10 @@
 package terminal
 
 import (
-	"github.com/egoist/mygo/ui"
 	"strings"
 	"testing"
+
+	"github.com/egoist/mygo/ui"
 )
 
 func TestURLAt(t *testing.T) {
@@ -68,6 +69,22 @@ func TestPathAt(t *testing.T) {
 		{"notes.md:2:3", 2, "notes.md:2:3"},
 		{"just words here", 5, ""},
 		{"version 1.2.3 ok", 9, ""},
+		// Windows paths, as a whole wherever the pointer is on them.
+		{`  ⎿  Read D:\dev\carrel\internal\desktop\links.go`, 30, `D:\dev\carrel\internal\desktop\links.go`},
+		{`  ⎿  Read D:\dev\carrel\internal\desktop\links.go`, 13, `D:\dev\carrel\internal\desktop\links.go`},
+		{`D:/dev/carrel/main.go:12:3: undefined: x`, 4, `D:/dev/carrel/main.go:12:3`},
+		{`error at D:\dev\app\main.go(12,5): bad`, 20, `D:\dev\app\main.go:12:5`},
+		{`copied \\server\share\report.pdf`, 12, `\\server\share\report.pdf`},
+		{`out: C:\Users\me\a.txt.`, 9, `C:\Users\me\a.txt`},
+		{`C:/Users/me/.codex/images/exec-1.png`, 0, `C:/Users/me/.codex/images/exec-1.png`},
+		{`C:/Users/me/.codex/images/exec-1.png`, 20, `C:/Users/me/.codex/images/exec-1.png`},
+		{`time 12:30:45 ok`, 7, ""},
+		{`copied \\server\share\reports`, 12, `\\server\share\reports`},
+		// A backslash elsewhere is an escape, not a separator.
+		{`echo hello\nworld`, 8, ""},
+		{`printf %s\t%s`, 9, ""},
+		{`grep \d+ file`, 6, ""},
+		{`\section intro`, 3, ""},
 	} {
 		text := []rune(c.row)
 		cols := make([]int, len(text))
@@ -86,6 +103,7 @@ func TestFileAndURLMatches(t *testing.T) {
 		want        linkTarget
 	}{
 		{"error: src/main.go:42:5: failed", "main", linkTarget{Path: "src/main.go", Line: 42, Column: 5}},
+		{`error: D:\dev\main.go:42:5: failed`, `D:`, linkTarget{Path: `D:\dev\main.go`, Line: 42, Column: 5}},
 		{"at (./src/main.ts(12,3))", "main", linkTarget{Path: "./src/main.ts", Line: 12, Column: 3}},
 		{"see ~/work/中文.go#L8C2", "中文", linkTarget{Path: "~/work/中文.go", Line: 8, Column: 2}},
 		{`File "/tmp/my project/中文.go":13:2`, "project", linkTarget{Path: "/tmp/my project/中文.go", Line: 13, Column: 2}},
@@ -337,4 +355,23 @@ func openedTarget(link string) linkTarget {
 		cols[i] = i
 	}
 	return matchLink(text, cols, 0).linkTarget
+}
+
+// A Windows path is a link as a whole, not its last name: the span runs from
+// its drive to its end, wherever the pointer is on it.
+func TestPathAtWindowsSpan(t *testing.T) {
+	row := `  ⎿  Read D:\dev\carrel\main.go (12 lines)`
+	path := `D:\dev\carrel\main.go`
+	text := []rune(row)
+	cols := make([]int, len(text))
+	for i := range cols {
+		cols[i] = i
+	}
+	start := len([]rune(row[:strings.Index(row, path)]))
+	end := start + len([]rune(path))
+	for _, col := range []int{start, start + 3, end - 1} {
+		if got, x0, x1 := pathAt(text, cols, col); got != path || x0 != start || x1 != end {
+			t.Errorf("pathAt(%d) = %q %d..%d, want %q %d..%d", col, got, x0, x1, path, start, end)
+		}
+	}
 }

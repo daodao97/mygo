@@ -7,6 +7,8 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"log"
+	"strings"
 	"testing"
 )
 
@@ -72,6 +74,27 @@ func TestWhiten(t *testing.T) {
 			t.Errorf("pixel %d is %v", x, c)
 		}
 	}
+}
+
+// TestTrayRefused adds an icon the notification area refuses, of no
+// window: it stays unadded, which the next add retries, and the log says
+// so once, rather than every time.
+func TestTrayRefused(t *testing.T) {
+	var out bytes.Buffer
+	defer log.SetOutput(log.Writer())
+	log.SetOutput(&out)
+	b := &Backend{trays: map[uint32]*tray{}}
+	tr := &tray{b: b, id: 1, tip: "refused"}
+	b.trays[tr.id] = tr
+	tr.add()
+	tr.add()
+	if tr.added {
+		t.Fatal("an icon the notification area refused is added")
+	}
+	if n := strings.Count(out.String(), "did not take the tray icon"); n != 1 {
+		t.Errorf("the log says %d times that the icon was refused: %q", n, out.String())
+	}
+	tr.Destroy()
 }
 
 // TestTraysAppearanceTemporary turns the taskbar dark or light while a

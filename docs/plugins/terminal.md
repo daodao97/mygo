@@ -313,6 +313,7 @@ term, err := terminal.New(terminal.Options{
 - `OpenLink` takes the links Command+click opens, on the main thread,
   and with it file paths printed as text too (`/abs/path`, `~/notes.md`,
   `./a.go`, `src/app.go:12:3`, `main.go:250`, `app.ts(12,3)`,
+  `D:\dev\main.go` and `C:/Users/me/a.png` from their drive,
   `app.go#L12C3`, a quoted path with spaces, a path in Chinese prose with
   no space around it), the place in the file as `path:line:col` however
   it was printed, and without the quotes: a relative path is the

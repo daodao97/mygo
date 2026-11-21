@@ -2747,7 +2747,8 @@ func SwitchBase(c *Context, on *bool) Element {
 // reports the new layout once the user lets go, or once a double click
 // fits a column to its cells, for the app to save. Columns wider
 // than the table scroll sideways, the header with them. With s.Sort, a
-// click on the header of a Sortable column sorts the rows by it; with
+// click on the header of a Sortable column sorts the rows by it, as Enter
+// and Space do on the header Tab reached; with
 // s.SortBy, a Cmd-click or a Shift-click sorts by it after the others;
 // with s.HeaderMenu, the header has a context menu.
 //

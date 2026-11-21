@@ -502,6 +502,11 @@ func pressLetter(w *mygo.Window, letter byte, cmd bool) (ok bool) {
 	return ok
 }
 
+// pressPageLetter presses the key of an uppercase letter in a foreground window showing a web page.
+func pressPageLetter(w *mygo.Window, letter byte) bool {
+	return pressLetter(w, letter, false)
+}
+
 func glassTint(*mygo.Window) (red, green, blue, alpha float64, ok bool) { return 0, 0, 0, 0, false }
 
 func nativeGlassSupported() bool { return false }
@@ -515,6 +520,39 @@ func nativeGlassTint(*mygo.Window) (red, green, blue, alpha float64) { return 0,
 func activateApp() {}
 
 func hitView(*mygo.Window, float64, float64) string { return "" }
+
+func checkActivationHit(t *testing.T, w *mygo.Window, kind string, enabled bool) {
+	t.Helper()
+	var res uintptr
+	var cls string
+	eventually(t, "the content window placed", func() bool {
+		mygo.RunOnMain(func() { res, cls = win.TestMouseActivate(w.NativeHandle(), 100, 100) })
+		if kind == "page" {
+			if enabled {
+				return cls == "MyGoWindow"
+			}
+			return cls != "" && cls != "MyGoWindow"
+		}
+		return cls == "MyGoSurface"
+	})
+	want := uintptr(1) // MA_ACTIVATE
+	if enabled {
+		want = 2 // MA_ACTIVATEANDEAT
+	}
+	if res != want {
+		t.Fatalf("WM_MOUSEACTIVATE on %s (%s) = %d, want %d", kind, cls, res, want)
+	}
+}
+
+func requireForeground(t *testing.T, w *mygo.Window) {
+	t.Helper()
+	takeForeground(w)
+	var front bool
+	mygo.RunOnMain(func() { front = win.TestForeground(w.NativeHandle()) })
+	if !front {
+		t.Skip("windows cannot take foreground in this session (non-input desktop)")
+	}
+}
 
 // Only X servers keep a keyboard's state for the tests after a test: see
 // left_behind_linux_test.go.

@@ -264,3 +264,27 @@ func TestFingerShowsNoHoverBars(t *testing.T) {
 		t.Error("a pointer over it shows no bars")
 	}
 }
+
+// Nor does it long-press, however long the finger was down: a browser
+// takes it, as a system gesture, before the long press is due.
+func TestTouchCancelLongPressesNothing(t *testing.T) {
+	long, clicks := 0, 0
+	tt := coreNewTester(func(c *context) {
+		b := coreBox(c).Fill()
+		if b.LongPressed() {
+			long++
+		}
+		if b.Clicked() {
+			clicks++
+		}
+	}, 200, 200)
+	tt.Frame()
+	tt.FingerDown(50, 50)
+	tt.Advance(100 * time.Millisecond)
+	tt.FingerCancel()
+	tt.Advance(time.Second)
+	tt.Frame()
+	if long != 0 || clicks != 0 {
+		t.Errorf("taken away: %d long presses, %d clicks", long, clicks)
+	}
+}

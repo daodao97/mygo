@@ -3,6 +3,7 @@
 package text
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -11,14 +12,8 @@ import (
 	"unsafe"
 )
 
-var iidIDWriteFontFace5 = guid{0x98eff3a5, 0xb667, 0x479a, [8]byte{0xb1, 0x45, 0xe2, 0xfa, 0x5b, 0x9f, 0xdc, 0x29}}
-
-// IDWriteFontFace3's and IDWriteFontFace5's methods the tests call.
-const (
-	face3GetFamilyNames        = 40
-	face5GetFontAxisValueCount = 53
-	face5GetFontAxisValues     = 54
-)
+// IDWriteFontFace3's methods the tests call.
+const face3GetFamilyNames = 40
 
 // faceFamily returns the English name of a font face's family.
 func faceFamily(face uintptr) string {
@@ -47,16 +42,12 @@ func faceWeightAxis(face uintptr) (float32, bool) {
 	if n == 0 {
 		return 0, false
 	}
-	// DWRITE_FONT_AXIS_VALUE
-	values := make([]struct {
-		tag   uint32
-		value float32
-	}, n)
+	values := make([]axisValue, n)
 	if failed(call(f5, face5GetFontAxisValues, uintptr(unsafe.Pointer(&values[0])), uintptr(n))) {
 		return 0, false
 	}
 	for _, v := range values {
-		if v.tag == 'w'|'g'<<8|'h'<<16|'t'<<24 {
+		if v.tag == tagWght {
 			return v.value, true
 		}
 	}
@@ -162,11 +153,14 @@ func TestDWriteUserHanLazy(t *testing.T) {
 	}
 }
 
-// A variable font's glyphs are rasterized at the instance DirectWrite
-// picked for the weight, as fallback picks them too: the face of the glyph
-// run, which carries the instance's axis values, is the one rasterized,
-// and a heavier weight covers more pixels. Windows has variable fonts of
-// its own (Bahnschrift from Windows 10, Segoe UI Variable from Windows 11).
+// A variable font's glyphs are rasterized at the instance of the weight,
+// as fallback picks them too: the face of the glyph run, which carries the
+// instance's axis values, is the one rasterized, and a heavier weight
+// covers more pixels. Weights between the font's named instances are
+// instances of the weight axis too, as DirectWrite alone would draw the
+// nearest named one (500 in Segoe UI Variable drew its Semibold, 600,
+// #2137). Windows has variable fonts of its own (Bahnschrift from Windows
+// 10, Segoe UI Variable from Windows 11).
 func TestDWriteVariableWeight(t *testing.T) {
 	s := newSystem()
 	s.mu.Lock()
@@ -178,7 +172,7 @@ func TestDWriteVariableWeight(t *testing.T) {
 			continue
 		}
 		last := 0
-		for _, weight := range []int{300, 400, 700} {
+		for _, weight := range []int{300, 400, 450, 500, 550, 600, 650, 700} {
 			e.resetScratch()
 			lines := e.shapeText([]rune("H"), Style{Size: 40, Family: family, Weight: weight}, nil, 0, false, false)
 			if len(lines) != 1 || len(lines[0].runs) != 1 {
@@ -194,6 +188,10 @@ func TestDWriteVariableWeight(t *testing.T) {
 			if int(wght) != weight {
 				t.Errorf("%s %d's run is of the instance of weight %v", family, weight, wght)
 			}
+			// The face of its metrics too.
+			if wght, _ := faceWeightAxis(e.font(Style{Size: 40, Family: family, Weight: weight}).native); int(wght) != weight {
+				t.Errorf("%s %d's font is of the instance of weight %v", family, weight, wght)
+			}
 			coverage := 0
 			for _, p := range e.glyph(run.font, run.glyphs[0].ID, 1, 0, 0, false).pix {
 				coverage += int(p)
@@ -206,5 +204,54 @@ func TestDWriteVariableWeight(t *testing.T) {
 	}
 	if !tested {
 		t.Skip("no variable font with axis values")
+	}
+
+	// runWeights returns the family and weight axis value of each run of
+	// a text.
+	runWeights := func(text string, style Style, spans []Span) []string {
+		e.resetScratch()
+		var runs []string
+		for _, line := range e.shapeText([]rune(text), style, spans, 0, false, false) {
+			for _, run := range line.runs {
+				wght, _ := faceWeightAxis(run.font.native)
+				runs = append(runs, fmt.Sprintf("%s %v", faceFamily(run.font.native), wght))
+			}
+		}
+		return runs
+	}
+	// Spans of other weights and families take their own: a weight of the
+	// font's, a named instance, or a static family's as DirectWrite
+	// matches it.
+	family := "Segoe UI Variable Text"
+	if !e.hasSystem(family) {
+		family = "Bahnschrift"
+	}
+	arial := runWeights("Hg", Style{Size: 14, Family: "Arial"}, nil)
+	got := runWeights("aaa bbb ccc ddd eee", Style{Size: 14, Family: family, Weight: 500},
+		[]Span{{End: 4}, {End: 8, Weight: 400}, {End: 12, Weight: 700}, {End: 16, Weight: 550}, {End: 19, Family: "Arial"}})
+	if want := []string{family + " 500", family + " 400", family + " 700", family + " 550", arial[0]}; !slices.Equal(got, want) {
+		t.Errorf("spans drew runs %q, want %q", got, want)
+	}
+	// Static families, and the families the fallback picks, match weights
+	// as before: the weight axis's value would change what they match
+	// (Segoe UI's 500 its Regular rather than its Semibold, Yu Gothic UI's
+	// 650 its Semilight rather than its Bold).
+	if e.hasSystem("Segoe UI") {
+		for _, weight := range []int{500, 650} {
+			static := runWeights("Hg", Style{Size: 14, Family: "Segoe UI", Weight: weight}, nil)
+			legacy := e.matchFace(e.collection(false), "Segoe UI", weight, false)
+			want, _ := faceWeightAxis(legacy)
+			release(legacy)
+			if len(static) != 1 || static[0] != fmt.Sprintf("Segoe UI %v", want) {
+				t.Errorf("Segoe UI %d drew %q, want weight %v", weight, static, want)
+			}
+		}
+	}
+	for _, weight := range []int{500, 650} {
+		runs := runWeights("H中", Style{Size: 14, Family: family, Weight: weight}, nil)
+		static := runWeights("中", Style{Size: 14, Family: "Arial", Weight: weight}, nil)
+		if len(runs) != 2 || len(static) != 1 || runs[1] != static[0] {
+			t.Errorf("H中 in %s %d drew %q, its fallback unlike Arial's %q", family, weight, runs, static)
+		}
 	}
 }

@@ -81,7 +81,8 @@ type ListState struct {
 	// End do while the list has the keyboard focus, and Page Up and Page
 	// Down on Linux and Windows: *Selected is the chosen row, -1 for none,
 	// which shows in the accent color. The list's Changed reports a new
-	// choice, and its Submitted a double click or Enter. With a Key, the
+	// choice, and its Submitted a double click or Enter, which a button in
+	// a row holding the focus takes for itself. With a Key, the
 	// choice follows its item as rows come and go, and becomes -1 when the
 	// item is no longer among the rows: the list writes that as it builds,
 	// so what the app builds after the list in the same pass reads -1. An
@@ -1434,7 +1435,8 @@ func (f *listFrame) navigate() {
 	in := *sel >= 0 && *sel < n
 	// Enter on macOS, as in Finder, and F2 elsewhere edit the text of the
 	// row chosen in place (EditableText), where it has one.
-	enter := o.Shortcut(0, KeyEnter)
+	// A button in a row clicks on it rather than submitting the row.
+	enter := o.yieldingShortcut(0, KeyEnter)
 	edit := s.editables && (o.Shortcut(0, KeyF2) || mac && enter)
 	switch {
 	case edit && in && !f.isHeader(*sel):

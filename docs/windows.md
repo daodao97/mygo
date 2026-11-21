@@ -47,6 +47,7 @@ on the screen. Sizes and positions are in device-independent pixels.
 | `FitContent` | sizes the page area to its page's content, and follows it, within the limits above, as a [flyout's](#size-a-flyout-to-its-content) |
 | `StateKey` | remembers the window's bounds and state under this key, see [below](#remember-where-windows-were) |
 | `Hidden` | creates the window without showing it |
+| `ConsumeActivationClick` | spends the first click in a non-key window on making it key, without sending the press to its page, native UI or embedded WebViews (macOS, Windows); system window controls keep their behavior, while custom title-bar drag regions (`--app-region: drag`, `ui.Element.DragWindow`) require the window to be active first. On Windows, a page window without `Content` disables its WebView2 control while inactive, so wheel scrolling, hover and file drops do not reach it until the window is active; native UI and embedded WebViews keep all three while inactive. The default also sends the press to the content |
 | `Maximized`, `FullScreen` | creates it maximized or in full screen |
 | `Frameless` | no title bar and borders: the page draws them, see [custom title bars](frontend.md#custom-title-bars), or the [native UI](ui/windows.md) |
 | `TitleBarStyle` | hides the title bar but keeps the window buttons over the page, see [custom title bars](frontend.md#custom-title-bars), or over [native UI](ui/windows.md) |

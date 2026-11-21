@@ -850,9 +850,9 @@ func TestRichTextLinkOpensSafely(t *testing.T) {
 	))
 	tt, _ := richTester(t, doc)
 	for y := float32(2); y < 80; y += 6 { // apart, so that no click is a double click
-		tt.Move(10, y)
+		tt.Move(16, y)
 		if tt.Cursor() == ui.CursorPointer {
-			tt.ClickAt(10, y)
+			tt.ClickAt(16, y)
 		}
 	}
 	got := tt.OpenedURLs()
@@ -870,8 +870,8 @@ func TestRichTextLinkCanceledPress(t *testing.T) {
 	tt, _ := richTester(t, doc)
 	var x, y float32
 	for y = 2; y < 40; y += 2 {
-		if tt.Move(10, y); tt.Cursor() == ui.CursorPointer {
-			x = 10
+		if tt.Move(16, y); tt.Cursor() == ui.CursorPointer {
+			x = 16
 			break
 		}
 	}

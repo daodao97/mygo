@@ -120,6 +120,43 @@ func TestForeground(hwnd uintptr) bool {
 	return fg == hwnd
 }
 
+// TestMouseActivate sends WM_MOUSEACTIVATE to the deepest child window at
+// (x, y) DIPs in hwnd's client area, with HTCLIENT and WM_LBUTTONDOWN, and
+// returns its reply and window class name.
+func TestMouseActivate(hwnd uintptr, x, y float64) (res uintptr, class string) {
+	w := theBackend.windows[hwnd]
+	if w == nil {
+		return 0, ""
+	}
+	scale := float64(dpiOf(w.hwnd)) / 96
+	pt := point{int32(x * scale), int32(y * scale)}
+	childAt := user32.NewProc("ChildWindowFromPointEx")
+	const cwpSkipInvisible, cwpSkipDisabled = 0x1, 0x2
+	cur := w.hwnd
+	for {
+		next, _, _ := childAt.Call(cur, uintptr(uint32(pt.X))|uintptr(uint32(pt.Y))<<32, cwpSkipInvisible|cwpSkipDisabled)
+		if next == 0 || next == cur {
+			break
+		}
+		var scr point
+		procClientToScreen.Call(cur, uintptr(unsafe.Pointer(&scr)))
+		pt.X += scr.X
+		pt.Y += scr.Y
+		procScreenToClient.Call(next, uintptr(unsafe.Pointer(&pt)))
+		cur = next
+	}
+	var buf [64]uint16
+	n, _, _ := procGetClassNameW.Call(cur, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	prevPageUp := w.atePageUp
+	defer func() { w.atePageUp = prevPageUp }()
+	if w.surface != nil {
+		prev := w.surface.ateUp
+		defer func() { w.surface.ateUp = prev }()
+	}
+	res, _, _ = procSendMessageW.Call(cur, wmMouseActivate, w.hwnd, htClient|uintptr(wmLButtonDown)<<16)
+	return res, syscall.UTF16ToString(buf[:n])
+}
+
 // TestEndMenu leaves the menus, as Escape does.
 func TestEndMenu() { procEndMenu.Call() }
 
@@ -343,46 +380,113 @@ func TestClickSurface(hwnd uintptr, x, y float64) bool {
 	return true
 }
 
-// TestInputClick clicks a point of a window showing native UI with the
-// system's input, as a mouse does: the window it lands on activates as
-// for the user. The system delivers the click later, through the thread's
-// queue: TestInputClick handles the messages that come until the release
-// reaches a window of the app, so that the app handled the click when it
-// returns. It reports false for a window showing a web page, and when no
-// release came in 10 seconds, missed describes the window under the
-// point, which took the click.
+func screenPointForInput(w *window, x, y float64) point {
+	target, dpi := w.hwnd, dpiOf(w.hwnd)
+	if w.surface != nil {
+		target, dpi = w.surface.hwnd, w.surface.dpi()
+	}
+	scale := float64(dpi) / 96
+	pt := point{int32(x * scale), int32(y * scale)}
+	procClientToScreen.Call(target, uintptr(unsafe.Pointer(&pt)))
+	return pt
+}
+
+func pumpInputMessages(stopMsg uint32) (stopped, gotQuit bool) {
+	var m msg
+	for {
+		if r, _, _ := procPeekMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0, pmRemove); r == 0 {
+			return false, false
+		}
+		if m.Message == wmQuit {
+			procPostQuitMessage.Call(m.WParam) // for the loop running outside
+			return false, true
+		}
+		procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
+		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
+		if stopMsg != 0 && m.Message == stopMsg {
+			return true, false
+		}
+	}
+}
+
+// TestInputClick clicks a point of a window with the system's input, as a
+// mouse does: the window it lands on activates as for the user. For native
+// UI, it handles the messages that come until the release reaches a window
+// of the app, so that the app handled the click when it returns; when no
+// release came in 10 seconds, missed describes the window under the point.
+// For a window showing a web page, WebView2 handles the click in its own
+// process, so callers wait on the page after TestInputClick returns.
 func TestInputClick(hwnd uintptr, x, y float64) (ok bool, missed string) {
 	w := theBackend.windows[hwnd]
-	if w == nil || w.surface == nil {
+	if w == nil {
 		return false, ""
 	}
-	scale := float64(w.surface.dpi()) / 96
-	pt := point{int32(x * scale), int32(y * scale)}
-	procClientToScreen.Call(w.surface.hwnd, uintptr(unsafe.Pointer(&pt)))
+	pt := screenPointForInput(w, x, y)
 	user32.NewProc("SetCursorPos").Call(uintptr(pt.X), uintptr(pt.Y))
 	mouse := user32.NewProc("mouse_event")
 	const leftDown, leftUp = 0x0002, 0x0004
 	mouse.Call(leftDown, 0, 0, 0, 0)
 	mouse.Call(leftUp, 0, 0, 0, 0)
+	if w.surface == nil {
+		pumpInputMessages(0)
+		return true, ""
+	}
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
 		procMsgWaitForMultipleObjectsEx.Call(0, 0, 100, qsAllInput, mwmoInputAvailable)
-		var m msg
-		for {
-			if r, _, _ := procPeekMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0, pmRemove); r == 0 {
-				break
-			}
-			if m.Message == wmQuit {
-				procPostQuitMessage.Call(m.WParam) // for the loop running outside
-				return true, "the app quit"
-			}
-			procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
-			procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
-			if m.Message == wmLButtonUp {
-				return true, ""
-			}
+		if gotUp, gotQuit := pumpInputMessages(wmLButtonUp); gotUp {
+			return true, ""
+		} else if gotQuit {
+			return true, "the app quit"
 		}
 	}
 	return true, windowAt(pt)
+}
+
+// TestInputMove moves the system pointer to (x, y) DIPs in hwnd's content.
+func TestInputMove(hwnd uintptr, x, y float64) bool {
+	w := theBackend.windows[hwnd]
+	if w == nil {
+		return false
+	}
+	pt := screenPointForInput(w, x, y)
+	setCursor := user32.NewProc("SetCursorPos")
+	setCursor.Call(uintptr(pt.X-10), uintptr(pt.Y))
+	const mouseMove = 0x0001
+	user32.NewProc("mouse_event").Call(mouseMove, 10, 0, 0, 0)
+	setCursor.Call(uintptr(pt.X), uintptr(pt.Y))
+	pumpInputMessages(0)
+	return true
+}
+
+// TestInputWheel turns the mouse wheel a notch down at (x, y) DIPs in
+// hwnd's content using system input.
+func TestInputWheel(hwnd uintptr, x, y float64) bool {
+	w := theBackend.windows[hwnd]
+	if w == nil {
+		return false
+	}
+	pt := screenPointForInput(w, x, y)
+	user32.NewProc("SetCursorPos").Call(uintptr(pt.X), uintptr(pt.Y))
+	const mouseWheel = 0x0800
+	delta := int32(-120)
+	user32.NewProc("mouse_event").Call(mouseWheel, 0, 0, uintptr(uint32(delta)), 0)
+	pumpInputMessages(0)
+	return true
+}
+
+// TestWebViewChildEnabled reports whether WebView2's Chrome_WidgetWin_0 child
+// window under hwnd is enabled.
+func TestWebViewChildEnabled(hwnd uintptr) (enabled, ok bool) {
+	w := theBackend.windows[hwnd]
+	if w == nil {
+		return false, false
+	}
+	child := w.webViewChild()
+	if child == 0 {
+		return false, false
+	}
+	r, _, _ := user32.NewProc("IsWindowEnabled").Call(child)
+	return r != 0, true
 }
 
 // windowAt describes the top-level window at a point of the screen, in

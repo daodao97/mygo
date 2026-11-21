@@ -326,6 +326,15 @@ func TestWindowOptions(t *testing.T) {
 	}
 }
 
+func TestConsumeActivationClickOption(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		_, fw := testWindow(t, WindowOptions{ConsumeActivationClick: enabled})
+		if fw.Opts.ConsumeActivationClick != enabled {
+			t.Errorf("ConsumeActivationClick = %v, want %v", fw.Opts.ConsumeActivationClick, enabled)
+		}
+	}
+}
+
 func TestSafariTabFocusOption(t *testing.T) {
 	_, fw := testWindow(t, WindowOptions{Page: PageOptions{SafariTabFocus: true}})
 	if fw.Opts.TabFocusesLinks {
@@ -1187,11 +1196,11 @@ func TestEval(t *testing.T) {
 	fw.AsyncFunction = func(body string) (string, error) {
 		bodies = append(bodies, body)
 		switch {
-		case strings.Contains(body, "await(\ndocument.title\n)"):
+		case strings.Contains(body, "(async()=>(\ndocument.title\n))()"):
 			return `{"ok":true,"v":"Title"}`, nil
-		case strings.Contains(body, "await(\nlet x = 1; return x\n)"):
+		case strings.Contains(body, "(async()=>(\nlet x = 1; return x\n))()"):
 			return "", errors.New("SyntaxError: Unexpected token")
-		case strings.Contains(body, "await(async()=>{\nlet x = 1; return x\n})()"):
+		case strings.Contains(body, "(async()=>{\nlet x = 1; return x\n})()"):
 			return `{"ok":true,"v":1}`, nil
 		case strings.Contains(body, "boom"):
 			return `{"ok":false,"e":"boom"}`, nil
@@ -1218,6 +1227,21 @@ func TestEval(t *testing.T) {
 	fw.AsyncFunction = func(string) (string, error) { return "", fake.ErrNoReply }
 	if _, err := w.Page().EvalContext(ctx, "1"); !errors.Is(err, context.Canceled) {
 		t.Errorf("EvalContext with canceled context = %v", err)
+	}
+
+	// The page left before the code answered says so, rather than as the
+	// code's own error, whether its pagehide or the backend tells it.
+	fw.AsyncFunction = func(string) (string, error) { return `{"left":true}`, nil }
+	if _, err := w.Page().Eval("pending"); !errors.Is(err, platform.ErrNavigated) {
+		t.Errorf("Eval in a page left = %v, want %v", err, platform.ErrNavigated)
+	}
+	bodies = nil
+	fw.AsyncFunction = func(body string) (string, error) {
+		bodies = append(bodies, body)
+		return "", platform.ErrNavigated
+	}
+	if _, err := w.Page().Eval("pending"); !errors.Is(err, platform.ErrNavigated) || len(bodies) != 1 {
+		t.Errorf("Eval in a page the backend says was left = %v, ran %d times; want %v, once", err, len(bodies), platform.ErrNavigated)
 	}
 
 	// Only a syntax error means the code did not run: other failures are

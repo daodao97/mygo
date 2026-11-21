@@ -337,7 +337,7 @@ func (e *clusterEngine) shape(text []rune, style Style, spans []Span, width floa
 			for k < len(visual) && visual[k].font == c.font && visual[k].level%2 == c.level%2 {
 				v := visual[k]
 				r.start, r.end = min(r.start, v.start), max(r.end, v.end)
-				r.glyphs = append(r.glyphs, Glyph{Font: v.font, ID: e.glyphID(v.text), X: x, Advance: v.advance, Cluster: v.start, RTL: v.level%2 == 1})
+				r.glyphs = append(r.glyphs, Glyph{Font: v.font, ID: e.glyphID(drawnText(v)), X: x, Advance: v.advance, Cluster: v.start, RTL: v.level%2 == 1})
 				x += v.advance
 				k++
 			}
@@ -346,6 +346,17 @@ func (e *clusterEngine) shape(text []rune, style Style, spans []Span, width floa
 		out = append(out, sl)
 	}
 	return out
+}
+
+// drawnText is the text the host draws a cluster from. A cluster of a
+// right-to-left run goes in a right-to-left isolate, in which the host
+// mirrors brackets: drawn alone, a bracket would be drawn left to right,
+// and "(ar)" in Arabic would read ")ar(".
+func drawnText(c cluster) string {
+	if c.level%2 == 1 {
+		return "⁧" + c.text + "⁩"
+	}
+	return c.text
 }
 
 // tabAdvance returns the advance of a tab x DIPs from the start of its

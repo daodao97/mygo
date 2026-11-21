@@ -1,12 +1,12 @@
 # Fork 与上游的差异
 
-本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`；2026-11-09 曾更名为 `daodao97/mygo-mobile`，2026-11-18 改回 `daodao97/mygo`，旧地址重定向）。Go 模块路径仍是 `github.com/egoist/mygo`，不随仓库更名，以便合并上游。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。数字为 2026-11-12 的快照，用文末的命令重新统计。
+本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`；2026-11-09 曾更名为 `daodao97/mygo-mobile`，2026-11-18 改回 `daodao97/mygo`，旧地址重定向）。Go 模块路径仍是 `github.com/egoist/mygo`，不随仓库更名，以便合并上游。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。用文末的命令重新统计差异。
 
-## 快照（2026-11-12）
+## 快照（2026-11-21）
 
-- fork `main` 已合并 `upstream/main` 到 `71f6c08b`（2026-11-20），含 #940（`6e712c6e`）。
+- fork `main` 已合并 `upstream/main` 到 `2d814ef1`（2026-11-21），含 #940（`6e712c6e`）。
 - 分支 `sync-940` 已于 2026-11-18 快进合入 `main`（`964d7b6f`），第二阶段的过程见「第二阶段进度（2026-11-17）」。
-- fork 独有的非合并提交：158 个；与上游的增删差异约 71,000 行。
+- fork 独有 187 个非合并提交，与上游的增删差异约 36,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
 - 2026-11-09 同步了上游 39 个提交（到 `6a730f12`）。冲突：`docs/architecture.md` 两边都保留（fork 的 iOS 段落、上游的 `ffi`）；`ui/runtime.go` 两边都保留（fork 的帧计时、上游的 `sweepVideos`）；`ui/layoutcache_test.go` 字段清单取并集；`internal/gpu/gl/load_linux.go` 只取上游新增的 `uploadElement`，`setShaderSource`/`shaderLog`/`programLog`/`infoLog` 在 fork 已移到 `load_common.go`（与 Android 共用）；终端 `urlPattern` 按规则 1 改用上游 #1481（URL 在第一个非 ASCII 字符处结束），fork 的写法删除；shader 二进制取上游后重新 `go generate`。上游 #1476 给 `platform.Clipboard.WriteData` 加了 `concealed` 参数，iOS/Android 后端已跟上签名，但还没有标记机密内容（iOS 的 `UIPasteboard` localOnly、Android 的 `EXTRA_IS_SENSITIVE`）。
   合并后对照上游这批新增（`RowClicked`、`WindowDoubleClicked`、`ui/video` 与 `Bitmap.UpdateYUV`、`Power.KeepRunning`、`App.ChosenLocale`、`ClipboardOptions.Concealed`、`ffi`/native modules、文本框的 `ReadOnly`/`Multiline` 无障碍状态、新的 landmark/tabpanel 角色）检查了 fork 新增代码，没有按规则 1 需要删除的重复实现。容易误判的两处：fork 的 `platform` 文本输入状态里的 `ReadOnly`/`Multiline` 是移动端键盘和原生选区的配置，上游 #1493 的是无障碍状态（`AccessReadOnly`/`AccessMultiline`），两者不同层；`ui/text_input_client.go` 的 `TextInputClient` 是上游的，fork 只在其上加了 UTF-16 适配。`desktopcontrol` 用 `purego.Dlopen` 加载的是系统框架，不属于 `ffi` 规定的应用自带库。iOS 还没有为新的 landmark/tabpanel 角色单独映射（落到默认处理）。
@@ -67,7 +67,21 @@
 
   对照这批新增检查了 fork 代码：fork 在 `ui/editor` 没有自己的改动（与合并基点无差异），#2105（fitted 查看器的查找与跳转行滚入视野）没有重叠；#2119 只改 Windows 回收站的测试；终端里 fork 没有横向滚轮的另一套实现。平台契约没有变化，手机后端不用补方法。`go generate ./ui` 无差异。
   验证：macOS/Linux/Windows 的 `CGO_ENABLED=0 go build ./...`；`go vet . ./ui ./ui/editor ./plugins/terminal/...` 与 Windows 的 `go vet ./internal/windows/...`；`go test . ./ui ./ui/editor ./ui/richtext ./internal/text ./internal/platform ./plugins/terminal/...`（13,321 项）通过；iOS（iphoneos SDK）与 Android（NDK 28.2）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet、`../Miya` 的 `go build ./...` 通过。
-- 约 2/3 是 iOS/Android，其余是对上游的扩展和待提交回上游的修复。共享代码中已没有已知的重复实现（见「已清理的重复实现」）。
+- 2026-11-21 同步上游 18 个提交（`71f6c08b..2d814ef1`）。`internal/platform/platform.go` 同时保留 fork 的 `ApplicationHost` 和上游 #1811 的 `ErrNavigated`。`plugins/terminal/links_test.go` 同时保留 fork 的 `openedTarget` 测试辅助函数和上游 #2120 的 Windows 路径测试，并覆盖 fork 的折行链接适配层如何解析盘符与行列后缀。
+
+  终端单行路径识别直接使用 #2120 的 `pathAt`，硬换行路径由现有适配层处理。`Page.Eval` 保留 fork 的取消测试钩子和上游的导航错误处理。浏览器触摸（#2133）、动画构建期间提前请求下一帧、List/GridView 的 Enter 和 Table 表头键盘操作直接采用上游实现。Android 工具栏的主题和标题布局改在 #940 的宿主中。回收站路径、富文本链接命中、托盘修复、激活点击、可变字体字重、RTL 括号与 unified diff 末行修复均使用上游实现。`go generate ./ui` 验证了生成文件。#1525、#1571 仍待合并。
+
+  macOS、Linux、Windows 的 `CGO_ENABLED=0 go build ./...`，根包、UI 和受影响后端的 vet，20 个受影响包的测试，macOS 的 `TestEvalAcrossNavigation` 和 `TestConsumeActivationClick`，Linux 容器的回收站路径单元测试，iOS 与 Android 的 vet，以及 Miya 引用本地 fork 的 `go build ./...` 均通过。Android 用 counter-native 成功构建了 APK 和 AAB。Windows 后端的测试完成交叉编译。js/wasm vet 与 CI 指定的 Node 测试通过。直接在 Node 运行需要浏览器文本度量的通用用例时，断行和截断用例的失败可在同步前的 `d0feb7d5` 复现。CLI 短测试的 `TestFetchSignedRetry` 也在同步前的基线上复现了请求次数超出预期的失败。
+
+  arm64 发布体积按 `scripts/bench.ts` 的参数测量，另加 `-buildvcs=false`。
+
+  | 平台 | counter-native 同步前 → 后（字节） | hello 同步前 → 后（字节） |
+  |---|---:|---:|
+  | macOS | 10,176,466 → 10,176,498（+32） | 9,919,602 → 9,919,634（+32） |
+  | Linux | 9,634,055 → 9,634,055 | 9,502,983 → 9,502,983 |
+  | Windows | 10,245,632 → 10,257,408（+11,776） | 9,778,176 → 9,784,320（+6,144） |
+
+  `-dumpdep` 与 `go tool nm` 显示，macOS 的增量包含上游激活点击和托盘定位的改动。Windows 两个示例都链入新的窗口激活和托盘逻辑。counter-native 还包含 DirectWrite 字重选择与列表快捷键逻辑，hello 则包含回收站路径查询和 DevTools 导航错误解析。
 
 ## 规则
 
@@ -272,8 +286,8 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 进行中的上游 PR：
 
-- #1525（2026-11-09 开为草稿，2026-11-18 查询时已转为待审，未合并）：`plugins/desktopcontrol` 作为纯 Go 官方插件，附 `examples/desktopcontrol` 和 `docs/plugins/desktopcontrol.md`。不含 `RunPrivacy`（gamma 遮屏），它留在 fork，之后单独提交。分支 `pr/desktopcontrol-plugin`，worktree `~/.cache/mygo-pr/desktopcontrol`。合并后按规则 1 改用上游版本，fork 只保留 `privacy*`。
-- #1571（2026-11-09 开为草稿，2026-11-18 查询时已转为待审，未合并）：loading 插件默认 30 fps（`Options.FPS`、`DefaultFPS`），`Painter.AnimationFrameRate` 在窗口没有键盘焦点时请求一半的帧，`ui.Tester.SetRefreshRate`。fork 的提交是 `2035305e`。上游版本的 `AnimationFrameRate` 保留上游的 `p.rt.repainting = true`，fork 用的是 frame-why 诊断的 `repaintFrames(false)`，其余相同。分支 `pr/loading-fps`，worktree `~/.cache/mygo-pr/loading-fps`。合并后同步时 `ui/paint.go` 以上游为准，同时保留 fork 的 `repaintFrames`。
+- #1525（2026-11-09 开为草稿，2026-11-21 确认仍待合并）：`plugins/desktopcontrol` 作为纯 Go 官方插件，附 `examples/desktopcontrol` 和 `docs/plugins/desktopcontrol.md`。不含 `RunPrivacy`（gamma 遮屏），它留在 fork，之后单独提交。分支 `pr/desktopcontrol-plugin`，worktree `~/.cache/mygo-pr/desktopcontrol`。合并后按规则 1 改用上游版本，fork 只保留 `privacy*`。
+- #1571（2026-11-09 开为草稿，2026-11-21 确认仍待合并）：loading 插件默认 30 fps（`Options.FPS`、`DefaultFPS`），`Painter.AnimationFrameRate` 在窗口没有键盘焦点时请求一半的帧，`ui.Tester.SetRefreshRate`。fork 的提交是 `2035305e`。上游版本的 `AnimationFrameRate` 保留上游的 `p.rt.repainting = true`，fork 用的是 frame-why 诊断的 `repaintFrames(false)`，其余相同。分支 `pr/loading-fps`，worktree `~/.cache/mygo-pr/loading-fps`。合并后同步时 `ui/paint.go` 以上游为准，同时保留 fork 的 `repaintFrames`。
 
 已被上游合并的 fork 改动：#928（macOS 空闲唤醒）、#1057（CJK 强调）、#1058（链接实线下划线）、#1077（zsh shell integration，上游在其基础上做了修改）、#1305（同步更新在 1 秒后放行，2026-11-06 同步时 `view.go` 取上游，两边的测试都保留）、#1530（macOS 原生 popover 跟随应用外观，2026-11-09 合并；同步时自动合并在 `showPopover` 里留下了 fork 和上游各一份 `setAppearance`，删掉 fork 那份，`popover.go` 与上游一致）、#1302（终端链接识别：Unicode 路径、带引号的路径、`(行,列)` 和 `#L行C列`，2026-11-07 同步时改用上游，见下表）。
 

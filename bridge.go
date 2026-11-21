@@ -154,10 +154,21 @@ func (w *Window) sendPreferences(prefs ThemePreferences, script string) {
 func decodeResult(raw []byte, v any) error { return json.Unmarshal(raw, v) }
 
 const (
+	// evalStart and evalEnd run code as an async arrow function, out of
+	// reach of the wrapper's own names, and answer with its result as JSON.
+	// A document that goes away never settles what it was waiting for, and
+	// WebKit answers for its promise only once the garbage collector takes
+	// it, which never happens while the page keeps it, as the back-forward
+	// cache keeps pages whole. So until the code answers, the page's
+	// pagehide answers that it was left. Listening is best effort: a page
+	// that replaced addEventListener or removeEventListener still gets its
+	// answers, as before.
+	evalStart = "return(async p=>{let h;try{return JSON.stringify({ok:true,v:await new Promise((ok,no)=>{try{addEventListener('pagehide',h=()=>no(h),true)}catch{}p.then(ok,no)})})}catch(e){return JSON.stringify(e===h?{left:true}:{ok:false,e:String(e&&e.message||e)})}finally{try{removeEventListener('pagehide',h,true)}catch{}}})((async()=>"
+	evalEnd   = ")())"
 	// The expression form: compile errors mean code is not an expression.
-	evalExpr = "try{return JSON.stringify({ok:true,v:await(\n%s\n)})}catch(e){return JSON.stringify({ok:false,e:String(e&&e.message||e)})}"
+	evalExpr = evalStart + "(\n%s\n)" + evalEnd
 	// The statement form runs code as a function body.
-	evalBody = "try{return JSON.stringify({ok:true,v:await(async()=>{\n%s\n})()})}catch(e){return JSON.stringify({ok:false,e:String(e&&e.message||e)})}"
+	evalBody = evalStart + "{\n%s\n}" + evalEnd
 )
 
 // evalCanceled, a hook of tests, runs after eval delivered the
@@ -236,12 +247,16 @@ func (w *Window) eval(ctx context.Context, code string) (jsontext.Value, error) 
 		return nil, r.err
 	}
 	var out struct {
-		OK bool     `json:"ok"`
-		V  rawValue `json:"v"`
-		E  string   `json:"e"`
+		OK   bool     `json:"ok"`
+		V    rawValue `json:"v"`
+		E    string   `json:"e"`
+		Left bool     `json:"left"`
 	}
 	if err := json.Unmarshal(stringBytes(r.raw), &out); err != nil {
 		return nil, fmt.Errorf("mygo: unexpected eval result %q: %w", r.raw, err)
+	}
+	if out.Left {
+		return nil, platform.ErrNavigated
 	}
 	if !out.OK {
 		return nil, &EvalError{Message: out.E}

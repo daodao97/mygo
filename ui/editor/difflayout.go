@@ -147,11 +147,14 @@ func (d *DiffState) prepare() {
 					top += float64(dy)
 				}
 				tops = append(tops, top)
+				// Lines deleted after the last line shown, as from the end
+				// of a text with a final newline, whose empty line after it
+				// is hidden, go under that last line.
 				b := block{kind: blockDeleted, height: height, from: h.A0, to: h.A1, hunk: hi}
-				if h.B0 < viewB.text.LineCount() {
+				if h.B0 < nB {
 					b.line = h.B0
 				} else {
-					b.line, b.below = viewB.text.LineCount()-1, true
+					b.line, b.below = nB-1, true
 				}
 				blkB = append(blkB, b)
 			}

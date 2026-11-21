@@ -1814,3 +1814,22 @@ func TestDiffScrollPastEndAndFocus(t *testing.T) {
 		}
 	}
 }
+
+// A unified view shows lines deleted from the end of a text that ends with
+// a newline under its last line shown, not on the empty line after the
+// newline, which a diff that is not editable hides.
+func TestDiffViewDeletionAfterFinalNewline(t *testing.T) {
+	d := &DiffState{Old: NewBuffer("a\nb\nc\n"), New: NewBuffer("a\n"), Layout: DiffUnified}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 600, 300)
+	tt.Frame()
+	tt.Frame()
+	_, below := d.eds[1].view.heights.blocksOf(0)
+	if !slices.ContainsFunc(below, func(b block) bool { return b.kind == blockDeleted && b.from == 1 && b.to == 3 }) {
+		t.Fatalf("the deleted lines are not under the last line: %+v", below)
+	}
+	// LineTop finds them there, each a line below the one before.
+	lh := d.LineTop(DiffOld, 1)
+	if lh <= 0 || d.LineTop(DiffOld, 2) != 2*lh || d.LineTop(DiffNew, 1) != 3*lh {
+		t.Fatalf("the tops of the old lines 1 and 2 and the end are %v, %v and %v", lh, d.LineTop(DiffOld, 2), d.LineTop(DiffNew, 1))
+	}
+}

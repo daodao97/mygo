@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"log"
 	"time"
 	"unsafe"
 
@@ -70,6 +71,9 @@ type tray struct {
 	tip   string
 	menu  *platform.Menu
 	added bool
+	// refused is whether the notification area refused the icon's last
+	// add, which the log told.
+	refused bool
 	// notification is the id of the notification the icon shows, if any.
 	notification string
 	temporary    bool // added only to show a notification
@@ -125,10 +129,24 @@ func (t *tray) data(flags uint32) notifyIconData {
 	return d
 }
 
+// add adds the icon to the notification area, which may refuse it: when
+// explorer is not running yet, as at sign-in, which TaskbarCreated tells
+// once it is, or from a process below medium integrity, whose icons it
+// never takes. An icon refused stays unadded, which the next add retries,
+// and the log says so once.
 func (t *tray) add() {
 	d := t.data(0)
-	procShellNotifyIconW.Call(nimAdd, uintptr(unsafe.Pointer(&d)))
-	t.added = true
+	r, _, err := procShellNotifyIconW.Call(nimAdd, uintptr(unsafe.Pointer(&d)))
+	if r == 0 {
+		// A busy explorer may answer too late, failing with ERROR_TIMEOUT
+		// an add it made: an icon it has takes a modification.
+		r, _, _ = procShellNotifyIconW.Call(nimModify, uintptr(unsafe.Pointer(&d)))
+	}
+	t.added = r != 0
+	if !t.added && !t.refused {
+		log.Printf("mygo: the notification area did not take the tray icon %q: %v", t.tip, err)
+	}
+	t.refused = !t.added
 }
 
 func (t *tray) update() {

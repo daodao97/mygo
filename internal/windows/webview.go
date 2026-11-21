@@ -340,6 +340,7 @@ func (w *window) setUp(controller uintptr) {
 		w.resizeWebView()
 	}
 	w.layoutControls() // above the webview's window
+	w.syncWebViewEnabled()
 	if o.Zoom > 0 && o.Zoom != 1 {
 		w.SetZoom(o.Zoom)
 	}
@@ -895,7 +896,7 @@ func (w *window) CallAsyncFunction(body string, cb func(string, error)) {
 	w.withWebViewOr(func() {
 		w.devtools("Runtime.evaluate", string(params), func(result string, err error) {
 			if err != nil {
-				cb("", err)
+				cb("", devtoolsFailure("Runtime.evaluate", result, err))
 				return
 			}
 			var out struct {
@@ -928,7 +929,9 @@ func (w *window) CallAsyncFunction(body string, cb func(string, error)) {
 	}, func(err error) { cb("", err) })
 }
 
-// devtools calls a DevTools protocol method; done may be nil.
+// devtools calls a DevTools protocol method; done may be nil. A method
+// that fails gives done its error with the protocol's answer, if any,
+// which devtoolsFailure reads.
 func (w *window) devtools(method, params string, done func(string, error)) {
 	id := 0
 	if done != nil {
@@ -943,7 +946,7 @@ func (w *window) devtools(method, params string, done func(string, error)) {
 			return
 		}
 		if failed(hr) {
-			cb("", hresultError(method, hr))
+			cb(wstr(result), hresultError(method, hr))
 			return
 		}
 		cb(wstr(result), nil)
@@ -956,6 +959,28 @@ func (w *window) devtools(method, params string, done func(string, error)) {
 			cb("", hresultError(method, hr))
 		}
 	}
+}
+
+// devtoolsFailure is the error of method, which failed with err and
+// answer, the protocol's: {"error":{"code":…,"message":…},"id":…}, with
+// its message. An evaluation whose document went away is ErrNavigated:
+// Chromium fails what it waits for then, before the next document
+// commits. The callers that tell apps their errors call it, not devtools,
+// which the default menus' Paste reaches in every app.
+func devtoolsFailure(method, answer string, err error) error {
+	var a any
+	_ = json.Unmarshal([]byte(answer), &a)
+	top, _ := a.(map[string]any)
+	e, _ := top["error"].(map[string]any)
+	code, _ := e["code"].(float64)
+	message, _ := e["message"].(string)
+	switch {
+	case method == "Runtime.evaluate" && code == -32000 && message == "Inspected target navigated or closed":
+		return platform.ErrNavigated
+	case message != "":
+		return fmt.Errorf("%w: %s", err, message)
+	}
+	return err
 }
 
 func (w *window) SetZoom(f float64) {
@@ -1293,7 +1318,7 @@ func (w *window) PrintToPDF(o platform.PDFOptions, cb func([]byte, error)) {
 	w.withWebViewOr(func() {
 		w.devtools("Page.printToPDF", string(params), func(res string, err error) {
 			if err != nil {
-				cb(nil, fmt.Errorf("mygo: printing to PDF: %w", err))
+				cb(nil, fmt.Errorf("mygo: printing to PDF: %w", devtoolsFailure("Page.printToPDF", res, err)))
 				return
 			}
 			var r struct {

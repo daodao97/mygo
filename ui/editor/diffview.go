@@ -460,13 +460,13 @@ func blockTop(h *heights, line int, below bool, is func(b *block) bool) (float64
 func (d *DiffState) deletedTop(line int) float64 {
 	ed := &d.eds[1]
 	h := &ed.view.heights
-	n := h.n
+	n := d.shownLines(ed.view.text)
 	for i, hk := range d.model.hunks {
 		if line < hk.A0 || line >= hk.A1 {
 			continue
 		}
 		// Where prepare put the block: above the change's first new line,
-		// or below the last line of the text.
+		// or below the last line the diff shows.
 		at, below := hk.B0, false
 		if at >= n {
 			at, below = n-1, true

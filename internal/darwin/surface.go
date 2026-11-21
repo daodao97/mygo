@@ -1271,7 +1271,10 @@ func registerSurfaceClass() {
 			return sendSuperPoint(self, "MyGoSurfaceView", cmd, p)
 		}),
 		method("acceptsFirstResponder", func(self id, _ objc.SEL) bool { return true }),
-		method("acceptsFirstMouse:", func(self id, _ objc.SEL, ev id) bool { return true }),
+		method("acceptsFirstMouse:", func(self id, _ objc.SEL, ev id) bool {
+			s := b().surfaceOf(self)
+			return s == nil || !s.w.opts.ConsumeActivationClick
+		}),
 		method("mouseDownCanMoveWindow", func(self id, _ objc.SEL) bool { return false }),
 		method("wantsUpdateLayer", func(self id, _ objc.SEL) bool { return true }),
 		method("updateLayer", func(self id, _ objc.SEL) {

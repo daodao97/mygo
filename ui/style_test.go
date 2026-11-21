@@ -560,9 +560,32 @@ func TestPaints(t *testing.T) {
 	}
 }
 
+// tinted reports whether p is c drawn over white with at least a quarter
+// of its coverage. Decorations are lines a fraction of a pixel thick
+// where Pango's metrics are (before 1.52, on Ubuntu 22.04 and Debian 12),
+// drawn faint as GTK draws them.
+func tinted(p color.RGBA, c Color) bool {
+	a := 0.0
+	ch := [3][2]float64{{float64(p.R), float64(c.R)}, {float64(p.G), float64(c.G)}, {float64(p.B), float64(c.B)}}
+	for _, v := range ch {
+		if 255-v[1] > 64 {
+			a = max(a, (255-v[0])/(255-v[1]))
+		}
+	}
+	if a < 0.25 {
+		return false
+	}
+	for _, v := range ch {
+		if math.Abs(v[0]-(255-a*(255-v[1]))) > 24 {
+			return false
+		}
+	}
+	return true
+}
+
 func TestTextDecorations(t *testing.T) {
 	red := RGB(255, 0, 0)
-	isRed := func(c color.RGBA) bool { return c.R > 200 && c.G < 60 && c.B < 60 }
+	isRed := func(c color.RGBA) bool { return tinted(c, red) }
 	reds := func(img *image.RGBA, r Rect) (n int, rows map[int]bool) {
 		rows = map[int]bool{}
 		for y := int(r.Y); y < int(r.Y+r.H); y++ {
@@ -700,7 +723,7 @@ func TestUnderlineOffset(t *testing.T) {
 		var out []int
 		for y := 0; y < img.Bounds().Dy(); y++ {
 			for x := 0; x < img.Bounds().Dx(); x++ {
-				if c := img.RGBAAt(x, y); c.R > 200 && c.G < 60 && c.B < 60 {
+				if c := img.RGBAAt(x, y); tinted(c, red) {
 					out = append(out, y-base)
 					break
 				}

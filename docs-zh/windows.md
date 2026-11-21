@@ -40,6 +40,7 @@ mygo.NewWindow(mygo.WindowOptions{Title: "Inspector", Content: ui.View(app.view)
 | `FitContent` | 按页面内容的大小设置页面区域，并在上面的限制内跟随它，如同[浮出窗口](#让浮出窗口适应其内容) |
 | `StateKey` | 在此键下记住窗口的边界和状态，见[下文](#记住窗口的位置) |
 | `Hidden` | 创建窗口但不显示它 |
+| `ConsumeActivationClick` | 对非键窗口的首次点击仅使其成为键窗口，不将按下事件传递给页面、原生 UI 或嵌入的 WebView（macOS、Windows）；系统窗口控件保留各自的行为，但自定义标题栏拖拽区域（`--app-region: drag`、`ui.Element.DragWindow`）需先激活窗口才能拖拽。在 Windows 上，未使用 `Content` 的普通 WebView2 页面窗口会在非激活时禁用其 WebView2 子控件，因此在窗口激活前无法接收滚轮滚动、悬停和文件拖放；原生 UI 与嵌入的 WebView 在非激活时仍保留这三项能力。默认情况下，该按下事件也会传递给内容 |
 | `Maximized`, `FullScreen` | 以最大化或全屏创建它 |
 | `Frameless` | 没有标题栏和边框：由页面绘制它们，见[自定义标题栏](frontend.md#自定义标题栏)，或[原生 UI](ui/windows.md) |
 | `TitleBarStyle` | 隐藏标题栏，但让窗口按钮浮在页面上方，见[自定义标题栏](frontend.md#自定义标题栏)，或浮在[原生 UI](ui/windows.md) 上方 |

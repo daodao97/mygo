@@ -72,15 +72,14 @@ func (ShellModule) TrashItem(path string) error {
 // path where it landed inside the trash directory, so an app can put it
 // back exactly. A relative path is relative to the working directory.
 //
-// It is supported on macOS only. On Windows, Linux and in browsers it
-// returns ("", ErrUnsupported): Windows's IFileOperation and Linux's
-// g_file_trash do not report the resulting path. Use TrashItem there, and
-// record the original path yourself before trashing, as Finder's "Put
-// Back" does on macOS.
+// It is supported on macOS, Windows and Linux; in browsers it returns
+// ("", ErrUnsupported).
 //
-// On macOS the returned path is where the system left the item, which may
-// not be the same name as the input: Finder renames an item that collides
-// with one already in the trash ("foo.txt" -> "foo 2.txt").
+// The returned path is where the system left the item, which may not be
+// the same name as the input: the trash renames an item that collides
+// with one already there (Finder: "foo.txt" -> "foo 2.txt"; Windows: a
+// $R file of the recycle bin; Linux: the name GIO picked in the trash's
+// files directory).
 func (ShellModule) TrashItemResult(path string) (string, error) {
 	needsApp("Shell.TrashItemResult")
 	abs, err := filepath.Abs(path)

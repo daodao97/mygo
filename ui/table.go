@@ -21,7 +21,8 @@ type TableColumn struct {
 	// Align aligns the content of its cells.
 	Align Align
 	// Sortable lets a click on the column's header sort the rows by it,
-	// with ListState.Sort or SortBy.
+	// with ListState.Sort or SortBy. Tab reaches the header too, which
+	// sorts on Enter or Space as on a click.
 	Sortable bool
 	// Fixed keeps the column where it is and as wide as it is: the user
 	// neither moves nor resizes it. It does not pin the column when the
@@ -168,7 +169,8 @@ type tableDrag struct {
 // reports the new layout once the user lets go, or once a double click
 // fits a column to its cells, for the app to save. Columns wider
 // than the table scroll sideways, the header with them. With s.Sort, a
-// click on the header of a Sortable column sorts the rows by it; with
+// click on the header of a Sortable column sorts the rows by it, as Enter
+// and Space do on the header Tab reached; with
 // s.SortBy, a Cmd-click or a Shift-click sorts by it after the others;
 // with s.HeaderMenu, the header has a context menu.
 //
@@ -536,6 +538,16 @@ func tableHeader(c *context, table, h *node, j int, s *ListState, drag *tableDra
 		})
 	}
 	if sorts {
+		// A header that sorts is a button to the keyboard too, as WAI-ARIA's
+		// sortable table has it: Tab reaches it, and Enter or Space sorts
+		// by it as a click does, which the table's Enter leaves to it. The
+		// ring goes inside it, which the header row clips. A click leaves
+		// the focus with the table, as it always did, for the keys moving
+		// the choice and typing a row's name.
+		h.Focusable().FocusRingOffset(-t.focusRingWidth())
+		if rt := c.rt; rt.focused == h.id && !rt.focusVisible {
+			table.focus(false)
+		}
 		h.sort = 0
 		if at, descending := s.sortPlace(col); at >= 0 {
 			h.sort = 1

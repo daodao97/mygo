@@ -70,3 +70,36 @@ func TestCanvasKeepAll(t *testing.T) {
 		}
 	}
 }
+
+// A bracket in a right-to-left run is drawn right to left, in which the
+// browser mirrors it: "(ar)" in Arabic reads "(ar)", not ")ar(".
+func TestCanvasMirrorsRightToLeft(t *testing.T) {
+	fakeCanvas(t)
+	e := newCanvas()
+	drawn := func(text string, rtl bool) map[int]string {
+		out := map[int]string{}
+		for _, l := range e.shape([]rune(text), Style{Size: 16}, nil, 0, rtl, false) {
+			for _, r := range l.runs {
+				for _, g := range r.glyphs {
+					out[g.Cluster] = e.glyphs.texts[g.ID]
+				}
+			}
+		}
+		return out
+	}
+	for _, c := range []struct {
+		text string
+		rtl  bool
+		want map[int]string
+	}{
+		{"عربي (ar)", true, map[int]string{5: "⁧(⁩", 6: "a", 8: "⁧)⁩"}},
+		{"(ar) عربي", false, map[int]string{0: "(", 1: "a", 3: ")"}},
+	} {
+		got := drawn(c.text, c.rtl)
+		for k, want := range c.want {
+			if got[k] != want {
+				t.Errorf("%q, right to left %v: rune %d drawn as %q, want %q", c.text, c.rtl, k, got[k], want)
+			}
+		}
+	}
+}
