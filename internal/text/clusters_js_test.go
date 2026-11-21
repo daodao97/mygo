@@ -1,6 +1,7 @@
 package text
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -109,5 +110,64 @@ func TestClusterRunHost(t *testing.T) {
 	e.shape([]rune("hi لِلَّهِ"), Style{Size: 16}, nil, 0, false, false)
 	if len(h.runs) != 1 || !h.runs[0].run.rtl {
 		t.Errorf("measured %+v, want لِلَّهِ right to left", h.runs)
+	}
+}
+
+// TestClusterRunHostWholeWords checks that each glyph of a word whose
+// letters join is laid out within the whole word, across its changes of
+// style and the characters of script Common it holds: an ayah's number
+// in its end-of-ayah mark (U+06DD), kashidas (U+0640), tajweed's colors
+// changing mid-word and on a mark. On Android the second digit of ۝١٠
+// fell outside the mark, and letters lost their joins at a kashida.
+func TestClusterRunHostWholeWords(t *testing.T) {
+	for _, spans := range [][]string{
+		{"بِسْمِ ", "ٱ", "للَّهِ ", "ٱ", "لرَّحْمَ", "ٰ", "نِ ", "ٱ", "لرَّحِ", "ي", "مِ"},
+		{"مُهْتَدِينَ", " ", "۝١٦"},
+		{"۝٢٥٥"},
+		{"بِمُـــؤْمِـــنِـــ", "يـــ", "نَ"},
+		{"يَـٰٓأَيُّهَا ٱلنَّاسُ"},
+		{"مَنْ", " ۜ", " رَاقٍ"},
+	} {
+		h := &runRecorder{}
+		var e clusterEngine
+		e.init(h)
+		var text []rune
+		var sp []Span
+		for _, s := range spans {
+			text = append(text, []rune(s)...)
+			sp = append(sp, Span{End: len(text), Features: string(rune('a' + len(sp)%2))})
+		}
+		word := func(at int) string {
+			i, j := at, at
+			for i > 0 && text[i-1] != ' ' {
+				i--
+			}
+			for j < len(text) && text[j] != ' ' {
+				j++
+			}
+			return string(text[i:j])
+		}
+		for _, width := range []float32{0, 37} {
+			for _, ln := range e.shape(text, Style{Size: 16}, sp, width, true, false) {
+				for _, r := range ln.runs {
+					for _, g := range r.glyphs {
+						whole := e.glyphs.texts[g.ID]
+						run := e.glyphs.run(g.ID)
+						if run.end == 0 {
+							// Drawn alone: only what joins nothing, a
+							// space or a mark on one (the pause of
+							// saktah, ۜ, between words).
+							if piece := []rune(whole); len(piece) > 0 && piece[0] != ' ' && piece[0] != '⁧' && strings.IndexFunc(whole, complexScript) >= 0 {
+								t.Errorf("%q: glyph %q drawn alone", spans, whole)
+							}
+							continue
+						}
+						if w := word(g.Cluster); whole != w {
+							t.Errorf("%q: glyph %q within %q, want within %q", spans, string([]rune(whole)[run.start:run.end]), whole, w)
+						}
+					}
+				}
+			}
+		}
 	}
 }

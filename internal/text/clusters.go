@@ -165,11 +165,23 @@ func joinsAcross(r rune) bool {
 
 // complexScript reports whether a rune is of a script whose letters
 // change with their neighbors, or reorder: its words are drawn whole.
+// Tatweel, which lengthens the join between two letters, and the
+// prepended concatenation marks are of script Common, but shaped with the
+// word around them.
 func complexScript(r rune) bool {
-	return unicode.In(r, unicode.Arabic, unicode.Syriac, unicode.Nko, unicode.Mongolian, unicode.Devanagari,
+	return r == 0x0640 || concatenationMark(r) || unicode.In(r, unicode.Arabic, unicode.Syriac, unicode.Nko, unicode.Mongolian, unicode.Devanagari,
 		unicode.Bengali, unicode.Gurmukhi, unicode.Gujarati, unicode.Oriya, unicode.Tamil, unicode.Telugu,
 		unicode.Kannada, unicode.Malayalam, unicode.Sinhala, unicode.Thai, unicode.Lao, unicode.Tibetan,
 		unicode.Myanmar, unicode.Khmer, unicode.Javanese, unicode.Balinese)
+}
+
+// concatenationMark reports whether a rune is a prepended concatenation
+// mark, which the font draws around the digits after it, however many:
+// Arabic's end of ayah (U+06DD) and number signs, Syriac's abbreviation
+// mark, Kaithi's number signs.
+func concatenationMark(r rune) bool {
+	return r >= 0x0600 && r <= 0x0605 || r == 0x06DD || r == 0x070F || r == 0x0890 || r == 0x0891 ||
+		r == 0x08E2 || r == 0x110BD || r == 0x110CD
 }
 
 func (e *clusterEngine) shape(text []rune, style Style, spans []Span, width float32, rtl, wholeWords bool) []shapedLine {

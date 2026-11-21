@@ -65,12 +65,21 @@ object Text {
     private fun weightOf(t: Typeface): Int =
         if (Build.VERSION.SDK_INT >= 28) t.weight else if (t.isBold) 700 else 400
 
-    private fun set(family: String, size: Double, weight: Long, italic: Boolean, noKern: Boolean = false): Paint {
+    private fun set(family: String, size: Double, weight: Long, italic: Boolean, noKern: Boolean = false, run: Boolean = false): Paint {
         paint.typeface = typeface(family, weight, italic)
         paint.textSize = size.toFloat()
         // Go draws clusters alone, which ligatures would join: "fl" would
-        // take the advance of both, and draw as an f before a gap.
-        paint.fontFeatureSettings = if (noKern) "'liga' 0, 'clig' 0, 'kern' 0" else "'liga' 0, 'clig' 0"
+        // take the advance of both, and draw as an f before a gap. A run,
+        // a word whose letters join laid out within the word, keeps them,
+        // as a TextView's span does: fonts set Arabic with them, as
+        // Scheherazade New puts an ayah's number inside its mark (U+06DD).
+        val f = when {
+            run && noKern -> "'kern' 0"
+            run -> ""
+            noKern -> "'liga' 0, 'clig' 0, 'kern' 0"
+            else -> "'liga' 0, 'clig' 0"
+        }
+        if (paint.fontFeatureSettings.orEmpty() != f) paint.fontFeatureSettings = f
         paint.color = Color.WHITE
         return paint
     }
@@ -109,7 +118,7 @@ object Text {
 
     @Synchronized
     fun measureRun(c: MeasureTextRunCall): MeasureTextRunReply {
-        val p = set(c.family, c.size, c.weight, c.italic, c.noKern)
+        val p = set(c.family, c.size, c.weight, c.italic, c.noKern, run = true)
         val t = c.text
         val start = c.start.toInt().coerceIn(0, t.length)
         val end = c.end.toInt().coerceIn(start, t.length)
@@ -140,7 +149,7 @@ object Text {
         if (t.substring(start, end).isBlank()) return r
         // The font at the size text was measured at, the canvas scaled, as
         // the measurements were made.
-        val p = set(c.family, c.size, c.weight, c.italic)
+        val p = set(c.family, c.size, c.weight, c.italic, run = run)
         p.getTextBounds(t, 0, t.length, bounds)
         if (run) {
             // The run draws from the pen at its left, where the whole
