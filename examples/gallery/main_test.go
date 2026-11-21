@@ -207,3 +207,26 @@ func TestDonutLegendFitsItsCard(t *testing.T) {
 		}
 	}
 }
+
+// TestCardPaddingFollowsDirection checks that the Overlays page's
+// Right-click me card keeps its wide padding before its text, on the
+// right when the gallery is laid out right to left.
+func TestCardPaddingFollowsDirection(t *testing.T) {
+	for _, rtl := range []bool{false, true} {
+		g := &gallery{router: ui.NewRouter("/overlays"), sectionsOpen: [2]bool{true, true}, rtl: rtl}
+		g.router.Transition = ui.TransitionNone
+		tt := ui.NewTester(g.view, 980, 720)
+		card, ok := tt.Find("Card")
+		text, ok2 := tt.Find("Right-click me")
+		if !ok || !ok2 {
+			t.Fatalf("rtl %v: card %v, text %v, texts %q", rtl, ok, ok2, tt.Texts())
+		}
+		start := text.X - card.X
+		if rtl {
+			start = card.X + card.W - (text.X + text.W)
+		}
+		if start != 13 { // a border of 1 and a padding of 12
+			t.Errorf("rtl %v: text starts %v from the card's edge, want 13", rtl, start)
+		}
+	}
+}

@@ -2012,7 +2012,7 @@ func (g *gallery) overlays(c *ui.Context) {
 					g.cardDid = "Deleted"
 				}
 			}
-			card := ui.Row(c).Gap(4).AlignItems(ui.Center).Padding(2, 2, 2, 12).Radius(t.Radius).Border(1, t.Border).Focusable().Label("Card")
+			card := ui.Row(c).Gap(4).AlignItems(ui.Center).Padding(2).PaddingStart(12).Radius(t.Radius).Border(1, t.Border).Focusable().Label("Card")
 			card.PopoverMenu(cardMenu)
 			card.Children(func() {
 				label := "Right-click me"
