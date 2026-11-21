@@ -196,7 +196,7 @@ func (ed *editor) run(cmd Command) bool {
 		ed.copy(cmd == Cut)
 		return true
 	case Paste:
-		ed.paste(ed.services.ReadClipboard())
+		ed.paste(ed.services.ReadClipboard(), true)
 		return true
 	case Backspace:
 		return ed.backspace()
