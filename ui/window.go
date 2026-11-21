@@ -621,6 +621,9 @@ func (h *windowHost) idle() {
 	}
 	h.soft.Release()
 	h.rt.text.ReleaseShaping()
+	if r, ok := h.gpu.(interface{ TrimIdleImages() }); ok {
+		r.TrimIdleImages()
+	}
 	if s, ok := h.conn.Surface.(platform.IdleSurface); ok {
 		s.Idle()
 	}

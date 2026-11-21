@@ -268,6 +268,9 @@ type texture struct {
 	w, h      int
 	gen, ver  uint64
 	lastFrame uint64
+	// source belongs to uploads of RGBA images. Holding it weakly lets
+	// an idle renderer recognize textures that cannot be used again.
+	source weak.Pointer[scene.Image]
 }
 
 // canvasTexture is the texture a canvas (scene.NewCanvas) is drawn into,
@@ -946,7 +949,7 @@ func (r *Renderer) imageView(img *scene.Image) uintptr {
 		if pix == nil {
 			return 0
 		}
-		t = &texture{}
+		t = &texture{source: weak.Make(img)}
 		if err := r.newTexture(t, img.W, img.H, formatR8G8B8A8Unorm, pix, 4); err != nil {
 			return 0
 		}
@@ -2006,6 +2009,24 @@ func (r *Renderer) FrameInfo() string {
 // animation that changes every other frame could present none of the
 // multiples, and never sweep.
 const sweepEvery = 120
+
+// TrimIdleImages releases textures of collected images once the window
+// stops drawing. It runs on the UI thread, like Render and Release.
+func (r *Renderer) TrimIdleImages() {
+	removed := false
+	for id, t := range r.images {
+		if t.chroma == nil && t.source.Value() == nil {
+			freeTexture(t)
+			delete(r.images, id)
+			removed = true
+		}
+	}
+	if removed {
+		// Direct3D can defer destruction until more work is submitted.
+		// An idle window may not submit another frame.
+		call(r.ctx, ctxFlush)
+	}
+}
 
 // sweep frees the textures of images no frame drew for a while, and
 // those of canvases gone, or transient and not drawn this frame.
