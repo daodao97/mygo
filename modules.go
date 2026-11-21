@@ -652,9 +652,9 @@ func (b WindowButtons) Empty() bool { return len(b.Start) == 0 && len(b.End) == 
 // On macOS they are close, minimize and maximize at the start; on Windows
 // minimize, maximize and close at the end. On Linux the desktop's button
 // layout (gtk-decoration-layout) decides, as it does for the buttons of a
-// hidden title bar (TitleBarStyle): none under a Wayland compositor that
-// decorates windows itself, as tiling ones such as Hyprland and Sway,
-// which draw no buttons, and none where the user emptied the layout, as
+// hidden title bar (TitleBarStyle): none under a tiling Wayland compositor
+// that decorates windows itself, as Hyprland and Sway, which draw no
+// buttons, and none where the user emptied the layout, as
 // users of tiling window managers on X11 do. OnUpdated tells when it
 // changes. It is safe from any goroutine; like the other calls that need
 // the running app, it panics on the main goroutine before App.Run.

@@ -438,8 +438,8 @@ by `mygo build` with `mygo_noinspector`) leave out its downloader and
   Wayland has no positions they would shift. A window with `DisableShadow`,
   a transparent one (the decorations would outline the rectangle around a
   page that shows its own shape; GTK draws them on an app-paintable window
-  too), panels and flyouts, a hidden title bar on a compositor that
-  decorates windows itself, and every window on X11 stay undecorated
+  too), panels and flyouts, a hidden title bar on a tiling compositor
+  that decorates windows itself, and every window on X11 stay undecorated
   (`gtk_window_set_decorated`): an X11 window that decorates itself has
   its shadow inside its X window, which the frame extents that `Bounds`
   counts do not tell, and Mutter puts its own shadow around opaque
@@ -457,8 +457,9 @@ by `mygo build` with `mygo_noinspector`) leave out its downloader and
   compositor that speaks `org_kde_kwin_server_decoration` (KWin, COSMIC,
   Sway) for every window GTK does not decorate itself, one without
   decorations too, and the compositor draws its title bar on it. A
-  frameless window GTK does not decorate itself is realized before it
-  shows and announced client-side
+  frameless window GTK does not decorate itself, and one with a hidden
+  title bar outside a tiling compositor, is realized before it shows and
+  announced client-side
   instead (`gdk_wayland_window_announce_csd`, looked up at startup): GDK
   keeps that for the `GdkWindow` and requests it again whenever the window
   maps or the compositor answers with another mode, so the window gets no
@@ -475,13 +476,17 @@ by `mygo build` with `mygo_noinspector`) leave out its downloader and
   toggle maximized, close. The bars are measured before the web view
   exists, from their natural size, for the script that tells the first
   page, then from their allocations; a change of the layout setting
-  rebuilds them. A Wayland compositor that decorates windows itself
+  rebuilds them. A tiling Wayland compositor that decorates windows itself
   (`gdk_wayland_display_prefers_ssd`: the default mode of
-  `org_kde_kwin_server_decoration_manager`, server on KWin, Hyprland and
-  Sway) gets no bars: such a window keeps GTK's announcement of server-side
-  decorations, unlike a frameless one, so the compositor's title bar, or a
-  tiling compositor's lack of one, stands for the buttons, whatever the
-  layout says.
+  `org_kde_kwin_server_decoration_manager`, server on Hyprland and Sway)
+  gets no bars: such a window keeps GTK's announcement of server-side
+  decorations, unlike a frameless one, so the compositor's lack of a title
+  bar stands for the buttons, whatever the layout says. KWin's default
+  mode is server too, but it draws title bars, and KDE keeps
+  `gtk-decoration-layout` in step with KWin's buttons: on KWin, which alone
+  offers `org_kde_kwin_server_decoration_palette_manager`
+  (`gdk_wayland_display_query_registry`), the window decorates itself and has the bars, as
+  on GNOME, instead of KWin's title bar over its page.
 - The app's GTK style sheet (`Theme.SetGTKCSS`, `style.go`) is a
   `GtkCssProvider` of its own for the default screen, at
   `GTK_STYLE_PROVIDER_PRIORITY_USER`: GTK 3 looks providers up from the
