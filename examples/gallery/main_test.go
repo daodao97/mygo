@@ -184,3 +184,26 @@ func TestTextEnterOpensDialog(t *testing.T) {
 		t.Fatalf("after Open dialog, texts %q", tt.Texts())
 	}
 }
+
+// TestDonutLegendFitsItsCard checks that the legend of Users by platform
+// stays inside its card at the widths the Charts page gives its cards,
+// from the narrowest (320) to the default window's (350).
+func TestDonutLegendFitsItsCard(t *testing.T) {
+	g := &gallery{chart: newCharts()}
+	for _, width := range []float32{320, 350, 372} {
+		tt := ui.NewTester(func(c *ui.Context) {
+			ui.Row(c).Fill().AlignItems(ui.Start).Children(func() {
+				card(c, "Users by platform", func() { g.donutChart(c) }).Width(width)
+			})
+		}, 600, 600)
+		for _, share := range []string{"46%", "31%", "14%", "9%"} {
+			r, ok := tt.Find(share)
+			if !ok {
+				t.Fatalf("width %v: missing %q", width, share)
+			}
+			if right := r.X + r.W; right > width-18 {
+				t.Errorf("width %v: %q ends at %v, past the card's padding at %v", width, share, right, width-18)
+			}
+		}
+	}
+}
