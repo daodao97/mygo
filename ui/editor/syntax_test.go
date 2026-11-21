@@ -93,6 +93,15 @@ func TestTokenizers(t *testing.T) {
 		{"svelte", []string{`{fn({a: 1,`, `b})}<i>`, `<script lang="ts">let x: number</script>`},
 			`punct({)fn(fn)punct(({)var(a)op(:)num(1)punct(,) / var(b)punct(})}<)tag(i)punct(>) / ` +
 				`punct(<)tag(script)attr(lang)op(=)str("ts")punct(>)kw(let)var(x)op(:)type(number)punct(</)tag(script)punct(>)`},
+		// Astro's frontmatter in TypeScript after blank lines, its template's
+		// expressions, a --- there that is text, and a TypeScript script.
+		{"astro", []string{``, `---`, `const { a } = Astro.props as Props`, `---`, `<p class={a}>{a}</p>`, `---`, `<script>let x: number</script>`, `<style>`, `</style>`},
+			` / punct(---) / kw(const)punct({)var(a)punct(})op(=)type(Astro)punct(.)prop(props)kw(as)type(Props) / punct(---) / ` +
+				`punct(<)tag(p)attr(class)op(=)punct({)var(a)punct(}>{)var(a)punct(}</)tag(p)punct(>) / text(---) / ` +
+				`punct(<)tag(script)punct(>)kw(let)var(x)op(:)type(number)punct(</)tag(script)punct(>) / punct(<)tag(style)punct(>) / punct(</)tag(style)punct(>)`},
+		// Without frontmatter, the template starts at once.
+		{"astro", []string{`<h1>{title}</h1>`, `---`},
+			`punct(<)tag(h1)punct(>{)var(title)punct(}</)tag(h1)punct(>) / text(---)`},
 		// HCL's blocks, attributes, interpolations, comments and heredocs.
 		{"hcl", []string{`resource "aws_s3_bucket" "b" {`, `  count = var.n > 0 ? 1 : 0 # c`, `  tags = { Name = "x-${var.env}" } // d`,
 			`  policy = <<-EOT`, `    {"a": "${b}"}`, `  EOT`, `  type = list(string) /* e */`, `}`},
@@ -259,7 +268,7 @@ func TestLanguageFor(t *testing.T) {
 	for name, want := range map[string]string{"main.go": "Go", "a/b/Makefile": "Makefile", "x.TSX": "TypeScript", "Dockerfile": "Dockerfile", "x.unknown": "",
 		"main.dart": "Dart", "schema.graphql": "GraphQL", "q.gql": "GraphQL", "plot.r": "R", "plot.R": "R", "Main.scala": "Scala", "build.sc": "Scala", "flake.nix": "Nix",
 		"user.rbs": "Ruby", "show.html.erb": "ERB", "model.rb.tt": "ERB", "nginx.conf.j2": "Jinja", "page.jinja2": "Jinja",
-		"App.svelte": "Svelte", "x.vue": "HTML",
+		"App.svelte": "Svelte", "x.vue": "HTML", "index.astro": "Astro",
 		"main.tf": "HCL", "prod.tfvars": "HCL", "config.hcl": "HCL"} {
 		l := LanguageFor(name)
 		got := ""

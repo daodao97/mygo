@@ -654,6 +654,13 @@ func makeLanguages() {
 		DecreaseIndent: regexp.MustCompile(`^\s*(</|\{[/:])`),
 		Tokenizer:      &markupLexer{html: true, script: javascript.Tokenizer, style: css.Tokenizer, braces: true, ts: typescript.Tokenizer},
 	}
+	astro := &Language{
+		Name: "Astro", Extensions: []string{".astro"}, BlockComment: html.BlockComment,
+		Brackets: html.Brackets, AutoClose: html.AutoClose, WordChars: "-", TabSize: 2,
+		IncreaseIndent: html.IncreaseIndent, DecreaseIndent: html.DecreaseIndent,
+		Tokenizer: &astroLexer{frontmatter: typescript.Tokenizer,
+			body: &markupLexer{html: true, script: typescript.Tokenizer, style: css.Tokenizer, braces: true}},
+	}
 	languageList = []*Language{goLang, javascript, typescript, json, python, rust, c, cpp, java, kotlin, scala, swift, dart, csharp,
-		shell, yaml, toml, sql, rLang, ruby, lua, php, css, html, erb, svelte, xml, markdown, diffLang, dockerfile, makefile, protobuf, graphql, zig, nix, jinja, hcl}
+		shell, yaml, toml, sql, rLang, ruby, lua, php, css, html, erb, svelte, astro, xml, markdown, diffLang, dockerfile, makefile, protobuf, graphql, zig, nix, jinja, hcl}
 }

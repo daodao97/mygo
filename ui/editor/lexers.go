@@ -567,7 +567,9 @@ func (m *markupLexer) Tokenize(line string, state uint64, tokens []Token) ([]Tok
 					out.add(i+tk.End, tk.Kind)
 				}
 			}
-			out.add(stop, TokenText)
+			if stop > i {
+				out.add(stop, TokenText)
+			}
 			i = stop
 			if end >= 0 {
 				mode, inner, ts = mlText, 0, 0
@@ -746,6 +748,37 @@ func indexFold(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+// astroLexer lexes Astro: the frontmatter between --- lines at the top
+// with its own tokenizer, and the template after it with body's. Its
+// state is 0 until the first line with text, the frontmatter's with
+// bit 63 inside it, and the template's with bit 62 after.
+type astroLexer struct {
+	frontmatter, body Tokenizer
+}
+
+const (
+	astroFrontmatter = 1 << 63
+	astroBody        = 1 << 62
+)
+
+func (a *astroLexer) Tokenize(line string, state uint64, tokens []Token) ([]Token, uint64) {
+	fence := strings.TrimRight(line, " \t\r") == "---"
+	switch {
+	case state&astroFrontmatter != 0 && fence:
+		return appendTok(tokens, len(line), TokenPunctuation), astroBody
+	case state&astroFrontmatter != 0:
+		toks, inner := a.frontmatter.Tokenize(line, state&^astroFrontmatter, tokens)
+		return toks, inner | astroFrontmatter
+	case state == 0 && fence:
+		return appendTok(tokens, len(line), TokenPunctuation), astroFrontmatter
+	case state == 0 && strings.TrimSpace(line) == "":
+		toks, _ := a.body.Tokenize(line, 0, tokens)
+		return toks, 0
+	}
+	toks, inner := a.body.Tokenize(line, state&^astroBody, tokens)
+	return toks, inner | astroBody
 }
 
 // markdownLexer lexes Markdown: headings, emphasis, code spans and
