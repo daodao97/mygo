@@ -44,7 +44,7 @@ var calls = []msg{
 			f("ID", "int"), f("Surface", "bool"), f("OwnScene", "bool"), f("Background", "int"), f("HasBackground", "bool"),
 			f("Schemes", "strings"), f("Scripts", "strings"), f("ScriptFlags", "strings"),
 			f("UserAgent", "string"), f("UserAgentSuffix", "string"), f("Inspectable", "bool"),
-			f("Autoplay", "bool"), f("SwipeNavigation", "bool"), f("PinchZoom", "bool"),
+			f("Autoplay", "bool"), f("SwipeNavigation", "bool"), f("PinchZoom", "bool"), f("NoBackgroundThrottling", "bool"),
 			f("Parent", "int"), f("ViewType", "string"), f("ViewArgs", "string"),
 		},
 		reply: []field{f("Error", "string"), f("Layer", "int")}},

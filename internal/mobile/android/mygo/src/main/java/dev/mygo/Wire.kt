@@ -197,6 +197,7 @@ class CreateWindowCall(
     @JvmField var autoplay: Boolean = false,
     @JvmField var swipeNavigation: Boolean = false,
     @JvmField var pinchZoom: Boolean = false,
+    @JvmField var noBackgroundThrottling: Boolean = false,
     @JvmField var parent: Long = 0L,
     @JvmField var viewType: String = "",
     @JvmField var viewArgs: String = "",
@@ -216,6 +217,7 @@ class CreateWindowCall(
         autoplay = r.bool()
         swipeNavigation = r.bool()
         pinchZoom = r.bool()
+        noBackgroundThrottling = r.bool()
         parent = r.int()
         viewType = r.string()
         viewArgs = r.string()

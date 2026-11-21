@@ -131,17 +131,19 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
 
         /**
          * Shows the view or hides it, and pauses a web view while it is
-         * hidden. Hiding the clip is not enough for one: its own visibility
-         * stays VISIBLE, the only one Chromium reads, so its page would stay
-         * visible and go on drawing frames, on the renderer thread the web
-         * views of an app share.
+         * hidden, unless its page asked not to be throttled. Hiding the clip
+         * is not enough for one: its own visibility stays VISIBLE, the only
+         * one Chromium reads, so its page would stay visible and go on
+         * drawing frames, on the renderer thread the web views of an app
+         * share.
          */
         fun show(on: Boolean) {
             if (shown == on) return
             shown = on
             clip.visibility = if (on) View.VISIBLE else View.GONE
-            val web = (window as? WebWindow)?.web ?: return
-            if (on) web.onResume() else web.onPause()
+            val w = window as? WebWindow ?: return
+            if (!w.throttles) return
+            if (on) w.web.onResume() else w.web.onPause()
         }
     }
 

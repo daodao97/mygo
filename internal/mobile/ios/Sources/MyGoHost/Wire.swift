@@ -176,6 +176,7 @@ public struct CreateWindowCall {
     public var autoplay: Bool = false
     public var swipeNavigation: Bool = false
     public var pinchZoom: Bool = false
+    public var noBackgroundThrottling: Bool = false
     public var parent: Int = 0
     public var viewType: String = ""
     public var viewArgs: String = ""
@@ -195,6 +196,7 @@ public struct CreateWindowCall {
         autoplay = r.bool()
         swipeNavigation = r.bool()
         pinchZoom = r.bool()
+        noBackgroundThrottling = r.bool()
         parent = r.int()
         viewType = r.string()
         viewArgs = r.string()

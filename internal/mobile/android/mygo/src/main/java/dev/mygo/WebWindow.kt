@@ -40,6 +40,8 @@ class WebWindow(context: Context, c: CreateWindowCall) : HostWindow(context, c.i
     private val frame = FrameLayout(context)
     override val view: View get() = frame
     val web = WebView(context)
+    /** Whether the page slows down while it can't be seen: not with ThrottlingOff. */
+    val throttles = !c.noBackgroundThrottling
     private val schemes = c.schemes.toSet()
     private var scripts = ArrayList<ScriptHandler>()
     private var defaultUA = ""

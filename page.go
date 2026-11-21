@@ -463,6 +463,10 @@ const (
 	//     window or web view showing a page creates: give that one the
 	//     option, and then no page of the app has its timers throttled.
 	//     A page that asks after it is too late, which the log tells.
+	//   - Android: a web view that native UI doesn't show isn't paused, so
+	//     its page stays visible and draws on. The web views of an app
+	//     share a renderer thread there: one drawing heavy frames slows
+	//     the others' pages and Eval.
 	//
 	// The page of a hidden or minimized window still goes hidden
 	// (document.visibilityState) on macOS and Linux, and so does a web

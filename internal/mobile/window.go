@@ -108,7 +108,7 @@ func (b *Backend) makeWindow(opts *platform.WindowOptions, h platform.WindowHand
 		ID: w.id, Surface: opts.Surface, OwnScene: opts.OwnScene, Schemes: opts.Schemes, Scripts: src, ScriptFlags: flags,
 		UserAgent: opts.UserAgent, UserAgentSuffix: opts.UserAgentSuffix, Inspectable: opts.DevTools,
 		Autoplay: opts.Autoplay, SwipeNavigation: opts.SwipeNavigation, PinchZoom: opts.PinchZoom,
-		ViewType: viewType, ViewArgs: viewArgs,
+		NoBackgroundThrottling: opts.NoBackgroundThrottling, ViewType: viewType, ViewArgs: viewArgs,
 	}
 	if parent != nil {
 		c.Parent = parent.id

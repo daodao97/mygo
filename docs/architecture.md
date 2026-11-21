@@ -1183,8 +1183,9 @@ fake host. Desktop files of `darwin` and `linux` exclude `ios` and
   gone its own visibility stays visible, the only one Chromium reads, so its
   page would stay visible and go on drawing frames, on the renderer thread an
   app's web views share. A paused page's scripts still run, with a hidden
-  page's timers, and its sound plays on. The hosts route fingers by the
-  placements' boxes themselves, without asking Go.
+  page's timers, and its sound plays on. A page with `ThrottlingOff` isn't
+  paused. The hosts route fingers by the placements' boxes themselves,
+  without asking Go.
 - **The background.** `Background` is waited for: on iOS the GPU is off limits
   once `sceneDidEnterBackground` returns, and iOS ends what uses it. `frame`
   draws nothing in the background, and asks again on the way back.

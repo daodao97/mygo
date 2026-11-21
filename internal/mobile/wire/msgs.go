@@ -310,23 +310,24 @@ func (*Log) Wait() bool { return false }
 
 // CreateWindow is the screen's content: a web view, or a surface for native UI.
 type CreateWindow struct {
-	ID              int
-	Surface         bool
-	OwnScene        bool
-	Background      int
-	HasBackground   bool
-	Schemes         []string
-	Scripts         []string
-	ScriptFlags     []string
-	UserAgent       string
-	UserAgentSuffix string
-	Inspectable     bool
-	Autoplay        bool
-	SwipeNavigation bool
-	PinchZoom       bool
-	Parent          int
-	ViewType        string
-	ViewArgs        string
+	ID                     int
+	Surface                bool
+	OwnScene               bool
+	Background             int
+	HasBackground          bool
+	Schemes                []string
+	Scripts                []string
+	ScriptFlags            []string
+	UserAgent              string
+	UserAgentSuffix        string
+	Inspectable            bool
+	Autoplay               bool
+	SwipeNavigation        bool
+	PinchZoom              bool
+	NoBackgroundThrottling bool
+	Parent                 int
+	ViewType               string
+	ViewArgs               string
 }
 
 func (m *CreateWindow) Encode(w *Writer) {
@@ -345,6 +346,7 @@ func (m *CreateWindow) Encode(w *Writer) {
 	w.Bool(m.Autoplay)
 	w.Bool(m.SwipeNavigation)
 	w.Bool(m.PinchZoom)
+	w.Bool(m.NoBackgroundThrottling)
 	w.Int(m.Parent)
 	w.String(m.ViewType)
 	w.String(m.ViewArgs)
