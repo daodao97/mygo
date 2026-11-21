@@ -399,6 +399,7 @@ func (g *gallery) wideView(c *ui.Context) {
 				ui.Scroll(c).Grow(1).Padding(12, 32, 28).Gap(18).Children(func() { g.page(c, r) })
 			})
 		})
+		g.modal(c)
 	})
 }
 
@@ -424,6 +425,7 @@ func (g *gallery) compactView(c *ui.Context) {
 			}
 			ui.Scroll(c).Grow(1).Padding(8, 16, 24).Gap(18).Children(func() { g.page(c, r) })
 		})
+		g.modal(c)
 	})
 }
 
@@ -2042,9 +2044,15 @@ func (g *gallery) overlays(c *ui.Context) {
 		g.notes--
 		c.Toast("Note deleted")
 	}
+}
+
+// modal is the dialog that Open dialog on the Overlays page and Enter in
+// the Text page's email field open, built with the window's content, on
+// any page, so that it shows on the page that opened it.
+func (g *gallery) modal(c *ui.Context) {
 	ui.Modal(c, &g.dialog, func() {
 		ui.Text(c, "A modal dialog").FontSize(18).Bold()
-		ui.Text(c, "Click outside or press Escape to close it.").TextColor(t.TextMuted)
+		ui.Text(c, "Click outside or press Escape to close it.").TextColor(c.Theme().TextMuted)
 		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 			if ui.PrimaryButton(c, "Done").Clicked() {
 				g.dialog = false

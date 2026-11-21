@@ -159,3 +159,28 @@ func TestLanguagesPage(t *testing.T) {
 		t.Errorf("after clicking Deutsch, the language chosen is %q", g.language)
 	}
 }
+
+// TestTextEnterOpensDialog checks that Enter in the Text page's email
+// field opens the dialog it says it does, on that page.
+func TestTextEnterOpensDialog(t *testing.T) {
+	g := &gallery{router: ui.NewRouter("/text"), sectionsOpen: [2]bool{true, true}}
+	g.router.Transition = ui.TransitionNone
+	tt := ui.NewTester(g.view, 980, 720)
+	if err := tt.Click("Email"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("ada@example.com")
+	tt.Key(0, ui.KeyEnter)
+	if !g.dialog || !tt.HasText("A modal dialog") {
+		t.Fatalf("after Enter, dialog %v, texts %q", g.dialog, tt.Texts())
+	}
+	// Open dialog on the Overlays page still opens it.
+	for _, label := range []string{"Done", "Overlays", "Open dialog"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !tt.HasText("A modal dialog") {
+		t.Fatalf("after Open dialog, texts %q", tt.Texts())
+	}
+}
