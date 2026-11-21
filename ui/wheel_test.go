@@ -214,3 +214,72 @@ func TestWheelReverseAtEnd(t *testing.T) {
 		t.Fatalf("the wheel did not turn back at the end: still at %v, want < 800", s.Y)
 	}
 }
+
+func TestPointerScrollConsumed(t *testing.T) {
+	t.Run("non-scrollable", func(t *testing.T) {
+		tt := coreNewTester(func(c *context) {
+			coreBox(c).Fill()
+		}, 200, 200)
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40, Precise: true}) {
+			t.Error("precise scroll over non-scrollable box reported taken")
+		}
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40}) {
+			t.Error("wheel scroll over non-scrollable box reported taken")
+		}
+	})
+
+	t.Run("scrollable and boundaries", func(t *testing.T) {
+		tt := coreNewTester(func(c *context) {
+			coreScroll(c).Fill().Children(func() {
+				coreBox(c).Height(500).Shrink(0)
+			})
+		}, 200, 200)
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: -40, Precise: true}) {
+			t.Error("precise scroll up at top reported taken")
+		}
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: -40}) {
+			t.Error("wheel scroll up at top reported taken")
+		}
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 100, Precise: true}) {
+			t.Error("precise scroll down with room reported not taken")
+		}
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 200}) {
+			t.Error("wheel glide with room reported not taken")
+		}
+	})
+
+	t.Run("snap container", func(t *testing.T) {
+		tt := coreNewTester(func(c *context) {
+			coreScroll(c).Fill().ScrollSnap(SnapMandatory).Children(func() {
+				coreBox(c).Height(200).Shrink(0).SnapAlign(Start)
+				coreBox(c).Height(200).Shrink(0).SnapAlign(Start)
+			})
+		}, 200, 200)
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: -40}) {
+			t.Error("snap notch up at first item reported taken")
+		}
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40}) {
+			t.Error("snap notch down to next item reported not taken")
+		}
+		tt.Advance(time.Second)
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40}) {
+			t.Error("snap notch down at last item reported taken")
+		}
+	})
+
+	t.Run("input handler", func(t *testing.T) {
+		take := true
+		tt := coreNewTester(func(c *context) {
+			coreBox(c).Fill().HandleInput(func(ev InputEvent) bool {
+				return ev.Kind == InputScroll && take
+			})
+		}, 200, 200)
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40, Precise: true}) {
+			t.Error("HandleInput returning true reported not taken")
+		}
+		take = false
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40, Precise: true}) {
+			t.Error("HandleInput returning false over non-scrollable box reported taken")
+		}
+	})
+}

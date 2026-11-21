@@ -242,32 +242,7 @@ func (s *surface) listen() {
 	// touch keyboard would hide as soon as it showed.
 	s.on(c, "mousedown", false, func(e js.Value) { e.Call("preventDefault") })
 	s.on(c, "contextmenu", false, func(e js.Value) { e.Call("preventDefault") })
-	s.on(c, "wheel", false, func(e js.Value) {
-		e.Call("preventDefault")
-		x, y := s.point(e)
-		dx, dy := e.Get("deltaX").Float(), e.Get("deltaY").Float()
-		precise := true
-		switch e.Get("deltaMode").Int() {
-		case 1: // lines
-			dx, dy, precise = dx*lineHeight, dy*lineHeight, false
-		case 2: // pages
-			dx, dy, precise = dx*s.width, dy*s.height, false
-		default:
-			// A wheel's notches, which browsers give as pixels too.
-			if w := e.Get("wheelDeltaY"); w.Type() == js.TypeNumber && w.Int() != 0 && w.Int()%120 == 0 {
-				precise = false
-			}
-		}
-		if precise && e.Get("ctrlKey").Bool() {
-			// A touchpad's pinch, which Chrome and Firefox send as
-			// scrolling with Control held, as they do Control and two
-			// fingers: Chrome scrolls 100 pixels by the natural log of
-			// the scale.
-			s.send(platform.SurfaceEvent{Kind: platform.PointerZoom, X: x, Y: y, Scale: math.Exp(-dy / 100), Mods: s.mods(e)})
-			return
-		}
-		s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: x, Y: y, DX: dx, DY: dy, Precise: precise, Mods: s.mods(e)})
-	})
+	s.on(c, "wheel", false, s.wheel)
 	// Safari sends pinches as gesture events instead, whose scale is from
 	// 1 as the pinch began; without preventDefault it zooms the page.
 	pinch := 1.0
@@ -433,6 +408,50 @@ func (s *surface) listen() {
 
 // lineHeight is how many DIPs a line of a wheel scrolls.
 const lineHeight = 16
+
+// wheel scrolls the content, or zooms it for a touchpad's pinch. A window
+// in the page's element #mygo leaves the page the wheel its content does
+// not take, which scrolls the page around it, as a scroll view at its end
+// lets the one around it scroll; with Control held, the browser would zoom
+// the page instead. A window filling the page keeps every wheel, which
+// would otherwise go back a page or bounce it.
+func (s *surface) wheel(e js.Value) {
+	x, y := s.point(e)
+	dx, dy := e.Get("deltaX").Float(), e.Get("deltaY").Float()
+	ctrl := e.Get("ctrlKey").Bool()
+	precise := true
+	switch e.Get("deltaMode").Int() {
+	case 1: // lines
+		dx, dy, precise = dx*lineHeight, dy*lineHeight, false
+	case 2: // pages
+		dx, dy, precise = dx*s.width, dy*s.height, false
+	default:
+		// A wheel's notches, which browsers give as pixels too.
+		if w := e.Get("wheelDeltaY"); w.Type() == js.TypeNumber && w.Int() != 0 && w.Int()%120 == 0 {
+			precise = false
+		}
+	}
+	chain := s.w.embedded && !ctrl
+	if !chain {
+		e.Call("preventDefault")
+	} else if c := e.Get("cancelable"); c.Type() == js.TypeBoolean && !c.Bool() {
+		// The page scrolls with the rest of a gesture whose first wheel
+		// the content did not take: the browser no longer lets it be
+		// taken, and the content scrolling too would move both.
+		return
+	}
+	if precise && ctrl {
+		// A touchpad's pinch, which Chrome and Firefox send as
+		// scrolling with Control held, as they do Control and two
+		// fingers: Chrome scrolls 100 pixels by the natural log of
+		// the scale.
+		s.send(platform.SurfaceEvent{Kind: platform.PointerZoom, X: x, Y: y, Scale: math.Exp(-dy / 100), Mods: s.mods(e)})
+		return
+	}
+	if s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: x, Y: y, DX: dx, DY: dy, Precise: precise, Mods: s.mods(e)}) && chain {
+		e.Call("preventDefault")
+	}
+}
 
 // copy has the content copy, or cut, its selection, and gives the browser
 // the text, which the clipboard event carries to the system's clipboard.

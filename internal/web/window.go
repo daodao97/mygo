@@ -23,6 +23,9 @@ type window struct {
 	focused bool
 	closed  bool
 	full    bool
+	// embedded is of a window in the page's element #mygo, among the
+	// page's own content, rather than filling the page.
+	embedded bool
 }
 
 // css is the style sheet of windows, added to the page once.
@@ -44,12 +47,13 @@ func newWindow(b *Backend, o *platform.WindowOptions, h platform.WindowHandler) 
 		doc.Get("head").Call("appendChild", style)
 	}
 	parent := doc.Call("getElementById", "mygo")
-	if parent.IsNull() {
+	embedded := !parent.IsNull()
+	if !embedded {
 		parent = doc.Get("body")
 	} else if js.Global().Call("getComputedStyle", parent).Get("position").String() == "static" {
 		parent.Get("style").Set("position", "relative")
 	}
-	w := &window{b: b, h: h, opts: o, title: o.Title, full: o.FullScreen}
+	w := &window{b: b, h: h, opts: o, title: o.Title, full: o.FullScreen, embedded: embedded}
 	w.el = doc.Call("createElement", "div")
 	w.el.Set("className", "mygo-window")
 	w.el.Get("style").Set("display", "none")

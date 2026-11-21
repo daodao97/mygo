@@ -11,7 +11,7 @@ import (
 
 // event handles a surface event on the main thread. It reports whether
 // an element takes files dragged over or dropped at the event's position,
-// the key pressed or the composition (platform.WindowHandler.SurfaceEvent).
+// the key pressed, the scroll or the composition (platform.WindowHandler.SurfaceEvent).
 func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	if ev.Kind == platform.SurfaceCommandEnabled {
 		// A menu asking about its item changes nothing.
@@ -135,7 +135,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		}
 	case platform.PointerScroll:
 		rt.pointerMove(x, y)
-		rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise, ev.Momentum)
+		taken = rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise, ev.Momentum)
 	case platform.PointerZoom:
 		rt.pointerMove(x, y)
 		rt.zoom(float32(ev.Scale), float32(ev.Rotation), Modifiers(ev.Mods))
@@ -903,7 +903,7 @@ func (s *state) quietClick(mods Modifiers) {
 	s.click(mods)
 }
 
-func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool) {
+func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool) bool {
 	chain := rt.appendHitChain(rt.chain[:0], rt.pointerX, rt.pointerY)
 	rt.chain = chain[:0]
 	// From the innermost element out, the first handling its input to
@@ -915,7 +915,7 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 	ev := InputEvent{Kind: InputScroll, DX: dx, DY: dy, Mods: mods, Precise: precise, Momentum: momentum}
 	for _, id := range chain {
 		if s := rt.states[id]; s != nil && s.input != nil && s.flags&flagDisabled == 0 && rt.deliver(s, ev) {
-			return
+			return true
 		}
 	}
 	// Shift turns the wheel sideways: down is toward the end, which is
@@ -940,7 +940,7 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 			// A notch goes to the next place of a container that snaps.
 			if moved, took := rt.snapNotch(s, sx, sy); took {
 				if moved {
-					return
+					return true
 				}
 				continue
 			}
@@ -948,7 +948,7 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 		if glide {
 			if wheelMoves(s, sx, sy) {
 				rt.wheelScroll(s, sx, sy)
-				return
+				return true
 			}
 			continue
 		}
@@ -960,9 +960,10 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 				s.snap.scrolled(rt, s, snapSettle)
 			}
 			rt.requestFrame()
-			return
+			return true
 		}
 	}
+	return false
 }
 
 // zoom gives a pinch or twist to the innermost element under the pointer
