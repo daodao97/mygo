@@ -90,6 +90,24 @@ describe("canceling a call", () => {
     internal.receive({ t: "reply", id: msg.id, k: msg.k, ok: true, v: "hello bun" });
   });
 
+  test("aborting ends pending channel reads", async () => {
+    const { sent, runtime, internal } = setup();
+    const ac = new AbortController();
+    const ch = runtime.channel<string>();
+    const iterator = ch[Symbol.asyncIterator]();
+    const call = runtime.callWith("Logs.Tail", [ch], { signal: ac.signal }).catch((error) => error);
+    const msg = sent[0] as CallMsg;
+    const first = iterator.next();
+    internal.receive({ t: "chan", k: msg.k, c: msg.a[0] as number, p: "started" });
+    expect(await first).toEqual({ value: "started", done: false });
+    const next = iterator.next();
+
+    ac.abort("stopped");
+    expect(await call).toBe("stopped");
+    expect(ch.closed).toBe(true);
+    expect(await next).toEqual({ value: undefined, done: true });
+  });
+
   test("a signal that is aborted already rejects without calling Go", async () => {
     const { sent, runtime } = setup();
     const ac = new AbortController();
