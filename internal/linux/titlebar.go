@@ -100,6 +100,12 @@ func (w *window) newControlsBar(side int) ptr {
 	bar := gtkHeaderBarNew()
 	gtkHeaderBarSetShowCloseButton(bar, true) // the window buttons
 	gtkHeaderBarSetHasSubtitle(bar, false)
+	// An empty custom title takes the bar's title out: GTK's own title box
+	// always asks room for five characters, title or no title (GTK's
+	// MIN_TITLE_CHARS), and nothing draws in it here — the bar would hold
+	// that phantom, and the page, told the bar's room, would keep clear of
+	// it, a gap before the buttons it cannot see.
+	gtkHeaderBarSetCustomTitle(bar, gtkBoxNew(0, 0))
 	style := gtkWidgetGetStyleContext(bar)
 	gtkStyleContextAddClass(style, cs("mygo-window-controls"))
 	if h := w.opts.TitleBarHeight; h > 0 {
