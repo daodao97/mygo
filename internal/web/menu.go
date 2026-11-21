@@ -258,7 +258,7 @@ func (p *popup) on(el js.Value, event string, fn func(e js.Value)) {
 }
 
 // accelText writes an accelerator as menus show it: with the symbols of
-// macOS on a Mac.
+// macOS on a Mac, for the keys pressed there.
 func accelText(a string, mac bool) string {
 	if a == "" {
 		return ""
@@ -274,15 +274,23 @@ func accelText(a string, mac bool) string {
 			} else {
 				b.WriteString("Ctrl+")
 			}
-		case "cmd", "command", "super", "meta":
+		case "cmd", "command":
 			if mac {
 				b.WriteString("⌘")
 			} else {
 				b.WriteString("Win+")
 			}
-		case "ctrl", "control":
+		// On a Mac, Command comes as Control and Control as Super (mods):
+		// the menu writes the keys the user presses.
+		case "super", "meta":
 			if mac {
 				b.WriteString("⌃")
+			} else {
+				b.WriteString("Win+")
+			}
+		case "ctrl", "control":
+			if mac {
+				b.WriteString("⌘")
 			} else {
 				b.WriteString("Ctrl+")
 			}

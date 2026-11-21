@@ -84,6 +84,7 @@ func (b *Backend) Init(h platform.AppHandler, _ platform.AppOptions) error {
 	nav := js.Global().Get("navigator")
 	platformName := nav.Get("platform")
 	b.mac = !platformName.IsUndefined() && len(platformName.String()) >= 3 && platformName.String()[:3] == "Mac"
+	platform.MacBrowser = b.mac
 	changed := b.funcOf(func(js.Value, []js.Value) any {
 		b.sync(func() { b.h.ThemeChanged() })
 		return nil

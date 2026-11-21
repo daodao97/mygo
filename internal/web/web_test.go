@@ -64,6 +64,10 @@ func TestAccelText(t *testing.T) {
 		{"CmdOrCtrl+C", false, "Ctrl+C"},
 		{"CmdOrCtrl+Shift+z", true, "⌘⇧Z"},
 		{"Alt+F4", false, "Alt+F4"},
+		// Command comes as Control and Control as Super (mods).
+		{"Ctrl+d", true, "⌘D"},
+		{"Super+d", true, "⌃D"},
+		{"Super+d", false, "Win+D"},
 		{"", true, ""},
 	} {
 		if got := accelText(tc.accel, tc.mac); got != tc.want {
