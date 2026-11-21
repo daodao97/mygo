@@ -283,6 +283,26 @@ func TestRichTextInlineShortcuts(t *testing.T) {
 	}
 }
 
+// TestRichTextInlineShortcutAtTheEnd checks that a mark closed at the end
+// of the text leaves the end as it was: a list the next line's "- " makes
+// starts plain, not in the format of the marks.
+func TestRichTextInlineShortcutAtTheEnd(t *testing.T) {
+	for _, c := range []struct{ typed, want string }{
+		{"see **Belem** today", "see |*Belem*| today\na"},
+		{"see **Belem**", "see |*Belem*|\na"},
+		{"see _Belem_", "see |_Belem_|\na"},
+	} {
+		doc := NewDocument(Text{})
+		tt, _ := richTester(t, doc)
+		typeRunes(tt, c.typed)
+		tt.Key(0, ui.KeyEnter)
+		typeRunes(tt, "- a")
+		if got := runsOf(doc.Text()); got != c.want {
+			t.Errorf("after %q: runs %q, want %q", c.typed, got, c.want)
+		}
+	}
+}
+
 func TestRichTextCompose(t *testing.T) {
 	doc := NewDocument(NewText("ab"))
 	tt, _ := richTester(t, doc)

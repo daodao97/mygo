@@ -384,9 +384,11 @@ func (v *view) inlineShortcut(ps int, before []rune) {
 	}
 	start, end := ps+open, ps+closeAt
 	v.edit(func(e *Edit) {
+		// Formatted while the closing mark follows, so that a format that
+		// would reach the end of the text leaves what typing gets there.
+		e.Format(start+m, end, set)
 		e.ReplaceString(end, end+m, "", Attributes{})
 		e.ReplaceString(start, start+m, "", Attributes{})
-		e.Format(start, end-m, set)
 		e.Select(end-m, end-m)
 	})
 	// What is typed next is outside the format, as after a closing mark.
