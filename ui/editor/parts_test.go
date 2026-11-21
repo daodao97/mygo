@@ -611,9 +611,7 @@ func TestCodeEditorDefinitionLink(t *testing.T) {
 	if st.ed.link != [2]int{0, 5} || tt.Cursor() != ui.CursorPointer {
 		t.Fatalf("link %v, cursor %v over \"first\" with Cmd held", st.ed.link, tt.Cursor())
 	}
-	// The tester's moves bring no modifiers, as a move with Cmd let go.
 	tt.Move(st.ed.textX+st.ed.view.charWidth*8, 5)
-	tt.HoldModifiers(ui.Cmd)
 	if st.ed.link != [2]int{6, 10} {
 		t.Fatalf("link %v over \"line\"", st.ed.link)
 	}
