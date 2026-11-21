@@ -164,9 +164,14 @@ type surface struct {
 	// tap posted again as a primary one.
 	secondaryClick bool
 
-	// input is the state of the text input with the keyboard; marked is
-	// the input method's composition and markedSel its selection in it.
+	// input is the state of the text input with the keyboard; blurred keeps
+	// the last active state while the window lost key status (for example
+	// when the macOS Character Viewer panel opens) but this view is still
+	// first responder, so NSTextInputClient queries and insertText: still
+	// reach the focused text element. marked is the input method's
+	// composition and markedSel its selection in it.
 	input     platform.TextInputState
+	blurred   platform.TextInputState
 	marked    string
 	markedSel nsRange
 	keyDown   bool // in interpretKeyEvents: text typed with the key
@@ -803,6 +808,9 @@ func (s *surface) SetCursor(c platform.Cursor) {
 }
 
 func (s *surface) SetTextInput(t platform.TextInputState) {
+	if t.Active {
+		s.blurred = platform.TextInputState{}
+	}
 	if s.input.Client != t.Client && s.input.Active {
 		s.discardComposition()
 	}
@@ -829,11 +837,16 @@ func (w *window) surfaceKeyChanged(key bool) {
 	if s == nil || send(w.win, "firstResponder") != s.view {
 		return
 	}
-	kind := platform.SurfaceBlur
 	if key {
-		kind = platform.SurfaceFocus
+		s.blurred = platform.TextInputState{}
+		s.send(platform.SurfaceEvent{Kind: platform.SurfaceFocus})
+		return
 	}
-	s.send(platform.SurfaceEvent{Kind: kind})
+	prev := s.input
+	s.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
+	if prev.Active && !s.input.Active {
+		s.blurred = prev
+	}
 }
 
 func (s *surface) send(ev platform.SurfaceEvent) bool {
@@ -1365,6 +1378,7 @@ func registerSurfaceClass() {
 		}),
 		method("resignFirstResponder", func(self id, _ objc.SEL) bool {
 			if s := b().surfaceOf(self); s != nil {
+				s.blurred = platform.TextInputState{}
 				s.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
 			}
 			return true
@@ -1553,11 +1567,13 @@ func registerSurfaceClass() {
 		}),
 		method("characterIndexForPoint:", func(self id, _ objc.SEL, p NSPoint) uint {
 			s := b().surfaceOf(self)
-			if s != nil && s.input.Client != nil {
-				window := msgRectToRect(s.w.win, sel("convertRectFromScreen:"), NSRect{Origin: p})
-				local := msgConvertRectView(self, sel("convertRect:fromView:"), window, 0)
-				if index, ok := s.input.Client.IndexForPoint(local.Origin.X, local.Origin.Y); ok {
-					return uint(index)
+			if s != nil {
+				if client := s.textInput().Client; client != nil {
+					window := msgRectToRect(s.w.win, sel("convertRectFromScreen:"), NSRect{Origin: p})
+					local := msgConvertRectView(self, sel("convertRect:fromView:"), window, 0)
+					if index, ok := client.IndexForPoint(local.Origin.X, local.Origin.Y); ok {
+						return uint(index)
+					}
 				}
 			}
 			return nsNotFound
@@ -1567,8 +1583,9 @@ func registerSurfaceClass() {
 			if s == nil {
 				return cgRect{}
 			}
-			c := s.input.Caret
-			if client := s.input.Client; client != nil {
+			in := s.textInput()
+			c := in.Caret
+			if client := in.Client; client != nil {
 				rangeWanted := clientRange(r)
 				if rangeWanted == nil {
 					return cgRect{}

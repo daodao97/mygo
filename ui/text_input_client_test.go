@@ -475,3 +475,89 @@ func TestTextInputClientEditMenu(t *testing.T) {
 		t.Fatal("chose Copy with nothing selected")
 	}
 }
+
+// TestTextInputInsertWhileWindowBlurred checks that text inserted while the
+// window is not key (as macOS's Character Viewer / Emoji & Symbols panel does
+// after windowDidResignKey:) still reaches the focused text element, while
+// losing focus to another element or disabling the element blocks it.
+func TestTextInputInsertWhileWindowBlurred(t *testing.T) {
+	c := &primitiveClient{text: "hi", selection: TextInputSelection{Range: TextInputRange{Start: 2, End: 2}}}
+	disabled := false
+	tt := coreNewTester(func(ctx *context) {
+		coreColumn(ctx).Children(func() {
+			coreBox(ctx).Size(200, 40).HandleTextInput(c).Disabled(disabled).AutoFocus()
+			coreButton(ctx, "Other")
+		})
+	}, 250, 100)
+	defer tt.rt.close()
+	client := tt.h.ime.Client
+	if client == nil {
+		t.Fatal("expected active text input client")
+	}
+
+	// Simulate windowDidResignKey: (e.g. Character Viewer opening).
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
+	if tt.h.ime.Active {
+		t.Fatal("SurfaceBlur should deactivate IME")
+	}
+
+	// Queries and direct ReplaceText on the retained adapter still work while
+	// this element remains the window's focused target.
+	if got := client.Selection().Range; got != (TextInputRange{Start: 2, End: 2}) {
+		t.Fatalf("Selection while blurred = %+v, want {2 2}", got)
+	}
+	client.ReplaceText(nil, "😀")
+	if c.text != "hi😀" {
+		t.Fatalf("ReplaceText while blurred gave %q, want %q", c.text, "hi😀")
+	}
+
+	// Fallback SurfaceEvent{Kind: TextInput} also reaches HandleTextInput.
+	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "🎉"})
+	if c.text != "hi😀🎉" {
+		t.Fatalf("TextInput event while blurred gave %q, want %q", c.text, "hi😀🎉")
+	}
+
+	// Composition is not started while the window is blurred.
+	tt.send(platform.SurfaceEvent{Kind: platform.TextComposition, Text: "ni", Caret: 2})
+	if c.mark != nil {
+		t.Fatalf("TextComposition while blurred set mark %+v", c.mark)
+	}
+
+	// Disabling the element blocks further inserts while blurred.
+	disabled = true
+	tt.Frame()
+	client.ReplaceText(nil, "x")
+	tt.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "y"})
+	if c.text != "hi😀🎉" {
+		t.Fatalf("disabled element mutated while blurred: %q", c.text)
+	}
+
+	// Re-enabling and moving focus elsewhere also blocks the old adapter.
+	disabled = false
+	tt.Frame()
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceFocus})
+	tt.Click("Other")
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
+	client.ReplaceText(nil, "z")
+	if c.text != "hi😀🎉" {
+		t.Fatalf("unfocused element mutated while blurred: %q", c.text)
+	}
+
+	// HandleInput + TextCaret (e.g. terminal) also receives TextInput while blurred.
+	var got string
+	term := coreNewTester(func(ctx *context) {
+		coreBox(ctx).Size(200, 40).AutoFocus().TextCaret(Rect{X: 0, Y: 0, W: 1, H: 16}).HandleInput(func(ev InputEvent) bool {
+			if ev.Kind == InputText {
+				got += ev.Text
+				return true
+			}
+			return false
+		})
+	}, 250, 60)
+	defer term.rt.close()
+	term.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
+	term.send(platform.SurfaceEvent{Kind: platform.TextInput, Text: "🚀"})
+	if got != "🚀" {
+		t.Fatalf("HandleInput TextCaret while blurred got %q, want %q", got, "🚀")
+	}
+}

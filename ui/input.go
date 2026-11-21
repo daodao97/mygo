@@ -1483,8 +1483,8 @@ func (rt *engine) editEvent(ev editEvent) bool {
 		}
 		rt.observeFocus(InputEvent{Kind: kind, Text: ev.text, Caret: ev.caret})
 	}
-	if s := rt.states[rt.focused]; s != nil && s.textClient != nil && rt.windowFocus() && s.flags&flagDisabled == 0 && (s.editor == nil || !s.editor.readOnly) {
-		if ev.kind == editInsert || ev.kind == editCompose {
+	if s := rt.states[rt.focused]; s != nil && s.textClient != nil && s.flags&flagDisabled == 0 && (s.editor == nil || !s.editor.readOnly) {
+		if ev.kind == editInsert || (ev.kind == editCompose && rt.windowFocus()) {
 			var r *TextInputRange
 			if ev.replace {
 				v := TextInputRange{Start: ev.from, End: ev.to}
@@ -1499,7 +1499,13 @@ func (rt *engine) editEvent(ev editEvent) bool {
 			return true
 		}
 	}
-	if h := rt.focusHandler(); h != nil && h.editor == nil {
+	h := rt.focusHandler()
+	if h == nil && ev.kind == editInsert {
+		if s := rt.states[rt.focused]; s != nil && s.editor == nil && s.input != nil && s.takesText && s.flags&flagDisabled == 0 {
+			h = s
+		}
+	}
+	if h != nil && h.editor == nil {
 		kind := map[editKind]InputKind{editInsert: InputText, editCompose: InputCompose, editCommand: InputCommand}[ev.kind]
 		handled := kind != 0 && rt.deliver(h, InputEvent{Kind: kind, Text: ev.text, Caret: ev.caret})
 		if !handled && kind == InputCommand && ev.text == "pasteAndMatchStyle" {

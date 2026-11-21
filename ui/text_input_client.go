@@ -85,11 +85,14 @@ type textInputAdapter struct {
 }
 
 func (a *textInputAdapter) client() (TextInputClient, *state) {
-	if a.rt.textInputClosed || !a.rt.windowFocus() || a.rt.focused != a.id {
+	// A non-key window can still receive text from system panels such as
+	// macOS's Character Viewer (Emoji & Symbols) while its view remains first
+	// responder, so do not require windowFocus() here.
+	if a.rt.textInputClosed || a.rt.focused != a.id {
 		return nil, nil
 	}
 	s := a.rt.states[a.id]
-	if s == nil || s.textAdapter != a || s.textClient == nil || s.flags&flagDisabled != 0 {
+	if s == nil || s.textAdapter != a || s.textClient == nil || s.flags&flagDisabled != 0 || (s.editor != nil && s.editor.readOnly) {
 		return nil, nil
 	}
 	return s.textClient, s

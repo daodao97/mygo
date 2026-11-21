@@ -64,11 +64,22 @@ func (s *surface) markedRange() nsRange {
 	return nsRange{Location: uint(units(doc[:start])), Length: uint(units(doc[start:end]))}
 }
 
+// textInput returns the active text input state, falling back to the last
+// active state kept across windowDidResignKey: while this view remains first
+// responder (e.g. while the macOS Character Viewer panel is open).
+func (s *surface) textInput() platform.TextInputState {
+	if s.input.Active {
+		return s.input
+	}
+	return s.blurred
+}
+
 func (s *surface) selectedRange() nsRange {
-	if !s.input.Active {
+	in := s.textInput()
+	if !in.Active {
 		return nsRange{Location: nsNotFound}
 	}
-	if c := s.input.Client; c != nil {
+	if c := in.Client; c != nil {
 		r := c.Selection().Range
 		return nsRange{Location: uint(r.Start), Length: uint(max(0, r.End-r.Start))}
 	}
@@ -107,7 +118,7 @@ func (s *surface) textRange(r nsRange) (from, to int) {
 }
 
 func (s *surface) substring(r nsRange, actual *nsRange) id {
-	if c := s.input.Client; c != nil {
+	if c := s.textInput().Client; c != nil {
 		text, rangeUsed := c.TextForRange(platform.TextRange{Start: int(min(r.Location, uint(1<<31))), End: int(min(r.Location+r.Length, uint(1<<31)))})
 		if actual != nil {
 			*actual = nsRange{Location: uint(rangeUsed.Start), Length: uint(max(0, rangeUsed.End-rangeUsed.Start))}
@@ -155,7 +166,7 @@ func (s *surface) discardComposition() {
 }
 
 func (s *surface) insertText(text string, replacement nsRange) {
-	if c := s.input.Client; c != nil {
+	if c := s.textInput().Client; c != nil {
 		c.ReplaceText(clientRange(replacement), text)
 		return
 	}
