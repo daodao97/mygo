@@ -307,7 +307,7 @@ func (b *Backend) schemeRequest(e *wire.SchemeRequestEvent) {
 	}
 	var body io.ReadCloser
 	if e.HasBody {
-		body = io.NopCloser(bytes.NewReader(e.Body))
+		body = platform.BytesBody(e.Body)
 	}
 	w.h.SchemeRequest(&platform.SchemeRequest{Context: ctx, Method: e.Method, URL: w.appURL(e.URL), Header: header, Body: body, Responder: s})
 }

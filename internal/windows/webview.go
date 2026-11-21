@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -1367,7 +1366,7 @@ func (w *window) resourceRequested(_, args uintptr) {
 	sreq := &platform.SchemeRequest{Method: takeWstr(p), URL: target, Header: requestHeaders(req)}
 	var content uintptr
 	if comCall(req, reqGetContent, uintptr(unsafe.Pointer(&content))) == sOK && content != 0 {
-		sreq.Body = io.NopCloser(bytes.NewReader(readStream(content)))
+		sreq.Body = platform.BytesBody(readStream(content))
 		release(content)
 	}
 	if resource == media {

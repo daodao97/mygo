@@ -161,8 +161,18 @@ func serveScheme(win *Window, h http.Handler, req *platform.SchemeRequest) {
 	}
 	r.RequestURI = r.URL.RequestURI()
 	r.RemoteAddr = "mygo:" + strconv.Itoa(win.id)
-	if cl := r.Header.Get("Content-Length"); cl != "" {
+	// A server request's ContentLength 0 means no body, -1 an unknown
+	// length: http.NewRequest cannot see through a backend's ReadCloser,
+	// and WebKit leaves the header out for a fetch's body.
+	if b, ok := body.(interface{ Len() int }); ok {
+		r.ContentLength = int64(b.Len())
+		if r.ContentLength == 0 {
+			r.Body = http.NoBody
+		}
+	} else if cl := r.Header.Get("Content-Length"); cl != "" {
 		r.ContentLength, _ = strconv.ParseInt(cl, 10, 64)
+	} else if body != http.NoBody {
+		r.ContentLength = -1
 	}
 	if allowCORS(win, rw.header, r) {
 		rw.WriteHeader(http.StatusNoContent) // a preflight, answered here

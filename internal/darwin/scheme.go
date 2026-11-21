@@ -3,9 +3,7 @@
 package darwin
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"strings"
 	"unsafe"
@@ -79,9 +77,9 @@ func readRequest(task id) *platform.SchemeRequest {
 			header.Add(goString(k), goString(send(fields, "objectForKey:", uintptr(k))))
 		}
 		if data := send(r, "HTTPBody"); data != 0 {
-			req.Body = io.NopCloser(bytes.NewReader(goBytes(data)))
+			req.Body = platform.BytesBody(goBytes(data))
 		} else if stream := send(r, "HTTPBodyStream"); stream != 0 {
-			req.Body = io.NopCloser(bytes.NewReader(readStream(stream)))
+			req.Body = platform.BytesBody(readStream(stream))
 		}
 	})
 	return req

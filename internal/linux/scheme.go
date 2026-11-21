@@ -3,10 +3,8 @@
 package linux
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"syscall"
@@ -76,7 +74,7 @@ func (b *Backend) serveScheme(req ptr) {
 	}
 	if webkitURISchemeRequestGetHTTPBody != nil {
 		if stream := webkitURISchemeRequestGetHTTPBody(req); stream != 0 {
-			r.Body = io.NopCloser(bytes.NewReader(readStream(stream)))
+			r.Body = platform.BytesBody(readStream(stream))
 			gObjectUnref(stream)
 		}
 	}
