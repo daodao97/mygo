@@ -70,6 +70,9 @@ type Backend struct {
 	// dockMenu is returned by applicationDockMenu: (retained).
 	dockMenu      id
 	dockMenuOwner int
+	// dockIcon is the image SetDockIcon gave (retained), given again as
+	// the app turns regular.
+	dockIcon id
 }
 
 // New creates the macOS backend.
@@ -403,6 +406,13 @@ type appController struct{ b *Backend }
 
 func (a appController) SetActivationPolicy(p string) {
 	send(a.b.app, "setActivationPolicy:", activationPolicy(p))
+	if p == "regular" && a.b.dockIcon != 0 {
+		// The Dock tile a process gets as it turns regular shows its
+		// bundle's icon, or the generic one, whatever icon the app set
+		// before: AppKit keeps applicationIconImage but does not give it
+		// to the new tile. Given again, it reaches the tile.
+		send(a.b.app, "setApplicationIconImage:", uintptr(a.b.dockIcon))
+	}
 	if p == "regular" {
 		send(a.b.app, "activateIgnoringOtherApps:", 1)
 	}
@@ -463,9 +473,10 @@ func (a appController) SetDockIcon(png []byte) error {
 		if img == 0 {
 			return errInvalidImage
 		}
-		defer release(img)
 	}
 	send(a.b.app, "setApplicationIconImage:", uintptr(img))
+	release(a.b.dockIcon)
+	a.b.dockIcon = img
 	return nil
 }
 
