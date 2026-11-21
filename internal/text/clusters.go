@@ -46,16 +46,51 @@ type clusterHost interface {
 	pens(f *Font, text []rune, bounds []int, noKern bool) []float32
 }
 
+// runHost is a clusterHost that lays a piece of a word out within the
+// word around it, in the direction of its run, as Android's TextView lays
+// out a span (Paint.getRunAdvance, Canvas.drawTextRun): letters that join
+// keep their forms where the word's style changes, a tajweed rule's color
+// say. A browser's canvas shapes only what it draws, and isn't one.
+type runHost interface {
+	// measureRun returns how wide runes run.start to run.end of text are,
+	// laid out within the whole of text in run's direction.
+	measureRun(f *Font, text []rune, run textRun, noKern bool) float32
+}
+
+// textRun is the piece of a glyph's text that the glyph draws, runes
+// [start, end), the rest the text around it; end is 0 for a glyph that
+// draws its whole text.
+type textRun struct {
+	start, end int
+	rtl        bool
+}
+
 // glyphTexts are the texts of glyphs, by ID: the engine's glyphs are
 // texts drawn whole. A Font keeps the table of its time, so that a layout
 // kept after the System let go of it still draws.
 type glyphTexts struct {
-	ids   map[string]uint32
+	ids   map[glyphText]uint32
 	texts []string
+	// runs are the pieces of texts a runHost draws, by ID, as far as the
+	// last glyph that draws a piece.
+	runs []textRun
+}
+
+type glyphText struct {
+	text string
+	run  textRun
 }
 
 func newGlyphTexts() *glyphTexts {
-	return &glyphTexts{ids: map[string]uint32{"": 0}, texts: []string{""}}
+	return &glyphTexts{ids: map[glyphText]uint32{{}: 0}, texts: []string{""}}
+}
+
+// run returns the piece of its text glyph id draws.
+func (g *glyphTexts) run(id uint32) textRun {
+	if int(id) < len(g.runs) {
+		return g.runs[id]
+	}
+	return textRun{}
 }
 
 type wordKey struct {
@@ -78,15 +113,22 @@ func (e *clusterEngine) forgetGlyphs() {
 	e.glyphs = newGlyphTexts()
 }
 
-// glyphID returns the ID of a glyph drawing text.
-func (e *clusterEngine) glyphID(text string) uint32 {
+// glyphID returns the ID of a glyph drawing run of text, or all of it.
+func (e *clusterEngine) glyphID(text string, run textRun) uint32 {
 	g := e.glyphs
-	if id, ok := g.ids[text]; ok {
+	key := glyphText{text, run}
+	if id, ok := g.ids[key]; ok {
 		return id
 	}
 	id := uint32(len(g.texts))
 	g.texts = append(g.texts, text)
-	g.ids[text] = id
+	if run.end > 0 {
+		for len(g.runs) < int(id) {
+			g.runs = append(g.runs, textRun{})
+		}
+		g.runs = append(g.runs, run)
+	}
+	g.ids[key] = id
 	return id
 }
 
@@ -110,6 +152,15 @@ type cluster struct {
 	x, advance float32
 	level      bidi.Level
 	text       string
+	// context is the word, runes [context[0], context[1]), a runHost lays
+	// the cluster out within, when context[1] > 0.
+	context [2]int
+}
+
+// joinsAcross reports whether a rune is of a word whose letters may join
+// across a change of style: of a complex script, a mark or a joiner.
+func joinsAcross(r rune) bool {
+	return complexScript(r) || r == 0x200C || r == 0x200D || unicode.Is(unicode.Mn, r)
 }
 
 // complexScript reports whether a rune is of a script whose letters
@@ -212,6 +263,7 @@ func (e *clusterEngine) shape(text []rune, style Style, spans []Span, width floa
 	b := 0 // the cluster boundary
 	start := 0
 	for _, end := range breaks {
+		piece := start // where the text between breaks starts
 		for start < end {
 			// The piece: same style, level and script complexity.
 			pe := start + 1
@@ -232,7 +284,18 @@ func (e *clusterEngine) shape(text []rune, style Style, spans []Span, width floa
 			pe = bounds[ce]
 			st := styles[fontAt[start]]
 			f := fonts[fontAt[start]]
-			clusters = e.measureWord(clusters, text, bounds[b:ce+1], f, st.LetterSpacing, noKern(st), levels[start])
+			// The word around the piece, of its direction, which a runHost
+			// lays it out within.
+			ctx := [2]int{start, pe}
+			if _, ok := e.host.(runHost); ok {
+				for ctx[0] > piece && levels[ctx[0]-1] == levels[start] && joinsAcross(text[ctx[0]-1]) {
+					ctx[0]--
+				}
+				for ctx[1] < end && levels[ctx[1]] == levels[start] && joinsAcross(text[ctx[1]]) {
+					ctx[1]++
+				}
+			}
+			clusters = e.measureWord(clusters, text, bounds[b:ce+1], ctx, f, st.LetterSpacing, noKern(st), levels[start])
 			b, start = ce, pe
 		}
 	}
@@ -337,7 +400,7 @@ func (e *clusterEngine) shape(text []rune, style Style, spans []Span, width floa
 			for k < len(visual) && visual[k].font == c.font && visual[k].level%2 == c.level%2 {
 				v := visual[k]
 				r.start, r.end = min(r.start, v.start), max(r.end, v.end)
-				r.glyphs = append(r.glyphs, Glyph{Font: v.font, ID: e.glyphID(drawnText(v)), X: x, Advance: v.advance, Cluster: v.start, RTL: v.level%2 == 1})
+				r.glyphs = append(r.glyphs, Glyph{Font: v.font, ID: e.drawnGlyph(text, v), X: x, Advance: v.advance, Cluster: v.start, RTL: v.level%2 == 1})
 				x += v.advance
 				k++
 			}
@@ -348,15 +411,20 @@ func (e *clusterEngine) shape(text []rune, style Style, spans []Span, width floa
 	return out
 }
 
-// drawnText is the text the host draws a cluster from. A cluster of a
+// drawnGlyph returns the glyph that draws a cluster: its piece of the
+// word around it, for a runHost, or its text. A cluster of a
 // right-to-left run goes in a right-to-left isolate, in which the host
 // mirrors brackets: drawn alone, a bracket would be drawn left to right,
 // and "(ar)" in Arabic would read ")ar(".
-func drawnText(c cluster) string {
-	if c.level%2 == 1 {
-		return "⁧" + c.text + "⁩"
+func (e *clusterEngine) drawnGlyph(text []rune, c cluster) uint32 {
+	if c.context[1] > 0 {
+		run := textRun{c.start - c.context[0], c.end - c.context[0], c.level%2 == 1}
+		return e.glyphID(string(text[c.context[0]:c.context[1]]), run)
 	}
-	return c.text
+	if c.level%2 == 1 {
+		return e.glyphID("⁧"+c.text+"⁩", textRun{})
+	}
+	return e.glyphID(c.text, textRun{})
 }
 
 // tabAdvance returns the advance of a tab x DIPs from the start of its
@@ -373,8 +441,9 @@ func isSpace(text []rune, c cluster) bool {
 // measureWord appends the clusters of a word of runes [bounds[0],
 // bounds[len-1]) in f, at level, their boundaries bounds, positioned as
 // the browser lays the word out. Clusters of scripts whose letters join
-// make one, which the browser shapes whole.
-func (e *clusterEngine) measureWord(out []cluster, text []rune, bounds []int, f *Font, spacing float32, noKern bool, level bidi.Level) []cluster {
+// make one, which the browser shapes whole, and a runHost within the runes
+// ctx around them, in the direction of level.
+func (e *clusterEngine) measureWord(out []cluster, text []rune, bounds []int, ctx [2]int, f *Font, spacing float32, noKern bool, level bidi.Level) []cluster {
 	for k := 0; k < len(bounds)-1; {
 		j := k + 1
 		joins := complexScript(text[bounds[k]])
@@ -383,8 +452,26 @@ func (e *clusterEngine) measureWord(out []cluster, text []rune, bounds []int, f 
 		}
 		if joins {
 			word := string(text[bounds[k]:bounds[j]])
-			w := e.host.measure(f, word, noKern)
-			out = append(out, cluster{start: bounds[k], end: bounds[j], font: f, advance: w + spacing*float32(j-k), level: level, text: word})
+			c := cluster{start: bounds[k], end: bounds[j], font: f, level: level, text: word}
+			var w float32
+			if h, ok := e.host.(runHost); ok {
+				// Every such word, even of one style: the host lays it
+				// out in its run's direction, of which the text alone
+				// says nothing.
+				c.context = [2]int{bounds[k], bounds[j]}
+				if k == 0 {
+					c.context[0] = ctx[0]
+				}
+				if j == len(bounds)-1 {
+					c.context[1] = max(ctx[1], bounds[j])
+				}
+				run := textRun{c.start - c.context[0], c.end - c.context[0], level%2 == 1}
+				w = h.measureRun(f, text[c.context[0]:c.context[1]], run, noKern)
+			} else {
+				w = e.host.measure(f, word, noKern)
+			}
+			c.advance = w + spacing*float32(j-k)
+			out = append(out, c)
 		} else {
 			out = e.measureClusters(out, text, bounds[k:j+1], f, spacing, noKern, level)
 		}

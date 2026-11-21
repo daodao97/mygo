@@ -622,6 +622,7 @@ final class Host: NSObject, HostCalls, UNUserNotificationCenterDelegate, UIDocum
     func textMetrics(_ c: TextMetricsCall) -> TextMetricsReply { TextMetricsReply() }
     func measureText(_ c: MeasureTextCall) -> MeasureTextReply { MeasureTextReply() }
     func textAdvances(_ c: TextAdvancesCall) -> TextAdvancesReply { TextAdvancesReply() }
+    func measureTextRun(_ c: MeasureTextRunCall) -> MeasureTextRunReply { MeasureTextRunReply() }
     func drawText(_ c: DrawTextCall) -> DrawTextReply { DrawTextReply() }
     func registerFont(_ c: RegisterFontCall) -> RegisterFontReply { RegisterFontReply() }
 }

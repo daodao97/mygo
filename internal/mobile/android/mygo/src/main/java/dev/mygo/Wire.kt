@@ -1160,6 +1160,38 @@ class TextAdvancesReply(
     }
 }
 
+class MeasureTextRunCall(
+    @JvmField var family: String = "",
+    @JvmField var size: Double = 0.0,
+    @JvmField var weight: Long = 0L,
+    @JvmField var italic: Boolean = false,
+    @JvmField var noKern: Boolean = false,
+    @JvmField var text: String = "",
+    @JvmField var start: Long = 0L,
+    @JvmField var end: Long = 0L,
+    @JvmField var rtl: Boolean = false,
+) {
+    constructor(r: WireReader) : this() {
+        family = r.string()
+        size = r.float()
+        weight = r.int()
+        italic = r.bool()
+        noKern = r.bool()
+        text = r.string()
+        start = r.int()
+        end = r.int()
+        rtl = r.bool()
+    }
+}
+
+class MeasureTextRunReply(
+    @JvmField var width: Double = 0.0,
+) {
+    fun encode(w: WireWriter) {
+        w.float(width)
+    }
+}
+
 class DrawTextCall(
     @JvmField var family: String = "",
     @JvmField var size: Double = 0.0,
@@ -1168,6 +1200,9 @@ class DrawTextCall(
     @JvmField var text: String = "",
     @JvmField var scale: Double = 0.0,
     @JvmField var dx: Double = 0.0,
+    @JvmField var start: Long = 0L,
+    @JvmField var end: Long = 0L,
+    @JvmField var rtl: Boolean = false,
 ) {
     constructor(r: WireReader) : this() {
         family = r.string()
@@ -1177,6 +1212,9 @@ class DrawTextCall(
         text = r.string()
         scale = r.float()
         dx = r.float()
+        start = r.int()
+        end = r.int()
+        rtl = r.bool()
     }
 }
 
@@ -1357,7 +1395,9 @@ interface HostCalls {
     fun measureText(c: MeasureTextCall): MeasureTextReply
     /** the advance of each UTF-16 unit of Text laid out as a whole (getTextRunAdvances) */
     fun textAdvances(c: TextAdvancesCall): TextAdvancesReply
-    /** draws Text in white at Scale pixels per DIP, its pen DX pixels right of a pixel's edge: its ink's box from the pen and its pixels, a byte of coverage each, or premultiplied RGBA when Color */
+    /** how wide Text's UTF-16 units [Start, End) are laid out within the whole of Text, right to left if RTL, as a TextView measures a span (getRunAdvance) */
+    fun measureTextRun(c: MeasureTextRunCall): MeasureTextRunReply
+    /** draws Text in white at Scale pixels per DIP, its pen DX pixels right of a pixel's edge: its ink's box from the pen and its pixels, a byte of coverage each, or premultiplied RGBA when Color. When End > 0, only its UTF-16 units [Start, End), laid out within the whole, right to left if RTL (drawTextRun), from the pen at their left */
     fun drawText(c: DrawTextCall): DrawTextReply
     /** adds a font file under Family, or its own family when empty */
     fun registerFont(c: RegisterFontCall): RegisterFontReply
@@ -1453,9 +1493,10 @@ fun dispatchCall(h: HostCalls, buf: ByteArray): ByteArray? {
         81 -> { h.textMetrics(TextMetricsCall(r)).encode(w); return w.toByteArray() }
         82 -> { h.measureText(MeasureTextCall(r)).encode(w); return w.toByteArray() }
         83 -> { h.textAdvances(TextAdvancesCall(r)).encode(w); return w.toByteArray() }
-        84 -> { h.drawText(DrawTextCall(r)).encode(w); return w.toByteArray() }
-        85 -> { h.registerFont(RegisterFontCall(r)).encode(w); return w.toByteArray() }
-        86 -> h.setFrameRate(SetFrameRateCall(r))
+        84 -> { h.measureTextRun(MeasureTextRunCall(r)).encode(w); return w.toByteArray() }
+        85 -> { h.drawText(DrawTextCall(r)).encode(w); return w.toByteArray() }
+        86 -> { h.registerFont(RegisterFontCall(r)).encode(w); return w.toByteArray() }
+        87 -> h.setFrameRate(SetFrameRateCall(r))
     }
     return null
 }

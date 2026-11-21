@@ -17,7 +17,9 @@ import kotlin.math.floor
  * Text of native UI, measured and drawn as a TextView measures and draws
  * it: Minikin lays it out, Skia draws it. Go breaks lines itself and asks
  * how wide words are (getTextRunAdvances) and what a cluster looks like
- * (drawText).
+ * (drawText). A piece of a word whose letters join, where its style
+ * changes, is measured and drawn within the word in its run's direction,
+ * as TextLine measures and draws a span (getRunAdvance, drawTextRun).
  */
 object Text {
     // The faces the app registered under each family, a weight and style each.
@@ -106,6 +108,17 @@ object Text {
     }
 
     @Synchronized
+    fun measureRun(c: MeasureTextRunCall): MeasureTextRunReply {
+        val p = set(c.family, c.size, c.weight, c.italic, c.noKern)
+        val t = c.text
+        val start = c.start.toInt().coerceIn(0, t.length)
+        val end = c.end.toInt().coerceIn(start, t.length)
+        val r = MeasureTextRunReply()
+        r.width = p.getRunAdvance(t, start, end, 0, t.length, c.rtl, end).toDouble()
+        return r
+    }
+
+    @Synchronized
     fun advances(c: TextAdvancesCall): TextAdvancesReply {
         val p = set(c.family, c.size, c.weight, c.italic, c.noKern)
         val chars = c.text.toCharArray()
@@ -119,18 +132,34 @@ object Text {
     @Synchronized
     fun draw(c: DrawTextCall): DrawTextReply {
         val r = DrawTextReply()
-        if (c.text.isBlank()) return r
+        val t = c.text
+        // A run: units [start, end) of the text, laid out within the whole.
+        val run = c.end > 0
+        val start = if (run) c.start.toInt().coerceIn(0, t.length) else 0
+        val end = if (run) c.end.toInt().coerceIn(start, t.length) else t.length
+        if (t.substring(start, end).isBlank()) return r
         // The font at the size text was measured at, the canvas scaled, as
         // the measurements were made.
         val p = set(c.family, c.size, c.weight, c.italic)
-        p.getTextBounds(c.text, 0, c.text.length, bounds)
+        p.getTextBounds(t, 0, t.length, bounds)
+        if (run) {
+            // The run draws from the pen at its left, where the whole
+            // draws from its own: the whole's ink, moved there, and the
+            // run's advance, hold the run's ink.
+            val n = t.length
+            val whole = p.getRunAdvance(t, 0, n, 0, n, c.rtl, n)
+            val at = if (c.rtl) whole - p.getRunAdvance(t, 0, n, 0, n, true, end) else p.getRunAdvance(t, 0, n, 0, n, false, start)
+            val adv = p.getRunAdvance(t, start, end, 0, n, c.rtl, end)
+            bounds.left = minOf(floor(bounds.left - at).toInt(), 0)
+            bounds.right = maxOf(ceil(bounds.right - at).toInt(), ceil(adv).toInt())
+        }
         val s = c.scale
         val pad = 2
-        val left = floor(bounds.left * s + c.dx).toInt() - pad
+        var left = floor(bounds.left * s + c.dx).toInt() - pad
         val right = ceil(bounds.right * s + c.dx).toInt() + pad
         val top = floor(bounds.top * s).toInt() - pad
         val bottom = ceil(bounds.bottom * s).toInt() + pad
-        val w = right - left
+        var w = right - left
         val h = bottom - top
         if (w <= 2 * pad || h <= 2 * pad || w > 2048 || h > 2048) return r
         var bm = bitmap
@@ -143,16 +172,33 @@ object Text {
         val canvas = Canvas(bm)
         canvas.translate((c.dx - left).toFloat(), (-top).toFloat())
         canvas.scale(s.toFloat(), s.toFloat())
-        canvas.drawText(c.text, 0f, 0f, p)
+        if (run) canvas.drawTextRun(t, start, end, 0, t.length, 0f, 0f, c.rtl, p) else canvas.drawText(t, 0f, 0f, p)
         val buf = ByteBuffer.allocate(bm.byteCount)
         bm.copyPixelsToBuffer(buf)
         val px = buf.array()
         val stride = bm.width * 4
+        // A run's box holds its whole word's room: only the columns it
+        // inked are kept, with the pad around them.
+        var x0 = 0
+        if (run) {
+            var lo = w
+            var hi = -1
+            for (y in 0 until h) for (x in 0 until w) {
+                if (px[y * stride + x * 4 + 3].toInt() != 0) {
+                    if (x < lo) lo = x
+                    if (x > hi) hi = x
+                }
+            }
+            if (hi < 0) return r
+            x0 = maxOf(lo - pad, 0)
+            w = minOf(hi + pad + 1, w) - x0
+            left += x0
+        }
         // White text is as covered as it is opaque; other colors are an
         // emoji's.
         var color = false
         loop@ for (y in 0 until h) for (x in 0 until w) {
-            val i = y * stride + x * 4
+            val i = y * stride + (x0 + x) * 4
             val a = px[i + 3].toInt() and 0xff
             if (a > 32) {
                 val far = { v: Int -> v < a - 24 }
@@ -168,9 +214,9 @@ object Text {
         r.height = h.toLong()
         r.color = color
         r.pixels = if (color) {
-            ByteArray(w * h * 4).also { out -> for (y in 0 until h) System.arraycopy(px, y * stride, out, y * w * 4, w * 4) }
+            ByteArray(w * h * 4).also { out -> for (y in 0 until h) System.arraycopy(px, y * stride + x0 * 4, out, y * w * 4, w * 4) }
         } else {
-            ByteArray(w * h) { k -> px[(k / w) * stride + (k % w) * 4 + 3] }
+            ByteArray(w * h) { k -> px[(k / w) * stride + (x0 + k % w) * 4 + 3] }
         }
         return r
     }
