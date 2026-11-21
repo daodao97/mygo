@@ -414,15 +414,35 @@ func (p *Painter) element(e *node) {
 		}
 		switch e.kind {
 		case kindText:
+			cw := e.w - e.padX()
+			if e.maxLines > 0 && !e.noWrap && cw <= 0 {
+				break
+			}
 			ts := e.resolvedText()
 			ox, oy := e.x+e.contentX(), e.y+e.contentY()
 			var sp spanPaint
 			p.inline = e
+			overflows := e.tl != nil && e.tl.Width > cw+1e-3
+			if !overflows && e.contentSet && e.st != nil && e.st.crec != nil {
+				r := e.st.crec
+				overflows = r.oldTL != nil && r.oldTL.Width > cw+1e-3 || r.tl != nil && r.tl.Width > cw+1e-3
+			}
+			clipX := e.maxLines > 0 && !e.noWrap && overflows
+			var savedClip Rect
+			if clipX {
+				const far = 1e6
+				savedClip = p.clip
+				p.pushClip(Rect{ox, -far, cw, 2 * far}, [4]float32{})
+			}
 			if spans := e.paintSpans(&sp); !e.contentSet || !p.contentText(e, ox, oy, ts, spans) {
 				p.textLayout(e.tl, ox, oy, ts.color, ts, spans)
 				if e.objectFn != nil {
 					paintObjects(p, e.tl, ox, oy, e.objectFn)
 				}
+			}
+			if clipX {
+				p.popClip()
+				p.clip = savedClip
 			}
 			p.inline = nil
 		case kindImage:
