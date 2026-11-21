@@ -164,9 +164,9 @@ func (b *CodeBlockView) Body(c *ui.Context) ui.Element {
 	} else {
 		outer = ui.ScrollHorizontal(c)
 	}
-	// Code reads left to right in a right-to-left interface too, as in
-	// editors.
-	outer.Direction(ui.LeftToRight).AlignSelf(ui.Stretch).Font(th.CodeFont).FontSize(th.em(th.CodeSize)).LineHeight(th.CodeLineHeight)
+	// Code reads left to right in a right-to-left interface too, and
+	// indents with tabs of 4 columns on every system, as in editors.
+	outer.Direction(ui.LeftToRight).AlignSelf(ui.Stretch).Font(th.CodeFont).FontSize(th.em(th.CodeSize)).LineHeight(th.CodeLineHeight).TabSize(4)
 	return outer.Children(func() {
 		col := ui.Column(c).Padding(th.em(0.25), pad, pad, pad)
 		if !st.o.WrapCode {
