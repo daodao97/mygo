@@ -131,6 +131,13 @@ test("mygo explains a missing platform package", () => {
       // MYGO_CLI_BINARY points at a binary of one's own instead.
       const own = run(runtime, project, ["--version"], { MYGO_CLI_BINARY: process.execPath });
       expect(own.code).toBe(0);
+      // The binary gets the environment: Bun before 1.4 and Node.js before
+      // 22.22 and 24.10 start it empty when process.execve is not given one.
+      const env = run(runtime, project, ["-e", "console.log(process.env.MYGO_CLI_TEST_ENV)"], {
+        MYGO_CLI_BINARY: process.execPath,
+        MYGO_CLI_TEST_ENV: "inherited",
+      });
+      expect(env).toMatchObject({ code: 0, out: "inherited\n" });
     }
   } finally {
     rmSync(base, { recursive: true, force: true });
