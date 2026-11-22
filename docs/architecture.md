@@ -4696,7 +4696,10 @@ either.
   source offsets, to copy text with block separators, Markdown, and the
   HTML of that Markdown parsed again, which `ui/richtext` pastes with its
   formatting, as it reads Markdown with the same parser
-  (`ParseMarkdown`). Links open in the system only when `ui.SafeToOpen`
+  (`ParseMarkdown`). `HTML` escapes the raw tags a browser reads to their
+  end, which is cmark-gfm's tagfilter (`ExtTagFilter`, in `GFM` and so in
+  `Default`), so that what an app copies as HTML carries no `<script>`
+  into what pastes it. Links open in the system only when `ui.SafeToOpen`
   allows them, in both. Tasks' check boxes are boxes of `RoleCheckBox`,
   read-only, or, with `Options.OnTask`, focusable and named by the plain
   text of their item's first paragraph, kept by block while its start,

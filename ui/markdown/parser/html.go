@@ -6,7 +6,7 @@ import (
 )
 
 // HTML returns the document as HTML, as cmark-gfm renders it, raw HTML
-// included as written.
+// included as written, but for the tags ExtTagFilter escapes.
 func (d *Document) HTML() string {
 	var w htmlWriter
 	w.d = d
@@ -86,7 +86,7 @@ func (w *htmlWriter) block(i int) {
 		w.b.WriteString("</code></pre>\n")
 	case HTMLBlock:
 		w.cr()
-		w.b.WriteString(d.Lines(i))
+		w.htmlBlock(d.Lines(i))
 		w.cr()
 	case MathBlock:
 		w.cr()
@@ -278,7 +278,13 @@ func (w *htmlWriter) inline(in []Inline, from, to int) {
 			}
 			w.b.WriteString(" />")
 		case HTML:
-			w.b.WriteString(n.Text)
+			if w.d.ext&ExtTagFilter != 0 && tagFiltered(n.Text) {
+				// As cmark-gfm escapes it: the first byte of the tag.
+				w.b.WriteString("&lt;")
+				w.b.WriteString(n.Text[1:])
+			} else {
+				w.b.WriteString(n.Text)
+			}
 		case Math:
 			if n.Display {
 				w.b.WriteString(`<span class="math display">`)
@@ -340,6 +346,95 @@ func PlainText(in []Inline) string {
 		}
 	}
 	return b.String()
+}
+
+// disallowedTags are the tags cmark-gfm's tagfilter escapes (ExtTagFilter), whose
+// content a browser reads to their end: script, styles, or raw text.
+var disallowedTags = []string{
+	"title", "textarea", "style", "xmp", "iframe",
+	"noembed", "noframes", "script", "plaintext",
+}
+
+// htmlBlock writes the text of an HTML block, escaping the '<' of a tag that
+// ExtTagFilter disallows, and writing the rest of the block as it is.
+func (w *htmlWriter) htmlBlock(s string) {
+	if w.d.ext&ExtTagFilter == 0 {
+		w.b.WriteString(s)
+		return
+	}
+	for rest := s; rest != ""; {
+		k := strings.IndexByte(rest, '<')
+		if k < 0 {
+			w.b.WriteString(rest)
+			return
+		}
+		w.b.WriteString(rest[:k])
+		rest = rest[k:]
+		if tagFiltered(rest) {
+			w.b.WriteString("&lt;")
+		} else {
+			w.b.WriteByte('<')
+		}
+		rest = rest[1:]
+	}
+}
+
+// tagFiltered reports whether s begins with an opening or closing tag of one
+// of disallowedTags, as cmark-gfm's tagfilter has it: the name in any case, then
+// a space, a '>' or a "/>". A tag it does not know, a comment or text is not
+// filtered.
+func tagFiltered(s string) bool {
+	if len(s) < 3 || s[0] != '<' {
+		return false
+	}
+	i := 1
+	if s[i] == '/' {
+		i++
+	}
+	s = s[i:]
+	for _, tag := range disallowedTags {
+		if hasTag(s, tag) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasTag reports whether s begins with tag, in any case, ended as a tag is.
+func hasTag(s, tag string) bool {
+	if len(s) <= len(tag) {
+		return false
+	}
+	for i := 0; i < len(tag); i++ {
+		if lowerByte(s[i]) != tag[i] {
+			return false
+		}
+	}
+	switch c := s[len(tag)]; {
+	case c == '>' || isHTMLSpace(c):
+		return true
+	case c == '/':
+		return len(s) > len(tag)+1 && s[len(tag)+1] == '>'
+	}
+	return false
+}
+
+// lowerByte returns c's ASCII lowercase.
+func lowerByte(c byte) byte {
+	if 'A' <= c && c <= 'Z' {
+		return c + 'a' - 'A'
+	}
+	return c
+}
+
+// isHTMLSpace reports whether c is a space of cmark's, which a tag's name may
+// be followed by.
+func isHTMLSpace(c byte) bool {
+	switch c {
+	case ' ', '\t', '\n', '\v', '\f', '\r':
+		return true
+	}
+	return false
 }
 
 func escapeHTML(b *strings.Builder, s string) {

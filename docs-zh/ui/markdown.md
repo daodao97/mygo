@@ -303,6 +303,8 @@ html := d.HTML()
 
 块和行内元素以扁平切片保存，按文稿顺序排列，每项包含其在源文本中的字节范围（`Start` 和 `End`），以及所有子元素之后的索引（`Next`）。`Inlines` 首次调用时才解析相应块的行内元素。`New(ext)` 可指定不同于 `Default` 的扩展组合，`SetStreaming` 则像 `Stream` 一样补全末尾语法。
 
+按 GitHub 规范，`HTML` 会转义那些浏览器会一直读到结束的原始标签——`title`、`textarea`、`style`、`xmp`、`iframe`、`noembed`、`noframes`、`script` 和 `plaintext`——于是把文档当 HTML 复制出去时，其中的 `<script>` 到粘贴它的地方仍是文本。这就是 cmark-gfm 的 tagfilter，即 `ExtTagFilter` 扩展，`GFM` 及其包含的 `Default` 都启用了它；`New(ext &^ parser.ExtTagFilter)` 则按原样写出原始 HTML。其他原始 HTML，例如标签上的事件处理器，仍然是 HTML。
+
 它通过 CommonMark 0.31.2 规范的全部 652 个示例以及 GitHub 扩展的示例，对那些在其他解析器中很慢的输入也能保持线性时间，和 cmark 一样，并且不依赖标准库之外的任何东西。
 
 对中文、日文和韩文放宽了一条规则，因为它们不在强调前后加空格：在 CJK 字符、全角标点或弯引号旁边，`*` 和 `~~` 即使在 CommonMark 中会被标点阻止的地方也能开启和闭合，因此 `**结论。**后文` 是粗体。`_` 和单个 `~` 保持 CommonMark 的规则。规范中那个位置没有包含 CJK 文本的示例，所以它们仍然全部通过。
