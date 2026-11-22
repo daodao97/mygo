@@ -1007,6 +1007,13 @@ func (t *Tray) PopUpMenu() {
 // Bounds returns the position of the icon on screen. macOS shows a menu bar
 // item on each display: Bounds is the one the user last clicked, so a window
 // placed against it, as a flyout, goes on the display the user clicked.
+//
+// Bounds is empty where the icon has no place on screen to report: on
+// Linux, whose panels never say where their icons are, and on Windows for
+// an icon the user keeps in the notification area's overflow while that
+// flyout is closed. An empty Bounds does not mean the icon is gone: MyGo
+// adds every icon again when the notification area restarts, so don't
+// rebuild the tray on it.
 func (t *Tray) Bounds() Rectangle {
 	return onMainValue(func() Rectangle {
 		if t.native == nil {
