@@ -179,6 +179,19 @@ func (v *view) SetMarkedText(r *ui.TextInputRange, s string, selected ui.TextInp
 	v.publish()
 }
 
+// SetTextSelection moves the selection, as an on-screen keyboard's cursor
+// does (ui.TextInputSelectionSetter).
+func (v *view) SetTextSelection(r ui.TextInputRange) {
+	v.sync()
+	v.commitCompose()
+	v.selAnchor, v.caret = v.runeOfUnits(r.Start), v.runeOfUnits(r.End)
+	v.affinity = ui.TextDownstream
+	v.hasDesired = false
+	v.coalesce = false
+	v.reveal = true
+	v.publish()
+}
+
 func (v *view) UnmarkText() {
 	transaction := v.composing
 	v.commitCompose()
