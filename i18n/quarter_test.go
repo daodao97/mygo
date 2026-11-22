@@ -28,6 +28,12 @@ func TestFormatQuarter(t *testing.T) {
 		{"ru", "yQQQQ", "1-й квартал 2026 г."},
 		{"ar", "yQQQ", "الربع الأول 2026"},
 		{"es", "yQQQQ", "1.er trimestre de 2026"},
+		// A numeric quarter of a locale that has only patterns of quarters
+		// in words keeps the words, as ICU writes them.
+		{"en", "yQ", "Q1 2026"},
+		{"en", "yQQ", "Q1 2026"},
+		{"ja", "yQ", "2026/Q1"},
+		{"ru", "yQ", "1-й кв. 2026 г."},
 	} {
 		if got := FormatDate(c.locale, tm, DateOptions{Skeleton: c.skeleton}); got != c.want {
 			t.Errorf("FormatDate(%q, %q) = %q, want %q", c.locale, c.skeleton, got, c.want)
