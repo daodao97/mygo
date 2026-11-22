@@ -561,3 +561,35 @@ func TestTextInputInsertWhileWindowBlurred(t *testing.T) {
 		t.Fatalf("HandleInput TextCaret while blurred got %q, want %q", got, "🚀")
 	}
 }
+
+// An on-screen keyboard moves the selection that Shift and the arrows, or
+// a drag, made: typing then goes where the keyboard put the caret, not over
+// the old selection.
+func TestKeyboardMovesShiftSelection(t *testing.T) {
+	for _, area := range []bool{false, true} {
+		v := "hello world"
+		var in *node
+		tt := coreNewTester(func(c *context) {
+			if area {
+				in = coreTextAreaBase(c, &v).Width(250).AutoFocus()
+			} else {
+				in = coreTextInputBase(c, &v).Width(250).AutoFocus()
+			}
+		}, 300, 100)
+		tt.Key(0, KeyHome)
+		for range 5 {
+			tt.Key(Shift, KeyRight)
+		}
+		if got := in.st.editor.selectedText(); got != "hello" {
+			t.Fatalf("area %v: Shift and the arrows chose %q", area, got)
+		}
+		in.st.textAdapter.SetTextSelection(platform.TextRange{Start: 8, End: 8})
+		if start, end := in.TextSelection(); start != 8 || end != 8 {
+			t.Errorf("area %v: the keyboard put the caret at 8, selection %d–%d", area, start, end)
+		}
+		tt.Type("X")
+		if v != "hello woXrld" {
+			t.Errorf("area %v: typed %q", area, v)
+		}
+	}
+}

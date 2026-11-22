@@ -274,7 +274,10 @@ func (w *widgetTextInput) SetTextSelection(r TextInputRange) {
 	}
 	ed.commitCompose()
 	a, z := ed.buf.runeAtUTF16(r.Start), ed.buf.runeAtUTF16(r.End)
-	ed.anchor, ed.caret = a, z
+	// A whole new selection, as the app's SetTextSelection makes: one that
+	// Shift and the arrows or a drag made is kept as visual ranges, which
+	// would otherwise stay selected.
+	ed.editorSelection = editorSelection{anchor: a, caret: z}
 	ed.hasDesired = false
 	if ed.area != nil {
 		ed.area.reveal = true
