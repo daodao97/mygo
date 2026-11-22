@@ -4,6 +4,7 @@ package inotify
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,7 +61,7 @@ func TestInotifyWatch(t *testing.T) {
 		}
 		return w.Add(platform.FileWatchTarget{ID: id, Path: path, Directory: info.IsDir(), Info: info, Subtree: subtree})
 	}
-	if err := add(1, dir, true); err != platform.ErrUnsupported {
+	if err := add(1, dir, true); !errors.Is(err, platform.ErrUnsupported) {
 		t.Fatalf("subtree: %v", err)
 	}
 	for id, path := range map[uint64]string{1: dir, 2: sub} {

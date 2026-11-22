@@ -27,7 +27,7 @@ import (
 	"github.com/egoist/mygo/transfer"
 )
 
-var errUnsupported = errors.New("mygo: browsers do not support this")
+var errUnsupported = platform.Unsupported("mygo: browsers do not support this")
 
 // Backend is the browser backend.
 type Backend struct {

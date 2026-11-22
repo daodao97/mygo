@@ -373,3 +373,19 @@ func TestWheelPreventDefault(t *testing.T) {
 		})
 	}
 }
+
+// The backend of a browser says so, and answers the check an app makes with
+// errors.Is to find out whether a call it can live without is worth making.
+func TestErrorsAreUnsupported(t *testing.T) {
+	var got error
+	(&Backend{}).ShowNotification(&platform.Notification{ID: "1", Title: "Hi"}, func(err error) { got = err })
+	if got == nil {
+		t.Fatal("ShowNotification returned no error")
+	}
+	if !errors.Is(got, platform.ErrUnsupported) || !errors.Is(got, errors.ErrUnsupported) {
+		t.Errorf("errors.Is(%v, ...) = false, want an unsupported error", got)
+	}
+	if want := "mygo: browsers do not support this"; got.Error() != want {
+		t.Errorf("Error() = %q, want %q", got.Error(), want)
+	}
+}

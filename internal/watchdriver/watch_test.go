@@ -46,7 +46,7 @@ func TestWatch(t *testing.T) {
 	if err := w.Add(platform.FileWatchTarget{ID: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Add(platform.FileWatchTarget{ID: 0}); err != platform.ErrUnsupported {
+	if err := w.Add(platform.FileWatchTarget{ID: 0}); !errors.Is(err, platform.ErrUnsupported) {
 		t.Fatalf("Add = %v", err)
 	}
 	w.Remove(1)
