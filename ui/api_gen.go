@@ -7246,7 +7246,8 @@ func (_handle Element) PressCanceled() bool {
 }
 
 // Pressed reports whether the element is being pressed with the pointer's
-// primary button, unless it is disabled. A press of another button, as a
+// primary button, or, focused, held down with Space, which clicks it as
+// it goes up, unless it is disabled. A press of another button, as a
 // right-click's, is no press here, as CSS's :active and drags on the web
 // have it: PressedButton tells which button presses the element.
 func (_handle Element) Pressed() bool {

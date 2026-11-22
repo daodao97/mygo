@@ -61,6 +61,11 @@ func (rt *engine) passFocus() {
 	if !rt.windowFocused {
 		now = 0
 	}
+	if rt.spacePressed != 0 && rt.spacePressed != now {
+		// The button Space held lost the focus: it clicks no more as
+		// Space goes up, though the focus may come back before it does.
+		rt.spacePressed = 0
+	}
 	if rt.leftRead && rt.leftSaw != now {
 		rt.focusFrom = rt.leftSaw
 		rt.consumed, rt.animating = true, true

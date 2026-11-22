@@ -733,3 +733,89 @@ func TestLinkTakesEnterAlone(t *testing.T) {
 		t.Fatalf("Space and Enter on a focused button made %d clicks, want 2", buttons)
 	}
 }
+
+// TestSpaceHoldsAButtonDown: Space presses the focused button while held,
+// as CSS's :active has it, and clicks it once as it goes up, however long
+// it repeats; Enter clicks as it goes down, and presses nothing.
+func TestSpaceHoldsAButtonDown(t *testing.T) {
+	pressed, clicks := false, 0
+	disabled := false
+	tt := NewTester(func(c *Context) {
+		Column(c).Children(func() {
+			b := ButtonBase(c).Label("Save").Disabled(disabled)
+			pressed = b.Pressed()
+			if b.Clicked() {
+				clicks++
+			}
+			ButtonBase(c).Label("Other")
+		})
+	}, 200, 100)
+	tt.Key(0, KeyTab)
+	if !tt.Focused("Save") {
+		t.Fatal("Tab does not focus the button")
+	}
+	tt.KeyDown(KeySpace)
+	tt.Frame()
+	if !pressed || clicks != 0 {
+		t.Fatalf("Space held: pressed %v, %d clicks; want pressed, no click", pressed, clicks)
+	}
+	tt.KeyRepeat(0, KeySpace)
+	tt.KeyRepeat(0, KeySpace)
+	tt.Frame()
+	if !pressed || clicks != 0 {
+		t.Fatalf("Space repeating: pressed %v, %d clicks; want pressed, no click", pressed, clicks)
+	}
+	tt.KeyUp(KeySpace)
+	tt.Frame()
+	if pressed || clicks != 1 {
+		t.Fatalf("Space up: pressed %v, %d clicks; want released, one click", pressed, clicks)
+	}
+
+	tt.KeyDown(KeyEnter)
+	tt.Frame()
+	if pressed || clicks != 2 {
+		t.Fatalf("Enter held: pressed %v, %d clicks; want no press, a click", pressed, clicks)
+	}
+	tt.KeyUp(KeyEnter)
+	tt.Frame()
+
+	// Tab away while Space is held: no click as it goes up, even back
+	// on the button.
+	tt.KeyDown(KeySpace)
+	tt.Frame()
+	tt.Key(0, KeyTab)
+	if pressed || !tt.Focused("Other") {
+		t.Fatalf("after Tab: pressed %v, Other focused %v", pressed, tt.Focused("Other"))
+	}
+	tt.Key(Shift, KeyTab)
+	tt.KeyUp(KeySpace)
+	tt.Frame()
+	if pressed || clicks != 2 {
+		t.Fatalf("Space up after the focus left: pressed %v, %d clicks; want 2", pressed, clicks)
+	}
+
+	// The window loses the keyboard while Space is held.
+	tt.KeyDown(KeySpace)
+	tt.Frame()
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
+	tt.send(platform.SurfaceEvent{Kind: platform.SurfaceFocus})
+	tt.KeyUp(KeySpace)
+	tt.Frame()
+	if pressed || clicks != 2 {
+		t.Fatalf("Space up after the window lost the keyboard: pressed %v, %d clicks; want 2", pressed, clicks)
+	}
+
+	// Disabled while held.
+	tt.KeyDown(KeySpace)
+	tt.Frame()
+	disabled = true
+	tt.Frame()
+	if pressed {
+		t.Fatal("a disabled button stays pressed")
+	}
+	tt.KeyUp(KeySpace)
+	tt.Frame()
+	if clicks != 2 {
+		t.Fatalf("Space up on a disabled button clicked it: %d clicks", clicks)
+	}
+}

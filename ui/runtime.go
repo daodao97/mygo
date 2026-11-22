@@ -415,6 +415,9 @@ type engine struct {
 	// value, which takes the press as it moves (dragMove), or 0.
 	pressDragger uint64
 	focused      uint64
+	// spacePressed is the focused button that Space holds down, which
+	// it clicks as it goes up (keySpacePress), or 0.
+	spacePressed uint64
 	// texts are selectable paragraphs in build order; selection spans those
 	// of one Selectable container (textselection.go).
 	texts        []*state

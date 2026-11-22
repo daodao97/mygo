@@ -156,6 +156,9 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		}
 		delete(rt.byPosition, physical)
 		rt.releaseKey(key, physical)
+		if key == KeySpace {
+			rt.spaceReleased()
+		}
 		rt.observeFocus(InputEvent{Kind: InputKeyUp, Key: key, PhysicalKey: physical, Code: KeyCode(ev.Code), Mods: Modifiers(ev.Mods)})
 		if h := rt.focusHandler(); h != nil {
 			rt.deliver(h, InputEvent{Kind: InputKeyUp, Key: key, PhysicalKey: physical, Code: KeyCode(ev.Code), Mods: Modifiers(ev.Mods)})
@@ -177,6 +180,7 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		rt.modsChanged(0)
 		clear(rt.byPosition)
 		rt.releaseKeys()
+		rt.spacePressed = 0
 		if p := rt.pressed; p != nil {
 			x, y := p.local(rt.pointerX, rt.pointerY)
 			rt.endPress(p.input, x, y)
@@ -1236,12 +1240,19 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 		// A focused button takes them before the window's shortcuts,
 		// such as a dialog's default button; a toggle takes Space before
 		// them, and Enter after. A link takes Enter alone, as in a web
-		// page: Space scrolls as it does elsewhere.
+		// page: Space scrolls as it does elsewhere. Enter clicks as it
+		// goes down, and again as it repeats; Space presses the button
+		// (Pressed) and clicks it as it goes up, as a browser's, GTK's
+		// and Windows' buttons do, once however long it is held.
 		s := rt.states[rt.focused]
 		window := s != nil && key == KeyEnter && s.flags&flagToggle != 0
 		if s != nil && !rt.claimedAround(k, window, true) && s.flags&flagClickable != 0 && s.flags&flagDisabled == 0 &&
 			(key == KeyEnter || s.role != RoleLink) {
-			s.click(0)
+			if key == KeySpace {
+				rt.spacePressed = s.id
+			} else {
+				s.click(0)
+			}
 			rt.focusVisible = true
 			rt.requestFrame()
 			return false
@@ -1258,6 +1269,21 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 	// the system leaves them alone then, as Android's back then goes back
 	// in the app rather than out of it.
 	return (key == KeyBack || key == KeyEscape) && mods == 0 && rt.claimed(k)
+}
+
+// spaceReleased clicks the button Space held down, as Space goes up,
+// unless the focus left it or it was disabled meanwhile, which a
+// browser's button does not click either.
+func (rt *engine) spaceReleased() {
+	id := rt.spacePressed
+	if id == 0 {
+		return
+	}
+	rt.spacePressed = 0
+	rt.requestFrame()
+	if s := rt.states[id]; s != nil && id == rt.focused && s.flags&flagClickable != 0 && s.flags&flagDisabled == 0 {
+		s.click(0)
+	}
 }
 
 // typePause is how long after a letter typed to choose a row the next
@@ -1798,7 +1824,8 @@ func (rt *engine) pressMove(x0, y0, x1, y1 float32) {
 }
 
 // Pressed reports whether the element is being pressed with the pointer's
-// primary button, unless it is disabled. A press of another button, as a
+// primary button, or, focused, held down with Space, which clicks it as
+// it goes up, unless it is disabled. A press of another button, as a
 // right-click's, is no press here, as CSS's :active and drags on the web
 // have it: PressedButton tells which button presses the element.
 func (e *node) Pressed() bool {
@@ -1812,6 +1839,10 @@ func (e *node) Pressed() bool {
 		e.flags |= flagClickable | flagHover
 	}
 	if rt.insp.isForced(e.id, forceActive) && !e.disabled() {
+		return true
+	}
+	if rt.spacePressed == e.id && rt.focused == e.id && !e.disabled() {
+		// Space holds the focused button down, until it goes up.
 		return true
 	}
 	x, y := s.pointer(rt)
