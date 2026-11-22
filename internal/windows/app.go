@@ -79,7 +79,13 @@ type Backend struct {
 	taskbarFailed        bool
 	taskbarButtonCreated uint32
 
-	watchingPower    bool
+	watchingPower bool
+	// keepRunning counts the KeepRunning holders, and throttlingBefore is
+	// the power throttling policy the process had before the first of
+	// them, if throttlingKnown, which the last release puts back (power.go).
+	keepRunning      int
+	throttlingBefore powerThrottlingState
+	throttlingKnown  bool
 	clipboardChanged func()
 	notifications    map[string]*notification
 

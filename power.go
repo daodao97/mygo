@@ -87,9 +87,12 @@ func (p *PowerModule) KeepAwake(reason string, display bool) (release func()) {
 // macOS otherwise puts an app whose windows are hidden, minimized or
 // covered, or behind the locked screen, into App Nap within a minute: it
 // lowers the app's priority, coalesces its timers and throttles its I/O.
-// KeepAwake keeps App Nap off too, but the computer awake as well, which
-// an app that stays in the menu bar all day should not do. Other systems
-// do nothing here.
+// Windows throttles a process it doesn't see in much the same way, slowing
+// its threads and moving them to the efficiency cores of hybrid processors,
+// and KeepRunning turns that off too, until the last release leaves it to
+// Windows again. Linux desktops don't slow an app out of sight. KeepAwake
+// keeps App Nap off too, but the computer awake as well, which an app that
+// stays in the menu bar all day should not do.
 func (p *PowerModule) KeepRunning(reason string) (release func()) {
 	needsApp("Power.KeepRunning")
 	var r func()
