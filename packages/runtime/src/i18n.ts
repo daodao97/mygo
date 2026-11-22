@@ -376,7 +376,9 @@ export const formatters = {
  * ICU's DateTimePatternGenerator. An hour letter other than j is an
  * hourCycle, as in package i18n. EEEEEE, CLDR's short weekday ("Mo"),
  * has no option of Intl: it is the abbreviated one ("Mon"), where package
- * i18n writes the short one.
+ * i18n writes the short one. Intl has no quarter either: Q and q of a
+ * skeleton write no field here, where package i18n writes the locale's
+ * names of quarters ("Q1 2026", "2026年第1季度").
  */
 export function skeletonOptions(skeleton: string): Intl.DateTimeFormatOptions {
   const o: Intl.DateTimeFormatOptions = {};

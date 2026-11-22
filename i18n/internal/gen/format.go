@@ -29,6 +29,7 @@ import (
 var (
 	monthContexts = []string{"format", "stand-alone"}
 	monthWidths   = []string{"abbreviated", "narrow", "wide"}
+	// Quarter widths are those of the months, in their order.
 	// Days: [context][width][weekday], Sunday first.
 	dayWidths = []string{"abbreviated", "narrow", "short", "wide"}
 	dayKeys   = []string{"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
@@ -47,8 +48,8 @@ var (
 
 // slots lays the record out.
 type slots struct {
-	months, days, periods, eras, dateFormats, timeFormats, dateTimeFormats, atTimeFormats, zone, numbers, minGrouping, skeletons, count int
-	skeletonKeys                                                                                                                        []string
+	months, quarters, days, periods, eras, dateFormats, timeFormats, dateTimeFormats, atTimeFormats, zone, numbers, minGrouping, skeletons, count int
+	skeletonKeys                                                                                                                                  []string
 }
 
 func newSlots(skeletons []string) slots {
@@ -56,6 +57,7 @@ func newSlots(skeletons []string) slots {
 	n := 0
 	take := func(k int) int { at := n; n += k; return at }
 	s.months = take(len(monthContexts) * len(monthWidths) * 12)
+	s.quarters = take(len(monthContexts) * len(monthWidths) * 4)
 	s.days = take(len(monthContexts) * len(dayWidths) * 7)
 	s.periods = take(len(periodWidths) * len(periodKeys))
 	s.eras = take(len(eraTables) * 2)
@@ -74,14 +76,15 @@ func newSlots(skeletons []string) slots {
 
 // skeletonRe matches the keys of availableFormats MyGo keeps: those of
 // the fields it formats.
-var skeletonRe = regexp.MustCompile(`^[yMLdEchHKkamsv]+$`)
+var skeletonRe = regexp.MustCompile(`^[yMLdEchHKkamsvQq]+$`)
 
 // patternLettersRe matches the pattern letters MyGo formats, outside
 // quotes.
-var patternLetters = "GyYMLdEcaBhHKkmszv"
+var patternLetters = "GyYMLdEcaBhHKkmszvQq"
 
 type gregorian struct {
 	Months          map[string]map[string]map[string]string `json:"months"`
+	Quarters        map[string]map[string]map[string]string `json:"quarters"`
 	Days            map[string]map[string]map[string]string `json:"days"`
 	DayPeriods      map[string]map[string]map[string]string `json:"dayPeriods"`
 	Eras            map[string]map[string]string            `json:"eras"`
@@ -352,6 +355,9 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 			for w, width := range monthWidths {
 				for m := 1; m <= 12; m++ {
 					r.values[sl.months+(c*len(monthWidths)+w)*12+m-1] = g.Months[ctx][width][strconv.Itoa(m)]
+				}
+				for q := 1; q <= 4; q++ {
+					r.values[sl.quarters+(c*len(monthWidths)+w)*4+q-1] = g.Quarters[ctx][width][strconv.Itoa(q)]
 				}
 			}
 			for w, width := range dayWidths {
@@ -680,7 +686,7 @@ func writeFormatTables(out, cache string, core map[string][]byte) error {
 		name string
 		v    int
 	}{
-		{"slotMonths", sl.months}, {"slotDays", sl.days}, {"slotDayPeriods", sl.periods}, {"slotEras", sl.eras},
+		{"slotMonths", sl.months}, {"slotQuarters", sl.quarters}, {"slotDays", sl.days}, {"slotDayPeriods", sl.periods}, {"slotEras", sl.eras},
 		{"slotDateFormats", sl.dateFormats}, {"slotTimeFormats", sl.timeFormats},
 		{"slotDateTimeFormats", sl.dateTimeFormats}, {"slotAtTimeFormats", sl.atTimeFormats},
 		{"slotZone", sl.zone}, {"slotNumbers", sl.numbers}, {"slotMinGrouping", sl.minGrouping},

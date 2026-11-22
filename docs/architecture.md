@@ -1943,7 +1943,8 @@ Package `i18n` is a leaf (it imports golang.org/x/text/language only):
   "modern", 430 locales) comes from cldr-dates-full, cldr-numbers-full and
   cldr-localenames-full, pinned like cldr-core (`format.go` of the
   generator writes `format_tables.go`). A locale's data is a record of
-  slots (month and weekday names by context and width, day periods, eras,
+  slots (month, quarter and weekday names by context and width, day
+  periods, eras,
   date, time and date-time patterns, the availableFormats of the
   skeletons MyGo formats, time zones' GMT formats, number symbols,
   patterns and digits of the default numbering system and of latn); each
@@ -1954,7 +1955,7 @@ Package `i18n` is a leaf (it imports golang.org/x/text/language only):
   a constant of its own: the numbers with the locales and their parents
   (`fmtPackedNumbers`, 3 KB), which every app links, as MyGo's own strings
   format numbers, and the dates with the names of languages
-  (`fmtPackedDates`, 77 KB), which only apps that format dates or name
+  (`fmtPackedDates`, 84 KB), which only apps that format dates or name
   languages link. At run time `cldr.go` inflates each once and puts a
   locale's record together on its first use (an atomic pointer per
   locale), its dates on the first date it formats (`withDates`); `keyOf` caches what a tag formats with (its data locale, by

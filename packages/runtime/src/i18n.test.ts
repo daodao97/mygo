@@ -228,6 +228,9 @@ describe("skeletons and number stems", () => {
     expect(skeletonOptions("Hmm")).toEqual({ hour: "numeric", hourCycle: "h23", minute: "2-digit" });
     expect(skeletonOptions("EEEEd")).toEqual({ weekday: "long", day: "numeric" });
     expect(skeletonOptions("Kms")).toEqual({ hour: "numeric", hourCycle: "h11", minute: "numeric", second: "numeric" });
+    // Intl has no quarter: package i18n writes the locale's names of
+    // quarters from CLDR, and this package writes none of them.
+    expect(skeletonOptions("yQQQ")).toEqual({ year: "numeric" });
     expect(formatMessage("en", "{d, date, ::yMMMM}", { d: day })).toBe(
       new Intl.DateTimeFormat("en", { year: "numeric", month: "long" }).format(day),
     );
