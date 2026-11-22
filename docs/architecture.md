@@ -5703,7 +5703,9 @@ either.
   the other params, so a build lays it out once.
   Text elements built inside a text (`ui/inline.go`) are inline: the
   paragraph takes their text when its `Children` returns, and their
-  styles as spans over its own when it lays out. At commit, each gets the
+  styles as spans over its own when it lays out (a background, with its
+  corners and padding, as a span's `Radius`, `PaddingX`, `PaddingY` and
+  `PaddingStart`). At commit, each gets the
   boxes of its runes in the paragraph's layout (`Selection`), one hit
   each, so the pointer, the focus order, tooltips and menus work as for
   any element; they paint only their focus ring (their `Opacity`,
