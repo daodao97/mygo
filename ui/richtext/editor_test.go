@@ -94,6 +94,34 @@ func TestRichTextCaretBlinks(t *testing.T) {
 	}
 }
 
+// The caret before a paragraph laid out right to left shows inside the
+// box, as in a text area: on its right edge, the clip would cut it away.
+func TestRichTextCaretShowsAtTheRight(t *testing.T) {
+	doc := NewDocument(NewText("שלום"))
+	doc.SetSelection(0, 0)
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Padding(20).Children(func() {
+			EditorBase(c, doc).Width(200).Height(60).AutoFocus()
+		})
+	}, 260, 120)
+	tt.Frame() // the focus, which the first frame gives
+	on := bytes.Clone(tt.Image().Pix)
+	tt.Advance(530 * time.Millisecond)
+	off := tt.Image()
+	blinked := -1
+	for i := range on {
+		if on[i] != off.Pix[i] {
+			blinked = max(blinked, (i%off.Stride)/4)
+		}
+	}
+	if blinked < 0 {
+		t.Fatal("no caret blinks")
+	}
+	if blinked >= 220 || blinked < 217 {
+		t.Errorf("the caret blinks at column %d, not at the right of the editor (20 to 220)", blinked)
+	}
+}
+
 func TestRichTextTyping(t *testing.T) {
 	doc := NewDocument(Text{})
 	tt, changed := richTester(t, doc)

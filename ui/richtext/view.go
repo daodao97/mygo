@@ -779,7 +779,10 @@ func (v *view) paraLayout(p int) *paraView {
 	}
 	composed := compose
 	left, right := v.insets(para.style)
-	v.look.width = max(v.width-left-right, 1)
+	// The last column stays for the caret, as in a text area: on the
+	// right edge, where a paragraph laid out right to left starts, the
+	// clip would cut it away.
+	v.look.width = max(v.width-left-right-1, 1)
 	line := v.lineOf(p)
 	var spans []ui.Span
 	var typing Attributes
