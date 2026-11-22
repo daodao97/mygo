@@ -612,9 +612,13 @@ type SurfaceEvent struct {
 	// DX and DY are scroll distances in DIPs; Precise marks touchpads and
 	// other devices that scroll by pixels rather than by lines. Momentum
 	// marks scrolling that continues after the fingers leave a touchpad.
+	// Swipe marks a touchpad's scroll that may be a swipe between pages
+	// (macOS): the content then reports whether it took the scroll
+	// sideways, for the swipe goes on where it did not.
 	DX, DY   float64
 	Precise  bool
 	Momentum bool
+	Swipe    bool
 	// Scale is PointerZoom's, and Rotation the radians clockwise two fingers
 	// turned since the last, on touch screens.
 	Scale, Rotation float64

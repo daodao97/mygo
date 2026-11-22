@@ -283,3 +283,52 @@ func TestPointerScrollConsumed(t *testing.T) {
 		}
 	})
 }
+
+// TestPointerScrollSwipe checks what a scroll that may be a touchpad's
+// swipe between pages reports: whether the content took it sideways, so
+// that a swipe over a list that scrolls down still goes back, and one
+// over what scrolls sideways stays a scroll.
+func TestPointerScrollSwipe(t *testing.T) {
+	swipe := func(tt *Tester, dx, dy float64) bool {
+		return tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 50, Y: 50, DX: dx, DY: dy, Precise: true, Swipe: true})
+	}
+	t.Run("down", func(t *testing.T) {
+		var s ScrollState
+		tt := coreNewTester(func(c *context) {
+			coreScroll(c).Height(100).Width(100).TrackScroll(&s).Children(func() {
+				coreBox(c).Height(500).Shrink(0)
+			})
+		}, 200, 200)
+		if swipe(tt, -40, 10) {
+			t.Error("a swipe that scrolled a list down reported taken sideways")
+		}
+		if s.Y != 10 {
+			t.Errorf("the list scrolled to %v, want 10", s.Y)
+		}
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 50, Y: 50, DX: -40, DY: 10, Precise: true}) {
+			t.Error("a scroll that moved the list reported not taken")
+		}
+	})
+	t.Run("sideways", func(t *testing.T) {
+		var s ScrollState
+		tt := coreNewTester(func(c *context) {
+			coreScrollHorizontal(c).Height(100).Width(100).TrackScroll(&s).Children(func() {
+				coreBox(c).Width(500).Height(20).Shrink(0)
+			})
+		}, 200, 200)
+		if swipe(tt, -40, 0) {
+			t.Error("a swipe toward the start of a row at its start reported taken")
+		}
+		if !swipe(tt, 40, 0) {
+			t.Error("a swipe that scrolled a row reported not taken")
+		}
+	})
+	t.Run("handler", func(t *testing.T) {
+		tt := coreNewTester(func(c *context) {
+			coreBox(c).Fill().HandleInput(func(ev InputEvent) bool { return ev.Kind == InputScroll })
+		}, 200, 200)
+		if !swipe(tt, -40, 0) {
+			t.Error("a swipe a handler took reported not taken")
+		}
+	})
+}

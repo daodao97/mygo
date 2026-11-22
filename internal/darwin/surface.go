@@ -159,6 +159,7 @@ type surface struct {
 	framePass uint64
 	cursor    platform.Cursor
 	inside    bool
+	swipe     swipeTrack
 	// secondaryClick is set while the primary button is down for a secondary
 	// click: a Control-click, or a press of the secondary button that an event
 	// tap posted again as a primary one.
@@ -865,7 +866,22 @@ func scrollWheel(s *surface, ev id) {
 		// A mouse wheel scrolls by lines: 40 DIPs, as in browsers.
 		dx, dy = dx*40, dy*40
 	}
-	s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: x, Y: y, DX: -dx, DY: -dy, Precise: precise, Momentum: momentum, Mods: eventMods(ev)})
+	phase := 0
+	if precise && !momentum {
+		phase = sendInt(ev, "phase")
+	}
+	swipe := s.swipe.swiping(phase)
+	mods := eventMods(ev)
+	taken := s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: x, Y: y, DX: -dx, DY: -dy, Precise: precise, Momentum: momentum, Swipe: swipe, Mods: mods})
+	if !swipe {
+		return
+	}
+	// A two-finger swipe nothing scrolled sideways goes back or forward,
+	// as the side buttons do.
+	if back, ok := s.swipe.scroll(phase, dx, dy, taken); ok {
+		s.sideButton(platform.PointerDown, back, mods)
+		s.sideButton(platform.PointerUp, back, mods)
+	}
 }
 
 func eventMods(ev id) platform.Modifiers {

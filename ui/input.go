@@ -135,7 +135,11 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		}
 	case platform.PointerScroll:
 		rt.pointerMove(x, y)
-		taken = rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise, ev.Momentum)
+		took, sideways := rt.scroll(float32(ev.DX), float32(ev.DY), Modifiers(ev.Mods), ev.Precise, ev.Momentum)
+		taken = took
+		if ev.Swipe {
+			taken = sideways
+		}
 	case platform.PointerZoom:
 		rt.pointerMove(x, y)
 		rt.zoom(float32(ev.Scale), float32(ev.Rotation), Modifiers(ev.Mods))
@@ -907,7 +911,11 @@ func (s *state) quietClick(mods Modifiers) {
 	s.click(mods)
 }
 
-func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool) bool {
+// scroll gives a scroll to the elements under the pointer, and reports
+// whether a handler took it or a container moved, and sideways whether a
+// handler took it or a container moved sideways: a touchpad's swipe
+// between pages goes on where nothing did.
+func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool) (took, sideways bool) {
 	chain := rt.appendHitChain(rt.chain[:0], rt.pointerX, rt.pointerY)
 	rt.chain = chain[:0]
 	// From the innermost element out, the first handling its input to
@@ -919,13 +927,13 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 	ev := InputEvent{Kind: InputScroll, DX: dx, DY: dy, Mods: mods, Precise: precise, Momentum: momentum}
 	for _, id := range chain {
 		if s := rt.states[id]; s != nil && s.input != nil && s.flags&flagDisabled == 0 && rt.deliver(s, ev) {
-			return true
+			return true, true
 		}
 	}
 	// Shift turns the wheel sideways: down is toward the end, which is
 	// to the left right to left.
-	sideways := mods&Shift != 0 && dx == 0
-	if sideways {
+	shifted := mods&Shift != 0 && dx == 0
+	if shifted {
 		dx, dy = dy, 0
 	}
 	// A wheel's notches glide, as browsers scroll them; a touchpad's
@@ -937,14 +945,14 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 			continue
 		}
 		sx, sy := s.vector(rt.pointerX, rt.pointerY, dx, dy)
-		if sideways && s.rtl {
+		if shifted && s.rtl {
 			sx = -sx
 		}
 		if !precise {
 			// A notch goes to the next place of a container that snaps.
 			if moved, took := rt.snapNotch(s, sx, sy); took {
 				if moved {
-					return true
+					return true, sx != 0
 				}
 				continue
 			}
@@ -952,11 +960,12 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 		if glide {
 			if wheelMoves(s, sx, sy) {
 				rt.wheelScroll(s, sx, sy)
-				return true
+				return true, sx != 0
 			}
 			continue
 		}
 		s.wheel = nil
+		x := s.scrollX
 		if scrollBy(s, sx, sy) {
 			if s.snap != nil {
 				// It rests at a place once the fingers, and the momentum
@@ -964,10 +973,10 @@ func (rt *engine) scroll(dx, dy float32, mods Modifiers, precise, momentum bool)
 				s.snap.scrolled(rt, s, snapSettle)
 			}
 			rt.requestFrame()
-			return true
+			return true, s.scrollX != x
 		}
 	}
-	return false
+	return false, false
 }
 
 // zoom gives a pinch or twist to the innermost element under the pointer
