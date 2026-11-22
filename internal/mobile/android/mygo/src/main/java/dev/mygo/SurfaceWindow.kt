@@ -48,7 +48,7 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
         Go.send(Event.frame(wid))
     }
 
-    /** Whether Go presented a frame on the surface since it was made (FirstFrame). */
+    /** Whether Go presented a frame on the surface since it was made or resized (FirstFrame). */
     private var drawnOnSurface = false
     /**
      * What the SurfaceView waits for to show the window's draw with the
@@ -96,7 +96,33 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
         val rate = surface.display?.refreshRate?.toDouble()?.takeIf { it > 0 } ?: 60.0
         if (!created && rate == hz) return
         hz = rate
-        Go.send(Event.surfaceChanged(wid, native, surface.width / density, surface.height / density, density, rate))
+        if (created) {
+            toldWidth = surface.width
+            toldHeight = surface.height
+        }
+        Go.send(Event.surfaceChanged(wid, native, toldWidth / density, toldHeight / density, density, rate))
+    }
+
+    /** The surface's size in pixels, as Go was last told of it. */
+    private var toldWidth = 0
+    private var toldHeight = 0
+
+    /**
+     * The surface's buffers changed size, as the screen rotated: Go makes
+     * its EGL surface anew on them, as GLSurfaceView and Flutter do. The
+     * driver takes the buffers' size and rotation (the transform hint) as
+     * an EGL surface is made, and an old one draws the next frame at the
+     * old size or rotation, which the system drops: an idle window shows a
+     * black screen or the frame before the rotation until something drew
+     * again (#2219). The window's draw waits for that frame
+     * (surfaceRedrawNeededAsync), as it does for the first.
+     */
+    private fun tellResized(w: Int, h: Int) {
+        if (native == 0L || (w == toldWidth && h == toldHeight)) return
+        toldWidth = w
+        toldHeight = h
+        drawnOnSurface = false
+        Go.send(Event.surfaceChanged(wid, native, w / density, h / density, density, hz))
     }
 
     private fun listenToDisplay(on: Boolean) {
@@ -405,10 +431,12 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
 
         /**
          * The window shows its draw with the surface once drawingFinished
-         * runs: for a surface just made, after Go's first frame on it (drawn),
-         * rather than with the surface empty, black, for a frame or more.
-         * Android's splash stays meanwhile. A surface Go drew on already, as
-         * one resized, is done at once, as by default; and should Go draw
+         * runs: for a surface just made or resized, after Go's first frame
+         * on it (drawn), rather than with the surface empty, black, or with
+         * the frame before the rotation, for a frame or more, as
+         * GLSurfaceView waits for its frame. Android's splash stays
+         * meanwhile, or the rotation's animation. A surface Go drew on
+         * already is done at once, as by default; and should Go draw
          * nothing, the window shows after a while all the same.
          */
         override fun surfaceRedrawNeededAsync(h: SurfaceHolder, drawingFinished: Runnable) {
@@ -423,6 +451,7 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
 
         override fun surfaceChanged(h: SurfaceHolder, format: Int, w: Int, ht: Int) {
             preferFastest(h)
+            tellResized(w, ht)
             reportSize()
             requestFrame()
         }

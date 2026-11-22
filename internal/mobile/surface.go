@@ -19,6 +19,9 @@ import (
 type surface struct {
 	w      *window
 	handle uintptr
+	// width and height are the native surface's size, as the host last
+	// told of it (SurfaceChanged).
+	width, height float64
 	// refresh is how many times a second the display refreshes.
 	refresh float64
 
@@ -51,6 +54,15 @@ type surface struct {
 	access     *platform.AccessTree
 	accessOn   bool
 }
+
+// renewsOnResize tells that the content makes its GPU renderer's surface
+// anew on the native surface as its size changes, on Android, as
+// GLSurfaceView and Flutter make their EGL surfaces: the driver takes the
+// buffers' size and rotation (the transform hint) as an EGL surface is
+// made, and one made before the screen rotated draws the next frame at the
+// old size or rotation, which the system drops (#2219). The host holds the
+// window's draw back until the frame on the new one (FirstFrame).
+var renewsOnResize = runtime.GOOS == "android"
 
 func newSurface(w *window) *surface {
 	return &surface{w: w, refresh: 60, fingers: map[int][2]float64{}}
@@ -626,7 +638,9 @@ func (b *Backend) handleSurface(op uint64, r *wire.Reader, w *wire.Writer) bool 
 			if e.Refresh > 0 {
 				s.refresh = e.Refresh
 			}
-			if old != 0 && s.handle != old {
+			resized := e.Width != s.width || e.Height != s.height
+			s.width, s.height = e.Width, e.Height
+			if old != 0 && (s.handle != old || resized && renewsOnResize) {
 				s.send(platform.SurfaceEvent{Kind: platform.SurfaceRenew})
 			}
 			if s.handle != 0 {

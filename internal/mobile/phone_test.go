@@ -391,3 +391,44 @@ func TestFrameRateReachesHost(t *testing.T) {
 		t.Errorf("rates %v, want [30 0]", r)
 	}
 }
+
+// On Android the content makes its EGL surface anew as the native surface
+// changes size, as the screen rotates (#2219), but not as the display's
+// refresh rate changes; on iOS a resize renews nothing.
+func TestResizeRenewsSurface(t *testing.T) {
+	for _, android := range []bool{true, false} {
+		was := renewsOnResize
+		renewsOnResize = android
+		b, h := startBackend(t)
+		w, wh := surfaceWindow(t, b, h)
+		onMain(b, func() { w.s.handle = 0 })
+		changed := func(handle int, width, height, refresh float64) {
+			h.onUI(func() {
+				deliver(encodeEvent(func(wr *wire.Writer) {
+					wr.Uvarint(wire.EventSurfaceChanged)
+					wr.Int(w.id)
+					wr.Int(handle)
+					wr.Float(width)
+					wr.Float(height)
+					wr.Float(2)
+					wr.Float(refresh)
+				}), true)
+			})
+			onMain(b, func() {})
+		}
+		changed(7, 400, 800, 60)
+		changed(7, 400, 800, 120)
+		if n := wh.kinds(platform.SurfaceRenew); n != 0 {
+			t.Fatalf("android %v: %d renewals of a surface made, its rate changed", android, n)
+		}
+		changed(7, 800, 400, 120)
+		want := 0
+		if android {
+			want = 1
+		}
+		if n := wh.kinds(platform.SurfaceRenew); n != want {
+			t.Fatalf("android %v: %d renewals after a rotation, want %d", android, n, want)
+		}
+		renewsOnResize = was
+	}
+}
