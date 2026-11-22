@@ -839,6 +839,16 @@ func (ed *editor) UnmarkText() {
 	}
 }
 
+// SetTextSelection moves the selection, as an on-screen keyboard's cursor
+// does (ui.TextInputSelectionSetter): to one selection, leaving what was
+// composed in as it is.
+func (ed *editor) SetTextSelection(r ui.TextInputRange) {
+	ed.sync()
+	ed.UnmarkText()
+	t := &ed.view.text
+	ed.setSels([]sel{ed.newSel(t.FromUTF16(r.Start), t.FromUTF16(r.End))}, revealFit)
+}
+
 func (ed *editor) BoundsForRange(r ui.TextInputRange) (ui.Rect, ui.TextInputRange, bool) {
 	ed.sync()
 	t := &ed.view.text

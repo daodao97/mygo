@@ -241,3 +241,29 @@ func TestOnInputChord(t *testing.T) {
 		t.Fatalf("OnInput saw keys %v, want K and Right", keys)
 	}
 }
+
+// An on-screen keyboard's cursor (Gboard's space bar swipe, iOS's
+// trackpad) moves the selection: typing goes where it put the caret, a
+// composition stays in as it was, and Up and Down go from there.
+func TestKeyboardMovesSelection(t *testing.T) {
+	ct := newEditorTest(t, "", "aaaaaa\naaaaaa\naaaaaa|")
+	ct.tt.Frame()
+	set, ok := any(&ct.st.ed).(ui.TextInputSelectionSetter)
+	if !ok {
+		t.Fatal("the editor's selection can't be moved by a keyboard")
+	}
+	ct.tt.Key(0, ui.KeyUp)
+	set.SetTextSelection(ui.TextInputRange{Start: 2, End: 2})
+	ct.tt.Type("X")
+	ct.want("aaX|aaaa\naaaaaa\naaaaaa")
+	ct.tt.Key(0, ui.KeyDown)
+	ct.want("aaXaaaa\naaa|aaa\naaaaaa")
+	ct.tt.Compose("に", 1)
+	ct.tt.Frame()
+	set.SetTextSelection(ui.TextInputRange{Start: 0, End: 1})
+	ct.tt.Frame()
+	if _, marked := ct.st.ed.MarkedRange(); marked {
+		t.Fatal("the composition is still marked after the keyboard moved the selection")
+	}
+	ct.want("[a]aXaaaa\naaaにaaa\naaaaaa")
+}
