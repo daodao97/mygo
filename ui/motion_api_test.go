@@ -752,6 +752,43 @@ func TestScrollToGlides(t *testing.T) {
 	}
 }
 
+func TestScrollToGivesWayToTheApp(t *testing.T) {
+	// The app setting the offset while a ScrollTo is on its way jumps
+	// there and stops it, as setting scrollTop stops a smooth scroll.
+	var feed ScrollState
+	tt, now := clockTester(func(c *context) {
+		coreScroll(c).Size(100, 100).TrackScroll(&feed).Children(func() {
+			coreBox(c).Size(100, 1000)
+		})
+	}, 200, 200)
+	feed.ScrollTo(0, 800, Animation{Duration: 100 * time.Millisecond, Ease: Linear})
+	tt.Frame()
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	if !feed.Scrolling() || feed.Y == 0 {
+		t.Fatalf("halfway, scrolled to %v, scrolling %v", feed.Y, feed.Scrolling())
+	}
+	feed.Y = 0
+	tt.Frame()
+	if feed.Y != 0 || feed.Scrolling() {
+		t.Fatalf("set back to the top, it shows %v, scrolling %v", feed.Y, feed.Scrolling())
+	}
+	*now = now.Add(time.Second)
+	tt.Frame()
+	if feed.Y != 0 || tt.rt.animating {
+		t.Fatalf("stopped, it went on to %v", feed.Y)
+	}
+	// Set and asked to glide again in the same frame, it glides.
+	feed.Y = 100
+	feed.ScrollTo(0, 500, Animation{Duration: 100 * time.Millisecond, Ease: Linear})
+	tt.Frame()
+	*now = now.Add(50 * time.Millisecond)
+	tt.Frame()
+	if !feed.Scrolling() || feed.Y <= 100 || feed.Y >= 500 {
+		t.Fatalf("asked to glide again, it shows %v, scrolling %v", feed.Y, feed.Scrolling())
+	}
+}
+
 func TestKeyframesHoldWhileDelayed(t *testing.T) {
 	// An easing need not start at zero, as one that jumps at once: a
 	// delayed sequence holds the value it starts from all the same.
