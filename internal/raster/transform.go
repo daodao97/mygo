@@ -108,10 +108,70 @@ func newTransformedCover(s *shape, m, inv scene.Affine) transformedCover {
 // at returns transformedCoverage(c.s, c.m, c.inv, x, y), given lx and ly,
 // what c.inv maps (x, y) to.
 func (c *transformedCover) at(x, y, lx, ly float32) float32 {
-	if lx > c.inner.X && lx < c.inner.X+c.inner.W && ly > c.inner.Y && ly < c.inner.Y+c.inner.H {
+	if c.covers(lx, ly) {
 		return 1
 	}
 	return transformedCoverage(c.s, c.m, c.inv, x, y)
+}
+
+// covers reports whether the shape covers whole the pixel whose center
+// c.inv maps to (lx, ly), as far as c's interior tells.
+func (c *transformedCover) covers(lx, ly float32) bool {
+	return lx > c.inner.X && lx < c.inner.X+c.inner.W && ly > c.inner.Y && ly < c.inner.Y+c.inner.H
+}
+
+// linearImage draws the pixels of an image operation that sampleOp would
+// read with sample alone, from the image as it is, where its four samples
+// need no clamping: an image neither tinted, gray, pixelated nor of
+// planes, under a map without rotation or shear.
+type linearImage struct {
+	ok                     bool
+	pix                    []byte
+	w                      int
+	minX, minY, maxX, maxY int
+	opacity                float32
+}
+
+func newLinearImage(op *scene.Op, inv scene.Affine) linearImage {
+	img := op.Image
+	if inv.B != 0 || inv.C != 0 || op.Pixelated || op.Grayscale || op.Color != (scene.Color{}) || len(img.Pix) < 4*img.W*img.H {
+		return linearImage{}
+	}
+	if s := img.Surface; s != nil && s.Format == scene.SurfaceNV12 && s.Planes[1].Pix != nil {
+		return linearImage{}
+	}
+	src := unflipped(op.Src)
+	l := linearImage{ok: true, pix: img.Pix, w: img.W, minX: int(src.X), minY: int(src.Y), opacity: opacityOf(op.Opacity)}
+	l.maxX, l.maxY = int(math.Ceil(float64(src.X+src.W)))-1, int(math.Ceil(float64(src.Y+src.H)))-1
+	l.maxX, l.maxY = min(l.maxX, img.W-1), min(l.maxY, img.H-1)
+	return l
+}
+
+// blend composites into p the image at (lx, ly) of the operation's
+// coordinates, a pixel the shape and the clips cover whole, as the general
+// path would, and reports whether it could: not where a sample would be
+// clamped to the source.
+func (l *linearImage) blend(p []byte, op *scene.Op, lx, ly, sx, sy float32) bool {
+	u, v := op.Src.X+(lx-op.Rect.X)*sx, op.Src.Y+(ly-op.Rect.Y)*sy
+	u, v = u-0.5, v-0.5
+	x0, y0 := int(math.Floor(float64(u))), int(math.Floor(float64(v)))
+	if x0 < l.minX || x0 >= l.maxX || y0 < l.minY || y0 >= l.maxY {
+		return false
+	}
+	tx, ty := u-float32(x0), v-float32(y0)
+	i := (y0*l.w + x0) * 4
+	p00, p10 := l.pix[i:i+8:i+8], l.pix[i+4:i+8:i+8]
+	j := i + 4*l.w
+	p01, p11 := l.pix[j:j+8:j+8], l.pix[j+4:j+8:j+8]
+	var c [4]float32
+	for i := 0; i < 4; i++ {
+		top := float32(p00[i])*(1-tx) + float32(p10[i])*tx
+		bot := float32(p01[i])*(1-tx) + float32(p11[i])*tx
+		c[i] = (top*(1-ty) + bot*ty) / 255
+	}
+	cov, clip := float32(1), float32(1)
+	blend(p, c, cov*clip*l.opacity)
+	return true
 }
 
 // transformed inverse maps pixels into the operation's coordinates.
@@ -178,8 +238,29 @@ func (r *renderer) transformed(op *scene.Op, px scene.EffectPixels, b *scene.Bac
 	}
 	box = op.Transform.Bounds(box)
 	x0, y0, x1, y1 := r.pixelBounds(box)
+	// An image only moved and scaled along its axes, as a group's layer
+	// a transition carries by a fraction of a pixel: where the clips and
+	// the image's shape cover a pixel whole and its four samples lie
+	// inside the source, it is sampled inline, with the same arithmetic as
+	// sample, rather than through the general per-pixel path.
+	var lin linearImage
+	if image != nil && affine && !generalTransforms {
+		lin = newLinearImage(op, inv)
+	}
 	for y := y0; y < y1; y++ {
+		lo, hi := x0, x0
+		if lin.ok {
+			lo, hi = r.clipSolid(y)
+			lo, hi = max(lo, x0), min(hi, x1)
+		}
 		for x := x0; x < x1; x++ {
+			if x >= lo && x < hi {
+				wx, wy := float32(x)+0.5, float32(y)+0.5
+				lx, ly := inv.Point(wx, wy)
+				if outerCover.covers(lx, ly) && lin.blend(r.dst.Pix[y*r.dst.Stride+4*x:][:4], op, lx, ly, sx, sy) {
+					continue
+				}
+			}
 			clip := r.clipCoverage(x, y)
 			if clip <= 0 {
 				continue

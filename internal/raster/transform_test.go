@@ -82,9 +82,9 @@ func TestTransformedImageDrawsReleasedPixels(t *testing.T) {
 // TestTransformedFastPathsDrawTheGeneralPixels checks that what the
 // transformed path works out once per operation (the interior a shape
 // covers whole, an image's footprint, a shadow's rows and the box casting
-// it) draws the pixels of the general per-pixel path, byte for byte, under
-// the maps transitions make: subpixel moves, scales, flips, rotations and
-// perspective, through clips.
+// it, and an image's pixels sampled inline) draws the pixels of the
+// general per-pixel path, byte for byte, under the maps transitions make:
+// subpixel moves, scales, flips, rotations and perspective, through clips.
 func TestTransformedFastPathsDrawTheGeneralPixels(t *testing.T) {
 	pix := make([]byte, 4*37*23)
 	for i := range pix {
@@ -99,6 +99,7 @@ func TestTransformedFastPathsDrawTheGeneralPixels(t *testing.T) {
 	ops := map[string]scene.Op{
 		"image":         {Kind: scene.OpImage, Rect: box, Src: scene.Rect{W: 37, H: 23}, Image: img, Opacity: 0.45},
 		"image 1:1":     {Kind: scene.OpImage, Rect: scene.Rect{X: 30, Y: 24, W: 37, H: 23}, Src: scene.Rect{W: 37, H: 23}, Image: img},
+		"image flipped": {Kind: scene.OpImage, Rect: scene.Rect{X: 30, Y: 24, W: 35, H: 21}, Src: scene.Rect{X: 36, Y: 22, W: -35, H: -21}, Image: img, Opacity: 0.6},
 		"image rounded": {Kind: scene.OpImage, Rect: box, Src: scene.Rect{X: 2, Y: 1, W: 30, H: 20}, Image: img, Radii: scene.Uniform(14)},
 		"image cont":    {Kind: scene.OpImage, Rect: box, Src: scene.Rect{W: 37, H: 23}, Image: img, Radii: scene.Uniform(14), Continuous: true},
 		"fill border":   {Kind: scene.OpFill, Rect: box, Color: white, Radii: scene.Uniform(14), Border: scene.Uniform(1.5), BorderColor: ink},
