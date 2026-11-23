@@ -341,6 +341,35 @@ func TestHeadingShowsItsChildren(t *testing.T) {
 	}
 }
 
+// TestLinkShowsItsChildren checks that a link holding elements, as a card
+// that is a link, shows the heading inside it while it is named by its
+// content and keeps its press, as ARIA's links, whose children are not
+// presentational.
+func TestLinkShowsItsChildren(t *testing.T) {
+	tt := coreNewTester(func(c *context) {
+		card := coreColumn(c).Role(RoleLink).Focusable()
+		card.flags |= flagClickable
+		card.Children(func() {
+			coreText(c, "Release notes").Role(RoleHeading).Level(3)
+			coreText(c, "Summary text")
+		})
+	}, 300, 200)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tree := tt.h.access
+	link := accessNode(t, tree, platform.RoleLink, "Release notes")
+	if link.Label != "Release notes Summary text" || link.Actions&platform.ActionPress == 0 {
+		t.Errorf("link: %+v", link)
+	}
+	heading := accessNode(t, tree, platform.RoleHeading, "Release notes")
+	if heading.Level != 3 || heading.Parent < 0 || tree.Nodes[heading.Parent].ID != link.ID {
+		t.Errorf("the heading is not inside the link: %+v", heading)
+	}
+	text := accessNode(t, tree, platform.RoleText, "Summary text")
+	if text.Parent < 0 || tree.Nodes[text.Parent].ID != link.ID {
+		t.Errorf("the summary is not inside the link: %+v", text)
+	}
+}
+
 func TestAccessibilityOfOverlays(t *testing.T) {
 	open := true
 	tt := coreNewTester(func(c *context) {
