@@ -54,6 +54,22 @@ func (rt *engine) arrangeFocus() {
 	if slices.ContainsFunc(scopes, func(sc focusScope) bool { return sc.anchor != 0 }) {
 		rt.placePopovers(order, scopes)
 	}
+	// The focus in an overlay that went goes back to the element that had
+	// it as the overlay opened, rather than to the first element of the
+	// dialog on top, which may be the one the overlay opened from. prune
+	// forgets the overlay after (restoreFocus).
+	built := func(id uint64) bool {
+		s := rt.states[id]
+		return s != nil && s.seen == rt.frame && s.pass == rt.pass
+	}
+	if rt.focused != 0 && !built(rt.focused) {
+		for id, opener := range rt.openers {
+			if !built(id) && built(opener) {
+				rt.focused = opener
+				break
+			}
+		}
+	}
 	if m := rt.modal; m != 0 && rt.scopeOf(rt.focused) != m {
 		for i, sc := range rt.focusScopes {
 			if sc.modal == m {
@@ -128,9 +144,10 @@ func (rt *engine) overlayShortcut(e *node, mods Modifiers, key Key) bool {
 	return false
 }
 
-// openOverlay notes, as overlay id opens, the element that had the focus,
-// to give it back as the overlay closes (restoreFocus).
-func (rt *engine) openOverlay(back *node) {
+// openOverlay notes, as overlay id opens, opener, the element that had
+// the focus before it was built, to give it back as the overlay closes
+// (restoreFocus).
+func (rt *engine) openOverlay(back *node, opener uint64) {
 	if back.st.born != rt.frame {
 		return
 	}
@@ -138,7 +155,7 @@ func (rt *engine) openOverlay(back *node) {
 		rt.openers = map[uint64]uint64{}
 	}
 	if _, ok := rt.openers[back.id]; !ok {
-		rt.openers[back.id] = rt.focused
+		rt.openers[back.id] = opener
 	}
 }
 
