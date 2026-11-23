@@ -409,6 +409,13 @@ func pressEscape(*mygo.Window) bool {
 	return true
 }
 
+// keyboardTarget says where keys typed now go, for a test whose key
+// went astray.
+func keyboardTarget(w *mygo.Window) (s string) {
+	mygo.RunOnMain(func() { s = win.TestKeyboard(w.NativeHandle()) })
+	return s
+}
+
 // Windows shows no document but the title.
 func documentChrome(w *mygo.Window) (title, file string, icon, edited, supported bool) {
 	mygo.RunOnMain(func() { title = win.TestWindowTitle(w.NativeHandle()) })

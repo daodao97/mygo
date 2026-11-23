@@ -376,6 +376,10 @@ func popupMenus() ([][]string, bool)                 { return nil, false }
 func choosePopupItem(string) bool                    { return false }
 func popupItemEnabled(string) (bool, bool)           { return false, false }
 
+// keyboardTarget would say where keys typed now go, which only Windows'
+// tests ask the system.
+func keyboardTarget(*mygo.Window) string { return "" }
+
 // pressEscape presses Escape in the key window, as the keyboard does.
 func pressEscape(*mygo.Window) bool {
 	mygo.RunOnMain(func() { darwin.TestAppKey(53, "\x1b") })
