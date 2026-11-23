@@ -109,6 +109,11 @@ type host interface {
 // the view function, lays them out, paints them and routes input to the
 // elements of the last frame. Main thread only, except where noted.
 type engine struct {
+	// corners returns the radius, in DIPs, the window's frames are cut to
+	// where the system does not round its corners
+	// (surface.Conn.ContentCorners), 0 while they are square. nil for
+	// every other window.
+	corners func() float64
 	// inlineRects is placeInline's scratch, kept from frame to frame.
 	inlineRects []text.Rect
 	// forkGestures are the two-finger gestures in progress (touch.go).
@@ -413,6 +418,9 @@ type engine struct {
 	// value, which takes the press as it moves (dragMove), or 0.
 	pressDragger uint64
 	focused      uint64
+	// spacePressed is the focused button that Space holds down, which
+	// it clicks as it goes up (keySpacePress), or 0.
+	spacePressed uint64
 	// texts are selectable paragraphs in build order; selection spans those
 	// of one Selectable container (textselection.go).
 	texts        []*state
@@ -726,6 +734,9 @@ func newRuntime(view func(*context), h host) *engine {
 		statsThreshold, statsOn = frameStatsSetting(os.Getenv("MYGO_FRAME_STATS"))
 	}
 	rt := &engine{view: view, host: h, text: h.textSystem(), states: map[uint64]*state{}, windowFocused: true}
+	if c, ok := h.(*windowHost); ok && c.conn != nil {
+		rt.corners = c.conn.ContentCorners
+	}
 	rt.c.rt = rt
 	rt.owner = weak.Make(rt)
 	rt.arena = &elementOwner{rt: rt}

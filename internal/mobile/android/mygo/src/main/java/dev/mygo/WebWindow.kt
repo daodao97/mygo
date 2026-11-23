@@ -40,6 +40,8 @@ class WebWindow(context: Context, c: CreateWindowCall) : HostWindow(context, c.i
     private val frame = FrameLayout(context)
     override val view: View get() = frame
     val web = WebView(context)
+    /** Whether the page slows down while it can't be seen: not with ThrottlingOff. */
+    val throttles = !c.noBackgroundThrottling
     private val schemes = c.schemes.toSet()
     private var scripts = ArrayList<ScriptHandler>()
     private var defaultUA = ""
@@ -447,6 +449,14 @@ object Schemes {
         val charset = Regex("charset=([^;]+)", RegexOption.IGNORE_CASE).find(type)?.groupValues?.get(1)?.trim()
         // A WebResourceResponse takes no redirect.
         val status = if (p.status in 300..399) 200 else p.status
+        // The web view answers a Range itself, skipping the body to the range's first byte: a partial body
+        // Go gave (206, as http.ServeContent's) already starts there, so those bytes are skipped for free.
+        if (status == 206) {
+            val range = p.header.entries.firstOrNull { it.key.equals("Content-Range", true) }?.value
+            Regex("""^\s*bytes\s+(\d+)-""", RegexOption.IGNORE_CASE).find(range ?: "")?.let {
+                p.body.before = it.groupValues[1].toLongOrNull() ?: 0
+            }
+        }
         return WebResourceResponse(mime, charset, status, reason(status), p.header, p.body)
     }
 
@@ -487,6 +497,20 @@ object Schemes {
         private var cur = ByteArray(0)
         private var at = 0
         private var done = false
+
+        /** The bytes of the resource before the body (a partial one's), which skip passes without reading. */
+        @Volatile
+        var before = 0L
+
+        override fun skip(n: Long): Long {
+            if (n <= 0) return 0
+            if (before > 0) {
+                val k = minOf(n, before)
+                before -= k
+                return k
+            }
+            return super.skip(n)
+        }
 
         private fun fill(): Boolean {
             while (at >= cur.size) {

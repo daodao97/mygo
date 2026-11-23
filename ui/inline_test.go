@@ -318,3 +318,67 @@ func TestInlineFadeNested(t *testing.T) {
 		t.Errorf("the paragraph's own span has color %v", c)
 	}
 }
+
+// The corners and padding of an inline element round and pad its
+// background, as RichText's spans do (#2206).
+func TestInlineRadiusPadding(t *testing.T) {
+	yellow := RGB(250, 220, 40)
+	var para, match, after *node
+	build := func(pad bool) *Tester {
+		return coreNewTester(func(c *context) {
+			coreColumn(c).Padding(10).AlignItems(Start).Children(func() {
+				para = coreText(c, "Result: ").FontSize(20).Children(func() {
+					match = coreText(c, "match").Background(yellow).Radius(6)
+					if pad {
+						match.Padding(3, 8).PaddingStart(12)
+					}
+					after = coreText(c, " after")
+				})
+			})
+		}, 400, 100)
+	}
+	build(false)
+	plainAfter := after.frags[0].X
+	if s := para.spans[1]; s.Radius != 6 || s.Background != yellow || s.PaddingX != 0 || s.PaddingY != 0 {
+		t.Errorf("the span of a rounded word: %+v", s)
+	}
+
+	tt := build(true)
+	want := Span{Text: "match", Background: yellow, Radius: 6, PaddingX: 8, PaddingY: 3, PaddingStart: 4}
+	if s := para.spans[1]; s != want {
+		t.Errorf("the span of a padded word\n got %+v\nwant %+v", s, want)
+	}
+	if s := para.spans[2]; s.Radius != 0 || s.PaddingX != 0 || s.Background.A != 0 {
+		t.Errorf("the text after it takes its box: %+v", s)
+	}
+	// The padding takes room in the line: 8 on the end, 12 on the start.
+	if d := after.frags[0].X - plainAfter; d < 19 || d > 21 {
+		t.Errorf("the padding moves the text after it on by %v, want 20", d)
+	}
+	// The background is rounded: its middle is filled, its corners not.
+	img := tt.Image()
+	f := match.frags[0]
+	if c := img.RGBAAt(int(f.X+f.W/2), int(f.Y+f.H/2)); c.R != 250 || c.G != 220 {
+		t.Errorf("the middle of the background is %v", c)
+	}
+	var x0 int
+	for x := int(f.X) - 20; x < int(f.X+f.W); x++ {
+		if c := img.RGBAAt(x, int(f.Y+f.H/2)); c.R == 250 && c.G == 220 && c.B == 40 {
+			x0 = x
+			break
+		}
+	}
+	top := -1
+	for y := int(f.Y) - 10; y < int(f.Y+f.H); y++ {
+		if c := img.RGBAAt(int(f.X+f.W/2), y); c.R == 250 && c.G == 220 && c.B == 40 {
+			top = y
+			break
+		}
+	}
+	if x0 == 0 || top < 0 {
+		t.Fatalf("no background around %v", f)
+	}
+	if c := img.RGBAAt(x0, top); c.R == 250 && c.G == 220 && c.B == 40 {
+		t.Errorf("the background's top-left corner at %d,%d is filled: not rounded", x0, top)
+	}
+}

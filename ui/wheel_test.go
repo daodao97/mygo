@@ -214,3 +214,121 @@ func TestWheelReverseAtEnd(t *testing.T) {
 		t.Fatalf("the wheel did not turn back at the end: still at %v, want < 800", s.Y)
 	}
 }
+
+func TestPointerScrollConsumed(t *testing.T) {
+	t.Run("non-scrollable", func(t *testing.T) {
+		tt := coreNewTester(func(c *context) {
+			coreBox(c).Fill()
+		}, 200, 200)
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40, Precise: true}) {
+			t.Error("precise scroll over non-scrollable box reported taken")
+		}
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40}) {
+			t.Error("wheel scroll over non-scrollable box reported taken")
+		}
+	})
+
+	t.Run("scrollable and boundaries", func(t *testing.T) {
+		tt := coreNewTester(func(c *context) {
+			coreScroll(c).Fill().Children(func() {
+				coreBox(c).Height(500).Shrink(0)
+			})
+		}, 200, 200)
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: -40, Precise: true}) {
+			t.Error("precise scroll up at top reported taken")
+		}
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: -40}) {
+			t.Error("wheel scroll up at top reported taken")
+		}
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 100, Precise: true}) {
+			t.Error("precise scroll down with room reported not taken")
+		}
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 200}) {
+			t.Error("wheel glide with room reported not taken")
+		}
+	})
+
+	t.Run("snap container", func(t *testing.T) {
+		tt := coreNewTester(func(c *context) {
+			coreScroll(c).Fill().ScrollSnap(SnapMandatory).Children(func() {
+				coreBox(c).Height(200).Shrink(0).SnapAlign(Start)
+				coreBox(c).Height(200).Shrink(0).SnapAlign(Start)
+			})
+		}, 200, 200)
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: -40}) {
+			t.Error("snap notch up at first item reported taken")
+		}
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40}) {
+			t.Error("snap notch down to next item reported not taken")
+		}
+		tt.Advance(time.Second)
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40}) {
+			t.Error("snap notch down at last item reported taken")
+		}
+	})
+
+	t.Run("input handler", func(t *testing.T) {
+		take := true
+		tt := coreNewTester(func(c *context) {
+			coreBox(c).Fill().HandleInput(func(ev InputEvent) bool {
+				return ev.Kind == InputScroll && take
+			})
+		}, 200, 200)
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40, Precise: true}) {
+			t.Error("HandleInput returning true reported not taken")
+		}
+		take = false
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 100, Y: 100, DY: 40, Precise: true}) {
+			t.Error("HandleInput returning false over non-scrollable box reported taken")
+		}
+	})
+}
+
+// TestPointerScrollSwipe checks what a scroll that may be a touchpad's
+// swipe between pages reports: whether the content took it sideways, so
+// that a swipe over a list that scrolls down still goes back, and one
+// over what scrolls sideways stays a scroll.
+func TestPointerScrollSwipe(t *testing.T) {
+	swipe := func(tt *Tester, dx, dy float64) bool {
+		return tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 50, Y: 50, DX: dx, DY: dy, Precise: true, Swipe: true})
+	}
+	t.Run("down", func(t *testing.T) {
+		var s ScrollState
+		tt := coreNewTester(func(c *context) {
+			coreScroll(c).Height(100).Width(100).TrackScroll(&s).Children(func() {
+				coreBox(c).Height(500).Shrink(0)
+			})
+		}, 200, 200)
+		if swipe(tt, -40, 10) {
+			t.Error("a swipe that scrolled a list down reported taken sideways")
+		}
+		if s.Y != 10 {
+			t.Errorf("the list scrolled to %v, want 10", s.Y)
+		}
+		if !tt.rt.event(platform.SurfaceEvent{Kind: platform.PointerScroll, X: 50, Y: 50, DX: -40, DY: 10, Precise: true}) {
+			t.Error("a scroll that moved the list reported not taken")
+		}
+	})
+	t.Run("sideways", func(t *testing.T) {
+		var s ScrollState
+		tt := coreNewTester(func(c *context) {
+			coreScrollHorizontal(c).Height(100).Width(100).TrackScroll(&s).Children(func() {
+				coreBox(c).Width(500).Height(20).Shrink(0)
+			})
+		}, 200, 200)
+		if swipe(tt, -40, 0) {
+			t.Error("a swipe toward the start of a row at its start reported taken")
+		}
+		if !swipe(tt, 40, 0) {
+			t.Error("a swipe that scrolled a row reported not taken")
+		}
+	})
+	t.Run("handler", func(t *testing.T) {
+		tt := coreNewTester(func(c *context) {
+			coreBox(c).Fill().HandleInput(func(ev InputEvent) bool { return ev.Kind == InputScroll })
+		}, 200, 200)
+		if !swipe(tt, -40, 0) {
+			t.Error("a swipe a handler took reported not taken")
+		}
+	})
+}

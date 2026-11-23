@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/internal/wait"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -293,6 +294,20 @@ func TestFlyoutEscape(t *testing.T) {
 	parent := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200})
 	parent.Focus()
 	eventually(t, "the parent focused", parent.IsFocused)
+	// escapeCloses presses Escape in fl and waits for it to close. Where
+	// it doesn't, it says where keys went before and after, where the
+	// platform tells.
+	escapeCloses := func(fl *mygo.Window, what string) {
+		t.Helper()
+		before := keyboardTarget(fl)
+		pressEscape(fl)
+		if !wait.Poll(fl.IsDestroyed) {
+			if before == "" {
+				t.Fatalf("%s never happened (waited %v)", what, wait.Guard)
+			}
+			t.Fatalf("%s never happened (waited %v): before the Escape, %s; now %s", what, wait.Guard, before, keyboardTarget(fl))
+		}
+	}
 	var handled, received atomic.Bool
 	native := mygo.NewFlyout(mygo.FlyoutOptions{Parent: parent, Width: 150, Height: 100, Focusable: true, Content: ui.View(func(c *ui.Context) {
 		if handled.Load() && c.Shortcut(0, ui.KeyEscape) {
@@ -314,8 +329,7 @@ func TestFlyoutEscape(t *testing.T) {
 	}
 	// It no longer does, from the frame that handles the key on.
 	handled.Store(false)
-	pressEscape(native)
-	eventually(t, "the flyout of native UI closed", native.IsDestroyed)
+	escapeCloses(native, "the flyout of native UI closed")
 
 	parent.Focus()
 	eventually(t, "the parent focused", parent.IsFocused)
@@ -324,8 +338,7 @@ func TestFlyoutEscape(t *testing.T) {
 	page.Page().LoadHTML(`<input id=i autofocus>`, "")
 	waitFor(t, page, "document.activeElement && document.activeElement.id === 'i'")
 	eventually(t, "the page's flyout focused", page.IsFocused)
-	pressEscape(page)
-	eventually(t, "the page's flyout closed", page.IsDestroyed)
+	escapeCloses(page, "the page's flyout closed")
 
 	// A flyout of native UI showing a web view whose page has the
 	// keyboard closes on an Escape the page leaves.
@@ -354,8 +367,7 @@ func TestFlyoutEscape(t *testing.T) {
 	eventually(t, "the reader focused", reader.IsFocused)
 	v.Focus()
 	waitForPage(t, v.Page(), "document.hasFocus()")
-	pressEscape(reader)
-	eventually(t, "the reader closed", reader.IsDestroyed)
+	escapeCloses(reader, "the reader closed")
 
 	// A popover of the system's (macOS) closes so too.
 	parent.Focus()
@@ -363,8 +375,7 @@ func TestFlyoutEscape(t *testing.T) {
 	popover := mygo.NewFlyout(mygo.FlyoutOptions{Parent: parent, Width: 150, Height: 100, Focusable: true, Popover: true, Content: ui.View(func(c *ui.Context) {})})
 	defer popover.Destroy()
 	eventually(t, "the popover focused", popover.IsFocused)
-	pressEscape(popover)
-	eventually(t, "the popover closed", popover.IsDestroyed)
+	escapeCloses(popover, "the popover closed")
 }
 
 // TestTrayFlyout places a flyout next to a tray icon, below the macOS menu

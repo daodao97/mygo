@@ -49,7 +49,7 @@ func TestCommonMark(t *testing.T) {
 // TestGFM runs the examples of GitHub's extensions in the GFM spec.
 func TestGFM(t *testing.T) {
 	for _, ex := range loadSpec(t, "gfm.json") {
-		if !strings.Contains(ex.Section, "(extension)") || ex.Section == "Disallowed Raw HTML (extension)" {
+		if !strings.Contains(ex.Section, "(extension)") {
 			continue
 		}
 		if got := render(ex.Markdown, GFM); got != ex.HTML {

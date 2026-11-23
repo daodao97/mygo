@@ -57,10 +57,14 @@ func (v *view) replace(start, end int, s string) {
 	if d.typing != nil {
 		attrs = *d.typing
 	}
-	v.lockedEdit(func(e *Edit) { e.ReplaceString(start, end, s, attrs) })
+	// The caret moves inside the edit, so that its step's selection after
+	// is where redo puts it.
 	caret := start + utf8.RuneCountInString(s)
+	v.lockedEdit(func(e *Edit) {
+		e.ReplaceString(start, end, s, attrs)
+		d.anchor, d.caret = caret, caret
+	})
 	v.selAnchor, v.caret = caret, caret
-	d.anchor, d.caret = caret, caret
 	if s == "" && start < end {
 		// Typing again where text was deleted gets its attributes, until
 		// the caret moves, as in NSTextView.
@@ -150,6 +154,17 @@ func (v *view) insert(s string) {
 	a, z := v.selection()
 	v.record(a == z && utf8.RuneCountInString(s) == 1 && s != "\n")
 	v.replace(a, z, s)
+}
+
+// pasteText replaces the selection with s as a step of undo of its own,
+// even one character, as NSTextView's paste.
+func (v *view) pasteText(s string) {
+	if v.opts.ReadOnly {
+		return
+	}
+	a, z := v.selection()
+	v.record(false)
+	v.replace(a, z, normalizeNewlines(s))
 }
 
 // deleteRange deletes the runes from a to z.
@@ -384,9 +399,11 @@ func (v *view) inlineShortcut(ps int, before []rune) {
 	}
 	start, end := ps+open, ps+closeAt
 	v.edit(func(e *Edit) {
+		// Formatted while the closing mark follows, so that a format that
+		// would reach the end of the text leaves what typing gets there.
+		e.Format(start+m, end, set)
 		e.ReplaceString(end, end+m, "", Attributes{})
 		e.ReplaceString(start, start+m, "", Attributes{})
-		e.Format(start, end-m, set)
 		e.Select(end-m, end-m)
 	})
 	// What is typed next is outside the format, as after a closing mark.

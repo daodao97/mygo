@@ -33,10 +33,11 @@ func (w *Window) attachContent(content Content) {
 		panic("mygo: the backend " + backend().Name() + " created no surface for the window's Content")
 	}
 	w.conn = &surface.Conn{
-		OwnSafeArea: w.extendIntoSafeArea,
-		Surface:     s,
-		Window:      w,
-		Clipboard:   backend().Clipboard(),
+		OwnSafeArea:    w.extendIntoSafeArea,
+		Surface:        s,
+		Window:         w,
+		ContentCorners: w.contentCorners(),
+		Clipboard:      backend().Clipboard(),
 		FrameSubmitted: func() {
 			if _, native := s.(platform.DrawableSurface); !native {
 				postMain(w.presented)

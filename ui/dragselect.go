@@ -130,7 +130,7 @@ func (rt *engine) scrollDragSelect() {
 		return
 	}
 	b, ok := p.valueBinding.(*listRowInput)
-	if !ok || b.f == nil || !b.f.s.dragSel.on || b.f.s.dragSel.id != p.id {
+	if !ok || b.f == nil || b.f.s == nil || !b.f.s.dragSel.on || b.f.s.dragSel.id != p.id {
 		return
 	}
 	f := b.f

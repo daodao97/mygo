@@ -35,7 +35,7 @@ import (
 	"github.com/egoist/mygo/internal/unsupported"
 )
 
-var errUnsupported = errors.New("mygo: " + runtime.GOOS + " does not support this")
+var errUnsupported = platform.Unsupported("mygo: " + runtime.GOOS + " does not support this")
 
 // Backend is the backend of phones.
 type Backend struct {

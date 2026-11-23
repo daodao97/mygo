@@ -125,9 +125,17 @@ func padSide(spans []Span, k int, left, rtl bool) float32 {
 // paragraph text, the whitespace ending it left out, and the padding of
 // its spans' pieces.
 func paddedWidth(l shapedLine, text []rune, spans []Span) (w, pad float32) {
+	return linePaddedWidth(l, text, spans, false)
+}
+
+// linePaddedWidth is paddedWidth, counting the whitespace ending the line
+// too when keepSpaces, as Params.KeepSpaces keeps it.
+func linePaddedWidth(l shapedLine, text []rune, spans []Span, keepSpaces bool) (w, pad float32) {
 	trim := l.end
-	for trim > l.start && hangs(text[trim-1]) {
-		trim--
+	if !keepSpaces {
+		for trim > l.start && hangs(text[trim-1]) {
+			trim--
+		}
 	}
 	k := -1
 	for _, r := range l.runs {

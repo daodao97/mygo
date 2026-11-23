@@ -3,7 +3,6 @@
 package unsupported
 
 import (
-	"errors"
 	"runtime"
 	"time"
 
@@ -17,7 +16,7 @@ type Backend struct{}
 // New returns the unsupported backend.
 func New() *Backend { return &Backend{} }
 
-var errUnsupported = errors.New("mygo: " + runtime.GOOS + "/" + runtime.GOARCH + " is not supported yet")
+var errUnsupported = platform.Unsupported("mygo: " + runtime.GOOS + "/" + runtime.GOARCH + " is not supported yet")
 
 func (*Backend) Name() string                { return "unsupported" }
 func (*Backend) SystemManagedLifetime() bool { return false }

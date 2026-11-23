@@ -223,7 +223,7 @@ closeButton.onclick = () => currentWindow.close();
 
 - 在 macOS 上，是交通灯按钮。`mygo.TitleBarHiddenInset` 在它们周围留出更多空间，`TrafficLightPosition` 可以移动它们，其值为关闭按钮左上角在窗口中的位置。
 - 在 Windows 上，右上角则是最小化、最大化或还原，以及关闭按钮，按照 Windows 11 的样式绘制。它们的高度填满标题栏，即 `TitleBarHeight`（默认 32），将鼠标悬停在最大化按钮上会打开贴靠布局。窗口仍可从上边缘调整大小。
-- 在 Linux 上，是 GTK 自己的标题按钮，位置由桌面的按钮布局决定，并在 `TitleBarHeight` 中居中（默认是桌面标题栏的高度）。布局决定显示哪些按钮，可能一个也没有，平铺窗口管理器常常如此设置。自己装饰窗口的 Wayland 合成器（如 KWin、Hyprland 和 Sway）则没有按钮：此时按钮在合成器自己的标题栏里，平铺式合成器则一个按钮也不显示。页面最外侧的像素用于调整窗口大小，与无边框窗口一样。窗口的菜单栏会隐藏，如同 `AutoHideMenuBar`：在其菜单打开时，Alt 和 F10 会在页面上方显示它，其快捷键始终有效。`Theme.SetGTKCSS` 可以改变按钮的样式，例如改成 GTK 4 的圆形按钮（[GTK 的样式](windows.md#linux-上的-gtk-样式)）。
+- 在 Linux 上，是 GTK 自己的标题按钮，位置由桌面的按钮布局决定，并在 `TitleBarHeight` 中居中（默认是桌面标题栏的高度）。布局决定显示哪些按钮，可能一个也没有，平铺窗口管理器常常如此设置。自己装饰窗口的平铺式 Wayland 合成器（如 Hyprland 和 Sway）则没有按钮，合成器自己也不显示按钮。在 KDE Plasma 上，KWin 不会在页面上方加标题栏：按钮是 GTK 的，位置由 KDE 的按钮布局决定。页面最外侧的像素用于调整窗口大小，与无边框窗口一样。窗口的菜单栏会隐藏，如同 `AutoHideMenuBar`：在其菜单打开时，Alt 和 F10 会在页面上方显示它，其快捷键始终有效。`Theme.SetGTKCSS` 可以改变按钮的样式，例如改成 GTK 4 的圆形按钮（[GTK 的样式](windows.md#linux-上的-gtk-样式)）。
 
 ```go
 mygo.NewWindow(mygo.WindowOptions{

@@ -1451,8 +1451,8 @@ func relativeLuminance(c Color) float64 {
 }
 
 // shortcutText writes an accelerator (accelerator) as a menu shows it by
-// its item: with the symbols of macOS there, as "⇧⌘Z", and as "Ctrl+Shift+Z"
-// elsewhere.
+// its item: with the symbols of macOS there and in a browser on a Mac, as
+// "⇧⌘Z", and as "Ctrl+Shift+Z" elsewhere.
 func shortcutText(a string) string {
 	if a == "" {
 		return ""
@@ -1463,7 +1463,19 @@ func shortcutText(a string) string {
 		key = strings.ToUpper(key)
 	}
 	var b strings.Builder
-	if platform.MacKeys {
+	if platform.MacKeys || platform.MacBrowser {
+		if platform.MacBrowser {
+			// A browser on a Mac sends Command as Control and Control as
+			// Super: write the keys pressed.
+			for i, m := range mods {
+				switch m {
+				case "Ctrl":
+					mods[i] = "Super"
+				case "Super":
+					mods[i] = "Ctrl"
+				}
+			}
+		}
 		// In the order of macOS's menus.
 		for _, m := range [...][2]string{{"Ctrl", "⌃"}, {"Alt", "⌥"}, {"Shift", "⇧"}, {"Super", "⌘"}} {
 			if slices.Contains(mods, m[0]) {

@@ -106,6 +106,10 @@ func (l *Layout) visualStops(li int) []caretStop {
 	return stops
 }
 
+// CaretLine returns the index of the line the caret at p is drawn on: with
+// Upstream affinity at a soft line break, the line that ends there.
+func (l *Layout) CaretLine(p CaretPosition) int { return l.caretLine(p) }
+
 func (l *Layout) caretLine(p CaretPosition) int {
 	li := l.LineAt(p.Index)
 	if p.Affinity == Upstream && li > 0 && l.Lines[li].Start == p.Index && l.Lines[li-1].End == p.Index {

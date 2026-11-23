@@ -328,7 +328,7 @@ func (st *State) SelectedText() string {
 // Insert replaces each selection with text, as typing or pasting it.
 func (st *State) Insert(text string) {
 	st.ensure()
-	st.ed.retry(func() bool { st.ed.paste(text); return true })
+	st.ed.retry(func() bool { st.ed.paste(text, false); return true })
 }
 
 // Run runs a command as its key would, and reports whether it did

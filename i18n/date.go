@@ -37,14 +37,16 @@ type DateOptions struct {
 	// Skeleton names the fields to write when Date and Time are
 	// NoStyle, in CLDR's letters and any order: "yMMMd" (Jan 5, 2026),
 	// "yMMMM" (January 2026), "MMMd", "Ed" (5 Mon), "jm" (the hour and
-	// minute in the locale's hour cycle: 1:07 PM, 13:07), "Hm", "hms".
+	// minute in the locale's hour cycle: 1:07 PM, 13:07), "Hm", "hms",
+	// "yQQQ" (Q1 2026), "yQQQQ" (1st quarter 2026, "2026年第1季度").
 	// The locale's pattern that suits it best is found as ICU's
 	// DateTimePatternGenerator finds it. Letters: y, M, L (a month
-	// standing alone), d, E (weekday), j, h, H, K, k, a, m, s, z. No
-	// style and no skeleton is "yMd". An hour letter other than j is that
-	// hour cycle (h 1 to 12, H 0 to 23, K 0 to 11, k 1 to 24), as V8
-	// reads Intl's hourCycle. EEEEEE, CLDR's short weekday ("Mo"), has no
-	// option of Intl: pages write the abbreviated one ("Mon") in its place.
+	// standing alone), Q (a quarter), q (a quarter standing alone), d, E
+	// (weekday), j, h, H, K, k, a, m, s, z. No style and no skeleton is
+	// "yMd". An hour letter other than j is that hour cycle (h 1 to 12, H
+	// 0 to 23, K 0 to 11, k 1 to 24), as V8 reads Intl's hourCycle.
+	// EEEEEE, CLDR's short weekday ("Mo"), has no option of Intl: pages
+	// write the abbreviated one ("Mon") in its place.
 	Skeleton string
 	// HourCycle is 12 or 24 to write times so whatever the locale's
 	// hours, as the user's regional settings say (Region.HourCycle); 0
@@ -267,6 +269,24 @@ func (f *DateFormatter) field(b *strings.Builder, c byte, n int, t time.Time) {
 			w = 1
 		}
 		b.WriteString(v[slotMonths+(ctx*3+w)*12+m-1])
+	case 'Q', 'q':
+		q := (int(t.Month())-1)/3 + 1
+		if n <= 2 {
+			f.num(b, q, n)
+			return
+		}
+		ctx := 0
+		if c == 'q' {
+			ctx = 1
+		}
+		w := 0 // abbreviated
+		switch n {
+		case 4:
+			w = 2
+		case 5:
+			w = 1
+		}
+		b.WriteString(v[slotQuarters+(ctx*3+w)*4+q-1])
 	case 'd':
 		f.num(b, t.Day(), n)
 	case 'D':

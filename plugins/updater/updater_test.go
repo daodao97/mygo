@@ -184,11 +184,10 @@ func TestInstallAndRelaunch(t *testing.T) {
 	s.Respond(v.Prompt, actionInstall, true)
 
 	v = waitView(t, s, "Downloading update…")
-	for v.Progress != 0.25 {
-		_, changed := s.Current()
-		<-changed
+	wait.Until(t, "a quarter downloaded", func() bool {
 		v, _ = s.Current()
-	}
+		return v.Progress == 0.25
+	})
 	if v.Message != "5.0 MB of 20.0 MB" || !v.Bar || v.Release {
 		t.Errorf("downloading view: %+v", v)
 	}

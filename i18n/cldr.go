@@ -460,6 +460,21 @@ func Months(locale string, w Width, standAlone bool) [12]string {
 	return out
 }
 
+// Quarters returns the names of the quarters of the year in locale, the
+// first first, in a width, standing alone or inside a date as Months does
+// ("Q1" of "Q1 2026" but "1st quarter" of a heading, in English).
+func Quarters(locale string, w Width, standAlone bool) [4]string {
+	d := keyOf(locale).dates()
+	ctx := 0
+	if standAlone {
+		ctx = 1
+	}
+	base := slotQuarters + (ctx*3+monthWidth(w))*4
+	var out [4]string
+	copy(out[:], d.v[base:base+4])
+	return out
+}
+
 // Weekdays returns the names of the days of the week in locale, by
 // time.Weekday (Sunday first), in a width, standing alone or inside a
 // date as Months does.

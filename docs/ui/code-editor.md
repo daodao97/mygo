@@ -296,7 +296,7 @@ its name or else the `#!` line its text opens with, as
 them. The editor knows Go, JavaScript,
 TypeScript, JSON, Python, Rust, C, C++, Java, Kotlin, Scala, Swift, Dart,
 C#, shell scripts, YAML, TOML, SQL, R, Ruby, Lua, PHP, CSS, HTML, ERB,
-Svelte, XML, Markdown, diffs, Dockerfiles, Makefiles, Protocol Buffers,
+Svelte, Astro, XML, Markdown, diffs, Dockerfiles, Makefiles, Protocol Buffers,
 GraphQL, Zig, Nix, Jinja templates and HCL (Terraform).
 A template's text is in the language its name gives before the template's
 extension: `LanguageFor` highlights `compose.yaml.j2` as Jinja in YAML,

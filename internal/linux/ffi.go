@@ -376,6 +376,7 @@ var (
 	gtkHeaderBarSetShowCloseButton      func(b ptr, v bool)
 	gtkHeaderBarSetHasSubtitle          func(b ptr, v bool)
 	gtkHeaderBarSetDecorationLayout     func(b ptr, layout *byte)
+	gtkHeaderBarSetCustomTitle          func(b ptr, w ptr)
 	gtkWidgetSetHalign                  func(w ptr, align int32)
 	gtkWidgetSetValign                  func(w ptr, align int32)
 	gtkWidgetSetSizeRequest             func(w ptr, width, height int32)
@@ -821,6 +822,7 @@ func load() error {
 	mustBind(t, &gtkHeaderBarSetShowCloseButton, "gtk_header_bar_set_show_close_button")
 	mustBind(t, &gtkHeaderBarSetHasSubtitle, "gtk_header_bar_set_has_subtitle")
 	mustBind(t, &gtkHeaderBarSetDecorationLayout, "gtk_header_bar_set_decoration_layout")
+	mustBind(t, &gtkHeaderBarSetCustomTitle, "gtk_header_bar_set_custom_title")
 	mustBind(t, &gtkWidgetSetHalign, "gtk_widget_set_halign")
 	mustBind(t, &gtkWidgetSetValign, "gtk_widget_set_valign")
 	mustBind(t, &gtkWidgetSetSizeRequest, "gtk_widget_set_size_request")
@@ -889,13 +891,15 @@ var (
 // may do (WebViewAvailable). WebKitGTK takes the first thread that calls
 // into it for its UI thread, and aborts when another calls later: the
 // first call, persistCookies, waits for the main thread, whose users of
-// WebKit all call webKit first.
+// WebKit all call webKit first. fixScreenResolution comes before it, so
+// that the first web context reads a sane resolution.
 func webKit() error {
 	webKitOnce.Do(func() {
 		errWebKit = loadWebKit()
 		webKitLoaded.Store(errWebKit == nil)
 	})
 	if errWebKit == nil && theBackend != nil && theBackend.IsMainThread() {
+		resolutionOnce.Do(fixScreenResolution)
 		cookiesOnce.Do(persistCookies)
 	}
 	return errWebKit

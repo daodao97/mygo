@@ -50,7 +50,7 @@ type area struct {
 // wrappedHeight returns the height of the text, with an input method's
 // composition, wrapped at the content width cw.
 func (a *area) wrappedHeight(e *node, ed *editor, cw float32) float32 {
-	params := e.textParams(max(cw, 1))
+	params := e.textParams(max(caretRoom(cw), 1))
 	if ed.buf.indexed {
 		params.KeepSpaces, params.MaxLines = true, 0
 		if params != a.wrappedParams || a.wrappedVersion != ed.buf.version || a.wrappedCompose != ed.compose {
@@ -82,6 +82,17 @@ func (a *area) wrappedHeight(e *node, ed *editor, cw float32) float32 {
 		a.wrapped = ed.sys.Layout(params).Height
 	}
 	return a.wrapped
+}
+
+// caretRoom returns the width the paragraphs of a text area are laid out
+// in, in a content box cw wide: its last column stays for the caret, as in
+// a single-line input, since a caret on the box's right edge, where a line
+// laid out right to left starts, would be clipped away.
+func caretRoom(cw float32) float32 {
+	if cw > 1 {
+		return cw - 1
+	}
+	return cw
 }
 
 // maxLaid is how many paragraphs keep their layouts out of view, beyond
@@ -225,11 +236,16 @@ func (a *area) caretAt(ed *editor, i, extra int) (x float32, y float64, h float3
 	return x, a.hs.top(p) + float64(ly), h
 }
 
-// lineEdges returns the edges of the visual line holding rune i.
+// lineEdges returns the edges of the visual line holding rune i, the one
+// the caret is drawn on when i is the caret.
 func (a *area) lineEdges(ed *editor, i int) (int, int) {
 	p := ed.buf.para(i)
 	l := a.paraLayout(ed, p)
-	line := &l.Lines[l.LineAt(a.local(ed, p, i))]
+	affinity := text.Downstream
+	if i == ed.caret {
+		affinity = ed.caretAffinity
+	}
+	line := &l.Lines[l.CaretLine(text.CaretPosition{Index: a.local(ed, p, i), Affinity: affinity})]
 	return a.global(ed, p, line.Start), a.global(ed, p, line.End)
 }
 
@@ -305,7 +321,7 @@ func (a *area) setScroll(y float64) {
 func (a *area) layout(e *node, cw, ch float32) {
 	ed := e.st.editor
 	b := &ed.buf
-	params := e.textParams(cw)
+	params := e.textParams(caretRoom(cw))
 	params.KeepSpaces, params.MaxLines = true, 0
 	a.sync(ed, b, params)
 

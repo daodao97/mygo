@@ -19,13 +19,16 @@ import (
 // keep it in step with their window managers, and users of tiling window
 // managers empty it to have none.
 //
-// A Wayland compositor that decorates windows itself gets no buttons at all.
-// KWin, Hyprland and Sway say so with the default mode of
+// A tiling Wayland compositor that decorates windows itself gets no buttons
+// at all. Hyprland and Sway say so with the default mode of
 // org_kde_kwin_server_decoration_manager, and GTK then asks them to decorate
-// a window without decorations too. The compositor's title bar has the
-// buttons, and a tiling compositor, which draws none, wants none, whatever
-// the button layout says: GTK reads it from GNOME's settings on Wayland, and
-// their default shows close.
+// a window without decorations too. A tiling compositor, which draws no
+// buttons, wants none, whatever the button layout says: GTK reads it from
+// GNOME's settings on Wayland, and their default shows close. KWin says so
+// too, but it draws title bars, and KDE keeps the layout in step with its
+// own: there the window decorates itself and has GTK's buttons, as on
+// GNOME, rather than KWin's title bar over its page. KWin is told by
+// org_kde_kwin_server_decoration_palette_manager, which only it offers.
 
 // controlsCSS clears the bars around the buttons. With TitleBarHeight, the
 // bars take that height instead of the theme's.
@@ -97,6 +100,12 @@ func (w *window) newControlsBar(side int) ptr {
 	bar := gtkHeaderBarNew()
 	gtkHeaderBarSetShowCloseButton(bar, true) // the window buttons
 	gtkHeaderBarSetHasSubtitle(bar, false)
+	// An empty custom title takes the bar's title out: GTK's own title box
+	// always asks room for five characters, title or no title (GTK's
+	// MIN_TITLE_CHARS), and nothing draws in it here — the bar would hold
+	// that phantom, and the page, told the bar's room, would keep clear of
+	// it, a gap before the buttons it cannot see.
+	gtkHeaderBarSetCustomTitle(bar, gtkBoxNew(0, 0))
 	style := gtkWidgetGetStyleContext(bar)
 	gtkStyleContextAddClass(style, cs("mygo-window-controls"))
 	if h := w.opts.TitleBarHeight; h > 0 {
@@ -183,8 +192,8 @@ func buttonLayout() (start, end string) {
 	return windowButtons(before), windowButtons(after)
 }
 
-// WindowButtons returns the buttons of the desktop's layout, none where the
-// compositor decorates windows itself (platform.WindowButtonsBackend).
+// WindowButtons returns the buttons of the desktop's layout, none where a
+// tiling compositor decorates windows itself (platform.WindowButtonsBackend).
 func (b *Backend) WindowButtons() (start, end []string) {
 	if b.compositorDecorates {
 		return nil, nil

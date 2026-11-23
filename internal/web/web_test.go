@@ -64,6 +64,10 @@ func TestAccelText(t *testing.T) {
 		{"CmdOrCtrl+C", false, "Ctrl+C"},
 		{"CmdOrCtrl+Shift+z", true, "⌘⇧Z"},
 		{"Alt+F4", false, "Alt+F4"},
+		// Command comes as Control and Control as Super (mods).
+		{"Ctrl+d", true, "⌘D"},
+		{"Super+d", true, "⌃D"},
+		{"Super+d", false, "Win+D"},
 		{"", true, ""},
 	} {
 		if got := accelText(tc.accel, tc.mac); got != tc.want {
@@ -236,5 +240,152 @@ func TestCursorNames(t *testing.T) {
 	}
 	if cursors[platform.CursorProgress] != "progress" || cursors[platform.CursorNoDrop] != "no-drop" {
 		t.Errorf("progress is %q, no-drop %q", cursors[platform.CursorProgress], cursors[platform.CursorNoDrop])
+	}
+}
+
+type wheelTestHandler struct {
+	platform.WindowHandler
+	take   bool
+	called bool
+	event  platform.SurfaceEvent
+}
+
+func (h *wheelTestHandler) SurfaceEvent(ev platform.SurfaceEvent) bool {
+	h.called = true
+	h.event = ev
+	return h.take
+}
+
+func TestWheelPreventDefault(t *testing.T) {
+	rectFn := js.FuncOf(func(js.Value, []js.Value) any {
+		return map[string]any{"left": 10.0, "top": 20.0}
+	})
+	defer rectFn.Release()
+	canvas := js.Global().Get("Object").New()
+	canvas.Set("getBoundingClientRect", rectFn)
+
+	for _, tc := range []struct {
+		name        string
+		props       map[string]any
+		fullPage    bool
+		take        bool
+		wantCalled  bool
+		wantKind    platform.SurfaceEventKind
+		wantPrevent bool
+	}{
+		{
+			name:        "scroll consumed",
+			props:       map[string]any{"deltaX": 0.0, "deltaY": 40.0, "deltaMode": 0, "ctrlKey": false, "cancelable": true},
+			take:        true,
+			wantCalled:  true,
+			wantKind:    platform.PointerScroll,
+			wantPrevent: true,
+		},
+		{
+			name:        "scroll unconsumed",
+			props:       map[string]any{"deltaX": 0.0, "deltaY": 40.0, "deltaMode": 0, "ctrlKey": false, "cancelable": true},
+			take:        false,
+			wantCalled:  true,
+			wantKind:    platform.PointerScroll,
+			wantPrevent: false,
+		},
+		{
+			name:        "non-cancelable scroll skipped",
+			props:       map[string]any{"deltaX": 0.0, "deltaY": 40.0, "deltaMode": 0, "ctrlKey": false, "cancelable": false},
+			take:        true,
+			wantCalled:  false,
+			wantPrevent: false,
+		},
+		{
+			name:        "full page, scroll unconsumed",
+			props:       map[string]any{"deltaX": 0.0, "deltaY": 40.0, "deltaMode": 0, "ctrlKey": false, "cancelable": true},
+			fullPage:    true,
+			take:        false,
+			wantCalled:  true,
+			wantKind:    platform.PointerScroll,
+			wantPrevent: true,
+		},
+		{
+			name:        "full page, non-cancelable scroll still delivered",
+			props:       map[string]any{"deltaX": 0.0, "deltaY": 40.0, "deltaMode": 0, "ctrlKey": false, "cancelable": false},
+			fullPage:    true,
+			take:        true,
+			wantCalled:  true,
+			wantKind:    platform.PointerScroll,
+			wantPrevent: true,
+		},
+		{
+			name:        "pinch always prevented",
+			props:       map[string]any{"deltaX": 0.0, "deltaY": -10.0, "deltaMode": 0, "ctrlKey": true, "cancelable": true},
+			take:        false,
+			wantCalled:  true,
+			wantKind:    platform.PointerZoom,
+			wantPrevent: true,
+		},
+		{
+			name:        "ctrl pixel wheel with wheelDeltaY 120 prevented",
+			props:       map[string]any{"deltaX": 0.0, "deltaY": -10.0, "deltaMode": 0, "wheelDeltaY": 120, "ctrlKey": true, "cancelable": true},
+			take:        false,
+			wantCalled:  true,
+			wantKind:    platform.PointerScroll,
+			wantPrevent: true,
+		},
+		{
+			name:        "ctrl line wheel prevented",
+			props:       map[string]any{"deltaX": 0.0, "deltaY": 3.0, "deltaMode": 1, "ctrlKey": true, "cancelable": true},
+			take:        false,
+			wantCalled:  true,
+			wantKind:    platform.PointerScroll,
+			wantPrevent: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &wheelTestHandler{take: tc.take}
+			s := &surface{w: &window{b: &Backend{}, h: h, embedded: !tc.fullPage}, canvas: canvas, width: 400, height: 300}
+			prevented := false
+			preventFn := js.FuncOf(func(js.Value, []js.Value) any {
+				prevented = true
+				return nil
+			})
+			defer preventFn.Release()
+
+			e := js.Global().Get("Object").New()
+			e.Set("clientX", 50.0)
+			e.Set("clientY", 60.0)
+			e.Set("shiftKey", false)
+			e.Set("altKey", false)
+			e.Set("metaKey", false)
+			e.Set("preventDefault", preventFn)
+			for k, v := range tc.props {
+				e.Set(k, v)
+			}
+
+			s.wheel(e)
+			if h.called != tc.wantCalled {
+				t.Errorf("called = %v, want %v", h.called, tc.wantCalled)
+			}
+			if tc.wantCalled && h.event.Kind != tc.wantKind {
+				t.Errorf("kind = %v, want %v", h.event.Kind, tc.wantKind)
+			}
+			if prevented != tc.wantPrevent {
+				t.Errorf("preventDefault = %v, want %v", prevented, tc.wantPrevent)
+			}
+		})
+	}
+}
+
+// The backend of a browser says so, and answers the check an app makes with
+// errors.Is to find out whether a call it can live without is worth making.
+func TestErrorsAreUnsupported(t *testing.T) {
+	var got error
+	(&Backend{}).ShowNotification(&platform.Notification{ID: "1", Title: "Hi"}, func(err error) { got = err })
+	if got == nil {
+		t.Fatal("ShowNotification returned no error")
+	}
+	if !errors.Is(got, platform.ErrUnsupported) || !errors.Is(got, errors.ErrUnsupported) {
+		t.Errorf("errors.Is(%v, ...) = false, want an unsupported error", got)
+	}
+	if want := "mygo: browsers do not support this"; got.Error() != want {
+		t.Errorf("Error() = %q, want %q", got.Error(), want)
 	}
 }

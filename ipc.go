@@ -288,14 +288,14 @@ func lookupMethod(name string) *method {
 }
 
 // call calls the method for the page of w whose context is page and whose
-// token is token.
-func (m *method) call(w *Window, page context.Context, token string, args []rawValue) (result any, err error) {
-	ctx, cancel := page, context.CancelFunc(nil)
+// token is token. parent is the context for this call.
+func (m *method) call(w *Window, page, parent context.Context, token string, args []rawValue) (result any, err error) {
+	ctx, cancel := parent, context.CancelFunc(nil)
 	var chans []*channel
 	if m.streams {
 		// The page closing a channel cancels the call. The channels close
 		// when it returns, before its result is sent.
-		ctx, cancel = context.WithCancel(page)
+		ctx, cancel = context.WithCancel(parent)
 		defer func() {
 			for _, c := range chans {
 				c.close(closedByGo)
@@ -405,6 +405,7 @@ func handleCall(w *Window, ctx context.Context, raw string, trusted bool) {
 	}
 	var result any
 	var err error
+	page := ctx // Keep the page identity separate from the call's context.
 	if m.C {
 		// The page may cancel the call with a signal: the method gets a
 		// context of its own, which the page cancels. The call is
@@ -431,7 +432,7 @@ func handleCall(w *Window, ctx context.Context, raw string, trusted bool) {
 	} else if mi := lookupMethod(m.M); mi == nil {
 		err = notBound(m.M)
 	} else {
-		result, err = mi.call(w, ctx, m.K, m.A)
+		result, err = mi.call(w, page, ctx, m.K, m.A)
 	}
 	w.enqueue(encodeReply(m.ID, m.K, result, err), false)
 }

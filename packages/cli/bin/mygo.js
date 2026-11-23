@@ -15,7 +15,10 @@ const args = process.argv.slice(2);
 if (process.platform !== "win32" && typeof process.execve === "function") {
   // Become the binary (Node.js 23.11 and later, Bun), so that signals and
   // the exit status are its own.
-  process.execve(bin, [bin, ...args]);
+  // Pass the environment explicitly: on some runtimes with process.execve
+  // (Bun; older Node.js LTS lines) omitting it starts the binary with an
+  // empty environment, although the documented default is process.env.
+  process.execve(bin, [bin, ...args], { ...process.env });
 }
 
 const child = spawn(bin, args, { stdio: "inherit" });

@@ -102,10 +102,20 @@ func TextAdvances(family string, size float64, weight int, italic, noKern bool, 
 	return r.Advances
 }
 
-// DrawText draws text in white, as DrawText's reply tells.
-func DrawText(family string, size float64, weight int, italic bool, text string, scale, dx float64) wire.DrawTextReply {
+// MeasureTextRun returns how wide text's UTF-16 units [start, end) are,
+// laid out within the whole of text, right to left if rtl.
+func MeasureTextRun(family string, size float64, weight int, italic, noKern bool, text string, start, end int, rtl bool) float64 {
+	var r wire.MeasureTextRunReply
+	textCall(&wire.MeasureTextRun{Family: family, Size: size, Weight: weight, Italic: italic, NoKern: noKern, Text: text, Start: start, End: end, RTL: rtl}, &r)
+	return r.Width
+}
+
+// DrawText draws text in white, as DrawText's reply tells: all of it, or,
+// when end > 0, its UTF-16 units [start, end) laid out within the whole,
+// right to left if rtl.
+func DrawText(family string, size float64, weight int, italic bool, text string, scale, dx float64, start, end int, rtl bool) wire.DrawTextReply {
 	var r wire.DrawTextReply
-	textCall(&wire.DrawText{Family: family, Size: size, Weight: weight, Italic: italic, Text: text, Scale: scale, DX: dx}, &r)
+	textCall(&wire.DrawText{Family: family, Size: size, Weight: weight, Italic: italic, Text: text, Scale: scale, DX: dx, Start: start, End: end, RTL: rtl}, &r)
 	return r
 }
 

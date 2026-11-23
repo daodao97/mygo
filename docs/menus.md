@@ -504,6 +504,13 @@ taskbar's overflow, at the pointer. To show a menu only on right-click while kee
 primary clicks available, set the menu in `OnRightClick`, call
 `PopUpMenu`, then clear it with `SetMenu(nil)` when the call returns.
 
+`Tray.Bounds` is where the icon is on screen. On macOS it is the status
+item's frame; on Linux it is always empty, as panels never say where
+their icons are; on Windows it is empty for an icon the user keeps in
+the notification area's overflow while that flyout is closed. An empty
+`Bounds` does not mean the icon is gone: when Explorer restarts, MyGo adds
+every icon again, so an app never needs to rebuild its tray.
+
 A tray icon does not keep the app running: the app quits when its last
 window closes ([Quitting](app.md#quitting)). To close a window to the
 tray, hide it instead, which keeps the window and the app. A quit, as the

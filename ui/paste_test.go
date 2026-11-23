@@ -213,3 +213,22 @@ func TestPasteLoneCR(t *testing.T) {
 		t.Errorf("a TextInput pasted %q, want each line break a space", input)
 	}
 }
+
+// A paste is a step of undo of its own, even of one character right after
+// typing, as NSTextView's: typing before it and after it stay apart.
+func TestPasteIsItsOwnUndoStep(t *testing.T) {
+	text := ""
+	tt := NewTester(func(c *Context) { TextArea(c, &text).Width(200).Label("draft") }, 300, 100)
+	tt.Click("draft")
+	tt.Type("a")
+	tt.Type("b")
+	tt.SetClipboard("x")
+	tt.Key(Cmd, KeyV)
+	tt.Type("c")
+	for _, want := range []string{"abx", "ab", ""} {
+		tt.Key(Cmd, KeyZ)
+		if text != want {
+			t.Fatalf("undo made %q, want %q", text, want)
+		}
+	}
+}

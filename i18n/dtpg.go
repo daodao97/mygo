@@ -548,8 +548,11 @@ func (g *patternGenerator) adjustFieldTypes(pattern string, e *dtpEntry, req *sk
 		case e.specified && reqChar != 'c' && reqChar != 'e':
 			skelLen := len(e.skel.original[field])
 			patNumeric := row.typ > 0
-			skelNumeric := e.skel.typ[field] > 0
-			if skelLen == reqLen || patNumeric != skelNumeric {
+			// A number asked of a field the pattern writes in words, or
+			// words of a number, keeps the pattern's, as ICU 78 does
+			// (ICU-23114): "QQQ y" stays "Q1 2026" for yQ.
+			reqNumeric := req.typ[field] > 0
+			if skelLen == reqLen || patNumeric != reqNumeric {
 				adjLen = it.n
 			}
 		}

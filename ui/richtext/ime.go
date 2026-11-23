@@ -108,12 +108,6 @@ func (v *view) SetSelection(selection ui.TextInputSelection) {
 
 var _ ui.TextInputSelectionSetter = (*view)(nil)
 
-// SetTextSelection moves the selection as the system asks, as a finger
-// dragging the caret or a handle, or iOS's space bar held down, does.
-func (v *view) SetTextSelection(r ui.TextInputRange) {
-	v.SetSelection(ui.TextInputSelection{Range: r})
-}
-
 func (v *view) MarkedRange() (ui.TextInputRange, bool) {
 	if v.compose == "" {
 		return ui.TextInputRange{}, false
@@ -194,6 +188,19 @@ func (v *view) SetMarkedText(r *ui.TextInputRange, s string, selected ui.TextInp
 	selected.End = countUnits(s[:ui.UTF16ByteOffset(s, selected.End)])
 	v.compose, v.composeSelected = s, selected
 	v.composeCaret = utf8.RuneCountInString(s[:ui.UTF16ByteOffset(s, selected.End)])
+	v.reveal = true
+	v.publish()
+}
+
+// SetTextSelection moves the selection, as an on-screen keyboard's cursor
+// does (ui.TextInputSelectionSetter).
+func (v *view) SetTextSelection(r ui.TextInputRange) {
+	v.sync()
+	v.commitCompose()
+	v.selAnchor, v.caret = v.runeOfUnits(r.Start), v.runeOfUnits(r.End)
+	v.affinity = ui.TextDownstream
+	v.hasDesired = false
+	v.coalesce = false
 	v.reveal = true
 	v.publish()
 }

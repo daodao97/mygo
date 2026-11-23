@@ -1,6 +1,6 @@
 ---
 name: mygo-native-modules
-description: Write and change native modules of MyGo apps, Go interfaces implemented in Swift (macOS and iOS frameworks, packages and views), Kotlin (Android's SDK and libraries), Rust or Zig (crates and C libraries, every desktop). Use when a MyGo app needs an API Go lacks, or when a package has a file ending in _native.go or a swift/, kotlin/, rust/ or zig/ directory beside it.
+description: Write and change native modules of MyGo apps, Go interfaces implemented in Swift (macOS and iOS frameworks, packages and views), Kotlin (Android's SDK, libraries and views), Rust or Zig (crates and C libraries, every desktop). Use when a MyGo app needs an API Go lacks, or when a package has a file ending in _native.go or a swift/, kotlin/, rust/ or zig/ directory beside it.
 ---
 
 # MyGo native modules
@@ -34,9 +34,10 @@ does not run there.
 1. Change the Go interface in `<name>.go`: the contract. `//mygo:native`
    marks an entry point (the package gets `New<T>()`), `//mygo:mainthread`
    runs methods on the main thread, embedding `native.View` makes the
-   implementation an `NSView` that `ui.NativeView(c, v)` shows (Swift
-   only), and `native.NewError("code")` declares errors the implementation
-   returns as `<Module>Error`.
+   implementation a view that `ui.NativeView(c, v)` shows (an `NSView` or
+   `UIView` in Swift, an `android.view.View` in Kotlin), and
+   `native.NewError("code")` declares errors the implementation returns
+   as `<Module>Error`.
 2. Run `mygo native check [-lang <language>] [dir]`. It regenerates
    `<name>_native.go` and each language's generated file
    (`swift/Sources/<Module>/<Module>.mygo.swift`, `rust/src/mygo.rs`,

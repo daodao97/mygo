@@ -169,6 +169,15 @@ func (e *node) spanStyle() (Span, float32) {
 		// The background of an inline element is that of its text.
 		s.Background = e.bg
 	}
+	// Its corners and its padding round and pad that background, which
+	// then hugs its glyphs, as those of an inline box on the web. A span
+	// has one radius, its largest corner's, and pads its sides alike past
+	// the start's: the end gets the smaller of the two.
+	s.Radius = max(e.radius[0], e.radius[1], e.radius[2], e.radius[3])
+	start, end := e.pad[e.startSide()], e.pad[e.endSide()]
+	s.PaddingX = min(start, end)
+	s.PaddingStart = start - s.PaddingX
+	s.PaddingY = max(e.pad[0], e.pad[2])
 	// What dims the element dims its text, and what hides it keeps its
 	// room in the line but paints none of it, as CSS's visibility: hidden.
 	alpha := float32(1)
@@ -249,6 +258,11 @@ func over(s, base Span) Span {
 	}
 	if s.Background.A == 0 {
 		s.Background = base.Background
+	}
+	if s.Radius == 0 && s.PaddingX == 0 && s.PaddingY == 0 && s.PaddingStart == 0 {
+		// Each span of an inline element, one when it is plain text,
+		// takes its corners and padding.
+		s.Radius, s.PaddingX, s.PaddingY, s.PaddingStart = base.Radius, base.PaddingX, base.PaddingY, base.PaddingStart
 	}
 	if !s.strokeSet {
 		s.strokeWidth, s.strokeColor, s.strokeSet = base.strokeWidth, base.strokeColor, base.strokeSet

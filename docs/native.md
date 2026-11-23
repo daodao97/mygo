@@ -424,8 +424,13 @@ app that serves the network, streams or syncs in the background. A tray
 icon counts as a window that shows while the menu bar shows it.
 `KeepRunning` keeps App Nap off until its release, and lets the computer
 sleep when idle, as an app that stays in the menu bar all day should;
-`KeepAwake` keeps App Nap off too, but the computer awake as well. Other
-systems do nothing for `KeepRunning`.
+`KeepAwake` keeps App Nap off too, but the computer awake as well. Windows
+throttles a process it does not see in much the same way: EcoQoS slows its
+threads, and on hybrid processors moves them to the efficiency cores.
+`KeepRunning` turns that off until its release, which leaves the throttling
+to Windows again, so an app that shows its window again is treated as
+Windows treats any other. Linux desktops do not slow an app out of sight,
+and do nothing for `KeepRunning`.
 
 On Linux, `OnLockScreen` is called when the screen saver starts,
 which usually locks the screen, and `IdleTime` is 0 on desktops that do not

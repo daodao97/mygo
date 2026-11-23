@@ -281,12 +281,13 @@ func (g *gallery) scatterChart(c *ui.Context) {
 }
 
 // donutChart divides a ring among platforms, growing the slice under the
-// pointer, whose share shows in the middle.
+// pointer, whose share shows in the middle. The legend goes under the
+// ring in a card too narrow for both side by side.
 func (g *gallery) donutChart(c *ui.Context) {
 	t := c.Theme()
 	slices := chart.Pie(chartShares, 0.025)
 	const size, inner, outer = 180, 56, 86
-	ui.Row(c).Gap(28).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Wrap().Gap(28).GapY(16).AlignItems(ui.Center).Children(func() {
 		ring := ui.Box(c).Size(size, size).Label("Users by platform")
 		hover := -1
 		if x, y, over := ring.PointerPosition(); over {

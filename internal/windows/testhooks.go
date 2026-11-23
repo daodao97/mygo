@@ -1143,3 +1143,46 @@ func TestThumbBarLive(hwnd uintptr) bool {
 func TestThumbButtonClicked(hwnd uintptr, id int) {
 	procPostMessageW.Call(hwnd, wmCommand, uintptr(uint16(id))|uintptr(thbnClicked)<<16, 0)
 }
+
+// TestKeyboard says where keys typed now go, as seen from hwnd: the
+// foreground window, and the window with the keyboard on its thread
+// (GetGUIThreadInfo), for a test to tell where a key it pressed went.
+func TestKeyboard(hwnd uintptr) string {
+	var info struct {
+		size, flags                                        uint32
+		active, focus, capture, menuOwner, moveSize, caret uintptr
+		caretRect                                          rect
+	}
+	info.size = uint32(unsafe.Sizeof(info))
+	fg, _, _ := procGetForegroundWindow.Call()
+	if r, _, err := user32.NewProc("GetGUIThreadInfo").Call(0, uintptr(unsafe.Pointer(&info))); r == 0 {
+		return fmt.Sprintf("foreground %s, keyboard unknown (%v)", describeWindow(hwnd, fg), err)
+	}
+	return fmt.Sprintf("foreground %s, active %s, keyboard %s", describeWindow(hwnd, fg), describeWindow(hwnd, info.active), describeWindow(hwnd, info.focus))
+}
+
+// describeWindow names other as seen from hwnd: hwnd itself, its surface,
+// another window of the app or another process's, with its class.
+func describeWindow(hwnd, other uintptr) string {
+	if other == 0 {
+		return "none"
+	}
+	var buf [64]uint16
+	n, _, _ := procGetClassNameW.Call(other, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	class := syscall.UTF16ToString(buf[:n])
+	switch w := theBackend.windows[hwnd]; {
+	case other == hwnd:
+		return "the window"
+	case w != nil && w.surface != nil && other == w.surface.hwnd:
+		return "the window's surface"
+	}
+	if w := theBackend.windows[other]; w != nil {
+		return fmt.Sprintf("another window of the app (%q, %s)", w.Title(), class)
+	}
+	var pid uint32
+	procGetWindowThreadProcessId.Call(other, uintptr(unsafe.Pointer(&pid)))
+	if pid == uint32(syscall.Getpid()) {
+		return fmt.Sprintf("a window of the app (%s)", class)
+	}
+	return fmt.Sprintf("another process's (%d, %s)", pid, class)
+}

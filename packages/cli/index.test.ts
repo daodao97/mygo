@@ -98,7 +98,7 @@ function bunLock(withPlatform: boolean) {
 // Each install scenario starts one process: a slow runtime does not charge
 // every other scenario's startup against the same test's timeout.
 for (const runtime of runtimes) {
-  for (const scenario of ["project", "bun-lock-missing", "bun-lock-present", "bunx", "npx", "override"] as const) {
+  for (const scenario of ["project", "bun-lock-missing", "bun-lock-present", "bunx", "npx", "override", "env"] as const) {
     test(`mygo explains a missing platform package (${runtime}, ${scenario})`, () => {
       const base = mkdtempSync(join(tmpdir(), "mygo-cli-"));
       const missing = `${platformName(host)}, the package with the mygo binary of this platform, is not installed`;
@@ -113,6 +113,16 @@ for (const runtime of runtimes) {
         if (scenario === "override") {
           const own = run(runtime, root, ["--version"], { MYGO_CLI_BINARY: process.execPath });
           expect(own.code).toBe(0);
+          return;
+        }
+        if (scenario === "env") {
+          // The binary gets the environment: Bun before 1.4 and Node.js before
+          // 22.22 and 24.10 start it empty when process.execve is not given one.
+          const env = run(runtime, root, ["-e", "console.log(process.env.MYGO_CLI_TEST_ENV)"], {
+            MYGO_CLI_BINARY: process.execPath,
+            MYGO_CLI_TEST_ENV: "inherited",
+          });
+          expect(env).toMatchObject({ code: 0, out: "inherited\n" });
           return;
         }
         const r = run(runtime, root, ["version"]);

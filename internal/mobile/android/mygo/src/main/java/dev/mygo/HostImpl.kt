@@ -907,6 +907,7 @@ object HostImpl : HostCalls {
     override fun textMetrics(c: TextMetricsCall): TextMetricsReply = Text.metrics(c)
     override fun measureText(c: MeasureTextCall): MeasureTextReply = Text.measure(c)
     override fun textAdvances(c: TextAdvancesCall): TextAdvancesReply = Text.advances(c)
+    override fun measureTextRun(c: MeasureTextRunCall): MeasureTextRunReply = Text.measureRun(c)
     override fun drawText(c: DrawTextCall): DrawTextReply = Text.draw(c)
     override fun registerFont(c: RegisterFontCall): RegisterFontReply = Text.register(c)
 }

@@ -159,3 +159,74 @@ func TestLanguagesPage(t *testing.T) {
 		t.Errorf("after clicking Deutsch, the language chosen is %q", g.language)
 	}
 }
+
+// TestTextEnterOpensDialog checks that Enter in the Text page's email
+// field opens the dialog it says it does, on that page.
+func TestTextEnterOpensDialog(t *testing.T) {
+	g := &gallery{router: ui.NewRouter("/text"), sectionsOpen: [2]bool{true, true}}
+	g.router.Transition = ui.TransitionNone
+	tt := ui.NewTester(g.view, 980, 720)
+	if err := tt.Click("Email"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("ada@example.com")
+	tt.Key(0, ui.KeyEnter)
+	if !g.dialog || !tt.HasText("A modal dialog") {
+		t.Fatalf("after Enter, dialog %v, texts %q", g.dialog, tt.Texts())
+	}
+	// Open dialog on the Overlays page still opens it.
+	for _, label := range []string{"Done", "Overlays", "Open dialog"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !tt.HasText("A modal dialog") {
+		t.Fatalf("after Open dialog, texts %q", tt.Texts())
+	}
+}
+
+// TestDonutLegendFitsItsCard checks that the legend of Users by platform
+// stays inside its card at the widths the Charts page gives its cards,
+// from the narrowest (320) to the default window's (350).
+func TestDonutLegendFitsItsCard(t *testing.T) {
+	g := &gallery{chart: newCharts()}
+	for _, width := range []float32{320, 350, 372} {
+		tt := ui.NewTester(func(c *ui.Context) {
+			ui.Row(c).Fill().AlignItems(ui.Start).Children(func() {
+				card(c, "Users by platform", func() { g.donutChart(c) }).Width(width)
+			})
+		}, 600, 600)
+		for _, share := range []string{"46%", "31%", "14%", "9%"} {
+			r, ok := tt.Find(share)
+			if !ok {
+				t.Fatalf("width %v: missing %q", width, share)
+			}
+			if right := r.X + r.W; right > width-18 {
+				t.Errorf("width %v: %q ends at %v, past the card's padding at %v", width, share, right, width-18)
+			}
+		}
+	}
+}
+
+// TestCardPaddingFollowsDirection checks that the Overlays page's
+// Right-click me card keeps its wide padding before its text, on the
+// right when the gallery is laid out right to left.
+func TestCardPaddingFollowsDirection(t *testing.T) {
+	for _, rtl := range []bool{false, true} {
+		g := &gallery{router: ui.NewRouter("/overlays"), sectionsOpen: [2]bool{true, true}, rtl: rtl}
+		g.router.Transition = ui.TransitionNone
+		tt := ui.NewTester(g.view, 980, 720)
+		card, ok := tt.Find("Card")
+		text, ok2 := tt.Find("Right-click me")
+		if !ok || !ok2 {
+			t.Fatalf("rtl %v: card %v, text %v, texts %q", rtl, ok, ok2, tt.Texts())
+		}
+		start := text.X - card.X
+		if rtl {
+			start = card.X + card.W - (text.X + text.W)
+		}
+		if start != 13 { // a border of 1 and a padding of 12
+			t.Errorf("rtl %v: text starts %v from the card's edge, want 13", rtl, start)
+		}
+	}
+}

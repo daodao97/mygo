@@ -3,6 +3,7 @@
 package kqueue
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -39,7 +40,7 @@ func TestKqueueWatch(t *testing.T) {
 		}
 		return w.Add(platform.FileWatchTarget{ID: id, Path: path, Directory: info.IsDir(), Info: info, Subtree: subtree})
 	}
-	if err := add(1, dir, true); err != platform.ErrUnsupported {
+	if err := add(1, dir, true); !errors.Is(err, platform.ErrUnsupported) {
 		t.Fatalf("subtree: %v", err)
 	}
 	// A pipe is skipped rather than opened, which would wait for a writer.

@@ -297,6 +297,8 @@ type Tester struct {
 	// how hard it presses (UsePointer).
 	pointer  PointerType
 	pressure float32
+	// mods are the modifier keys held by HoldModifiers.
+	mods platform.Modifiers
 	// textLeft gives the window's text system back to the Testers after
 	// this one as it ends (keepText).
 	textLeft runtime.Cleanup
@@ -455,6 +457,11 @@ func (t *Tester) send(ev platform.SurfaceEvent) {
 		if ev.Touch {
 			ev.Pointer = platform.PointerTouch // TouchDown
 		}
+		ev.Mods |= t.mods
+	case platform.PointerScroll, platform.PointerZoom, platform.PointerLeave, platform.WebViewPress:
+		ev.Mods |= t.mods
+	case platform.SurfaceBlur:
+		t.mods = 0
 	}
 	if ev.Kind == platform.PointerDown && ev.Clicks == 0 {
 		// Counted as a backend counts.
@@ -801,8 +808,9 @@ func (t *Tester) ClickWith(mods Modifiers, s string) error {
 	return nil
 }
 
-// ClickAtWith clicks at (x, y), in DIPs, holding the modifier keys mods:
-// a web view that takes the pointer there (WebViewAt) takes the click.
+// ClickAtWith clicks at (x, y), in DIPs, holding the modifier keys mods
+// (combined with any held by HoldModifiers): a web view that takes the
+// pointer there (WebViewAt) takes the click.
 func (t *Tester) ClickAtWith(mods Modifiers, x, y float32) {
 	m := platform.Modifiers(mods)
 	if t.webViewPress(x, y, 0, m) {
@@ -1073,9 +1081,11 @@ func (t *Tester) TouchCancel(id uint64) {
 }
 
 // HoldModifiers presses or lets go of modifier keys on their own, as holding
-// Cmd does, leaving mods held.
+// Cmd does, leaving mods held across subsequent pointer, scroll and zoom
+// events until HoldModifiers(0) or losing focus.
 func (t *Tester) HoldModifiers(mods Modifiers) {
-	t.send(platform.SurfaceEvent{Kind: platform.ModifiersChanged, Mods: platform.Modifiers(mods)})
+	t.mods = platform.Modifiers(mods)
+	t.send(platform.SurfaceEvent{Kind: platform.ModifiersChanged, Mods: t.mods})
 }
 
 // Key presses a key with modifiers.

@@ -166,6 +166,10 @@ func axAttribute(*mygo.Window, string, string) (string, bool, bool, bool) {
 	return "", false, false, false
 }
 
+// keyboardTarget would say where keys typed now go, which only Windows'
+// tests ask the system.
+func keyboardTarget(*mygo.Window) string { return "" }
+
 func pressEscape(*mygo.Window) bool { return false }
 
 func documentChrome(*mygo.Window) (string, string, bool, bool, bool) {

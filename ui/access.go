@@ -629,14 +629,15 @@ func cellRole(r platform.AccessRole) bool {
 
 // leafRole reports whether elements of a role take the text inside them
 // as their name, rather than showing it as elements of its own. Column
-// and row headers and headings show what is inside them too, as their
-// children are not presentational in ARIA: buttons in them, as a header's
-// sort button, can be reached.
+// and row headers, headings and links show what is inside them too, as
+// their children are not presentational in ARIA: buttons in them, as a
+// header's sort button, can be reached, and so can the heading of a card
+// that is a link.
 func leafRole(r platform.AccessRole) bool {
 	switch r {
 	case platform.RoleGroup, platform.RoleList, platform.RoleScroll, platform.RoleDialog, platform.RoleAlertDialog, platform.RolePopup, platform.RoleStatus,
 		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleColumnHeader, platform.RoleRowHeader, platform.RoleTree,
-		platform.RoleListItem, platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleHeading, platform.RoleNavigation,
+		platform.RoleListItem, platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleHeading, platform.RoleLink, platform.RoleNavigation,
 		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleSearch,
 		platform.RoleArticle, platform.RoleGrid, platform.RoleTreeGrid, platform.RoleDeletion, platform.RoleInsertion, platform.RoleTabPanel,
 		platform.RoleMain, platform.RoleBanner, platform.RoleContentInfo, platform.RoleComplementary:
@@ -760,7 +761,7 @@ func (rt *engine) accessTree() *platform.AccessTree {
 		// A list choosing rows with the arrows has the focus for them:
 		// assistive technology follows the row chosen, as the arrows move
 		// the choice, while it shows.
-		if f := focused.rowsOfElement(); f != nil && f.s.cursor() != nil {
+		if f := focused.rowsOfElement(); f != nil && f.s != nil && f.s.cursor() != nil {
 			for _, r := range f.rows {
 				if r.i == *f.s.cursor() {
 					focus = r.e.id
@@ -949,11 +950,12 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.chooseMany {
 		n.States |= platform.AccessMultiselectable
 	}
-	// Rows and items of lists, column and row headers, headings and
+	// Rows and items of lists, column and row headers, headings, links and
 	// statuses are named by their content, as leaves are, but show what is
-	// inside them too, as a toast's button or a header's sort button.
+	// inside them too, as a toast's button, a header's sort button or the
+	// heading of a card that is a link.
 	if n.Label == "" && (leafRole(n.Role) || n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleColumnHeader ||
-		n.Role == platform.RoleRowHeader || n.Role == platform.RoleHeading || n.Role == platform.RoleStatus) {
+		n.Role == platform.RoleRowHeader || n.Role == platform.RoleHeading || n.Role == platform.RoleLink || n.Role == platform.RoleStatus) {
 		n.Label = e.innerText()
 	}
 	if n.Label == "" && e.kind == kindText {
@@ -1005,11 +1007,13 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	}
 	if f := e.rowsOf; f != nil {
 		n.SetSize = f.n
-		if f.s.cursor() != nil {
-			n.States |= platform.AccessSelectable // as do its rows
-		}
-		if f.s.Selection != nil {
-			n.States |= platform.AccessMultiselectable
+		if f.s != nil {
+			if f.s.cursor() != nil {
+				n.States |= platform.AccessSelectable // as do its rows
+			}
+			if f.s.Selection != nil {
+				n.States |= platform.AccessMultiselectable
+			}
 		}
 	}
 	if e.flags&flagChoosable != 0 || e.role == RoleOption {

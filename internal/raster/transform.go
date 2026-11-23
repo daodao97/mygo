@@ -62,6 +62,118 @@ func transformedCoverage(s *shape, m, inv scene.Affine, x, y float32) float32 {
 	return float32(n) / (samples * samples)
 }
 
+// generalTransforms turns off what transformedCover and shadowRows work
+// out once, for tests that check the pixels they draw are those of the
+// general per-pixel path.
+var generalTransforms bool
+
+// transformedCover is transformedCoverage of one shape under one map, with
+// what its pixels share worked out once. Under an affine map a pixel
+// reaches as far into the shape's coordinates wherever it is, so the
+// pixels whose centers fall in inner, further inside the shape than that
+// reach and past its corners' curves, are covered whole without a distance
+// test: a shape scaled or moved, as a transition leaves it, draws its
+// interior at the cost of mapping a point.
+type transformedCover struct {
+	s      *shape
+	m, inv scene.Affine
+	inner  scene.Rect
+}
+
+func newTransformedCover(s *shape, m, inv scene.Affine) transformedCover {
+	c := transformedCover{s: s, m: m, inv: inv}
+	if generalTransforms || !inv.Set || m.Perspective() || inv.Perspective() {
+		return c
+	}
+	rx, ry := inv.VectorAt(0, 0, 0.5, 0.5)
+	sx, sy := inv.VectorAt(0, 0, 0.5, -0.5)
+	reach := max(abs(rx)+abs(ry), abs(sx)+abs(sy)) * 2
+	var corner float32
+	for i, rad := range s.radii {
+		if s.continuous {
+			rad = s.corners[i].e // where its curve starts
+		}
+		corner = max(corner, rad)
+	}
+	// A whole unit more than the reach, so that float32's rounding of the
+	// distance cannot bring a pixel of inner within it.
+	in := corner + reach + 1
+	inner := scene.Rect{X: s.r.X + in, Y: s.r.Y + in, W: s.r.W - 2*in, H: s.r.H - 2*in}
+	if inner.W > 0 && inner.H > 0 && !math.IsInf(float64(in), 0) {
+		c.inner = inner
+	}
+	return c
+}
+
+// at returns transformedCoverage(c.s, c.m, c.inv, x, y), given lx and ly,
+// what c.inv maps (x, y) to.
+func (c *transformedCover) at(x, y, lx, ly float32) float32 {
+	if c.covers(lx, ly) {
+		return 1
+	}
+	return transformedCoverage(c.s, c.m, c.inv, x, y)
+}
+
+// covers reports whether the shape covers whole the pixel whose center
+// c.inv maps to (lx, ly), as far as c's interior tells.
+func (c *transformedCover) covers(lx, ly float32) bool {
+	return lx > c.inner.X && lx < c.inner.X+c.inner.W && ly > c.inner.Y && ly < c.inner.Y+c.inner.H
+}
+
+// linearImage draws the pixels of an image operation that sampleOp would
+// read with sample alone, from the image as it is, where its four samples
+// need no clamping: an image neither tinted, gray, pixelated nor of
+// planes, under a map without rotation or shear.
+type linearImage struct {
+	ok                     bool
+	pix                    []byte
+	w                      int
+	minX, minY, maxX, maxY int
+	opacity                float32
+}
+
+func newLinearImage(op *scene.Op, inv scene.Affine) linearImage {
+	img := op.Image
+	if inv.B != 0 || inv.C != 0 || op.Pixelated || op.Grayscale || op.Color != (scene.Color{}) || len(img.Pix) < 4*img.W*img.H {
+		return linearImage{}
+	}
+	if s := img.Surface; s != nil && s.Format == scene.SurfaceNV12 && s.Planes[1].Pix != nil {
+		return linearImage{}
+	}
+	src := unflipped(op.Src)
+	l := linearImage{ok: true, pix: img.Pix, w: img.W, minX: int(src.X), minY: int(src.Y), opacity: opacityOf(op.Opacity)}
+	l.maxX, l.maxY = int(math.Ceil(float64(src.X+src.W)))-1, int(math.Ceil(float64(src.Y+src.H)))-1
+	l.maxX, l.maxY = min(l.maxX, img.W-1), min(l.maxY, img.H-1)
+	return l
+}
+
+// blend composites into p the image at (lx, ly) of the operation's
+// coordinates, a pixel the shape and the clips cover whole, as the general
+// path would, and reports whether it could: not where a sample would be
+// clamped to the source.
+func (l *linearImage) blend(p []byte, op *scene.Op, lx, ly, sx, sy float32) bool {
+	u, v := op.Src.X+(lx-op.Rect.X)*sx, op.Src.Y+(ly-op.Rect.Y)*sy
+	u, v = u-0.5, v-0.5
+	x0, y0 := int(math.Floor(float64(u))), int(math.Floor(float64(v)))
+	if x0 < l.minX || x0 >= l.maxX || y0 < l.minY || y0 >= l.maxY {
+		return false
+	}
+	tx, ty := u-float32(x0), v-float32(y0)
+	i := (y0*l.w + x0) * 4
+	p00, p10 := l.pix[i:i+8:i+8], l.pix[i+4:i+8:i+8]
+	j := i + 4*l.w
+	p01, p11 := l.pix[j:j+8:j+8], l.pix[j+4:j+8:j+8]
+	var c [4]float32
+	for i := 0; i < 4; i++ {
+		top := float32(p00[i])*(1-tx) + float32(p10[i])*tx
+		bot := float32(p01[i])*(1-tx) + float32(p11[i])*tx
+		c[i] = (top*(1-ty) + bot*ty) / 255
+	}
+	cov, clip := float32(1), float32(1)
+	blend(p, c, cov*clip*l.opacity)
+	return true
+}
+
 // transformed inverse maps pixels into the operation's coordinates.
 // Identity operations retain the existing span renderer.
 func (r *renderer) transformed(op *scene.Op, px scene.EffectPixels, b *scene.BackdropImage) {
@@ -91,6 +203,30 @@ func (r *renderer) transformed(op *scene.Op, px scene.EffectPixels, b *scene.Bac
 	if hasBorder {
 		inner = newShape(scene.InnerRadii(op.Rect, radii, bw))
 	}
+	outerCover := newTransformedCover(&outer, op.Transform, inv)
+	innerCover := newTransformedCover(&inner, op.Transform, inv)
+	var caster shape
+	var casterCover transformedCover
+	if op.Kind == scene.OpShadow && !op.Cast.Empty() {
+		caster = newShape(op.Cast, scene.Corners(op.Cast, op.CastRadii, op.Continuous))
+		casterCover = newTransformedCover(&caster, op.Transform, inv)
+	}
+	var rows shadowRows
+	if op.Kind == scene.OpShadow {
+		rows = newShadowRows(op, &outer)
+	}
+	// How far a pixel of the frame reaches in the image's, as the GPU's
+	// fwidth: the same for every pixel under an affine map.
+	affine := !op.Transform.Perspective()
+	var sx, sy, du, dv float32
+	if image != nil {
+		sx, sy = op.Src.W/op.Rect.W, op.Src.H/op.Rect.H
+		if affine {
+			ax, ay := inv.VectorAt(0, 0, 1, 0)
+			bx, by := inv.VectorAt(0, 0, 0, 1)
+			du, dv = (abs32(ax)+abs32(bx))*abs32(sx), (abs32(ay)+abs32(by))*abs32(sy)
+		}
+	}
 	pt, bp := borderPainter(op, opacityOf(op.Opacity), r.s.Stops)
 	border := op.BorderColor.Premul(opacityOf(op.Opacity))
 	box := op.Rect
@@ -102,8 +238,29 @@ func (r *renderer) transformed(op *scene.Op, px scene.EffectPixels, b *scene.Bac
 	}
 	box = op.Transform.Bounds(box)
 	x0, y0, x1, y1 := r.pixelBounds(box)
+	// An image only moved and scaled along its axes, as a group's layer
+	// a transition carries by a fraction of a pixel: where the clips and
+	// the image's shape cover a pixel whole and its four samples lie
+	// inside the source, it is sampled inline, with the same arithmetic as
+	// sample, rather than through the general per-pixel path.
+	var lin linearImage
+	if image != nil && affine && !generalTransforms {
+		lin = newLinearImage(op, inv)
+	}
 	for y := y0; y < y1; y++ {
+		lo, hi := x0, x0
+		if lin.ok {
+			lo, hi = r.clipSolid(y)
+			lo, hi = max(lo, x0), min(hi, x1)
+		}
 		for x := x0; x < x1; x++ {
+			if x >= lo && x < hi {
+				wx, wy := float32(x)+0.5, float32(y)+0.5
+				lx, ly := inv.Point(wx, wy)
+				if outerCover.covers(lx, ly) && lin.blend(r.dst.Pix[y*r.dst.Stride+4*x:][:4], op, lx, ly, sx, sy) {
+					continue
+				}
+			}
 			clip := r.clipCoverage(x, y)
 			if clip <= 0 {
 				continue
@@ -116,12 +273,16 @@ func (r *renderer) transformed(op *scene.Op, px scene.EffectPixels, b *scene.Bac
 			p := r.dst.Pix[y*r.dst.Stride+4*x:][:4]
 			if inset {
 				// Inside the box, what the hole, blurred, leaves.
-				caster := newShape(op.Cast, scene.Corners(op.Cast, op.CastRadii, op.Continuous))
-				cov := transformedCoverage(&caster, op.Transform, inv, wx, wy)
+				cov := casterCover.at(wx, wy, lx, ly)
+				if cov <= 0 {
+					continue
+				}
 				if !op.Rect.Empty() {
-					hole := transformedShadowAt(op, &outer, lx, ly)
+					var hole float32
 					if op.Blur < 1 {
-						hole = transformedCoverage(&outer, op.Transform, inv, wx, wy)
+						hole = outerCover.at(wx, wy, lx, ly)
+					} else {
+						hole = rows.at(lx, ly)
 					}
 					cov *= 1 - hole
 				}
@@ -129,18 +290,27 @@ func (r *renderer) transformed(op *scene.Op, px scene.EffectPixels, b *scene.Bac
 				continue
 			}
 			if op.Kind == scene.OpShadow {
-				cov := transformedShadowAt(op, &outer, lx, ly)
+				// Outside the box casting it: what that box hides whole
+				// takes none of it.
+				hidden := float32(0)
+				if !op.Cast.Empty() {
+					if hidden = casterCover.at(wx, wy, lx, ly); hidden >= 1 {
+						continue
+					}
+				}
+				var cov float32
 				if op.Blur < 1 {
-					cov = transformedCoverage(&outer, op.Transform, inv, wx, wy)
+					cov = outerCover.at(wx, wy, lx, ly)
+				} else {
+					cov = rows.at(lx, ly)
 				}
 				if !op.Cast.Empty() {
-					caster := newShape(op.Cast, scene.Corners(op.Cast, op.CastRadii, op.Continuous))
-					cov *= 1 - transformedCoverage(&caster, op.Transform, inv, wx, wy)
+					cov *= 1 - hidden
 				}
 				blend(p, op.Color.Premul(opacityOf(op.Opacity)), cov*clip)
 				continue
 			}
-			cov := transformedCoverage(&outer, op.Transform, inv, wx, wy)
+			cov := outerCover.at(wx, wy, lx, ly)
 			if cov <= 0 {
 				continue
 			}
@@ -156,7 +326,7 @@ func (r *renderer) transformed(op *scene.Op, px scene.EffectPixels, b *scene.Bac
 				}
 				ic := float32(0)
 				if !inner.r.Empty() {
-					ic = transformedCoverage(&inner, op.Transform, inv, wx, wy)
+					ic = innerCover.at(wx, wy, lx, ly)
 				}
 				bc := max(cov-ic, 0)
 				if op.Dashed {
@@ -167,13 +337,13 @@ func (r *renderer) transformed(op *scene.Op, px scene.EffectPixels, b *scene.Bac
 				if image == nil {
 					continue
 				}
-				// How far a pixel of the frame reaches in the image's,
-				// as the GPU's fwidth.
-				sx, sy := op.Src.W/op.Rect.W, op.Src.H/op.Rect.H
-				ax, ay := inv.VectorAt(wx, wy, 1, 0)
-				bx, by := inv.VectorAt(wx, wy, 0, 1)
-				c := sampleOp(op, op.Src.X+(lx-op.Rect.X)*sx, op.Src.Y+(ly-op.Rect.Y)*sy,
-					(abs32(ax)+abs32(bx))*abs32(sx), (abs32(ay)+abs32(by))*abs32(sy))
+				du, dv := du, dv
+				if !affine {
+					ax, ay := inv.VectorAt(wx, wy, 1, 0)
+					bx, by := inv.VectorAt(wx, wy, 0, 1)
+					du, dv = (abs32(ax)+abs32(bx))*abs32(sx), (abs32(ay)+abs32(by))*abs32(sy)
+				}
+				c := sampleOp(op, op.Src.X+(lx-op.Rect.X)*sx, op.Src.Y+(ly-op.Rect.Y)*sy, du, dv)
 				blend(p, c, cov*clip*opacityOf(op.Opacity))
 			case scene.OpEffect:
 				if px != nil {
@@ -193,32 +363,75 @@ func opacityOf(v float32) float32 {
 	return v
 }
 
-func transformedShadowAt(op *scene.Op, box *shape, x, y float32) float32 {
+// shadowRows is how much of a point of its own coordinates a shadow
+// covers, as the renderer's shadow works it out in the frame's: the box blurred along y at four samples, of
+// the box blurred exactly along x, narrowed by its corners. What a row of
+// those coordinates shares, the samples' weights and widths, it works out
+// once for the row last asked, which a map without rotation keeps from
+// pixel to pixel, and two samples as wide share their blur along x.
+type shadowRows struct {
+	op               *scene.Op
+	box              *shape
+	sigma, hx, hy, k float32
+	corner           float32
+	cc               contCorner
+	row              uint32 // the bits of the row worked out, when have
+	have, general    bool
+	weight, half     [4]float32
+}
+
+func newShadowRows(op *scene.Op, box *shape) shadowRows {
 	sigma := op.Blur / 2
-	if sigma < 0.5 {
-		return coverage(box, x, y)
+	corner := max(box.radii[0], box.radii[1], box.radii[2], box.radii[3])
+	return shadowRows{
+		op: op, box: box, sigma: sigma,
+		hx: op.Rect.W / 2, hy: op.Rect.H / 2,
+		k:       float32(math.Sqrt(0.5)) / sigma,
+		corner:  corner,
+		cc:      newContCorner(corner, corner, corner, op.Rect.W, op.Rect.H),
+		general: generalTransforms,
 	}
-	hx, hy := op.Rect.W/2, op.Rect.H/2
-	x, y = x-op.Rect.X-hx, y-op.Rect.Y-hy
+}
+
+// at returns the shadow's coverage of the point (x, y) of its coordinates.
+func (s *shadowRows) at(x, y float32) float32 {
+	if s.sigma < 0.5 {
+		return coverage(s.box, x, y)
+	}
+	if bits := math.Float32bits(y); !s.have || bits != s.row || s.general {
+		s.setRow(y)
+		s.row, s.have = bits, true
+	}
+	x = x - s.op.Rect.X - s.hx
+	var v, e float32
+	for i := range 4 {
+		if i == 0 || s.half[i] != s.half[i-1] {
+			e = erf((x+s.half[i])*s.k) - erf((x-s.half[i])*s.k)
+		}
+		v += s.weight[i] * e
+	}
+	return v
+}
+
+// setRow works out the samples of row y.
+func (s *shadowRows) setRow(y float32) {
+	sigma, hx, hy, corner := s.sigma, s.hx, s.hy, s.corner
+	y = y - s.op.Rect.Y - hy
 	ext := 3 * sigma
 	start, end := min(max(-ext, y-hy), y+hy), min(max(ext, y-hy), y+hy)
 	step := (end - start) / 4
-	k := float32(math.Sqrt(0.5)) / sigma
-	corner := max(box.radii[0], box.radii[1], box.radii[2], box.radii[3])
-	cc := newContCorner(corner, corner, corner, op.Rect.W, op.Rect.H)
-	var v float32
 	for i := range 4 {
 		yy := start + (float32(i)+0.5)*step
 		half := hx
-		if box.continuous {
-			at, _ := cc.inset(hy - abs(y-yy))
+		if s.box.continuous {
+			at, _ := s.cc.inset(hy - abs(y-yy))
 			half -= at
 		} else if delta := min(hy-corner-abs(y-yy), 0); delta < 0 {
 			half = hx - corner + float32(math.Sqrt(float64(max(0, corner*corner-delta*delta))))
 		}
-		v += gaussian(yy, sigma) * step * 0.5 * (erf((x+half)*k) - erf((x-half)*k))
+		s.half[i] = half
+		s.weight[i] = gaussian(yy, sigma) * step * 0.5
 	}
-	return v
 }
 
 func (r *renderer) transformedGlyphs(op *scene.Op) {

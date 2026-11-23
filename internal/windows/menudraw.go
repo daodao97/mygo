@@ -461,8 +461,17 @@ func textWidth(dc, font uintptr, text string) int32 {
 	return r.Right - r.Left
 }
 
+// menuDPI is the DPI of the items of the menus hwnd shows: that of the
+// popup showing (trackPopup), or else of hwnd, a menu bar's window.
+func (b *Backend) menuDPI(hwnd uintptr) int {
+	if b.popupDPI != 0 {
+		return b.popupDPI
+	}
+	return dpiOf(hwnd)
+}
+
 func (b *Backend) measureItem(hwnd uintptr, l *menuLook, mis *measureItemStruct) {
-	dpi := dpiOf(hwnd)
+	dpi := b.menuDPI(hwnd)
 	top, bottom := l.padding(dpi)
 	l.dpi = dpi
 	if l.separator {
@@ -532,7 +541,7 @@ func (b *Backend) learnMenuExtra(l *menuLook, dpi int, w int32) {
 }
 
 func (b *Backend) drawItem(hwnd uintptr, l *menuLook, d *drawItemStruct) {
-	dpi := dpiOf(hwnd)
+	dpi := b.menuDPI(hwnd)
 	p := b.menuPalette()
 	r := d.Item
 	b.learnMenuExtra(l, dpi, r.Right-r.Left)

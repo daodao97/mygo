@@ -20,6 +20,13 @@ const (
 	// ExtAutolinks are links without angle brackets: www.example.com,
 	// https://example.com and someone@example.com.
 	ExtAutolinks
+	// ExtTagFilter is cmark-gfm's tagfilter: in HTML, the raw tags whose
+	// content a browser reads to their end are escaped instead — title,
+	// textarea, style, xmp, iframe, noembed, noframes, script and
+	// plaintext — so that a <script> written in Markdown is text where
+	// the HTML is shown or pasted, as it is on GitHub. Other raw HTML,
+	// as an event handler's attribute, is still HTML.
+	ExtTagFilter
 	// ExtFootnotes are references as [^1], defined by [^1]: lines.
 	ExtFootnotes
 	// ExtMath is TeX between $$ and $$, \[ and \], or \( and \), in blocks
@@ -43,7 +50,7 @@ const (
 	ExtReferences
 
 	// GFM is GitHub Flavored Markdown, as its spec has it.
-	GFM = ExtTables | ExtTaskLists | ExtStrikethrough | ExtAutolinks
+	GFM = ExtTables | ExtTaskLists | ExtStrikethrough | ExtAutolinks | ExtTagFilter
 	// Default is GitHub Flavored Markdown with footnotes and math, as
 	// language models write it, and the alerts, mentions and references
 	// of GitHub's comments. Mentions and references are text until a

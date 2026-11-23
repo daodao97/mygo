@@ -470,6 +470,14 @@ children (`Next`). `Inlines` parses a block's inlines the first time it
 is asked. `New(ext)` reads other extensions than `Default`, and
 `SetStreaming` completes the end as `Stream` does.
 
+As GitHub's spec has it, `HTML` escapes the raw tags whose content a
+browser reads to their end — `title`, `textarea`, `style`, `xmp`,
+`iframe`, `noembed`, `noframes`, `script` and `plaintext` — so that a
+document copied as HTML carries its `<script>` as text into what pastes
+it. That is `ExtTagFilter`, cmark-gfm's tagfilter, which `GFM` and so
+`Default` read; `New(ext &^ parser.ExtTagFilter)` writes raw HTML as it
+is. Other raw HTML, as a tag's event handler, is still HTML.
+
 It passes all 652 examples of the CommonMark 0.31.2 spec and those of
 GitHub's extensions, takes linear time on the inputs that are slow in
 other parsers, as cmark does, and depends on nothing outside the

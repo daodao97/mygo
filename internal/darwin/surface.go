@@ -159,14 +159,20 @@ type surface struct {
 	framePass uint64
 	cursor    platform.Cursor
 	inside    bool
+	swipe     swipeTrack
 	// secondaryClick is set while the primary button is down for a secondary
 	// click: a Control-click, or a press of the secondary button that an event
 	// tap posted again as a primary one.
 	secondaryClick bool
 
-	// input is the state of the text input with the keyboard; marked is
-	// the input method's composition and markedSel its selection in it.
+	// input is the state of the text input with the keyboard; blurred keeps
+	// the last active state while the window lost key status (for example
+	// when the macOS Character Viewer panel opens) but this view is still
+	// first responder, so NSTextInputClient queries and insertText: still
+	// reach the focused text element. marked is the input method's
+	// composition and markedSel its selection in it.
 	input     platform.TextInputState
+	blurred   platform.TextInputState
 	marked    string
 	markedSel nsRange
 	keyDown   bool // in interpretKeyEvents: text typed with the key
@@ -803,6 +809,9 @@ func (s *surface) SetCursor(c platform.Cursor) {
 }
 
 func (s *surface) SetTextInput(t platform.TextInputState) {
+	if t.Active {
+		s.blurred = platform.TextInputState{}
+	}
 	if s.input.Client != t.Client && s.input.Active {
 		s.discardComposition()
 	}
@@ -829,11 +838,16 @@ func (w *window) surfaceKeyChanged(key bool) {
 	if s == nil || send(w.win, "firstResponder") != s.view {
 		return
 	}
-	kind := platform.SurfaceBlur
 	if key {
-		kind = platform.SurfaceFocus
+		s.blurred = platform.TextInputState{}
+		s.send(platform.SurfaceEvent{Kind: platform.SurfaceFocus})
+		return
 	}
-	s.send(platform.SurfaceEvent{Kind: kind})
+	prev := s.input
+	s.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
+	if prev.Active && !s.input.Active {
+		s.blurred = prev
+	}
 }
 
 func (s *surface) send(ev platform.SurfaceEvent) bool {
@@ -852,7 +866,22 @@ func scrollWheel(s *surface, ev id) {
 		// A mouse wheel scrolls by lines: 40 DIPs, as in browsers.
 		dx, dy = dx*40, dy*40
 	}
-	s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: x, Y: y, DX: -dx, DY: -dy, Precise: precise, Momentum: momentum, Mods: eventMods(ev)})
+	phase := 0
+	if precise && !momentum {
+		phase = sendInt(ev, "phase")
+	}
+	swipe := s.swipe.swiping(phase)
+	mods := eventMods(ev)
+	taken := s.send(platform.SurfaceEvent{Kind: platform.PointerScroll, X: x, Y: y, DX: -dx, DY: -dy, Precise: precise, Momentum: momentum, Swipe: swipe, Mods: mods})
+	if !swipe {
+		return
+	}
+	// A two-finger swipe nothing scrolled sideways goes back or forward,
+	// as the side buttons do.
+	if back, ok := s.swipe.scroll(phase, dx, dy, taken); ok {
+		s.sideButton(platform.PointerDown, back, mods)
+		s.sideButton(platform.PointerUp, back, mods)
+	}
 }
 
 func eventMods(ev id) platform.Modifiers {
@@ -1366,6 +1395,7 @@ func registerSurfaceClass() {
 		}),
 		method("resignFirstResponder", func(self id, _ objc.SEL) bool {
 			if s := b().surfaceOf(self); s != nil {
+				s.blurred = platform.TextInputState{}
 				s.send(platform.SurfaceEvent{Kind: platform.SurfaceBlur})
 			}
 			return true
@@ -1553,11 +1583,13 @@ func registerSurfaceClass() {
 		}),
 		method("characterIndexForPoint:", func(self id, _ objc.SEL, p NSPoint) uint {
 			s := b().surfaceOf(self)
-			if s != nil && s.input.Client != nil {
-				window := msgRectToRect(s.w.win, sel("convertRectFromScreen:"), NSRect{Origin: p})
-				local := msgConvertRectView(self, sel("convertRect:fromView:"), window, 0)
-				if index, ok := s.input.Client.IndexForPoint(local.Origin.X, local.Origin.Y); ok {
-					return uint(index)
+			if s != nil {
+				if client := s.textInput().Client; client != nil {
+					window := msgRectToRect(s.w.win, sel("convertRectFromScreen:"), NSRect{Origin: p})
+					local := msgConvertRectView(self, sel("convertRect:fromView:"), window, 0)
+					if index, ok := client.IndexForPoint(local.Origin.X, local.Origin.Y); ok {
+						return uint(index)
+					}
 				}
 			}
 			return nsNotFound
@@ -1567,8 +1599,9 @@ func registerSurfaceClass() {
 			if s == nil {
 				return cgRect{}
 			}
-			c := s.input.Caret
-			if client := s.input.Client; client != nil {
+			in := s.textInput()
+			c := in.Caret
+			if client := in.Client; client != nil {
 				rangeWanted := clientRange(r)
 				if rangeWanted == nil {
 					return cgRect{}

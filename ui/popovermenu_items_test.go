@@ -541,3 +541,20 @@ func TestPopoverMenuMaxWidth(t *testing.T) {
 		t.Errorf("without MaxWidth, the menu is %v wide", panel.Bounds.W)
 	}
 }
+
+// A browser on a Mac sends Command as Control and Control as Super
+// (internal/web), so a shortcut is written there with the Mac's symbols
+// for the keys the user presses: Cmd+Shift+Z as ⇧⌘Z, Super+D as ⌃D.
+func TestShortcutTextInABrowserOnAMac(t *testing.T) {
+	defer func(was bool) { platform.MacBrowser = was }(platform.MacBrowser)
+	platform.MacBrowser = true
+	for a, want := range map[string]string{
+		accelerator(Ctrl|Shift, KeyZ):         "⇧⌘Z",
+		accelerator(Super, KeyD):              "⌃D",
+		accelerator(Super|Ctrl|Alt, KeyEnter): "⌃⌥⌘↩",
+	} {
+		if got := shortcutText(a); got != want {
+			t.Errorf("shortcutText(%q) = %q, want %q", a, got, want)
+		}
+	}
+}

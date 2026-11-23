@@ -176,6 +176,7 @@ public struct CreateWindowCall {
     public var autoplay: Bool = false
     public var swipeNavigation: Bool = false
     public var pinchZoom: Bool = false
+    public var noBackgroundThrottling: Bool = false
     public var parent: Int = 0
     public var viewType: String = ""
     public var viewArgs: String = ""
@@ -195,6 +196,7 @@ public struct CreateWindowCall {
         autoplay = r.bool()
         swipeNavigation = r.bool()
         pinchZoom = r.bool()
+        noBackgroundThrottling = r.bool()
         parent = r.int()
         viewType = r.string()
         viewArgs = r.string()
@@ -1139,6 +1141,38 @@ public struct TextAdvancesReply {
     }
 }
 
+public struct MeasureTextRunCall {
+    public var family: String = ""
+    public var size: Double = 0
+    public var weight: Int = 0
+    public var italic: Bool = false
+    public var noKern: Bool = false
+    public var text: String = ""
+    public var start: Int = 0
+    public var end: Int = 0
+    public var rtl: Bool = false
+    public init() {}
+    init(_ r: inout WireReader) {
+        family = r.string()
+        size = r.float()
+        weight = r.int()
+        italic = r.bool()
+        noKern = r.bool()
+        text = r.string()
+        start = r.int()
+        end = r.int()
+        rtl = r.bool()
+    }
+}
+
+public struct MeasureTextRunReply {
+    public var width: Double = 0
+    public init() {}
+    func encode(_ w: inout WireWriter) {
+        w.float(width)
+    }
+}
+
 public struct DrawTextCall {
     public var family: String = ""
     public var size: Double = 0
@@ -1147,6 +1181,9 @@ public struct DrawTextCall {
     public var text: String = ""
     public var scale: Double = 0
     public var dx: Double = 0
+    public var start: Int = 0
+    public var end: Int = 0
+    public var rtl: Bool = false
     public init() {}
     init(_ r: inout WireReader) {
         family = r.string()
@@ -1156,6 +1193,9 @@ public struct DrawTextCall {
         text = r.string()
         scale = r.float()
         dx = r.float()
+        start = r.int()
+        end = r.int()
+        rtl = r.bool()
     }
 }
 
@@ -1344,7 +1384,9 @@ public protocol HostCalls: AnyObject {
     func measureText(_ c: MeasureTextCall) -> MeasureTextReply
     /// the advance of each UTF-16 unit of Text laid out as a whole (getTextRunAdvances)
     func textAdvances(_ c: TextAdvancesCall) -> TextAdvancesReply
-    /// draws Text in white at Scale pixels per DIP, its pen DX pixels right of a pixel's edge: its ink's box from the pen and its pixels, a byte of coverage each, or premultiplied RGBA when Color
+    /// how wide Text's UTF-16 units [Start, End) are laid out within the whole of Text, right to left if RTL, as a TextView measures a span (getRunAdvance)
+    func measureTextRun(_ c: MeasureTextRunCall) -> MeasureTextRunReply
+    /// draws Text in white at Scale pixels per DIP, its pen DX pixels right of a pixel's edge: its ink's box from the pen and its pixels, a byte of coverage each, or premultiplied RGBA when Color. When End > 0, only its UTF-16 units [Start, End), laid out within the whole, right to left if RTL (drawTextRun), from the pen at their left
     func drawText(_ c: DrawTextCall) -> DrawTextReply
     /// adds a font file under Family, or its own family when empty
     func registerFont(_ c: RegisterFontCall) -> RegisterFontReply
@@ -1609,15 +1651,18 @@ public func dispatchCall(_ h: HostCalls, _ buf: UnsafeRawBufferPointer) -> [UInt
         h.textAdvances(TextAdvancesCall(&r)).encode(&w)
         return w.buf
     case 84:
-        h.drawText(DrawTextCall(&r)).encode(&w)
+        h.measureTextRun(MeasureTextRunCall(&r)).encode(&w)
         return w.buf
     case 85:
-        h.registerFont(RegisterFontCall(&r)).encode(&w)
+        h.drawText(DrawTextCall(&r)).encode(&w)
         return w.buf
     case 86:
+        h.registerFont(RegisterFontCall(&r)).encode(&w)
+        return w.buf
+    case 87:
         h.setFrameRate(SetFrameRateCall(&r))
         return nil
-    case 87:
+    case 88:
         h.setAppBadge(SetAppBadgeCall(&r))
         return nil
     default:
