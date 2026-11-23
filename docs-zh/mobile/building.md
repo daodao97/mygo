@@ -11,7 +11,7 @@ mygo build -platform android/arm64   # one ABI: arm64, arm or amd64
 
 `.ipa` 用已安装的描述文件中最匹配应用标识符和 `ios.distribution`（默认 `app-store`，TestFlight 也用它）的那个签名，其证书在钥匙串中；它带有 App Store Connect 要求的隐私清单，根据应用代码用到的内容生成，除非项目有自己的 `ios/PrivacyInfo.xcprivacy`。如果构建中引用了 Apple 的私有方法，CLI 会拒绝构建，因为 App 审核会拒绝它。
 
-`.aab` 是 Google Play 接受的格式，`.apk` 供其他应用商店和设备安装。正式版用 `android.keystore` 签名，其密码来自 `MYGO_ANDROID_KEYSTORE_PASSWORD` 和 `MYGO_ANDROID_KEY_PASSWORD`；否则用调试密钥签名，而 Google Play 不接受调试密钥。
+`.aab` 是 Google Play 接受的格式，`.apk` 供其他应用商店和设备安装。正式版用 `android.keystore` 签名，其密码来自 `MYGO_ANDROID_KEYSTORE_PASSWORD` 和 `MYGO_ANDROID_KEY_PASSWORD`；否则用调试密钥签名，而 Google Play 不接受调试密钥。`minSdk` 为 24 及以上时，构建会省掉 Android 已不再需要的 JAR 签名（v1）；有些手机的安装器仍要求它，可以用 `android.v1Signing` 加上。
 
 其余设置在配置的 `ios` 和 `android` 部分中（见[配置](../configuration.md)）：
 
@@ -100,3 +100,13 @@ export default defineConfig({
 之后应用可以在 `context.applicationInfo.nativeLibraryDir + "/lib<name>.so"` 找到这个可执行文件。这些库会压缩发布，解压后会再占一份空间，所以除非应用要执行其中一个，否则不要开启。
 
 这样的可执行文件要按 16 KB 页链接（`-Wl,-z,max-page-size=16384`），和 Android 自己的库一样：在 16 KB 页的设备或模拟器上，按 4 KB 页链接的程序一启动就会崩溃。
+
+只为部分 ABI 构建的可执行文件（如只有 `arm64-v8a`）会把应用限制在这些 ABI 上，这样不会有哪个 ABI 的构建缺了它：
+
+```json
+{
+  "android": { "extractNativeLibs": true, "abis": ["arm64"] }
+}
+```
+
+之后 `mygo build -platform android` 只构建这些 ABI，`mygo dev` 会拒绝其他 ABI 的设备或模拟器。无论哪种构建，原生模块里 Go 没有为之构建的 ABI 的库都不会进 APK：否则那种 ABI 的设备会只装上这些库，却没有应用本身。

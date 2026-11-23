@@ -2,9 +2,9 @@
 
 本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`；2026-11-09 曾更名为 `daodao97/mygo-mobile`，2026-11-18 改回 `daodao97/mygo`，旧地址重定向）。Go 模块路径仍是 `github.com/egoist/mygo`，不随仓库更名，以便合并上游。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。用文末的命令重新统计差异。
 
-## 快照（2026-11-23）
+## 快照（2026-11-24）
 
-- fork `main` 已合并 `upstream/main` 到 `1f690f29`（2026-11-23），含 #940（`6e712c6e`）。
+- fork `main` 已合并 `upstream/main` 到 `813afb80`（2026-11-24），含 #940（`6e712c6e`）。
 - 分支 `sync-940` 已于 2026-11-18 快进合入 `main`（`964d7b6f`），第二阶段的过程见「第二阶段进度（2026-11-17）」。
 - fork 独有 187 个非合并提交，与上游的增删差异约 36,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
@@ -92,6 +92,17 @@
   git 没提示的重叠一处：`ui/richtext/ime.go` 的 `SetTextSelection` 重复声明。fork 的 `62da457f` 与上游 #2210（屏幕键盘移动编辑器选区）是同一功能，按规则 1 删掉 fork 的版本，上游的还会先提交合成中的文字。fork `cfe0be81` 的 `selectingClient.SetTextSelection` 只转发给客户端，不重复。对照这批新增检查了 fork 代码：`HoldModifiers`、调用的 `AbortSignal` 流式取消、Android 的 `MeasureTextRun`/run 绘制、Space 按住按钮、粘贴单独成为撤销步骤、`ScrollState` 偏移停止 `ScrollTo`、链接的无障碍子元素、raster 的变换形状与移动图层，在 fork 中都没有同功能实现。`go generate ./ui` 无差异。
 
   验证：macOS/Linux/Windows 的 `go build ./...`；`go vet . ./ui ./ui/richtext ./ui/editor ./internal/platform ./internal/mobile/... ./internal/darwin` 与 Linux/Windows 后端 vet；js/wasm vet；iOS（Xcode iphoneos SDK，`DEVELOPER_DIR` 指向 Xcode，因 `xcode-select` 指向 CLT）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet；`go test . ./ui ./ui/editor ./ui/richtext ./ui/markdown/... ./internal/text ./internal/raster ./internal/platform ./internal/mobile/... ./internal/darwin ./i18n/... ./plugins/terminal/...` 与 `go test -short ./cmd/mygo` 通过；`../Miya` 的 `go build ./...` 通过。**未做**：本机没有 Android NDK 和 bun，Android vet 与 `packages/cli` 的 bun 测试没跑；发布体积未复测。
+- 2026-11-24 同步上游 9 个提交（`1f690f29..813afb80`）。冲突 7 个文件，几乎都来自上游 #2249/#2252（输入框消失时收起手机的编辑菜单）。上游新增了 `hideEditMenu`、`editMenuLeft`、`touchText.menuFocus`、`touchPan.menuBefore`、`textTapped` 的 `menu` 参数和 wire 调用 `HideMenu`：
+  - `ui/touch.go`：fork 的 `menuWas`（菜单显示时点按只收起菜单）与上游的 `menuBefore` 是同一功能，按规则 1 删掉 fork 的。自动合并还留下一个隐患：按下时 fork 先把 `touchText.menu` 清零，上游随后才读它，`menuBefore` 永远是 false。删 `menuWas` 时一并去掉了这两行。fork 的 `KeepFocus` 检查（`hitChain` 不含焦点输入框的点按不算点光标）保留。
+  - `ui/touch_text.go`：保留 fork 的 `grabbed` 和 `editMenuPoint`（只读文本的菜单指向选区），其余取上游的写法：`showEditMenu` 的 `touchSurface` 回调里设 `menu`/`menuFocus`，`hideEditMenu`、`editMenuLeft`，以及 `textKeyed` 调 `hideEditMenu`。
+  - `ui/input.go`：`SurfaceCommand` 先记下 `menu` 给 fork 的 `menuCommandDone`（菜单拷贝后取消只读选区），再照上游清掉 `menu`。
+  - `ui/headless.go`：fork 的 `ownsSafeArea`/`SetExtendIntoSafeArea` 与上游的 `touchSurface` 都保留。
+  - `ui/touch_test.go`：两边的测试都保留。fork 的 `TestCaretTapTogglesEditMenu` 与上游的 `TestTouchEditMenuGoes` 重复，删掉了 fork 的。上游现在只在有触摸 surface 时才记下菜单已显示，所以 `TestMenuCopyDeselectsReadOnlyText` 装上了上游的 `menuSurface`。
+  - `internal/mobile/wire/msgs.go`、`Wire.kt`：由 `go generate ./internal/mobile/wire` 重新生成。
+
+  对照这批新增检查了 fork 代码：对话框收 Escape/返回、焦点还给打开浮层的元素、对话框里无可聚焦元素时焦点留在外面、可选文本无选区时 Copy 交给快捷键、Windows 子窗口取消 cloak、Android 11+ 相机、CLI 的 `android.abis`/`android.v1Signing`，在 fork 中都没有同功能实现。`go generate ./ui` 无差异。
+
+  验证：macOS/Linux/Windows 的 `go build ./...`；`go vet . ./ui ./ui/richtext ./ui/editor ./internal/platform ./internal/mobile/... ./plugins/imagepicker/... ./cmd/mygo` 与 Windows 后端 vet；js/wasm vet；iOS（`DEVELOPER_DIR` 指向 Xcode）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet；`go test` 覆盖根包、`ui`、`ui/editor`、`ui/richtext`、`internal/platform`、`internal/mobile/...`、`internal/windows/...`、终端插件，以及 `go test -short ./cmd/mygo`，全部通过；`../Miya` 的 `go build ./...` 通过。`TestMenuAllocs` 单独运行时偶尔多 1 次分配而失败，合并前的 fork `main`（`e758299a`）和干净的 `upstream/main`（`813afb80`）上同样会失败，完整跑 `./ui` 时通过，不是本次合并引入的。**未做**：Android vet、bun 测试（本机没有 NDK 和 bun）、发布体积。
 
 ## 规则
 

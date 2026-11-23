@@ -21,6 +21,9 @@ android {
         versionName = prop("mygoVersionName") ?: "1.0"
         manifestPlaceholders["mygoAppName"] = prop("mygoAppName") ?: "MyGo"
         manifestPlaceholders["mygoIcon"] = prop("mygoIcon") ?: "@android:drawable/sym_def_app_icon"
+        // The ABIs Go was built for: a native module's prebuilt libraries
+        // of another stay out of the APK (android.abis).
+        prop("mygoAbis")?.let { ndk { abiFilters += it.split(',').filter { a -> a.isNotEmpty() } } }
     }
     signingConfigs {
         create("release") {
@@ -31,6 +34,9 @@ android {
                 keyPassword = prop("mygoKeyPassword") ?: prop("mygoKeystorePassword")
             }
         }
+        // android.v1Signing: the JAR signature too, which AGP leaves out
+        // from minSdk 24, with the release key and the debug key alike.
+        if (prop("mygoV1Signing") == "true") configureEach { enableV1Signing = true }
     }
     buildTypes {
         release {

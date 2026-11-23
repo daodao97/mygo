@@ -237,6 +237,28 @@ func TestAlertDialogEscape(t *testing.T) {
 	}
 }
 
+// Escape (and Android's back, which sends it) is taken while an alert
+// that closes on it is open: the system then leaves the key alone, as
+// Android keeps the app in front rather than sending it to the background.
+func TestAlertDialogTakesEscape(t *testing.T) {
+	open := true
+	tt := coreNewTester(func(c *context) {
+		coreAlertDialog(c, &open, "Delete Notes?", "", "OK")
+	}, 500, 400)
+	tt.Frame()
+	if !tt.rt.keyDown(0, KeyEscape, false) {
+		t.Errorf("an open alert did not take Escape")
+	}
+	tt.rt.releaseKey(KeyEscape, KeyUnknown)
+	tt.Frame()
+	if open {
+		t.Fatalf("Escape left the alert open")
+	}
+	if tt.rt.keyDown(0, KeyEscape, false) {
+		t.Errorf("Escape taken with nothing open to close")
+	}
+}
+
 // An alert that must be answered stays open on Escape, setting *open back,
 // until a button is clicked.
 func TestAlertDialogKeepOpen(t *testing.T) {

@@ -387,6 +387,9 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
         }, ActionMode.TYPE_FLOATING)
     }
 
+    /** Finishes the menu of showMenu, as what it was for went. */
+    fun hideMenu() { actionMode?.finish() }
+
     private var magnifier: Magnifier? = null // API 28
 
     /** The system's magnifier of what is at a point. */

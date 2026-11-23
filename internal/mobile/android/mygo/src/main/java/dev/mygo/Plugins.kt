@@ -6,6 +6,7 @@
 package dev.mygo
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -65,7 +66,7 @@ object PluginHost {
         Go.send(Event.pluginEvent(plugin, name, encode(data)))
     }
 
-    /** Starts an Activity for its result. */
+    /** Starts an Activity for its result; throws ActivityNotFoundException when none takes the intent. */
     fun startForResult(intent: Intent, done: (resultCode: Int, data: Intent?) -> Unit) {
         val a = activity
         if (a == null) {
@@ -74,8 +75,13 @@ object PluginHost {
         }
         val code = nextCode++
         onResults[code] = done
-        @Suppress("DEPRECATION")
-        a.startActivityForResult(intent, code)
+        try {
+            @Suppress("DEPRECATION")
+            a.startActivityForResult(intent, code)
+        } catch (e: ActivityNotFoundException) {
+            onResults.remove(code)
+            throw e
+        }
     }
 
     /** Has the system ask the user for permissions the app lacks, and tells whether it has them all. */

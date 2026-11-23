@@ -680,6 +680,9 @@ func coreOverlay(c *context, fn func()) {
 	dir := o.dir
 	o.dir = saved.dir &^ dirSet
 	theme := c.theme
+	// The element that had the focus before fn, which may focus one of
+	// its own as it builds it (AutoFocus, an alert's default button).
+	opener := c.rt.focused
 	fn()
 	o.dir = dir
 	c.parent = saved
@@ -698,7 +701,7 @@ func coreOverlay(c *context, fn func()) {
 		return
 	}
 	for e := first; e != nil; e = e.next {
-		c.rt.openOverlay(e)
+		c.rt.openOverlay(e, opener)
 	}
 }
 

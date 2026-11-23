@@ -161,15 +161,15 @@ type touchPan struct {
 	// its selection then.
 	textBefore uint64
 	selBefore  platform.TextRange
+	// menuBefore is whether the system's edit menu showed as it went down,
+	// which its landing hid.
+	menuBefore bool
 	// samples are its last positions, for its speed as it lifts.
 	samples [6]touchSample
 	n       int
 	// inputHolds is the input handler a long press goes to first, and
 	// inputHeld the one that took the finger (touch.go).
 	inputHolds, inputHeld uint64
-	// menuWas says the edit menu showed as the finger landed, which the
-	// system puts away then: a tap on the caret only hides it.
-	menuWas bool
 }
 
 type touchSample struct {
@@ -195,12 +195,13 @@ func (rt *engine) touchEvent(ev platform.SurfaceEvent, x, y float32) bool {
 	t := &rt.touch
 	switch ev.Kind {
 	case platform.PointerDown:
-		menuWas := rt.touchText.menu
-		rt.touchText.menu = false
 		*t = touchPan{down: true, x0: x, y0: y, lx: x, ly: y, at: rt.now(), aimX: t.aimX, aimY: t.aimY}
-		t.menuWas = menuWas
 		t.sample(rt.now(), x, y)
 		rt.catchBounces()
+		// The edit menu goes as a finger lands anywhere but on it, which
+		// takes its own touches; a hold or a handle let go brings it back.
+		t.menuBefore = rt.touchText.menu
+		rt.hideEditMenu()
 		if h := rt.handleAt(x, y); h != handleNone {
 			rt.touchText.held, rt.touchText.grabbed = h, false
 			return true
@@ -471,12 +472,7 @@ func (rt *engine) afterTap(was *touchPan) {
 	if !on {
 		return
 	}
-	if was.menuWas {
-		// A tap with the menu showing puts it away, as UIKit's does.
-		rt.touchText.id, rt.touchText.caretAt = s.id, rt.now()
-		return
-	}
-	rt.textTapped(s, was.textBefore == rt.focused, was.selBefore)
+	rt.textTapped(s, was.textBefore == rt.focused, was.menuBefore, was.selBefore)
 }
 
 // overScroller reports whether a finger at x, y is on what scrolls, whose
@@ -1056,6 +1052,7 @@ func (rt *engine) systemEvent(ev platform.SurfaceEvent) {
 // touchOver draws what fingers have over the frame, and tells the system
 // what the frame takes.
 func (rt *engine) touchOver(p *Painter) {
+	rt.editMenuLeft()
 	rt.paintHandles(p)
 	rt.tellBack()
 }

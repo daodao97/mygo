@@ -1,6 +1,7 @@
 package dev.mygo
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -64,12 +65,14 @@ class ImagePickerPlugin : MyGoPlugin {
         val f = File(dir, "${System.nanoTime()}.jpg")
         val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".mygo.files", f)
         val i = Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, uri).addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-        if (i.resolveActivity(ctx.packageManager) == null) {
+        // Started rather than looked up first: since Android 11 the app sees
+        // no camera app unless its manifest names the intent in <queries>.
+        try {
+            PluginHost.startForResult(i) { code, _ ->
+                reply.success(JSONObject().put("path", if (code == Activity.RESULT_OK && f.length() > 0) f.absolutePath else ""))
+            }
+        } catch (e: ActivityNotFoundException) {
             reply.failure(PluginFailure("NoCamera", "the device has no camera app"))
-            return
-        }
-        PluginHost.startForResult(i) { code, _ ->
-            reply.success(JSONObject().put("path", if (code == Activity.RESULT_OK && f.length() > 0) f.absolutePath else ""))
         }
     }
 }

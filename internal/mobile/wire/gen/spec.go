@@ -153,6 +153,7 @@ var calls = []msg{
 	{name: "Announce", args: []field{f("Text", "string")}},
 	{name: "ShowMenu", doc: "the system's edit menu at a point, with the actions given (cut, copy, paste, selectAll); TextCommand answers",
 		args: []field{f("ID", "int"), f("X", "float"), f("Y", "float"), f("Actions", "strings")}},
+	{name: "HideMenu", doc: "takes the edit menu of ShowMenu away", args: []field{f("ID", "int")}},
 	{name: "SetBackAvailable", doc: "whether the content takes the system's back", args: []field{f("ID", "int"), f("On", "bool")}},
 	{name: "ShowMagnifier", doc: "the system's magnifier of what is at a point", args: []field{f("ID", "int"), f("X", "float"), f("Y", "float")}},
 	{name: "HideMagnifier", args: []field{f("ID", "int")}},

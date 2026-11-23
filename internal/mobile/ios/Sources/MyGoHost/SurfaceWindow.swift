@@ -655,6 +655,8 @@ final class SurfaceWindow: HostWindow, UITextInput, UIPointerInteractionDelegate
         editMenu.presentEditMenu(with: cfg)
     }
 
+    func hideMenu() { editMenu.dismissMenu() }
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         switch action {
         case #selector(UIResponderStandardEditActions.cut(_:)): return menuActions.contains("cut")

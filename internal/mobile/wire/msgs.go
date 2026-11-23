@@ -81,17 +81,18 @@ const (
 	CallAccessibilityChanged   = 75
 	CallAnnounce               = 76
 	CallShowMenu               = 77
-	CallSetBackAvailable       = 78
-	CallShowMagnifier          = 79
-	CallHideMagnifier          = 80
-	CallTextMetrics            = 81
-	CallMeasureText            = 82
-	CallTextAdvances           = 83
-	CallMeasureTextRun         = 84
-	CallDrawText               = 85
-	CallRegisterFont           = 86
-	CallSetFrameRate           = 87
-	CallSetAppBadge            = 88
+	CallHideMenu               = 78
+	CallSetBackAvailable       = 79
+	CallShowMagnifier          = 80
+	CallHideMagnifier          = 81
+	CallTextMetrics            = 82
+	CallMeasureText            = 83
+	CallTextAdvances           = 84
+	CallMeasureTextRun         = 85
+	CallDrawText               = 86
+	CallRegisterFont           = 87
+	CallSetFrameRate           = 88
+	CallSetAppBadge            = 89
 )
 
 // Numbers of events.
@@ -1532,6 +1533,19 @@ func (m *ShowMenu) Encode(w *Writer) {
 
 // Wait reports whether the caller waits for the host to run it.
 func (*ShowMenu) Wait() bool { return false }
+
+// HideMenu is takes the edit menu of ShowMenu away.
+type HideMenu struct {
+	ID int
+}
+
+func (m *HideMenu) Encode(w *Writer) {
+	w.Uvarint(CallHideMenu)
+	w.Int(m.ID)
+}
+
+// Wait reports whether the caller waits for the host to run it.
+func (*HideMenu) Wait() bool { return false }
 
 // SetBackAvailable is whether the content takes the system's back.
 type SetBackAvailable struct {

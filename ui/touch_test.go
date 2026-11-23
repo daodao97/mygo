@@ -1189,37 +1189,6 @@ func TestKeepFocusTapIsNoCaretTap(t *testing.T) {
 	}
 }
 
-// A tap on the caret shows the edit menu, the next puts it away, as UIKit's
-// text fields do.
-func TestCaretTapTogglesEditMenu(t *testing.T) {
-	value := "hello"
-	tt := NewTester(func(c *Context) {
-		Column(c).Padding(20).Children(func() { TextInput(c, &value).Label("Message").Size(300, 44) })
-	}, 400, 200)
-	tt.Frame()
-	r, _ := tt.Find("Message")
-	x, y := r.X+r.W-10, r.Y+r.H/2
-	tap := func() {
-		tt.FingerDown(x, y)
-		tt.FingerUp(x, y)
-		tt.Advance(500 * time.Millisecond)
-	}
-	tap() // focuses it, and places the caret
-	if tt.rt.touchText.menu {
-		t.Fatal("the first tap showed the menu")
-	}
-	for i, want := range []bool{true, false, true} {
-		tap()
-		if tt.rt.touchText.menu != want {
-			t.Fatalf("tap %d on the caret: menu %v, want %v", i+2, tt.rt.touchText.menu, want)
-		}
-	}
-	tt.Type("x")
-	if tt.rt.touchText.menu {
-		t.Fatal("typing left the menu")
-	}
-}
-
 // Copy from the edit menu of selected read-only text copies it and deselects it.
 func TestMenuCopyDeselectsReadOnlyText(t *testing.T) {
 	tt := NewTester(func(c *Context) {
@@ -1227,6 +1196,7 @@ func TestMenuCopyDeselectsReadOnlyText(t *testing.T) {
 			Text(c, "alpha bravo charlie")
 		})
 	}, 400, 200)
+	tt.h.touch = &menuSurface{}
 	tt.Frame()
 	r, _ := tt.Find("alpha bravo charlie")
 	x, y := r.X+r.W*0.5, r.Y+r.H/2
@@ -1251,5 +1221,135 @@ func TestMenuCopyDeselectsReadOnlyText(t *testing.T) {
 	}
 	if _, _, ok := tt.rt.selectionHandles(); ok {
 		t.Fatal("the handles stayed")
+	}
+}
+
+// menuSurface is a touch screen's system, which notes whether its edit menu
+// shows.
+type menuSurface struct {
+	shows        bool
+	shown, hides int
+}
+
+func (m *menuSurface) Haptic(string)                           {}
+func (m *menuSurface) ShowEditMenu(float64, float64, []string) { m.shows = true; m.shown++ }
+func (m *menuSurface) HideEditMenu()                           { m.shows = false; m.hides++ }
+func (m *menuSurface) ShowMagnifier(float64, float64)          {}
+func (m *menuSurface) HideMagnifier()                          {}
+func (m *menuSurface) SetBackAvailable(bool)                   {}
+
+// The system's edit menu, which a tap on the caret shows, goes as the input
+// it was for goes (#2249), as a finger lands elsewhere, as keys type, and as
+// the caret is tapped again.
+func TestTouchEditMenuGoes(t *testing.T) {
+	v, open := "", true
+	m := &menuSurface{}
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Fill().Children(func() {
+			coreBox(c).Height(100).Shrink(0)
+			if open {
+				coreTextInput(c, &v).Width(200).AutoFocus()
+			}
+		})
+	}, 300, 300)
+	tt.h.touch = m
+	tt.Frame()
+	tt.Frame()
+	tap := func(x, y float32) {
+		tt.Advance(time.Second)
+		tt.FingerDown(x, y)
+		tt.FingerUp(x, y)
+		tt.Frame()
+	}
+	menu := func(at float32) {
+		t.Helper()
+		// Once to place the caret, where it isn't yet.
+		if tap(20, at); !m.shows {
+			tap(20, at)
+		}
+		if !m.shows {
+			t.Fatalf("tapped twice on the caret: no menu (%d shown)", m.shown)
+		}
+	}
+	menu(110)
+	// Tapped once more on the caret, it goes, as on phones.
+	tap(20, 110)
+	if m.shows {
+		t.Errorf("the caret tapped again: the menu stays")
+	}
+	// A finger landing elsewhere takes it away.
+	menu(110)
+	tap(20, 250)
+	if m.shows {
+		t.Errorf("a tap elsewhere: the menu stays")
+	}
+	// Typing does.
+	menu(110)
+	tt.Type("a")
+	tt.Frame()
+	if m.shows {
+		t.Errorf("typed: the menu stays")
+	}
+	// The input going, as a dialog holding it closes, does.
+	menu(110)
+	open = false
+	tt.Frame()
+	if m.shows {
+		t.Errorf("the input gone: the menu stays")
+	}
+	tt.Frame()
+	if m.hides != 4 {
+		t.Errorf("hidden %d times, want 4", m.hides)
+	}
+}
+
+// As in #2249: the menu of an input in a dialog goes as Save closes it, and
+// as the dialog closes without a finger, too.
+func TestTouchEditMenuGoesWithDialog(t *testing.T) {
+	v, open := "", true
+	m := &menuSurface{}
+	var in, save *node
+	tt := coreNewTester(func(c *context) {
+		coreModal(c, &open, func() {
+			coreColumn(c).Width(200).Children(func() {
+				in = coreTextInput(c, &v).AutoFocus()
+				save = corePrimaryButton(c, "Save")
+				if save.Clicked() {
+					open = false
+				}
+			})
+		})
+	}, 400, 400)
+	tt.h.touch = m
+	tt.Frame()
+	tt.Frame()
+	tap := func(r Rect) {
+		tt.Advance(time.Second)
+		tt.FingerDown(r.X+10, r.Y+r.H/2)
+		tt.FingerUp(r.X+10, r.Y+r.H/2)
+		tt.Frame()
+	}
+	menu := func() {
+		t.Helper()
+		if tap(in.Bounds()); !m.shows {
+			tap(in.Bounds())
+		}
+		if !m.shows {
+			t.Fatal("no menu")
+		}
+	}
+	menu()
+	tap(save.Bounds())
+	if open || m.shows {
+		t.Errorf("Save tapped: open %v, the menu shows %v", open, m.shows)
+	}
+	open = true
+	tt.Frame()
+	tt.Frame()
+	menu()
+	open = false
+	tt.Frame()
+	if m.shows {
+		t.Error("the dialog closed: the menu stays")
 	}
 }

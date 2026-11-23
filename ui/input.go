@@ -178,6 +178,8 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 		taken = rt.editEvent(rt.replaced(editEvent{kind: editCompose, text: ev.Text, caret: ev.Caret}, ev))
 	case platform.SurfaceCommand:
 		menu := rt.touchText.menu
+		// The system's edit menu closes as its command is chosen.
+		rt.touchText.menu = false
 		rt.editEvent(editEvent{kind: editCommand, text: ev.Text, repeat: ev.Repeat})
 		if menu {
 			rt.menuCommandDone(ev.Text)
@@ -1209,7 +1211,8 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 	if (key == KeyContextMenu && mods == 0 || key == KeyF10 && mods == Shift) && !rt.claimed(k) && rt.menuKey() {
 		return false
 	}
-	if s := rt.states[rt.focused]; s != nil && s.editor != nil && s.flags&(flagEditable|flagSelectable) != 0 && s.editor.wants(k) {
+	if s := rt.states[rt.focused]; s != nil && s.editor != nil && s.flags&(flagEditable|flagSelectable) != 0 && s.editor.wants(k) &&
+		!(k.mods == Cmd && k.key == KeyC && rt.copiesNothing(s)) {
 		if rt.textSelectionKey(s, k) {
 			rt.requestFrame()
 			return false
@@ -1283,10 +1286,14 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 	}
 	rt.keys = append(rt.keys, k)
 	rt.requestFrame()
-	// The keys that go back, which a shortcut takes in the next frame:
-	// the system leaves them alone then, as Android's back then goes back
-	// in the app rather than out of it.
-	return (key == KeyBack || key == KeyEscape) && mods == 0 && rt.claimed(k)
+	// The keys that go back, which a shortcut or the overlay on top (a
+	// dialog, a menu) takes in the next frame: the system leaves them alone
+	// then, as Android's back then goes back in the app rather than out of it.
+	if (key == KeyBack || key == KeyEscape) && mods == 0 {
+		_, found := routeKey(rt.regs, rt.focusChain(), k)
+		return found
+	}
+	return false
 }
 
 // spaceReleased clicks the button Space held down, as Space goes up,
@@ -1573,6 +1580,10 @@ func (rt *engine) editEvent(ev editEvent) bool {
 		rt.commandKey(ev, nil)
 		return false
 	}
+	if ev.kind == editCommand && ev.text == "copy" && rt.copiesNothing(s) {
+		rt.commandKey(ev, nil)
+		return false
+	}
 	if s.editor.readOnly && rt.commandKey(ev, s.editor) {
 		return true
 	}
@@ -1622,10 +1633,21 @@ func (rt *engine) commandEnabled(name string) bool {
 	if s == nil || s.editor == nil || s.flags&(flagEditable|flagSelectable) == 0 {
 		return rt.commandShortcut(name)
 	}
-	if k, ok := commandKeys[name]; ok && s.editor.readOnly && !s.editor.wants(k) {
+	if k, ok := commandKeys[name]; ok && s.editor.readOnly && !s.editor.wants(k) || name == "copy" && rt.copiesNothing(s) {
 		return rt.commandShortcut(name)
 	}
 	return rt.editCommandOn(s, name)
+}
+
+// copiesNothing reports whether Copy would copy nothing from the
+// selectable text s, which nothing is selected in, as after a click that
+// leaves a caret alone: Copy and its key then go to the shortcuts of the
+// key, as they do where the focus takes no text, for a window's Cmd+C to
+// copy what was chosen otherwise, as rows of a list. A text input keeps
+// them.
+func (rt *engine) copiesNothing(s *state) bool {
+	return s.editor != nil && s.flags&flagEditable == 0 && s.flags&flagSelectable != 0 && s.flags&flagDisabled == 0 &&
+		!rt.editCommandOn(s, "copy")
 }
 
 // commandShortcut reports whether commandKey would have a shortcut take

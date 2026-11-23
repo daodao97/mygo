@@ -373,6 +373,19 @@ export interface AndroidConfig {
    * they stay in the APK).
    */
   extractNativeLibs?: boolean;
+  /**
+   * The ABIs the app is built for, as `arm64`, `arm` or `amd64` (or
+   * `arm64-v8a`, `armeabi-v7a`, `x86_64`): for an app whose native modules
+   * ship prebuilt libraries for some only. The APK then carries no library of
+   * another ABI (default: all three).
+   */
+  abis?: string[];
+  /**
+   * Signs the APK with the JAR signature (v1) as well, which the build leaves
+   * out from `minSdk` 24 but some phones' installers still ask for
+   * (default: `false`).
+   */
+  v1Signing?: boolean;
 }
 
 /** An icon of two layers. */

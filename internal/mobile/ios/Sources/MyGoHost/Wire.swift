@@ -1025,6 +1025,14 @@ public struct ShowMenuCall {
     }
 }
 
+public struct HideMenuCall {
+    public var id: Int = 0
+    public init() {}
+    init(_ r: inout WireReader) {
+        id = r.int()
+    }
+}
+
 public struct SetBackAvailableCall {
     public var id: Int = 0
     public var on: Bool = false
@@ -1373,6 +1381,8 @@ public protocol HostCalls: AnyObject {
     func announce(_ c: AnnounceCall)
     /// the system's edit menu at a point, with the actions given (cut, copy, paste, selectAll); TextCommand answers
     func showMenu(_ c: ShowMenuCall)
+    /// takes the edit menu of ShowMenu away
+    func hideMenu(_ c: HideMenuCall)
     /// whether the content takes the system's back
     func setBackAvailable(_ c: SetBackAvailableCall)
     /// the system's magnifier of what is at a point
@@ -1633,36 +1643,39 @@ public func dispatchCall(_ h: HostCalls, _ buf: UnsafeRawBufferPointer) -> [UInt
         h.showMenu(ShowMenuCall(&r))
         return nil
     case 78:
-        h.setBackAvailable(SetBackAvailableCall(&r))
+        h.hideMenu(HideMenuCall(&r))
         return nil
     case 79:
-        h.showMagnifier(ShowMagnifierCall(&r))
+        h.setBackAvailable(SetBackAvailableCall(&r))
         return nil
     case 80:
-        h.hideMagnifier(HideMagnifierCall(&r))
+        h.showMagnifier(ShowMagnifierCall(&r))
         return nil
     case 81:
+        h.hideMagnifier(HideMagnifierCall(&r))
+        return nil
+    case 82:
         h.textMetrics(TextMetricsCall(&r)).encode(&w)
         return w.buf
-    case 82:
+    case 83:
         h.measureText(MeasureTextCall(&r)).encode(&w)
         return w.buf
-    case 83:
+    case 84:
         h.textAdvances(TextAdvancesCall(&r)).encode(&w)
         return w.buf
-    case 84:
+    case 85:
         h.measureTextRun(MeasureTextRunCall(&r)).encode(&w)
         return w.buf
-    case 85:
+    case 86:
         h.drawText(DrawTextCall(&r)).encode(&w)
         return w.buf
-    case 86:
+    case 87:
         h.registerFont(RegisterFontCall(&r)).encode(&w)
         return w.buf
-    case 87:
+    case 88:
         h.setFrameRate(SetFrameRateCall(&r))
         return nil
-    case 88:
+    case 89:
         h.setAppBadge(SetAppBadgeCall(&r))
         return nil
     default:
