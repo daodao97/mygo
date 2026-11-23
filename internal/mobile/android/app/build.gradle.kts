@@ -34,6 +34,9 @@ android {
                 keyPassword = prop("mygoKeyPassword") ?: prop("mygoKeystorePassword")
             }
         }
+        // android.v1Signing: the JAR signature too, which AGP leaves out
+        // from minSdk 24, with the release key and the debug key alike.
+        if (prop("mygoV1Signing") == "true") configureEach { enableV1Signing = true }
     }
     buildTypes {
         release {

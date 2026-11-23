@@ -380,6 +380,12 @@ export interface AndroidConfig {
    * another ABI (default: all three).
    */
   abis?: string[];
+  /**
+   * Signs the APK with the JAR signature (v1) as well, which the build leaves
+   * out from `minSdk` 24 but some phones' installers still ask for
+   * (default: `false`).
+   */
+  v1Signing?: boolean;
 }
 
 /** An icon of two layers. */

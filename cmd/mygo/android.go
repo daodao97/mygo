@@ -463,6 +463,9 @@ func (o Android) packagingProps(props map[string]string) {
 	if o.ExtractNativeLibs {
 		props["mygoExtractNativeLibs"] = "true"
 	}
+	if o.V1Signing {
+		props["mygoV1Signing"] = "true"
+	}
 }
 
 // versionCode is the integer version Google Play orders uploads by.

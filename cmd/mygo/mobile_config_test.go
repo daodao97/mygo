@@ -464,3 +464,26 @@ func TestAndroidABIs(t *testing.T) {
 		t.Errorf("build.gradle.kts has no %s", want)
 	}
 }
+
+// android.v1Signing reaches the host's Gradle build as a property, which
+// turns the JAR signature on for every signing config.
+func TestAndroidV1Signing(t *testing.T) {
+	dir := t.TempDir()
+	writeBytes(t, filepath.Join(dir, jsonConfig), []byte(`{"android": {"v1Signing": true}}`))
+	c, err := loadConfig(dir)
+	if err != nil || !c.Android.V1Signing {
+		t.Fatalf("%+v, %v", c.Android, err)
+	}
+	props := map[string]string{}
+	c.Android.packagingProps(props)
+	if props["mygoV1Signing"] != "true" {
+		t.Errorf("props %v", props)
+	}
+	src, err := fs.ReadFile(androidHost.Files, "app/build.gradle.kts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `if (prop("mygoV1Signing") == "true") configureEach { enableV1Signing = true }`; !strings.Contains(string(src), want) {
+		t.Errorf("build.gradle.kts has no %s", want)
+	}
+}

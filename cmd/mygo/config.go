@@ -349,6 +349,11 @@ type Android struct {
 	// it runs. The APK then carries no library of another ABI. Default:
 	// all three.
 	ABIs []string `json:"abis"`
+	// V1Signing signs the APK with the JAR signature (v1) as well as the
+	// newer schemes. Android does not need it from 7.0, so the build leaves
+	// it out from minSdk 24, but some phones' installers still refuse an
+	// APK without it.
+	V1Signing bool `json:"v1Signing"`
 }
 
 // AndroidAdaptiveIcon is an icon of two layers.

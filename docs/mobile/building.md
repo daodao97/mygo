@@ -21,7 +21,9 @@ The `.aab` is what Google Play takes, the `.apk` what other stores and
 devices install. Release builds are signed with `android.keystore`, its
 passwords from `MYGO_ANDROID_KEYSTORE_PASSWORD` and
 `MYGO_ANDROID_KEY_PASSWORD`, or else with the debug key, which Google Play
-refuses.
+refuses. From `minSdk` 24 the build leaves out the JAR signature (v1),
+which Android needs no more; `android.v1Signing` adds it for the phones
+whose installers still ask for it.
 
 The configuration's `ios` and `android` sections set the rest (see
 [Configuration](../configuration.md)):
