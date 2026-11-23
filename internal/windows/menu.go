@@ -572,6 +572,13 @@ func (b *Backend) trackPopup(menu, owner uintptr, pt point, flags uintptr, exclu
 	// open on Alt (menuProc).
 	b.popups++
 	defer func() { b.popups-- }()
+	// Its items are measured and drawn at the DPI of the monitor it shows
+	// on, as buildMenu made their icons, not at the owner's: the hidden
+	// application window, which owns the menus of trays and those without
+	// a window, has the DPI of the monitor at 0,0 as the app started.
+	old := b.popupDPI
+	b.popupDPI = monitorDPI(monitorAt(int(pt.X), int(pt.Y)))
+	defer func() { b.popupDPI = old }()
 	var params *tpmParams
 	if exclude != nil {
 		params = &tpmParams{Exclude: *exclude}

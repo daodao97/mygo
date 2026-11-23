@@ -395,3 +395,40 @@ func inkBox(t *testing.T, font uintptr, text string, dpi int) (width, height int
 	}
 	return right - left + 1, bottom - top + 1
 }
+
+// The items of a popup are measured and drawn at the DPI of the monitor it
+// shows on, not at its owner's: the hidden application window, which owns
+// the menus of trays and those without a window, keeps the DPI of the
+// monitor at 0,0 as the app started (#2226).
+func TestPopupItemsAtTheirMonitorsDPI(t *testing.T) {
+	if err := registerClasses(); err != nil {
+		t.Fatal(err)
+	}
+	owner := createWindow(0, appClass, "", wsOverlapped, 0, 0, 0, 0, 0)
+	if owner == 0 {
+		t.Fatal("cannot create the window")
+	}
+	defer procDestroyWindow.Call(owner)
+	popup := dpiOf(owner) * 2 // another monitor's
+	b := &Backend{menuFonts: map[int]menuFonts{}, popupDPI: popup}
+	defer b.dropMenuFonts()
+	for _, l := range []*menuLook{{label: "Quit"}, {separator: true}} {
+		var mis measureItemStruct
+		b.measureItem(owner, l, &mis)
+		top, bottom := l.padding(popup)
+		height := toPx(menuItemHeight, popup)
+		if l.separator {
+			height = toPx(menuSeparatorHeight, popup)
+		}
+		if want := uint32(height + top + bottom); mis.ItemHeight != want || l.dpi != popup {
+			t.Errorf("separator %v: measured %d high at %d DPI, want %d at %d", l.separator, mis.ItemHeight, l.dpi, want, popup)
+		}
+	}
+	b.popupDPI = 0 // a menu bar's: its window's
+	l := &menuLook{label: "Quit"}
+	var mis measureItemStruct
+	b.measureItem(owner, l, &mis)
+	if l.dpi != dpiOf(owner) {
+		t.Errorf("a menu bar's item measured at %d DPI, want its window's %d", l.dpi, dpiOf(owner))
+	}
+}
