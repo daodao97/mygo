@@ -250,10 +250,12 @@ func (v *view) paste(matchStyle bool) {
 	v.lockedSync()
 	a, z := v.selection() // as the sync moved it
 	v.lockedPublish()
-	v.lockedEdit(func(e *Edit) { e.Replace(a, z, t) })
 	caret := a + t.Len()
+	v.lockedEdit(func(e *Edit) {
+		e.Replace(a, z, t)
+		d.anchor, d.caret = caret, caret // where redo puts it
+	})
 	v.selAnchor, v.caret = caret, caret
-	d.anchor, d.caret = caret, caret
 	d.mu.Unlock()
 	v.mode, v.coalesce = newStep, false
 	v.reveal = true

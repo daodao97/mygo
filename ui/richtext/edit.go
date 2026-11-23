@@ -57,10 +57,14 @@ func (v *view) replace(start, end int, s string) {
 	if d.typing != nil {
 		attrs = *d.typing
 	}
-	v.lockedEdit(func(e *Edit) { e.ReplaceString(start, end, s, attrs) })
+	// The caret moves inside the edit, so that its step's selection after
+	// is where redo puts it.
 	caret := start + utf8.RuneCountInString(s)
+	v.lockedEdit(func(e *Edit) {
+		e.ReplaceString(start, end, s, attrs)
+		d.anchor, d.caret = caret, caret
+	})
 	v.selAnchor, v.caret = caret, caret
-	d.anchor, d.caret = caret, caret
 	if s == "" && start < end {
 		// Typing again where text was deleted gets its attributes, until
 		// the caret moves, as in NSTextView.
