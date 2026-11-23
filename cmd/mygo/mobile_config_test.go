@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -409,5 +410,57 @@ func TestAndroidExtractNativeLibs(t *testing.T) {
 	Android{}.packagingProps(props)
 	if len(props) != 0 {
 		t.Errorf("off by default, props %v", props)
+	}
+}
+
+// android.abis limits the ABIs a build makes, by either name, and refuses
+// one it leaves out; the host's app drops a module's libraries of the rest.
+func TestAndroidABIs(t *testing.T) {
+	dir := t.TempDir()
+	writeBytes(t, filepath.Join(dir, jsonConfig), []byte(`{"android": {"abis": ["arm64", "x86_64"]}}`))
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		arch string
+		want []string
+		err  string
+	}{
+		{"", []string{"arm64-v8a", "x86_64"}, ""},
+		{"arm64", []string{"arm64-v8a"}, ""},
+		{"amd64", []string{"x86_64"}, ""},
+		{"arm", nil, "android.abis leaves out arm"},
+		{"mips", nil, "unknown Android architecture"},
+	} {
+		got, err := c.Android.buildABIs(tc.arch)
+		if tc.err != "" {
+			if err == nil || !strings.Contains(err.Error(), tc.err) {
+				t.Errorf("%q: %v, %v, want error %q", tc.arch, got, err, tc.err)
+			}
+			continue
+		}
+		if err != nil || !slices.Equal(got, tc.want) {
+			t.Errorf("%q: %v, %v, want %v", tc.arch, got, err, tc.want)
+		}
+	}
+	if all, err := (Android{}).buildABIs(""); err != nil || len(all) != len(androidABIs) {
+		t.Errorf("default: %v, %v", all, err)
+	}
+	if !c.Android.allows("x86_64") || c.Android.allows("armeabi-v7a") || !(Android{}).allows("armeabi-v7a") {
+		t.Error("allows")
+	}
+
+	writeBytes(t, filepath.Join(dir, jsonConfig), []byte(`{"android": {"abis": ["riscv64"]}}`))
+	if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "android.abis") {
+		t.Errorf("unknown ABI: %v", err)
+	}
+
+	src, err := fs.ReadFile(androidHost.Files, "app/build.gradle.kts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `prop("mygoAbis")?.let { ndk { abiFilters +=`; !strings.Contains(string(src), want) {
+		t.Errorf("build.gradle.kts has no %s", want)
 	}
 }

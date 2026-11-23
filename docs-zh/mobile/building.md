@@ -100,3 +100,13 @@ export default defineConfig({
 之后应用可以在 `context.applicationInfo.nativeLibraryDir + "/lib<name>.so"` 找到这个可执行文件。这些库会压缩发布，解压后会再占一份空间，所以除非应用要执行其中一个，否则不要开启。
 
 这样的可执行文件要按 16 KB 页链接（`-Wl,-z,max-page-size=16384`），和 Android 自己的库一样：在 16 KB 页的设备或模拟器上，按 4 KB 页链接的程序一启动就会崩溃。
+
+只为部分 ABI 构建的可执行文件（如只有 `arm64-v8a`）会把应用限制在这些 ABI 上，这样不会有哪个 ABI 的构建缺了它：
+
+```json
+{
+  "android": { "extractNativeLibs": true, "abis": ["arm64"] }
+}
+```
+
+之后 `mygo build -platform android` 只构建这些 ABI，`mygo dev` 会拒绝其他 ABI 的设备或模拟器。无论哪种构建，原生模块里 Go 没有为之构建的 ABI 的库都不会进 APK：否则那种 ABI 的设备会只装上这些库，却没有应用本身。

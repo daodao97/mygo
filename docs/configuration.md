@@ -184,6 +184,7 @@ See [Linux](distribution.md#linux).
 | `adaptiveIcon` | | the launcher's icon, in layers: `foreground`, a square PNG, and `background`, a color |
 | `splash` | the theme's | the color that shows as the app launches, as `#102030` |
 | `extractNativeLibs` | `false` | extracts the native libraries on install, so the app can exec an executable it ships as `lib<name>.so` (see [Executables](mobile/building.md#executables)) |
+| `abis` | all three | the ABIs the app is built for, as `arm64`, `arm` or `amd64`: for native modules with prebuilt libraries for some only, as an executable (see [Executables](mobile/building.md#executables)) |
 
 See [Building and publishing for phones](mobile/building.md).
 

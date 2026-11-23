@@ -162,3 +162,17 @@ the app execs one.
 Link such an executable for 16 KB pages (`-Wl,-z,max-page-size=16384`), as
 Android's own libraries are: on a device or emulator with 16 KB pages, one
 linked for 4 KB pages crashes as it starts.
+
+An executable built for some ABIs only, as `arm64-v8a`, limits the app to
+them, so that no build for another ABI lacks it:
+
+```json
+{
+  "android": { "extractNativeLibs": true, "abis": ["arm64"] }
+}
+```
+
+`mygo build -platform android` then builds those alone, and `mygo dev`
+refuses a device or emulator of another ABI. In every build, a native
+module's libraries of an ABI that Go wasn't built for stay out of the APK:
+a device of that ABI would install them without the app.

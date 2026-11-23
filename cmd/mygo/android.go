@@ -42,6 +42,44 @@ var androidABIs = []struct{ abi, goarch, triple string }{
 	{"x86_64", "amd64", "x86_64-linux-android"},
 }
 
+// androidABI is the Android name of an ABI named by it or by its GOARCH,
+// or "".
+func androidABI(name string) string {
+	for _, a := range androidABIs {
+		if name == a.abi || name == a.goarch {
+			return a.abi
+		}
+	}
+	return ""
+}
+
+// allows reports whether the app is built for abi (android.abis).
+func (o Android) allows(abi string) bool {
+	return len(o.ABIs) == 0 || slices.ContainsFunc(o.ABIs, func(a string) bool { return androidABI(a) == abi })
+}
+
+// buildABIs are the ABIs a build for arch makes: arch's, or every one
+// android.abis allows when arch is "".
+func (o Android) buildABIs(arch string) ([]string, error) {
+	if arch != "" {
+		abi := androidABI(arch)
+		if abi == "" {
+			return nil, fmt.Errorf("unknown Android architecture %q: arm64, arm or amd64", arch)
+		}
+		if !o.allows(abi) {
+			return nil, fmt.Errorf("android.abis leaves out %s", arch)
+		}
+		return []string{abi}, nil
+	}
+	var abis []string
+	for _, a := range androidABIs {
+		if o.allows(a.abi) {
+			abis = append(abis, a.abi)
+		}
+	}
+	return abis, nil
+}
+
 // androidToolchain is the Android SDK, its NDK and the JDK Gradle runs on.
 type androidToolchain struct {
 	sdk, ndk, ndkBin, javaHome string
@@ -567,14 +605,9 @@ func buildAndroid(c *Config, opts buildOptions, arch string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	var abis []string
-	for _, a := range androidABIs {
-		if arch == "" || arch == a.goarch || arch == a.abi {
-			abis = append(abis, a.abi)
-		}
-	}
-	if len(abis) == 0 {
-		return nil, fmt.Errorf("unknown Android architecture %q: arm64, arm or amd64", arch)
+	abis, err := c.Android.buildABIs(arch)
+	if err != nil {
+		return nil, err
 	}
 	dir := c.path(filepath.Join(".mygo", "android"))
 	if err := t.project(dir); err != nil {
@@ -674,6 +707,9 @@ func (s *devSession) buildAndroidDev(ctx context.Context, c, dc *Config, t *task
 		return "", fmt.Errorf("adb: %v", err)
 	}
 	abi := strings.TrimSpace(string(abiOut))
+	if !dc.Android.allows(abi) {
+		return "", fmt.Errorf("%s is %s, which android.abis leaves out", s.device.name, abi)
+	}
 	dir := c.path(filepath.Join(".mygo", "android"))
 	if err := tc.project(dir); err != nil {
 		return "", err
