@@ -57,12 +57,13 @@ func (rt *engine) arrangeFocus() {
 	// The focus in an overlay that went goes back to the element that had
 	// it as the overlay opened, rather than to the first element of the
 	// dialog on top, which may be the one the overlay opened from. prune
-	// forgets the overlay after (restoreFocus).
+	// forgets the overlay after (restoreFocus). The focus may be nowhere,
+	// as a dialog with nothing to focus took it.
 	built := func(id uint64) bool {
 		s := rt.states[id]
 		return s != nil && s.seen == rt.frame && s.pass == rt.pass
 	}
-	if rt.focused != 0 && !built(rt.focused) {
+	if !built(rt.focused) {
 		for id, opener := range rt.openers {
 			if !built(id) && built(opener) {
 				rt.focused = opener
@@ -71,6 +72,9 @@ func (rt *engine) arrangeFocus() {
 		}
 	}
 	if m := rt.modal; m != 0 && rt.scopeOf(rt.focused) != m {
+		// Nothing behind the dialog keeps it, even when the dialog has
+		// nothing to take it: the opener has it back as the dialog closes.
+		rt.focused = 0
 		for i, sc := range rt.focusScopes {
 			if sc.modal == m {
 				rt.focused = rt.focusOrder[i]
