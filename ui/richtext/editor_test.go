@@ -1611,3 +1611,20 @@ func TestRichTextKeyboardSelectionForgetsColumn(t *testing.T) {
 		t.Fatalf("Down after the keyboard put the caret at 12 = (%d, %d), want (19, 19)", a, c)
 	}
 }
+
+// A paste is a step of undo of its own, even of one character right after
+// typing, as NSTextView's: typing before it and after it stay apart.
+func TestRichTextPasteIsItsOwnUndoStep(t *testing.T) {
+	doc := NewDocument(Text{})
+	tt, _ := richTester(t, doc)
+	typeRunes(tt, "ab")
+	tt.SetClipboard("x")
+	tt.Key(ui.Cmd, ui.KeyV)
+	tt.Type("c")
+	for _, want := range []string{"abx", "ab", ""} {
+		tt.Key(ui.Cmd, ui.KeyZ)
+		if got := doc.Text().String(); got != want {
+			t.Fatalf("undo made %q, want %q", got, want)
+		}
+	}
+}

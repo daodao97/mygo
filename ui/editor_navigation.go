@@ -382,7 +382,7 @@ func (ed *editor) command(c *context, name string) {
 			}
 		}
 		if s != "" {
-			ed.insert(s)
+			ed.paste(s)
 		}
 	case "selectAll":
 		ed.selectAll()

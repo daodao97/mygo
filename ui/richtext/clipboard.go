@@ -232,7 +232,7 @@ func (v *view) paste(matchStyle bool) {
 		}
 		if !ok {
 			if b, err := d.Read(transfer.Text); err == nil && len(b) > 0 {
-				v.insert(string(b))
+				v.pasteText(string(b))
 				return
 			}
 		}
@@ -240,7 +240,7 @@ func (v *view) paste(matchStyle bool) {
 	if !ok {
 		s := v.services.ReadClipboard()
 		if s != "" {
-			v.insert(s)
+			v.pasteText(s)
 		}
 		return
 	}

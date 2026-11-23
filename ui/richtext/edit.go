@@ -152,6 +152,17 @@ func (v *view) insert(s string) {
 	v.replace(a, z, s)
 }
 
+// pasteText replaces the selection with s as a step of undo of its own,
+// even one character, as NSTextView's paste.
+func (v *view) pasteText(s string) {
+	if v.opts.ReadOnly {
+		return
+	}
+	a, z := v.selection()
+	v.record(false)
+	v.replace(a, z, normalizeNewlines(s))
+}
+
 // deleteRange deletes the runes from a to z.
 func (v *view) deleteRange(a, z int, typing bool) {
 	if a == z || v.opts.ReadOnly {
