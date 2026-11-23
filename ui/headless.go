@@ -44,8 +44,10 @@ type headless struct {
 	opened        []string
 	// escapes counts the Escapes nothing handled.
 	escapes int
-	// stack is the system's stack of screens tests give the window.
+	// stack is the system's stack of screens tests give the window, and
+	// touch what its touch screen's system shows.
 	stack platform.StackSurface
+	touch platform.TouchSurface
 	// titleDoubles counts the double clicks a DragWindow handle left to
 	// the window.
 	titleDoubles int
@@ -1272,3 +1274,5 @@ func (t *Tester) Focused(s string) bool {
 }
 
 func (h *headless) stackSurface() platform.StackSurface { return h.stack }
+
+func (h *headless) touchSurface() platform.TouchSurface { return h.touch }

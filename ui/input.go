@@ -172,6 +172,8 @@ func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	case platform.TextComposition:
 		taken = rt.editEvent(rt.replaced(editEvent{kind: editCompose, text: ev.Text, caret: ev.Caret}, ev))
 	case platform.SurfaceCommand:
+		// The system's edit menu closes as its command is chosen.
+		rt.touchText.menu = false
 		rt.editEvent(editEvent{kind: editCommand, text: ev.Text, repeat: ev.Repeat})
 	case platform.SurfaceFocus:
 		rt.windowFocused = true

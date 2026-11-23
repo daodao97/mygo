@@ -283,6 +283,8 @@ func (s *surface) ShowEditMenu(x, y float64, actions []string) {
 	s.w.b.call(&wire.ShowMenu{ID: s.w.id, X: x, Y: y, Actions: actions}, nil)
 }
 
+func (s *surface) HideEditMenu() { s.w.b.call(&wire.HideMenu{ID: s.w.id}, nil) }
+
 func (s *surface) SetBackAvailable(on bool) {
 	s.w.b.call(&wire.SetBackAvailable{ID: s.w.id, On: on}, nil)
 }

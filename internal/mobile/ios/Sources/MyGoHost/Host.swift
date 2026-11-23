@@ -614,6 +614,7 @@ final class Host: NSObject, HostCalls, UNUserNotificationCenterDelegate, UIDocum
     func accessibilityChanged(_ c: AccessibilityChangedCall) { surface(c.id)?.accessibilityChanged(focus: c.focus) }
     func announce(_ c: AnnounceCall) { UIAccessibility.post(notification: .announcement, argument: c.text) }
     func showMenu(_ c: ShowMenuCall) { surface(c.id)?.showMenu(c) }
+    func hideMenu(_ c: HideMenuCall) { surface(c.id)?.hideMenu() }
     // iOS's back is the swipe from the edge the content handles itself.
     func setBackAvailable(_ c: SetBackAvailableCall) {}
     func showMagnifier(_ c: ShowMagnifierCall) { surface(c.id)?.showMagnifier(c) }

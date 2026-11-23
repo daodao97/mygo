@@ -894,6 +894,7 @@ object HostImpl : HostCalls {
     override fun accessibilityChanged(c: AccessibilityChangedCall) { surface(c.id)?.accessibilityChanged(c.focus) }
     override fun announce(c: AnnounceCall) { (front()?.view ?: root).announceForAccessibility(c.text) }
     override fun showMenu(c: ShowMenuCall) { surface(c.id)?.showMenu(c) }
+    override fun hideMenu(c: HideMenuCall) { surface(c.id)?.hideMenu() }
     override fun setBackAvailable(c: SetBackAvailableCall) {
         surface(c.id)?.backAvailable = c.on
         updateBack()

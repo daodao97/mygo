@@ -216,6 +216,9 @@ type TouchSurface interface {
 	// "cut", "copy", "paste" and "selectAll", at a point in DIPs; they come as
 	// SurfaceCommand.
 	ShowEditMenu(x, y float64, actions []string)
+	// HideEditMenu takes the menu of ShowEditMenu away, as what it was
+	// for loses the focus or a finger lands elsewhere.
+	HideEditMenu()
 	// ShowMagnifier shows the system's magnifier of what is at a point in
 	// DIPs, as a finger drags a text handle, until HideMagnifier.
 	ShowMagnifier(x, y float64)
