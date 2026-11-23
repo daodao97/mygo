@@ -760,7 +760,7 @@ func (rt *engine) accessTree() *platform.AccessTree {
 		// A list choosing rows with the arrows has the focus for them:
 		// assistive technology follows the row chosen, as the arrows move
 		// the choice, while it shows.
-		if f := focused.rowsOfElement(); f != nil && f.s.cursor() != nil {
+		if f := focused.rowsOfElement(); f != nil && f.s != nil && f.s.cursor() != nil {
 			for _, r := range f.rows {
 				if r.i == *f.s.cursor() {
 					focus = r.e.id
@@ -1005,11 +1005,13 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	}
 	if f := e.rowsOf; f != nil {
 		n.SetSize = f.n
-		if f.s.cursor() != nil {
-			n.States |= platform.AccessSelectable // as do its rows
-		}
-		if f.s.Selection != nil {
-			n.States |= platform.AccessMultiselectable
+		if f.s != nil {
+			if f.s.cursor() != nil {
+				n.States |= platform.AccessSelectable // as do its rows
+			}
+			if f.s.Selection != nil {
+				n.States |= platform.AccessMultiselectable
+			}
 		}
 	}
 	if e.flags&flagChoosable != 0 || e.role == RoleOption {
