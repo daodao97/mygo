@@ -643,6 +643,47 @@ func TestTextAreaRevealsWrapped(t *testing.T) {
 	check("Ctrl+End")
 }
 
+// TestTextAreaLineEndsAtWrap checks that End stays on the visual line it
+// was pressed on when the paragraph wraps after it, with the caret drawn at
+// that line's end, and that Home from there goes to the same line's start.
+func TestTextAreaLineEndsAtWrap(t *testing.T) {
+	s := "the quick brown fox jumps over the lazy dog and keeps running"
+	tt := coreNewTester(func(c *context) { coreTextArea(c, &s).Size(160, 300).Label("Area") }, 200, 400)
+	tt.Click("Area")
+	ed := textAreaState(tt).editor
+	l := ed.area.paraLayout(ed, 0)
+	if len(l.Lines) < 2 {
+		t.Fatalf("the paragraph is on %d line, want it wrapped", len(l.Lines))
+	}
+	first := l.Lines[0]
+	area := at(t, tt, "Area")
+	tt.ClickAt(area.X+40, area.Y+8)
+	clicked, _ := tt.TextCaret()
+	tt.Key(0, KeyEnd)
+	end, _ := tt.TextCaret()
+	if ed.caret != first.End || end.Y != clicked.Y || end.X <= clicked.X {
+		t.Errorf("End went to %d drawn at %v, want %d at the right of the first line, clicked at %v", ed.caret, end, first.End, clicked)
+	}
+	tt.Key(0, KeyEnd)
+	if again, _ := tt.TextCaret(); ed.caret != first.End || again != end {
+		t.Errorf("End again went to %d at %v, want it to stay at %d at %v", ed.caret, again, first.End, end)
+	}
+	tt.Key(0, KeyHome)
+	if home, _ := tt.TextCaret(); ed.caret != first.Start || home.Y != clicked.Y {
+		t.Errorf("Home from the end of the first line went to %d at %v, want %d on the first line", ed.caret, home, first.Start)
+	}
+	// Clicked at the end of the first line, the caret is drawn there, and
+	// Home goes to its start.
+	tt.ClickAt(area.X+area.W-2, area.Y+8)
+	if ed.caret != first.End {
+		t.Fatalf("the click at the end of the first line put the caret at %d, want %d", ed.caret, first.End)
+	}
+	tt.Key(0, KeyHome)
+	if ed.caret != first.Start {
+		t.Errorf("Home from a click at the end of the first line went to %d, want %d", ed.caret, first.Start)
+	}
+}
+
 // TestTextAreaKeepsViewOnAppText checks that a text the app sets, as a log
 // growing, leaves the view where the wheel put it.
 func TestTextAreaKeepsViewOnAppText(t *testing.T) {

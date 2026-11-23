@@ -236,11 +236,16 @@ func (a *area) caretAt(ed *editor, i, extra int) (x float32, y float64, h float3
 	return x, a.hs.top(p) + float64(ly), h
 }
 
-// lineEdges returns the edges of the visual line holding rune i.
+// lineEdges returns the edges of the visual line holding rune i, the one
+// the caret is drawn on when i is the caret.
 func (a *area) lineEdges(ed *editor, i int) (int, int) {
 	p := ed.buf.para(i)
 	l := a.paraLayout(ed, p)
-	line := &l.Lines[l.LineAt(a.local(ed, p, i))]
+	affinity := text.Downstream
+	if i == ed.caret {
+		affinity = ed.caretAffinity
+	}
+	line := &l.Lines[l.CaretLine(text.CaretPosition{Index: a.local(ed, p, i), Affinity: affinity})]
 	return a.global(ed, p, line.Start), a.global(ed, p, line.End)
 }
 
