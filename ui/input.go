@@ -1274,10 +1274,14 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 	}
 	rt.keys = append(rt.keys, k)
 	rt.requestFrame()
-	// The keys that go back, which a shortcut takes in the next frame:
-	// the system leaves them alone then, as Android's back then goes back
-	// in the app rather than out of it.
-	return (key == KeyBack || key == KeyEscape) && mods == 0 && rt.claimed(k)
+	// The keys that go back, which a shortcut or the overlay on top (a
+	// dialog, a menu) takes in the next frame: the system leaves them alone
+	// then, as Android's back then goes back in the app rather than out of it.
+	if (key == KeyBack || key == KeyEscape) && mods == 0 {
+		_, found := routeKey(rt.regs, rt.focusChain(), k)
+		return found
+	}
+	return false
 }
 
 // spaceReleased clicks the button Space held down, as Space goes up,
