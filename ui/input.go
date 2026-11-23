@@ -1200,7 +1200,8 @@ func (rt *engine) keyDownPhysical(mods Modifiers, key, physical Key, code KeyCod
 	if (key == KeyContextMenu && mods == 0 || key == KeyF10 && mods == Shift) && !rt.claimed(k) && rt.menuKey() {
 		return false
 	}
-	if s := rt.states[rt.focused]; s != nil && s.editor != nil && s.flags&(flagEditable|flagSelectable) != 0 && s.editor.wants(k) {
+	if s := rt.states[rt.focused]; s != nil && s.editor != nil && s.flags&(flagEditable|flagSelectable) != 0 && s.editor.wants(k) &&
+		!(k.mods == Cmd && k.key == KeyC && rt.copiesNothing(s)) {
 		if rt.textSelectionKey(s, k) {
 			rt.requestFrame()
 			return false
@@ -1568,6 +1569,10 @@ func (rt *engine) editEvent(ev editEvent) bool {
 		rt.commandKey(ev, nil)
 		return false
 	}
+	if ev.kind == editCommand && ev.text == "copy" && rt.copiesNothing(s) {
+		rt.commandKey(ev, nil)
+		return false
+	}
 	if s.editor.readOnly && rt.commandKey(ev, s.editor) {
 		return true
 	}
@@ -1617,10 +1622,21 @@ func (rt *engine) commandEnabled(name string) bool {
 	if s == nil || s.editor == nil || s.flags&(flagEditable|flagSelectable) == 0 {
 		return rt.commandShortcut(name)
 	}
-	if k, ok := commandKeys[name]; ok && s.editor.readOnly && !s.editor.wants(k) {
+	if k, ok := commandKeys[name]; ok && s.editor.readOnly && !s.editor.wants(k) || name == "copy" && rt.copiesNothing(s) {
 		return rt.commandShortcut(name)
 	}
 	return rt.editCommandOn(s, name)
+}
+
+// copiesNothing reports whether Copy would copy nothing from the
+// selectable text s, which nothing is selected in, as after a click that
+// leaves a caret alone: Copy and its key then go to the shortcuts of the
+// key, as they do where the focus takes no text, for a window's Cmd+C to
+// copy what was chosen otherwise, as rows of a list. A text input keeps
+// them.
+func (rt *engine) copiesNothing(s *state) bool {
+	return s.editor != nil && s.flags&flagEditable == 0 && s.flags&flagSelectable != 0 && s.flags&flagDisabled == 0 &&
+		!rt.editCommandOn(s, "copy")
 }
 
 // commandShortcut reports whether commandKey would have a shortcut take
