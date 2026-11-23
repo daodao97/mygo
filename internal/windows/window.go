@@ -739,6 +739,15 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 			procFillRect.Call(wp, uintptr(unsafe.Pointer(&r)), brush)
 		}
 		return 1, true
+	case wmStyleChanging:
+		if int32(wp) == gwlStyle && w.surface != nil && w.surface.cloaked {
+			styles := (*styleStruct)(native(lp))
+			if styles.Old&wsChild == 0 && styles.New&wsChild != 0 {
+				// DWM can refuse to uncloak a child HWND. Clear the
+				// first-frame cloak while this window is still top-level.
+				w.surface.uncloak()
+			}
+		}
 	case wmWindowPosChanging:
 		pos := (*windowPos)(native(lp))
 		if pos.Flags&swpShowWindow != 0 && w.surface != nil {

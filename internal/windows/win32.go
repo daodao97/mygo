@@ -287,6 +287,7 @@ const (
 	wmLButtonUp         = 0x0202
 	wmRButtonUp         = 0x0205
 	wmContextMenu       = 0x007B
+	wmStyleChanging     = 0x007C
 	wmHotkey            = 0x0312
 	wmDisplayChange     = 0x007E
 	wmDpiChanged        = 0x02E0
@@ -556,6 +557,8 @@ type windowPos struct {
 	X, Y, CX, CY      int32
 	Flags             uint32
 }
+
+type styleStruct struct{ Old, New uint32 }
 
 type ncCalcSizeParams struct {
 	Rgrc [3]rect
