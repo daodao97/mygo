@@ -229,16 +229,33 @@ func WriteArchive(w io.Writer, dir string, entries []string) error {
 	return gz.Close()
 }
 
+// MaxUnpackedSize is the most an update archive may unpack to: more is
+// refused, so that a small archive that inflates without end cannot fill
+// the disk.
+var MaxUnpackedSize int64 = 8 << 30
+
 // ExtractArchive unpacks an archive of WriteArchive into dir. It refuses
-// entries outside dir, links pointing out of it and anything but files,
-// directories and symbolic links.
+// entries outside dir, links pointing out of it, anything but files,
+// directories and symbolic links, and more than MaxUnpackedSize bytes.
+// It writes through an os.Root of dir, so that no entry reaches outside it
+// through a link another entry made, as a check of each link's text alone
+// would let a chain of them do.
 func ExtractArchive(r io.Reader, dir string) error {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return err
 	}
 	defer gz.Close()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 	tr := tar.NewReader(gz)
+	var written int64
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -251,22 +268,26 @@ func ExtractArchive(r io.Reader, dir string) error {
 		if !fs.ValidPath(name) || name == "." {
 			return fmt.Errorf("invalid path in update archive: %q", hdr.Name)
 		}
-		target := filepath.Join(dir, filepath.FromSlash(name))
+		target := filepath.FromSlash(name)
 		mode := fs.FileMode(hdr.Mode).Perm()
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
+			if err := root.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			if err := root.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode|0o200)
+			f, err := root.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode|0o200)
 			if err != nil {
 				return err
 			}
-			_, err = io.Copy(f, tr)
+			n, err := io.Copy(f, io.LimitReader(tr, MaxUnpackedSize-written+1))
+			written += n
+			if err == nil && written > MaxUnpackedSize {
+				err = fmt.Errorf("update archive unpacks to more than %d bytes", MaxUnpackedSize)
+			}
 			if err == nil {
 				err = f.Chmod(mode)
 			}
@@ -281,10 +302,10 @@ func ExtractArchive(r io.Reader, dir string) error {
 			if path.IsAbs(hdr.Linkname) || !fs.ValidPath(resolved) {
 				return fmt.Errorf("update archive link %q points outside the app", hdr.Name)
 			}
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			if err := root.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			if err := os.Symlink(hdr.Linkname, target); err != nil {
+			if err := root.Symlink(hdr.Linkname, target); err != nil {
 				return err
 			}
 		default:

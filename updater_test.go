@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -698,5 +699,49 @@ func TestRelaunchArguments(t *testing.T) {
 	}
 	if _, err := os.Stat(work); !os.IsNotExist(err) {
 		t.Error("the update left its work")
+	}
+}
+
+// An update's request follows redirects only to HTTPS, or over the loopback,
+// and not past ten.
+func TestUpdateCheckRedirect(t *testing.T) {
+	req := func(u string) *http.Request {
+		r, err := http.NewRequest("GET", u, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	via := []*http.Request{req("https://example.com/feed.json")}
+	if err := checkRedirect(req("https://cdn.example.com/feed.json"), via); err != nil {
+		t.Errorf("to HTTPS: %v", err)
+	}
+	if err := checkRedirect(req("http://cdn.example.com/feed.json"), via); err == nil {
+		t.Error("to plain HTTP: followed")
+	}
+	if err := checkRedirect(req("http://127.0.0.1:8080/feed.json"), via); err != nil {
+		t.Errorf("over the loopback: %v", err)
+	}
+	many := make([]*http.Request, 10)
+	for i := range many {
+		many[i] = via[0]
+	}
+	if err := checkRedirect(req("https://cdn.example.com/feed.json"), many); err == nil {
+		t.Error("an eleventh redirect: followed")
+	}
+
+	// httpGet gives up on a refused redirect at once: asked again, the
+	// server would only redirect again.
+	var asked atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked.Add(1)
+		http.Redirect(w, r, "http://updates.example.invalid/feed.json", http.StatusFound)
+	}))
+	defer srv.Close()
+	if _, err := httpGet(context.Background(), srv.URL+"/feed.json"); !errors.Is(err, errRedirect) {
+		t.Errorf("httpGet = %v", err)
+	}
+	if n := asked.Load(); n != 1 {
+		t.Errorf("asked %d times", n)
 	}
 }

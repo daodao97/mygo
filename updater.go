@@ -715,7 +715,7 @@ func httpGet(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 		switch {
 		case err != nil:
 			cancel()
-			if ctx.Err() != nil || try >= len(httpRetries) {
+			if ctx.Err() != nil || try >= len(httpRetries) || errors.Is(err, errRedirect) {
 				return nil, err
 			}
 		case resp.StatusCode == http.StatusOK:
@@ -764,8 +764,27 @@ func httpClient() *http.Client {
 func newHTTPClient() *http.Client {
 	transport := netproxy.Transport().Clone()
 	transport.ResponseHeaderTimeout = httpHeaderTimeout
-	return &http.Client{Transport: transport}
+	return &http.Client{Transport: transport, CheckRedirect: checkRedirect}
 }
+
+// checkRedirect follows a redirect of an update's request only to HTTPS,
+// as httpGet asks of the address it starts from: a feed or an archive
+// served over HTTPS that redirects to plain HTTP would otherwise be read
+// from anyone on the way. A test's server on the loopback may redirect over
+// HTTP, as it may serve over it.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("%w: stopped after 10", errRedirect)
+	}
+	if req.URL.Scheme != "https" && !(req.URL.Scheme == "http" && isLoopback(req.URL.Hostname())) {
+		return fmt.Errorf("%w to %s: updates need HTTPS", errRedirect, req.URL.Redacted())
+	}
+	return nil
+}
+
+// errRedirect is the error of a redirect checkRedirect refuses, which
+// httpGet does not try again: the server would only redirect again.
+var errRedirect = errors.New("refusing the redirect")
 
 // stalledBody cancels the request of a body that stops arriving, and says
 // so instead of the canceled request it would otherwise be read as.
