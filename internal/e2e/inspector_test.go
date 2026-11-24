@@ -21,9 +21,9 @@ func TestContentWindowInspector(t *testing.T) {
 	var width atomic.Value
 	width.Store(float32(0))
 	view := func(c *ui.Context) {
-		frames.Add(1)
 		w, _ := c.Size()
 		width.Store(w)
+		frames.Add(1) // after the width, which the first frame is waited for
 		ui.Box(c).Fill().Background(ui.RGB(30, 144, 255))
 	}
 	w := newWindow(t, mygo.WindowOptions{Title: "Inspector", Width: 600, Height: 400, Content: ui.View(view),
