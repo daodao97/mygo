@@ -2,6 +2,7 @@ package tsgen
 
 import (
 	"context"
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -294,5 +295,35 @@ func TestStructFieldConflicts(t *testing.T) {
 	// Name is ambiguous at the same depth and dropped, like encoding/json.
 	if got := strings.Join(names, ","); got != "OnlyA,Name2,own" {
 		t.Errorf("fields = %s", got)
+	}
+}
+
+type level uint8
+
+type levels struct {
+	Bytes []byte   `json:"bytes"`
+	Four  [4]byte  `json:"four"`
+	Slice []level  `json:"slice"`
+	Array [2]level `json:"array"`
+}
+
+// Bytes are base64, as encoding/json/v2 writes them, and those of a named type
+// of them arrays.
+func TestNamedBytes(t *testing.T) {
+	data, err := json.Marshal(levels{Slice: []level{1, 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(data), `{"bytes":"","four":"AAAAAA==","slice":[1,2],"array":[0,0]}`; got != want {
+		t.Fatalf("JSON %s, want %s", got, want)
+	}
+	out, err := Generate(Model{Events: []Event{{Name: "e", Type: reflect.TypeFor[levels]()}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"bytes: string;", "four: string;", "slice: Level[];", "array: Level[];"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("no %q in\n%s", want, out)
+		}
 	}
 }

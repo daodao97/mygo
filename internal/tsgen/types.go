@@ -44,8 +44,9 @@ func special(t reflect.Type) (string, bool) {
 	if implements(t, textMarshaler) || implements(t, textAppender) {
 		return "string", true
 	}
-	if (t.Kind() == reflect.Slice || t.Kind() == reflect.Array) && t.Elem().Kind() == reflect.Uint8 {
-		// Byte slices and arrays are base64 strings.
+	if (t.Kind() == reflect.Slice || t.Kind() == reflect.Array) && t.Elem() == reflect.TypeFor[byte]() {
+		// Byte slices and arrays are base64 strings, those of a named type
+		// of bytes are arrays.
 		return "string", true
 	}
 	return "", false
