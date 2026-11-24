@@ -566,6 +566,80 @@ func TestDocumentRenameMove(t *testing.T) {
 	}
 }
 
+// TestDocumentReplaceAsks has nobody asked yet about the file a document
+// would replace: one with the name of an untitled document in the folder
+// it moves to, or with the extension added to the name a dialog gave.
+func TestDocumentReplaceAsks(t *testing.T) {
+	for _, tt := range []struct {
+		name, file string
+		run        func(ds *Documents[string], dir string) error
+	}{
+		{"move untitled", "Untitled.txt", func(ds *Documents[string], dir string) error {
+			d := ds.New()
+			d.Set("mine")
+			return d.MoveTo(dir)
+		}},
+		{"save", "notes.txt", func(ds *Documents[string], dir string) error {
+			d := ds.New()
+			d.Set("mine")
+			return d.Save()
+		}},
+		{"rename", "notes.txt", func(ds *Documents[string], dir string) error {
+			path := filepath.Join(dir, "old.txt")
+			if err := os.WriteFile(path, []byte("mine"), 0o644); err != nil {
+				return err
+			}
+			d, err := ds.Open(path)
+			if err != nil {
+				return err
+			}
+			return d.Rename("")
+		}},
+	} {
+		for _, label := range []string{"Cancel", "Replace"} {
+			t.Run(tt.name+" "+label, func(t *testing.T) {
+				ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+				file := writeTemp(t, tt.file, "theirs")
+				dir := filepath.Dir(file)
+				onMain(func() {
+					fb.OnSaveDialog = func(*platform.SaveDialogOptions) string { return filepath.Join(dir, "notes") }
+				})
+				asked := answer(label)
+				err := tt.run(ds, dir)
+				want := "theirs"
+				if label == "Cancel" {
+					if !errors.Is(err, ErrCanceled) {
+						t.Errorf("canceled: %v", err)
+					}
+				} else {
+					want = "mine"
+					if err != nil {
+						t.Error(err)
+					}
+				}
+				if got := readString(t, file); got != want || len(asked.all()) != 1 {
+					t.Errorf("%s has %q, want %q; asked %q", tt.file, got, want, asked.all())
+				}
+			})
+		}
+	}
+}
+
+// TestDocumentRenameToItself gives the dialog the document's own name
+// without its extension, which replaces nothing.
+func TestDocumentRenameToItself(t *testing.T) {
+	ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+	path := writeTemp(t, "notes.txt", "x")
+	d, _ := ds.Open(path)
+	onMain(func() {
+		fb.OnSaveDialog = func(*platform.SaveDialogOptions) string { return strings.TrimSuffix(path, ".txt") }
+	})
+	asked := answer("Cancel")
+	if err := d.Rename(""); err != nil || len(asked.all()) != 0 || d.Path() != path {
+		t.Errorf("renamed to %s: %v, asked %q", d.Path(), err, asked.all())
+	}
+}
+
 // TestDocumentFollowsReplacedRename renames a file that another app
 // replaced, after the document read the new file but before its watch
 // looked again: the watch knows only the file replaced, so the document
