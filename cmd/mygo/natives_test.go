@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -258,5 +259,35 @@ func TestNativeTargets(t *testing.T) {
 		if _, _, err := githubRelease(bad); err == nil {
 			t.Errorf("githubRelease(%q) accepted it", bad)
 		}
+	}
+}
+
+// TestPackagesInDirectoryWithSpaces finds the packages of a project whose
+// path has spaces, as go list prints it.
+func TestPackagesInDirectoryWithSpaces(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs go list")
+	}
+	dir := filepath.Join(t.TempDir(), "My  Projects", "app")
+	writeFiles(t, dir, map[string]string{
+		"go.mod":            "module example.com/app\n\ngo 1.27\n",
+		"main.go":           "package main\n\nimport _ \"example.com/app/lib\"\n\nfunc main() {}\n",
+		"lib/lib.go":        "package lib\n",
+		"lib/" + pluginFile: `{"libraries": [{"name": "libx", "files": {}}]}`,
+		"mygo.json":         `{"name": "App"}`,
+	})
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib := filepath.Join(dir, "lib")
+	if list, err := c.nativePackages("linux", "amd64"); err != nil || len(list) != 1 || !sameDir(list[0].dir, lib) {
+		t.Errorf("the app's native packages: %v, %v", list, err)
+	}
+	if list, err := nativePackagesIn(dir); err != nil || len(list) != 1 || !sameDir(list[0].dir, lib) {
+		t.Errorf("the project's native packages: %v, %v", list, err)
+	}
+	if dirs := compiledDirs(c); !slices.ContainsFunc(dirs, func(d string) bool { return sameDir(d, lib) }) {
+		t.Errorf("the app's packages lack %s: %q", lib, dirs)
 	}
 }
