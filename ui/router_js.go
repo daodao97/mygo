@@ -120,7 +120,7 @@ func (h *tabHistory) popped(state js.Value, loc string) {
 		r.Go(k - r.at)
 	case k == -1:
 		e := &routeEntry{loc: loc}
-		e.pages, e.layouts = shared(r.entries[0], pathOf(loc))
+		e.pages, e.layouts = shared(r.entries[0], escapedPathOf(loc))
 		r.entries = append([]*routeEntry{e}, r.entries...)
 		r.base--
 		r.at = 0
