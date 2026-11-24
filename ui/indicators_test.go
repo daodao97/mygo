@@ -3,6 +3,7 @@ package ui
 import (
 	"hash/fnv"
 	"image/color"
+	"math"
 	"testing"
 	"time"
 
@@ -341,6 +342,59 @@ func TestRangeSlider(t *testing.T) {
 	if high != 90 {
 		t.Errorf("let go at 90%% before a frame: %v", high)
 	}
+}
+
+// Of two knobs that meet, the way the pointer drags tells which one moves,
+// as the high one covers the low one.
+func TestRangeSliderKnobsMet(t *testing.T) {
+	for _, step := range []float64{0, 10} {
+		for _, test := range []struct{ at, to, low, high float64 }{
+			{100, 60, 60, 100},
+			{0, 40, 0, 40},
+			{50, 20, 20, 50},
+			{50, 80, 50, 80},
+		} {
+			low, high := test.at, test.at
+			tt := coreNewTester(func(c *context) {
+				coreRangeSlider(c, &low, &high, 0, 100, step).Width(220).Label("Price")
+			}, 300, 100)
+			tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+			r := accessNode(t, tt.h.access, platform.RoleGroup, "Price").Bounds
+			// 10 DIPs of padding on each side, 200 of track.
+			x := func(v float64) float32 { return float32(r.X) + 10 + 200*float32(v/100) }
+			y := float32(r.Y + 10)
+			tt.Press(x(test.at), y)
+			if low != test.at || high != test.at {
+				t.Errorf("step %v, pressed at %v: %v to %v", step, test.at, low, high)
+			}
+			tt.Move(x((test.at+test.to)/2), y)
+			tt.Move(x(test.to), y)
+			tt.Release(x(test.to), y)
+			if math.Abs(low-test.low) > 1e-3 || math.Abs(high-test.high) > 1e-3 {
+				t.Errorf("step %v, dragged from %v to %v: %v to %v, want %v to %v", step, test.at, test.to, low, high, test.low, test.high)
+			}
+		}
+	}
+	// Pressed where they meet, before the pointer moves, a knob looks held.
+	low, high := 50.0, 50.0
+	tt := coreNewTester(func(c *context) {
+		coreRangeSlider(c, &low, &high, 0, 100, 0).Width(220).Label("Price")
+	}, 300, 100)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	r := accessNode(t, tt.h.access, platform.RoleGroup, "Price").Bounds
+	tt.Advance(time.Second)
+	before := sliderFrameHash(tt)
+	tt.Press(float32(r.X)+110, float32(r.Y+10))
+	tt.Advance(time.Second)
+	if sliderFrameHash(tt) == before {
+		t.Error("pressed where the knobs meet, no knob looks held")
+	}
+}
+
+func sliderFrameHash(tt *Tester) uint64 {
+	h := fnv.New64a()
+	h.Write(tt.Image().Pix)
+	return h.Sum64()
 }
 
 // A slider let go before a frame takes the value where the pointer let

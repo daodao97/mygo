@@ -216,6 +216,16 @@ func TestRTLRangeSlider(t *testing.T) {
 	if low != 21 {
 		t.Errorf("Left on the minimum set it to %v, want 21", low)
 	}
+	// Both at 100, at the left: dragged right, the minimum moves.
+	low, high = 100, 100
+	tt.Frame()
+	tt.Press(10, 10)
+	tt.Move(50, 10)
+	tt.Move(90, 10)
+	tt.Release(90, 10)
+	if low != 60 || high != 100 {
+		t.Errorf("dragged right from where the knobs meet: %v to %v, want 60 to 100", low, high)
+	}
 }
 
 // TestRTLArrows moves along rows with the arrows the way they point: tabs,
