@@ -2963,6 +2963,10 @@ func TestMenuActivation(t *testing.T) {
 	if !wait.Poll(menu.ItemByID("check").IsChecked) {
 		t.Error("checkbox not toggled by activation")
 	}
+	// Command-Y is not Shift-Command-Y's (#2257).
+	if handled, ok := pressShortcut("y", false); ok && handled {
+		t.Error("the shortcut without Shift chose the item of Shift-Command-Y")
+	}
 	if handled, ok := pressShortcut("y", true); ok {
 		if !handled {
 			t.Error("key equivalent not handled by the menu")

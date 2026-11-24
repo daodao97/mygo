@@ -7,6 +7,7 @@ import (
 	"image"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -95,7 +96,10 @@ func TestPerformKeyEquivalent(key string, shift bool) bool {
 	withPool(func() {
 		flags := uint(1 << 20)
 		if shift {
+			// The characters of a shifted press are shifted, as AppKit
+			// gives them.
 			flags |= 1 << 17
+			key = strings.ToUpper(key)
 		}
 		ev := msgKeyEvent(class("NSEvent"), sel("keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:characters:charactersIgnoringModifiers:isARepeat:keyCode:"),
 			10 /* NSEventTypeKeyDown */, NSPoint{}, flags, 0, 0, 0, nsString(key), nsString(key), false, 0)
