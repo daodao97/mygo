@@ -289,7 +289,7 @@ func (s *sources) enumValues(t reflect.Type) []string {
 					lastType, lastValues = vs.Type, vs.Values
 				}
 				ident, ok := lastType.(*ast.Ident)
-				if !ok || ident.Name != t.Name() {
+				if lastType != nil && (!ok || ident.Name != t.Name()) {
 					continue
 				}
 				for i := range vs.Names {
@@ -299,7 +299,10 @@ func (s *sources) enumValues(t reflect.Type) []string {
 					if i >= len(lastValues) {
 						return nil
 					}
-					lit, ok := evalConst(lastValues[i], int64(iota), t.Kind())
+					if lastType == nil && !converts(lastValues[i], t.Name()) {
+						continue
+					}
+					lit, ok := evalConst(lastValues[i], int64(iota), t.Name(), t.Kind())
 					if !ok {
 						return nil
 					}
@@ -314,30 +317,78 @@ func (s *sources) enumValues(t reflect.Type) []string {
 	return values
 }
 
-// evalConst evaluates simple constant expressions (literals and integer
-// arithmetic with iota) to a TypeScript literal.
-func evalConst(e ast.Expr, iota int64, kind reflect.Kind) (string, bool) {
+// converts reports whether the type of a constant expression is the named
+// one because it is converted to it, as in T("a") and T(1) << iota.
+func converts(e ast.Expr, name string) bool {
+	switch e := e.(type) {
+	case *ast.CallExpr:
+		return conversion(e, name) != nil
+	case *ast.ParenExpr:
+		return converts(e.X, name)
+	case *ast.UnaryExpr:
+		return converts(e.X, name)
+	case *ast.BinaryExpr:
+		switch e.Op {
+		case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
+			return false // a bool
+		case token.SHL, token.SHR:
+			return converts(e.X, name)
+		}
+		return converts(e.X, name) || converts(e.Y, name)
+	}
+	return false
+}
+
+// conversion returns what a call converts to the named type, or nil if it
+// is not such a conversion.
+func conversion(call *ast.CallExpr, name string) ast.Expr {
+	fun := call.Fun
+	for {
+		paren, ok := fun.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		fun = paren.X
+	}
+	if ident, ok := fun.(*ast.Ident); !ok || ident.Name != name || len(call.Args) != 1 {
+		return nil
+	}
+	return call.Args[0]
+}
+
+// evalConst evaluates simple constant expressions (literals, integer
+// arithmetic with iota and conversions to the named type) to a TypeScript
+// literal.
+func evalConst(e ast.Expr, iota int64, name string, kind reflect.Kind) (string, bool) {
 	if kind == reflect.String {
-		if lit, ok := e.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-			s, err := strconv.Unquote(lit.Value)
+		switch e := e.(type) {
+		case *ast.BasicLit:
+			if e.Kind != token.STRING {
+				return "", false
+			}
+			s, err := strconv.Unquote(e.Value)
 			if err != nil {
 				return "", false
 			}
 			return quote(s), true
+		case *ast.CallExpr:
+			if x := conversion(e, name); x != nil {
+				return evalConst(x, iota, name, kind)
+			}
 		}
 		return "", false
 	}
 	if !isNumber(kind) {
 		return "", false
 	}
-	v, ok := evalInt(e, iota)
+	v, ok := evalInt(e, iota, name)
 	if !ok {
 		return "", false
 	}
 	return strconv.FormatInt(v, 10), true
 }
 
-func evalInt(e ast.Expr, iota int64) (int64, bool) {
+func evalInt(e ast.Expr, iota int64, name string) (int64, bool) {
 	switch e := e.(type) {
 	case *ast.BasicLit:
 		if e.Kind != token.INT {
@@ -348,9 +399,14 @@ func evalInt(e ast.Expr, iota int64) (int64, bool) {
 	case *ast.Ident:
 		return iota, e.Name == "iota"
 	case *ast.ParenExpr:
-		return evalInt(e.X, iota)
+		return evalInt(e.X, iota, name)
+	case *ast.CallExpr:
+		if x := conversion(e, name); x != nil {
+			return evalInt(x, iota, name)
+		}
+		return 0, false
 	case *ast.UnaryExpr:
-		v, ok := evalInt(e.X, iota)
+		v, ok := evalInt(e.X, iota, name)
 		switch e.Op {
 		case token.SUB:
 			return -v, ok
@@ -359,8 +415,8 @@ func evalInt(e ast.Expr, iota int64) (int64, bool) {
 		}
 		return 0, false
 	case *ast.BinaryExpr:
-		x, ok1 := evalInt(e.X, iota)
-		y, ok2 := evalInt(e.Y, iota)
+		x, ok1 := evalInt(e.X, iota, name)
+		y, ok2 := evalInt(e.Y, iota, name)
 		if !ok1 || !ok2 {
 			return 0, false
 		}
