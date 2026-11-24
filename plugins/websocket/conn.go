@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -62,7 +63,7 @@ type conn struct {
 	max    int64 // the most bytes a message may have
 
 	wmu       sync.Mutex // writes
-	closeSent bool
+	closeSent atomic.Bool
 
 	// Messages the page sends are written in the order it sent them: next
 	// is the sequence number of the next one.
@@ -70,6 +71,9 @@ type conn struct {
 	cond sync.Cond
 	next int64
 	done bool
+	// The last ping without a pong yet, and whether one is being written.
+	ping    []byte
+	ponging bool
 
 	once sync.Once
 }
@@ -245,9 +249,7 @@ func (c *conn) readMessage() (op byte, data []byte, err error) {
 		}
 		switch op {
 		case opPing:
-			if err := c.writeFrame(opPong, p); err != nil && err != errClosed {
-				return 0, nil, err
-			}
+			c.pong(p)
 			continue
 		case opPong:
 			continue
@@ -286,11 +288,11 @@ func (c *conn) readMessage() (op byte, data []byte, err error) {
 func (c *conn) writeFrame(op byte, p []byte) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()
-	if c.closeSent {
+	if c.closeSent.Load() {
 		return errClosed
 	}
 	if op == opClose {
-		c.closeSent = true
+		c.closeSent.Store(true)
 	}
 	b := make([]byte, 0, 14+len(p))
 	b = append(b, 0x80|op)
@@ -322,6 +324,33 @@ func (c *conn) writeFrame(op byte, p []byte) error {
 	return err
 }
 
+// pong answers a ping without waiting for the writes before, which may last
+// until the server reads: one that writes meanwhile needs c to read. Of the
+// pings that come while it waits, the last gets the answer, as it may (RFC
+// 6455, section 5.5.3).
+func (c *conn) pong(p []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ping = p
+	if c.ponging {
+		return
+	}
+	c.ponging = true
+	go func() {
+		for {
+			c.mu.Lock()
+			p := c.ping
+			c.ping = nil
+			c.ponging = p != nil
+			c.mu.Unlock()
+			if p == nil {
+				return
+			}
+			c.writeFrame(opPong, p)
+		}
+	}()
+}
+
 // writeClose sends a close frame, unless one was sent. A code of
 // closeNoStatus sends none.
 func (c *conn) writeClose(code int, reason string) error {
@@ -334,11 +363,7 @@ func (c *conn) writeClose(code int, reason string) error {
 }
 
 // closing reports whether a close frame was sent.
-func (c *conn) closing() bool {
-	c.wmu.Lock()
-	defer c.wmu.Unlock()
-	return c.closeSent
-}
+func (c *conn) closing() bool { return c.closeSent.Load() }
 
 // parseClose returns the code and reason of a close frame's payload.
 func parseClose(p []byte) (int, string, error) {
@@ -387,12 +412,11 @@ func (c *conn) inTurn(seq int64, fn func() error) error {
 	return err
 }
 
-// close starts the closing handshake: the connection is dropped if the
-// server does not finish it in time.
+// close starts the closing handshake, or finishes it: the connection is
+// dropped if the server does not read or answer in time.
 func (c *conn) close(code int, reason string, timeout time.Duration) error {
-	err := c.writeClose(code, reason)
 	time.AfterFunc(timeout, c.terminate)
-	return err
+	return c.writeClose(code, reason)
 }
 
 // terminate drops the connection.

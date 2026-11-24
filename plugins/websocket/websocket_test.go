@@ -6,7 +6,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -214,5 +216,86 @@ func TestWebSocketCloseTimeout(t *testing.T) {
 	s.send(1, "a", 1, message{Type: "close", Code: 1000})
 	if e := next(t, events); e.Code != 1006 || e.Clean || e.Error != "" {
 		t.Errorf("close without an answer: %+v", e)
+	}
+}
+
+// stalledConn is a connection whose server, once stalled, reads no more: a
+// write lasts until the connection closes.
+type stalledConn struct {
+	net.Conn
+	stalled chan struct{} // closed to stall it
+	blocked chan struct{} // closed once a write waits
+	closed  chan struct{}
+	once    [2]sync.Once
+}
+
+func (c *stalledConn) Write(p []byte) (int, error) {
+	select {
+	case <-c.stalled:
+		c.once[0].Do(func() { close(c.blocked) })
+		<-c.closed
+		return 0, net.ErrClosed
+	default:
+		return c.Conn.Write(p)
+	}
+}
+
+func (c *stalledConn) Close() error {
+	c.once[1].Do(func() { close(c.closed) })
+	return c.Conn.Close()
+}
+
+// A message the server is yet to read holds up neither what it sends nor the
+// end of the connection.
+func TestWebSocketBlockedWrite(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		server func(c *conn)
+		want   []event
+	}{
+		{"ping", func(c *conn) {
+			c.writeFrame(opPing, []byte("a"))
+			c.writeFrame(opPing, []byte("b"))
+			c.writeFrame(opText, []byte("hi"))
+			c.writeClose(4000, "bye")
+		}, []event{{Type: "text", Text: "hi"}, {Type: "close", Code: 4000, Reason: "bye", Clean: true}}},
+		{"close", func(c *conn) { c.writeClose(4000, "bye") },
+			[]event{{Type: "close", Code: 4000, Reason: "bye", Clean: true}}},
+		{"close of an invalid code", func(c *conn) { c.writeClose(999, "") },
+			[]event{{Type: "close", Code: closeAbnormal, Error: "invalid close code 999"}}},
+		{"protocol error", func(c *conn) { c.writeFrame(opContinuation, nil) },
+			[]event{{Type: "close", Code: closeAbnormal, Error: "unexpected continuation frame"}}},
+		{"drop", func(c *conn) { c.terminate() },
+			[]event{{Type: "close", Code: closeAbnormal, Error: "EOF"}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sc := &stalledConn{stalled: make(chan struct{}), blocked: make(chan struct{}), closed: make(chan struct{})}
+			srv := testServer(t, func(r *http.Request, c *conn) {
+				<-sc.blocked
+				test.server(c)
+				<-sc.closed
+			})
+			tr := &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				nc, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+				sc.Conn = nc
+				return sc, err
+			}}
+			s := New(Options{Client: &http.Client{Transport: tr}, CloseTimeout: time.Millisecond}).Service.(*service)
+			events, _ := open(t, s, connectOptions{ID: "a", URL: "ws" + strings.TrimPrefix(srv.URL, "http")})
+			if e := next(t, events); e.Type != "open" {
+				t.Fatalf("open: %+v", e)
+			}
+			close(sc.stalled)
+			sent := make(chan error, 1)
+			go func() { sent <- s.send(1, "a", 1, message{Type: "text", Text: "unread"}) }()
+			for _, want := range test.want {
+				if e := next(t, events); !reflect.DeepEqual(e, want) {
+					t.Errorf("got %+v, want %+v", e, want)
+				}
+			}
+			if err := wait.For(t, "the message to fail", sent); err == nil {
+				t.Error("the message was sent")
+			}
+		})
 	}
 }
