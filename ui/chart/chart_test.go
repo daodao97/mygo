@@ -191,6 +191,55 @@ func TestTimeTicks(t *testing.T) {
 	}
 }
 
+// Ticks go on past the hours and the midnights clocks skip, which time.Date
+// gives as a time before them.
+func TestTimeTicksClockChanges(t *testing.T) {
+	const layout = "2006-01-02T15:04"
+	for _, tc := range []struct {
+		zone, from, to string
+		count          int
+		want           string
+	}{
+		{"America/New_York", "2026-03-07T22:00", "2026-03-08T06:00", 8, "22:00 23:00 Mar 8 01:00 03:00 04:00 05:00 06:00"},
+		{"America/New_York", "2026-03-08T01:30", "2026-03-08T05:30", 4, "03:00 04:00 05:00"},
+		{"America/New_York", "2026-11-01T00:00", "2026-11-01T04:00", 5, "Nov 01:00 01:00 02:00 03:00 04:00"},
+		{"Europe/Helsinki", "2026-03-29T04:00", "2026-03-29T16:00", 4, "06:00 09:00 12:00 15:00"},           // 3:00 is skipped
+		{"Australia/Lord_Howe", "2026-10-04T00:00", "2026-10-04T05:00", 5, "Oct 4 01:00 03:00 04:00 05:00"}, // 2:00 to 2:30 is
+		{"America/Santiago", "2026-09-03T12:00", "2026-09-08T12:00", 5, "Sep 4 Sep 5 01:00 Sep 7 Sep 8"},    // Sep 6 begins at 1:00
+		{"America/Santiago", "2026-09-05T12:00", "2026-09-06T12:00", 8, "12:00 15:00 18:00 21:00 03:00 06:00 09:00 12:00"},
+		{"Pacific/Apia", "2011-12-28T12:00", "2012-01-02T12:00", 5, "Dec 29 Dec 31 2012 Jan 2"}, // no Dec 30
+	} {
+		loc, err := time.LoadLocation(tc.zone)
+		if err != nil {
+			t.Skip(err) // a system without zones
+		}
+		from, err := time.ParseInLocation(layout, tc.from, loc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		to, err := time.ParseInLocation(layout, tc.to, loc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A step that stands still would never end Ticks.
+		iv := tickInterval(from, to, tc.count)
+		for at := iv.floor(from); !at.After(to); {
+			n := iv.next(at)
+			if !n.After(at) {
+				t.Fatalf("%s: %v is followed by %v", tc.zone, at, n)
+			}
+			at = n
+		}
+		var labels []string
+		for _, tick := range NewTime(from, to).Ticks(tc.count) {
+			labels = append(labels, tick.Label)
+		}
+		if got := strings.Join(labels, " "); got != tc.want {
+			t.Errorf("%s from %s to %s: %s, want %s", tc.zone, tc.from, tc.to, got, tc.want)
+		}
+	}
+}
+
 func TestStack(t *testing.T) {
 	seg := func(v [][][2]float64) [][]Segment {
 		out := make([][]Segment, len(v))
