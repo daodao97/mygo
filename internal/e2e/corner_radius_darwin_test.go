@@ -9,8 +9,8 @@ import (
 )
 
 // TestCornerRadius reads the corners macOS rounds windows with: a titled window's the system's, larger with
-// TitleBarHiddenInset's toolbar than without (26 and 16 on macOS 26), a frameless one's its CornerRadius, or the system's
-// without one.
+// TitleBarHiddenInset's toolbar than without (26 and 16 on macOS 26), or its CornerRadius given one, which the
+// system then draws; a frameless one's its CornerRadius, or the system's without one.
 func TestCornerRadius(t *testing.T) {
 	plain := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200, TitleBarStyle: mygo.TitleBarHidden})
 	inset := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200, TitleBarStyle: mygo.TitleBarHiddenInset})
@@ -19,6 +19,10 @@ func TestCornerRadius(t *testing.T) {
 		t.Errorf("titled: %v without a toolbar, %v with one; want both rounded, the toolbar's larger", rp, ri)
 	}
 	t.Logf("corners: %v without a toolbar, %v with one", rp, ri)
+	own := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200, TitleBarStyle: mygo.TitleBarHiddenInset, CornerRadius: 12})
+	if r := own.CornerRadius(); r != 12 {
+		t.Errorf("titled with CornerRadius 12: %v", r)
+	}
 	rounded := newWindow(t, mygo.WindowOptions{Width: 300, Height: 200, Frameless: true, CornerRadius: 12})
 	if r := rounded.CornerRadius(); r != 12 {
 		t.Errorf("frameless with CornerRadius 12: %v", r)

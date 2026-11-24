@@ -184,7 +184,9 @@ type WindowOptions struct {
 	// its content and material are cut to them, and its shadow follows
 	// them, as a launcher's or a floating panel's. The window need not be
 	// Transparent: its BackgroundColor fills its content, inside the
-	// corners. Windows 11 rounds a
+	// corners. On a titled window, macOS draws its corners at this radius
+	// in place of the system's, and still widens them near the rounded
+	// corners of a display, as it does its own. Windows 11 rounds a
 	// frameless window given one with the corners of its own windows,
 	// whatever the radius; Linux does not round it.
 	CornerRadius int
@@ -1110,8 +1112,8 @@ func (w *Window) IsFocused() bool { return get(w, platform.Window.IsFocused) }
 // CornerRadius returns the radius, in DIPs, that the window's corners are
 // rounded to on screen, for content inset from its edges to round its own
 // corners concentric with them: a card inset by d takes CornerRadius less
-// d. On macOS it is the frameless window's WindowOptions.CornerRadius, or
-// the one the system draws the window with, which depends on the system
+// d. On macOS it is the window's WindowOptions.CornerRadius, or the one
+// the system draws the window with, which depends on the system
 // and the title bar (on macOS 26, 26 with TitleBarHiddenInset's toolbar
 // and 16 without one); on Windows 11, the 8 of its rounded windows. It is 0 where the corners are square (full screen, a maximized
 // window on Windows, Linux, browsers) or the system does not tell it: a
