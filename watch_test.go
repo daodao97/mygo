@@ -1524,3 +1524,69 @@ func TestFileWatchHintsOnlyOptIn(t *testing.T) {
 		t.Fatalf("batch %+v", batch)
 	}
 }
+
+// fileWatchTestUntil collects events until it has one of each wanted, or the
+// wait gives up.
+func fileWatchTestUntil(t *testing.T, w *FileWatcher, want ...FileEvent) {
+	t.Helper()
+	seen := map[FileEvent]bool{}
+	for {
+		missing := false
+		for _, e := range want {
+			missing = missing || !seen[e]
+		}
+		if !missing {
+			return
+		}
+		seen[fileWatchTestNext(t, w)] = true
+	}
+}
+
+// A watch that polls sees what changes with the system telling it nothing,
+// deeper down too.
+func TestFileWatchPoll(t *testing.T) {
+	dir := t.TempDir()
+	w, err := WatchFiles(context.Background(), dir, FileWatchOptions{Poll: true, PollInterval: 5 * time.Millisecond, Recursive: true, Debounce: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if _, ok := w.native.(pollFileWatch); !ok {
+		t.Fatalf("the watch is %T, not polling", w.native)
+	}
+	os.WriteFile(filepath.Join(dir, "a"), []byte("a"), 0600)
+	os.MkdirAll(filepath.Join(dir, "sub"), 0700)
+	os.WriteFile(filepath.Join(dir, "sub", "b"), []byte("b"), 0600)
+	fileWatchTestUntil(t, w, FileEvent{Op: FileCreate, Path: "a"}, FileEvent{Op: FileCreate, Path: "sub/b"})
+	os.Remove(filepath.Join(dir, "a"))
+	fileWatchTestUntil(t, w, FileEvent{Op: FileRemove, Path: "a"})
+	if _, err := WatchFiles(context.Background(), dir, FileWatchOptions{PollInterval: -1}); err == nil {
+		t.Fatal("a negative poll interval was taken")
+	}
+	// A HintsOnly watch has no snapshot to compare with: polling, it would
+	// hint at everything every time.
+	if _, err := WatchFiles(context.Background(), dir, FileWatchOptions{Poll: true, HintsOnly: true}); err == nil {
+		t.Fatal("a HintsOnly watch polls")
+	}
+}
+
+// Where the system has no file watching, a watch fails, unless it is given
+// a PollInterval: then it polls.
+func TestFileWatchPollFallback(t *testing.T) {
+	fb.FileWatchError = platform.ErrUnsupported
+	defer func() { fb.FileWatchError = nil }()
+	dir := t.TempDir()
+	if _, err := WatchFiles(context.Background(), dir, FileWatchOptions{}); !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("no system watch and no poll interval: %v", err)
+	}
+	w, err := WatchFiles(context.Background(), dir, FileWatchOptions{PollInterval: 5 * time.Millisecond, Debounce: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	os.WriteFile(filepath.Join(dir, "a"), []byte("a"), 0600)
+	fileWatchTestUntil(t, w, FileEvent{Op: FileCreate, Path: "a"})
+	if _, err := WatchFiles(context.Background(), dir, FileWatchOptions{PollInterval: 5 * time.Millisecond, HintsOnly: true}); !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("a HintsOnly watch fell back to polling: %v", err)
+	}
+}

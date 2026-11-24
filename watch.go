@@ -94,6 +94,21 @@ type FileWatchOptions struct {
 	// watches as a tree; on Linux it enrolls every directory, without
 	// stat'ing what is in them.
 	HintsOnly bool
+	// PollInterval is how often a watch looks at everything again where
+	// it cannot be told: where the system has no file watching (browsers,
+	// Linux on another architecture), and with Poll. Zero, a watch fails
+	// where the system has none, with an error for which
+	// errors.Is(err, errors.ErrUnsupported) holds, as a HintsOnly watch
+	// does in any case: it keeps nothing to compare with, so it could
+	// only hint at everything every time.
+	PollInterval time.Duration
+	// Poll watches by looking at everything every PollInterval (a second
+	// when zero) instead of through the system: for a directory on a
+	// network share, whose changes made by other machines the system does
+	// not report, or a file system it does not watch. The cost is a
+	// listing and a stat of what the watch covers each time. It can't be
+	// combined with HintsOnly.
+	Poll bool
 }
 
 // ErrWatchLimit is what a watch stops with when its directory has more
@@ -129,6 +144,9 @@ type FileWatcher struct {
 	overflow chan struct{}
 	root     string
 	opts     FileWatchOptions
+	// polling says the watch looks at everything every PollInterval,
+	// the system telling it nothing (Poll, or none to tell).
+	polling bool
 }
 type fileResult struct {
 	events []FileEvent
@@ -176,6 +194,15 @@ func WatchFiles(ctx context.Context, path string, opts FileWatchOptions) (*FileW
 	if opts.MaxEntries < 0 {
 		return nil, errors.New("mygo: negative watch limit")
 	}
+	if opts.PollInterval < 0 {
+		return nil, errors.New("mygo: negative watch poll interval")
+	}
+	if opts.Poll && opts.HintsOnly {
+		return nil, errors.New("mygo: a HintsOnly watch can't poll")
+	}
+	if opts.Poll && opts.PollInterval == 0 {
+		opts.PollInterval = time.Second
+	}
 	if opts.MaxEntries == 0 {
 		opts.MaxEntries = defaultWatchMaxEntries
 	}
@@ -208,7 +235,12 @@ func WatchFiles(ctx context.Context, path string, opts FileWatchOptions) (*FileW
 	}
 	fileWatches.active[w] = true
 	fileWatches.Unlock()
-	if w.native, err = backend().NewFileWatch(w.notice); err != nil {
+	if opts.Poll {
+		w.native, w.polling = pollFileWatch{}, true
+	} else if w.native, err = backend().NewFileWatch(w.notice); errors.Is(err, platform.ErrUnsupported) && opts.PollInterval > 0 && !opts.HintsOnly {
+		w.native, w.polling, err = pollFileWatch{}, true, nil
+	}
+	if err != nil {
 		fileWatches.Lock()
 		delete(fileWatches.active, w)
 		fileWatches.Unlock()
@@ -462,6 +494,13 @@ func (w *FileWatcher) run(ready chan error) {
 	var timer *time.Timer
 	var timerC <-chan time.Time
 	var first time.Time
+	// pollC, while the watch polls, is when to look at everything again
+	var pollC <-chan time.Time
+	if w.polling {
+		poll := time.NewTicker(w.opts.PollInterval)
+		defer poll.Stop()
+		pollC = poll.C
+	}
 	defer func() {
 		if timer != nil {
 			timer.Stop()
@@ -508,6 +547,9 @@ func (w *FileWatcher) run(ready chan error) {
 		case <-w.overflow:
 			scan.lookAll()
 			schedule()
+		case <-pollC:
+			scan.lookAll()
+			schedule()
 		case <-w.spilled:
 			for _, n := range w.unspill() {
 				if err := scan.mark(n); err != nil {
@@ -542,3 +584,12 @@ func (w *FileWatcher) run(ready chan error) {
 }
 
 var errWatchRootChanged = errors.New("watched root identity changed")
+
+// pollFileWatch is the watch of a watch that polls (FileWatchOptions.Poll,
+// PollInterval): it takes every target and says nothing, the watch looking
+// at everything itself.
+type pollFileWatch struct{}
+
+func (pollFileWatch) Add(platform.FileWatchTarget) error { return nil }
+func (pollFileWatch) Remove(uint64)                      {}
+func (pollFileWatch) Close()                             {}
