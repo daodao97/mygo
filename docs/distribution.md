@@ -196,9 +196,10 @@ architecture, as in `darwin-arm64` or `windows-amd64`, for one. An app
 ships the platform directories of its target merged with the other
 resources, so the Linux x86-64 app above has `data/seed.db` and its own
 `bin/server`, and nothing of the other platforms. A path that two
-directories would both install fails the build, and so does a directory
-named the way other tools name platforms, such as `darwin-x64` or `macos`,
-which would ship to every platform. The build also notes a target without
+directories would both install fails the build (a dotfile they both
+hold with the same contents, such as a `.gitkeep`, ships once), and so
+does a directory named the way other tools name platforms, such as
+`darwin-x64` or `macos`, which would ship to every platform. The build also notes a target without
 a directory of its own when another architecture of its system has one,
 such as `linux/arm64` next to `linux-amd64`.
 
