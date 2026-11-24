@@ -168,8 +168,12 @@ func (e *node) layoutToolbar(cw float32) {
 	}
 }
 
-// appendToolbarItems appends the controls of e, or e, to list.
+// appendToolbarItems appends the controls of e, or e, to list, but those
+// that are hidden or invisible.
 func appendToolbarItems(list []toolbarItem, e *node) []toolbarItem {
+	if e.hidden || e.flags&flagInvisible != 0 {
+		return list
+	}
 	if e.flags&(flagClickable|flagMenuButton) != 0 {
 		label := e.label
 		if label == "" {
