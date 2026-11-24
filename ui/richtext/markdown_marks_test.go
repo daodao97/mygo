@@ -91,6 +91,24 @@ func TestMarkdownReadsAs(test *testing.T) {
 	}
 }
 
+// Tabs at the end of a paragraph, which Markdown drops as it drops spaces,
+// leave the marks before them in Markdown, not HTML.
+func TestMarkdownTrailingTabs(test *testing.T) {
+	for _, testCase := range []struct {
+		runs []Run
+		md   string
+	}{
+		{[]Run{{Text: "a", Attributes: Attributes{Italic: true}}, {Text: " \t"}}, "*a* \t"},
+		{[]Run{{Text: "a\t", Attributes: Attributes{Strikethrough: true}}}, "~~a~~\t"},
+		{[]Run{{Text: "b", Attributes: Attributes{Weight: 700}}, {Text: "\t\t"}}, "**b**\t\t"},
+	} {
+		text := TextOf(Paragraph{Runs: testCase.runs})
+		if md := text.Markdown(); md != testCase.md {
+			test.Errorf("%s as Markdown is %q, want %q", dump(text), md, testCase.md)
+		}
+	}
+}
+
 func TestSameMarkRunsAllocs(test *testing.T) {
 	left := readsAsRuns()
 	right := readsAsRuns()

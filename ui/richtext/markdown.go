@@ -349,7 +349,7 @@ type runMarks struct {
 }
 
 // markScanner walks the runes of runs and the marks Markdown keeps for
-// each, skipping trailing spaces outside code.
+// each, skipping trailing spaces and tabs outside code.
 type markScanner struct {
 	runs []Run
 	ri   int
@@ -358,8 +358,8 @@ type markScanner struct {
 	cur  runMarks
 }
 
-// newMarkScanner counts the bytes of runs, less the trailing spaces outside
-// code that Markdown does not keep.
+// newMarkScanner counts the bytes of runs, less the trailing spaces and
+// tabs outside code that Markdown does not keep.
 func newMarkScanner(runs []Run) markScanner {
 	rem := 0
 	for _, r := range runs {
@@ -374,7 +374,7 @@ func newMarkScanner(runs []Run) markScanner {
 			break
 		}
 		j := len(text)
-		for j > 0 && text[j-1] == ' ' {
+		for j > 0 && (text[j-1] == ' ' || text[j-1] == '\t') {
 			j--
 			rem--
 		}
