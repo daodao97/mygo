@@ -438,6 +438,10 @@ the app's URL schemes and file associations. Its last page offers to run
 the app and to create a desktop shortcut, which is checked; silent
 installs (`/S`) create none.
 
+In a folder the user chose that holds other files, as `D:\Tools`, the
+installer makes a folder for the app, `D:\Tools\My App`, since the
+uninstaller removes the app's folder with everything in it.
+
 The shortcuts, the entry in Settings > Apps and the installer's title
 show the app's `name`, or
 [`windows.displayName`](configuration.md#windows) when the executable and

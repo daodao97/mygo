@@ -6845,7 +6845,9 @@ make it work, and phones a fourth:
   `%LOCALAPPDATA%\Programs\<name>` (`windows.installDirName` names the
   folder otherwise), where the updater can write and where the installers
   of later versions install too (`InstallDirRegKey` reads the uninstall
-  entry's `InstallLocation`), a Start menu shortcut, a desktop shortcut
+  entry's `InstallLocation`), in a folder of the app's own where the
+  folder chosen holds other files (`nsisOwnFolder`), as the uninstaller
+  removes the whole folder, a Start menu shortcut, a desktop shortcut
   that the finish page's second check box (MUI's "show readme" one)
   creates, and an uninstaller registered
   under `HKCU\…\Uninstall\<identifier>`; `/S /D=<dir>` installs
