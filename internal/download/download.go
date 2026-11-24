@@ -41,8 +41,9 @@ type File struct {
 // then, and the next request succeeds.
 var Backoff = []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
 
-// maxSize bounds what a download may write.
-const maxSize = 64 << 20
+// maxSize bounds what a download may write: 2 GiB, which the files of
+// GitHub releases stay under.
+var maxSize int64 = 2 << 30
 
 // StatusError is a response other than 200 OK.
 type StatusError struct {
@@ -128,7 +129,10 @@ func get(ctx context.Context, f File, path string) error {
 	if f.Progress != nil {
 		w = io.MultiWriter(out, h, f.Progress(resp.ContentLength))
 	}
-	_, err = io.Copy(w, io.LimitReader(bodyReader{resp.Body}, maxSize))
+	n, err := io.Copy(w, io.LimitReader(bodyReader{resp.Body}, maxSize+1))
+	if err == nil && n > maxSize {
+		err = fmt.Errorf("GET %s: more than %d bytes", f.URL, maxSize)
+	}
 	if cerr := out.Close(); err == nil {
 		err = cerr
 	}
