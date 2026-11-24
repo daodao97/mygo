@@ -704,6 +704,44 @@ func TestDocumentWatchStartFollowsRename(t *testing.T) {
 	}
 }
 
+// TestDocumentReloadKeepsTyping edits a document while it reads its file
+// again, which another app changed: the edit stays, in conflict with the
+// file.
+func TestDocumentReloadKeepsTyping(t *testing.T) {
+	ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+	path := writeTemp(t, "doc.txt", "one")
+	d, _ := ds.Open(path)
+	reading, release := make(chan struct{}), make(chan struct{})
+	var first sync.Once
+	read := ds.kind.read
+	ds.kind.read = func(r io.Reader) (any, error) {
+		first.Do(func() {
+			close(reading)
+			<-release
+		})
+		return read(r)
+	}
+	if err := os.WriteFile(path, []byte("theirs, longer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	looked := make(chan struct{})
+	go func() {
+		d.checkDisk()
+		close(looked)
+	}()
+	wait.For(t, "the read", reading)
+	d.Set("mine")
+	close(release)
+	wait.For(t, "the look", looked)
+	if d.Content() != "mine" || !d.IsEdited() || !d.HasConflict() {
+		t.Fatalf("content %q, edited %v, conflict %v", d.Content(), d.IsEdited(), d.HasConflict())
+	}
+	asked := answer("Cancel")
+	if err := d.Save(); !errors.Is(err, ErrCanceled) || len(asked.all()) != 1 || readString(t, path) != "theirs, longer" {
+		t.Errorf("saved: %v, asked %q, the file has %q", err, asked.all(), readString(t, path))
+	}
+}
+
 // TestDocumentLookFollowsRename looks at a document's file after another
 // app renamed it and before the watch did, as a window focused then does:
 // the look follows the file by what the document read rather than taking

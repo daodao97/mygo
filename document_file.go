@@ -124,12 +124,26 @@ func (b *docBase) write(target string, op writeOp) (bool, error) {
 // reload reads path again and makes it the content.
 func (b *docBase) reload(path string) error {
 	b.io.Lock()
+	return b.reloadLocked(path, nil)
+}
+
+// reloadLocked is reload with io held, which it releases. With at, the
+// content is the user's when it changed since that change: the document
+// is in conflict instead.
+func (b *docBase) reloadLocked(path string, at *uint64) error {
 	v, stamp, err := b.kind.readFile(path)
 	if err != nil {
 		b.io.Unlock()
 		return err
 	}
 	b.mu.Lock()
+	if at != nil && b.changes != *at {
+		b.conflict, b.deleted = true, false
+		b.mu.Unlock()
+		b.io.Unlock()
+		b.notify()
+		return nil
+	}
 	b.ops.replace(v)
 	b.stamp = stamp
 	b.conflict, b.deleted = false, false

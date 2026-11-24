@@ -170,6 +170,7 @@ func (b *docBase) checkDisk() {
 	b.io.Lock()
 	b.mu.Lock()
 	path, known, edited, closed := b.path, b.stamp, b.edited, b.closed
+	at := b.changes
 	wasDeleted, conflict := b.deleted, b.conflict
 	b.mu.Unlock()
 	if path == "" || closed {
@@ -217,8 +218,8 @@ func (b *docBase) checkDisk() {
 			b.notify()
 		}
 	case !edited:
-		b.io.Unlock()
-		_ = b.reload(path)
+		// An edit since edited was read is kept.
+		_ = b.reloadLocked(path, &at)
 	default:
 		b.mu.Lock()
 		changed := !b.conflict || b.deleted
