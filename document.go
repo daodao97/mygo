@@ -425,7 +425,9 @@ type docBase struct {
 	// changes counts the changes of the content; savedAt is the change
 	// the file has, backedUp the one the recovery copy has (0: none).
 	changes, savedAt, backedUp uint64
-	edited                     bool
+	// backedUpPath is the file the recovery copy is of.
+	backedUpPath string
+	edited       bool
 	// stamp is the file as the document last read or wrote it.
 	stamp                       fileStamp
 	readOnly, conflict, deleted bool

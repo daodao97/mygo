@@ -236,7 +236,7 @@ func (b *docBase) backup() bool {
 	b.io.Lock()
 	defer b.io.Unlock()
 	b.mu.Lock()
-	if !b.edited || snap.at == b.backedUp {
+	if !b.edited || snap.at == b.backedUp && b.path == b.backedUpPath {
 		b.mu.Unlock()
 		return true
 	}
@@ -250,13 +250,24 @@ func (b *docBase) backup() bool {
 		return false
 	}
 	b.mu.Lock()
-	b.backedUp = snap.at
+	b.backedUp, b.backedUpPath = snap.at, e.Path
 	b.dirtySince = time.Time{}
 	if b.changes != snap.at {
 		b.dirtySince = time.Now() // edited while it was written
 	}
 	b.mu.Unlock()
 	return true
+}
+
+// backupMoved tells the recovery copy of b, if there is one, that b's file
+// moved: restored from it, the document is the file where it is now.
+func (b *docBase) backupMoved() {
+	b.mu.Lock()
+	backedUp := b.backedUp != 0
+	b.mu.Unlock()
+	if backedUp {
+		b.backup()
+	}
 }
 
 // restore opens the documents of the sessions no instance holds, edited,

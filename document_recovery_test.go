@@ -158,3 +158,65 @@ func TestDocumentRecoveryRemovesSessionsWithoutEntries(t *testing.T) {
 		})
 	}
 }
+
+// TestDocumentRecoveryFollowsRename moves the file of a document with a
+// recovery copy: the copy is of the file where it is now, whether the app
+// crashes or quits then.
+func TestDocumentRecoveryFollowsRename(t *testing.T) {
+	for name, move := range map[string]func(d *Document[string], path string) error{
+		"renamed": func(d *Document[string], path string) error { return d.Rename(filepath.Base(path)) },
+		"by another app": func(d *Document[string], path string) error {
+			if err := os.Rename(d.Path(), path); err != nil {
+				return err
+			}
+			d.checkDisk()
+			return nil
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ds := recoveryDocs(t)
+			old := writeTemp(t, "old.txt", "one")
+			path := filepath.Join(filepath.Dir(old), "new.txt")
+			d, err := ds.Open(old)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.Set("unsaved")
+			if !d.backup() {
+				t.Fatal("no recovery copy")
+			}
+			if err := move(d, path); err != nil {
+				t.Fatal(err)
+			}
+			waitFor(t, "the recovery copy to follow", func() bool {
+				r := ds.kind.recovery
+				r.mu.Lock()
+				defer r.mu.Unlock()
+				return r.entries[d.id].Path == path
+			})
+
+			// The next launch, once this session's lock is gone.
+			onMain(d.Window().destroy)
+			docWork.Wait()
+			ds.kind.recovery.close()
+			ds.kind.restore()
+			list := ds.Documents()
+			if len(list) != 1 {
+				t.Fatalf("restored %d documents", len(list))
+			}
+			r := list[0]
+			if r.Path() != path || r.Content() != "unsaved" || r.State().Deleted || r.HasConflict() {
+				t.Errorf("restored %s with %q: %+v", r.Path(), r.Content(), r.State())
+			}
+			if err := r.Save(); err != nil {
+				t.Error(err)
+			}
+			if got := readString(t, path); got != "unsaved" {
+				t.Errorf("new.txt has %q", got)
+			}
+			if _, err := os.Stat(old); !os.IsNotExist(err) {
+				t.Errorf("old.txt is back: %v", err)
+			}
+		})
+	}
+}

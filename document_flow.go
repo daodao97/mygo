@@ -583,6 +583,7 @@ func (b *docBase) relocate(target string) error {
 	b.readOnly = !fileWritable(target)
 	b.mu.Unlock()
 	b.io.Unlock()
+	b.backupMoved()
 	addRecent(target)
 	b.watch()
 	b.notify()
