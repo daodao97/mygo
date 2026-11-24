@@ -573,17 +573,23 @@ func (m *cache) fetch(url string) (fetched, error) {
 	return r, nil
 }
 
-func noStore(res *http.Response) bool {
-	return strings.Contains(strings.ToLower(res.Header.Get("Cache-Control")), "no-store")
+// cacheControl returns the directives of every Cache-Control line.
+func cacheControl(res *http.Response) string {
+	return strings.ToLower(strings.Join(res.Header.Values("Cache-Control"), ","))
 }
 
-// metadataOf reads Cache-Control's max-age and no-cache, then Expires.
+func noStore(res *http.Response) bool {
+	return strings.Contains(cacheControl(res), "no-store")
+}
+
+// metadataOf reads Cache-Control's max-age and no-cache, then Expires, which
+// is past when it's no date, as "0".
 func (m *cache) metadataOf(res *http.Response) metadata {
 	meta := metadata{ETag: res.Header.Get("ETag"), LastModified: res.Header.Get("Last-Modified")}
 	now := m.now()
 	fresh := defaultFresh
 	found := false
-	for part := range strings.SplitSeq(strings.ToLower(res.Header.Get("Cache-Control")), ",") {
+	for part := range strings.SplitSeq(cacheControl(res), ",") {
 		part = strings.TrimSpace(part)
 		if part == "no-cache" {
 			fresh, found = 0, true
@@ -595,8 +601,9 @@ func (m *cache) metadataOf(res *http.Response) metadata {
 			}
 		}
 	}
-	if !found {
-		if t, err := http.ParseTime(res.Header.Get("Expires")); err == nil {
+	if v := res.Header.Get("Expires"); !found && v != "" {
+		fresh = 0
+		if t, err := http.ParseTime(v); err == nil {
 			fresh = t.Sub(now)
 		}
 	}

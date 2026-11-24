@@ -122,6 +122,51 @@ func TestRevalidates(t *testing.T) {
 	}
 }
 
+// What the server says of caching holds on any of its Cache-Control lines,
+// and an Expires that is no date is past.
+func TestCacheHeaders(t *testing.T) {
+	data := picture(t, 8, 8)
+	for _, c := range []struct {
+		name   string
+		header http.Header
+		hits   int32 // after a restart an hour later
+		stored bool
+	}{
+		{"no-store second", http.Header{"Cache-Control": {"private", "no-store"}}, 2, false},
+		{"max-age second", http.Header{"Cache-Control": {"public", "max-age=60"}}, 2, true},
+		{"no-cache second", http.Header{"Cache-Control": {"max-age=86400", "no-cache"}}, 2, true},
+		{"max-age over Expires", http.Header{"Cache-Control": {"max-age=86400"}, "Expires": {"0"}}, 1, true},
+		{"Expires 0", http.Header{"Expires": {"0"}}, 2, true},
+		{"nothing", http.Header{}, 1, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var hits atomic.Int32
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				for k, v := range c.header {
+					w.Header()[k] = v
+				}
+				w.Write(data)
+			}))
+			defer s.Close()
+			m, clock := testCache(t)
+			get(t, m, s.URL, 100)
+			idle(t, m)
+			body, _ := m.paths(s.URL)
+			if _, err := os.Stat(body); (err == nil) != c.stored {
+				t.Errorf("stored: %v, want %v", err == nil, c.stored)
+			}
+			next, c2 := testCache(t)
+			next.dir = m.dir
+			*c2 = clock.Add(time.Hour)
+			get(t, next, s.URL, 100)
+			if hits.Load() != c.hits {
+				t.Errorf("%d requests, want %d", hits.Load(), c.hits)
+			}
+		})
+	}
+}
+
 // Offline, what it has shows, however old.
 func TestOffline(t *testing.T) {
 	data := picture(t, 8, 8)
