@@ -761,6 +761,44 @@ func TestDocumentMenus(t *testing.T) {
 	}
 }
 
+// TestDocumentRenameKeepsConflict renames and moves a document whose file
+// another app changed, whether the document knows yet or not: saving it
+// asks as before.
+func TestDocumentRenameKeepsConflict(t *testing.T) {
+	for _, seen := range []bool{true, false} {
+		for name, move := range map[string]func(d *Document[string]) error{
+			"rename": func(d *Document[string]) error { return d.Rename("new.txt") },
+			"move":   func(d *Document[string]) error { return d.MoveTo(t.TempDir()) },
+		} {
+			t.Run(fmt.Sprintf("%s seen=%v", name, seen), func(t *testing.T) {
+				ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+				path := writeTemp(t, "old.txt", "one")
+				d, _ := ds.Open(path)
+				d.Set("mine")
+				if err := os.WriteFile(path, []byte("theirs, longer"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if seen {
+					d.checkDisk()
+					if !d.HasConflict() {
+						t.Fatal("no conflict")
+					}
+				}
+				if err := move(d); err != nil {
+					t.Fatal(err)
+				}
+				asked := answer("Cancel")
+				if err := d.Save(); !errors.Is(err, ErrCanceled) || len(asked.all()) != 1 {
+					t.Errorf("saved: %v, asked %q", err, asked.all())
+				}
+				if got := readString(t, d.Path()); got != "theirs, longer" {
+					t.Errorf("the other app's change was overwritten with %q", got)
+				}
+			})
+		}
+	}
+}
+
 var serviceRuns int
 
 func TestDocumentService(t *testing.T) {

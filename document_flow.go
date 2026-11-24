@@ -558,6 +558,7 @@ func (b *docBase) moveTo(dir string) error {
 func (b *docBase) relocate(target string) error {
 	b.io.Lock()
 	path := b.Path()
+	before, _, _ := statStamp(path)
 	err := os.Rename(path, target)
 	if errors.Is(err, syscall.EXDEV) {
 		err = copyFile(path, target)
@@ -571,7 +572,14 @@ func (b *docBase) relocate(target string) error {
 	}
 	stamp, _, _ := statStamp(target)
 	b.mu.Lock()
-	b.path, b.stamp = target, stamp
+	// The file moved as it was: what another app changed in it since the
+	// document read it is still not what the document knows.
+	if before.same(b.stamp) {
+		b.stamp = stamp
+	} else {
+		b.stamp.file = stamp.file
+	}
+	b.path = target
 	b.readOnly = !fileWritable(target)
 	b.mu.Unlock()
 	b.io.Unlock()
