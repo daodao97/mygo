@@ -123,6 +123,9 @@ func coreColorPicker(c *context, color *Color) *node {
 		sq := coreBox(c).Height(t.Space(40)).Radius(t.Radius).Focusable().FocusRing(false).Role(RoleSlider).Label(c.texts().Saturation())
 		sq.flags |= flagDraggable | flagHover | flagOwnRing
 		sq.Cursor(CursorCrosshair)
+		// Not mirrored right to left, as it draws: assistive technology's
+		// increment presses Right, which adds the saturation it reads.
+		sq.Direction(LeftToRight)
 		sq.afterInput(func() {
 			if s := sq.st; s.pressedPrimary() && s.w > 0 && s.h > 0 {
 				px, py := s.local(s.pointer(c.rt))
