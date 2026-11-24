@@ -54,7 +54,7 @@ c.CloseToast(id)
 | `Title`, `Description` | what it says, which screen readers read out as it shows |
 | `Type` | what kind of toast it is, as `"error"`, for the look to tell |
 | `Timeout` | how long it shows: 4 seconds when zero, until closed when negative |
-| `Action`, `OnAction` | a button that runs `OnAction` and closes the toast |
+| `Action`, `OnAction` | a button that runs `OnAction` and closes the toast, unless `OnAction` added one with its ID |
 | `OnClose` | runs as it closes: its time over, or the user, its action or `CloseToast` closed it |
 | `Data` | what else the look needs |
 

@@ -9143,8 +9143,8 @@ func (_handle TabsParts) Tab(i int) Element {
 }
 
 // ActionButton creates a button without a look, as ButtonBase does, that
-// runs the toast's OnAction and closes it. Give it children, as the
-// toast's Action.
+// runs the toast's OnAction and closes it, unless OnAction added a toast
+// with its ID. Give it children, as the toast's Action.
 func (_handle ToastParts) ActionButton() Element {
 	_parts := _handle.resolve()
 	if _parts == nil {
