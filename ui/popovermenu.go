@@ -967,11 +967,12 @@ func (m *menuParts) keys(level int, panel *node, choices []*node, groups, stops 
 	if st := panel.st; st.typing && st.typed != "" && n > 0 {
 		// From the item after the one highlighted, round to it: the same
 		// letter again goes to the next item starting with it.
-		start := at
-		if len([]rune(st.typed)) > 1 && at >= 0 {
+		typed, start := strings.ToLower(st.typed), at
+		if strings.Count(typed, typed[:1]) == len(typed) {
+			typed = typed[:1]
+		} else if at >= 0 {
 			start = at - 1
 		}
-		typed := strings.ToLower(st.typed)
 		for k := 1; k <= n; k++ {
 			if strings.HasPrefix(strings.ToLower(menuItemName(choices[(start+k+n)%n])), typed) {
 				move((start + k + n) % n)
