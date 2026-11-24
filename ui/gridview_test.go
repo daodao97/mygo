@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/internal/platform"
 )
@@ -203,5 +205,50 @@ func TestGridViewResizes(t *testing.T) {
 	tt.Key(0, KeyDown)
 	if sel != 19 {
 		t.Errorf("Down from 13 in 6 columns chose %d", sel)
+	}
+}
+
+func TestGridViewTypeToChoose(t *testing.T) {
+	names := []string{"Apple", "Banana", "Cherry", "Chestnut", "Avocado", "Citrus"}
+	sel := -1
+	s := GridState{Selected: &sel, Label: func(i int) string { return names[i] }}
+	tt := coreNewTester(func(c *context) {
+		coreGridView(c, &s, len(names), 100, 60, func(i int) { coreText(c, names[i]) }).Grow(1).AutoFocus()
+	}, 448, 400)
+	tt.Key(0, KeyA)
+	if sel != 0 {
+		t.Fatalf("A with no item chosen went to %d", sel)
+	}
+	pause := func() {
+		for _, st := range tt.rt.states {
+			st.typedAt = time.Time{}
+		}
+	}
+	pause()
+	// The same letter again goes to the next item starting with it.
+	var went []int
+	for range 4 {
+		tt.Key(0, KeyC)
+		went = append(went, sel)
+	}
+	if !slices.Equal(went, []int{2, 3, 5, 2}) {
+		t.Fatalf("c, c, c, c went to %v", went)
+	}
+	// Letters typed quickly add up.
+	pause()
+	went = went[:0]
+	for _, k := range []Key{KeyC, KeyH, KeyE, KeyR} {
+		tt.Key(0, k)
+		went = append(went, sel)
+	}
+	if !slices.Equal(went, []int{3, 3, 3, 2}) {
+		t.Fatalf("c, h, e, r went to %v", went)
+	}
+	// The app took items out from under the choice: from the first again.
+	pause()
+	sel = 10
+	tt.Key(0, KeyA)
+	if sel != 0 {
+		t.Fatalf("A with item 10 of 6 chosen went to %d", sel)
 	}
 }

@@ -417,9 +417,22 @@ func (s *GridState) keys(grid *node, n int) {
 		grid.st.markSubmitted()
 	}
 	if st := grid.st; st.typing && st.typed != "" && s.Label != nil {
-		for k := 1; k <= n; k++ {
-			j := (max(at, 0) + k - b2i(len([]rune(st.typed)) > 1) + n) % n
-			if strings.HasPrefix(strings.ToLower(s.Label(j)), strings.ToLower(st.typed)) {
+		// From the item chosen, as a list's rows, or the first when none
+		// is: the same letter again goes on to the next item starting
+		// with it.
+		typed, from := strings.ToLower(st.typed), 0
+		if in {
+			from = at
+		}
+		if r := []rune(typed); strings.Count(typed, string(r[0])) == len(r) {
+			typed = string(r[0])
+			if in {
+				from = at + 1
+			}
+		}
+		for k := range n {
+			j := (from + k) % n
+			if strings.HasPrefix(strings.ToLower(s.Label(j)), typed) {
 				to = j
 				break
 			}
