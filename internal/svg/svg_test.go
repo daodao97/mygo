@@ -423,6 +423,26 @@ func TestOldEditors(t *testing.T) {
 	}
 }
 
+// A switch draws what follows a foreignObject, as draw.io's labels have it.
+func TestSwitchForeignObject(t *testing.T) {
+	img := draw(t, `<svg viewBox="0 0 10 10"><switch>
+	<foreignObject width="100%" height="100%" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"><div xmlns="http://www.w3.org/1999/xhtml">a</div></foreignObject>
+	<rect width="10" height="10" fill="#00f"/>
+	<rect width="10" height="10" fill="#f00"/>
+</switch></svg>`, 10, 10)
+	if c := at(img, 5, 5); c != (color.RGBA{0, 0, 255, 255}) {
+		t.Errorf("drawn %v", c)
+	}
+	// One that is not displayed is what the switch picks.
+	img = draw(t, `<svg viewBox="0 0 10 10"><switch>
+	<rect width="10" height="10" display="none"/>
+	<rect width="10" height="10" fill="#00f"/>
+</switch></svg>`, 10, 10)
+	if c := at(img, 5, 5); c != (color.RGBA{}) {
+		t.Errorf("drawn %v", c)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	for _, src := range []string{``, `<html/>`, `<svg><rect`, `not xml`} {
 		if _, err := Parse([]byte(src)); err == nil {

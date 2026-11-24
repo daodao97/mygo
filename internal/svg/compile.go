@@ -271,9 +271,10 @@ func (c *compiler) elem(e *elem, parent *style) *node {
 		c.group(n, e, &st)
 	case "switch":
 		// The first child whose conditions hold, of which only
-		// requiredExtensions fails: MyGo supports no extension.
+		// requiredExtensions fails: MyGo supports no extension. It draws no
+		// foreignObject either, and what follows one is for those that don't.
 		for _, k := range e.kids {
-			if k.attrs["requiredExtensions"] != "" || k.name == "title" || k.name == "desc" || k.name == "metadata" {
+			if k.attrs["requiredExtensions"] != "" || k.name == "foreignObject" || k.name == "title" || k.name == "desc" || k.name == "metadata" {
 				continue
 			}
 			if kn := c.elem(k, &st); kn != nil {
