@@ -93,9 +93,10 @@ func TestClipboardChangesCanReadAndWriteWithoutReentry(t *testing.T) {
 			loop.drain() // a nested native modal loop must not reenter fn
 		}
 	})
-	Clipboard.WriteText("first")
-	drainClipboardChanges()
+	// In one call: the callback's nested loop runs what is posted meanwhile.
 	onMain(func() {
+		Clipboard.WriteText("first")
+		loop.drain()
 		if calls != 2 {
 			t.Errorf("want two settled changes, got %d", calls)
 		}
