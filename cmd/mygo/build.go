@@ -20,6 +20,7 @@ type buildOptions struct {
 	skipDMG       bool
 	skipNotarize  bool
 	skipInstaller bool              // no Windows installer, nor NSIS for it
+	maxSize       int64             // the most bytes a compiled program may have (-max-size), 0 for no limit
 	pkg           string            // directory of the main package
 	work          string            // for generated files
 	overlay       map[string]string // go build -overlay entries (the frontend)
@@ -71,6 +72,8 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 	sign := flags.String("sign", "", `macOS signing identity (default: macos.signingIdentity, or "-" for ad hoc)`)
 	out := flags.String("o", "", "output directory (default: out from mygo.json or dist)")
 	upload := flags.Bool("upload", false, "upload the installers and updates to the GitHub release of this version (updates.github), as a draft, or to the bucket of updates.s3")
+	version := flags.String("version", "", "the version of the build, in place of mygo.json's, as a release's tag gives it (a leading v is dropped)")
+	maxSize := flags.Float64("max-size", 0, "fail when a compiled program is larger than this many MB, as a budget of the app's size")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -85,6 +88,14 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 	if *out != "" {
 		c.Out = *out
 	}
+	if *version != "" {
+		if err := c.setVersion(*version); err != nil {
+			return err
+		}
+	}
+	if !(*maxSize >= 0 && *maxSize <= 1<<20) {
+		return fmt.Errorf("-max-size %v is not a size in MB", *maxSize)
+	}
 	// The catalogs name the languages the packages declare.
 	if _, err := c.languages(); err != nil {
 		return err
@@ -94,7 +105,7 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 			return err
 		}
 	}
-	opts := buildOptions{debug: *debug, sign: c.MacOS.SigningIdentity, skipDMG: *skipDMG, skipNotarize: *skipNotarize, skipInstaller: *skipInstaller}
+	opts := buildOptions{debug: *debug, sign: c.MacOS.SigningIdentity, skipDMG: *skipDMG, skipNotarize: *skipNotarize, skipInstaller: *skipInstaller, maxSize: int64(*maxSize * (1 << 20))}
 	if *sign != "" {
 		opts.sign = *sign
 	}
@@ -292,7 +303,10 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 			if overlay != "" {
 				flags = append(flags, "-overlay", overlay)
 			}
-			return goBuild(context.Background(), c, t, out, []string{"GOOS=" + goos, "GOARCH=" + arch}, flags...)
+			if err := goBuild(context.Background(), c, t, out, []string{"GOOS=" + goos, "GOARCH=" + arch}, flags...); err != nil {
+				return err
+			}
+			return checkSize(out, opts.maxSize)
 		}()
 		return t.end(err, "Compiled "+goos+"/"+arch)
 	}
@@ -634,6 +648,24 @@ func sysoFiles(pkg string) []string {
 // writes.
 func mygoSyso(name string) bool {
 	return strings.HasPrefix(name, "mygo_windows_") && strings.HasSuffix(name, ".syso")
+}
+
+// checkSize fails when the compiled program at path has more than max bytes
+// (-max-size); max 0 is no limit. It checks executables, Android's
+// libraries and the WebAssembly of browsers, not iOS's archive, which Xcode
+// links.
+func checkSize(path string, max int64) error {
+	if max <= 0 {
+		return nil
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if st.Size() > max {
+		return fmt.Errorf("%s is %s, over -max-size (%s)", filepath.Base(path), formatSize(st.Size()), formatSize(max))
+	}
+	return nil
 }
 
 func sizeOf(path string) string {
