@@ -1667,3 +1667,53 @@ func TestRichTextPasteIsItsOwnUndoStep(t *testing.T) {
 		}
 	}
 }
+
+// A rich format with no text in it, as the HTML some apps copy beside
+// their plain text, gives way to the next format, not to an empty paste
+// that deletes the selection.
+func TestRichTextPasteSkipsEmptyFormats(t *testing.T) {
+	for _, f := range []struct {
+		format transfer.Format
+		data   string
+	}{
+		{transfer.HTML, "<meta charset='utf-8'><!--StartFragment--><!--EndFragment-->"},
+		{transfer.HTML, "<div></div>"},
+		{RTF, `{\rtf1\ansi }`},
+		{transfer.Markdown, "\n"},
+	} {
+		doc := NewDocument(NewText("hello"))
+		tt, _ := richTester(t, doc)
+		doc.SetSelection(1, 4)
+		tt.Frame()
+		tt.SetClipboardData(transfer.New(transfer.NewItem(
+			transfer.Bytes(f.format, []byte(f.data)),
+			transfer.Bytes(transfer.Text, []byte("xyz")),
+		)))
+		tt.Key(ui.Cmd, ui.KeyV)
+		if got := doc.Text().String(); got != "hxyzo" {
+			t.Errorf("pasted %s %q: made %q, want %q from the plain text", f.format, f.data, got, "hxyzo")
+		}
+	}
+}
+
+// Up and Down after a rich paste go from the caret's column after it, as
+// after a plain one, not from a column they remembered before it.
+func TestRichTextPasteForgetsColumn(t *testing.T) {
+	for _, rich := range []bool{false, true} {
+		doc := NewDocument(NewText("aaaaaaaaaa\nbb\naaaaaaaaaa"))
+		tt, _ := richTester(t, doc)
+		doc.SetSelection(10, 10)
+		tt.Frame()
+		tt.Key(0, ui.KeyDown) // the end of "bb", remembering column 10
+		if rich {
+			tt.SetClipboardData(clipboardData(NewText("X")))
+		} else {
+			tt.SetClipboard("X")
+		}
+		tt.Key(ui.Cmd, ui.KeyV)
+		tt.Key(0, ui.KeyDown)
+		if a, _ := doc.Selection(); a != 18 {
+			t.Errorf("rich %v: Down after the paste went to %d, want 18, column 3 of the last line", rich, a)
+		}
+	}
+}
