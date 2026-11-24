@@ -434,6 +434,61 @@ func TestForgetWhileDownloading(t *testing.T) {
 	}
 }
 
+// What's let go of as it's written to disk stays off it, and out of memory.
+func TestForgetWhileWriting(t *testing.T) {
+	data := picture(t, 8, 8)
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(data) }))
+	defer s.Close()
+	m, _ := testCache(t)
+	m.disk.Lock() // the file waits for its place
+	m.request(s.URL, 100, nil)
+	wait.Until(t, "the write", func() bool {
+		tmp, _ := filepath.Glob(filepath.Join(m.dir, "tmp-*"))
+		return len(tmp) > 0
+	})
+	// As forget, which had the disk first.
+	m.dropLocked(func(key) bool { return true })
+	m.disk.Unlock()
+	idle(t, m)
+	if files, _ := os.ReadDir(m.dir); len(files) != 0 {
+		t.Errorf("%d files stay on disk", len(files))
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.entries) != 0 || m.held != 0 {
+		t.Errorf("%d entries, %d bytes", len(m.entries), m.held)
+	}
+}
+
+// A 304's answer isn't written for a picture let go of as the server was asked.
+func TestForgetWhileRevalidating(t *testing.T) {
+	data := picture(t, 8, 8)
+	arrived, finish := make(chan struct{}), make(chan struct{})
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", `"1"`)
+		if r.Header.Get("If-None-Match") == "" {
+			w.Write(data)
+			return
+		}
+		close(arrived)
+		<-finish
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	defer s.Close()
+	m, _ := testCache(t)
+	m.preload(s.URL)
+	idle(t, m)
+	m.request(s.URL, 100, nil)
+	wait.For(t, "the question", arrived)
+	m.forget(s.URL)
+	close(finish)
+	idle(t, m)
+	if files, _ := os.ReadDir(m.dir); len(files) != 0 {
+		t.Errorf("%d files stay on disk", len(files))
+	}
+}
+
 // Preloading fills the disk, not memory, and gives up on nothing however long it
 // waits for a worker.
 func TestPreload(t *testing.T) {

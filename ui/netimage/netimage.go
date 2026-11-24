@@ -182,6 +182,9 @@ type cache struct {
 	pruned  bool
 	once    sync.Once
 	now     func() time.Time
+	// disk is held while files are put where they're read, and while what's
+	// forgotten is removed: before mu, and not by what the views wait for.
+	disk sync.Mutex
 	// limit is memoryLimit, smaller in tests.
 	limit int64
 }
@@ -308,9 +311,10 @@ func (m *cache) bring(e *entry) {
 	gone := e.forgotten
 	m.mu.Unlock()
 	if err == nil && r.store != nil && !gone {
-		r.store()
+		r.store(e)
 	}
 	m.mu.Lock()
+	gone = e.forgotten // as it was written, too
 	e.loading = false
 	now := m.now()
 	switch {
@@ -421,6 +425,8 @@ func (m *cache) dropMemory() {
 
 func (m *cache) forget(url string) {
 	m.dropLocked(func(k key) bool { return k.url == url })
+	m.disk.Lock()
+	defer m.disk.Unlock()
 	if body, meta := m.paths(url); body != "" {
 		os.Remove(body)
 		os.Remove(meta)
@@ -429,6 +435,8 @@ func (m *cache) forget(url string) {
 
 func (m *cache) clear() {
 	m.dropLocked(func(key) bool { return true })
+	m.disk.Lock()
+	defer m.disk.Unlock()
 	if dir := m.directory(); dir != "" {
 		os.RemoveAll(dir)
 	}
@@ -487,7 +495,7 @@ type fetched struct {
 	// known to be a picture; fallback is the disk's copy, older, while data is
 	// new.
 	fromDisk bool
-	store    func()
+	store    func(*entry)
 	fallback []byte
 }
 
@@ -547,7 +555,9 @@ func (m *cache) fetch(url string) (fetched, error) {
 		if next.LastModified == "" {
 			next.LastModified = meta.LastModified
 		}
-		m.writeMeta(metaPath, next)
+		stale.store = func(e *entry) {
+			m.place(e, func() { m.writeMeta(metaPath, next) })
+		}
 		return stale, nil
 	case res.StatusCode != http.StatusOK:
 		if cached != nil && res.StatusCode >= 500 {
@@ -568,7 +578,7 @@ func (m *cache) fetch(url string) (fetched, error) {
 	r := fetched{data: data, fallback: cached}
 	if body != "" && !noStore(res) {
 		meta := m.metadataOf(res)
-		r.store = func() { m.store(body, metaPath, data, meta) }
+		r.store = func(e *entry) { m.store(e, body, metaPath, data, meta) }
 	}
 	return r, nil
 }
@@ -611,8 +621,21 @@ func (m *cache) metadataOf(res *http.Response) metadata {
 	return meta
 }
 
+// place runs f, which puts e's files where they're read, unless e was forgotten.
+// Forgetting removes them once f is done, if it didn't come first.
+func (m *cache) place(e *entry, f func()) {
+	m.disk.Lock()
+	defer m.disk.Unlock()
+	m.mu.Lock()
+	gone := e.forgotten
+	m.mu.Unlock()
+	if !gone {
+		f()
+	}
+}
+
 // store writes the picture, whole or not at all, as other goroutines read it.
-func (m *cache) store(body, metaPath string, data []byte, meta metadata) {
+func (m *cache) store(e *entry, body, metaPath string, data []byte, meta metadata) {
 	dir := filepath.Dir(body)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
@@ -625,14 +648,19 @@ func (m *cache) store(body, metaPath string, data []byte, meta metadata) {
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
+	placed := false
 	if err == nil {
-		err = os.Rename(tmp.Name(), body)
+		m.place(e, func() {
+			if os.Rename(tmp.Name(), body) == nil {
+				placed = true
+				m.writeMeta(metaPath, meta)
+			}
+		})
 	}
-	if err != nil {
+	if !placed {
 		os.Remove(tmp.Name())
 		return
 	}
-	m.writeMeta(metaPath, meta)
 	m.mu.Lock()
 	first := !m.pruned
 	m.pruned = true
