@@ -1051,6 +1051,8 @@ func (w *window) cleanup() {
 	if w.closed {
 		return
 	}
+	// Also while Windows destroys it with its owner.
+	w.destroying = true
 	w.closeWebViews()
 	w.closed = true
 	if w.opts.Modal && w.parent != nil && !w.parent.closed {

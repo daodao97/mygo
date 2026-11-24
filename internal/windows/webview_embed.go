@@ -589,7 +589,9 @@ func (w *window) closeWebView() {
 	w.failPending(errDestroyed)
 	h := w.host
 	s := h.surface
-	if w.focused && s != nil {
+	// The content of a window being destroyed gets no keyboard: it would
+	// activate the window again, after its owner was.
+	if w.focused && s != nil && !h.destroying {
 		procSetFocus.Call(s.hwnd)
 	}
 	if w.controller != 0 {
