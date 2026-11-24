@@ -31,10 +31,14 @@ func coreNumberInput(c *context, value *float64, lo, hi, step float64) *node {
 		*text, *shown = format(*value), *value
 	}
 	set := func(v float64) {
-		v = math.Max(lo, math.Min(hi, v))
-		if decimals >= 0 {
-			p := math.Pow(10, float64(decimals))
-			v = math.Round(v*p) / p
+		p := math.Pow(10, float64(decimals))
+		v = math.Round(math.Max(lo, math.Min(hi, v))*p) / p
+		// A bound with more decimals than step's, as 2.5 with a step of 1,
+		// rounds to inside it.
+		if v > hi {
+			v = math.Floor(hi*p) / p
+		} else if v < lo {
+			v = math.Ceil(lo*p) / p
 		}
 		if v != *value {
 			*value, *shown = v, v

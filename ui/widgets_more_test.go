@@ -477,6 +477,29 @@ func countShown(t *testing.T, tt *Tester) string {
 	return a.Value
 }
 
+// A bound with more decimals than step's keeps the value in range:
+// rounded to the step's decimals, 2.5 would be 3.
+func TestNumberInputKeepsInsideFractionalBounds(t *testing.T) {
+	v := 2.0
+	tt := numberTester(&v, -2.5, 2.5, 1)
+	tt.Click("Count")
+	tt.Key(0, KeyUp)
+	if v != 2 || countShown(t, tt) != "2" {
+		t.Errorf("Up from 2 below 2.5: %v, showing %q", v, countShown(t, tt))
+	}
+	tt.Key(Cmd, KeyA)
+	tt.Type("2.5")
+	if v != 2 {
+		t.Errorf("typed 2.5 below 2.5: %v", v)
+	}
+	v = -2
+	tt.Frame()
+	tt.Key(0, KeyDown)
+	if v != -2 || countShown(t, tt) != "-2" {
+		t.Errorf("Down from -2 above -2.5: %v, showing %q", v, countShown(t, tt))
+	}
+}
+
 // A value the app sets shows in the frame that builds it, not in the one
 // after, as when the app loads settings: in place of what was typed too.
 func TestNumberInputShowsAValueTheAppSets(t *testing.T) {
