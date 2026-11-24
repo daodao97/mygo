@@ -2,6 +2,7 @@ package fetch
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -116,6 +117,24 @@ func TestFetch(t *testing.T) {
 	deny := New(Options{Allow: func(r *http.Request) bool { return r.URL.Path != "/echo" }}).Service.(*service)
 	if _, err = run(t, deny, request{URL: srv.URL + "/echo", Method: "GET"}); err == nil || !strings.Contains(err.Error(), "does not allow") {
 		t.Errorf("Allow: %v", err)
+	}
+}
+
+func TestFetchEmptyBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		fmt.Fprintf(w, "%s %v %q %q", r.Method, r.TransferEncoding, r.Header.Get("Content-Length"), b)
+	}))
+	defer srv.Close()
+	s := New(Options{}).Service.(*service)
+	for _, method := range []string{"POST", "PUT", "PATCH"} {
+		parts, err := run(t, s, request{URL: srv.URL, Method: method, Body: []byte{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := body(parts), method+` [] "0" ""`; got != want {
+			t.Errorf("%s with an empty body: the server got %s, want %s", method, got, want)
+		}
 	}
 }
 
