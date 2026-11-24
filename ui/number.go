@@ -30,15 +30,23 @@ func coreNumberInput(c *context, value *float64, lo, hi, step float64) *node {
 		// below takes the text.
 		*text, *shown = format(*value), *value
 	}
+	// The lowest and highest values shown with step's decimals: a bound
+	// with more, as 2.5 with a step of 1, rounds to inside it. Rounding
+	// first keeps a bound on them, as 0.29 (0.29*100 is 28.999…).
+	p := math.Pow(10, float64(decimals))
+	bottom, top := math.Round(lo*p)/p, math.Round(hi*p)/p
+	if bottom < lo {
+		bottom = math.Ceil(lo*p) / p
+	}
+	if top > hi {
+		top = math.Floor(hi*p) / p
+	}
 	set := func(v float64) {
-		p := math.Pow(10, float64(decimals))
 		v = math.Round(math.Max(lo, math.Min(hi, v))*p) / p
-		// A bound with more decimals than step's, as 2.5 with a step of 1,
-		// rounds to inside it.
 		if v > hi {
-			v = math.Floor(hi*p) / p
+			v = top
 		} else if v < lo {
-			v = math.Ceil(lo*p) / p
+			v = bottom
 		}
 		if v != *value {
 			*value, *shown = v, v
@@ -74,7 +82,7 @@ func coreNumberInput(c *context, value *float64, lo, hi, step float64) *node {
 			delta float64
 		}{{"−", -step}, {"+", step}} {
 			btn := coreButton(c, b.label).Padding(t.Space(1), t.Space(2)).Label(map[bool]string{true: "Increase", false: "Decrease"}[b.delta > 0])
-			btn.Disabled(b.delta < 0 && *value <= lo || b.delta > 0 && *value >= hi)
+			btn.Disabled(b.delta < 0 && *value <= bottom || b.delta > 0 && *value >= top)
 			btn.afterInput(func() {
 				if btn.Clicked() {
 					set(*value + b.delta)
