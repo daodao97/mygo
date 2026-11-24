@@ -2,7 +2,9 @@ package richtext
 
 import (
 	"strings"
+	"unicode/utf8"
 
+	"github.com/egoist/mygo/internal/rope"
 	"github.com/egoist/mygo/ui/markdown/parser"
 )
 
@@ -15,24 +17,162 @@ import (
 // by tabs, the header's bold. Math, which the editor does not show, stays
 // as written: \[ is an escaped bracket, as everywhere but in math.
 func ParseMarkdown(s string) Text {
+	// Invalid UTF-8 becomes U+FFFD: the halves of a broken sequence,
+	// apart in the source, would meet in the text as one rune, which the
+	// runs count as two.
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "\uFFFD")
+	}
 	d := parser.New(parser.GFM | parser.ExtFootnotes)
 	d.Set(s)
 	m := mdReader{d: d}
+	m.b.buf.Grow(len(s))
 	m.blocks(0, ParagraphStyle{}, -1)
-	if len(m.paras) == 0 {
-		return Text{}
-	}
-	return TextOf(m.paras...)
+	return m.b.text()
 }
 
-// mdReader reads the blocks and inlines of a Markdown document into
-// paragraphs.
+// mdReader projects the blocks and inlines of a Markdown document
+// directly into the text buffer and run slab of a Text.
 type mdReader struct {
-	d     *parser.Document
-	paras []Paragraph
+	d *parser.Document
+	b textBuilder
 	// html counts the inline HTML tags open, by the attribute they turn
 	// on: <u>, <s>, <b> and <i> and their synonyms.
 	html [4]int
+}
+
+// textBuilder builds the paragraphs of a Text in one byte buffer and
+// fixed-size slabs of attrRuns, avoiding intermediate []Paragraph and
+// []Run copies.
+type textBuilder struct {
+	buf   strings.Builder
+	paras []richPara
+	slab  []attrRun
+	from  int // where the open paragraph's runs start in slab
+	open  bool
+	style ParagraphStyle
+	n     int        // runes of the open paragraph
+	last  Attributes // attributes of its last text, which its end takes
+	// label is a footnote's prefix, prepended to the first paragraph of
+	// its definition.
+	label string
+}
+
+// slabRuns caps a run slab's size: each paragraph's runs are a bounded
+// subslice of a slab, which is replaced rather than grown so earlier
+// paragraphs' runs are never copied.
+const slabRuns = 4096
+
+// start opens a paragraph of style st.
+func (b *textBuilder) start(st ParagraphStyle) {
+	if b.open {
+		b.end()
+	}
+	if len(b.paras) > 0 {
+		b.buf.WriteByte('\n')
+	}
+	b.open, b.style, b.n, b.last = true, st, 0, Attributes{}
+	b.from = len(b.slab)
+	if b.label != "" {
+		b.addLine(b.label, Attributes{})
+		b.label = ""
+	}
+}
+
+// end closes the open paragraph, its end taking the attributes of its
+// last run, extending.
+func (b *textBuilder) end() {
+	b.endWith(b.last.extending())
+}
+
+func (b *textBuilder) endWith(a Attributes) {
+	b.room(1)
+	b.slab = appendRunFrom(b.slab, b.from, attrRun{1, a})
+	runs := b.slab[b.from:len(b.slab):len(b.slab)]
+	b.paras = append(b.paras, richPara{id: paraIDs.Add(1), style: b.style.normalized(), n: b.n, runs: runs})
+	b.open = false
+}
+
+// add appends s with attributes a to the open paragraph: a newline in s
+// starts another paragraph of the same style, matching TextOf.
+func (b *textBuilder) add(s string, a Attributes) {
+	b.last = a
+	for {
+		line, rest, br := strings.Cut(s, "\n")
+		b.addLine(line, a)
+		if !br {
+			return
+		}
+		b.endWith(a.extending())
+		st := b.style
+		st.ID = ""
+		b.start(st)
+		b.last = a
+		s = rest
+	}
+}
+
+// addLine appends line (without newlines) with attributes a to the open
+// paragraph.
+func (b *textBuilder) addLine(s string, a Attributes) {
+	if s == "" {
+		return
+	}
+	b.buf.WriteString(s)
+	b.last = a
+	if a.Attachment == nil {
+		n := rope.CountRunes(s)
+		b.n += n
+		b.room(1)
+		b.slab = appendRunFrom(b.slab, b.from, attrRun{n, a})
+		return
+	}
+	plain := a
+	plain.Attachment = nil
+	for _, r := range s {
+		b.n++
+		b.room(1)
+		if r == ObjectReplacement {
+			b.slab = appendRunFrom(b.slab, b.from, attrRun{1, a})
+		} else {
+			b.slab = appendRunFrom(b.slab, b.from, attrRun{1, plain})
+		}
+	}
+}
+
+// room ensures space for k more runs in the current slab, moving only
+// the open paragraph's runs to a fresh slab when full.
+func (b *textBuilder) room(k int) {
+	if len(b.slab)+k <= cap(b.slab) {
+		return
+	}
+	open := b.slab[b.from:]
+	next := min(max(cap(b.slab)*2, 16), slabRuns)
+	slab := make([]attrRun, 0, max(next, 2*(len(open)+k)))
+	b.slab = append(slab, open...)
+	b.from = 0
+}
+
+// appendRunFrom is appendRun scoped to the open paragraph's runs from from.
+func appendRunFrom(runs []attrRun, from int, r attrRun) []attrRun {
+	if r.n <= 0 {
+		return runs
+	}
+	if k := len(runs) - 1; k >= from && runs[k].a == r.a && r.a.Attachment == nil {
+		runs[k].n += r.n
+		return runs
+	}
+	return append(runs, r)
+}
+
+func (b *textBuilder) text() Text {
+	if b.open {
+		b.end()
+	}
+	if len(b.paras) == 0 {
+		return Text{}
+	}
+	return Text{text: rope.Build(b.buf.String()), paras: seqBuild(b.paras)}
 }
 
 // blocks adds the children of block i in style st; depth is the level of
@@ -47,23 +187,20 @@ func (m *mdReader) block(i int, st ParagraphStyle, depth int) {
 	b := m.d.Block(i)
 	switch b.Kind {
 	case parser.Paragraph:
-		m.inlinePara(st, m.d.Inlines(i), Attributes{})
+		m.inlinePara(st, m.d.Inlines(i))
 	case parser.Heading:
 		st.Heading = b.Level
-		m.inlinePara(st, m.d.Inlines(i), Attributes{})
+		m.inlinePara(st, m.d.Inlines(i))
 	case parser.CodeBlock:
 		st.CodeBlock, st.Heading = true, 0
 		n := m.d.LineCount(i)
 		for k := range n {
 			line, _ := m.d.Line(i, k)
-			p := Paragraph{Style: st}
-			if line != "" {
-				p.Runs = []Run{{Text: line}}
-			}
-			m.paras = append(m.paras, p)
+			m.b.start(st)
+			m.b.add(line, Attributes{})
 		}
 		if n == 0 {
-			m.paras = append(m.paras, Paragraph{Style: st})
+			m.b.start(st)
 		}
 	case parser.HTMLBlock:
 		for _, p := range ParseHTML(m.d.Lines(i)).Paragraphs() {
@@ -73,7 +210,10 @@ func (m *mdReader) block(i int, st ParagraphStyle, depth int) {
 				p.Style.QuoteDepth = depth
 			}
 			p.Style.Indent += st.Indent
-			m.paras = append(m.paras, p)
+			m.b.start(p.Style)
+			for _, r := range p.Runs {
+				m.b.add(r.Text, r.Attributes)
+			}
 		}
 	case parser.Quote:
 		if st.Quote {
@@ -95,7 +235,7 @@ func (m *mdReader) block(i int, st ParagraphStyle, depth int) {
 		}
 	case parser.Table:
 		for row := range m.d.Children(i) {
-			p := Paragraph{Style: st}
+			m.b.start(st)
 			var a Attributes
 			if m.d.Block(row).Header {
 				a.Weight = 700
@@ -103,21 +243,23 @@ func (m *mdReader) block(i int, st ParagraphStyle, depth int) {
 			first := true
 			for cell := range m.d.Children(row) {
 				if !first {
-					p.Runs = addMDRun(p.Runs, Run{Text: "\t", Attributes: a})
+					m.b.add("\t", a)
 				}
 				first = false
-				for _, r := range m.runs(m.d.Inlines(cell), a) {
-					p.Runs = addMDRun(p.Runs, r)
-				}
+				m.html = [4]int{}
+				in := m.d.Inlines(cell)
+				m.inlines(in, 0, len(in), a, m.b.add)
 			}
-			m.paras = append(m.paras, p)
 		}
 	case parser.FootnoteDefinition:
-		from := len(m.paras)
+		// The label goes before the first paragraph, after the labels of
+		// the definitions it is in.
+		prev := m.b.label
+		m.b.label = prev + "[" + b.Label() + "] "
 		m.blocks(i, st, depth)
-		if from < len(m.paras) {
-			p := &m.paras[from]
-			p.Runs = append([]Run{{Text: "[" + b.Label() + "] "}}, p.Runs...)
+		if m.b.label != "" {
+			// No paragraph took it: the next one takes the outer labels.
+			m.b.label = prev
 		}
 	}
 }
@@ -137,51 +279,39 @@ func (m *mdReader) item(i int, ist ParagraphStyle, depth int) {
 			}
 			// An item starting with code or a list has an empty line of
 			// its own, as it shows.
-			m.paras = append(m.paras, Paragraph{Style: ist})
+			m.b.start(ist)
 		}
 		m.block(k, under, depth)
 	}
 	if first {
-		m.paras = append(m.paras, Paragraph{Style: ist})
+		m.b.start(ist)
 	}
 }
 
 // inlinePara adds a paragraph of inlines in style st; a hard line break
 // starts another, indented under a list item rather than an item of its
 // own.
-func (m *mdReader) inlinePara(st ParagraphStyle, in []parser.Inline, a Attributes) {
-	runs := m.runs(in, a)
-	p := Paragraph{Style: st}
-	for _, r := range runs {
+func (m *mdReader) inlinePara(st ParagraphStyle, in []parser.Inline) {
+	m.b.start(st)
+	m.html = [4]int{}
+	m.inlines(in, 0, len(in), Attributes{}, func(s string, a Attributes) {
 		for {
-			line, rest, br := strings.Cut(r.Text, "\n")
-			if line != "" {
-				p.Runs = append(p.Runs, Run{Text: line, Attributes: r.Attributes})
-			}
+			line, rest, br := strings.Cut(s, "\n")
+			m.b.addLine(line, a)
 			if !br {
-				break
+				return
 			}
-			m.paras = append(m.paras, p)
+			m.b.end()
 			if st.List != NoList {
 				st = ParagraphStyle{Indent: st.Indent + 1, Quote: st.Quote, QuoteDepth: st.QuoteDepth}
 			}
-			p = Paragraph{Style: st}
-			r.Text = rest
+			m.b.start(st)
+			s = rest
 		}
-	}
-	m.paras = append(m.paras, p)
+	})
 }
 
-// runs returns the runs of inlines, in attributes a; hard line breaks
-// are newlines.
-func (m *mdReader) runs(in []parser.Inline, a Attributes) []Run {
-	var out []Run
-	m.html = [4]int{}
-	m.inlines(&out, in, 0, len(in), a)
-	return out
-}
-
-func (m *mdReader) inlines(out *[]Run, in []parser.Inline, from, to int, a Attributes) {
+func (m *mdReader) inlines(in []parser.Inline, from, to int, a Attributes, emit func(string, Attributes)) {
 	add := func(s string, a Attributes) {
 		if m.html[0] > 0 {
 			a.Underline = true
@@ -195,7 +325,7 @@ func (m *mdReader) inlines(out *[]Run, in []parser.Inline, from, to int, a Attri
 		if m.html[3] > 0 {
 			a.Italic = true
 		}
-		*out = addMDRun(*out, Run{Text: s, Attributes: a})
+		emit(s, a)
 	}
 	for k := from; k < to; k = in[k].Next {
 		n := &in[k]
@@ -212,22 +342,22 @@ func (m *mdReader) inlines(out *[]Run, in []parser.Inline, from, to int, a Attri
 			add(n.Text, x)
 		case parser.Emphasis:
 			x.Italic = true
-			m.inlines(out, in, k+1, n.Next, x)
+			m.inlines(in, k+1, n.Next, x, emit)
 		case parser.Strong:
 			x.Weight = 700
-			m.inlines(out, in, k+1, n.Next, x)
+			m.inlines(in, k+1, n.Next, x, emit)
 		case parser.Strikethrough:
 			x.Strikethrough = true
-			m.inlines(out, in, k+1, n.Next, x)
+			m.inlines(in, k+1, n.Next, x, emit)
 		case parser.Link:
 			x.Link = safeLink(n.Dest)
-			m.inlines(out, in, k+1, n.Next, x)
+			m.inlines(in, k+1, n.Next, x, emit)
 		case parser.Image:
 			x = a.extending()
 			x.Attachment = &Attachment{Name: parser.PlainText(in[k+1 : n.Next]), URL: safeLink(n.Dest)}
-			*out = append(*out, Run{Text: string(ObjectReplacement), Attributes: x})
+			emit(string(ObjectReplacement), x)
 		case parser.HTML:
-			m.tag(n.Text, out, a)
+			m.tag(n.Text, a, emit)
 		case parser.FootnoteRef:
 			add("["+n.Text+"]", a)
 		}
@@ -237,7 +367,7 @@ func (m *mdReader) inlines(out *[]Run, in []parser.Inline, from, to int, a Attri
 // tag applies an inline HTML tag: the opening and closing tags of
 // underlines, strikethrough, bold and italic, and line breaks. Other
 // tags are left out, as a browser shows none.
-func (m *mdReader) tag(s string, out *[]Run, a Attributes) {
+func (m *mdReader) tag(s string, a Attributes, emit func(string, Attributes)) {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if !strings.HasPrefix(s, "<") || !strings.HasSuffix(s, ">") {
 		return
@@ -250,7 +380,7 @@ func (m *mdReader) tag(s string, out *[]Run, a Attributes) {
 	which := -1
 	switch name {
 	case "br":
-		*out = append(*out, Run{Text: "\n", Attributes: a})
+		emit("\n", a)
 		return
 	case "u", "ins":
 		which = 0
@@ -269,14 +399,4 @@ func (m *mdReader) tag(s string, out *[]Run, a Attributes) {
 	} else {
 		m.html[which]++
 	}
-}
-
-// addMDRun appends r to runs, joined to the last when their attributes
-// are the same.
-func addMDRun(runs []Run, r Run) []Run {
-	if n := len(runs); n > 0 && runs[n-1].Attributes == r.Attributes && r.Attributes.Attachment == nil {
-		runs[n-1].Text += r.Text
-		return runs
-	}
-	return append(runs, r)
 }
