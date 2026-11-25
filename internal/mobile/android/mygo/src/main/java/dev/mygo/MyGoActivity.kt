@@ -17,6 +17,7 @@ class MyGoActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         DevLibrary.find(this)
+        HostImpl.applyNightMode(this)
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         lastConfig = Configuration(resources.configuration)
@@ -102,7 +103,14 @@ class MyGoActivity : ComponentActivity() {
         super.onStop()
     }
 
-    override fun onConfigurationChanged(c: Configuration) {
+    /** The app chose another night mode, below Android 12. */
+    fun nightModeChanged() {
+        if (HostImpl.applyNightMode(this)) onConfigurationChanged(Configuration(resources.configuration))
+    }
+
+    override fun onConfigurationChanged(config: Configuration) {
+        // The system's change brings the system's night mode back.
+        val c = if (HostImpl.applyNightMode(this)) Configuration(resources.configuration) else config
         super.onConfigurationChanged(c)
         val old = lastConfig
         lastConfig = Configuration(c)
