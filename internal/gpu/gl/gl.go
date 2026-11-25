@@ -179,7 +179,13 @@ type Renderer struct {
 	// pipelines what the ops draw with; held tells that the framebuffer
 	// holds the last frame drawn. redrew is how much of it was drawn, for
 	// FrameInfo.
-	Partial   bool
+	Partial bool
+	// Unchanged has a frame the same as the last one drawn draw nothing,
+	// where frames otherwise draw whole: the framebuffer, an EGL window
+	// surface's on Android, keeps showing the last frame until the next
+	// swap, though its buffers keep nothing for a frame drawn in part.
+	// Drew tells whether to swap.
+	Unchanged bool
 	diff      scene.Differ
 	pipelines gpu.Pipelines
 	held      bool
@@ -711,6 +717,9 @@ func (r *Renderer) draw(s *scene.Scene) error {
 // drawFrame draws the frame s into the framebuffer bound, only where it
 // changed since the last frame drawn when it holds that one (Partial).
 func (r *Renderer) drawFrame(s *scene.Scene) error {
+	if !r.Partial && r.Unchanged {
+		return r.drawChanged(s)
+	}
 	if !r.Partial || noPartial {
 		r.redrew = redrewWhole
 		return r.drawScene(s, &r.b)
@@ -742,6 +751,27 @@ func (r *Renderer) drawFrame(s *scene.Scene) error {
 	r.pipelines.Remember()
 	return nil
 }
+
+// drawChanged draws s whole unless the framebuffer holds it already
+// (Unchanged).
+func (r *Renderer) drawChanged(s *scene.Scene) error {
+	damage, known := r.diff.Diff(s)
+	if known && r.held && len(damage) == 0 {
+		r.redrew = redrewNothing
+		return nil
+	}
+	r.redrew, r.held = redrewWhole, false
+	if err := r.drawScene(s, &r.b); err != nil {
+		return err
+	}
+	r.held = true
+	r.diff.Remember(s)
+	return nil
+}
+
+// Drew reports whether the last Render drew into the framebuffer, which
+// it leaves as it was for a frame the same as the last one (Unchanged).
+func (r *Renderer) Drew() bool { return r.redrew != redrewNothing }
 
 // batchKey returns what batch i of the frame built draws with: its
 // program and blending (gpu.Pipelines).
