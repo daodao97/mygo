@@ -120,7 +120,7 @@
 
 | 项目 | 依赖方式 | 影响 |
 |---|---|---|
-| Miya | `go.mod` 固定 fork 的伪版本（`replace github.com/egoist/mygo => github.com/daodao97/mygo <pseudo-version>`）；本地未提交的 `go.work` 用 `replace => ../mygo` | 本地开发时 fork `main` 的改动立即生效，CI 和打包用 `go.mod` 里的伪版本：fork 改动推送后要在 Miya 升级伪版本（`GOWORK=off go mod edit -replace …@<commit> && GOWORK=off go mod tidy`），用 `GOWORK=off go build ./...` 验证。改公开 API 前先编译 Miya。2026-11-24 起固定 `994816b5`（`v0.0.0-20261123235903-994816b56d55`，合并上游到 `813afb80` 之后的 `main`），Miya `767a031` 已提交（只改 `go.mod`/`go.sum`），`GOWORK=off` 下 `go build ./...`、`go vet ./...` 通过。升级时用默认的 `GOPROXY`：走 `direct` 时 `golang.zx2c4.com/wireguard/windows@v1.0.1` 从源站下载的内容与 `go.sum` 不符，Go 报 SECURITY ERROR |
+| Miya | `go.mod` 固定 fork 的伪版本（`replace github.com/egoist/mygo => github.com/daodao97/mygo <pseudo-version>`）；本地未提交的 `go.work` 用 `replace => ../mygo` | 本地开发时 fork `main` 的改动立即生效，CI 和打包用 `go.mod` 里的伪版本：fork 改动推送后要在 Miya 升级伪版本（`GOWORK=off go mod edit -replace …@<commit> && GOWORK=off go mod tidy`），用 `GOWORK=off go build ./...` 验证。改公开 API 前先编译 Miya。2026-11-25 起固定 `1b82686d`（`v0.0.0-20261125043858-1b82686d74a2`，合并上游到 `85758d80` 之后的 `main`），Miya 已提交（只改 `go.mod`/`go.sum`），`GOWORK=off` 下 `go build ./...`、`go vet ./...` 通过。升级时用默认的 `GOPROXY`：走 `direct` 时 `golang.zx2c4.com/wireguard/windows@v1.0.1` 从源站下载的内容与 `go.sum` 不符，Go 报 SECURITY ERROR |
 | myclash | `replace => ../mygo` | 同上；`build.noindex/` 下有旧的 mygo 源码备份，`go build ./...` 会报错，编译时排除 |
 | gorex、retty、gorex-workflows | 固定 fork 的伪版本（`80d5e6a3`、`d30cf320`） | 终端用的是自己的 `retty/internal/terminal` 副本，不依赖本仓库的 `plugins/terminal`；升级 mygo 时再检查 |
 
