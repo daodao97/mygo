@@ -5,6 +5,7 @@ package video
 import (
 	"errors"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,6 +46,7 @@ var (
 	msgBool                func(obj objc.ID, s objc.SEL) bool
 
 	caCurrentMediaTime          func() float64
+	cmMediaSubType              func(desc uintptr) uint32
 	cvBufferRelease             func(buf uintptr)
 	cvBufferRetain              func(buf uintptr) uintptr
 	cvBufferGetAttachment       func(buf, key, mode uintptr) uintptr
@@ -169,6 +171,7 @@ func loadAVFoundation() error {
 		cv := open("/System/Library/Frameworks/CoreVideo.framework/CoreVideo")
 		cf := open("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
 		qc := open("/System/Library/Frameworks/QuartzCore.framework/QuartzCore")
+		cm := open("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")
 		sys := open("/usr/lib/libSystem.B.dylib")
 		sym := func(lib uintptr, name string) uintptr {
 			p, err := purego.Dlsym(lib, name)
@@ -194,6 +197,7 @@ func loadAVFoundation() error {
 		purego.RegisterFunc(&msgInt, msgSend)
 		purego.RegisterFunc(&msgBool, msgSend)
 		purego.RegisterLibFunc(&caCurrentMediaTime, qc, "CACurrentMediaTime")
+		purego.RegisterLibFunc(&cmMediaSubType, cm, "CMFormatDescriptionGetMediaSubType")
 		purego.RegisterLibFunc(&cvBufferRelease, cv, "CVBufferRelease")
 		purego.RegisterLibFunc(&cvBufferRetain, cv, "CVBufferRetain")
 		purego.RegisterLibFunc(&cvBufferGetAttachment, cv, "CVBufferGetAttachment")
@@ -279,7 +283,10 @@ type avEngine struct {
 	// playing is whether the app plays it, loop whether it plays again
 	// at its end, which the watching goroutine sees.
 	playing, loop, closed bool
-	rate                  float32
+	// noDecoder is the codec of the video the system has no decoder for,
+	// as "vp09", whose sound the item plays: the video fails.
+	noDecoder string
+	rate      float32
 }
 
 func newEngine(s source) (media.Engine, error) {
@@ -370,7 +377,13 @@ func (e *avEngine) watch() {
 		ready := msgInt(e.item, sel("status")) == avStatusReadyToPlay
 		if ready && e.interval.Load() == 0 {
 			// Out of mu: State, on the main thread, never waits for it.
-			e.interval.Store(int64(e.frameInterval()))
+			interval, noDecoder := e.videoTrack()
+			e.interval.Store(int64(interval))
+			if noDecoder != "" {
+				e.mu.Lock()
+				e.noDecoder = noDecoder
+				e.mu.Unlock()
+			}
 		}
 		if ready && loading && time.Since(wokeFirst) >= 250*time.Millisecond {
 			// The output has the first picture once it has one for now,
@@ -404,6 +417,13 @@ func (e *avEngine) poll() {
 	case avStatusReadyToPlay:
 	default:
 		return // loading
+	}
+	if e.noDecoder != "" && e.state == media.Loading {
+		// Its sound plays, and no picture comes.
+		e.state = media.Failed
+		e.err = errors.New("video: the system has no decoder for the video (" + e.noDecoder + ")")
+		send(e.player, "pause")
+		return
 	}
 	if e.state == media.Loading && e.buf == 0 {
 		// Ready once its first picture shows (Frame).
@@ -523,21 +543,43 @@ func pixelBufferRGBA(s *scene.Surface, dst []byte, w, h int) []byte {
 	return planes.RGBA(dst, w, h)
 }
 
-// frameInterval is half the time a picture shows at the video's
-// nominal rate, or 1/60 s for none. It reads the asset's tracks, which
-// for an AVURLAsset loads them, over the network for a URL, until the
-// item is ready to play: only the watching goroutine calls it, once the
-// item is.
-func (e *avEngine) frameInterval() time.Duration {
+// videoTrack reads the video track: the interval, half the time a
+// picture shows at its nominal rate, or 1/60 s for none, and, when the
+// system has no decoder for it, its codec, as "vp09": the item plays the
+// sound of such a video, and gives no picture. It reads the asset's
+// tracks, which for an AVURLAsset loads them, over the network for a URL,
+// until the item is ready to play: only the watching goroutine calls it,
+// once the item is.
+func (e *avEngine) videoTrack() (interval time.Duration, noDecoder string) {
+	interval = time.Second / 60
 	tracks := send(send(e.item, "asset"), "tracksWithMediaType:", avMediaTypeVideo)
-	if tracks != 0 && msgInt(tracks, sel("count")) > 0 {
-		if fps := msgFloat32(send(tracks, "firstObject"), sel("nominalFrameRate")); fps > 1 {
-			// Asked for twice as often, so that a frame shows at the
-			// refresh after it came due, not up to one later.
-			return time.Duration(float64(time.Second) / float64(fps) / 2)
+	if tracks == 0 || msgInt(tracks, sel("count")) == 0 {
+		return interval, ""
+	}
+	track := send(tracks, "firstObject")
+	if fps := msgFloat32(track, sel("nominalFrameRate")); fps > 1 {
+		// Asked for twice as often, so that a frame shows at the
+		// refresh after it came due, not up to one later.
+		interval = time.Duration(float64(time.Second) / float64(fps) / 2)
+	}
+	if !msgBool(track, sel("isDecodable")) {
+		noDecoder = "its codec"
+		if descs := send(track, "formatDescriptions"); descs != 0 && msgInt(descs, sel("count")) > 0 {
+			noDecoder = fourCC(cmMediaSubType(uintptr(send(descs, "firstObject"))))
 		}
 	}
-	return time.Second / 60
+	return interval, noDecoder
+}
+
+// fourCC is the text of a four-character code, as "vp09".
+func fourCC(v uint32) string {
+	b := []byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}
+	for i, c := range b {
+		if c < ' ' || c > '~' {
+			b[i] = '?'
+		}
+	}
+	return strings.TrimRight(string(b), " ")
 }
 
 // Interval is 1/60 s until the watching goroutine read the video's rate,

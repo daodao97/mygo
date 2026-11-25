@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -60,6 +61,14 @@ var (
 	gstAppSinkIsEOS          func(sink uintptr) bool
 	gObjectGetProperty       func(obj uintptr, name string, v *gValue)
 	gValueDupBoxed           func(v *gValue) uintptr
+	gValueGetInt             func(v *gValue) int32
+	gstMessageGetStructure   func(msg uintptr) uintptr
+	gstStructureHasName      func(s uintptr, name string) bool
+	gstStructureGetString    func(s uintptr, field string) uintptr
+	gstStructureGetValue     func(s uintptr, field string) uintptr
+	gstStructureGetName      func(s uintptr) uintptr
+	gstValueGetCaps          func(v uintptr) uintptr
+	gstCapsGetStructure      func(caps uintptr, index uint32) uintptr
 	gstBufferGetVideoMeta    func(buf uintptr) uintptr
 	gstVideoInfoNew          func() uintptr
 	gstVideoInfoFromCaps     func(info, caps uintptr) bool
@@ -92,10 +101,12 @@ const (
 	gstMessageEOS             = 1 << 0
 	gstMessageError           = 1 << 1
 	gstMessageBuffering       = 1 << 5
+	gstMessageElement         = 1 << 15
 	gstMessageDurationChanged = 1 << 18
 	gstMessageAsyncDone       = 1 << 21
 
 	gTypeBoolean = 5 << 2
+	gTypeInt     = 6 << 2
 	gTypeDouble  = 15 << 2
 	gTypeString  = 16 << 2
 	gTypeObject  = 20 << 2
@@ -170,6 +181,14 @@ func loadGStreamer() error {
 		purego.RegisterLibFunc(&gstAppSinkIsEOS, app, "gst_app_sink_is_eos")
 		purego.RegisterLibFunc(&gObjectGetProperty, gobject, "g_object_get_property")
 		purego.RegisterLibFunc(&gValueDupBoxed, gobject, "g_value_dup_boxed")
+		purego.RegisterLibFunc(&gValueGetInt, gobject, "g_value_get_int")
+		purego.RegisterLibFunc(&gstMessageGetStructure, gst, "gst_message_get_structure")
+		purego.RegisterLibFunc(&gstStructureHasName, gst, "gst_structure_has_name")
+		purego.RegisterLibFunc(&gstStructureGetString, gst, "gst_structure_get_string")
+		purego.RegisterLibFunc(&gstStructureGetValue, gst, "gst_structure_get_value")
+		purego.RegisterLibFunc(&gstStructureGetName, gst, "gst_structure_get_name")
+		purego.RegisterLibFunc(&gstValueGetCaps, gst, "gst_value_get_caps")
+		purego.RegisterLibFunc(&gstCapsGetStructure, gst, "gst_caps_get_structure")
 		purego.RegisterLibFunc(&gstBufferGetVideoMeta, video, "gst_buffer_get_video_meta")
 		purego.RegisterLibFunc(&gstVideoInfoNew, video, "gst_video_info_new")
 		purego.RegisterLibFunc(&gstVideoInfoFromCaps, video, "gst_video_info_from_caps")
@@ -224,6 +243,10 @@ type gstEngine struct {
 	// percent is how full a stream's buffer is, below 100 while it
 	// waits for data.
 	buffering bool
+	// noDecoder is the media type of the video GStreamer has no decoder
+	// for, as "video/x-av1", which playbin leaves out, playing the
+	// sound: the video fails as it prerolls with no video.
+	noDecoder string
 	// pending are a seek, and a rate, asked for before the pipeline
 	// could take them, once it prerolled (prerolled), or while it
 	// prerolls again, after a seek (seeking) or a change of its state
@@ -465,7 +488,7 @@ func le64(b []byte) uint64 { return uint64(le32(b)) | uint64(le32(b[4:]))<<32 }
 // an error, a stream's buffering.
 func (e *gstEngine) messages() {
 	defer e.done.Done()
-	const types = gstMessageEOS | gstMessageError | gstMessageBuffering | gstMessageDurationChanged | gstMessageAsyncDone
+	const types = gstMessageEOS | gstMessageError | gstMessageBuffering | gstMessageDurationChanged | gstMessageAsyncDone | gstMessageElement
 	for {
 		select {
 		case <-e.quit:
@@ -486,11 +509,23 @@ func (e *gstEngine) handle(msg uintptr, kind uint32) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	switch kind {
+	case gstMessageElement:
+		t := missingDecoder(msg)
+		if !strings.HasPrefix(t, "video/") {
+			return // another element's message, or a missing decoder of sound, which plays without
+		}
+		e.noDecoder = t
 	case gstMessageAsyncDone:
 		// Prerolled, after loading or a seek: a seek the pipeline did
 		// not take yet goes now, the last of those asked for meanwhile.
 		first := !e.prerolled
 		e.prerolled, e.seeking, e.changing = true, false, false
+		if first && e.noDecoder != "" && e.videoStreams() == 0 {
+			// The sound plays, and no picture comes.
+			e.state, e.err = media.Failed, errors.New("video: GStreamer has no decoder for "+e.noDecoder)
+			gstElementSetState(e.pipe, gstStatePaused)
+			break
+		}
 		if e.seekSet || first && e.rate != 1 {
 			e.seekLocked(e.seekTo)
 		}
@@ -534,6 +569,42 @@ func (e *gstEngine) handle(msg uintptr, kind uint32) {
 	}
 }
 
+// missingDecoder is the media type of a missing-plugin message of a
+// decoder, as "video/x-av1", or "" for another message. Its structure
+// tells it, as its text is translated.
+func missingDecoder(msg uintptr) string {
+	s := gstMessageGetStructure(msg)
+	if s == 0 || !gstStructureHasName(s, "missing-plugin") {
+		return ""
+	}
+	if t := gstStructureGetString(s, "type"); t == 0 || goString((*byte)(cptr(t))) != "decoder" {
+		return ""
+	}
+	v := gstStructureGetValue(s, "detail")
+	if v == 0 {
+		return ""
+	}
+	caps := gstValueGetCaps(v)
+	if caps == 0 {
+		return ""
+	}
+	cs := gstCapsGetStructure(caps, 0)
+	if cs == 0 {
+		return ""
+	}
+	return goString((*byte)(cptr(gstStructureGetName(cs))))
+}
+
+// videoStreams is the video streams the playbin decodes (n-video).
+func (e *gstEngine) videoStreams() int32 {
+	var v gValue
+	gValueInit(&v, gTypeInt)
+	gObjectGetProperty(e.pipe, "n-video", &v)
+	n := gValueGetInt(&v)
+	gValueUnset(&v)
+	return n
+}
+
 // cptr is the pointer of an address of C memory, which Go's collector
 // does not move.
 func cptr(a uintptr) unsafe.Pointer { return *(*unsafe.Pointer)(unsafe.Pointer(&a)) }
@@ -554,7 +625,7 @@ func (e *gstEngine) applyState() {
 	}
 
 	state := int32(gstStatePaused)
-	if e.wantPlay && !e.buffering && e.state != media.Ended {
+	if e.wantPlay && !e.buffering && e.state != media.Ended && e.state != media.Failed {
 		state = gstStatePlaying
 	}
 	if gstElementSetState(e.pipe, state) == gstStateChangeAsync {

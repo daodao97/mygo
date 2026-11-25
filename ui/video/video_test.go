@@ -275,6 +275,51 @@ func TestSeeksBackToBack(t *testing.T) {
 	}
 }
 
+// av1.mp4 and vp9.mp4 are 0.5 s of 64×64 red in AV1 and in VP9, with
+// silent AAC, made with ffmpeg from lavfi's color and anullsrc (libsvtav1,
+// libvpx-vp9).
+var (
+	//go:embed testdata/av1.mp4
+	av1MP4 []byte
+	//go:embed testdata/vp9.mp4
+	vp9MP4 []byte
+)
+
+// TestNoDecoder checks that a video the system has no decoder for, whose
+// sound it decodes, fails rather than stay loading for good: GStreamer
+// without an AV1 decoder plays the sound of av1.mp4, and AVFoundation
+// that of vp9.mp4, with no picture. Where the system decodes one, it
+// plays.
+func TestNoDecoder(t *testing.T) {
+	for _, v := range []struct {
+		name string
+		data []byte
+	}{{"av1.mp4", av1MP4}, {"vp9.mp4", vp9MP4}} {
+		t.Run(v.name, func(t *testing.T) {
+			p, err := OpenData(v.data)
+			if errors.Is(err, ErrUnsupported) {
+				t.Skip(err)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(p.Close)
+			p.SetMuted(true)
+			tt := ui.NewTester(func(c *ui.Context) { ui.Video(c, p).Size(64, 64) }, 64, 64)
+			wait.Until(t, "a picture or an error", func() bool {
+				tt.Frame()
+				return p.Ready() || p.Err() != nil
+			})
+			if err := p.Err(); err != nil {
+				t.Log(err)
+				if p.Playing() {
+					t.Error("a video that failed plays")
+				}
+			}
+		})
+	}
+}
+
 // TestOpenNonASCIIPath checks that Open plays a file whose folder and name
 // are not ASCII, which Media Foundation could not find by its file: URL
 // (#1752).
