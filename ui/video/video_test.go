@@ -1,9 +1,12 @@
 package video
 
 import (
-	_ "embed"
+	"embed"
 	"errors"
 	"image/color"
+	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,15 +49,42 @@ func played(t *testing.T, open func() (*ui.VideoPlayer, error)) (*ui.VideoPlayer
 }
 
 // checkErr fails the test on the error that stopped p, or skips it on a
-// system that has no H.264 decoder.
+// system that has no H.264 decoder, or no demuxer of the stream's format
+// (GStreamer's HLS demuxer, of gst-plugins-bad).
 func checkErr(t *testing.T, p *ui.VideoPlayer) {
 	t.Helper()
 	if err := p.Err(); err != nil {
 		if strings.Contains(err.Error(), "missing") || strings.Contains(err.Error(), "decoder") {
-			t.Skip("no H.264 decoder:", err)
+			t.Skip("no decoder or demuxer:", err)
 		}
 		t.Fatal(err)
 	}
+}
+
+// testdata/hls is rgb.mp4 as an HLS stream, a segment of fragmented MP4
+// for each color, made with
+//
+//	ffmpeg -i rgb.mp4 -c copy -f hls -hls_time 0.4 -hls_segment_type fmp4 \
+//		-hls_playlist_type vod -hls_fmp4_init_filename rgb-init.mp4 \
+//		-hls_segment_filename 'rgb-%d.m4s' rgb.m3u8
+//
+// and its EXT-X-TARGETDURATION made 1, as the specification asks, from
+// the 0 ffmpeg writes.
+//
+//go:embed testdata/hls
+var hlsFiles embed.FS
+
+// servedStream serves testdata/hls on loopback, for the test, and returns
+// the URL of its playlist.
+func servedStream(t *testing.T) string {
+	t.Helper()
+	files, err := fs.Sub(hlsFiles, "testdata/hls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.FileServerFS(files))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/rgb.m3u8"
 }
 
 // TestWakesForFirstPicture checks that the engine wakes the window for
@@ -151,6 +181,46 @@ func TestSeek(t *testing.T) {
 	wait.Until(t, "the end", func() bool { tt.Frame(); return p.Ended() })
 	p.Play()
 	wait.Until(t, "the start, played again", func() bool { tt.Frame(); return near(shows(), red) })
+}
+
+// TestStreamEnds checks that a stream plays to its end, and again from its
+// start: AVFoundation stops one short of the duration its playlist gives,
+// at its last picture, where its time stands still with the player playing.
+func TestStreamEnds(t *testing.T) {
+	url := servedStream(t)
+	p, tt, shows := played(t, func() (*ui.VideoPlayer, error) { return OpenURL(url) })
+	for _, want := range []color.RGBA{red, green, blue} {
+		wait.Until(t, "the picture "+colorName(want), func() bool {
+			tt.Frame()
+			checkErr(t, p)
+			return near(shows(), want)
+		})
+	}
+	wait.Until(t, "the end", func() bool { tt.Frame(); checkErr(t, p); return p.Ended() })
+	if p.Playing() || !near(shows(), blue) {
+		t.Fatalf("at the end: playing %v, showing %v", p.Playing(), shows())
+	}
+	p.Play()
+	wait.Until(t, "the start, played again", func() bool { tt.Frame(); return near(shows(), red) })
+	wait.Until(t, "the end, again", func() bool { tt.Frame(); checkErr(t, p); return p.Ended() })
+}
+
+// TestStreamLoops checks that a looping stream plays again from its start
+// as it ends, and never ends.
+func TestStreamLoops(t *testing.T) {
+	url := servedStream(t)
+	p, tt, shows := played(t, func() (*ui.VideoPlayer, error) { return OpenURL(url) })
+	p.SetLoop(true)
+	for _, want := range []color.RGBA{blue, red, green} {
+		wait.Until(t, "the picture "+colorName(want), func() bool {
+			tt.Frame()
+			checkErr(t, p)
+			if p.Ended() {
+				t.Fatal("a looping stream ended")
+			}
+			return near(shows(), want)
+		})
+	}
 }
 
 // TestOpenNonASCIIPath checks that Open plays a file whose folder and name

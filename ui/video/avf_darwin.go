@@ -64,7 +64,12 @@ var (
 	// and passes.
 	cvMatrixKey, cvMatrix709, cvMatrix601, cvMatrix2020 uintptr
 	cvPixelFormatKey, cvMetalCompatibilityKey           uintptr
-	avMediaTypeVideo                                    uintptr
+	avMediaTypeVideo, avPlayedToEnd                     uintptr
+
+	// endObserver is told that an item played to its end, for every
+	// engine: items has the engine of each item.
+	endObserver objc.ID
+	items       sync.Map // objc.ID → *avEngine
 
 	// loaderClass is the class of the delegates answering for bytes in
 	// memory; loaders their sources, by the number in their URL.
@@ -210,9 +215,16 @@ func loadAVFoundation() error {
 		cvPixelFormatKey = constant(cv, "kCVPixelBufferPixelFormatTypeKey")
 		cvMetalCompatibilityKey = constant(cv, "kCVPixelBufferMetalCompatibilityKey")
 		avMediaTypeVideo = constant(av, "AVMediaTypeVideo")
+		avPlayedToEnd = constant(av, "AVPlayerItemDidPlayToEndTimeNotification")
 		if class("AVPlayer") == 0 || class("AVPlayerItemVideoOutput") == 0 {
 			panic("no AVPlayer")
 		}
+		cls, err := objc.RegisterClass("MyGoVideoEndObserver", objc.GetClass("NSObject"), nil, nil,
+			[]objc.MethodDef{{Cmd: sel("itemPlayedToEnd:"), Fn: itemPlayedToEnd}})
+		if err != nil {
+			panic(err)
+		}
+		endObserver = send(send(objc.ID(cls), "alloc"), "init")
 	})
 	return avfErr
 }
@@ -254,6 +266,11 @@ type avEngine struct {
 	// interval is Interval's, which the watching goroutine reads once
 	// the item is ready to play: 0 until it has.
 	interval atomic.Int64
+	// ends counts the times AVFoundation said the item played to its end
+	// (itemPlayedToEnd), and endsSeen, under mu, those the watching
+	// goroutine took, or a seek passed over.
+	ends     atomic.Uint64
+	endsSeen uint64
 
 	mu    sync.Mutex
 	wake  func()
@@ -297,9 +314,12 @@ func newEngine(s source) (media.Engine, error) {
 	e.output = send(send(class("AVPlayerItemVideoOutput"), "alloc"), "initWithPixelBufferAttributes:", attrs)
 	send(e.item, "addOutput:", e.output)
 	e.player = send(send(class("AVPlayer"), "alloc"), "initWithPlayerItem:", e.item)
-	// The player pauses at the end, rather than stand at the end playing,
-	// for the goroutine to see; it loops by a seek.
+	// The player does nothing at the end, for the goroutine to see the
+	// item played to it and pause it; it loops by a seek.
 	send(e.player, "setActionAtItemEnd:", avActionAtEndNone)
+	items.Store(e.item, e)
+	send(send(class("NSNotificationCenter"), "defaultCenter"), "addObserver:selector:name:object:",
+		endObserver, sel("itemPlayedToEnd:"), objc.ID(avPlayedToEnd), e.item)
 	msgSetBool(e.player, sel("setPreventsDisplaySleepDuringVideoPlayback:"), true)
 	go e.watch()
 	return e, nil
@@ -389,9 +409,13 @@ func (e *avEngine) poll() {
 		// Ready once its first picture shows (Frame).
 		return
 	}
-	cur, _ := msgCMTime(e.item, sel("currentTime")).duration()
-	dur, known := msgCMTime(e.item, sel("duration")).duration()
-	if known && cur >= dur-time.Millisecond && e.playing {
+	// The end is where AVFoundation says the item played to, not its
+	// duration: a file's time runs on past it, and a stream's stops short
+	// of it, at the end of its media, as its playlist may give more time
+	// than its segments hold. An end said as the player paused waits for
+	// it to play again.
+	if n := e.ends.Load(); n != e.endsSeen && e.playing {
+		e.endsSeen = n
 		if e.loop {
 			e.seek(0)
 			msgSetFloat32(e.player, sel("setRate:"), e.rate)
@@ -570,8 +594,9 @@ func (e *avEngine) Seek(d time.Duration) {
 	e.seek(d)
 }
 
-// seek seeks to d exactly, under mu.
+// seek seeks to d exactly, under mu: an end said before is passed over.
 func (e *avEngine) seek(d time.Duration) {
+	e.endsSeen = e.ends.Load()
 	zero := cmTime{Flags: cmTimeValid, Timescale: 1}
 	msgSeek(e.player, sel("seekToTime:toleranceBefore:toleranceAfter:"), cmTimeOf(d), zero, zero)
 }
@@ -609,6 +634,9 @@ func (e *avEngine) Close() error {
 	close(e.quit)
 	<-e.done
 	pop := pooled()
+	send(send(class("NSNotificationCenter"), "defaultCenter"), "removeObserver:name:object:",
+		endObserver, objc.ID(avPlayedToEnd), e.item)
+	items.Delete(e.item)
 	send(e.player, "pause")
 	send(e.player, "replaceCurrentItemWithPlayerItem:", objc.ID(0))
 	send(e.item, "removeOutput:", e.output)
@@ -626,6 +654,15 @@ func (e *avEngine) Close() error {
 		runtime.AddCleanup(e.surface, func(b uintptr) { cvBufferRelease(b) }, buf)
 	}
 	return nil
+}
+
+// itemPlayedToEnd takes AVPlayerItemDidPlayToEndTimeNotification, on the
+// thread that posted it, for the watching goroutine to see: it takes no
+// lock, as AVFoundation may post it while the engine holds mu.
+func itemPlayedToEnd(self objc.ID, _ objc.SEL, note objc.ID) {
+	if v, ok := items.Load(send(note, "object")); ok {
+		v.(*avEngine).ends.Add(1)
+	}
 }
 
 // loadDelegate registers the class of the delegates that answer an
