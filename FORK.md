@@ -4,9 +4,9 @@
 
 ## 快照（2026-11-25）
 
-- fork `main` 已合并 `upstream/main` 到 `85758d80`（2026-11-25），含 #940（`6e712c6e`）。
+- fork `main` 已合并 `upstream/main` 到 `ccb010db`（2026-11-25），含 #940（`6e712c6e`）。
 - 分支 `sync-940` 已于 2026-11-18 快进合入 `main`（`964d7b6f`），第二阶段的过程见「第二阶段进度（2026-11-17）」。
-- fork 独有 187 个非合并提交，与上游的增删差异约 36,000 行。
+- fork 独有 191 个非合并提交，与上游的增删差异约 36,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
 - 2026-11-09 同步了上游 39 个提交（到 `6a730f12`）。冲突：`docs/architecture.md` 两边都保留（fork 的 iOS 段落、上游的 `ffi`）；`ui/runtime.go` 两边都保留（fork 的帧计时、上游的 `sweepVideos`）；`ui/layoutcache_test.go` 字段清单取并集；`internal/gpu/gl/load_linux.go` 只取上游新增的 `uploadElement`，`setShaderSource`/`shaderLog`/`programLog`/`infoLog` 在 fork 已移到 `load_common.go`（与 Android 共用）；终端 `urlPattern` 按规则 1 改用上游 #1481（URL 在第一个非 ASCII 字符处结束），fork 的写法删除；shader 二进制取上游后重新 `go generate`。上游 #1476 给 `platform.Clipboard.WriteData` 加了 `concealed` 参数，iOS/Android 后端已跟上签名，但还没有标记机密内容（iOS 的 `UIPasteboard` localOnly、Android 的 `EXTRA_IS_SENSITIVE`）。
   合并后对照上游这批新增（`RowClicked`、`WindowDoubleClicked`、`ui/video` 与 `Bitmap.UpdateYUV`、`Power.KeepRunning`、`App.ChosenLocale`、`ClipboardOptions.Concealed`、`ffi`/native modules、文本框的 `ReadOnly`/`Multiline` 无障碍状态、新的 landmark/tabpanel 角色）检查了 fork 新增代码，没有按规则 1 需要删除的重复实现。容易误判的两处：fork 的 `platform` 文本输入状态里的 `ReadOnly`/`Multiline` 是移动端键盘和原生选区的配置，上游 #1493 的是无障碍状态（`AccessReadOnly`/`AccessMultiline`），两者不同层；`ui/text_input_client.go` 的 `TextInputClient` 是上游的，fork 只在其上加了 UTF-16 适配。`desktopcontrol` 用 `purego.Dlopen` 加载的是系统框架，不属于 `ffi` 规定的应用自带库。iOS 还没有为新的 landmark/tabpanel 角色单独映射（落到默认处理）。
@@ -108,6 +108,9 @@
   git 没提示的重叠一处：上游 #2294 让 router 按转义后的路径比较和切分（`escapedPathOf`，`%2F` 留在自己那一段），`shared` 已改；fork 的 `restoreSharing`（`ui/router_state.go`，JSON 恢复时重建共享布局）是 `shared` 的镜像，仍用未转义的 `pathOf`，路径含 `%2F` 时会比 `shared` 多切一段。改为 `escapedPathOf`，与上游一致。对照这批新增检查了 fork 代码：失焦时取消按压与拖动（#2273，走核心的 `pointerCancel`，fork 的触摸扩展状态在触摸引擎里）、`Tester.DragFiles`/`DragFilesOut`（fork 的 `TestDropFileReferences` 是 macOS 测试钩子，不同层）、富文本无文字的格式让给下一个（#2259，fork 的 `OnPaste` 在它之前问）、macOS 有标题窗口的 `CornerRadius`、Shift+字母快捷键、文件监视的轮询与目录替换、documents 的各项修复、`RoleForm`、tsgen 的枚举与字节切片、Windows 应用独立安装目录、`build -version`/`-max-size`，在 fork 中都没有同功能实现。平台契约只给 `TabBar` 加了 `SetTitle`，由 #940 的 `internal/mobile` 实现。`go generate ./ui` 无差异。
 
   验证：macOS/Linux/Windows 的 `CGO_ENABLED=0 go build ./...`；`go vet . ./ui ./ui/richtext ./internal/platform ./internal/mobile/... ./internal/darwin ./cmd/mygo` 与 Linux/Windows 后端 vet；iOS（`DEVELOPER_DIR` 指向 Xcode）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet；`go test` 覆盖根包、`ui`、`ui/editor`、`ui/richtext`、`ui/markdown/...`、`internal/text`、`internal/platform`、`internal/mobile/...`、`internal/darwin`、`internal/tsgen`、终端、preferences、sqlite 插件，全部通过；`go test -short ./cmd/mygo` 只有已知时有时无的 `TestFetchSignedRetry`（`[stall]: 4 requests, want 3`）失败；`../Miya` 的 `go build ./...` 通过。**未做**：Android vet、bun 测试、发布体积。
+- 2026-11-25 第二次同步上游 6 个提交（`85758d80..ccb010db`），无冲突。#2338（Android 用 minSdk 之后的 API 前先查版本，CI 对 Kotlin 跑 `NewApi` lint）和 #2340（Android 10/11 把隐藏 tab 的 surface 移出屏幕）改的是与 #940 共用的 Kotlin；fork 在这些文件里只有 `SurfaceWindow.kt` 的 `ascii` 键盘两行，不重叠，没有按规则 1 需要删除的实现。其余是 watch 的 hints-only（#2331、#2334）、`mygo-automation` 拨 `tcp:` 地址（#2179）和 `ui/editor` 的混合行尾（#1810），fork 都没有对应实现。
+
+  验证：本机（Linux，无 Go/JDK 工具链）没有跑构建和测试，交给 CI；`NewApi` lint 会第一次检查 fork 独有的 Kotlin（插件和 `internal/mobile/android`），CI 失败时按 #2338 的写法补版本检查。
 
 ## 规则
 
