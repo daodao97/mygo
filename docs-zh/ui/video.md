@@ -118,6 +118,8 @@ func (f *frames) Rewind() error { f.next = 0; return nil }
 
 Windows on Arm 的 MPEG-4 读取器会忽略轨道的编辑列表。带 B 帧的 H.264 视频（x264 的默认设置）通过编辑列表补偿帧重排延迟；该列表被忽略后，画面会相应延后，最多比声音落后几帧。如果需要避免这一问题，可编码为不带 B 帧的视频（`-x264-params bframes=0`），示例中的预告片就是如此。
 
+在 macOS 上，如果 MP4 中的 AV1 视频带有 `sdtp` 盒子，并把一些帧标为不被其他帧引用（ffmpeg 对 SVT-AV1 编码的帧就是这样标注的），那么调用 `Seek` 后，直到下一个关键帧之前都不会显示画面：AVFoundation 在解码到目标时间的过程中可能跳过这类帧，在此之前不再给出画面。如果需要 seek，可将这类文件封装为分片 MP4（`-movflags +frag_keyframe+empty_moov+default_base_moof`），它不含 `sdtp` 盒子。
+
 在浏览器中，有声音的视频可能无法在用户与页面交互之前播放：此时它会静音播放，如浏览器所允许。
 
 ## 辅助功能

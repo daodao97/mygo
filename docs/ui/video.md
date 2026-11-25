@@ -198,6 +198,14 @@ frames behind its sound. Encode a clip without B-frames
 (`-x264-params bframes=0`) where that matters, as the example's trailer
 is.
 
+On macOS, an AV1 video in MP4 whose `sdtp` box marks frames as ones no
+other frame refers to, as ffmpeg marks SVT-AV1's, shows no picture after
+a `Seek` until its next keyframe: AVFoundation, which can pass over such
+frames as it decodes up to the time sought, gives none until then. Where
+seeking matters, make such a file fragmented MP4
+(`-movflags +frag_keyframe+empty_moov+default_base_moof`), which has no
+`sdtp` box.
+
 In browsers a video with sound may not play before the user interacted
 with the page: it then plays muted, as the browser allows.
 
