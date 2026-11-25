@@ -315,6 +315,11 @@ type TesterOptions struct {
 	Preferences Preferences
 	// Dark starts in the dark appearance (SetDark).
 	Dark bool
+	// Now is the time the Tester's clock starts at, which only Advance
+	// moves (Tester.Now): the same in every run, so that a drawing that
+	// reads the time (Painter.Now, Context.Now) draws the same pixels.
+	// The zero time starts it at the system's time, as NewTester does.
+	Now time.Time
 }
 
 // NewTesterWith starts testing view in a window of width×height DIPs, as
@@ -325,7 +330,11 @@ func coreNewTesterWith(view func(c *context), width, height int, o TesterOptions
 	// The window's text system is one an earlier Tester left, or its own
 	// (testerTexts).
 	h := &headless{w: float32(width), h: float32(height), scale: 1, prefs: platformPreferences(o.Preferences), dark: o.Dark, text: takeTesterText()}
-	t := &Tester{rt: newRuntime(view, h), h: h, now: time.Now()}
+	now := o.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	t := &Tester{rt: newRuntime(view, h), h: h, now: now}
 	t.keepText()
 	t.rt.clock = t.Now
 	h.clock = t.Now
