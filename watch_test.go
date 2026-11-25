@@ -1754,6 +1754,32 @@ func TestFileWatchHintsOnlyThroughSymlink(t *testing.T) {
 	}
 }
 
+// A backend that says only that a directory's entries changed, not
+// which, as kqueue does on iOS: a hints-only watch lists the directory
+// for new ones to enroll, so changes in them are hinted at too.
+func TestFileWatchHintsOnlyUnnamedChange(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "a"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	w, err := WatchFiles(context.Background(), dir, FileWatchOptions{Recursive: true, Debounce: -1, HintsOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := os.MkdirAll(filepath.Join(dir, "a", "new", "deeper"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	fileWatchTestNotice(t, w, "a", platform.FileWatchNotice{Kind: platform.FileWatchWrite})
+	if got := fileWatchTestHints(t, w); !slices.Equal(got, []string{"a"}) {
+		t.Fatalf("hints %v", got)
+	}
+	fileWatchTestNotice(t, w, "a/new/deeper", platform.FileWatchNotice{Kind: platform.FileWatchWrite})
+	if got := fileWatchTestHints(t, w); !slices.Equal(got, []string{"a/new/deeper"}) {
+		t.Fatalf("hints %v", got)
+	}
+}
+
 // A hints-only watch of a file hints at it, not at the other entries of
 // its directory.
 func TestFileWatchHintsOnlyFile(t *testing.T) {
