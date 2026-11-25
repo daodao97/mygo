@@ -197,6 +197,58 @@ func TestFileWatchRecursiveLimit(t *testing.T) {
 	}
 }
 
+// What moves in a watched tree, or replaces what was there, counts once:
+// only a tree that ends up past the limit ends the watch.
+func TestFileWatchLimitMoved(t *testing.T) {
+	fill := func(t *testing.T, dir, name string) {
+		t.Helper()
+		for i := range 6 {
+			if err := os.MkdirAll(filepath.Join(dir, name, fmt.Sprint(name, i)), 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, hints := range []bool{false, true} {
+		for _, c := range []struct {
+			name   string
+			change func(t *testing.T, dir string) error
+			limit  bool
+		}{
+			{"renamed after", func(t *testing.T, dir string) error {
+				return os.Rename(filepath.Join(dir, "m"), filepath.Join(dir, "z"))
+			}, false},
+			{"renamed before", func(t *testing.T, dir string) error {
+				return os.Rename(filepath.Join(dir, "m"), filepath.Join(dir, "a"))
+			}, false},
+			{"replaced", func(t *testing.T, dir string) error {
+				fill(t, dir, "a")
+				return os.RemoveAll(filepath.Join(dir, "m"))
+			}, false},
+			{"added", func(t *testing.T, dir string) error {
+				fill(t, dir, "a")
+				return nil
+			}, true},
+		} {
+			t.Run(fmt.Sprintf("%s hints=%v", c.name, hints), func(t *testing.T) {
+				dir := t.TempDir()
+				fill(t, dir, "m")
+				w, err := WatchFiles(context.Background(), dir, FileWatchOptions{Recursive: true, Debounce: -1, MaxEntries: 10, HintsOnly: hints})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer w.Close()
+				if err := c.change(t, dir); err != nil {
+					t.Fatal(err)
+				}
+				fileWatchTestNotice(t, w, ".", platform.FileWatchNotice{Err: platform.ErrFileWatchOverflow})
+				if _, err := w.Next(wait.Context(t)); c.limit != errors.Is(err, ErrWatchLimit) || !c.limit && err != nil {
+					t.Fatalf("err = %v", err)
+				}
+			})
+		}
+	}
+}
+
 // The watch doesn't look again while a batch waits for Next, and what
 // changed meanwhile comes in the next batch.
 func TestFileWatchBackpressure(t *testing.T) {

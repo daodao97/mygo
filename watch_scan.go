@@ -451,6 +451,9 @@ func (s *fileWatchScan) update() ([]FileEvent, error) {
 	}
 	clear(s.lists)
 	clear(s.stats)
+	if len(s.entries) > s.w.opts.MaxEntries {
+		return nil, ErrWatchLimit
+	}
 	return s.events(), nil
 }
 
@@ -746,7 +749,13 @@ func (s *fileWatchScan) visit(dir *os.Root, p string, info os.FileInfo) error {
 	if err := s.w.ctx.Err(); err != nil {
 		return err
 	}
-	if len(s.entries) >= s.w.opts.MaxEntries || len(s.races) > s.w.opts.MaxEntries {
+	// An update can see what moved at its new path before it finds it gone
+	// from the old one: update counts again once it is done.
+	count := len(s.entries)
+	if s.before != nil {
+		count /= 2
+	}
+	if count >= s.w.opts.MaxEntries || len(s.races) > s.w.opts.MaxEntries {
 		return ErrWatchLimit
 	}
 	gone := func() error {
