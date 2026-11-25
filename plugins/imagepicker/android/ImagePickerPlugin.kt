@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.ext.SdkExtensions
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import org.json.JSONArray
@@ -28,8 +29,10 @@ class ImagePickerPlugin : MyGoPlugin {
         }
         val limit = args.optInt("limit", 1)
         // The Photo Picker, where the system has it; Google Play brings it to
-        // older ones.
-        val photo = Build.VERSION.SDK_INT >= 33 || MediaStore.getPickImagesMaxLimit() > 0
+        // Android 11 and 12, as their SDK extension 2 (androidx's check:
+        // before it, MediaStore has no getPickImagesMaxLimit to ask).
+        val photo = Build.VERSION.SDK_INT >= 33 ||
+            (Build.VERSION.SDK_INT >= 30 && SdkExtensions.getExtensionVersion(Build.VERSION_CODES.R) >= 2)
         val i = if (photo) {
             Intent(MediaStore.ACTION_PICK_IMAGES).apply {
                 if (type != "*/*") setType(type)

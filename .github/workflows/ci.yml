@@ -387,6 +387,22 @@ jobs:
           packages: platform-tools platforms;android-36 ndk;27.1.12297006 cmake;3.22.1
       - name: Build the app
         run: go run ./cmd/mygo build -platform ${{ matrix.platform }} examples/counter-native
+      # What Android added after the host's minSdk, called with no check of
+      # the version, throws NoSuchMethodError on older phones (#2336): lint's
+      # NewApi check, over a copy of the host with every plugin's Kotlin in
+      # it, as mygo build puts them there.
+      - name: Lint the host and the plugins for newer Android APIs
+        if: matrix.platform == 'android/arm64' && runner.os == 'Linux'
+        run: |
+          dir="$RUNNER_TEMP/android-lint"
+          cp -R internal/mobile/android "$dir"
+          for j in plugins/*/mygo-plugin.json; do
+            for s in $(jq -r '.mobile.android.sources[]? // empty' "$j"); do
+              cp "$(dirname "$j")"/$s "$dir/mygo/src/main/java/dev/mygo/"
+            done
+          done
+          deps=$(jq -r '.mobile.android.dependencies[]? // empty' plugins/*/mygo-plugin.json | sort -u | paste -sd, -)
+          cd "$dir" && ./gradlew --no-daemon :mygo:lintDebug -PmygoPluginDependencies="$deps"
 
   # Native modules on phones, which go test does not reach: the round trip
   # of every kind of value through a module's Swift on the iOS simulator

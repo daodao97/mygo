@@ -16,6 +16,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // CI runs lint for what Android added after minSdk called without a
+    // check of the version, which throws NoSuchMethodError on older phones.
+    lint { checkOnly += "NewApi" }
 }
 
 // Java 17 bytecode from whichever JDK runs Gradle, 17 or later, with no
