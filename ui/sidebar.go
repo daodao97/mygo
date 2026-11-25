@@ -77,13 +77,15 @@ func (sb *sidebarBuild) keys() {
 	if s := e.st; s.typing && s.typed != "" {
 		// From the item after the one chosen, round to it: the same letter
 		// again goes to the next item starting with it.
-		start := at
-		if len([]rune(s.typed)) > 1 {
+		typed, start := strings.ToLower(s.typed), at
+		if strings.Count(typed, typed[:1]) == len(typed) {
+			typed = typed[:1]
+		} else {
 			start = at - 1
 		}
 		for k := 1; k <= len(items); k++ {
 			j := (start + k + len(items)) % len(items)
-			if strings.HasPrefix(strings.ToLower(items[j].label), strings.ToLower(s.typed)) {
+			if strings.HasPrefix(strings.ToLower(items[j].label), typed) {
 				to = j
 				break
 			}

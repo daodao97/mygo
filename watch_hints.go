@@ -210,7 +210,7 @@ func (s *fileWatchHints) enrollTree(dir *os.Root, name, p string, want os.FileIn
 	if seen != nil {
 		seen[p] = true
 	}
-	if err := s.enroll(p, info); err != nil {
+	if err := s.enroll(p, info, seen != nil); err != nil {
 		return err
 	}
 	if !s.w.opts.Recursive || s.subtree {
@@ -237,15 +237,22 @@ func (s *fileWatchHints) enrollTree(dir *os.Root, name, p string, want os.FileIn
 }
 
 // enroll has the backend watch directory p, which is info; one replaced
-// as it is enrolled is left to the hint of its parent.
-func (s *fileWatchHints) enroll(p string, info os.FileInfo) error {
+// as it is enrolled is left to the hint of its parent. again says the
+// tree is enrolled again, and what is gone not dropped yet.
+func (s *fileWatchHints) enroll(p string, info os.FileInfo, again bool) error {
 	if t, ok := s.targets[p]; ok {
 		if t.identity == fileWatchEntryOf(info).id {
 			return nil
 		}
 		s.unenroll(p)
 	}
-	if len(s.targets) >= s.w.opts.MaxEntries {
+	// Enrolling the tree again can come to what moved at its new path
+	// before it drops the old one: update counts again once it is done.
+	count := len(s.targets)
+	if again {
+		count /= 2
+	}
+	if count >= s.w.opts.MaxEntries {
 		return ErrWatchLimit
 	}
 	err := s.add(p, info)
@@ -430,6 +437,9 @@ func (s *fileWatchHints) update() ([]FileEvent, error) {
 				s.unenroll(q)
 			}
 		}
+		if len(s.targets) > s.w.opts.MaxEntries {
+			return nil, ErrWatchLimit
+		}
 	} else {
 		if _, ok := s.targets["."]; !ok {
 			// The root's target was lost: enroll the tree again.
@@ -453,6 +463,13 @@ func (s *fileWatchHints) update() ([]FileEvent, error) {
 		clear(s.checks)
 		for _, p := range fileWatchShallowFirst(s.walks) {
 			if _, ok := s.targets[p]; ok || s.ignores(p) {
+				continue
+			}
+			if _, ok := s.targets[path.Dir(p)]; !ok {
+				// Its directory went away or was replaced, as by a
+				// symlink through which p would be another directory,
+				// or it was enrolled with what is in it: its parent's
+				// hint covers it.
 				continue
 			}
 			info, err := s.root.Lstat(filepath.FromSlash(p))

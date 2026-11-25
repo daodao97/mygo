@@ -229,7 +229,7 @@ func (r *Router) pageAt(e *routeEntry, level int) uint64 {
 
 // resolve returns the location of target, relative to the page shown as
 // a link in a web page is: its path made absolute and clean, and its
-// query.
+// query. p is the path, escaped.
 func (r *Router) resolve(target string) (loc, p string, ok bool) {
 	ref, err := url.Parse(target)
 	if err != nil {
@@ -240,18 +240,35 @@ func (r *Router) resolve(target string) (loc, p string, ok bool) {
 		base, _ = url.Parse(r.entries[r.at].loc)
 	}
 	u := base.ResolveReference(ref)
-	p = path.Clean("/" + u.Path)
-	return (&url.URL{Path: p, RawQuery: u.RawQuery}).String(), p, true
+	p = path.Clean("/" + escapeParts(u.EscapedPath()))
+	loc = p
+	if u.RawQuery != "" {
+		loc += "?" + u.RawQuery
+	}
+	return loc, p, true
 }
 
-// shared returns the pages of entry e that an entry of path p shares, with
-// what they take of the path: all of them for the same path, else those
-// of the layouts whose part of the path p keeps.
+// escapeParts escapes each part of an escaped path anew, all the same way
+// however they were, an escaped slash staying one.
+func escapeParts(escaped string) string {
+	parts := strings.Split(escaped, "/")
+	for i, s := range parts {
+		if s, err := url.PathUnescape(s); err == nil {
+			u := url.URL{Path: "/" + s}
+			parts[i] = strings.ReplaceAll(u.EscapedPath()[1:], "/", "%2F")
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+// shared returns the pages of entry e that an entry of path p, escaped,
+// shares, with what they take of the path: all of them for the same path,
+// else those of the layouts whose part of the path p keeps.
 func shared(e *routeEntry, p string) ([]uint64, []int) {
-	if p == pathOf(e.loc) {
+	if p == escapedPathOf(e.loc) {
 		return slices.Clone(e.pages), slices.Clone(e.layouts)
 	}
-	parts, from := pathParts(p), pathParts(pathOf(e.loc))
+	parts, from := pathParts(p), pathParts(escapedPathOf(e.loc))
 	n := 0
 	for n < len(e.pages) && n < len(e.layouts) {
 		k := e.layouts[n]
@@ -305,7 +322,7 @@ func (r *Router) Replace(target string) {
 		old := r.entries[r.at]
 		e.restoring = old.restoring
 		e.pages, e.layouts = shared(old, p)
-		if p == pathOf(old.loc) {
+		if p == escapedPathOf(old.loc) {
 			e.title = old.title
 		}
 		r.entries[r.at] = e
@@ -436,6 +453,14 @@ func isPath(target string) bool {
 func pathOf(loc string) string {
 	if u, err := url.Parse(loc); err == nil {
 		return u.Path
+	}
+	return loc
+}
+
+// escapedPathOf returns the path of a location, escaped.
+func escapedPathOf(loc string) string {
+	if u, err := url.Parse(loc); err == nil {
+		return u.EscapedPath()
 	}
 	return loc
 }

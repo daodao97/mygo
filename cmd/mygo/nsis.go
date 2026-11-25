@@ -210,14 +210,16 @@ BrandingText " "
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "$(MYGO_DESKTOP_SHORTCUT)"
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
 !include "MUI2.nsh"
+!include "FileFunc.nsh"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 ` + languages + include + `
-` + nsisCloseApp(c) + `
+` + nsisOwnFolder(c, uninstallKey) + nsisCloseApp(c) + `
 Section
+  Call OwnFolder
   Push "$INSTDIR"
   Call CloseApp
   SetOutPath "$INSTDIR"
@@ -310,6 +312,29 @@ func nsisName(name string) string {
 		return "Name " + nsisString(name)
 	}
 	return "Name " + nsisString(name) + " " + nsisString(strings.ReplaceAll(name, "&", "&&"))
+}
+
+// nsisOwnFolder returns the installer function OwnFolder, which moves the
+// install into a folder of the app's own, named as the default one, inside
+// a folder that holds other files, as one the user typed: the uninstaller
+// removes the install folder with all that is in it. The folder the app is
+// installed in, and one named as the app's, stay.
+func nsisOwnFolder(c *Config, uninstallKey string) string {
+	name := nsisEscape(c.installDirName())
+	return `Function OwnFolder
+  Push $0
+  ReadRegStr $0 HKCU ` + nsisString(uninstallKey) + ` "InstallLocation"
+  StrCmp $0 $INSTDIR done
+  ${GetFileName} $INSTDIR $0
+  StrCmp $0 "` + name + `" done
+  ${DirState} $INSTDIR $0
+  StrCmp $0 1 0 done
+  StrCpy $INSTDIR "$INSTDIR\` + name + `"
+  done:
+  Pop $0
+FunctionEnd
+
+`
 }
 
 // nsisRenamedShortcuts returns the installer commands that remove the

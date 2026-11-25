@@ -181,6 +181,7 @@ var calls = []msg{
 		args: []field{f("Data", "bytes"), f("Family", "string")}, reply: []field{f("Family", "string"), f("Error", "string")}},
 	{name: "SetFrameRate", doc: "how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface)",
 		args: []field{f("ID", "int"), f("FPS", "float")}},
+	{name: "SetTabTitle", doc: "a tab's title, which the bar shows", args: []field{f("ID", "int"), f("Index", "int"), f("Title", "string")}},
 	{name: "SetAppBadge", doc: "the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges", args: []field{f("Count", "int")}},
 }
 

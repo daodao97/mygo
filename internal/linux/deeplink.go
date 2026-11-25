@@ -86,12 +86,9 @@ func desktopName(id string) string {
 	}, id)
 }
 
-// executable is the file to run for a URL: the AppImage rather than the
-// directory it is mounted at while running.
+// executable is the file to run for a URL, or at login: the AppImage
+// rather than the directory it is mounted at while running.
 func executable() (string, error) {
-	if p := os.Getenv("APPIMAGE"); p != "" {
-		return p, nil
-	}
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -99,7 +96,34 @@ func executable() (string, error) {
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
+	if img := appImageOf(os.Getenv("APPIMAGE"), os.Getenv("APPDIR"), exe); img != "" {
+		return img, nil
+	}
 	return exe, nil
+}
+
+// appImageOf is the AppImage img when the program exe runs from it: inside
+// appDir, where the AppImage's runtime mounted it. The runtime exports
+// APPIMAGE and APPDIR to every process it starts, and they to theirs, so a
+// program started from another app's AppImage, as a terminal or an editor
+// started from one, has that AppImage's: taken for its own, it would
+// register the other app as its handler, or start it at login. "" for none.
+func appImageOf(img, appDir, exe string) string {
+	if !filepath.IsAbs(img) || !filepath.IsAbs(appDir) {
+		return ""
+	}
+	if st, err := os.Stat(img); err != nil || !st.Mode().IsRegular() {
+		return ""
+	}
+	dir, err := filepath.EvalSymlinks(appDir)
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(dir, exe)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return img
 }
 
 func handlerDesktopEntry(name, exe string, schemes []string) string {

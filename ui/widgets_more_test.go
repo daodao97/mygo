@@ -477,6 +477,62 @@ func countShown(t *testing.T, tt *Tester) string {
 	return a.Value
 }
 
+// A bound with more decimals than step's keeps the value in range:
+// rounded to the step's decimals, 2.5 would be 3.
+func TestNumberInputKeepsInsideFractionalBounds(t *testing.T) {
+	v := 2.0
+	tt := numberTester(&v, -2.5, 2.5, 1)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tt.Click("Count")
+	tt.Key(0, KeyUp)
+	if v != 2 || countShown(t, tt) != "2" {
+		t.Errorf("Up from 2 below 2.5: %v, showing %q", v, countShown(t, tt))
+	}
+	// 2 is as high as a step of 1 goes: the button stepping up is disabled.
+	if n := accessNode(t, tt.h.access, platform.RoleButton, "Increase"); n.States&platform.AccessDisabled == 0 {
+		t.Errorf("Increase at 2 below 2.5: %+v", n)
+	}
+	tt.Key(Cmd, KeyA)
+	tt.Type("2.5")
+	if v != 2 {
+		t.Errorf("typed 2.5 below 2.5: %v", v)
+	}
+	v = -2
+	tt.Frame()
+	tt.Key(0, KeyDown)
+	if v != -2 || countShown(t, tt) != "-2" {
+		t.Errorf("Down from -2 above -2.5: %v, showing %q", v, countShown(t, tt))
+	}
+	if n := accessNode(t, tt.h.access, platform.RoleButton, "Decrease"); n.States&platform.AccessDisabled == 0 {
+		t.Errorf("Decrease at -2 above -2.5: %+v", n)
+	}
+}
+
+// Bounds on step's decimals that floating point puts a hair off, as 0.29
+// times 100 (28.999…), keep the buttons stepping to them.
+func TestNumberInputButtonsReachBoundsOnStep(t *testing.T) {
+	v := 0.28
+	tt := numberTester(&v, 0.07, 0.29, 0.01)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tt.Frame()
+	if n := accessNode(t, tt.h.access, platform.RoleButton, "Increase"); n.States&platform.AccessDisabled != 0 {
+		t.Errorf("Increase at 0.28 below 0.29 is disabled")
+	}
+	tt.Click("Increase")
+	if v != 0.29 {
+		t.Errorf("Increase from 0.28: %v", v)
+	}
+	v = 0.08
+	tt.Frame()
+	if n := accessNode(t, tt.h.access, platform.RoleButton, "Decrease"); n.States&platform.AccessDisabled != 0 {
+		t.Errorf("Decrease at 0.08 above 0.07 is disabled")
+	}
+	tt.Click("Decrease")
+	if v != 0.07 {
+		t.Errorf("Decrease from 0.08: %v", v)
+	}
+}
+
 // A value the app sets shows in the frame that builds it, not in the one
 // after, as when the app loads settings: in place of what was typed too.
 func TestNumberInputShowsAValueTheAppSets(t *testing.T) {

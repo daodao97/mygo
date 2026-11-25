@@ -12,12 +12,13 @@ import (
 type tabBar struct {
 	b  *Backend
 	id int
+	n  int // how many tabs it has
 	h  platform.TabsHandler
 }
 
 func (b *Backend) NewTabs(tabs []platform.Tab, h platform.TabsHandler) (platform.TabBar, error) {
 	b.nextID++
-	t := &tabBar{b: b, id: b.nextID, h: h}
+	t := &tabBar{b: b, id: b.nextID, n: len(tabs), h: h}
 	b.call(&wire.CreateTabs{ID: t.id}, nil)
 	old := b.front()
 	for i, tab := range tabs {
@@ -61,6 +62,13 @@ func (t *tabBar) fronted(i int) {
 
 func (t *tabBar) SetBadge(i int, badge string) {
 	t.b.call(&wire.SetTabBadge{ID: t.id, Index: i, Badge: badge}, nil)
+}
+
+func (t *tabBar) SetTitle(i int, title string) {
+	if i < 0 || i >= t.n {
+		return
+	}
+	t.b.call(&wire.SetTabTitle{ID: t.id, Index: i, Title: title}, nil)
 }
 
 func (t *tabBar) Close() {

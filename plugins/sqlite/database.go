@@ -235,10 +235,24 @@ func (d *DB) operation(ctx context.Context, fn func(detach func()) error) error 
 	}
 	conn := d.conn
 	watch := func(c context.Context) func() {
-		done := make(chan struct{})
-		stop := context.AfterFunc(c, func() { conn.Interrupt(); close(done) })
+		end, done := make(chan struct{}), make(chan struct{})
+		stop := context.AfterFunc(c, func() {
+			defer close(done)
+			// SQLite ignores an interruption while no statement runs, as
+			// before the first step of one being prepared: again until
+			// the operation ends.
+			for {
+				conn.Interrupt()
+				select {
+				case <-end:
+					return
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+		})
 		return func() {
 			// An interruption that started ends before the next statement.
+			close(end)
 			if !stop() {
 				<-done
 			}

@@ -185,6 +185,8 @@ content so that it can be cached for good, and the icon. See
 | `-skip-notarize` | does not notarize, even with `macos.notarize` set |
 | `-skip-installer` | does not make Windows installers, nor download NSIS for them (nor `install.ps1`, which runs the installer) |
 | `-upload` | uploads the installers and updates to a draft GitHub release of the version (`updates.github`), with `gh`, or to the bucket of `updates.s3` |
+| `-version` | the version of the build, in place of the configuration's `version`, as a release's tag gives it: `-version "$(git describe --tags)"` (its prefix is dropped: `updates.tagPrefix`, or else a leading `v`) |
+| `-max-size` | fails the build when a compiled program (an executable, Android's library or the WebAssembly of browsers, not iOS's archive) is larger than this many MB, a budget of the app's size (default: none) |
 
 ## mygo generate
 

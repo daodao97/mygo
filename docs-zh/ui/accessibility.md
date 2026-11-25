@@ -610,6 +610,7 @@ Mappings 的规定映射到各平台：
 | 角色 | 是什么 | macOS | Linux（ATK） | Windows（UI Automation） |
 |---|---|---|---|---|
 | `ui.RoleRegion` | 带 `Label` 的地标，如活动流或面板；没有 `Label` 时则是一个组 | `AXGroup`, `AXLandmarkRegion` | landmark, `xml-roles:region` | Group，自定义地标类型 "region" |
+| `ui.RoleForm` | 表单的地标，如登录面板或设置表单，如同 HTML 的 `<form>`；有 `Label` 是地标，没有则是一个组 | `AXGroup`, `AXLandmarkForm` | landmark, `xml-roles:form` | Group，表单地标类型 |
 | `ui.RoleSearch` | 容纳搜索应用或文稿所需控件的地标，如窗口顶部的搜索框及其按钮 | `AXGroup`, `AXLandmarkSearch` | landmark, `xml-roles:search` | Group，搜索地标类型 |
 | `ui.RoleArticle` | 独立完整的一段内容，如信息流中的帖子或讨论串中的评论，由它的 `Label` 命名；不是地标 | `AXGroup`, `AXDocumentArticle` | article | Group "article" |
 | `ui.RoleLog` | 按顺序添加的消息的实时区域，如聊天的记录 | `AXGroup`, `AXApplicationLog` | log | Group "log"，`LiveSetting` polite |

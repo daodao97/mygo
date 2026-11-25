@@ -169,6 +169,7 @@ var accessRoles = map[platform.AccessRole][2]string{
 	platform.RoleBanner:        {"AXGroup", "AXLandmarkBanner"},
 	platform.RoleContentInfo:   {"AXGroup", "AXLandmarkContentInfo"},
 	platform.RoleComplementary: {"AXGroup", "AXLandmarkComplementary"},
+	platform.RoleForm:          {"AXGroup", "AXLandmarkForm"},
 	// An article, as WebKit's.
 	platform.RoleArticle: {"AXGroup", "AXDocumentArticle"},
 	// Live regions, as WebKit's, and a rule, as WebKit's separator.

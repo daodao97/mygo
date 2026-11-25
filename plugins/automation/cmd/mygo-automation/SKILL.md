@@ -124,8 +124,8 @@ Roles are `group`, `text`, `heading`, `button`, `link`, `checkBox`,
 `disclosure`, `colorWell`, `menu`, `menuBar`, `menuItem`,
 `menuItemCheckBox`, `menuItemRadio`, `region`, `log`, `timer`, `alert`,
 `separator`, `rowHeader`, `search`, `article`, `navigation`, `deletion`,
-`insertion`, `tabPanel`, `main`, `banner`, `contentInfo` and
-`complementary`. States are `disabled`, `checked`,
+`insertion`, `tabPanel`, `main`, `banner`, `contentInfo`, `complementary`
+and `form`. States are `disabled`, `checked`,
 `mixed`, `selected`, `expanded`, `expandable`, `multiline`, `password`,
 `readOnly`, `selectable`, `multiselectable`, `offscreen`, `segment`,
 `search`, `invalid`, `sortAscending`, `sortDescending`, `sortOther`,

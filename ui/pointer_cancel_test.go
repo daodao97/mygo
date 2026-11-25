@@ -165,6 +165,70 @@ func TestPointerCancelOnBlur(t *testing.T) {
 	}
 }
 
+// Blurring the window during a list reorder drag cancels the drag without
+// dropping, and the next drag works normally.
+func TestDragCanceledOnBlur(t *testing.T) {
+	items := []string{"a", "b", "c"}
+	moves := 0
+	s := ListState{
+		Key: func(i int) any { return items[i] },
+		Reorder: func(rows []int, to int) {
+			moves++
+		},
+	}
+	tt := coreNewTester(func(c *context) {
+		coreList(c, &s, len(items), func(i int) {
+			coreText(c, items[i]).Padding(8)
+		}).Grow(1)
+	}, 300, 400)
+	a, _ := tt.Find("a")
+	c, _ := tt.Find("c")
+	tt.Press(a.X, a.Y+a.H/2)
+	tt.Move(a.X, a.Y)
+	tt.Move(c.X, c.Y+c.H)
+	if tt.rt.drag == nil {
+		t.Fatal("the drag did not start")
+	}
+	tt.SetFocused(false)
+	if tt.rt.drag != nil || tt.rt.pressed != nil {
+		t.Fatal("the drag or press outlived window blur")
+	}
+	if moves != 0 {
+		t.Errorf("blurring the window reordered the list %d times, want 0", moves)
+	}
+	tt.SetFocused(true)
+	drag(tt, a.X, a.Y+a.H/2, c.X, c.Y+c.H)
+	if moves != 1 {
+		t.Errorf("drag after blur reordered %d times, want 1", moves)
+	}
+}
+
+// Blurring the window while dragging a scroll bar thumb releases the thumb.
+func TestScrollbarDragCanceledOnBlur(t *testing.T) {
+	var st *state
+	tt := coreNewTester(func(c *context) {
+		scroll := coreScrollBoth(c).Size(100, 100)
+		st = scroll.st
+		scroll.Children(func() {
+			coreBox(c).Size(100, 1000)
+		})
+	}, 140, 140)
+	defer tt.rt.close()
+	tt.Move(50, 50)
+	tt.Frame()
+	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), float32(st.scrollX), float32(st.scrollY), st.flags, st.scrollbarStyle(), st.rtl)
+	x, y := g.v.X+g.v.W/2, g.v.Y+g.v.H/2
+	tt.Press(x, y)
+	if tt.rt.scrollDrag.st == nil {
+		t.Fatal("the scroll bar drag did not start")
+	}
+	tt.Move(x, y+20)
+	tt.SetFocused(false)
+	if tt.rt.scrollDrag.st != nil {
+		t.Fatal("the scroll bar drag outlived window blur")
+	}
+}
+
 // A value dragged when the system cancels the press drops nowhere and
 // is not missed, as one given up with Escape.
 func TestPointerCancelDropsNothing(t *testing.T) {

@@ -539,14 +539,21 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
             if (e.isAltPressed) mods = mods or 4
             if (e.isMetaPressed) mods = mods or 8
             val text = if (e.unicodeChar > 0) String(Character.toChars(e.unicodeChar)) else ""
-            val r = Go.ask(Event.key(wid, down, name, text, mods, e.repeatCount > 0)) ?: return false
-            val handled = KeyReply(r).handled
             // Keys typing text type it, which the content takes as text,
             // whatever Go answered: its text inputs take a printable key
             // as handled, as the text comes after it, as on macOS. Space
             // types too; keys with Control or Meta are shortcuts.
-            if (down && editing && text.isNotEmpty() && (keyNames[code] == null || code == KeyEvent.KEYCODE_SPACE) &&
-                !e.isCtrlPressed && !e.isMetaPressed) {
+            val types = down && editing && text.isNotEmpty() && (keyNames[code] == null || code == KeyEvent.KEYCODE_SPACE) &&
+                !e.isCtrlPressed && !e.isMetaPressed
+            // The word an input method marks around the cursor, as LatinIME
+            // does once the cursor moved, stays where it is, and so does the
+            // cursor, as in TextView: the content commits its marked text
+            // at a key with the cursor after it, so the key, typed in the
+            // middle of the word, came at its end.
+            if (types && input.markStart >= 0) edit(Event.textSelect(wid, input.selStart, input.selEnd))
+            val r = Go.ask(Event.key(wid, down, name, text, mods, e.repeatCount > 0)) ?: return false
+            val handled = KeyReply(r).handled
+            if (types) {
                 edit(Event.textReplace(wid, false, 0, 0, text))
                 return true
             }
@@ -719,9 +726,22 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
         override fun setComposingRegion(start: Int, end: Int): Boolean {
             val a = minOf(start, end).coerceAtLeast(0)
             val b = maxOf(start, end).coerceAtMost(input.length.toInt())
+            // No region is no composing text, as in BaseInputConnection.
+            if (a >= b) return finishComposingText()
+            // Marking text leaves the selection where it is, as TextView
+            // does. The content's marked text holds the selection, though,
+            // and an input method may name a region the selection has left:
+            // LatinIME marks the word before the cursor some time after it
+            // hears of it, and keys of a hardware keyboard typed meanwhile
+            // went past it. Marked, the cursor went back into the word and
+            // the keys after came before the ones typed since. That region
+            // stays unmarked: the input method heard where the cursor went,
+            // and marks the word again from there.
+            val lo = minOf(input.selStart, input.selEnd).toInt()
+            val hi = maxOf(input.selStart, input.selEnd).toInt()
+            if (lo < a || hi > b) return true
             val text = document(a, b).toString()
-            val n = text.length.toLong()
-            edit(Event.textMark(wid, true, a.toLong(), b.toLong(), text, n, n))
+            edit(Event.textMark(wid, true, a.toLong(), b.toLong(), text, (lo - a).toLong(), (hi - a).toLong()))
             return true
         }
 

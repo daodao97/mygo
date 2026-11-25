@@ -42,7 +42,7 @@ c.CloseToast(id)
 | `Title`、`Description` | 显示的内容，屏幕阅读器会在它显示时读出 |
 | `Type` | toast 的类型，如 `"error"`，用于区分显示样式 |
 | `Timeout` | 它显示多久：为零时 4 秒，为负时直到关闭 |
-| `Action`、`OnAction` | 一个按钮，运行 `OnAction` 并关闭 toast |
+| `Action`、`OnAction` | 一个按钮，运行 `OnAction` 并关闭 toast，除非 `OnAction` 添加了相同 ID 的 toast |
 | `OnClose` | 在它关闭时运行：计时结束，或者用户、它的操作或 `CloseToast` 关闭了它 |
 | `Data` | 自定义样式所需的其他数据 |
 

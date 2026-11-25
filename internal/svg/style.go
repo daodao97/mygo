@@ -136,8 +136,12 @@ func computeStyle(e *elem, parent *style, vw, vh float64) style {
 	s.stopColor, s.stopOpacity = paintSpec{kind: specColor, color: black}, 1
 	s.align, s.overflow = baselineAuto, false
 	diag := math.Sqrt((vw*vw + vh*vh) / 2)
+	spacing := ""
 	for _, d := range e.props {
 		v := d.value
+		if d.name == "letter-spacing" && (v == "inherit" || v == "initial" || v == "unset") {
+			spacing = ""
+		}
 		switch v {
 		case "inherit":
 			s.inherit(d.name, parent)
@@ -250,9 +254,10 @@ func computeStyle(e *elem, parent *style, vw, vh float64) style {
 			s.italic = v == "italic" || strings.HasPrefix(v, "oblique")
 		case "letter-spacing":
 			if v == "normal" {
-				s.letterSpacing = 0
-			} else if l, ok := parseEm(v, s.fontSize); ok {
-				s.letterSpacing = l
+				v = "0"
+			}
+			if _, ok := parseEm(v, 0); ok {
+				spacing = v
 			}
 		case "text-anchor":
 			switch v {
@@ -285,6 +290,10 @@ func computeStyle(e *elem, parent *style, vw, vh float64) style {
 		case "overflow":
 			s.overflow = v == "visible" || v == "auto"
 		}
+	}
+	// In ems of the font size, which may come after it.
+	if l, ok := parseEm(spacing, s.fontSize); ok {
+		s.letterSpacing = l
 	}
 	return s
 }

@@ -270,14 +270,17 @@ func (in *inotifyInstance) dispatch(r inotifyRecord, notices map[*inotifyWatch][
 		if !g.retired {
 			// The directory's filesystem was unmounted, or inotify
 			// dropped the watch for another reason.
-			for _, u := range g.users {
-				notices[u.watch] = append(notices[u.watch], platform.FileWatchNotice{Target: u.id, Kind: platform.FileWatchLost})
-				delete(u.watch.targets, u.id)
-			}
+			g.lost(notices)
 		}
 		return
 	}
 	if g.retired || len(g.users) == 0 {
+		return
+	}
+	if r.mask&syscall.IN_DELETE_SELF != 0 {
+		// Another directory may be at its path already, with the inode of
+		// this one, so that only the loss tells them apart.
+		g.lost(notices)
 		return
 	}
 	var kind platform.FileWatchKind
@@ -290,7 +293,7 @@ func (in *inotifyInstance) dispatch(r inotifyRecord, notices map[*inotifyWatch][
 		kind = platform.FileWatchMoveTo
 	case r.mask&syscall.IN_CREATE != 0:
 		kind = platform.FileWatchCreate
-	case r.mask&(syscall.IN_DELETE|syscall.IN_DELETE_SELF) != 0:
+	case r.mask&syscall.IN_DELETE != 0:
 		kind = platform.FileWatchRemove
 	case r.mask&(syscall.IN_MODIFY|syscall.IN_CLOSE_WRITE) != 0:
 		kind = platform.FileWatchWrite
@@ -308,11 +311,15 @@ func (in *inotifyInstance) dispatch(r inotifyRecord, notices map[*inotifyWatch][
 			notices[u.watch] = append(notices[u.watch], platform.FileWatchNotice{Target: u.id, Kind: kind, Name: r.name})
 		}
 	}
-	// A deleted directory's automatic IN_IGNORED is expected; retain its
-	// removal hint instead of turning it into stream loss.
-	if r.mask&syscall.IN_DELETE_SELF != 0 {
-		g.retired = true
+}
+
+// lost says the targets of g are watched no more, under inotifyShared.
+func (g *inotifyGeneration) lost(notices map[*inotifyWatch][]platform.FileWatchNotice) {
+	for _, u := range g.users {
+		notices[u.watch] = append(notices[u.watch], platform.FileWatchNotice{Target: u.id, Kind: platform.FileWatchLost})
+		delete(u.watch.targets, u.id)
 	}
+	g.users, g.retired = nil, true
 }
 
 // close closes the instance, under inotifyShared, which ends read.

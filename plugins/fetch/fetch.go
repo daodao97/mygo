@@ -87,18 +87,16 @@ func (s *service) Fetch(ctx context.Context, req request, parts *mygo.Channel[pa
 const chunkSize = 64 << 10
 
 func (s *service) fetch(ctx context.Context, req request, send func(part) error) error {
-	r, err := http.NewRequestWithContext(ctx, req.Method, req.URL, nil)
+	var body io.Reader
+	if req.Body != nil {
+		body = bytes.NewReader(req.Body) // sent with its length, 0 included
+	}
+	r, err := http.NewRequestWithContext(ctx, req.Method, req.URL, body)
 	if err != nil {
 		return err
 	}
 	if r.URL.Scheme != "http" && r.URL.Scheme != "https" {
 		return fmt.Errorf("unsupported URL scheme %q", r.URL.Scheme)
-	}
-	if req.Body != nil {
-		r.Body = io.NopCloser(bytes.NewReader(req.Body))
-		r.ContentLength = int64(len(req.Body))
-		body := req.Body
-		r.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
 	}
 	for _, h := range req.Headers {
 		switch http.CanonicalHeaderKey(h[0]) {

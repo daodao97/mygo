@@ -1467,6 +1467,13 @@ func keyEquivalent(acc string) (string, uint) {
 		mods |= 1 << 17
 	}
 	if len(a.Key) == 1 {
+		// AppKit matches a lower case letter with Shift in the mask to the
+		// press without Shift too: Command-W would choose an item of
+		// Shift-Command-W. The upper case letter, as Shift types it, matches
+		// the shifted press alone.
+		if k := a.Key[0]; a.Has(accelerator.Shift) && k >= 'a' && k <= 'z' {
+			return string(k - 'a' + 'A'), mods
+		}
 		return a.Key, mods
 	}
 	named := map[string]rune{

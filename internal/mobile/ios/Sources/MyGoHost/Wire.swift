@@ -1255,6 +1255,18 @@ public struct SetFrameRateCall {
     }
 }
 
+public struct SetTabTitleCall {
+    public var id: Int = 0
+    public var index: Int = 0
+    public var title: String = ""
+    public init() {}
+    init(_ r: inout WireReader) {
+        id = r.int()
+        index = r.int()
+        title = r.string()
+    }
+}
+
 public struct SetAppBadgeCall {
     public var count: Int = 0
     public init() {}
@@ -1402,6 +1414,8 @@ public protocol HostCalls: AnyObject {
     func registerFont(_ c: RegisterFontCall) -> RegisterFontReply
     /// how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface)
     func setFrameRate(_ c: SetFrameRateCall)
+    /// a tab's title, which the bar shows
+    func setTabTitle(_ c: SetTabTitleCall)
     /// the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges
     func setAppBadge(_ c: SetAppBadgeCall)
 }
@@ -1676,6 +1690,9 @@ public func dispatchCall(_ h: HostCalls, _ buf: UnsafeRawBufferPointer) -> [UInt
         h.setFrameRate(SetFrameRateCall(&r))
         return nil
     case 89:
+        h.setTabTitle(SetTabTitleCall(&r))
+        return nil
+    case 90:
         h.setAppBadge(SetAppBadgeCall(&r))
         return nil
     default:

@@ -92,7 +92,8 @@ const (
 	CallDrawText               = 86
 	CallRegisterFont           = 87
 	CallSetFrameRate           = 88
-	CallSetAppBadge            = 89
+	CallSetTabTitle            = 89
+	CallSetAppBadge            = 90
 )
 
 // Numbers of events.
@@ -1817,6 +1818,23 @@ func (m *SetFrameRate) Encode(w *Writer) {
 
 // Wait reports whether the caller waits for the host to run it.
 func (*SetFrameRate) Wait() bool { return false }
+
+// SetTabTitle is a tab's title, which the bar shows.
+type SetTabTitle struct {
+	ID    int
+	Index int
+	Title string
+}
+
+func (m *SetTabTitle) Encode(w *Writer) {
+	w.Uvarint(CallSetTabTitle)
+	w.Int(m.ID)
+	w.Int(m.Index)
+	w.String(m.Title)
+}
+
+// Wait reports whether the caller waits for the host to run it.
+func (*SetTabTitle) Wait() bool { return false }
 
 // SetAppBadge is the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges.
 type SetAppBadge struct {

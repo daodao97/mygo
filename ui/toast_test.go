@@ -156,6 +156,33 @@ func TestToastManager(t *testing.T) {
 	}
 }
 
+// TestToastActionAgain checks that a toast that the action of the one with
+// its ID shows, as of a retry that failed again, stays, and that the action
+// of one that shows no other closes it.
+func TestToastActionAgain(t *testing.T) {
+	var c *context
+	tries := 0
+	var save func()
+	save = func() {
+		if tries++; tries < 3 {
+			c.ToastAction("Could not save", "Retry", save)
+		}
+	}
+	tt, _ := clockTester(func(ctx *context) { c = ctx }, 400, 300)
+	save()
+	tt.Frame()
+	tt.Click("Retry")
+	tt.Frame()
+	if tries != 2 || !tt.HasText("Could not save") {
+		t.Fatalf("after a retry that failed: %d tries, texts %q", tries, tt.Texts())
+	}
+	tt.Click("Retry")
+	tt.Frame()
+	if tries != 3 || tt.HasText("Could not save") {
+		t.Errorf("after one that did not: %d tries, texts %q", tries, tt.Texts())
+	}
+}
+
 // TestToastInBackground checks that the time of a toast runs while the
 // window is in the background, as a tray app's hidden window, and that it
 // closes on the first frame after its time without showing, while the

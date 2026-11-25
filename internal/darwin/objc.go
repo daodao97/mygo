@@ -152,6 +152,7 @@ func load() {
 		purego.RegisterFunc(&msgSize, msgSendAddr)
 		purego.RegisterFunc(&msgSetSize, msgSendAddr)
 		purego.RegisterFunc(&msgSuperSetSize, msgSendSuperAddr)
+		purego.RegisterFunc(&msgSuperFloat, msgSendSuperAddr)
 		purego.RegisterFunc(&msgSuperPoint, msgSendSuperAddr)
 		purego.RegisterFunc(&msgPoint, msgSendAddr)
 		purego.RegisterFunc(&msgSetPoint, msgSendAddr)

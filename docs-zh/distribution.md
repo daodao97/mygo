@@ -277,6 +277,8 @@ export default defineConfig(({ command }) => ({
 
 `mygo build` 还会生成 `my-app-setup-1.2.0-amd64.exe`，名称取自应用的 [`slug`](configuration.md#应用)，并像磁盘映像一样包含架构，方便将不同架构的安装程序上传到同一个发布版本。它将应用安装到当前用户的 `%LOCALAPPDATA%\Programs\My App`，无需管理员权限，因此应用可以[自我更新](updates.md)；还会添加开始菜单快捷方式和“设置”中的卸载项，并注册应用的 URL 协议和文件关联。完成页提供运行应用和创建桌面快捷方式的选项，后者默认勾选；静默安装（`/S`）不创建桌面快捷方式。
 
+如果用户选择的文件夹里有其他文件，例如 `D:\Tools`，安装程序会为应用新建一个文件夹 `D:\Tools\My App`，因为卸载程序会移除应用的文件夹及其中的所有内容。
+
 快捷方式、“设置 > 应用”条目和安装程序标题默认使用应用的 `name`。如果希望可执行文件和文件夹保留简单名称，可以用 [`windows.displayName`](configuration.md#windows) 单独指定显示名称。例如，应用显示为 `天气助手`，可执行文件仍为 `%LOCALAPPDATA%\Programs\weather` 中的 `weather.exe`：
 
 ```ts

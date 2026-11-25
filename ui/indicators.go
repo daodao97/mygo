@@ -362,9 +362,7 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 		}
 		return lo + float64(max(0, min(1, f)))*(hi-lo)
 	}
-	if !st.pressedPrimary() {
-		*dragging = -1
-	}
+	down := st.pressedPrimary()
 	var knobs [2]*node
 	e.Children(func() {
 		for k, v := range []*float64{low, high} {
@@ -394,11 +392,18 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 
 			})
 			if knob.st.pressedPrimary() {
-				*dragging = k
+				down = true
+				// Where the knobs meet, the way the pointer goes tells.
+				if *dragging < 0 && *low != *high {
+					*dragging = k
+				}
 			}
 			knobs[k] = knob
 		}
 	})
+	if !down {
+		*dragging = -1
+	}
 	e.afterInput(func() {
 		p := st
 		for _, knob := range knobs {
@@ -408,6 +413,23 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 		}
 		if p.pressedPrimary() && !e.disabled() {
 			x := at(p)
+			if *dragging < 0 && p != st && *low == *high {
+				// The high knob covers the low one, which may be all that
+				// can move: the pointer drags the one on its way.
+				px, _ := p.local(p.pointer(c.rt))
+				by := float64((px-p.pressX)/max(st.cw, 1)) * (hi - lo)
+				if rtl {
+					by = -by
+				}
+				to := snap(math.Max(lo, math.Min(hi, *low+by)), lo, hi, step)
+				if to == *low {
+					return
+				}
+				*dragging = 0
+				if to > *low {
+					*dragging = 1
+				}
+			}
 			if *dragging < 0 {
 				// The nearest knob, the high one when they meet past it.
 				*dragging = 0
@@ -424,8 +446,13 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 		}
 
 	})
-	held := e.Animate("held", b2f(*dragging >= 0), 150*time.Millisecond)
 	which := *dragging
+	if which < 0 && down && *low == *high {
+		// Pressed where the knobs meet, before the pointer picks one: the
+		// high one, on top, is held.
+		which = 1
+	}
+	held := e.Animate("held", b2f(which >= 0), 150*time.Millisecond)
 	e.Draw(func(p *Painter, r Rect) {
 		h := t.Space(1.5)
 		cy := r.Y + t.Space(2.5)

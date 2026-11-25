@@ -148,3 +148,71 @@ func TestAccordion(t *testing.T) {
 		}
 	}
 }
+
+// The arrows, Home and End pass over the headers that are disabled, and
+// scroll to the one that gets the focus.
+func TestAccordionDisabledHeaders(t *testing.T) {
+	var open [5]bool
+	var off [5]bool
+	names := []string{"A", "B", "C", "D", "E"}
+	tt := coreNewTester(func(c *context) {
+		acc := coreAccordionBase(c)
+		acc.Root.Children(func() {
+			for i, name := range names {
+				item := acc.Item(&open[i])
+				item.Trigger.Height(30).Disabled(off[i]).Children(func() { coreText(c, name) })
+			}
+		})
+	}, 200, 200)
+	off = [5]bool{false, true, false, true, true}
+	tt.Frame()
+	tt.Click("A")
+	for _, step := range []struct {
+		key  Key
+		want string
+	}{{KeyDown, "C"}, {KeyDown, "C"}, {KeyUp, "A"}, {KeyUp, "A"}, {KeyEnd, "C"}, {KeyHome, "A"}} {
+		tt.Key(0, step.key)
+		if !tt.Focused(step.want) {
+			t.Fatalf("%v did not move to %s", step.key, step.want)
+		}
+	}
+
+	// An item disables its header too.
+	shut := false
+	tt = coreNewTester(func(c *context) {
+		coreAccordion(c, func() {
+			coreAccordionItem(c, "One", &shut, func() {})
+			coreAccordionItem(c, "Two", &shut, func() {}).Disabled(true)
+			coreAccordionItem(c, "Three", &shut, func() {})
+		})
+	}, 200, 200)
+	tt.Click("One")
+	tt.Key(0, KeyDown)
+	if !tt.Focused("Three") {
+		t.Fatal("Down did not pass over the disabled item")
+	}
+}
+
+func TestAccordionKeysScroll(t *testing.T) {
+	var open [20]bool
+	var sc *node
+	tt := coreNewTester(func(c *context) {
+		sc = coreScroll(c).Height(100).Width(200)
+		sc.Children(func() {
+			coreAccordion(c, func() {
+				for i := range open {
+					coreAccordionItem(c, "Section "+string(rune('A'+i)), &open[i], func() {})
+				}
+			})
+		})
+	}, 200, 200)
+	tt.Click("Section A")
+	tt.Key(0, KeyEnd)
+	if !tt.Focused("Section T") || sc.st.scrollY == 0 {
+		t.Errorf("End: focused %v, scrolled to %v", tt.Focused("Section T"), sc.st.scrollY)
+	}
+	tt.Key(0, KeyHome)
+	if !tt.Focused("Section A") || sc.st.scrollY > 1 { // but for the border
+		t.Errorf("Home: focused %v, scrolled to %v", tt.Focused("Section A"), sc.st.scrollY)
+	}
+}

@@ -26,14 +26,15 @@ object Navigation {
     class Page(val window: HostWindow, var toolbar: Bar?, val view: LinearLayout)
 
     /**
-     * A page's toolbar. It reaches under the status bar, padded by its room,
-     * and keeps its own height (Material's 64dp) below it. A toolbar's least
-     * height counts its padding, and only that least height makes room for
-     * its title's margins: a padding eating it cut the title. (The least
-     * height stays: the toolbar aligns its buttons to it.)
+     * A page's toolbar. It reaches under the status bar, and under the
+     * navigation bar or a cutout at a side (in landscape), padded by their
+     * room, and keeps its own height (Material's 64dp) below the status
+     * bar. A toolbar's least height counts its padding, and only that least
+     * height makes room for its title's margins: a padding eating it cut the
+     * title. (The least height stays: the toolbar aligns its buttons to it.)
      */
     class Bar(context: Context) : MaterialToolbar(context) {
-        fun inset(top: Int) = setPadding(0, top, 0, 0)
+        fun inset(b: androidx.core.graphics.Insets) = setPadding(b.left, b.top, b.right, 0)
 
         override fun onMeasure(widthSpec: Int, heightSpec: Int) {
             super.onMeasure(widthSpec, heightSpec)
@@ -401,6 +402,35 @@ object Navigation {
         badge.toIntOrNull()?.let { b.number = it } ?: run { b.text = badge }
     }
 
+    /**
+     * setTabTitle changes what tab i's item reads, and the toolbar the tab's
+     * stack shows while its window is at the root.
+     */
+    fun setTabTitle(id: Long, i: Int, title: String) {
+        val t = tabs[id] ?: return
+        t.bar.menu.findItem(i)?.title = title
+        val s = t.stacks.getOrNull(i) ?: return
+        val p = s.pages.firstOrNull() ?: return
+        if (p.window.id in routed) return // the router's page has the toolbar's title
+        val tb = p.toolbar
+        if (title.isEmpty()) {
+            if (tb != null) {
+                p.view.removeView(tb)
+                p.toolbar = null
+                insetsChanged()
+            }
+            return
+        }
+        if (tb != null) {
+            tb.title = title
+            return
+        }
+        val nt = toolbar(p.window, title)
+        p.view.addView(nt, 0, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        p.toolbar = nt
+        insetsChanged()
+    }
+
     fun closeTabs(id: Long) {
         val t = tabs.remove(id) ?: return
         root.removeView(t)
@@ -450,10 +480,14 @@ object Navigation {
         stacks[w.id]?.pages?.firstOrNull { it.window === w }?.toolbar?.title = title
     }
 
-    /** The toolbars at the top of the screen take the status bar's room. */
+    /**
+     * The toolbars at the top of the screen take the status bar's room, and
+     * the room of what covers the screen's sides: the navigation bar of three
+     * buttons in landscape, a cutout.
+     */
     fun insetsChanged() {
-        val top = HostImpl.bars.top
-        for (s in stacks.values.toSet()) for (p in s.pages) p.toolbar?.inset(top)
+        val b = HostImpl.bars
+        for (s in stacks.values.toSet()) for (p in s.pages) p.toolbar?.inset(b)
         for (w in HostImpl.windows.values) w.insetsChanged()
     }
 }

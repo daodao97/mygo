@@ -178,3 +178,59 @@ func TestCachedDownloadsOnceForConcurrentProcesses(t *testing.T) {
 		t.Errorf("the cache directory holds %v", entries)
 	}
 }
+
+// zeros reads as zeros without end.
+type zeros struct{}
+
+func (zeros) Read(b []byte) (int, error) {
+	clear(b)
+	return len(b), nil
+}
+
+// TestGetSizes downloads a native library larger than 64 MiB, as libmpv
+// and ONNX Runtime are, and refuses a file past the limit, saying so
+// rather than that its SHA-256 differs, without asking for it again.
+func TestGetSizes(t *testing.T) {
+	noBackoff(t)
+	const size = 64<<20 + 1
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		io.CopyN(w, zeros{}, size)
+	}))
+	defer srv.Close()
+	h := sha256.New()
+	io.CopyN(h, zeros{}, size)
+	f := File{URL: srv.URL + "/lib", SHA256: hex.EncodeToString(h.Sum(nil))}
+	path := filepath.Join(t.TempDir(), "lib")
+
+	if err := Get(context.Background(), f, path); err != nil {
+		t.Errorf("a file of %d bytes: %v", size, err)
+	}
+	if info, err := os.Stat(path); err != nil || info.Size() != size {
+		t.Errorf("the file holds %v, %v, want %d bytes", info, err, size)
+	}
+
+	saved := maxSize
+	defer func() { maxSize = saved }()
+	for _, c := range []struct {
+		max int64
+		err string
+	}{
+		{size, ""},
+		{size - 1, "GET " + srv.URL + "/lib: more than 67108864 bytes"},
+	} {
+		maxSize = c.max
+		requests.Store(0)
+		got := ""
+		if err := Get(context.Background(), f, path); err != nil {
+			got = err.Error()
+		}
+		if got != c.err {
+			t.Errorf("at most %d bytes: %q, want %q", c.max, got, c.err)
+		}
+		if n := requests.Load(); n != 1 {
+			t.Errorf("at most %d bytes: %d requests, want 1", c.max, n)
+		}
+	}
+}

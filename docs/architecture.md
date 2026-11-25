@@ -1777,8 +1777,8 @@ permissions (through `isTrusted`), new windows and the browser, downloads,
 and main-frame navigations the page starts to another origin than its
 committed page's (`Window.origin`). `serveScheme` puts the asking page in
 the request's context, under the keys of `CallerWindow` and `CallerPage`,
-so a scheme's handler knows which page sent a request: that's the channel
-of untrusted pages to the app.
+so a scheme's handler knows which page sent a request (`downloadScheme`
+does for a download): that's the channel of untrusted pages to the app.
 
 The message handler is reachable from every frame, while trust is decided
 by the main frame's URL, so an iframe of another origin must not be able to
@@ -3068,6 +3068,12 @@ type, before an entry is enrolled, so an ignored directory is never opened;
 the directories it ignored are kept per listed directory, so that the
 notices of a `Subtree` target about what is in them are dropped.
 
+A watch that polls (`Poll`, or `PollInterval` where `NewFileWatch`
+returns `ErrUnsupported`) is given `pollFileWatch`, which takes every target
+and says nothing, and its goroutine calls `lookAll` every `PollInterval`,
+as after an overflow: the scan finds what changed against its snapshot.
+`HintsOnly` has no snapshot, so it never polls.
+
 `HintsOnly` swaps the scan for `fileWatchHints` (`watch_hints.go`), behind
 the same `fileWatchLooker` the watch's goroutine drives: no snapshot, only
 the directories it enrolls. A notice naming an entry hints at the
@@ -3550,6 +3556,9 @@ either.
   map as WAI-ARIA's Core Accessibility API Mappings do: `RoleRegion` is
   one only with a name (a group without), `AXLandmarkRegion`, ATK's
   landmark with `xml-roles:region`, and UIA's custom LandmarkType;
+  `RoleForm` is one only with a name likewise (a group without),
+  `AXGroup` with `AXLandmarkForm`, ATK's landmark with
+  `xml-roles:form`, and UIA's Group with the form LandmarkType;
   `RoleSearch` is `AXGroup` with `AXLandmarkSearch`, ATK's landmark
   with `xml-roles:search`, and UIA's Group with the search LandmarkType;
   `RoleMain`, `RoleBanner`, `RoleContentInfo` and `RoleComplementary`
@@ -7145,7 +7154,9 @@ make it work, and phones a fourth:
   `%LOCALAPPDATA%\Programs\<name>` (`windows.installDirName` names the
   folder otherwise), where the updater can write and where the installers
   of later versions install too (`InstallDirRegKey` reads the uninstall
-  entry's `InstallLocation`), a Start menu shortcut, a desktop shortcut
+  entry's `InstallLocation`), in a folder of the app's own where the
+  folder chosen holds other files (`nsisOwnFolder`), as the uninstaller
+  removes the whole folder, a Start menu shortcut, a desktop shortcut
   that the finish page's second check box (MUI's "show readme" one)
   creates, and an uninstaller registered
   under `HKCU\…\Uninstall\<identifier>`; `/S /D=<dir>` installs

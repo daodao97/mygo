@@ -121,14 +121,15 @@ func TestUIATreeAnnouncer(t *testing.T) {
 }
 
 // Landmarks are groups whose LandmarkType says which, and whose AriaRole
-// names them: the navigation and search landmarks have types of their
-// own, a region the custom one.
+// names them: the navigation, search and form landmarks have types of
+// their own, a region the custom one.
 func TestUIALandmarks(t *testing.T) {
 	for role, want := range map[platform.AccessRole]uint64{
 		platform.RoleNavigation:    80003, // UIA_NavigationLandmarkTypeId
 		platform.RoleSearch:        80004, // UIA_SearchLandmarkTypeId
 		platform.RoleRegion:        80000, // UIA_CustomLandmarkTypeId
 		platform.RoleMain:          80002, // UIA_MainLandmarkTypeId
+		platform.RoleForm:          80001, // UIA_FormLandmarkTypeId
 		platform.RoleBanner:        80000,
 		platform.RoleContentInfo:   80000,
 		platform.RoleComplementary: 80000,

@@ -50,6 +50,14 @@ func TestSidebar(t *testing.T) {
 	if place != "documents" {
 		t.Fatalf("do chose %q", place)
 	}
+	// The same letter again goes to the next item starting with it, round.
+	tt.Advance(2 * typePause)
+	for i, want := range []string{"desktop", "documents", "desktop", "documents"} {
+		tt.Key(0, KeyD)
+		if place != want {
+			t.Fatalf("d typed %d times chose %q, want %q", i+1, place, want)
+		}
+	}
 	// One stop of Tab.
 	tt.Key(0, KeyTab)
 	if !tt.Focused("Other") {

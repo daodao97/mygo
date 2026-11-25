@@ -1,7 +1,9 @@
 package update
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -120,5 +122,68 @@ func TestReleaseNotes(t *testing.T) {
 		if got := ReleaseNotes(keep, version); got != want {
 			t.Errorf("notes of %s = %q, want %q", version, got, want)
 		}
+	}
+}
+
+// writeTestArchive writes an update archive of the entries given, in order:
+// a file of its body, or a link to a target.
+func writeTestArchive(t *testing.T, entries ...[3]string) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, e := range entries {
+		kind, name, s := e[0], e[1], e[2]
+		hdr := &tar.Header{Name: name, Mode: 0o644}
+		switch kind {
+		case "file":
+			hdr.Typeflag, hdr.Size = tar.TypeReg, int64(len(s))
+		case "link":
+			hdr.Typeflag, hdr.Linkname = tar.TypeSymlink, s
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if kind == "file" {
+			tw.Write([]byte(s))
+		}
+	}
+	tw.Close()
+	gz.Close()
+	return &buf
+}
+
+// A chain of links whose texts each stay inside the app can still lead out
+// of it; the archive unpacks through the app's folder as a root, so nothing
+// is written outside.
+func TestExtractArchiveLinkChain(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "app")
+	os.MkdirAll(filepath.Join(base, "x"), 0o755)
+	// "a" is the app's folder itself, so "a/l" -> "../x" is outside it
+	ar := writeTestArchive(t, [3]string{"link", "a", "."}, [3]string{"link", "a/l", "../x"}, [3]string{"file", "a/l/evil", "!"})
+	if err := ExtractArchive(ar, dir); err == nil {
+		t.Fatal("unpacked through a chain of links")
+	}
+	if _, err := os.Stat(filepath.Join(base, "x", "evil")); err == nil {
+		t.Fatal("a file was written outside the app")
+	}
+	// links that stay inside still unpack
+	ok := writeTestArchive(t, [3]string{"file", "lib/real", "data"}, [3]string{"link", "lib/alias", "real"})
+	if err := ExtractArchive(ok, t.TempDir()); err != nil {
+		t.Fatalf("links inside the app: %v", err)
+	}
+}
+
+// An archive that unpacks to more than MaxUnpackedSize is refused.
+func TestExtractArchiveLimit(t *testing.T) {
+	old := MaxUnpackedSize
+	MaxUnpackedSize = 10
+	defer func() { MaxUnpackedSize = old }()
+	if err := ExtractArchive(writeTestArchive(t, [3]string{"file", "a", "12345"}, [3]string{"file", "b", "12345"}), t.TempDir()); err != nil {
+		t.Fatalf("at the limit: %v", err)
+	}
+	if err := ExtractArchive(writeTestArchive(t, [3]string{"file", "a", "123456"}, [3]string{"file", "b", "12345"}), t.TempDir()); err == nil {
+		t.Fatal("over the limit, unpacked")
 	}
 }

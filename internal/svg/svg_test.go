@@ -423,6 +423,26 @@ func TestOldEditors(t *testing.T) {
 	}
 }
 
+// A switch draws what follows a foreignObject, as draw.io's labels have it.
+func TestSwitchForeignObject(t *testing.T) {
+	img := draw(t, `<svg viewBox="0 0 10 10"><switch>
+	<foreignObject width="100%" height="100%" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"><div xmlns="http://www.w3.org/1999/xhtml">a</div></foreignObject>
+	<rect width="10" height="10" fill="#00f"/>
+	<rect width="10" height="10" fill="#f00"/>
+</switch></svg>`, 10, 10)
+	if c := at(img, 5, 5); c != (color.RGBA{0, 0, 255, 255}) {
+		t.Errorf("drawn %v", c)
+	}
+	// One that is not displayed is what the switch picks.
+	img = draw(t, `<svg viewBox="0 0 10 10"><switch>
+	<rect width="10" height="10" display="none"/>
+	<rect width="10" height="10" fill="#00f"/>
+</switch></svg>`, 10, 10)
+	if c := at(img, 5, 5); c != (color.RGBA{}) {
+		t.Errorf("drawn %v", c)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	for _, src := range []string{``, `<html/>`, `<svg><rect`, `not xml`} {
 		if _, err := Parse([]byte(src)); err == nil {
@@ -858,5 +878,43 @@ func TestMarkerVertices(t *testing.T) {
 	// the left, -135 degrees) and the first's (right, 0).
 	if a := vs[0].angle(); math.Abs(a+67.5) > 1e-9 {
 		t.Errorf("the start of a closed subpath turns %v degrees, want -67.5", a)
+	}
+}
+
+// spacingFonts notes the letter spacing of the runs it measures.
+type spacingFonts struct {
+	boxFonts
+	got *float64
+}
+
+func (f spacingFonts) Measure(s string, ft Font) (float64, float64, float64) {
+	*f.got = ft.LetterSpacing
+	return f.boxFonts.Measure(s, ft)
+}
+
+// Letter spacing in ems is of the element's own font size, wherever that is
+// declared: attributes come in no order.
+func TestLetterSpacingEm(t *testing.T) {
+	for _, c := range []struct {
+		attrs string
+		want  float64
+	}{
+		{`font-size="40" letter-spacing="0.1em"`, 4},
+		{`style="letter-spacing:0.1em;font-size:40px"`, 4},
+		{`style="letter-spacing:0.1em;font:40px sans-serif"`, 4},
+		{`style="letter-spacing:10%;font-size:40px"`, 4},
+		{`style="letter-spacing:3px;letter-spacing:wide"`, 3},
+		{`style="letter-spacing:0.1em;letter-spacing:inherit;font-size:40px"`, 2},
+		{`style="letter-spacing:0.1em;letter-spacing:normal"`, 0},
+		{`style="font-size:40px"`, 2}, // inherited as a length
+	} {
+		for range 20 {
+			var got float64
+			drawWith(t, `<svg viewBox="0 0 100 100"><g font-size="20" style="letter-spacing:0.1em"><text x="0" y="50" `+c.attrs+`>a</text></g></svg>`, 100, 100, Options{Fonts: spacingFonts{got: &got}})
+			if math.Abs(got-c.want) > 1e-9 {
+				t.Errorf("%s: letter spacing %v, want %v", c.attrs, got, c.want)
+				break
+			}
+		}
 	}
 }

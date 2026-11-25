@@ -179,12 +179,18 @@ func (c *Config) packageDirs(goos, goarch string) ([]string, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("go list: %v\n%s", err, strings.TrimSpace(stderr.String()))
 	}
-	dirs := strings.Fields(out.String())
+	dirs := outputLines(out.String())
 	if c.deps == nil {
 		c.deps = map[string][]string{}
 	}
 	c.deps[key] = dirs
 	return dirs, nil
+}
+
+// outputLines returns the lines of a command's output that aren't empty:
+// paths, which may have spaces.
+func outputLines(out string) []string {
+	return strings.FieldsFunc(out, func(r rune) bool { return r == '\n' || r == '\r' })
 }
 
 // readNativePackages reads the manifests of the packages in dirs, and

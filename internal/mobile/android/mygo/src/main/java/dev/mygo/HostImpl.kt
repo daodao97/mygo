@@ -348,6 +348,7 @@ object HostImpl : HostCalls {
     override fun showTabs(c: ShowTabsCall) = Navigation.showTabs(c.id)
     override fun selectTab(c: SelectTabCall) { Navigation.tabs[c.id]?.select(c.index.toInt()) }
     override fun setTabBadge(c: SetTabBadgeCall) = Navigation.setBadge(c.id, c.index.toInt(), c.badge)
+    override fun setTabTitle(c: SetTabTitleCall) = Navigation.setTabTitle(c.id, c.index.toInt(), c.title)
     override fun closeTabs(c: CloseTabsCall) = Navigation.closeTabs(c.id)
     override fun pushWindow(c: PushWindowCall) {
         val p = windows[c.parent] ?: return

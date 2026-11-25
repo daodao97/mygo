@@ -105,6 +105,29 @@ func TestRouterHistory(t *testing.T) {
 	if r.Path() != "/a b" {
 		t.Errorf("an escaped path: %q", r.Path())
 	}
+	// An escaped slash stays inside its part, going on from it too, and the
+	// path is not the one of two parts.
+	r.Push("/notes/a%2Fb")
+	if r.Location() != "/notes/a%2Fb" || r.Path() != "/notes/a/b" {
+		t.Errorf("an escaped slash: at %q, path %q", r.Location(), r.Path())
+	}
+	if got := segmentsOf(r.Location()); !slices.Equal(got, []string{"notes", "a/b"}) {
+		t.Errorf("an escaped slash: parts %q", got)
+	}
+	r.pageAt(r.current(), 0)
+	r.Push("/notes/a/b")
+	if len(r.current().pages) != 0 {
+		t.Error("/notes/a/b has the page of /notes/a%2Fb")
+	}
+	r.Back()
+	r.Push("?x=1")
+	if r.Location() != "/notes/a%2Fb?x=1" || len(r.current().pages) != 1 {
+		t.Errorf("a query after an escaped slash: at %q, %d pages", r.Location(), len(r.current().pages))
+	}
+	r.Push("%2E%2E/%63%2fd")
+	if r.Location() != "/c%2Fd" {
+		t.Errorf("a relative path with an escaped slash: at %q", r.Location())
+	}
 	// Pages of the same path are one, with their state; replacing with
 	// another path is a new page.
 	page := r.pageAt(r.current(), 0)

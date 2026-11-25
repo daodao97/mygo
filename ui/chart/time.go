@@ -115,17 +115,40 @@ func (iv interval) floor(t time.Time) time.Time {
 	case unitMinute:
 		return time.Date(y, mo, d, h, mi-mi%iv.n, 0, 0, loc)
 	case unitHour:
-		return time.Date(y, mo, d, h-h%iv.n, 0, 0, 0, loc)
+		for p := pastHour(t); p != 0 || t.Hour()%iv.n != 0; p = pastHour(t) {
+			if p == 0 {
+				p = time.Hour
+			}
+			t = t.Add(-p)
+		}
+		return t
 	case unitDay:
-		return time.Date(y, mo, d-(d-1)%iv.n, 0, 0, 0, 0, loc)
+		return dayStart(y, mo, d-(d-1)%iv.n, loc)
 	case unitWeek: // weeks start on Sunday, as d3's timeWeek
-		return time.Date(y, mo, d-int(t.Weekday()), 0, 0, 0, 0, loc)
+		return dayStart(y, mo, d-int(t.Weekday()), loc)
 	case unitMonth:
 		m := int(mo) - 1
-		return time.Date(y, time.Month(m-m%iv.n+1), 1, 0, 0, 0, 0, loc)
+		return dayStart(y, time.Month(m-m%iv.n+1), 1, loc)
 	default:
-		return time.Date(y-y%iv.n, 1, 1, 0, 0, 0, 0, loc)
+		return dayStart(y-y%iv.n, 1, 1, loc)
 	}
+}
+
+// pastHour returns how far t is past a whole hour of its clock.
+func pastHour(t time.Time) time.Duration {
+	_, mi, s := t.Clock()
+	return time.Duration(mi)*time.Minute + time.Duration(s)*time.Second + time.Duration(t.Nanosecond())
+}
+
+// dayStart returns a day's midnight, or what clocks skip to over it, where
+// time.Date may give a time of the day before.
+func dayStart(y int, mo time.Month, d int, loc *time.Location) time.Time {
+	t := time.Date(y, mo, d, 0, 0, 0, 0, loc)
+	ty, tmo, td := t.Date()
+	if time.Date(ty, tmo, td, 0, 0, 0, 0, time.UTC).Before(time.Date(y, mo, d, 0, 0, 0, 0, time.UTC)) {
+		_, t = t.ZoneBounds()
+	}
+	return t
 }
 
 // next returns the round time of the interval after t, a round time.
@@ -135,24 +158,28 @@ func (iv interval) next(t time.Time) time.Time {
 		return t.Add(time.Duration(iv.n) * time.Millisecond)
 	case unitSecond, unitMinute:
 		return t.Add(iv.d)
-	case unitHour:
-		y, mo, d := t.Date()
-		return time.Date(y, mo, d, t.Hour()+iv.n, 0, 0, 0, t.Location())
+	case unitHour: // by the hours that pass, as clocks may skip the next
+		for {
+			t = t.Add(time.Hour - pastHour(t))
+			if pastHour(t) == 0 && t.Hour()%iv.n == 0 {
+				return t
+			}
+		}
 	case unitDay:
 		y, mo, d := t.Date()
-		n := time.Date(y, mo, d+iv.n, 0, 0, 0, 0, t.Location())
+		n := dayStart(y, mo, d+iv.n, t.Location())
 		if n.Month() != mo { // days of a month count from its first
-			n = time.Date(n.Year(), n.Month(), 1, 0, 0, 0, 0, t.Location())
+			n = dayStart(n.Year(), n.Month(), 1, t.Location())
 		}
 		return n
 	case unitWeek:
 		y, mo, d := t.Date()
-		return time.Date(y, mo, d+7*iv.n, 0, 0, 0, 0, t.Location())
+		return dayStart(y, mo, d+7*iv.n, t.Location())
 	case unitMonth:
 		y, mo, _ := t.Date()
-		return time.Date(y, mo+time.Month(iv.n), 1, 0, 0, 0, 0, t.Location())
+		return dayStart(y, mo+time.Month(iv.n), 1, t.Location())
 	default:
-		return time.Date(t.Year()+iv.n, 1, 1, 0, 0, 0, 0, t.Location())
+		return dayStart(t.Year()+iv.n, 1, 1, t.Location())
 	}
 }
 

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"runtime"
 	"slices"
 	"testing"
@@ -214,6 +215,16 @@ func TestRTLRangeSlider(t *testing.T) {
 	tt.Key(0, KeyLeft)
 	if low != 21 {
 		t.Errorf("Left on the minimum set it to %v, want 21", low)
+	}
+	// Both at 100, at the left: dragged right, the minimum moves.
+	low, high = 100, 100
+	tt.Frame()
+	tt.Press(10, 10)
+	tt.Move(50, 10)
+	tt.Move(90, 10)
+	tt.Release(90, 10)
+	if low != 60 || high != 100 {
+		t.Errorf("dragged right from where the knobs meet: %v to %v, want 60 to 100", low, high)
 	}
 }
 
@@ -481,5 +492,23 @@ func TestRTLAccessibility(t *testing.T) {
 	tt.send(platform.SurfaceEvent{Kind: platform.AccessAction, ID: slider.ID, Action: platform.AccessIncrement})
 	if v <= 30 {
 		t.Errorf("right to left, incrementing set %v", v)
+	}
+}
+
+// TestRTLColorPicker keeps the square of a color picker left to right:
+// assistive technology's increment raises the saturation it reads out,
+// as its Right does, not the brightness of its Up.
+func TestRTLColorPicker(t *testing.T) {
+	color := hsva{200, 0.5, 0.5, 1}.color()
+	tt := rtlTester(func(c *context) { coreColorPicker(c, &color) }, 400, 500)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	sq := accessNode(t, tt.h.access, platform.RoleSlider, "Saturation and brightness")
+	was := toHSVA(color)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessAction, ID: sq.ID, Action: platform.AccessIncrement})
+	if h := toHSVA(color); h.s <= was.s || math.Abs(h.v-was.v) > 0.005 {
+		t.Errorf("right to left, incrementing set saturation %.3f and brightness %.3f, from %.3f and %.3f", h.s, h.v, was.s, was.v)
+	}
+	if now := accessNode(t, tt.h.access, platform.RoleSlider, "Saturation and brightness").Now; now != sq.Now+1 {
+		t.Errorf("right to left, incrementing read %v then %v", sq.Now, now)
 	}
 }

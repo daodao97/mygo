@@ -365,6 +365,52 @@ func TestWindowsInstallerDisplayName(t *testing.T) {
 	uninstall(t, install)
 }
 
+// TestWindowsInstallerSharedFolder builds the installer of an app and, on
+// Windows, installs it in a folder that holds files of others: the app goes
+// into a folder of its own there, where a later install finds it, and the
+// uninstall removes that folder alone.
+func TestWindowsInstallerSharedFolder(t *testing.T) {
+	_, _, artifacts := buildTestInstaller(t, map[string]string{
+		"main.go":   "package main\n\nfunc main() {}\n",
+		"mygo.json": `{"name": "Shared Test", "identifier": "com.example.sharedtest", "version": "1.0.0"}`,
+	})
+	setup := artifacts[len(artifacts)-1]
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		return
+	}
+	shared := filepath.Join(t.TempDir(), "Tools")
+	other := filepath.Join(shared, "notes.txt")
+	if err := os.Mkdir(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(other, []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	install := filepath.Join(shared, "Shared Test")
+	// The second install, of a later version, takes the folder of the first.
+	for _, args := range [][]string{{"/S", "/D=" + shared}, {"/S"}} {
+		if out, err := exec.Command(setup, args...).CombinedOutput(); err != nil {
+			t.Fatalf("installing with %q: %v\n%s", args, err, out)
+		}
+		if !fileExists(filepath.Join(install, "Shared Test.exe")) {
+			t.Errorf("installing with %q: the app is not in %s", args, install)
+		}
+		for _, f := range []string{filepath.Join(shared, "Shared Test.exe"), filepath.Join(install, "Shared Test")} {
+			if fileExists(f) || isDir(f) {
+				t.Errorf("installing with %q made %s", args, f)
+			}
+		}
+	}
+	dir := install
+	if !fileExists(filepath.Join(install, "Uninstall.exe")) {
+		dir = shared
+	}
+	uninstall(t, dir)
+	if !fileExists(other) {
+		t.Errorf("the uninstaller removed %s, which is not the app's", other)
+	}
+}
+
 // TestNSISDisplayName checks the names in the installer's script: the
 // shortcuts, the entry in Settings > Apps, the installer's title and its
 // messages show windows.displayName, or else the name, while the
@@ -492,6 +538,8 @@ func TestNSISInstallDirName(t *testing.T) {
 		for _, s := range []string{
 			`InstallDir "$LOCALAPPDATA\Programs\` + tc.dir + `"` + "\n",
 			`InstallDirRegKey HKCU "` + key + `" "InstallLocation"` + "\n",
+			"  StrCmp $0 \"" + tc.dir + "\" done\n",
+			`  StrCpy $INSTDIR "$INSTDIR\` + tc.dir + `"` + "\n",
 			"\nName \"智链\"\n",
 			`CreateShortCut "$SMPROGRAMS\智链.lnk" "$INSTDIR\智链.exe"`,
 			`CreateShortCut "$DESKTOP\智链.lnk" "$INSTDIR\智链.exe"`,

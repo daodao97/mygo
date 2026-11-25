@@ -367,7 +367,15 @@ func TestFlyoutEscape(t *testing.T) {
 	eventually(t, "the reader focused", reader.IsFocused)
 	v.Focus()
 	waitForPage(t, v.Page(), "document.hasFocus()")
+	// Its web view, going with it, does not take the keyboard back to it:
+	// that would activate it again, after its parent was.
+	var again atomic.Int32
+	reader.OnFocus(func() { again.Add(1) })
 	escapeCloses(reader, "the reader closed")
+	mygo.RunOnMain(func() {}) // the events of its closing were reported
+	if n := again.Load(); n != 0 {
+		t.Errorf("the reader got the focus %d times as it closed", n)
+	}
 
 	// A popover of the system's (macOS) closes so too.
 	parent.Focus()

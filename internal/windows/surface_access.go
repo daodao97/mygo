@@ -197,6 +197,7 @@ var uiaControlTypes = map[platform.AccessRole]int32{
 	platform.RoleDeletion: 50020, platform.RoleInsertion: 50020, platform.RoleTabPanel: 50033, // Pane
 	// The other landmarks are groups.
 	platform.RoleMain: 50026, platform.RoleBanner: 50026, platform.RoleContentInfo: 50026, platform.RoleComplementary: 50026,
+	platform.RoleForm: 50026,
 }
 
 // ariaRoles are the ARIA roles of nodes whose control type does not say
@@ -209,6 +210,7 @@ var ariaRoles = map[platform.AccessRole]string{
 	platform.RoleGrid: "grid", platform.RoleTreeGrid: "treegrid",
 	platform.RoleDeletion: "deletion", platform.RoleInsertion: "insertion", platform.RoleTabPanel: "tabpanel",
 	platform.RoleMain: "main", platform.RoleBanner: "banner", platform.RoleContentInfo: "contentinfo", platform.RoleComplementary: "complementary",
+	platform.RoleForm: "form",
 }
 
 // landmarkNames are what landmarks without a UIA landmark type of their
@@ -1337,6 +1339,8 @@ func (e *uiaElement) property(id int, v *variant) {
 			*v = variant{VT: vtI4, Val: 80004} // UIA_SearchLandmarkTypeId
 		case platform.RoleMain:
 			*v = variant{VT: vtI4, Val: 80002} // UIA_MainLandmarkTypeId
+		case platform.RoleForm:
+			*v = variant{VT: vtI4, Val: 80001} // UIA_FormLandmarkTypeId
 		case platform.RoleRegion, platform.RoleBanner, platform.RoleContentInfo, platform.RoleComplementary:
 			*v = variant{VT: vtI4, Val: 80000} // UIA_CustomLandmarkTypeId
 		}

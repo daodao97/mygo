@@ -264,26 +264,32 @@ func coreAccordionItem(c *context, title string, open *bool, fn func()) *node {
 }
 
 // accordionKeys moves the focus from an accordion's header tr to the
-// others, last, with the arrows, Home and End.
+// others, last, with the arrows, Home and End, past those disabled.
 func accordionKeys(c *context, tr *node, last []uint64) {
 	at := slices.Index(last, tr.id)
 	if at < 0 {
 		return
 	}
-	to := -1
+	to, by := 0, 1
 	switch {
 	case tr.Shortcut(0, KeyDown):
-		to = min(at+1, len(last)-1)
+		to = at + 1
 	case tr.Shortcut(0, KeyUp):
-		to = max(at-1, 0)
+		to, by = at-1, -1
 	case tr.Shortcut(0, KeyHome):
-		to = 0
 	case tr.Shortcut(0, KeyEnd):
-		to = len(last) - 1
+		to, by = len(last)-1, -1
+	default:
+		return
 	}
 	rt := c.rt
-	if to >= 0 && rt.states[last[to]] != nil {
-		rt.focused, rt.focusVisible = last[to], true
-		rt.consumed = true
+	for ; to >= 0 && to < len(last); to += by {
+		if s := rt.states[last[to]]; s != nil && s.flags&flagDisabled == 0 {
+			rt.focused = last[to]
+			rt.reveal(rt.focused)
+			break
+		}
 	}
+	rt.focusVisible = true
+	rt.consumed = true
 }

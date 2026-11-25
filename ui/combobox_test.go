@@ -618,3 +618,38 @@ func TestFieldPlaceholder(t *testing.T) {
 		})
 	}
 }
+
+// TestComboboxAppChoosesWhileFocused checks that a choice the app sets
+// while the field has the focus shows in it at once, as when it has
+// not, but leaves what the user is typing to filter.
+func TestComboboxAppChoosesWhileFocused(t *testing.T) {
+	font := "Arial"
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Children(func() {
+			coreCombobox(c, &font, fonts).Label("Font").Width(200)
+			coreButton(c, "Away")
+		})
+	}, 400, 400)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	value := func() string { return accessNode(t, tt.h.access, platform.RoleComboBox, "Font").Value }
+	tt.Click("Font")
+	tt.Key(0, KeyEscape)
+	font = "Times"
+	tt.Frame()
+	if got := value(); got != "Times" {
+		t.Errorf("the app chose Times while the field had the focus; it shows %q", got)
+	}
+	// Typing then replaces the new choice.
+	tt.Key(Cmd, KeyA)
+	tt.Type("Cou")
+	font = "Optima"
+	tt.Frame()
+	if got := value(); got != "Cou" {
+		t.Errorf("the app chose Optima while the user typed Cou; it shows %q", got)
+	}
+	tt.Key(0, KeyTab)
+	tt.Key(0, KeyTab)
+	if got := value(); got != "Optima" {
+		t.Errorf("after the focus left, it shows %q, want the choice Optima", got)
+	}
+}

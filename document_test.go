@@ -566,6 +566,80 @@ func TestDocumentRenameMove(t *testing.T) {
 	}
 }
 
+// TestDocumentReplaceAsks has nobody asked yet about the file a document
+// would replace: one with the name of an untitled document in the folder
+// it moves to, or with the extension added to the name a dialog gave.
+func TestDocumentReplaceAsks(t *testing.T) {
+	for _, tt := range []struct {
+		name, file string
+		run        func(ds *Documents[string], dir string) error
+	}{
+		{"move untitled", "Untitled.txt", func(ds *Documents[string], dir string) error {
+			d := ds.New()
+			d.Set("mine")
+			return d.MoveTo(dir)
+		}},
+		{"save", "notes.txt", func(ds *Documents[string], dir string) error {
+			d := ds.New()
+			d.Set("mine")
+			return d.Save()
+		}},
+		{"rename", "notes.txt", func(ds *Documents[string], dir string) error {
+			path := filepath.Join(dir, "old.txt")
+			if err := os.WriteFile(path, []byte("mine"), 0o644); err != nil {
+				return err
+			}
+			d, err := ds.Open(path)
+			if err != nil {
+				return err
+			}
+			return d.Rename("")
+		}},
+	} {
+		for _, label := range []string{"Cancel", "Replace"} {
+			t.Run(tt.name+" "+label, func(t *testing.T) {
+				ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+				file := writeTemp(t, tt.file, "theirs")
+				dir := filepath.Dir(file)
+				onMain(func() {
+					fb.OnSaveDialog = func(*platform.SaveDialogOptions) string { return filepath.Join(dir, "notes") }
+				})
+				asked := answer(label)
+				err := tt.run(ds, dir)
+				want := "theirs"
+				if label == "Cancel" {
+					if !errors.Is(err, ErrCanceled) {
+						t.Errorf("canceled: %v", err)
+					}
+				} else {
+					want = "mine"
+					if err != nil {
+						t.Error(err)
+					}
+				}
+				if got := readString(t, file); got != want || len(asked.all()) != 1 {
+					t.Errorf("%s has %q, want %q; asked %q", tt.file, got, want, asked.all())
+				}
+			})
+		}
+	}
+}
+
+// TestDocumentRenameToItself gives the dialog the document's own name
+// without its extension, which replaces nothing.
+func TestDocumentRenameToItself(t *testing.T) {
+	ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+	path := writeTemp(t, "notes.txt", "x")
+	d, _ := ds.Open(path)
+	onMain(func() {
+		fb.OnSaveDialog = func(*platform.SaveDialogOptions) string { return strings.TrimSuffix(path, ".txt") }
+	})
+	asked := answer("Cancel")
+	if err := d.Rename(""); err != nil || len(asked.all()) != 0 || d.Path() != path {
+		t.Errorf("renamed to %s: %v, asked %q", d.Path(), err, asked.all())
+	}
+}
+
 // TestDocumentFollowsReplacedRename renames a file that another app
 // replaced, after the document read the new file but before its watch
 // looked again: the watch knows only the file replaced, so the document
@@ -630,6 +704,44 @@ func TestDocumentWatchStartFollowsRename(t *testing.T) {
 	}
 }
 
+// TestDocumentReloadKeepsTyping edits a document while it reads its file
+// again, which another app changed: the edit stays, in conflict with the
+// file.
+func TestDocumentReloadKeepsTyping(t *testing.T) {
+	ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+	path := writeTemp(t, "doc.txt", "one")
+	d, _ := ds.Open(path)
+	reading, release := make(chan struct{}), make(chan struct{})
+	var first sync.Once
+	read := ds.kind.read
+	ds.kind.read = func(r io.Reader) (any, error) {
+		first.Do(func() {
+			close(reading)
+			<-release
+		})
+		return read(r)
+	}
+	if err := os.WriteFile(path, []byte("theirs, longer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	looked := make(chan struct{})
+	go func() {
+		d.checkDisk()
+		close(looked)
+	}()
+	wait.For(t, "the read", reading)
+	d.Set("mine")
+	close(release)
+	wait.For(t, "the look", looked)
+	if d.Content() != "mine" || !d.IsEdited() || !d.HasConflict() {
+		t.Fatalf("content %q, edited %v, conflict %v", d.Content(), d.IsEdited(), d.HasConflict())
+	}
+	asked := answer("Cancel")
+	if err := d.Save(); !errors.Is(err, ErrCanceled) || len(asked.all()) != 1 || readString(t, path) != "theirs, longer" {
+		t.Errorf("saved: %v, asked %q, the file has %q", err, asked.all(), readString(t, path))
+	}
+}
+
 // TestDocumentLookFollowsRename looks at a document's file after another
 // app renamed it and before the watch did, as a window focused then does:
 // the look follows the file by what the document read rather than taking
@@ -687,6 +799,44 @@ func TestDocumentMenus(t *testing.T) {
 	}
 }
 
+// TestDocumentRenameKeepsConflict renames and moves a document whose file
+// another app changed, whether the document knows yet or not: saving it
+// asks as before.
+func TestDocumentRenameKeepsConflict(t *testing.T) {
+	for _, seen := range []bool{true, false} {
+		for name, move := range map[string]func(d *Document[string]) error{
+			"rename": func(d *Document[string]) error { return d.Rename("new.txt") },
+			"move":   func(d *Document[string]) error { return d.MoveTo(t.TempDir()) },
+		} {
+			t.Run(fmt.Sprintf("%s seen=%v", name, seen), func(t *testing.T) {
+				ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff})
+				path := writeTemp(t, "old.txt", "one")
+				d, _ := ds.Open(path)
+				d.Set("mine")
+				if err := os.WriteFile(path, []byte("theirs, longer"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if seen {
+					d.checkDisk()
+					if !d.HasConflict() {
+						t.Fatal("no conflict")
+					}
+				}
+				if err := move(d); err != nil {
+					t.Fatal(err)
+				}
+				asked := answer("Cancel")
+				if err := d.Save(); !errors.Is(err, ErrCanceled) || len(asked.all()) != 1 {
+					t.Errorf("saved: %v, asked %q", err, asked.all())
+				}
+				if got := readString(t, d.Path()); got != "theirs, longer" {
+					t.Errorf("the other app's change was overwritten with %q", got)
+				}
+			})
+		}
+	}
+}
+
 var serviceRuns int
 
 func TestDocumentService(t *testing.T) {
@@ -714,6 +864,44 @@ func TestDocumentService(t *testing.T) {
 	})
 	if r := call(t, fw, 3, note+".State"); r["v"].(map[string]any)["path"] != path {
 		t.Errorf("state: %v", r)
+	}
+}
+
+// TestDocumentSaveDuringSaveAs saves on the main thread while a Save As
+// is written on a goroutine, which then adds the recent document on the
+// main thread.
+func TestDocumentSaveDuringSaveAs(t *testing.T) {
+	writing, release := make(chan struct{}), make(chan struct{})
+	var first sync.Once
+	ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff, Write: func(w io.Writer, s string) error {
+		first.Do(func() {
+			close(writing)
+			<-release
+		})
+		_, err := io.WriteString(w, s)
+		return err
+	}})
+	path := writeTemp(t, "a.txt", "one")
+	d, _ := ds.Open(path)
+	d.Set("two")
+	target := filepath.Join(filepath.Dir(path), "b.txt")
+	savedAs, saving, saved := make(chan error, 1), make(chan struct{}), make(chan error, 1)
+	go func() { savedAs <- d.SaveAs(target) }()
+	wait.For(t, "the Save As to write", writing)
+	postMain(func() {
+		close(saving)
+		saved <- d.Save()
+	})
+	wait.For(t, "the main thread to save", saving)
+	close(release)
+	if err := wait.For(t, "the main thread's Save", saved); err != nil {
+		t.Error(err)
+	}
+	if err := wait.For(t, "SaveAs", savedAs); err != nil {
+		t.Error(err)
+	}
+	if got := readString(t, target); got != "two" {
+		t.Errorf("b.txt has %q", got)
 	}
 }
 

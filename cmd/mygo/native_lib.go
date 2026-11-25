@@ -320,7 +320,7 @@ func nativePackagesIn(dir string) ([]nativePackage, error) {
 		if err := cmd.Run(); err != nil {
 			return nil, fmt.Errorf("go list: %v\n%s", err, strings.TrimSpace(stderr.String()))
 		}
-		dirs = strings.Fields(out.String())
+		dirs = outputLines(out.String())
 	}
 	return readNativePackages(dirs)
 }

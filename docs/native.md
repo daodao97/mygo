@@ -764,6 +764,23 @@ reading their entries' types without stat'ing them. Symlinks are still not
 followed, nothing outside the directory is watched, and the watched
 directory going away still ends the watch with a `FileRemove` of `.`.
 
+Where the system cannot tell a watch what changes, it can look itself.
+`PollInterval` has a watch poll where the system has no file watching
+(browsers, Linux on another architecture) instead of failing with
+`errors.ErrUnsupported`; `Poll` makes it poll in any case, for a
+directory on a network share, whose changes made by other machines the
+system does not report. Polling lists and stats what the watch covers
+every `PollInterval` (a second by default with `Poll`), and reports the
+same events as a watch the system tells. A `HintsOnly` watch doesn't
+poll: with nothing to compare with, it could only hint at everything.
+
+```go
+w, err := mygo.WatchFiles(ctx, dir, mygo.FileWatchOptions{
+	Recursive:    true,
+	PollInterval: 2 * time.Second, // where the system cannot watch
+})
+```
+
 ## Global shortcuts
 
 Global shortcuts work while the app is in the background, for example to

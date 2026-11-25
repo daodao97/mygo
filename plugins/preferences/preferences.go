@@ -33,24 +33,32 @@ func path() string {
 	return filepath.Join(dir, "preferences.json")
 }
 
-func load() {
+// load reads the file, once it can be read: one that can't is not written
+// over, and the next call tries it again.
+func load() error {
 	if loaded {
-		return
+		return nil
+	}
+	data, err := os.ReadFile(path())
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
 	loaded = true
-	values = map[string]json.RawMessage{}
-	data, err := os.ReadFile(path())
 	if err == nil {
 		// One a crash cut short starts over: what it held is preferences.
 		_ = json.Unmarshal(data, &values)
 	}
+	if values == nil {
+		values = map[string]json.RawMessage{}
+	}
+	return nil
 }
 
 // Get reads the value of key into v, and reports whether there was one.
 func Get(key string, v any) bool {
 	mu.Lock()
 	defer mu.Unlock()
-	load()
+	_ = load()
 	raw, ok := values[key]
 	if !ok {
 		return false
@@ -66,7 +74,9 @@ func Set(key string, v any) error {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	load()
+	if err := load(); err != nil {
+		return err
+	}
 	values[key] = raw
 	return save()
 }
@@ -75,7 +85,9 @@ func Set(key string, v any) error {
 func Delete(key string) error {
 	mu.Lock()
 	defer mu.Unlock()
-	load()
+	if err := load(); err != nil {
+		return err
+	}
 	delete(values, key)
 	return save()
 }
@@ -84,7 +96,7 @@ func Delete(key string) error {
 func Keys() []string {
 	mu.Lock()
 	defer mu.Unlock()
-	load()
+	_ = load()
 	out := make([]string, 0, len(values))
 	for k := range values {
 		out = append(out, k)

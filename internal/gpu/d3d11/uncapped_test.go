@@ -127,15 +127,16 @@ func presentsHeld(t *testing.T, r *Renderer, posted chan func()) {
 // present paced while the window changes size, as they would without it:
 // a frame of a new size without tearing, the others without tearing too,
 // each waiting for the composition that shows it, one that changed nothing
-// for the next refresh, and none taking long (uncapped.go); and that once
-// the swap chain settled, frames present uncapped again. Uncapped frames
-// flooding DWM as it resized the window had a present take 2 s on a
-// Radeon 780M; WARP, without a display, may not show that, but the frames
-// are those of a live resize, the size changing every other frame, and no
-// frame may take near as long. Real DXGI takes DXGI_PRESENT_DO_NOT_WAIT,
-// and a frame of a new size that it refused for a refresh, as WARP on a
-// busy runner may, waits to present (holdFrame) and presents before the
-// frame after draws.
+// for the next refresh, and none making a call that may wait long on the
+// main thread (uncapped.go); and that once the swap chain settled, frames
+// present uncapped again. Uncapped frames flooding DWM as it resized the
+// window had a present take 2 s on a Radeon 780M; WARP, without a display,
+// may not show that, but the frames are those of a live resize, the size
+// changing every other frame, and their calls are checked, not their time,
+// which is the runner's. Real DXGI takes DXGI_PRESENT_DO_NOT_WAIT, and a
+// frame of a new size that it refused for a refresh, as WARP on a busy
+// runner may, waits to present (holdFrame) and presents before the frame
+// after draws.
 func TestUncappedResizePaced(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -144,13 +145,21 @@ func TestUncappedResizePaced(t *testing.T) {
 	var composed atomic.Int32
 	defer func(f func(_, _ time.Duration)) { awaitRefresh = f }(awaitRefresh)
 	awaitRefresh = func(_, _ time.Duration) { composed.Add(1) }
-	// Real DXGI presents, each call's flags and result recorded.
+	// A call to DwmFlush under way from another test returns first; as
+	// awaitRefresh calls none here, any is a frame's, on the main thread.
+	if done := inFlightFlush(); done != nil {
+		wait.For(t, "the window manager", done)
+	}
+	var flushed atomic.Int32
+	defer func(f func()) { dwmFlushCall = f }(dwmFlushCall)
+	dwmFlushCall = func() { flushed.Add(1) }
+	// Real DXGI presents, each call's arguments and result recorded.
 	var calls []presentResult
 	defer func(f func(_, _, _ uintptr, _ *presentParameters) uintptr) { presentCall = f }(presentCall)
 	present := presentCall
 	presentCall = func(sc, sync, flags uintptr, params *presentParameters) uintptr {
 		hr := present(sc, sync, flags, params)
-		calls = append(calls, presentResult{flags, uint32(hr)})
+		calls = append(calls, presentResult{sync, flags, uint32(hr)})
 		return hr
 	}
 	// A frame waiting to present presents once DXGI takes it, which it
@@ -159,21 +168,20 @@ func TestUncappedResizePaced(t *testing.T) {
 	defer func(d time.Duration) { maxHeld = d }(maxHeld)
 	maxHeld = wait.Guard
 	pacing.Uncapped = true
-	// Frames come far sooner than half of it after the last change, so the
-	// swap chain settles only once the size stops changing.
-	settleDelay = time.Second
 	for _, newRenderer := range []func(uintptr) (*Renderer, error){New, NewComposed} {
 		r, err := newRenderer(hiddenWindow(t, 200, 150))
 		if err != nil {
 			t.Skip("no Direct3D 11:", err)
 		}
-		uncappedResize(t, r, &composed, &calls)
+		uncappedResize(t, r, &composed, &flushed, &calls)
 		r.Release()
 	}
 }
 
-// presentResult is a call to Present: its flags and what it returned.
+// presentResult is a call to Present: its sync interval, its flags and
+// what it returned.
 type presentResult struct {
+	sync  uintptr
 	flags uintptr
 	hr    uint32
 }
@@ -196,8 +204,10 @@ func (c presentResult) stillDrawing() bool {
 	return c.flags&presentDoNotWait != 0 && c.hr == dxgiErrorWasStillDrawing
 }
 
-func uncappedResize(t *testing.T, r *Renderer, composed *atomic.Int32, calls *[]presentResult) {
+func uncappedResize(t *testing.T, r *Renderer, composed, flushed *atomic.Int32, calls *[]presentResult) {
 	t.Helper()
+	// The swap chain settles only once the size stops changing, below.
+	settleDelay = 2 * wait.Guard
 	kind := "window"
 	if r.composed {
 		kind = "composition"
@@ -222,25 +232,32 @@ func uncappedResize(t *testing.T, r *Renderer, composed *atomic.Int32, calls *[]
 		}
 		return true
 	}
-	const tooLong = 200 * time.Millisecond
 	colors := []scene.Color{{R: 24, G: 24, B: 27, A: 255}, {R: 250, G: 250, B: 250, A: 255}}
 	n := 0
 	// frame draws and presents a frame of w×h, which changes what it starts
 	// with and the background unless same, and reports whether it waited to
 	// start: a swap chain for composition shows no background, and a frame
-	// changing it alone would present nothing.
+	// changing it alone would present nothing. The frame may make no call
+	// that waits long: none to DwmFlush, whose wait is another thread's
+	// (awaitRefresh), and none to Present that waits for a refresh, nor,
+	// while resizing, for room in the swap chain.
 	frame := func(w, h int, same bool) bool {
 		t.Helper()
 		waited := ready()
 		if !same {
 			n++
 		}
-		start := time.Now()
+		presents := len(*calls)
 		if err := r.Render(&scene.Scene{Width: w, Height: h, Clear: colors[n%2], Background: colors[n%2]}); err != nil {
 			t.Fatal(err)
 		}
-		if d := time.Since(start); d > tooLong {
-			t.Errorf("%s: a %dx%d frame took %v, resizing %v", kind, w, h, d, r.resizing)
+		for _, c := range (*calls)[presents:] {
+			if c.sync != 0 || r.resizing && c.flags&presentDoNotWait == 0 {
+				t.Errorf("%s: a %dx%d frame, resizing %v, presented with sync interval %d, flags %#x", kind, w, h, r.resizing, c.sync, c.flags)
+			}
+		}
+		if flushed.Load() != 0 {
+			t.Fatalf("%s: a %dx%d frame, resizing %v, called DwmFlush on the main thread", kind, w, h, r.resizing)
 		}
 		return waited
 	}
@@ -322,7 +339,7 @@ func uncappedResize(t *testing.T, r *Renderer, composed *atomic.Int32, calls *[]
 	}
 	// Once the size stopped changing, a frame settles the swap chain, and
 	// frames present uncapped again.
-	time.Sleep(settleDelay/2 + 10*time.Millisecond)
+	settleDelay = 0
 	frame(w, h, false)
 	if r.resizing || r.bw != w || r.bh != h {
 		t.Fatalf("%s: settled: resizing %v, buffers %dx%d; want %dx%d", kind, r.resizing, r.bw, r.bh, w, h)

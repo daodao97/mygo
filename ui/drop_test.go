@@ -45,6 +45,40 @@ func TestFileDrops(t *testing.T) {
 	}
 }
 
+func TestDragFiles(t *testing.T) {
+	var dropped []string
+	over := false
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Fill().Children(func() {
+			zone := coreBox(c).Size(200, 100)
+			if files := zone.DroppedFiles(); files != nil {
+				dropped = append(dropped, files...)
+			}
+			over = zone.FileDragOver()
+			coreBox(c).Size(200, 100)
+		})
+	}, 300, 300)
+	if tt.DragFiles(50, 150) || over {
+		t.Error("files are taken outside of the drop zone")
+	}
+	if !tt.DragFiles(50, 50) || !over {
+		t.Error("files are not taken over the drop zone")
+	}
+	tt.DragFilesOut()
+	if over {
+		t.Error("the zone shows files over it after they left")
+	}
+	if !tt.DragFiles(50, 50) || !over {
+		t.Error("files over the zone again are not taken")
+	}
+	if !tt.DropFiles(50, 50, "/tmp/a") {
+		t.Error("the zone did not take the dropped files")
+	}
+	if !slices.Equal(dropped, []string{"/tmp/a"}) || over {
+		t.Errorf("dropped %q, over %v", dropped, over)
+	}
+}
+
 // send2 sends an event, settles the frames, and returns what the content
 // answered.
 func (t *Tester) send2(ev platform.SurfaceEvent) bool {

@@ -189,6 +189,28 @@ func TestTimeInput(t *testing.T) {
 	}
 }
 
+// Up and Down step over the hour the clocks skip the day they go
+// forward, which time.Date would turn back into the hour before.
+func TestTimeInputStepsOverAGap(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip(err)
+	}
+	// The clocks go from 2:00 to 3:00 that night.
+	alarm := time.Date(2026, 3, 8, 1, 30, 0, 0, ny)
+	tt := coreNewTester(func(c *context) { coreTimeInput(c, &alarm).Label("Alarm") }, 300, 100)
+	tt.SetRegion(i18n.Region{Locale: "en-GB", FirstWeekday: time.Monday, HourCycle: 24})
+	tt.Click("01")
+	tt.Key(0, KeyUp)
+	if alarm.Hour() != 3 || alarm.Minute() != 30 {
+		t.Fatalf("Up from 1:30: %v", alarm)
+	}
+	tt.Key(0, KeyDown)
+	if alarm.Hour() != 1 || alarm.Minute() != 30 {
+		t.Errorf("Down from 3:30: %v", alarm)
+	}
+}
+
 // TestTimeInput12 checks a time field in 12 hours: the half of the day a
 // segment of its own, after the hours in English and before them in
 // Chinese, as the locale's pattern writes it.

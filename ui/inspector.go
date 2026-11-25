@@ -679,6 +679,8 @@ func roleName(r Role) string {
 		return "ContentInfo"
 	case RoleComplementary:
 		return "Complementary"
+	case RoleForm:
+		return "Form"
 	}
 	return ""
 }
@@ -709,6 +711,8 @@ func accessibleRole(e *node) (string, bool) {
 		return "contentinfo", true
 	case RoleComplementary:
 		return "complementary", true
+	case RoleForm:
+		return "form", true
 	}
 	switch role := Role(r) + RoleGroup; role {
 	case RoleGroup:

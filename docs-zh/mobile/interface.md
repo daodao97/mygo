@@ -19,7 +19,7 @@ mygo.App.WhenReady(func() {
 })
 ```
 
-标签页在 iOS 上指定一个 SF Symbol，在 Android 上（以及 iOS 上没有符号时）提供一张 PNG，按栏的颜色作为模板绘制。返回按钮、iOS 上从左边缘的轻扫和 Android 的返回会弹出推入的窗口，并关闭它；`Window.Pop` 也一样。在 iOS 上，栏浮在原生 UI 之上，列表在标签栏的玻璃下继续滚动；在 Android 上，栏使用窗口背景的颜色。在桌面上，这些窗口就是普通窗口：`Tabs.Select` 显示其中一个，推入的窗口也显示为一个窗口。`examples/tabs` 演示了两者，其中一个标签页是网页。
+标签页在 iOS 上指定一个 SF Symbol，在 Android 上（以及 iOS 上没有符号时）提供一张 PNG，按栏的颜色作为模板绘制。返回按钮、iOS 上从左边缘的轻扫和 Android 的返回会弹出推入的窗口，并关闭它；`Window.Pop` 也一样。在 iOS 上，栏浮在原生 UI 之上，列表在标签栏的玻璃下继续滚动；在 Android 上，栏使用窗口背景的颜色。`Tabs.SetTitle` 在事后修改标签页的标题，用于语言切换后不重启的应用（`App.SetLocale`）；在桌面上它不起作用。在桌面上，这些窗口就是普通窗口：`Tabs.Select` 显示其中一个，推入的窗口也显示为一个窗口。`examples/tabs` 演示了两者，其中一个标签页是网页。
 
 `ui.Router` 也可以在一个窗口里把它的页面显示为系统的栈：设置 `SystemStack` 后，从第一页到当前页的历史就是栈，顶部是系统的导航栏，显示每页用 `Route.Title` 给出的标题和返回按钮。在 iOS 上由 UIKit 的导航控制器移动页面，并支持从左边缘轻扫返回；在 Android 上导航栏是 Material 的工具栏，带返回箭头，页面由路由器像 Android 应用那样滑动。`InSystemStack` 为真时不要再画自己的栏：
 

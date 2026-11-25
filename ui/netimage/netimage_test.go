@@ -122,6 +122,51 @@ func TestRevalidates(t *testing.T) {
 	}
 }
 
+// What the server says of caching holds on any of its Cache-Control lines,
+// and an Expires that is no date is past.
+func TestCacheHeaders(t *testing.T) {
+	data := picture(t, 8, 8)
+	for _, c := range []struct {
+		name   string
+		header http.Header
+		hits   int32 // after a restart an hour later
+		stored bool
+	}{
+		{"no-store second", http.Header{"Cache-Control": {"private", "no-store"}}, 2, false},
+		{"max-age second", http.Header{"Cache-Control": {"public", "max-age=60"}}, 2, true},
+		{"no-cache second", http.Header{"Cache-Control": {"max-age=86400", "no-cache"}}, 2, true},
+		{"max-age over Expires", http.Header{"Cache-Control": {"max-age=86400"}, "Expires": {"0"}}, 1, true},
+		{"Expires 0", http.Header{"Expires": {"0"}}, 2, true},
+		{"nothing", http.Header{}, 1, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var hits atomic.Int32
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				for k, v := range c.header {
+					w.Header()[k] = v
+				}
+				w.Write(data)
+			}))
+			defer s.Close()
+			m, clock := testCache(t)
+			get(t, m, s.URL, 100)
+			idle(t, m)
+			body, _ := m.paths(s.URL)
+			if _, err := os.Stat(body); (err == nil) != c.stored {
+				t.Errorf("stored: %v, want %v", err == nil, c.stored)
+			}
+			next, c2 := testCache(t)
+			next.dir = m.dir
+			*c2 = clock.Add(time.Hour)
+			get(t, next, s.URL, 100)
+			if hits.Load() != c.hits {
+				t.Errorf("%d requests, want %d", hits.Load(), c.hits)
+			}
+		})
+	}
+}
+
 // Offline, what it has shows, however old.
 func TestOffline(t *testing.T) {
 	data := picture(t, 8, 8)
@@ -386,6 +431,61 @@ func TestForgetWhileDownloading(t *testing.T) {
 	defer m.mu.Unlock()
 	if len(m.entries) != 0 || m.held != 0 {
 		t.Errorf("%d entries, %d bytes", len(m.entries), m.held)
+	}
+}
+
+// What's let go of as it's written to disk stays off it, and out of memory.
+func TestForgetWhileWriting(t *testing.T) {
+	data := picture(t, 8, 8)
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(data) }))
+	defer s.Close()
+	m, _ := testCache(t)
+	m.disk.Lock() // the file waits for its place
+	m.request(s.URL, 100, nil)
+	wait.Until(t, "the write", func() bool {
+		tmp, _ := filepath.Glob(filepath.Join(m.dir, "tmp-*"))
+		return len(tmp) > 0
+	})
+	// As forget, which had the disk first.
+	m.dropLocked(func(key) bool { return true })
+	m.disk.Unlock()
+	idle(t, m)
+	if files, _ := os.ReadDir(m.dir); len(files) != 0 {
+		t.Errorf("%d files stay on disk", len(files))
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.entries) != 0 || m.held != 0 {
+		t.Errorf("%d entries, %d bytes", len(m.entries), m.held)
+	}
+}
+
+// A 304's answer isn't written for a picture let go of as the server was asked.
+func TestForgetWhileRevalidating(t *testing.T) {
+	data := picture(t, 8, 8)
+	arrived, finish := make(chan struct{}), make(chan struct{})
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", `"1"`)
+		if r.Header.Get("If-None-Match") == "" {
+			w.Write(data)
+			return
+		}
+		close(arrived)
+		<-finish
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	defer s.Close()
+	m, _ := testCache(t)
+	m.preload(s.URL)
+	idle(t, m)
+	m.request(s.URL, 100, nil)
+	wait.For(t, "the question", arrived)
+	m.forget(s.URL)
+	close(finish)
+	idle(t, m)
+	if files, _ := os.ReadDir(m.dir); len(files) != 0 {
+		t.Errorf("%d files stay on disk", len(files))
 	}
 }
 

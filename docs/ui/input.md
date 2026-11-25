@@ -529,6 +529,10 @@ if zone.FileDragOver() {
 }
 ```
 
+A `Tester` drops files with `DropFiles`, and holds them over a point with
+`DragFiles`, which reports whether an element there takes them, until
+`DragFilesOut` drags them out of the window.
+
 Values dragged within or between windows, and serialized data exchanged
 with other applications, are [drag and drop](drag-and-drop.md).
 

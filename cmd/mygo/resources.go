@@ -372,6 +372,12 @@ func (m *merger) place(group []source) error {
 		m.list = append(m.list, r)
 		return nil
 	}
+	if same, err := m.sameDotfile(group); err != nil || same {
+		if same {
+			m.list = append(m.list, resource{name: first.name, src: first.path, nested: first.nested})
+		}
+		return err
+	}
 	var children []source
 	for i, s := range group {
 		dir, err := m.isDir(s)
@@ -396,6 +402,33 @@ func (m *merger) place(group []source) error {
 	}
 	m.list = append(m.list, resource{name: first.name})
 	return m.merge(children)
+}
+
+// sameDotfile reports whether the sources of a group are one dotfile that
+// directories which merge all hold, with the same contents, such as the
+// .gitkeep of an otherwise empty directory: it is installed once.
+func (m *merger) sameDotfile(group []source) (bool, error) {
+	first := group[0]
+	if !hiddenName(path.Base(first.name)) {
+		return false, nil
+	}
+	for _, s := range group {
+		if s.name != first.name || s.listed || !s.nested {
+			return false, nil
+		}
+		for _, p := range []string{s.path, s.amd64} {
+			if p == "" {
+				continue
+			}
+			if info, err := s.stat(p); err != nil || !info.Mode().IsRegular() {
+				return false, err
+			}
+			if same, err := sameContents(first.path, p); err != nil || !same {
+				return false, err
+			}
+		}
+	}
+	return true, nil
 }
 
 // isDir reports whether s is a directory: for a universal pair, both
@@ -457,32 +490,24 @@ func (m *merger) children(s source, nested bool) ([]source, error) {
 }
 
 // entryNames returns the names in dir that the app ships, sorted: not
-// those starting with a dot, nor those the filter excludes, whose links
-// are followed unless nested.
+// those starting with a dot, but the files when nested, as walk ships
+// them, nor those the filter excludes, whose links are followed unless
+// nested.
 func (m *merger) entryNames(dir string, nested bool) ([]string, error) {
-	names, err := entryNames(dir)
-	if err != nil {
-		return nil, err
-	}
-	return slices.DeleteFunc(names, func(n string) bool {
-		path := filepath.Join(dir, n)
-		info, err := source{nested: nested}.stat(path)
-		return m.filter.excludes(path, err == nil && info.IsDir())
-	}), nil
-}
-
-// entryNames returns the names in dir, sorted, but those starting with a
-// dot.
-func entryNames(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 	var names []string
 	for _, e := range entries {
-		if !hiddenName(e.Name()) {
-			names = append(names, e.Name())
+		n := e.Name()
+		path := filepath.Join(dir, n)
+		info, err := source{nested: nested}.stat(path)
+		isDir := err == nil && info.IsDir()
+		if hiddenName(n) && (!nested || isDir) || nested && junkName(n) || m.filter.excludes(path, isDir) {
+			continue
 		}
+		names = append(names, n)
 	}
 	return names, nil
 }

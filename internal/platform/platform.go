@@ -507,7 +507,8 @@ type WindowOptions struct {
 	VibrancyTint *Color
 	// CornerRadius rounds a frameless window's corners, in DIPs: its
 	// content and material are cut to them (macOS), or the system rounds
-	// it with its own corners (Windows 11).
+	// it with its own corners (Windows 11). On macOS a titled window's
+	// corners are drawn by the system at it.
 	CornerRadius int
 	Opacity      float64
 	Parent       Window
@@ -1751,6 +1752,7 @@ type Tab struct {
 type TabBar interface {
 	Select(i int)
 	SetBadge(i int, badge string)
+	SetTitle(i int, title string)
 	Close()
 }
 

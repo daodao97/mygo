@@ -57,11 +57,12 @@ func (t *Toast) life() time.Duration {
 	return t.Timeout
 }
 
-// toast is a toast the window holds, under key: it showed for spent,
-// and since at while the time of the toasts runs.
+// toast is a toast the window holds, under key, added as the n-th: it
+// showed for spent, and since at while the time of the toasts runs.
 type toast struct {
 	Toast
 	key   uint64
+	n     uint64
 	spent time.Duration
 	at    time.Time
 }
@@ -108,7 +109,7 @@ func (c *context) AddToast(t Toast) string {
 	if t.ID == "" {
 		t.ID = "toast-" + strconv.FormatUint(rt.nextToast, 10)
 	}
-	ts := toast{Toast: t, key: rt.nextToast, at: c.now}
+	ts := toast{Toast: t, key: rt.nextToast, n: rt.nextToast, at: c.now}
 	if i := rt.toastIndex(t.ID); i >= 0 {
 		ts.key = rt.toasts[i].key
 		rt.toasts[i] = ts
@@ -318,14 +319,22 @@ func coreToastBase(c *context, t Toast) toastParts {
 func (p toastParts) Left() time.Duration { return p.left }
 
 // ActionButton creates a button without a look, as ButtonBase does, that
-// runs the toast's OnAction and closes it. Give it children, as the
-// toast's Action.
+// runs the toast's OnAction and closes it, unless OnAction added a toast
+// with its ID. Give it children, as the toast's Action.
 func (p toastParts) ActionButton() *node {
 	b := coreButtonBase(p.c)
 	if b.Clicked() {
-		if i := p.c.rt.toastIndex(p.id); i >= 0 {
-			if action := p.c.rt.toasts[i].OnAction; action != nil {
+		rt := p.c.rt
+		if i := rt.toastIndex(p.id); i >= 0 {
+			n := rt.toasts[i].n
+			if action := rt.toasts[i].OnAction; action != nil {
 				action()
+			}
+			if i := rt.toastIndex(p.id); i >= 0 && rt.toasts[i].n != n {
+				// The action showed this one, as of a retry that failed
+				// again.
+				rt.consumed = true
+				return b
 			}
 		}
 		p.c.CloseToast(p.id)

@@ -213,7 +213,7 @@ func (t *androidToolchain) buildGo(ctx context.Context, c, dc *Config, tk *task,
 		return err
 	}
 	os.Remove(strings.TrimSuffix(out, ".so") + ".h")
-	return nil
+	return checkSize(out, opts.maxSize)
 }
 
 // clang is the NDK's compiler for abi.

@@ -28,9 +28,12 @@ without a symbol), drawn as a template in the bar's colors. The back
 button, iOS's swipe from the left edge and Android's back pop a pushed
 window, which closes it; `Window.Pop` does too. On iOS the bars float
 over native UI, whose lists scroll on beneath the tab bar's glass; on
-Android the bars take the color of the window's background. On desktops
-the windows are windows: `Tabs.Select` shows one, and a pushed window
-shows as one. `examples/tabs` shows both, with a page in one of its tabs.
+Android the bars take the color of the window's background. `Tabs.SetTitle`
+changes a tab's title after the fact, for an app whose language changes
+without restarting (`App.SetLocale`); on desktops it does nothing. On
+desktops the windows are windows: `Tabs.Select` shows one, and a pushed
+window shows as one. `examples/tabs` shows both, with a page in one of its
+tabs.
 
 A `ui.Router` can show its pages as the system's stack instead, in one
 window: with `SystemStack` set, the history up to the page shown is the

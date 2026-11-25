@@ -279,6 +279,10 @@ func checkForUpdates(ctx context.Context) {
   cannot, and `Check` returns `mygo.ErrUpdatesDisabled` in them.
 - `Check` and `Install` go through the proxy of the system's settings,
   or of `HTTPS_PROXY` when it is set (see [proxies](native.md#proxies)).
+  They follow a redirect only to HTTPS, and not past ten.
+- An archive unpacks inside the app's folder alone, through links of its
+  own too, and to at most 8 GB; anything else stops the update and the
+  app stays as it is.
 
 ## Your own update service
 

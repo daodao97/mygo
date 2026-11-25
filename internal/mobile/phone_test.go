@@ -90,6 +90,18 @@ func surfaceWindow(t *testing.T, b *Backend, h *fakeHost) (*window, *surfaceEven
 	return w, wh
 }
 
+// settle waits until the main thread has handled the events the host sent,
+// as onMain does not: what it runs may come before them. They are handled in
+// order, so the answer to one more, of no window, comes after them.
+func settle(h *fakeHost) {
+	h.onUI(func() {
+		deliver(encodeEvent(func(wr *wire.Writer) {
+			wr.Uvarint(wire.EventAccessibilityTree)
+			wr.Int(0)
+		}), true)
+	})
+}
+
 // The keyboard edits the document through its client, by UTF-16 offsets, and
 // gets the state after each edit in the answer.
 func TestKeyboardEdits(t *testing.T) {
@@ -191,7 +203,7 @@ func TestNoFramesInBackground(t *testing.T) {
 				wr.Int(w.id)
 			}), true)
 		})
-		onMain(b, func() {})
+		settle(h)
 	}
 	bg := func(on bool) {
 		h.onUI(func() {
@@ -229,7 +241,7 @@ func TestRefreshesArePaced(t *testing.T) {
 			wr.Int(w.id)
 		}), true)
 	})
-	onMain(b, func() {})
+	settle(h)
 	onMain(b, func() { w.s.FrameNow() })
 	wh.mu.Lock()
 	defer wh.mu.Unlock()
@@ -414,7 +426,7 @@ func TestResizeRenewsSurface(t *testing.T) {
 					wr.Float(refresh)
 				}), true)
 			})
-			onMain(b, func() {})
+			settle(h)
 		}
 		changed(7, 400, 800, 60)
 		changed(7, 400, 800, 120)

@@ -1274,6 +1274,18 @@ class SetFrameRateCall(
     }
 }
 
+class SetTabTitleCall(
+    @JvmField var id: Long = 0L,
+    @JvmField var index: Long = 0L,
+    @JvmField var title: String = "",
+) {
+    constructor(r: WireReader) : this() {
+        id = r.int()
+        index = r.int()
+        title = r.string()
+    }
+}
+
 class SetAppBadgeCall(
     @JvmField var count: Long = 0L,
 ) {
@@ -1421,6 +1433,8 @@ interface HostCalls {
     fun registerFont(c: RegisterFontCall): RegisterFontReply
     /** how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface) */
     fun setFrameRate(c: SetFrameRateCall)
+    /** a tab's title, which the bar shows */
+    fun setTabTitle(c: SetTabTitleCall)
     /** the count on the app's icon (iOS) or launcher (Android); zero clears it. Not shown unless the person allows badges */
     fun setAppBadge(c: SetAppBadgeCall)
 }
@@ -1518,7 +1532,8 @@ fun dispatchCall(h: HostCalls, buf: ByteArray): ByteArray? {
         86 -> { h.drawText(DrawTextCall(r)).encode(w); return w.toByteArray() }
         87 -> { h.registerFont(RegisterFontCall(r)).encode(w); return w.toByteArray() }
         88 -> h.setFrameRate(SetFrameRateCall(r))
-        89 -> h.setAppBadge(SetAppBadgeCall(r))
+        89 -> h.setTabTitle(SetTabTitleCall(r))
+        90 -> h.setAppBadge(SetAppBadgeCall(r))
     }
     return null
 }
