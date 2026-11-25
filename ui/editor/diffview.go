@@ -79,7 +79,10 @@ type DiffState struct {
 	// new lines Old's, as an agent's changes are reviewed.
 	HunkActions bool
 	// LineSelection lets the numbers of lines be clicked and dragged to
-	// select lines, which OnLineSelection reports.
+	// select lines, which OnLineSelection reports. A drag selects from the
+	// line pressed to the one under the pointer, on the side it started
+	// on, and scrolls the view while it is held above or below it;
+	// DraggingLines reports it.
 	LineSelection   bool
 	OnLineSelection func(DiffLineRange)
 	// OnGutterButton shows a + on the gutter of the line under the
@@ -127,6 +130,9 @@ type DiffState struct {
 	expandV     int
 	selected    DiffLineRange
 	hasSel      bool
+	// selAnchor is the line of selected a drag or Shift-click extends
+	// from: the one pressed, or the end Shift-click left in place.
+	selAnchor int
 	// oldActive is set while the old side of a split view has the
 	// keyboard, and stays after it goes, until the new side has it.
 	oldActive bool
@@ -322,13 +328,26 @@ func (d *DiffState) CollapseAll() {
 // there are.
 func (d *DiffState) SelectedLines() (DiffLineRange, bool) { return d.selected, d.hasSel }
 
+// DraggingLines reports whether a drag over the numbers of lines is
+// selecting them, so that an app acting on the lines selected, as a git
+// client staging them, can act once the drag is released: the frame the
+// release brings reports false.
+func (d *DiffState) DraggingLines() bool {
+	for i := range d.eds {
+		if g := &d.eds[i].gesture; g.active && g.drag != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // SetSelectedLines selects lines, as clicking their numbers does; ok
 // false clears the selection.
 func (d *DiffState) SetSelectedLines(r DiffLineRange, ok bool) {
 	if r.End < r.Start {
 		r.Start, r.End = r.End, r.Start
 	}
-	d.selected, d.hasSel = r, ok
+	d.selected, d.hasSel, d.selAnchor = r, ok, r.Start
 }
 
 // GoToHunk puts the caret of the active side (ActiveSide) at the start
@@ -974,18 +993,45 @@ func (d *DiffState) selectLine(side DiffSide, line int, extend bool) {
 	switch {
 	case extend && d.hasSel && d.selected.Side == side:
 		if line < d.selected.Start {
-			d.selected.Start = line
+			d.selected.Start, d.selAnchor = line, d.selected.End
 		} else {
-			d.selected.End = line
+			d.selected.End, d.selAnchor = line, d.selected.Start
 		}
 	case d.hasSel && d.selected.Side == side && d.selected.Start == line && d.selected.End == line:
 		d.hasSel = false
 	default:
-		d.selected, d.hasSel = DiffLineRange{Side: side, Start: line, End: line}, true
+		d.selected, d.hasSel, d.selAnchor = DiffLineRange{Side: side, Start: line, End: line}, true, line
 	}
 	if d.OnLineSelection != nil && d.hasSel {
 		d.OnLineSelection(d.selected)
 	}
+}
+
+// dragLine extends the selection from its anchor to a line of its side
+// the pointer drags over, reporting it when it changes. Lines of the
+// other side, as the added lines below deleted ones in a unified view,
+// leave it as it is.
+func (d *DiffState) dragLine(side DiffSide, line int) {
+	if !d.hasSel || side != d.selected.Side {
+		return
+	}
+	r := DiffLineRange{Side: side, Start: min(d.selAnchor, line), End: max(d.selAnchor, line)}
+	if r == d.selected {
+		return
+	}
+	d.selected = r
+	if d.OnLineSelection != nil {
+		d.OnLineSelection(r)
+	}
+}
+
+// deletedLineAt returns the old line of a unified view's deleted block b
+// at height y from the block's top, by the tops of its lines, the
+// annotations under a line its own.
+func (d *DiffState) deletedLineAt(b *block, y float64) int {
+	tops := d.deletedTops[b.hunk]
+	i := sort.Search(len(tops), func(i int) bool { return tops[i] > y })
+	return b.from + min(max(i-1, 0), b.to-b.from-1)
 }
 
 // activeHunk returns the hunk under the pointer on either side, or else
