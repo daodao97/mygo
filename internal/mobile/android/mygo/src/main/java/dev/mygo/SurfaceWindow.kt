@@ -37,8 +37,33 @@ class SurfaceWindow(context: Context, id: Long) : HostWindow(context, id) {
     private val wid: Long = id
     private val surface = Surface(context)
     /** The surface, and under it the views it holds. */
-    private val box = android.widget.FrameLayout(context).apply {
+    private val box: android.widget.FrameLayout = object : android.widget.FrameLayout(context) {
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            // Before the surface's own, which places it.
+            if (android.os.Build.VERSION.SDK_INT < 31) viewTreeObserver.addOnPreDrawListener(away)
+        }
+
+        override fun onDetachedFromWindow() {
+            viewTreeObserver.removeOnPreDrawListener(away)
+            super.onDetachedFromWindow()
+        }
+    }.apply {
         addView(surface, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+    }
+
+    /**
+     * Android 10 (and at times 11) shows a surface again as the app comes
+     * back to the front, whatever the views around it, so a window a view
+     * hides (its tab is not the one selected, a page was pushed over it,
+     * another stack is in front) would show over the one that is: while
+     * hidden, the surface stands far off the screen, where it goes then.
+     * Its frames stay, ready for when it shows.
+     */
+    private val away: android.view.ViewTreeObserver.OnPreDrawListener = android.view.ViewTreeObserver.OnPreDrawListener {
+        val x = if (box.isShown) 0f else 100_000f
+        if (surface.translationX != x) surface.translationX = x
+        true
     }
     override val view: View get() = box
     private var native = 0L

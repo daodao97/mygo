@@ -79,6 +79,7 @@ object Navigation {
             for ((k, s) in stacks.withIndex()) s.visibility = if (k == i) View.VISIBLE else View.GONE
             if (bar.selectedItemId != i) bar.selectedItemId = i
             for (p in stacks[i].pages) p.window.reportSize()
+            HostImpl.updateBack() // the stack in front changed
         }
     }
 
