@@ -4467,7 +4467,18 @@ either.
   O(log n) whatever the estimate. The area scrolls as a scroll container,
   its offset the state's (`flagScrollY`, the content as high as its
   paragraphs), kept by the anchor as heights above the view are measured;
-  an edit, a move of the caret or a press reveals the caret once.
+  an edit, a move of the caret or a press reveals the caret once. With
+  `NoWrap`, which sets `flagScrollX` on an area, its paragraphs break only
+  at newlines and it scrolls sideways too, by the editor's `scrollX`, as a
+  single-line input does: the x in the layouts at the view's left, which a
+  line aligned to the right and longer than the view goes left of. Each
+  paragraph laid out keeps how far its lines reach left and right (`ext`),
+  the content as wide as the farthest, found again only when the farthest
+  shrinks (`extents`); the state's offset counts from the content's left,
+  or its right right to left, as a scroll container's, so that the wheel,
+  Shift and the wheel, the scroll bar and `ScrollState` move it. Hits,
+  painting, the input method's caret and `IndexForPoint` take `scrollX`
+  off, and a drag held past a side asks for frames, selecting on.
 - **Editing layers.** `ui/editor.go` holds the widget's editing state;
   `editor_history.go` owns delta undo, `editor_selection.go` the visual
   range set and caret affinity, `editor_navigation.go` keys and pointer

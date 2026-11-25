@@ -144,7 +144,7 @@ func (ed *editor) caretParagraphRTL() bool {
 
 func (ed *editor) hitPosition(x, y float32) text.CaretPosition {
 	if a := ed.area; a != nil {
-		return a.positionAt(ed, x-ed.originX, float64(y-ed.originY)+a.scroll)
+		return a.positionAt(ed, x-ed.originX+ed.scrollX, float64(y-ed.originY)+a.scroll)
 	}
 	if ed.layout == nil {
 		return text.CaretPosition{}

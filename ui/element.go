@@ -2050,7 +2050,30 @@ func (e *node) SingleLine() *node { e.single = true; e.maxLines = 1; return e }
 
 // NoWrap keeps each line of the element's text whole, breaking it only at
 // newlines, even where it overflows the element.
-func (e *node) NoWrap() *node { e.noWrap = true; return e }
+//
+// On a TextArea (TextAreaBase, TextAreaBuffer), it keeps each line the
+// user types whole too, as a list of URLs or a code snippet holds one
+// item a line: a line wider than the area scrolls sideways, with the
+// wheel (Shift and the wheel with a mouse), the touchpad and a horizontal
+// scroll bar, and the caret stays in view as the user types, moves it or
+// drags a selection past a side. Without it, a text area wraps its lines
+// at its width. A TextInput keeps its line whole anyway.
+func (e *node) NoWrap() *node { e.setNoWrap(true); return e }
+
+// setNoWrap sets NoWrap, and has a text area, which then scrolls
+// sideways, scroll that way too.
+func (e *node) setNoWrap(on bool) {
+	e.noWrap = on
+	// By the control it is, not its state, so that Key may follow.
+	if e.kind != kindInput || e.widget != "TextArea" && e.widget != "TextAreaBuffer" {
+		return
+	}
+	if on {
+		e.flags |= flagScrollX
+	} else {
+		e.flags &^= flagScrollX
+	}
+}
 
 // Balance wraps the element's text in lines of about the same length, as
 // CSS's text-wrap: balance does: a heading or a short callout that takes
