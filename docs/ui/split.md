@@ -30,6 +30,22 @@ editor does.
 ui.SplitVerticalPercent(c, &app.editorPercent, func() { app.editor(c) }, func() { app.results(c) }).Grow(1)
 ```
 
+`SplitSecond` makes the `*float32` the size of the second pane instead, for
+a panel at the end of the window that keeps its size while the first pane
+takes the rest of the room: a chat's list of members on the right, an
+inspector, or a terminal under an editor. The second pane is on the right
+of `Split` (on the left right to left) and at the bottom of
+`SplitVertical`. The divider moves as before, the arrows the way they
+point, 40 DIPs from either edge; when the window shrinks, the first pane
+gives way down to its 40 DIPs, then the second, which takes its size back
+when there is room again. Of the percent variants, the percentage is the
+second pane's, and `SplitReset` puts the second pane at its value.
+
+```go
+ui.Split(c, &app.membersWidth, func() { app.chat(c) }, func() { app.members(c) }).SplitSecond().Fill()
+ui.SplitVertical(c, &app.terminalHeight, func() { app.editor(c) }, func() { app.terminal(c) }).SplitSecond().Grow(1)
+```
+
 Keep the size in the app's state, and save it to restore the layout when
 the app starts again. The pointer shows a resize cursor over the divider.
 
@@ -56,4 +72,6 @@ ui.Split(c, &app.sidebarWidth, func() { app.files(c) }, func() { app.editor(c) }
 ## Accessibility
 
 Assistive technology sees the divider as a splitter named "Divider",
-which takes the focus and moves with the arrows.
+which takes the focus and moves with the arrows. Its value is where it
+is from the start of the split, also with `SplitSecond`, so that raising
+it moves it toward the end.

@@ -20,6 +20,13 @@ ui.SplitVertical(c, &app.consoleHeight, func() { app.editor(c) }, func() { app.c
 ui.SplitVerticalPercent(c, &app.editorPercent, func() { app.editor(c) }, func() { app.results(c) }).Grow(1)
 ```
 
+`SplitSecond` 让 `*float32` 改为表示第二个窗格的尺寸，适合位于窗口末端、尺寸保持不变的面板，第一个窗格则占据剩余空间：例如聊天应用右侧的成员列表、检查器面板，或编辑器下方的终端。第二个窗格在 `Split` 中位于右侧（从右到左布局时位于左侧），在 `SplitVertical` 中位于底部。分隔条的行为不变：方向键按所指方向移动分隔条，并与两侧边缘保持至少 40 DIP。窗口缩小时，第一个窗格先缩小到 40 DIP，之后第二个窗格才会缩小，待空间充足时再恢复原尺寸。对于百分比变体，百分比表示第二个窗格所占的比例；`SplitReset` 也会把第二个窗格恢复为指定值。
+
+```go
+ui.Split(c, &app.membersWidth, func() { app.chat(c) }, func() { app.members(c) }).SplitSecond().Fill()
+ui.SplitVertical(c, &app.terminalHeight, func() { app.editor(c) }, func() { app.terminal(c) }).SplitSecond().Grow(1)
+```
+
 把尺寸保存在应用状态中并持久化，以便应用再次启动时恢复布局。指针在分隔条上会显示调整大小的光标。
 
 设置 `SplitReset` 后，双击分隔条会将第一个窗格恢复为应用指定的尺寸，单位与分栏类型一致：`Split` 和 `SplitVertical` 用 DIP，百分比变体用百分比。未设置时，双击不会改变尺寸。即使窗口太小，无法容纳指定尺寸，也仍会保留该值，待空间充足时恢复，这与按下分隔条调整尺寸时的行为相同。
@@ -36,4 +43,4 @@ ui.Split(c, &app.sidebarWidth, func() { app.files(c) }, func() { app.editor(c) }
 
 ## 辅助功能
 
-辅助技术把分隔条看作名为 "Divider" 的分隔条，它可以获得焦点，并随方向键移动。
+辅助技术把分隔条看作名为 "Divider" 的分隔条，它可以获得焦点，并随方向键移动。它的值是分隔条距分栏起始边的位置，使用 `SplitSecond` 时也是如此，因此增大该值会让分隔条移向末端。

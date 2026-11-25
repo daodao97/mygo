@@ -2503,9 +2503,11 @@ func Spinner(c *Context) Element {
 // divider keeps 40 DIPs from either edge. With less room than that, first
 // gives way, keeping *size for when there is room again. Changed reports a
 // move. Right to left (Direction), first is on the right. SplitReset makes
-// a double click on the divider put first back at a size the app chooses.
-// SplitGap spaces the panes apart by a number of DIPs without drawing the
-// 1 DIP divider line, including 0 for flush panes.
+// a double click on the divider put first back at a size the app chooses,
+// and SplitSecond makes *size the width of second instead, as a panel at
+// the end of a window takes. SplitGap spaces the panes apart by a number
+// of DIPs without drawing the 1 DIP divider line, including 0 for flush
+// panes.
 //
 //	ui.Split(c, &app.sidebar, app.files, app.editor).Fill()
 func Split(c *Context, size *float32, first func(), second func()) Element {
@@ -8222,11 +8224,11 @@ func (_handle Element) SplitGap(v float32) Element {
 }
 
 // SplitReset makes a double click on the divider of a Split put the first
-// pane at v, in the split's own unit: DIPs for Split and SplitVertical, a
-// percentage for SplitPercent and SplitVerticalPercent. A split without it
-// keeps its size on a double click. The value is kept even when the window
-// is too small to show it, so the pane takes it back when there is room
-// again.
+// pane at v, or the second with SplitSecond, in the split's own unit: DIPs
+// for Split and SplitVertical, a percentage for SplitPercent and
+// SplitVerticalPercent. A split without it keeps its size on a double
+// click. The value is kept even when the window is too small to show it,
+// so the pane takes it back when there is room again.
 //
 //	ui.Split(c, &app.sidebar, app.files, app.editor).SplitReset(220)
 func (_handle Element) SplitReset(v float32) Element {
@@ -8238,6 +8240,29 @@ func (_handle Element) SplitReset(v float32) Element {
 	_ = _ctx
 	_node.markStateRead()
 	return wrapElement(_node.SplitReset(v))
+}
+
+// SplitSecond makes *size of a Split the size of its second pane rather
+// than its first's, the pane on the right of Split (on the left right to
+// left) and at the bottom of SplitVertical, as a chat's list of members or
+// an inspector at the end of a window, or a terminal under an editor: the
+// first pane then takes the rest of the room. The divider, its arrows and
+// the 40 DIPs it keeps from either edge stay as they are; with less room,
+// the first pane gives way down to its 40 DIPs, then the second, keeping
+// *size for when there is room again. SplitReset puts the second pane at
+// its value. Of SplitPercent and SplitVerticalPercent, *p is the second
+// pane's percentage of the room.
+//
+//	ui.Split(c, &app.membersWidth, app.chat, app.members).SplitSecond().Fill()
+func (_handle Element) SplitSecond() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	_node.markStateRead()
+	return wrapElement(_node.SplitSecond())
 }
 
 // Spring returns a value following target with a spring, as AnimateTo
