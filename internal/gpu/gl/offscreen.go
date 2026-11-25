@@ -5,6 +5,7 @@ package gl
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -44,34 +45,89 @@ type Offscreen struct {
 	scratch []byte
 }
 
+// The functions of EGL NewOffscreen calls, loaded once.
+var (
+	eglOnce sync.Once
+	errEGL  error
+
+	eglGetPlatformDisplay func(platform uint32, native uintptr, attribs unsafe.Pointer) uintptr
+	eglInitialize         func(display uintptr, major, minor *int32) uint32
+	eglBindAPI            func(api uint32) uint32
+	eglChooseConfig       func(display uintptr, attribs *int32, configs *uintptr, size int32, n *int32) uint32
+	eglCreateContext      func(display, config, share uintptr, attribs *int32) uintptr
+	eglMakeCurrent        func(display, draw, read, context uintptr) uint32
+	eglDestroyContext     func(display, context uintptr) uint32
+	eglTerminate          func(display uintptr) uint32
+)
+
+// The surfaceless display is the process's one: eglGetPlatformDisplay
+// returns the same to every caller, and eglInitialize and eglTerminate
+// count nothing, so one context's eglTerminate would tear the display
+// down under the contexts other threads draw with (plugins/render's
+// workers), which crashes Mesa. The offscreen contexts share it instead:
+// the first initializes it, the last released terminates it.
+var surfaceless struct {
+	mu      sync.Mutex
+	display uintptr
+	refs    int
+}
+
+// loadEGL loads libEGL's functions, the first time it is called.
+func loadEGL() error {
+	eglOnce.Do(func() {
+		lib, err := purego.Dlopen("libEGL.so.1", purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		if err != nil {
+			errEGL = fmt.Errorf("gl: no EGL: %w", err)
+			return
+		}
+		for name, fn := range map[string]any{
+			"eglGetPlatformDisplay": &eglGetPlatformDisplay, "eglInitialize": &eglInitialize, "eglBindAPI": &eglBindAPI,
+			"eglChooseConfig": &eglChooseConfig, "eglCreateContext": &eglCreateContext, "eglMakeCurrent": &eglMakeCurrent,
+			"eglDestroyContext": &eglDestroyContext, "eglTerminate": &eglTerminate,
+		} {
+			sym, err := purego.Dlsym(lib, name)
+			if err != nil || sym == 0 {
+				errEGL = fmt.Errorf("gl: EGL has no %s", name)
+				return
+			}
+			purego.RegisterFunc(fn, sym)
+		}
+	})
+	return errEGL
+}
+
+// acquireDisplay returns the surfaceless display, initialized, which
+// releaseDisplay gives back.
+func acquireDisplay() (uintptr, error) {
+	surfaceless.mu.Lock()
+	defer surfaceless.mu.Unlock()
+	if surfaceless.refs == 0 {
+		display := eglGetPlatformDisplay(eglPlatformSurfaceless, 0, nil)
+		if display == 0 || eglInitialize(display, nil, nil) == 0 {
+			return 0, errors.New("gl: no surfaceless EGL display")
+		}
+		surfaceless.display = display
+	}
+	surfaceless.refs++
+	return surfaceless.display, nil
+}
+
+// releaseDisplay terminates the display once no context holds it.
+func releaseDisplay() {
+	surfaceless.mu.Lock()
+	defer surfaceless.mu.Unlock()
+	if surfaceless.refs--; surfaceless.refs == 0 {
+		eglTerminate(surfaceless.display)
+		surfaceless.display = 0
+	}
+}
+
 // NewOffscreen makes an OpenGL 3.3 context, or with es an OpenGL ES 3.0
 // one, current on the calling thread, and binds a framebuffer of w×h
-// pixels.
+// pixels. Contexts on several threads at once share EGL's display.
 func NewOffscreen(es bool, w, h int) (_ *Offscreen, err error) {
-	lib, err := purego.Dlopen("libEGL.so.1", purego.RTLD_NOW|purego.RTLD_GLOBAL)
-	if err != nil {
-		return nil, fmt.Errorf("gl: no EGL: %w", err)
-	}
-	var (
-		getPlatformDisplay func(platform uint32, native uintptr, attribs unsafe.Pointer) uintptr
-		initialize         func(display uintptr, major, minor *int32) uint32
-		bindAPI            func(api uint32) uint32
-		chooseConfig       func(display uintptr, attribs *int32, configs *uintptr, size int32, n *int32) uint32
-		createContext      func(display, config, share uintptr, attribs *int32) uintptr
-		makeCurrent        func(display, draw, read, context uintptr) uint32
-		destroyContext     func(display, context uintptr) uint32
-		terminate          func(display uintptr) uint32
-	)
-	for name, fn := range map[string]any{
-		"eglGetPlatformDisplay": &getPlatformDisplay, "eglInitialize": &initialize, "eglBindAPI": &bindAPI,
-		"eglChooseConfig": &chooseConfig, "eglCreateContext": &createContext, "eglMakeCurrent": &makeCurrent,
-		"eglDestroyContext": &destroyContext, "eglTerminate": &terminate,
-	} {
-		sym, err := purego.Dlsym(lib, name)
-		if err != nil || sym == 0 {
-			return nil, fmt.Errorf("gl: EGL has no %s", name)
-		}
-		purego.RegisterFunc(fn, sym)
+	if err := loadEGL(); err != nil {
+		return nil, err
 	}
 	// A variable of its own, not a named result: returning an error would
 	// set that to nil before the undoing below runs.
@@ -87,32 +143,36 @@ func NewOffscreen(es bool, w, h int) (_ *Offscreen, err error) {
 			off.release()
 		}
 	}()
-	display := getPlatformDisplay(eglPlatformSurfaceless, 0, nil)
-	if display == 0 || initialize(display, nil, nil) == 0 {
-		return nil, errors.New("gl: no surfaceless EGL display")
+	display, err := acquireDisplay()
+	if err != nil {
+		return nil, err
 	}
-	undo = append(undo, func() { terminate(display) })
+	off.display = display
+	undo = append(undo, releaseDisplay)
 	api, bit, contextAttribs := uint32(eglOpenGLAPI), int32(eglOpenGLBit), []int32{eglContextMajorVersion, 3, eglContextMinorVersion, 3, eglContextProfileMask, eglContextCoreProfileBit, eglNone}
 	if es {
 		api, bit, contextAttribs = eglOpenGLESAPI, eglOpenGLES3Bit, []int32{eglContextMajorVersion, 3, eglContextMinorVersion, 0, eglNone}
 	}
-	bindAPI(api)
+	eglBindAPI(api)
 	// Configurations are for windows unless asked otherwise.
 	configAttribs := []int32{eglRenderableType, bit, eglSurfaceType, eglPbufferBit, eglNone}
 	var config uintptr
 	var n int32
-	if chooseConfig(display, &configAttribs[0], &config, 1, &n) == 0 || n == 0 {
+	if eglChooseConfig(display, &configAttribs[0], &config, 1, &n) == 0 || n == 0 {
 		return nil, errors.New("gl: no EGL configuration for the API")
 	}
-	context := createContext(display, config, 0, &contextAttribs[0])
+	context := eglCreateContext(display, config, 0, &contextAttribs[0])
 	if context == 0 {
 		return nil, errors.New("gl: no context of the version")
 	}
+	off.context = context
+	// Releasing a context current on this thread leaves the others' as
+	// they are: current is per thread.
 	undo = append(undo, func() {
-		makeCurrent(display, 0, 0, 0)
-		destroyContext(display, context)
+		eglMakeCurrent(display, 0, 0, 0)
+		eglDestroyContext(display, context)
 	})
-	if makeCurrent(display, 0, 0, context) == 0 {
+	if eglMakeCurrent(display, 0, 0, context) == 0 {
 		return nil, errors.New("gl: cannot make the context current without a surface")
 	}
 	if err := load(); err != nil {
