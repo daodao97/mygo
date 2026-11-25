@@ -89,13 +89,24 @@ func TestInotifyWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	next(platform.FileWatchNotice{Target: 2, Kind: platform.FileWatchWrite, Name: "file"})
-	// A directory deleted is a removal, not a lost watch.
+	// A directory deleted is watched no more, though another one made at
+	// its path may have its inode: it has to be added again.
 	if err := os.RemoveAll(sub); err != nil {
 		t.Fatal(err)
 	}
-	next(platform.FileWatchNotice{Target: 2, Kind: platform.FileWatchRemove})
-	next(platform.FileWatchNotice{Target: 1, Kind: platform.FileWatchRemove, Name: "sub"})
+	if err := os.Mkdir(sub, 0700); err != nil {
+		t.Fatal(err)
+	}
+	next(platform.FileWatchNotice{Target: 2, Kind: platform.FileWatchLost})
+	next(platform.FileWatchNotice{Target: 1, Kind: platform.FileWatchCreate, Name: "sub"})
 	w.Remove(2)
+	if err := add(3, sub, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "file"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	next(platform.FileWatchNotice{Target: 3, Kind: platform.FileWatchCreate, Name: "file"})
 	if err := os.Rename(filepath.Join(dir, "missing"), filepath.Join(dir, "x")); err == nil {
 		t.Fatal("renamed nothing")
 	}
