@@ -154,6 +154,18 @@ func (b *Buffer) LineEnding() string {
 	return b.ends.dominant()
 }
 
+// MixedLineEndings reports whether the text's line breaks don't all have
+// the same ending, some \r\n and some \n, say; a text with one line, or
+// with every break alike, is not mixed. It reads counts the buffer keeps,
+// as quick for a large text as for a small one. With LineEnding, it tells
+// an editor's status bar what to show, "Mixed" or the ending all lines
+// have, and SetLineEnding converts a mixed text to one ending.
+func (b *Buffer) MixedLineEndings() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.ends.mixed()
+}
+
 // SetLineEnding converts the ending of every line to ending, \r\n, \r
 // or \n, as an editor's command converting a file's line endings: lines
 // it breaks later end so too. It is not a step of undo, and undo and redo

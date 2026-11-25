@@ -194,6 +194,18 @@ func (e lineEnds) dominant() string {
 	return ending(best)
 }
 
+// mixed reports whether the line breaks have more than one ending.
+func (e lineEnds) mixed() bool {
+	lf := e.codes.Len() - e.crlf - e.cr
+	kinds := 0
+	for _, n := range []int{lf, e.crlf, e.cr} {
+		if n > 0 {
+			kinds++
+		}
+	}
+	return kinds > 1
+}
+
 // convert returns e with every line ending code.
 func (e lineEnds) convert(code byte) lineEnds {
 	n := e.codes.Len()

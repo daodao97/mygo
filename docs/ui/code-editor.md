@@ -92,8 +92,18 @@ whatever the clipboard had; moving lines up or down moves their endings
 with them. A line ending in `\r` followed by an empty line ending in `\n`
 would be written `\r\n`, which reads back as one line break, so the empty
 line's break becomes `\r\n`. Undo and redo put endings back with the text.
-`LineEnding` says which ending most lines have, and `SetLineEnding`
-converts every line to one.
+`LineEnding` says which ending most lines have, `MixedLineEndings`
+whether the lines' endings differ, and `SetLineEnding` converts every
+line to one. Both read counts the buffer keeps, without a scan of the
+text, so a status bar can show "Mixed" or the ending, as Notepad++'s does,
+and offer the conversion:
+
+```go
+ending := map[string]string{"\n": "LF", "\r\n": "CRLF", "\r": "CR"}[buf.LineEnding()]
+if buf.MixedLineEndings() {
+	ending = "Mixed"
+}
+```
 
 The text is a persistent tree of chunks, as Zed's rope: an edit copies a
 few kilobytes and a path of the tree, whatever the size of the document,
