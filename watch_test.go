@@ -1674,6 +1674,63 @@ func TestFileWatchHintsOnly(t *testing.T) {
 	}
 }
 
+// A directory that a hints-only watch enrolls, whose parent is replaced
+// by a file or a symlink out of the root just then, doesn't end the watch:
+// the parent's hint covers it.
+func TestFileWatchHintsOnlyParentReplaced(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a directory being read can't be renamed")
+	}
+	for _, kind := range []string{"file", "symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			dir := t.TempDir()
+			sub := filepath.Join(dir, "sub")
+			if err := os.MkdirAll(filepath.Join(sub, "new"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			outside := t.TempDir()
+			var replace atomic.Bool
+			fb.FileWatchAddHook = func(target platform.FileWatchTarget) error {
+				if !strings.HasSuffix(target.Path, filepath.Join("sub", "new")) || !replace.CompareAndSwap(true, false) {
+					return nil
+				}
+				// Kept, so that its identity isn't used again.
+				err := os.Rename(sub, filepath.Join(outside, "sub"))
+				if err == nil && kind == "file" {
+					err = os.WriteFile(sub, nil, 0600)
+				} else if err == nil {
+					err = os.Symlink(outside, sub)
+				}
+				if err != nil {
+					t.Error(err)
+				}
+				return errors.New("not a directory")
+			}
+			defer func() { fb.FileWatchAddHook = nil }()
+			if err := os.Remove(filepath.Join(sub, "new")); err != nil {
+				t.Fatal(err)
+			}
+			w, err := WatchFiles(context.Background(), dir, FileWatchOptions{Recursive: true, Debounce: -1, HintsOnly: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.Close()
+			if err := os.Mkdir(filepath.Join(sub, "new"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			replace.Store(true)
+			fileWatchTestNotice(t, w, "sub", platform.FileWatchNotice{Name: "new", Kind: platform.FileWatchCreate})
+			if got := fileWatchTestHints(t, w); !slices.Equal(got, []string{"sub"}) {
+				t.Fatalf("hints %v", got)
+			}
+			fileWatchTestNotice(t, w, ".", platform.FileWatchNotice{Name: "sub", Kind: platform.FileWatchCreate})
+			if got := fileWatchTestHints(t, w); !slices.Equal(got, []string{"."}) {
+				t.Fatalf("hints %v", got)
+			}
+		})
+	}
+}
+
 // With a backend that watches a tree with one target, a hints-only watch
 // enrolls nothing else, and hints at the directory of what changed deep
 // down, but not in an ignored one.

@@ -261,8 +261,10 @@ func (s *fileWatchHints) enroll(p string, info os.FileInfo, again bool) error {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return err
 	}
+	// Gone or replaced, or a directory above it was, by a file or a
+	// symlink out of the root, through which it can't be looked at.
 	checked, statErr := s.root.Lstat(filepath.FromSlash(p))
-	if errors.Is(statErr, fs.ErrNotExist) || statErr == nil && !os.SameFile(StatIdentity(checked), info) || fileWatchInaccessible(err) {
+	if statErr != nil || !os.SameFile(StatIdentity(checked), info) || fileWatchInaccessible(err) {
 		if p == "." {
 			return &os.PathError{Op: "watch", Path: s.dir, Err: errWatchRootChanged}
 		}
