@@ -10,7 +10,7 @@ package ui
 // and SplitSecond makes *size the width of second instead, as a panel at
 // the end of a window takes. SplitGap spaces the panes apart by a number
 // of DIPs without drawing the 1 DIP divider line, including 0 for flush
-// panes.
+// panes, and SplitLimits gives either pane a minimum and a maximum size.
 //
 //	ui.Split(c, &app.sidebar, app.files, app.editor).Fill()
 func coreSplit(c *context, size *float32, first, second func()) *node {
@@ -105,8 +105,7 @@ func (e *node) SplitSecond() *node {
 	s.now = true
 	if sb := e.c.splitBuilt(e); sb != nil && !sb.second {
 		sb.second = true
-		sb.place(true)
-		sb.acc()
+		sb.apply()
 	}
 	return e
 }
@@ -121,21 +120,97 @@ type splitGapSettings struct {
 	nowSet, shownSet bool
 }
 
-// splitBuild holds the divider and handle built for a Split in the current
-// pass so SplitGap can size them in the same pass without positional walking
-// or an extra rebuild pass.
+// SplitLimits bounds the sizes of a Split's panes, in DIPs, for all four
+// kinds of split: the width of each pane in Split and SplitPercent, its
+// height in SplitVertical and SplitVerticalPercent. A zero field sets no
+// limit, and a minimum under the 40 DIPs every pane keeps changes nothing.
+type SplitLimits struct {
+	// FirstMin and FirstMax bound the first pane: on the left (on the
+	// right, right to left) or on top.
+	FirstMin, FirstMax float32
+	// SecondMin and SecondMax bound the second pane, which takes the rest
+	// of the room, or with SplitSecond is the one *size measures.
+	SecondMin, SecondMax float32
+}
+
+// SplitLimits gives the panes of a Split a minimum and a maximum size, in
+// DIPs whichever the split's unit: the divider stops where a pane would
+// leave its limits, as it stops 40 DIPs from either edge, both as the user
+// drags it and as the arrows move it, and the panes keep within them as
+// the room changes. Where the limits can't all hold, or don't fill the
+// room:
+//
+//   - a pane's minimum wins over its maximum;
+//   - when the room is smaller than both minimums together, both panes
+//     keep them and overflow the end of the split, which the window, or
+//     a Clip around it, cuts: give the window a minimum size that holds
+//     them;
+//   - when the room is larger than both maximums together, both panes
+//     keep them and the rest of the room, after the second, stays empty.
+//
+// A size outside the limits is kept, and shown within them, until the
+// user moves the divider. As with SplitReset, the input applies the limits
+// of the build before, and the layout those of this build.
+//
+//	// A side panel between 280 and 480 DIPs wide, after a chat no
+//	// narrower than 360.
+//	ui.Split(c, &app.chatWidth, app.chat, app.panel).SplitLimits(ui.SplitLimits{
+//		FirstMin: 360, SecondMin: 280, SecondMax: 480,
+//	})
+func (e *node) SplitLimits(l SplitLimits) *node {
+	if e.widget != "Split" {
+		return e
+	}
+	l.FirstMin, l.FirstMax = max(l.FirstMin, 0), max(l.FirstMax, 0)
+	l.SecondMin, l.SecondMax = max(l.SecondMin, 0), max(l.SecondMax, 0)
+	s := coreLocal(e, splitLimitsKey{}, func() splitLimitsSettings { return splitLimitsSettings{} })
+	s.now, s.set = l, true
+	if sb := e.c.splitBuilt(e); sb != nil {
+		sb.lim = l
+		sb.apply()
+	}
+	return e
+}
+
+// splitLimitsKey is the local that keeps a split's SplitLimits settings.
+type splitLimitsKey struct{}
+
+// splitLimitsSettings are what SplitLimits says of a split in this build,
+// which the next build's input applies by.
+type splitLimitsSettings struct {
+	now SplitLimits
+	set bool
+}
+
+// splitLimitsOf returns the SplitLimits settings of a split, or nil when it
+// has none.
+func splitLimitsOf(e *node) *splitLimitsSettings {
+	if v, ok := e.st.locals[splitLimitsKey{}]; ok {
+		if s, ok := v.(*splitLimitsSettings); ok {
+			return s
+		}
+	}
+	return nil
+}
+
+// splitSlack is how much a pane in DIPs grows, against the other's 1, so
+// that it takes only the room the other can't, at its maximum: too little
+// to move it by a fraction of a DIP otherwise, and a power of two, which
+// the flexible lengths divide by exactly.
+const splitSlack = 0x1p-64
+
+// splitBuild holds the panes, the divider and the handle built for a Split
+// in the current pass, so that SplitSecond, SplitGap and SplitLimits lay
+// them out in the same pass, without positional walking or an extra
+// rebuild pass.
 type splitBuild struct {
-	split, div, handle   *node
-	size                 *float32
-	total, minPane, grip float32
-	vertical, inPercent  bool
-	// place sizes the panes by *size, the first or the second
-	// (SplitSecond), which second says.
-	place  func(second bool)
-	second bool
-	// gap is the room between the panes, and shown the size of the pane
-	// *size measures, as the divider's accessible range tells them.
-	gap, shown float32
+	split, a, div, b, handle *node
+	size                     *float32
+	total, minPane, grip     float32
+	// gap is the room between the panes (SplitGap).
+	gap                         float32
+	vertical, inPercent, second bool
+	lim                         SplitLimits
 }
 
 // splitBuilt returns what the current pass built for the split e, or nil.
@@ -148,15 +223,120 @@ func (c *context) splitBuilt(e *node) *splitBuild {
 	return nil
 }
 
+// along returns n's length, minimum and maximum along the split.
+func (sb *splitBuild) along(n *node) (*length, *bound, *bound) {
+	if sb.vertical {
+		return &n.height, &n.minH, &n.maxH
+	}
+	return &n.width, &n.minW, &n.maxW
+}
+
+// apply lays the panes out, by what this pass says of the split so far:
+// the pane *size measures, the first or with SplitSecond the second, at
+// that size or share and the other with the rest, both within their
+// limits, as each of SplitSecond and SplitLimits calls it again. The
+// layout sizes them, not splitShown: that uses the last frame's room, and
+// the layout this frame's.
+func (sb *splitBuild) apply() {
+	sized, rest := sb.a, sb.b
+	if sb.second {
+		sized, rest = sb.b, sb.a
+	}
+	for _, n := range [2]*node{sized, rest} {
+		n.width, n.height, n.basis, n.grow = length{}, length{}, length{}, 0
+		n.minW, n.minH, n.maxW, n.maxH = bound{}, bound{}, bound{}, bound{}
+	}
+	// l names the pane *size measures first, as fit does.
+	l := sb.limits()
+	limited := l != SplitLimits{}
+	minPane := sb.minPane
+	firstMin, secondMin := max(l.FirstMin, minPane), max(l.SecondMin, minPane)
+	firstMax, secondMax := max(l.FirstMax, firstMin), max(l.SecondMax, secondMin)
+	main, minMain, maxMain := sb.along(sized)
+	_, restMin, restMax := sb.along(rest)
+	if sb.inPercent {
+		// The panes grow in proportion, and either takes the room the
+		// other can't, at its maximum.
+		share := min(max(*sb.size, 0), 100) / 100
+		sized.Grow(share)
+		rest.Grow(1 - share)
+		minMain.setPx(firstMin)
+		if l.SecondMax > 0 && sized.grow == 0 {
+			sized.grow = splitSlack
+		}
+		if l.FirstMax > 0 && rest.grow == 0 {
+			rest.grow = splitSlack
+		}
+	} else if !limited {
+		*main = px(*sb.size)
+		minMain.setPx(min(*sb.size, minPane))
+		rest.Grow(1)
+	} else {
+		// As large as *size, within its limits, giving way to the other's
+		// minimum down to its own.
+		v := *sb.size
+		if l.FirstMax > 0 {
+			v = min(v, firstMax)
+		}
+		*main = px(max(v, firstMin))
+		minMain.setPx(firstMin)
+		rest.Grow(1)
+		if l.SecondMax > 0 {
+			// It takes the room the other can't.
+			sized.grow = splitSlack
+		}
+	}
+	if l.FirstMax > 0 {
+		maxMain.setPx(firstMax)
+	}
+	restMin.setPx(secondMin)
+	if l.SecondMax > 0 {
+		restMax.setPx(secondMax)
+	}
+	sb.acc()
+}
+
+// limits returns the split's limits with the pane *size measures first,
+// as fit takes them.
+func (sb *splitBuild) limits() SplitLimits {
+	if sb.second {
+		return sb.lim.swapped()
+	}
+	return sb.lim
+}
+
+// swapped returns l with its panes' limits swapped.
+func (l SplitLimits) swapped() SplitLimits {
+	return SplitLimits{FirstMin: l.SecondMin, FirstMax: l.SecondMax, SecondMin: l.FirstMin, SecondMax: l.FirstMax}
+}
+
 // acc tells assistive technology the divider's range and where it is from
 // the start, so that increasing it moves it toward the end, whichever pane
 // *size measures.
 func (sb *splitBuild) acc() {
-	at := sb.shown
+	l := sb.limits()
+	at := splitShown(*sb.size, sb.total, sb.gap, sb.minPane, sb.inPercent, l)
+	lo, hi := l.fit(0, sb.total, sb.gap, sb.minPane), l.fit(sb.total, sb.total, sb.gap, sb.minPane)
 	if sb.second && sb.total > 0 {
-		at = sb.total - sb.gap - sb.shown
+		room := sb.total - sb.gap
+		at, lo, hi = room-at, room-hi, room-lo
 	}
-	sb.div.accRange = [3]float64{float64(sb.minPane), float64(max(sb.total-sb.gap-sb.minPane, sb.minPane)), float64(at)}
+	sb.div.accRange = [3]float64{float64(lo), float64(hi), float64(at)}
+}
+
+// splitShown returns the size of the pane size measures, in DIPs or with
+// inPercent a percentage, as a split total long with gap between its panes
+// and limits l (that pane first) shows it: not a size the room can't, which
+// is kept for when there is room again.
+func splitShown(size, total, gap, minPane float32, inPercent bool, l SplitLimits) float32 {
+	switch {
+	case inPercent && total > 0:
+		share := min(max(size, 0), 100) / 100
+		return l.fit(share*(total-gap), total, gap, minPane)
+	case !inPercent && total > 0 && (size > minPane || l != SplitLimits{}):
+		return l.fit(size, total, gap, minPane)
+	}
+	return size
 }
 
 // SplitGap spaces the two panes of a Split apart by v DIPs without drawing
@@ -184,15 +364,7 @@ func (e *node) SplitGap(v float32) *node {
 			sb.div.Width(v)
 			sb.handle.Start(-(handleSize - v) / 2).Width(handleSize)
 		}
-		shown := *sb.size
-		switch {
-		case sb.inPercent && sb.total > 0:
-			share := min(max(*sb.size, 0), 100) / 100
-			shown = fitSplit(share*(sb.total-v), sb.total, v, sb.minPane)
-		case !sb.inPercent && sb.total > 0 && *sb.size > sb.minPane:
-			shown = fitSplit(*sb.size, sb.total, v, sb.minPane)
-		}
-		sb.gap, sb.shown = v, shown
+		sb.gap = v
 		sb.acc()
 	}
 	return e
@@ -259,6 +431,19 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 			gap = gapCfg.shown
 		}
 	}
+	// lim is what SplitLimits said of the split in the build before, which
+	// the input since applies by, as reset, with the pane *size measures
+	// first; this build's SplitLimits sets what this frame lays out by.
+	var lim SplitLimits
+	if s := splitLimitsOf(e); s != nil {
+		if s.set {
+			lim = s.now
+		}
+		s.now, s.set = SplitLimits{}, false
+	}
+	if side.shown {
+		lim = lim.swapped()
+	}
 	// toward is +1 when the divider moving toward the end (down) widens the
 	// pane *size measures, as for the first pane, and -1 for the second.
 	toward := float32(1)
@@ -277,19 +462,12 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 		if vertical {
 			total = in.st.h
 		}
-		share := min(max(*size, 0), 100) / 100
 		// shown is the size of the pane *size measures as the last frame
 		// laid it out. Drags and keys move the divider from there, not from
 		// *size, which a split too small for it does not show.
-		shown := *size
-		switch {
-		case inPercent && total > 0:
-			shown = fitSplit(share*(total-gap), total, gap, minPane)
-		case !inPercent && total > 0 && *size > minPane:
-			shown = fitSplit(*size, total, gap, minPane)
-		}
+		shown := splitShown(*size, total, gap, minPane, inPercent, lim)
 		set := func(v float32) {
-			v = fitSplit(v, total, gap, minPane)
+			v = lim.fit(v, total, gap, minPane)
 			if inPercent {
 				if total <= gap {
 					return
@@ -310,7 +488,7 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 			if inPercent {
 				v = min(max(v, 0), 100)
 			} else {
-				v = max(v, minPane)
+				v = lim.fit(v, 0, gap, minPane)
 			}
 			if v != *size {
 				*size = v
@@ -319,7 +497,7 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 			}
 		}
 		in.Children(func() {
-			// place sizes the panes below.
+			// splitBuild.apply sizes the panes.
 			a := coreBox(c).Shrink(1).Clip()
 			a.Children(first)
 
@@ -350,35 +528,6 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 			b := coreBox(c).Shrink(1).Clip()
 			b.Children(second)
 
-			// place sizes the panes, the first or with second the second
-			// by *size and the other with the rest, setting all that the
-			// other call set, as SplitSecond calls it again once they were
-			// built. The layout sizes them, not shown: shown uses the last
-			// frame's room, and the layout uses this frame's.
-			place := func(second bool) {
-				sized, rest := a, b
-				if second {
-					sized, rest = b, a
-				}
-				if inPercent {
-					sized.Grow(share)
-					rest.Grow(1 - share)
-					minLength(sized, minPane)
-				} else {
-					setLength(sized, *size)
-					minLength(sized, min(*size, minPane))
-					sized.grow, sized.basis = 0, length{}
-					if vertical {
-						rest.height = length{}
-					} else {
-						rest.width = length{}
-					}
-					rest.Grow(1)
-				}
-				minLength(rest, minPane)
-			}
-			place(false)
-
 			// placeOn keeps the handle on the divider where this frame lays
 			// it out, also when a pane gives way.
 			handle := coreBox(c).Absolute()
@@ -391,19 +540,19 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 			}
 			c.splits = append(c.splits, splitBuild{
 				split:     e,
+				a:         a,
 				div:       div,
+				b:         b,
 				handle:    handle,
 				size:      size,
-				place:     place,
 				total:     total,
 				minPane:   minPane,
 				grip:      grip,
 				gap:       gap,
-				shown:     shown,
 				vertical:  vertical,
 				inPercent: inPercent,
 			})
-			c.splits[len(c.splits)-1].acc()
+			c.splits[len(c.splits)-1].apply()
 			// A press there focuses the line, as a press on it would. Only a
 			// move changes the size, so a press keeps *size for when there is
 			// room again. A double click restores the size SplitReset chose.
@@ -434,12 +583,13 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 					d = -dx
 				}
 				d *= toward
-				// The pointer goes on past a pane's limit, where the divider
-				// stops: what it went past is kept, so that coming back
-				// moves the divider only once the pointer is over it again.
+				// The pointer goes on past a pane's limit (its 40 DIPs, or
+				// SplitLimits'), where the divider stops: what it went past
+				// is kept, so that coming back moves the divider only once
+				// the pointer is over it again.
 				o, _ := keepLocal(handle.st, splitOvershoot{}, func() float32 { return 0 })
 				want := shown + d + *o
-				*o = want - fitSplit(want, total, gap, minPane)
+				*o = want - lim.fit(want, total, gap, minPane)
 				set(want)
 			})
 			div.Draw(func(p *Painter, r Rect) {
@@ -471,12 +621,28 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 // limit.
 type splitOvershoot struct{}
 
-// fitSplit clamps v, the size of the pane *size measures, to leave
-// minPane on either side of the divider in total, the room as last laid
-// out (0 before the first layout).
-func fitSplit(v, total, gap, minPane float32) float32 {
-	if total > 0 {
-		v = min(v, total-gap-minPane)
+// fit clamps v, the first pane's size, to leave minPane on either side of
+// the divider, gap long, in total, the room as last laid out (0 before the
+// first layout, for limits that don't depend on the room), and to keep
+// both panes within l, as the layout does: a minimum wins over a maximum
+// and over the room. SplitSecond's limits come swapped (splitBuild.limits),
+// so that v is the size of the pane *size measures.
+func (l SplitLimits) fit(v, total, gap, minPane float32) float32 {
+	firstMin, secondMin := max(l.FirstMin, minPane), max(l.SecondMin, minPane)
+	if l.FirstMax > 0 {
+		v = min(v, max(l.FirstMax, firstMin))
 	}
-	return max(v, minPane)
+	if total > 0 {
+		room := total - gap
+		if l.SecondMax > 0 {
+			// First takes the room second can't, up to its own maximum.
+			at := room - max(l.SecondMax, secondMin)
+			if l.FirstMax > 0 {
+				at = min(at, max(l.FirstMax, firstMin))
+			}
+			v = max(v, at)
+		}
+		v = min(v, room-secondMin)
+	}
+	return max(v, firstMin)
 }

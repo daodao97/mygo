@@ -69,6 +69,46 @@ positive gap leaves that room between them, where the resize handle sits.
 ui.Split(c, &app.sidebarWidth, func() { app.files(c) }, func() { app.editor(c) }).SplitGap(8).Fill()
 ```
 
+## Limits
+
+`SplitLimits` gives each pane a minimum and a maximum size, in DIPs for
+all four kinds of split (the width side by side, the height one above the
+other). A zero field sets no limit, and a minimum under the 40 DIPs every
+pane keeps changes nothing. The divider stops where a pane would leave its
+limits, as it stops 40 DIPs from either edge: dragged past one, it waits
+there until the pointer comes back over it, and the arrows go no further.
+As the window changes, both panes stay within their limits: the pane
+`*size` measures takes the room the other can't, at its maximum, and gives
+way to the other's minimum. The limits name the panes by place, first and
+second, also with `SplitSecond`. A three-column window keeps its chat
+column at least 360 DIPs wide and its side panel between 280 and 480:
+
+```go
+ui.Split(c, &app.listWidth, func() { app.list(c) }, func() {
+	ui.Split(c, &app.chatWidth, func() { app.chat(c) }, func() { app.panel(c) }).SplitLimits(ui.SplitLimits{
+		FirstMin: 360, SecondMin: 280, SecondMax: 480,
+	}).Fill()
+}).SplitLimits(ui.SplitLimits{SecondMin: 360 + 1 + 280}).Fill()
+```
+
+The outer split's second pane holds the inner split, so its minimum is the
+inner one's two minimums and its divider.
+
+Where the limits can't all hold, or don't fill the room:
+
+- a pane's minimum wins over its maximum;
+- when the room is smaller than both minimums together, both panes keep
+  them, and the second overflows the end of the split, where the window
+  cuts it: give the window a minimum size (`WindowOptions.MinWidth`) that
+  holds them;
+- when the room is larger than both maximums together, both panes keep
+  them, and the rest of the room, after the second, stays empty.
+
+A size outside the limits is kept, and shows within them, until the user
+moves the divider; `SplitReset`'s size is put within them too. As with
+`SplitReset`, the input applies the limits of the build before, and the
+layout those of the build that sets them.
+
 ## Accessibility
 
 Assistive technology sees the divider as a splitter named "Divider",

@@ -2507,7 +2507,7 @@ func Spinner(c *Context) Element {
 // and SplitSecond makes *size the width of second instead, as a panel at
 // the end of a window takes. SplitGap spaces the panes apart by a number
 // of DIPs without drawing the 1 DIP divider line, including 0 for flush
-// panes.
+// panes, and SplitLimits gives either pane a minimum and a maximum size.
 //
 //	ui.Split(c, &app.sidebar, app.files, app.editor).Fill()
 func Split(c *Context, size *float32, first func(), second func()) Element {
@@ -8221,6 +8221,41 @@ func (_handle Element) SplitGap(v float32) Element {
 	_ = _ctx
 	_node.markStateRead()
 	return wrapElement(_node.SplitGap(v))
+}
+
+// SplitLimits gives the panes of a Split a minimum and a maximum size, in
+// DIPs whichever the split's unit: the divider stops where a pane would
+// leave its limits, as it stops 40 DIPs from either edge, both as the user
+// drags it and as the arrows move it, and the panes keep within them as
+// the room changes. Where the limits can't all hold, or don't fill the
+// room:
+//
+//   - a pane's minimum wins over its maximum;
+//   - when the room is smaller than both minimums together, both panes
+//     keep them and overflow the end of the split, which the window, or
+//     a Clip around it, cuts: give the window a minimum size that holds
+//     them;
+//   - when the room is larger than both maximums together, both panes
+//     keep them and the rest of the room, after the second, stays empty.
+//
+// A size outside the limits is kept, and shown within them, until the
+// user moves the divider. As with SplitReset, the input applies the limits
+// of the build before, and the layout those of this build.
+//
+//	// A side panel between 280 and 480 DIPs wide, after a chat no
+//	// narrower than 360.
+//	ui.Split(c, &app.chatWidth, app.chat, app.panel).SplitLimits(ui.SplitLimits{
+//		FirstMin: 360, SecondMin: 280, SecondMax: 480,
+//	})
+func (_handle Element) SplitLimits(l SplitLimits) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	_node.markStateRead()
+	return wrapElement(_node.SplitLimits(l))
 }
 
 // SplitReset makes a double click on the divider of a Split put the first
