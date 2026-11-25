@@ -247,6 +247,19 @@ type MacOS struct {
 	// notary service and staples the tickets to both. It needs a Developer
 	// ID signing identity.
 	Notarize *Notarize `json:"notarize"`
+	// Extensions are app extensions built apart, as a share extension built
+	// with Xcode, which the app carries in Contents/PlugIns, each signed
+	// with the app's identity before the app, keeping its entitlements.
+	// mygo dev leaves them out.
+	Extensions []MacOSExtension `json:"extensions"`
+}
+
+// MacOSExtension is a prebuilt app extension of the macOS app.
+type MacOSExtension struct {
+	// Path is the .appex, signed with its own entitlements, which hold the
+	// App Sandbox: macOS loads an app extension only in it. Its identifier
+	// starts with the app's and a dot, as com.example.app.share.
+	Path string `json:"path"`
 }
 
 // IOS configures the iOS app (mygo build -platform ios, ios/simulator).
@@ -477,6 +490,17 @@ func (c *Config) validate() error {
 		if name == "" || file == "" {
 			return fmt.Errorf("macos.helperEntitlements maps the path of code among the resources to a property list of entitlements, not %q to %q", name, file)
 		}
+	}
+	extensions := map[string]bool{}
+	for i, e := range c.MacOS.Extensions {
+		if !strings.HasSuffix(strings.TrimRight(e.Path, `/\`), ".appex") {
+			return fmt.Errorf("macos.extensions[%d].path: %q is not an app extension, as build/ShareExtension.appex", i, e.Path)
+		}
+		name := filepath.Base(e.Path)
+		if extensions[name] {
+			return fmt.Errorf("macos.extensions[%d].path: another extension is %s, which Contents/PlugIns holds one of", i, name)
+		}
+		extensions[name] = true
 	}
 	if c.Windows.Certificate != "" && c.Windows.SignCommand != "" {
 		return errors.New("windows.certificate and windows.signCommand exclude each other")

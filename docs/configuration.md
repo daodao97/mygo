@@ -122,6 +122,7 @@ Signed [auto-updates](updates.md). `publicKey` and one of `github` and
 | `entitlements` | | a property list of entitlements to sign the app with |
 | `provisioningProfile` | | a profile embedded as `Contents/embedded.provisionprofile` before signing; must match the app's identifier, entitlements and signing identity; cannot be used with ad-hoc signing. See [provisioning profiles](distribution.md#provisioning-profiles) |
 | `helperEntitlements` | | property lists of entitlements for code among the resources, by its path there, e.g. `{ "bin/server": "server.entitlements.plist" }`; other code keeps the entitlements it is signed with. See [helper executables](distribution.md#helper-executables) |
+| `extensions` | | prebuilt app extensions, as a share extension, each `path`, its `.appex`, signed with its own entitlements: copied into `Contents/PlugIns/` and signed with the app's identity, keeping those entitlements; `mygo dev` leaves them out. See [app extensions](distribution.md#app-extensions) |
 | `infoPlist` | | keys added to the app's `Info.plist`, replacing MyGo's, e.g. `NSCameraUsageDescription` |
 | `dmgTitle` | `name` | the volume name of the disk image |
 | `notarize` | | notarizes the app and the disk image of production builds: `keychainProfile`, the profile of `xcrun notarytool store-credentials`, and optionally `keychain`, the keychain holding it |

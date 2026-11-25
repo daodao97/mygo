@@ -113,6 +113,7 @@ export default defineConfig({
 | `entitlements` | | 用于签署应用的权限（entitlements）属性列表 |
 | `provisioningProfile` | | 在签名前作为 `Contents/embedded.provisionprofile` 嵌入的描述文件；必须与应用标识符、权限和签名身份匹配；不能与临时签名一起使用。见[描述文件](distribution.md#描述文件) |
 | `helperEntitlements` | | 资源中代码的权限属性列表，按它在资源中的路径，例如 `{ "bin/server": "server.entitlements.plist" }`；其他代码保持签署它时使用的权限。见[辅助可执行文件](distribution.md#辅助可执行文件) |
+| `extensions` | | 预先构建的应用扩展，如共享扩展，每个是 `path`，即它的 `.appex`，已用它自己的权限签名：复制进 `Contents/PlugIns/`，用应用的签名身份签名，并保留这些权限；`mygo dev` 不带上它们。见[应用扩展](distribution.md#应用扩展) |
 | `infoPlist` | | 添加到应用 `Info.plist` 的键，替换 MyGo 的，例如 `NSCameraUsageDescription` |
 | `dmgTitle` | `name` | 磁盘映像的卷名 |
 | `notarize` | | 对生产构建的应用和磁盘映像进行公证：`keychainProfile`，即 `xcrun notarytool store-credentials` 的钥匙串描述文件，以及可选的 `keychain`，存放该描述文件的钥匙串 |

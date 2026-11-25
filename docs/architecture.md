@@ -6516,7 +6516,8 @@ make it work, and phones a fourth:
   `swift build` (debug for the host, or release for the target's
   architectures, both at once for universal), copies the dylib and the
   frameworks its package brings into `Contents/Frameworks`, which
-  `codesign --deep` signs, and merges the modules' `Info.plist` and
+  `codesign --deep` signs with the app, or `appCodesigning` one by one
+  in an app with extensions, and merges the modules' `Info.plist` and
   `Entitlements.plist` (`mergePlist`) under the app's own keys, which
   settle the modules' conflicts. A module's language for a platform is
   `moduleLang` (`native_module.go`): Swift on macOS when it has `swift/`,
@@ -6763,7 +6764,15 @@ make it work, and phones a fourth:
   an `Assets.car`, as it is or compiled from an Icon Composer `.icon` by
   `xcrun actool`), signed with
   `macos.signingIdentity` (hardened runtime and timestamp for real
-  identities, ad hoc by default); `darwin/universal` combines both
+  identities, ad hoc by default). The prebuilt app extensions of
+  `macos.extensions` go in `Contents/PlugIns` (`macos_extensions.go`)
+  once their identifiers start with the app's, and keep the entitlements
+  they were signed with, as macOS loads them only in the App Sandbox: in
+  an app with extensions, `appCodesigning` signs each item of
+  `Contents/Frameworks` and `Contents/PlugIns` with `--deep` and
+  `--preserve-metadata=entitlements`, then the app without `--deep`,
+  which would give them the app's entitlements. `mygo dev` leaves them
+  out (`devConfig`). `darwin/universal` combines both
   architectures with a pure-Go fat-binary writer. Linux gets a `.desktop`
   entry and icon. The production flag makes `IsDev` false, which disables
   the web inspector by default.

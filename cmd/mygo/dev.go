@@ -582,12 +582,15 @@ func devHelp() string {
 // devConfig configures the development app: "<Name> Dev" with the
 // identifier "<identifier>.dev", so that its data, preferences and single
 // instance lock stay apart from the production app's, and the icon's -dev
-// sibling for its icon, when there is one, to tell it from the app's.
+// sibling for its icon, when there is one, to tell it from the app's. It
+// carries no macOS app extensions, which the system would offer a second
+// copy of.
 func devConfig(c *Config) *Config {
 	d := *c
 	d.deps = nil // a build of its own, which lists its packages anew
 	d.Name += " Dev"
 	d.Identifier += ".dev"
+	d.MacOS.Extensions = nil
 	if d.Slug != "" {
 		d.Slug += "-dev"
 	}

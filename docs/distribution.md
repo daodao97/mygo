@@ -461,6 +461,41 @@ Keep profiles out of version control and provide their paths through the
 build environment. See Apple's
 [Inside code signing: provisioning profiles](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles).
 
+### App extensions
+
+An app extension, as a share extension that puts the app in the Share
+menu of other apps, is a bundle of its own in the app's
+`Contents/PlugIns`. macOS loads an app extension only in the App Sandbox,
+so it has entitlements of its own, which the app need not share. Build it
+apart, with Xcode or a script, sign it with its entitlements (ad hoc is
+enough), and name it in `macos.extensions`:
+
+```ts
+export default defineConfig({
+  identifier: "com.example.app",
+  macos: {
+    signingIdentity: "Developer ID Application: Jane Doe (TEAMID)",
+    extensions: [{ path: "build/ShareExtension.appex" }],
+  },
+});
+```
+
+`mygo build` copies each into `Contents/PlugIns` and signs it before the
+app with `signingIdentity`, with the hardened runtime and a timestamp for
+a Developer ID, keeping the entitlements it was signed with. The app is
+then signed from the inside out, not with `codesign --deep`, which would
+give the extensions the app's entitlements in place of their own. The
+identifier of an extension must start with the app's and a dot, as
+`com.example.app.share`. Build the extension for release: notarization
+refuses the `com.apple.security.get-task-allow` entitlement that Xcode
+gives debug builds, and the extension keeps it. Builds on other systems,
+which sign nothing, read its `Info.plist` only as XML.
+
+`mygo dev` leaves the extensions out, so that the development app never
+adds a second copy of them to the Share menu. Once the built app has run,
+`pluginkit -m -i com.example.app.share` shows whether macOS found the
+extension.
+
 ## Windows
 
 The executable carries the icon, the version information and a manifest

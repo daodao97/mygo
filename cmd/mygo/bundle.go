@@ -60,6 +60,9 @@ func writeBundle(c *Config, dir, bin string, icns []byte, car *assetCatalog, res
 	if err := installNative(c, app); err != nil {
 		return "", err
 	}
+	if err := embedMacOSExtensions(c, contents); err != nil {
+		return "", err
+	}
 	langs, err := c.languages()
 	if err != nil {
 		return "", err
@@ -373,11 +376,16 @@ func writePlistValue(b *bytes.Buffer, v any, indent string) {
 	}
 }
 
-// codesignArgs returns the codesign arguments that sign path. Real
-// identities get the hardened runtime and a secure timestamp in production,
-// which notarization requires.
-func codesignArgs(path, identity, entitlements string, production bool) []string {
-	args := []string{"--force", "--deep", "--sign", identity}
+// codesignArgs returns the codesign arguments that sign path, and with
+// deep the code nested in it with the same options. Real identities get the
+// hardened runtime and a secure timestamp in production, which
+// notarization requires.
+func codesignArgs(path, identity, entitlements string, production, deep bool) []string {
+	args := []string{"--force"}
+	if deep {
+		args = append(args, "--deep")
+	}
+	args = append(args, "--sign", identity)
 	if production && identity != "-" {
 		args = append(args, "--options", "runtime", "--timestamp")
 	}
@@ -389,9 +397,9 @@ func codesignArgs(path, identity, entitlements string, production bool) []string
 
 var errProfileAdHoc = errors.New("macos.provisioningProfile needs a signing identity, not ad-hoc signing: set macos.signingIdentity or pass -sign")
 
-// codesign signs a bundle, and the code among its resources. Signing needs
-// macOS: elsewhere only the executable's ad-hoc signature from the Go linker
-// remains.
+// codesign signs a bundle, the code among its resources and its app
+// extensions. Signing needs macOS: elsewhere only the executable's ad-hoc
+// signature from the Go linker remains.
 func codesign(c *Config, path, identity string, production bool) error {
 	if c.MacOS.ProvisioningProfile != "" && identity == "-" {
 		if production {
@@ -415,9 +423,15 @@ func codesign(c *Config, path, identity string, production bool) error {
 	if entitlements != "" && c.native != nil && len(c.native.entitlements) > 0 {
 		defer os.Remove(entitlements)
 	}
-	out, err := signCode(filepath.Base(path), identity, codesignArgs(path, identity, entitlements, production)...)
+	calls, err := appCodesigning(path, identity, entitlements, production)
 	if err != nil {
-		return fmt.Errorf("codesign %s: %v\n%s", filepath.Base(path), err, out)
+		return err
+	}
+	for _, args := range calls {
+		name := filepath.Base(args[len(args)-1])
+		if out, err := signCode(name, identity, args...); err != nil {
+			return fmt.Errorf("codesign %s: %v\n%s", name, err, out)
+		}
 	}
 	return nil
 }

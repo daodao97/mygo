@@ -140,6 +140,7 @@ func TestConfigTypes(t *testing.T) {
 		"S3Config":            reflect.TypeFor[S3](),
 		"MacOSConfig":         reflect.TypeFor[MacOS](),
 		"NotarizeConfig":      reflect.TypeFor[Notarize](),
+		"MacOSExtension":      reflect.TypeFor[MacOSExtension](),
 		"WindowsConfig":       reflect.TypeFor[Windows](),
 		"LinuxConfig":         reflect.TypeFor[Linux](),
 		"LinuxDepends":        reflect.TypeFor[linuxDepends](),

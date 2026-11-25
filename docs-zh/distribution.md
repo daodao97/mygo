@@ -293,6 +293,24 @@ export default defineConfig(({ command }) => ({
 
 把描述文件排除在版本控制之外，通过构建环境提供它们的路径。见 Apple 的 [Inside code signing: provisioning profiles](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles)。
 
+### 应用扩展
+
+应用扩展（如让应用出现在其他应用“共享”菜单中的共享扩展）是应用 `Contents/PlugIns` 中一个独立的包。macOS 只在 App Sandbox 中加载应用扩展，所以扩展有自己的授权，应用本身不必有。用 Xcode 或脚本单独构建它，用它的授权为它签名（ad hoc 签名即可），然后在 `macos.extensions` 中列出：
+
+```ts
+export default defineConfig({
+  identifier: "com.example.app",
+  macos: {
+    signingIdentity: "Developer ID Application: Jane Doe (TEAMID)",
+    extensions: [{ path: "build/ShareExtension.appex" }],
+  },
+});
+```
+
+`mygo build` 把每个扩展复制进 `Contents/PlugIns`，并在签名应用之前用 `signingIdentity` 为它签名：使用 Developer ID 时启用强化运行时并加上时间戳，同时保留它签名时的授权。随后应用从内到外逐个签名，而不用 `codesign --deep`，因为后者会用应用的授权替换扩展自己的授权。扩展的标识符必须以应用的标识符加一个点开头，如 `com.example.app.share`。请以 Release 配置构建扩展：Xcode 给调试构建加上的 `com.apple.security.get-task-allow` 授权会被扩展保留下来，而公证会拒绝它。在其他系统上构建时不签名，只能读取 XML 格式的 `Info.plist`。
+
+`mygo dev` 不带上扩展，所以开发应用不会在“共享”菜单中再添一份。构建出的应用运行过一次后，`pluginkit -m -i com.example.app.share` 可以查看 macOS 是否找到了扩展。
+
 ## Windows
 
 可执行文件包含图标、版本信息和应用清单（启用逐显示器 DPI 感知及现代控件），运行时不显示控制台窗口。可以在主包中放入自己的 `.syso` 文件来替换这些内容。

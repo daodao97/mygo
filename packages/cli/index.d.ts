@@ -256,6 +256,18 @@ export interface MacOSConfig {
   dmgTitle?: string;
   /** Notarizes the app and the disk image of production builds. */
   notarize?: NotarizeConfig;
+  /**
+   * App extensions built apart, as a share extension built with Xcode, which
+   * the app carries in `Contents/PlugIns`, each signed with the app's identity
+   * before the app, keeping its entitlements. `mygo dev` leaves them out.
+   */
+  extensions?: MacOSExtension[];
+}
+
+/** A prebuilt app extension of the macOS app. */
+export interface MacOSExtension {
+  /** The `.appex`, signed with its own entitlements, which hold the App Sandbox, and whose identifier starts with the app's and a dot, as `com.example.app.share`. */
+  path: string;
 }
 
 /** Credentials of `xcrun notarytool store-credentials <profile>`. */
