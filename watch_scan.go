@@ -535,7 +535,10 @@ func (s *fileWatchScan) stat(p string) error {
 	info, err := s.root.Lstat(filepath.FromSlash(p))
 	if err == nil && old.id == fileWatchEntryOf(info).id {
 		s.set(p, info)
-		return s.enroll(p, info)
+		err := s.enroll(p, info)
+		if err == nil || !s.replaced(s.root, filepath.FromSlash(p), info) {
+			return err
+		}
 	}
 	if s.inaccessible(p, err) {
 		return nil
@@ -600,6 +603,9 @@ func (s *fileWatchScan) list(dir *os.Root, p string) error {
 	}
 	defer d.close()
 	if err := s.enroll(p, d.info); err != nil {
+		if p != "." && s.replaced(dir, name, d.info) {
+			return s.list(nil, path.Dir(p))
+		}
 		return err
 	}
 	s.set(p, d.info)
@@ -629,10 +635,13 @@ func (s *fileWatchScan) list(dir *os.Root, p string) error {
 			if old, ok := s.entries[child]; ok {
 				if old.id == fileWatchEntryOf(info).id {
 					s.set(child, info)
-					if err := s.enroll(child, info); err != nil {
+					err := s.enroll(child, info)
+					if err == nil {
+						continue
+					}
+					if !s.replaced(d.root, name, info) {
 						return err
 					}
-					continue
 				}
 				s.removeTree(child)
 			}
@@ -669,6 +678,13 @@ func (s *fileWatchScan) list(dir *os.Root, p string) error {
 		}
 	}
 	return nil
+}
+
+// replaced reports whether what is at name in dir is gone or no longer
+// info, as when the backend couldn't watch it.
+func (s *fileWatchScan) replaced(dir *os.Root, name string, info os.FileInfo) bool {
+	now, err := dir.Lstat(name)
+	return err != nil || fileWatchEntryOf(now).id != fileWatchEntryOf(info).id
 }
 
 // fileWatchDir is a directory of the tree, open to be read: root holds

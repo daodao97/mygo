@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -636,6 +637,65 @@ func TestFileWatchRemovedWhileRead(t *testing.T) {
 			fileWatchTestNotice(t, w, "a", platform.FileWatchNotice{Name: "new", Kind: platform.FileWatchCreate})
 			fileWatchTestUntil(t, w, FileEvent{Op: FileCreate, Path: "a/new"})
 		})
+	}
+}
+
+// What is replaced or removed as the backend, which lost it, is given it
+// again, which fails, doesn't end the watch.
+func TestFileWatchReplacedWhileEnrolled(t *testing.T) {
+	for _, kind := range []string{"file", "directory", "nothing"} {
+		for _, recursive := range []bool{true, false} {
+			// Looked at itself, and from the directory that has it.
+			for _, listed := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s recursive=%v listed=%v", kind, recursive, listed), func(t *testing.T) {
+					dir := t.TempDir()
+					sub := filepath.Join(dir, "sub")
+					if err := os.Mkdir(sub, 0700); err != nil {
+						t.Fatal(err)
+					}
+					outside := t.TempDir()
+					var replace atomic.Bool
+					fb.FileWatchAddHook = func(target platform.FileWatchTarget) error {
+						if filepath.Base(target.Path) != "sub" || !replace.CompareAndSwap(true, false) {
+							return nil
+						}
+						// Kept, so that its identity isn't used again.
+						err := os.Rename(sub, filepath.Join(outside, "sub"))
+						if err == nil && kind == "file" {
+							err = os.WriteFile(sub, nil, 0600)
+						} else if err == nil && kind == "directory" {
+							err = os.Mkdir(sub, 0700)
+						}
+						if err != nil {
+							t.Error(err)
+						}
+						return errors.New("not a directory")
+					}
+					defer func() { fb.FileWatchAddHook = nil }()
+					w, err := WatchFiles(context.Background(), dir, FileWatchOptions{Recursive: recursive, Debounce: -1})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer w.Close()
+					replace.Store(true)
+					if listed {
+						fileWatchTestNotice(t, w, ".", platform.FileWatchNotice{})
+					}
+					fileWatchTestNotice(t, w, "sub", platform.FileWatchNotice{Kind: platform.FileWatchLost})
+					fileWatchTestNotice(t, w, ".", platform.FileWatchNotice{})
+					want := []FileEvent{{Op: FileRemove, Path: "sub", IsDir: true}}
+					if kind != "nothing" {
+						want = append(want, FileEvent{Op: FileCreate, Path: "sub", IsDir: kind == "directory"})
+					}
+					fileWatchTestUntil(t, w, want...)
+					if err := os.WriteFile(filepath.Join(dir, "new"), nil, 0600); err != nil {
+						t.Fatal(err)
+					}
+					fileWatchTestNotice(t, w, ".", platform.FileWatchNotice{Name: "new", Kind: platform.FileWatchCreate})
+					fileWatchTestUntil(t, w, FileEvent{Op: FileCreate, Path: "new"})
+				})
+			}
+		}
 	}
 }
 
