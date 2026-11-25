@@ -177,6 +177,8 @@ mygo.NewWindow(mygo.WindowOptions{URL: "/", Hidden: mygo.App.WasOpenedAtLogin()}
 
 在 Windows 上，Run 条目以用户的普通（未提权）令牌启动应用，即使用户是管理员：应用无法创建网络适配器、更改系统代理或写入受保护的文件夹。需要管理员权限的应用改为在任务计划程序中注册登录任务，运行级别为 `HighestAvailable`（`schtasks /Create /SC ONLOGON /RL HIGHEST`，或任务计划程序 API），这会在不询问的情况下以提权方式启动它，并且不调用 `SetOpenAtLogin`。创建任务本身需要管理员权限，所以应用在用户打开该设置时请求一次。`WasOpenedAtLogin` 不能区分这种启动：为此给任务的命令加一个应用自己的参数。
 
+`mygo build` 在 Windows 上生成的卸载程序会为执行卸载的用户删除 Run 条目及任务管理器为它保存的状态，这样 Windows 就不会列出一个已不存在的启动应用。应用自己注册的任务需由应用自己删除，例如在[安装程序钩子](distribution.md#安装程序钩子)的 `customUnInstall` 宏中。
+
 ## 目录
 
 `App.Path` 返回标准目录：

@@ -48,7 +48,9 @@ type Windows struct {
 	// installer includes, e.g. "build/installer.nsh". The macros it
 	// defines among customInit, customInstall and customUnInstall run when
 	// the installer starts, at the end of the install, and in the
-	// uninstall before the app's folder is removed (see nsisHooks).
+	// uninstall before the app's folder is removed; customUnPage,
+	// customUnPageLeave, customUnConfirmShow and customUnConfirmLeave make
+	// and handle the uninstaller's pages (see nsisHooks).
 	InstallerInclude string `json:"installerInclude"`
 }
 

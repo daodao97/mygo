@@ -332,7 +332,35 @@ export default defineConfig({
 
 这些宏在静默安装和卸载（`/S`）中也会运行，[`install.ps1`](#macos-与-windows-的安装脚本)正是这样运行安装程序的：`IfSilent` 可以区分两者，消息框需要 `/SD` 才能自动应答。[更新](updates.md)不用安装程序就替换应用的文件，所以不会运行任何宏。`customUnInstall` 调用的函数属于卸载程序，以 `un.` 命名。
 
-安装程序仅为当前用户安装，无需管理员权限，便于应用自我更新。因此钩子也应只操作用户可写的位置，例如 `$LOCALAPPDATA` 和 `HKCU`。安装程序已提供安装目录选择，卸载程序只移除应用文件夹，保留应用数据。添加钩子不影响安装程序及卸载程序的签名。
+脚本也可以在卸载程序中询问用户。`customUnPage` 宏用 [nsDialogs](https://nsis.sourceforge.io/Docs/nsDialogs/Readme.html) 创建一个自己的页面，显示在卸载程序的确认页之前；用户离开该页面时运行 `customUnPageLeave`；没有 `customUnPage` 就没有这个页面。`customUnConfirmShow` 和 `customUnConfirmLeave` 分别在确认页显示时和用户离开它时运行，相当于 Modern UI 的 `MUI_PAGE_CUSTOMFUNCTION_SHOW` 和 `_LEAVE` 函数；在 `Leave` 宏中 `Abort` 会让用户留在该页面。静默卸载（`/S`）不显示任何页面，所以页面设置的变量保持默认值。下面的页面让用户选择是否删除应用保存在其文件夹之外的数据，默认不勾选，由 `customUnInstall` 读取这一选择：
+
+```nsis
+; build/installer.nsh
+!include "nsDialogs.nsh"
+Var RemoveData
+Var RemoveDataBox
+
+!macro customUnPage
+  !insertmacro MUI_HEADER_TEXT "卸载 My App" "选择要删除的内容。"
+  nsDialogs::Create 1018
+  Pop $0
+  ${NSD_CreateCheckbox} 0 0 100% 12u "同时删除我的数据和设置"
+  Pop $RemoveDataBox
+  nsDialogs::Show
+!macroend
+
+!macro customUnPageLeave
+  ${NSD_GetState} $RemoveDataBox $RemoveData
+!macroend
+
+!macro customUnInstall
+  ${If} $RemoveData == ${BST_CHECKED}
+    RMDir /r "$LOCALAPPDATA\My App"
+  ${EndIf}
+!macroend
+```
+
+安装程序仅为当前用户安装，无需管理员权限，便于应用自我更新。因此钩子也应只操作用户可写的位置，例如 `$LOCALAPPDATA` 和 `HKCU`。安装程序已提供安装目录选择，卸载程序移除应用文件夹和用户的[登录时启动](app.md#登录时启动)条目，保留应用数据。添加钩子不影响安装程序及卸载程序的签名。
 
 ### 代码签名
 

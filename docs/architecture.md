@@ -6871,8 +6871,19 @@ make it work, and phones a fourth:
   languages (`nsisHooks`); its `customInit`, `customInstall` and
   `customUnInstall` macros, each inserted only under `!ifmacrodef`, run
   in `.onInit`, at the end of the install section and in the uninstall
-  section before `RMDir /r "$INSTDIR"`, as electron-builder's do; without
-  it the script is unchanged.
+  section before `RMDir /r "$INSTDIR"`, as electron-builder's do. The
+  uninstaller's pages must be declared before the include, which follows
+  the languages, so the script declares `UninstPage custom un.mygoPage
+  un.mygoPageLeave` and the confirm page's `MUI_PAGE_CUSTOMFUNCTION_SHOW`
+  and `_LEAVE` (`un.mygoConfirmShow`, `un.mygoConfirmLeave`) there, and
+  defines those functions after the include: they insert
+  `customUnPage`, `customUnPageLeave`, `customUnConfirmShow` and
+  `customUnConfirmLeave` under `!ifmacrodef`, and `un.mygoPage` aborts,
+  skipping its page, without `customUnPage`. Without
+  `windows.installerInclude` the script is unchanged. The uninstaller
+  also deletes the user's `App.SetOpenAtLogin` value, named by the
+  identifier, from `HKCU\…\CurrentVersion\Run` and
+  `…\Explorer\StartupApproved\Run` (`nsisLoginEntry`).
   `makensis` comes from an installation of NSIS or, on Windows, where NSIS
   is rarely installed, from the official zip of the release that
   `Release` in `internal/nsis` pins, which the CLI downloads once, checks

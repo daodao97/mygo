@@ -127,7 +127,7 @@ export default defineConfig({
 | `certificate` | | 用于可执行文件、资源中未签名的可执行文件和库，以及安装程序的代码签名证书（`.pfx`）；密码来自 `MYGO_WINDOWS_CERTIFICATE_PASSWORD` |
 | `signCommand` | | 代替 `certificate` 的签名命令，`%1` 表示文件路径 |
 | `timestampUrl` | `http://timestamp.digicert.com` | `certificate` 的时间戳服务器 |
-| `installerInclude` | | 安装程序会包含的 NSIS 脚本，例如 `build/installer.nsh`，其 `customInit`、`customInstall` 和 `customUnInstall` 宏分别在安装程序启动时、安装结束时，以及卸载时、移除应用文件夹之前运行。见[安装程序钩子](distribution.md#安装程序钩子) |
+| `installerInclude` | | 安装程序会包含的 NSIS 脚本，例如 `build/installer.nsh`，其 `customInit`、`customInstall` 和 `customUnInstall` 宏分别在安装程序启动时、安装结束时，以及卸载时、移除应用文件夹之前运行；`customUnPage` 在确认页之前添加一个卸载程序页面，`customUnConfirmShow` 和 `customUnConfirmLeave` 在确认页上运行。见[安装程序钩子](distribution.md#安装程序钩子) |
 
 见 [Windows](distribution.md#windows)。
 

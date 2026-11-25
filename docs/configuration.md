@@ -136,7 +136,7 @@ See [macOS](distribution.md#macos).
 | `certificate` | | a code signing certificate (`.pfx`) for the executable, the unsigned executables and libraries among the resources, and the installer; its password comes from `MYGO_WINDOWS_CERTIFICATE_PASSWORD` |
 | `signCommand` | | instead of `certificate`, a command that signs a file, with `%1` for its path |
 | `timestampUrl` | `http://timestamp.digicert.com` | the time stamping server of `certificate` |
-| `installerInclude` | | an NSIS script that the installer includes, e.g. `build/installer.nsh`, whose `customInit`, `customInstall` and `customUnInstall` macros run when the installer starts, at the end of the install, and in the uninstall before the app's folder is removed. See [installer hooks](distribution.md#installer-hooks) |
+| `installerInclude` | | an NSIS script that the installer includes, e.g. `build/installer.nsh`, whose `customInit`, `customInstall` and `customUnInstall` macros run when the installer starts, at the end of the install, and in the uninstall before the app's folder is removed; `customUnPage` adds an uninstaller page before the confirm page, and `customUnConfirmShow` and `customUnConfirmLeave` run on the confirm page. See [installer hooks](distribution.md#installer-hooks) |
 
 See [Windows](distribution.md#windows).
 

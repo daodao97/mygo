@@ -539,11 +539,51 @@ itself. [Updates](updates.md) replace the app's files without the
 installer, so they run none of the macros. Functions that
 `customUnInstall` calls are the uninstaller's, named with `un.`.
 
+The script can also ask the user something in the uninstaller. A
+`customUnPage` macro makes a page of its own, shown before the
+uninstaller's confirm page, which it creates with
+[nsDialogs](https://nsis.sourceforge.io/Docs/nsDialogs/Readme.html), and
+`customUnPageLeave` runs when the user leaves it; without `customUnPage`
+there is no such page. `customUnConfirmShow` and `customUnConfirmLeave` run
+as the confirm page shows and as the user leaves it, as Modern UI's
+`MUI_PAGE_CUSTOMFUNCTION_SHOW` and `_LEAVE` functions do; `Abort` in a
+`Leave` macro keeps the user on the page. A silent uninstall (`/S`) shows no
+pages, so the variables the pages set keep their defaults. The page below
+lets the user remove the data that the app keeps outside its folder,
+unchecked by default, and `customUnInstall` reads the choice:
+
+```nsis
+; build/installer.nsh
+!include "nsDialogs.nsh"
+Var RemoveData
+Var RemoveDataBox
+
+!macro customUnPage
+  !insertmacro MUI_HEADER_TEXT "Uninstall My App" "Choose what to remove."
+  nsDialogs::Create 1018
+  Pop $0
+  ${NSD_CreateCheckbox} 0 0 100% 12u "Also remove my data and settings"
+  Pop $RemoveDataBox
+  nsDialogs::Show
+!macroend
+
+!macro customUnPageLeave
+  ${NSD_GetState} $RemoveDataBox $RemoveData
+!macroend
+
+!macro customUnInstall
+  ${If} $RemoveData == ${BST_CHECKED}
+    RMDir /r "$LOCALAPPDATA\My App"
+  ${EndIf}
+!macroend
+```
+
 The installer installs for the current user without administrator rights,
 so that the app can update itself: the hooks should keep to what the user
 can write, such as `$LOCALAPPDATA` and `HKCU`. The installer already lets
-the user choose the folder, and the uninstaller removes the app's folder
-only, keeping the app's data. Signing applies to the installer and its
+the user choose the folder, and the uninstaller removes the app's folder,
+keeping the app's data, and the user's
+[start at login](app.md#start-at-login) entry. Signing applies to the installer and its
 uninstaller as it does without hooks.
 
 ### Code signing

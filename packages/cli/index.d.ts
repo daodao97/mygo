@@ -285,7 +285,10 @@ export interface WindowsConfig {
    * An NSIS script that the installer includes, e.g. `build/installer.nsh`:
    * the macros it defines among `customInit`, `customInstall` and
    * `customUnInstall` run when the installer starts, at the end of the
-   * install, and in the uninstall before the app's folder is removed.
+   * install, and in the uninstall before the app's folder is removed;
+   * `customUnPage` (left with `customUnPageLeave`) adds an uninstaller
+   * page before the confirm page, and `customUnConfirmShow` and
+   * `customUnConfirmLeave` run as the confirm page shows and is left.
    */
   installerInclude?: string;
 }

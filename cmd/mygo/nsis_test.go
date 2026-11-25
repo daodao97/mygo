@@ -590,16 +590,44 @@ func TestNSISSourceLanguage(t *testing.T) {
 // TestNSISHooks checks windows.installerInclude: the installer includes the
 // script after MUI2.nsh and the languages, and runs its customInit,
 // customInstall and customUnInstall macros, each only when the script
-// defines it; without it, the script has none of that. makensis, when
-// there is one, takes a script that defines some of the macros only.
+// defines it; the uninstaller's pages, declared before the include, call
+// functions defined after it that run customUnPage, customUnPageLeave,
+// customUnConfirmShow and customUnConfirmLeave. Without it, the script has
+// none of that. makensis, when there is one, takes a script that defines
+// some of the macros only, with a check box on the uninstaller's page that
+// customUnInstall reads.
 func TestNSISHooks(t *testing.T) {
 	dir := t.TempDir()
 	nsh := filepath.Join(dir, "build", "installer.nsh")
 	if err := os.MkdirAll(filepath.Dir(nsh), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	hooks := "!macro customInstall\n  CreateDirectory \"$LOCALAPPDATA\\Hooks Test\"\n!macroend\n" +
-		"!macro customUnInstall\n  RMDir \"$LOCALAPPDATA\\Hooks Test\"\n!macroend\n"
+	hooks := `!include "nsDialogs.nsh"
+Var RemoveData
+Var RemoveDataBox
+!macro customInstall
+  CreateDirectory "$LOCALAPPDATA\Hooks Test"
+!macroend
+!macro customUnPage
+  !insertmacro MUI_HEADER_TEXT "Uninstall Hooks Test" "Choose what to remove."
+  nsDialogs::Create 1018
+  Pop $0
+  ${NSD_CreateCheckbox} 0 0 100% 12u "Also remove my data"
+  Pop $RemoveDataBox
+  nsDialogs::Show
+!macroend
+!macro customUnPageLeave
+  ${NSD_GetState} $RemoveDataBox $RemoveData
+!macroend
+!macro customUnConfirmShow
+  StrCpy $0 ""
+!macroend
+!macro customUnInstall
+  ${If} $RemoveData == ${BST_CHECKED}
+    RMDir "$LOCALAPPDATA\Hooks Test"
+  ${EndIf}
+!macroend
+`
 	if err := os.WriteFile(nsh, []byte(hooks), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -610,7 +638,7 @@ func TestNSISHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, s := range []string{"!ifmacrodef", "customInit", "customInstall", "customUnInstall", ".onInit", "installer.nsh"} {
+	for _, s := range []string{"!ifmacrodef", "customInit", "customInstall", "customUn", ".onInit", "installer.nsh", "mygo", "UninstPage", "MUI_PAGE_CUSTOMFUNCTION"} {
 		if strings.Contains(plain, s) {
 			t.Errorf("without windows.installerInclude, %q in:\n%s", s, plain)
 		}
@@ -621,15 +649,25 @@ func TestNSISHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	pages := "UninstPage custom un.mygoPage un.mygoPageLeave\n" +
+		"!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.mygoConfirmShow\n" +
+		"!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.mygoConfirmLeave\n"
 	include := "!include " + nsisString(nsh) + "\n" +
-		"!ifmacrodef customInit\nFunction .onInit\n  !insertmacro customInit\nFunctionEnd\n!endif\n"
+		"!ifmacrodef customInit\nFunction .onInit\n  !insertmacro customInit\nFunctionEnd\n!endif\n" +
+		"Function un.mygoPage\n  !ifmacrodef customUnPage\n    !insertmacro customUnPage\n  !else\n    Abort\n  !endif\nFunctionEnd\n" +
+		"Function un.mygoPageLeave\n  !ifmacrodef customUnPageLeave\n    !insertmacro customUnPageLeave\n  !endif\nFunctionEnd\n" +
+		"Function un.mygoConfirmShow\n  !ifmacrodef customUnConfirmShow\n    !insertmacro customUnConfirmShow\n  !endif\nFunctionEnd\n" +
+		"Function un.mygoConfirmLeave\n  !ifmacrodef customUnConfirmLeave\n    !insertmacro customUnConfirmLeave\n  !endif\nFunctionEnd\n"
 	install := "  !ifmacrodef customInstall\n    !insertmacro customInstall\n  !endif\n"
 	uninstall := "  !ifmacrodef customUnInstall\n    !insertmacro customUnInstall\n  !endif\n"
-	// Each in its place: the include after MUI2.nsh and the languages,
-	// customInstall last in the install's section, and customUnInstall in
-	// the uninstall's, before it removes $INSTDIR.
+	// Each in its place: the uninstaller's page and the confirm page's
+	// functions after the installer's pages and right before the confirm
+	// page, which MUI_PAGE_CUSTOMFUNCTION_* apply to; the include, with the
+	// functions they name, after MUI2.nsh and the languages; customInstall
+	// last in the install's section, and customUnInstall in the
+	// uninstall's, before it removes $INSTDIR.
 	for _, order := range [][]string{
-		{`!include "MUI2.nsh"`, `!insertmacro MUI_LANGUAGE "English"`, include, "\nSection\n"},
+		{`!include "MUI2.nsh"`, "!insertmacro MUI_PAGE_FINISH\n", pages + "!insertmacro MUI_UNPAGE_CONFIRM\n", "!insertmacro MUI_UNPAGE_INSTFILES\n", `!insertmacro MUI_LANGUAGE "English"`, include, "\nSection\n"},
 		{"\nSection\n", "  WriteUninstaller ", install + "SectionEnd\n"},
 		{"Section \"Uninstall\"\n", "  DeleteRegKey HKCU ", uninstall + "  ; Last,", "  RMDir /r \"$INSTDIR\"\n"},
 	} {
@@ -644,7 +682,7 @@ func TestNSISHooks(t *testing.T) {
 	}
 	// It adds them, and changes nothing else.
 	rest := script
-	for _, s := range []string{include, install, uninstall} {
+	for _, s := range []string{pages, include, install, uninstall} {
 		if strings.Count(rest, s) != 1 {
 			t.Fatalf("%q is not in the script once:\n%s", s, script)
 		}
@@ -664,7 +702,7 @@ func TestNSISHooks(t *testing.T) {
 	if tool := makensis(); tool != "" && !testing.Short() {
 		c.Windows.InstallerInclude = "build/installer.nsh"
 		os.WriteFile(filepath.Join(dir, exe), []byte("MZ"), 0o644)
-		out := filepath.Join(dir, "setup.exe")
+		out := filepath.Join(dir, installerFileName(c, "amd64")) // "setup.exe" alone warns
 		script, err := installerScript(c, out, exe, "  File "+nsisString(filepath.Join(dir, exe))+"\n", "", "")
 		if err != nil {
 			t.Fatal(err)
@@ -673,9 +711,52 @@ func TestNSISHooks(t *testing.T) {
 		if err := writeNSIS(nsi, script); err != nil {
 			t.Fatal(err)
 		}
-		if b, err := exec.Command(tool, "-V2", nsi).CombinedOutput(); err != nil {
+		// Without warnings: the macros it leaves out leave no function
+		// unused.
+		if b, err := exec.Command(tool, "-V2", nsi).CombinedOutput(); err != nil || strings.Contains(strings.ToLower(string(b)), "warning") {
 			t.Errorf("makensis: %v\n%s", err, b)
 		}
+	}
+}
+
+// TestNSISLoginEntry checks that the uninstaller deletes the Run entry of
+// App.SetOpenAtLogin and Task Manager's state of it, under the keys and the
+// value name that internal/windows/login.go writes, the identifier, before
+// it removes $INSTDIR.
+func TestNSISLoginEntry(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "internal", "windows", "login.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for _, name := range []string{"runKey", "approvedKey"} {
+		_, rest, ok := strings.Cut(string(src), "\t"+name+" ")
+		_, rest, ok2 := strings.Cut(rest, "`")
+		key, _, ok3 := strings.Cut(rest, "`")
+		if !ok || !ok2 || !ok3 {
+			t.Fatalf("no %s in internal/windows/login.go", name)
+		}
+		keys = append(keys, key)
+	}
+	if !strings.Contains(string(src), "regSet(hkeyCurrentUser, runKey, id, cmd)") {
+		t.Fatal("internal/windows/login.go no longer names the Run entry by the app's id in HKCU")
+	}
+	c := &Config{Name: "Login Test", Identifier: "com.example.login$1", Version: "1.0.0", root: t.TempDir()}
+	exe := c.executableName() + ".exe"
+	script, err := installerScript(c, `C:\out\setup.exe`, exe, "  File \"C:\\stage\\"+exe+"\"\n", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, uninstall, _ := strings.Cut(script, "Section \"Uninstall\"\n")
+	rmdir := strings.Index(uninstall, `  RMDir /r "$INSTDIR"`)
+	for _, key := range keys {
+		line := `  DeleteRegValue HKCU "` + key + `" "com.example.login$$1"` + "\n"
+		if i := strings.Index(uninstall, line); i < 0 || i > rmdir {
+			t.Errorf("the uninstall has no %q before it removes $INSTDIR:\n%s", line, uninstall)
+		}
+	}
+	if strings.Contains(script[:strings.Index(script, "Section \"Uninstall\"")], "DeleteRegValue") {
+		t.Errorf("the installer deletes a registry value:\n%s", script)
 	}
 }
 
