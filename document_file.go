@@ -58,20 +58,36 @@ const (
 // anything: a document whose file another app changed is not written
 // (ErrDocumentChanged), but marked in conflict.
 func (b *docBase) write(target string, op writeOp) (bool, error) {
+	wrote, moved, err := b.writeHoldingIO(target, op)
+	if !wrote || err != nil {
+		return false, err
+	}
+	// addRecent waits for the main thread, which may wait for io.
+	if moved {
+		addRecent(target)
+		b.watch()
+	}
+	b.notify()
+	return true, nil
+}
+
+// writeHoldingIO is the part of write that takes and holds io; moved tells
+// that the document became the file at target.
+func (b *docBase) writeHoldingIO(target string, op writeOp) (wrote, moved bool, err error) {
 	snap := b.ops.capture()
 	b.io.Lock()
 	defer b.io.Unlock()
 	b.mu.Lock()
 	if b.closed && op == writeAutosave {
 		b.mu.Unlock()
-		return false, nil
+		return false, false, nil
 	}
 	known, deleted := b.stamp, b.deleted
 	b.mu.Unlock()
 	if op == writeSave || op == writeAutosave {
 		now, exists, err := statStamp(target)
 		if err != nil {
-			return false, err
+			return false, false, err
 		}
 		if exists && (!now.same(known) || deleted) {
 			b.mu.Lock()
@@ -81,19 +97,19 @@ func (b *docBase) write(target string, op writeOp) (bool, error) {
 			if !was {
 				b.notify()
 			}
-			return false, ErrDocumentChanged
+			return false, false, ErrDocumentChanged
 		}
 	}
 	stamp, err := writeFileSafely(target, snap.write)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	b.mu.Lock()
 	settle := b.ops.markSaved(snap)
 	b.savedAt = snap.at
 	b.stamp = stamp
 	b.conflict, b.deleted = false, false
-	moved := target != b.path
+	moved = target != b.path
 	if moved {
 		b.path = target
 		b.readOnly = false
@@ -113,12 +129,7 @@ func (b *docBase) write(target string, op writeOp) (bool, error) {
 	if drop {
 		b.kind.recovery.remove(b)
 	}
-	if moved {
-		addRecent(target)
-		b.watch()
-	}
-	b.notify()
-	return true, nil
+	return true, moved, nil
 }
 
 // reload reads path again and makes it the content.

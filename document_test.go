@@ -867,6 +867,44 @@ func TestDocumentService(t *testing.T) {
 	}
 }
 
+// TestDocumentSaveDuringSaveAs saves on the main thread while a Save As
+// is written on a goroutine, which then adds the recent document on the
+// main thread.
+func TestDocumentSaveDuringSaveAs(t *testing.T) {
+	writing, release := make(chan struct{}), make(chan struct{})
+	var first sync.Once
+	ds := testDocs(t, DocumentsOptions[string]{Autosave: AutosaveOff, Write: func(w io.Writer, s string) error {
+		first.Do(func() {
+			close(writing)
+			<-release
+		})
+		_, err := io.WriteString(w, s)
+		return err
+	}})
+	path := writeTemp(t, "a.txt", "one")
+	d, _ := ds.Open(path)
+	d.Set("two")
+	target := filepath.Join(filepath.Dir(path), "b.txt")
+	savedAs, saving, saved := make(chan error, 1), make(chan struct{}), make(chan error, 1)
+	go func() { savedAs <- d.SaveAs(target) }()
+	wait.For(t, "the Save As to write", writing)
+	postMain(func() {
+		close(saving)
+		saved <- d.Save()
+	})
+	wait.For(t, "the main thread to save", saving)
+	close(release)
+	if err := wait.For(t, "the main thread's Save", saved); err != nil {
+		t.Error(err)
+	}
+	if err := wait.For(t, "SaveAs", savedAs); err != nil {
+		t.Error(err)
+	}
+	if got := readString(t, target); got != "two" {
+		t.Errorf("b.txt has %q", got)
+	}
+}
+
 func TestUntitledNumber(t *testing.T) {
 	for name, want := range map[string]int{
 		"Untitled": 1, "Untitled 2": 2, "Untitled 12": 12, "Untitled x": 0, "Notes": 0, "Untitled 1": 0,
