@@ -14,6 +14,8 @@ ui.Button(c, "").Label("Share").Tooltip("Share with others").Children(func() {
 
 如果元素通过 `ActiveDescendant` 指定了焦点子元素，则以该子元素为准。例如，窗口中的自绘菜单将焦点交给键盘高亮的菜单项，提示就显示在该项旁边。
 
+被 `MaxLines` 或 `SingleLine` 截断的文本，可以只在被截断时把完整文本显示为提示，是否截断由 `Truncated` 报告（见[文本](text.md)）。
+
 提示采用主题的 `Inverse` 和 `InverseText` 颜色，除非主题另行设置，否则它的文本和背景会互换（见[主题](styling.md#主题)）。
 
 ## 延迟

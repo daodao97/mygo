@@ -87,6 +87,20 @@ headings, captions, labels on cards.
 ui.Text(c, "Everything you need to ship a desktop app").FontSize(28).Bold().Balance()
 ```
 
+`Truncated` reports whether the previous frame cut an element's text with
+an ellipsis, as `Bounds` reports its previous box: false on the first
+frame and while the text fits. Asked of an element without text of its
+own, as a `Button`, it reports text cut inside it. Show the full text as
+a tooltip only when it is cut, as `title` with `text-overflow: ellipsis`
+on the web:
+
+```go
+t := ui.Text(c, name).MaxLines(1)
+if t.Truncated() {
+	t.Tooltip(name)
+}
+```
+
 `Pretty` keeps the last line of each paragraph from holding a single
 word, as CSS's `text-wrap: pretty` does at least: the line before gives it
 a word, wrapped as wide as that leaves the two, and the lines before stay

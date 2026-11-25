@@ -3456,7 +3456,9 @@ either.
   fractional and content-sized tracks, with the items' percentages of
   their grid areas, as auto while the tracks are sized), laying out again
   only what changed since the last frame (see below); commits the boxes to the elements'
-  states with the hit list in paint order, the focus order and the labels;
+  states with the hit list in paint order, the focus order and the labels,
+  and whether their text was cut, or text inside them (`state.truncated`,
+  which `Truncated` reads as `Bounds` reads the box);
   paints a `scene.Scene`; and presents it. The pointer finds what it is
   over in the hit list, last first (`appendHitChain`, `contains`): an
   element whose visible part, clipped as commit found it (`state.vx`..),

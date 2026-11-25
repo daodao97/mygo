@@ -2315,6 +2315,22 @@ func (e *node) Bounds() Rect {
 	return transformRect(s.world, Rect{s.x, s.y, s.w, s.h})
 }
 
+// Truncated reports whether the previous frame cut the element's text
+// with an ellipsis, as MaxLines and SingleLine do when it does not fit,
+// or text inside it, as a Button's label: as Bounds, it is false for an
+// element the previous frame lacked. Its full text can show as a
+// tooltip only when it is cut, as the web's title with text-overflow:
+// ellipsis:
+//
+//	t := ui.Text(c, name).MaxLines(1)
+//	if t.Truncated() {
+//		t.Tooltip(name)
+//	}
+//
+// Text that NoWrap lets overflow, or a clip hides, is not cut; nor is a
+// text input's, or a popup's attached to the element.
+func (e *node) Truncated() bool { return e.hasState() && e.st.truncated }
+
 // add appends a child.
 func (e *node) add(child *node) {
 	// Lists build rows as they lay out, after the list was measured.

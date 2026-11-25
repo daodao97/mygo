@@ -8818,6 +8818,31 @@ func (_handle Element) TruncateStart() Element {
 	return wrapElement(_node.TruncateStart())
 }
 
+// Truncated reports whether the previous frame cut the element's text
+// with an ellipsis, as MaxLines and SingleLine do when it does not fit,
+// or text inside it, as a Button's label: as Bounds, it is false for an
+// element the previous frame lacked. Its full text can show as a
+// tooltip only when it is cut, as the web's title with text-overflow:
+// ellipsis:
+//
+//	t := ui.Text(c, name).MaxLines(1)
+//	if t.Truncated() {
+//		t.Tooltip(name)
+//	}
+//
+// Text that NoWrap lets overflow, or a clip hides, is not cut; nor is a
+// text input's, or a popup's attached to the element.
+func (_handle Element) Truncated() bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	_node.markStateRead()
+	return _node.Truncated()
+}
+
 // Underline underlines text.
 func (_handle Element) Underline() Element {
 	_node := _handle.node()

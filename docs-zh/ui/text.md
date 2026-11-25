@@ -44,6 +44,15 @@ ui.Text(c, source).Font("monospace").TabSize(4)
 ui.Text(c, "Everything you need to ship a desktop app").FontSize(28).Bold().Balance()
 ```
 
+`Truncated` 报告上一帧是否用省略号截断了元素的文本，就像 `Bounds` 报告上一帧的盒子：第一帧和文本放得下时为 false。对没有自身文本的元素（例如 `Button`）调用时，它报告其内部的文本是否被截断。可以只在文本被截断时把完整文本显示为工具提示，就像 Web 上 `title` 配合 `text-overflow: ellipsis` 的用法：
+
+```go
+t := ui.Text(c, name).MaxLines(1)
+if t.Truncated() {
+	t.Tooltip(name)
+}
+```
+
 `Pretty` 避免段落的最后一行只剩一个词，实现了 CSS 的 `text-wrap: pretty` 至少具备的功能：从前一行挪一个词到末行，并尽量利用这两行的宽度，更前面的行保持不变。这样末行就不止一个词，也不影响段落其余部分。如果前一行没有多余的词，例如只有一个长词，就保持原样。`TextShape.Pretty` 为 `ShapeRichTextWith` 提供相同行为。
 
 `Selectable` 让用户用指针、Shift 和方向键选择文本，并复制它，例如错误消息或要粘贴到别处的标识符。

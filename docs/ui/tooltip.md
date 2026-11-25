@@ -30,6 +30,9 @@ it takes neither the pointer nor the focus; one that must still say why it
 is unavailable is `AccessDisabled`, which keeps both, and keeps its tip as
 it is pressed or clicked.
 
+Text that `MaxLines` or `SingleLine` cuts can show its full text as its
+tip only while it is cut, which `Truncated` reports ([Text](text.md)).
+
 The tip takes the theme's `Inverse` and `InverseText` colors, its text and
 background turned over unless the theme sets them (see
 [themes](styling.md#themes)).
