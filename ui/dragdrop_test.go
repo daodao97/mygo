@@ -518,3 +518,30 @@ func TestDragRowsNilKeepsButtonClick(t *testing.T) {
 		t.Errorf("the row that drags dropped %v", dropped)
 	}
 }
+
+// An element takes values of several types, one Drop for each.
+func TestDropSeveralTypes(t *testing.T) {
+	var words []string
+	var numbers []int
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Gap(20).Padding(20).Children(func() {
+			coreBox(c).Size(100, 40).Label("Word").Drag("hello")
+			coreBox(c).Size(100, 40).Label("Number").Drag(7)
+			target := coreBox(c).Size(200, 100).Label("Target")
+			if v, ok := coreDrop[string](target); ok {
+				words = append(words, v)
+			}
+			if v, ok := coreDrop[int](target); ok {
+				numbers = append(numbers, v)
+			}
+		})
+	}, 400, 400)
+	word, _ := tt.Find("Word")
+	number, _ := tt.Find("Number")
+	target, _ := tt.Find("Target")
+	drag(tt, word.X+10, word.Y+10, target.X+20, target.Y+20)
+	drag(tt, number.X+10, number.Y+10, target.X+20, target.Y+20)
+	if !slices.Equal(words, []string{"hello"}) || !slices.Equal(numbers, []int{7}) {
+		t.Errorf("dropped words %q, numbers %v", words, numbers)
+	}
+}

@@ -99,8 +99,7 @@ func (e *node) Dragging() bool {
 //	}
 func coreDrop[T any](e *node) (T, bool) {
 	var zero T
-	e.flags |= flagValueDrop
-	e.st.accepts = func(v any) bool { _, ok := v.(T); return ok }
+	e.takes(func(v any) bool { _, ok := v.(T); return ok })
 	if v, ok := e.st.droppedValue.(T); ok && e.st.hasDropped {
 		e.c.rt.consumed = true
 		return v, true
@@ -113,8 +112,7 @@ func coreDrop[T any](e *node) (T, bool) {
 // take it.
 func coreDragOver[T any](e *node) (T, bool) {
 	var zero T
-	e.flags |= flagValueDrop
-	e.st.accepts = func(v any) bool { _, ok := v.(T); return ok }
+	e.takes(func(v any) bool { _, ok := v.(T); return ok })
 	if in := e.c.rt.incoming; in != nil && e.c.rt.dataOver == e.id {
 		v, ok := in.Local.(T)
 		return v, ok
@@ -125,6 +123,18 @@ func coreDragOver[T any](e *node) (T, bool) {
 	}
 	v, ok := d.value.(T)
 	return v, ok
+}
+
+// takes makes e take the values accepts takes, as well as those it took
+// already this pass: one element takes several types, as a folder takes
+// files and a favorite moved among others.
+func (e *node) takes(accepts func(any) bool) {
+	e.flags |= flagValueDrop
+	if prev := e.st.accepts; prev != nil {
+		e.st.accepts = func(v any) bool { return prev(v) || accepts(v) }
+		return
+	}
+	e.st.accepts = accepts
 }
 
 // valueTarget returns the innermost element at (x, y) taking value.
