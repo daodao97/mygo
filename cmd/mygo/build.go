@@ -54,6 +54,8 @@ out.
 
 Set macos.signingIdentity in mygo.json (or -sign) to a Developer ID to ship
 outside the Mac App Store, and macos.notarize to notarize the app and the disk image.
+Off a Mac, macos.signCommand signs the app instead, e.g. with rcodesign,
+before the update files take it.
 
 With updates in mygo.json and the key of mygo keygen in
 MYGO_UPDATER_PRIVATE_KEY, each platform also gets a signed update archive,
@@ -112,7 +114,7 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 	if c.MacOS.Notarize != nil && !opts.skipNotarize && opts.sign == "-" {
 		return fmt.Errorf("notarization needs a Developer ID signing identity: set macos.signingIdentity or pass -sign")
 	}
-	if c.MacOS.ProvisioningProfile != "" && opts.sign == "-" && slices.ContainsFunc(targets, func(p string) bool { return strings.HasPrefix(p, "darwin/") }) {
+	if c.MacOS.ProvisioningProfile != "" && c.MacOS.SignCommand == "" && opts.sign == "-" && slices.ContainsFunc(targets, func(p string) bool { return strings.HasPrefix(p, "darwin/") }) {
 		// Before building anything, as codesign would.
 		return errProfileAdHoc
 	}
@@ -354,11 +356,9 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		if slices.ContainsFunc(res, inProject) {
 			logf("Made universal binaries of the code in %s and %s", filepath.Join(resourcesDir, "darwin-arm64"), filepath.Join(resourcesDir, "darwin-amd64"))
 		}
-		var t *task
-		if runtime.GOOS == "darwin" {
-			t = con.start("Signing " + filepath.Base(app))
-		}
-		if err := t.end(codesign(c, app, opts.sign, true), "Signed "+filepath.Base(app)); err != nil {
+		// Before the disk image and the update files, which take the
+		// bundle as signed.
+		if err := signApp(c, app, opts.sign); err != nil {
 			return nil, err
 		}
 		artifacts = append(artifacts, app)

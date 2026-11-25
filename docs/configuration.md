@@ -118,6 +118,7 @@ Signed [auto-updates](updates.md). `publicKey` and one of `github` and
 | `icon` | | the icon as an asset catalog, an `Assets.car` or an Icon Composer `.icon`, beside the `.icns` of `icon`; or an `.icns` in its place. See [the icon](distribution.md#name-icon-and-version) |
 | `minimumSystemVersion` | `12.0` | the oldest macOS the app runs on |
 | `signingIdentity` | `-`, ad hoc | the identity that signs the app and its disk image, e.g. `Developer ID Application: Jane Doe (TEAMID)` |
+| `signCommand` | | instead of `codesign`, a command that signs the app bundle, with `%1` for its path, on any system, e.g. with rcodesign on Linux. See [signing off a Mac](distribution.md#signing-off-a-mac) |
 | `entitlements` | | a property list of entitlements to sign the app with |
 | `provisioningProfile` | | a profile embedded as `Contents/embedded.provisionprofile` before signing; must match the app's identifier, entitlements and signing identity; cannot be used with ad-hoc signing. See [provisioning profiles](distribution.md#provisioning-profiles) |
 | `helperEntitlements` | | property lists of entitlements for code among the resources, by its path there, e.g. `{ "bin/server": "server.entitlements.plist" }`; other code keeps the entitlements it is signed with. See [helper executables](distribution.md#helper-executables) |

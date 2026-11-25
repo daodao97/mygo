@@ -422,6 +422,126 @@ func main() {
 	}
 }
 
+// TestUnsignedUpdateWarning warns when the update of a macOS build would
+// hold a bundle that mygo build did not sign: off a Mac, without
+// macos.signCommand.
+func TestUnsignedUpdateWarning(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	t.Setenv("MYGO_UPDATER_PRIVATE_KEY", base64.StdEncoding.EncodeToString(priv))
+	none := 0
+	c := &Config{root: t.TempDir(), Name: "My App", Version: "1.0.0",
+		Updates: &Updates{PublicKey: base64.StdEncoding.EncodeToString(pub), URL: "https://example.com/updates", Deltas: &none}}
+	c.applyDefaults()
+	host := buildHost
+	t.Cleanup(func() { buildHost = host })
+	for _, tc := range []struct {
+		host, signCommand, target string
+		key, warns                bool
+	}{
+		{"linux", "", "darwin-arm64", true, true},
+		{"windows", "", "darwin-universal", true, true},
+		{"linux", "scripts/sign-macos.sh %1", "darwin-arm64", true, false},
+		{"darwin", "", "darwin-arm64", true, false},
+		{"linux", "", "linux-amd64", true, false},
+		{"linux", "", "darwin-arm64", false, false}, // no update
+	} {
+		buildHost = tc.host
+		c.MacOS.SignCommand = tc.signCommand
+		if !tc.key {
+			t.Setenv("MYGO_UPDATER_PRIVATE_KEY", "")
+		}
+		output := consoleOutput(t)
+		stage := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(stage, "My App.app", "Contents"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writeArchive(c, stage, tc.target, []string{"My App.app"}); err != nil {
+			t.Fatal(err)
+		}
+		out := output()
+		warns := strings.Contains(out, "holds My App.app unsigned")
+		if warns != tc.warns {
+			t.Errorf("%+v: warns %v:\n%s", tc, warns, out)
+		}
+		if warns && !strings.Contains(out, "macos.signCommand") {
+			t.Errorf("the warning does not say how to sign:\n%s", out)
+		}
+	}
+}
+
+// TestBuildSignCommandBeforeUpdate builds a macOS app with
+// macos.signCommand, as off a Mac: the update archive, its signature and
+// the manifest hold the bundle as the command signed it, and a failing
+// command fails the build.
+func TestBuildSignCommandBeforeUpdate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles programs")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+	dir := testModule(t, map[string]string{
+		"main.go":   "package main\n\nimport \"github.com/egoist/mygo\"\n\nfunc main() { mygo.App.Run() }\n",
+		"mygo.json": `{"name": "Signed App", "identifier": "com.example.signedapp", "version": "1.0.0"}`,
+	})
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	t.Setenv("MYGO_UPDATER_PRIVATE_KEY", base64.StdEncoding.EncodeToString(priv))
+	host := buildHost
+	buildHost = "linux"
+	t.Cleanup(func() { buildHost = host })
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	none := 0
+	c.Updates = &Updates{PublicKey: base64.StdEncoding.EncodeToString(pub), URL: "https://example.com/updates", Deltas: &none}
+	c.MacOS.SignCommand = `mkdir -p %1/Contents/_CodeSignature && printf rcodesign > %1/Contents/_CodeSignature/CodeResources`
+	opts := buildOptions{sign: "-", skipDMG: true, work: t.TempDir()}
+	if opts.pkg, err = packageDir(c); err != nil {
+		t.Fatal(err)
+	}
+	output := consoleOutput(t)
+	if _, err := buildPlatform(c, "darwin", "arm64", opts); err != nil {
+		t.Fatal(err)
+	}
+	if out := output(); strings.Contains(out, "unsigned") {
+		t.Errorf("a build signed by its command warns:\n%s", out)
+	}
+	built := filepath.Join(dir, "dist", "darwin-arm64")
+	data, err := os.ReadFile(filepath.Join(built, update.ManifestName("darwin-arm64")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m update.Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := os.ReadFile(filepath.Join(built, filepath.Base(m.URL)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(archive)
+	if err := update.Verify(pub, sum[:], m.Signature); err != nil || m.Size != int64(len(archive)) {
+		t.Errorf("the manifest does not cover the archive: %v", err)
+	}
+	extracted := t.TempDir()
+	if err := update.ExtractArchive(bytes.NewReader(archive), extracted); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(extracted, "Signed App.app", "Contents", "_CodeSignature", "CodeResources")); err != nil || string(b) != "rcodesign" {
+		t.Errorf("the update holds the bundle before the sign command signed it: %q, %v", b, err)
+	}
+
+	// A failing command fails the build, which keeps the previous one.
+	c.MacOS.SignCommand = "false %1"
+	if _, err := buildPlatform(c, "darwin", "arm64", opts); err == nil || !strings.Contains(err.Error(), "macos.signCommand") {
+		t.Errorf("a failing sign command gave %v", err)
+	}
+	if after, err := os.ReadFile(filepath.Join(built, filepath.Base(m.URL))); err != nil || !bytes.Equal(after, archive) {
+		t.Errorf("a failed build replaced the update: %v", err)
+	}
+}
+
 // TestWriteDeltas makes delta updates from the versions a published
 // manifest lists.
 func TestWriteDeltas(t *testing.T) {

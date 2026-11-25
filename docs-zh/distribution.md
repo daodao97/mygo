@@ -22,7 +22,7 @@ go tool mygo build   # in a project of native UI
 mygo build -platform darwin/universal,windows/amd64,windows/arm64,linux/amd64,linux/arm64
 ```
 
-`darwin/universal` 把 arm64 与 amd64 合到一个应用里。MyGo 不需要 cgo，所以任何机器都能为每个平台编译。有些步骤需要目标平台的工具，在其他系统上会跳过并给出提示：macOS 应用只在 macOS 上签名并放进磁盘映像；Windows 安装程序在其他系统上则只在安装了 [NSIS](#安装程序) 时制作。
+`darwin/universal` 把 arm64 与 amd64 合到一个应用里。MyGo 不需要 cgo，所以任何机器都能为每个平台编译。有些步骤需要目标平台的工具，在其他系统上会跳过并给出提示：macOS 应用只在 macOS 上签名并放进磁盘映像（除非由你自己的命令[签名](#在-mac-以外签名)）；Windows 安装程序在其他系统上则只在安装了 [NSIS](#安装程序) 时制作。
 
 CLI 默认 `CGO_ENABLED=0`。如果应用的依赖需要 cgo，在环境中为 `mygo dev`、`mygo build` 和 `mygo generate` 设置 `CGO_ENABLED=1`。这些构建需要目标平台的 C 编译器；交叉编译时，把 `CC` 设为合适的交叉编译器。
 
@@ -216,6 +216,30 @@ xcrun notarytool store-credentials notary
 security unlock-keychain ~/Library/Keychains/login.keychain-db
 security set-key-partition-list -S apple-tool:,apple: -s ~/Library/Keychains/login.keychain-db
 ```
+
+### 在 Mac 以外签名
+
+`codesign` 需要 macOS：在其他系统上，`mygo build` 只保留 Go 链接器给应用的签名，其他 Mac 都打不开这样的应用。要在 Linux 上发布 Mac 应用，例如用一个 CI 运行器构建所有平台，就用你自己的命令签名，其中 `%1` 是应用包，例如使用 [rcodesign](https://github.com/indygreg/apple-platform-rs)：
+
+```ts
+export default defineConfig({
+  macos: { signCommand: "scripts/sign-macos.sh %1" },
+});
+```
+
+```sh
+#!/bin/sh
+# scripts/sign-macos.sh：用 Developer ID 为应用签名，再用 App Store Connect
+# API 密钥公证，并附加公证票据。
+set -e
+rcodesign sign --p12-file "$MACOS_CERTIFICATE_FILE" --p12-password "$MACOS_CERTIFICATE_PASSWORD" \
+  --code-signature-flags runtime "$1"
+rcodesign notary-submit --api-key-path "$APP_STORE_CONNECT_KEY_FILE" --staple "$1"
+```
+
+`mygo build` 在任何系统上都会运行这个命令来代替 `codesign`：时机是应用包已包含所有内容（包括[描述文件](#描述文件)）之后、任何步骤使用它之前。因此[更新](updates.md)归档、增量更新和清单里都是命令签过名的应用，在 Mac 上磁盘映像也是。命令失败，构建也随之失败。命令要为整个应用包签名，包括资源中的代码，并赋予它需要的权限：`entitlements` 和 `helperEntitlements` 只用于 `codesign`。`signingIdentity` 仍然签署磁盘映像（只有 macOS 能制作），`mygo dev` 也仍然用 `codesign` 签名。
+
+没有 `signCommand` 时，在 Mac 以外写入更新的构建会警告：更新里是未签名的应用，更新到它的已安装副本将无法再打开；构建之后再为应用签名，也不会改变已写好的更新。
 
 ### Info.plist 与授权
 
@@ -519,4 +543,4 @@ resources/darwin/
 
 配置中设置了 `updates.github` 时，`mygo build -upload` 会把磁盘映像、安装程序、包、Linux 归档、安装脚本以及更新文件上传到该版本的 GitHub 发布版本，标签为 `v1.2.0`，并把该发布版本创建为草稿。检查草稿后发布它。这需要已登录的 [GitHub CLI](https://cli.github.com)（`gh`）。使用 `updates.s3` 时，它会把它们上传到 Amazon S3 或兼容服务（如 Cloudflare R2）的存储桶，凭据放在 `AWS_ACCESS_KEY_ID` 和 `AWS_SECRET_ACCESS_KEY` 中（见[发布到 S3](updates.md#发布到-s3)）。
 
-在 CI 中于每个平台构建，并上传到同一个发布版本：macOS 运行器负责签名、公证并制作磁盘映像；任何运行器都能编译和打包 Windows 与 Linux 应用。把签名密钥保存在 CI 的机密变量中：`MYGO_WINDOWS_CERTIFICATE_PASSWORD`、`MYGO_UPDATER_PRIVATE_KEY`，以及 macOS 运行器钥匙串中的公证凭据。[GitHub Actions](github-actions.md) 有一个完成这一切的工作流。
+在 CI 中于每个平台构建，并上传到同一个发布版本：macOS 运行器负责签名、公证并制作磁盘映像；任何运行器都能编译和打包 Windows 与 Linux 应用，以及由 [`macos.signCommand`](#在-mac-以外签名) 签名的 macOS 应用。把签名密钥保存在 CI 的机密变量中：`MYGO_WINDOWS_CERTIFICATE_PASSWORD`、`MYGO_UPDATER_PRIVATE_KEY`，以及 macOS 运行器钥匙串中的公证凭据。[GitHub Actions](github-actions.md) 有一个完成这一切的工作流。

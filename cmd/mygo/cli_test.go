@@ -432,6 +432,31 @@ func TestWindowsSignCommand(t *testing.T) {
 	}
 }
 
+// TestMacOSSignCommand signs a bundle whose path the shell gets quoted with
+// macos.signCommand, on any system and in place of codesign.
+func TestMacOSSignCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+	app := filepath.Join(t.TempDir(), "Jane's App.app")
+	if err := os.MkdirAll(filepath.Join(app, "Contents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Ad-hoc signing with a profile fails in codesign, before it signs:
+	// the command signs instead.
+	c := &Config{root: t.TempDir(), MacOS: MacOS{SignCommand: `printf signed > %1/Contents/signature`, ProvisioningProfile: "embedded.provisionprofile"}}
+	if err := signApp(c, app, "-"); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(app, "Contents", "signature")); err != nil || string(b) != "signed" {
+		t.Errorf("the sign command wrote %q, %v", b, err)
+	}
+	c.MacOS.SignCommand = "false %1"
+	if err := signApp(c, app, "-"); err == nil || !strings.Contains(err.Error(), "macos.signCommand") {
+		t.Errorf("a failing sign command gave %v", err)
+	}
+}
+
 // peHeaders returns the headers of a PE image, PE32+ or PE32, whose
 // certificate table has the given size.
 func peHeaders(plus bool, certificates uint32) []byte {

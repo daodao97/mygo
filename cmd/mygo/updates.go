@@ -210,6 +210,9 @@ func writeArchive(c *Config, stage, target string, entries []string) ([]string, 
 	if key == nil && !strings.HasPrefix(target, "linux-") {
 		return nil, nil
 	}
+	if key != nil && strings.HasPrefix(target, "darwin-") && c.leavesAppUnsigned() {
+		warnUnsignedUpdate(c, target, entries)
+	}
 	var notes string
 	if key != nil {
 		var err error
@@ -250,6 +253,20 @@ func writeArchive(c *Config, stage, target string, entries []string) ([]string, 
 		return nil, err
 	}
 	return append(files, manifest), nil
+}
+
+// warnUnsignedUpdate says that the update of a macOS build holds a bundle
+// that `mygo build` did not sign: the apps it updates would not open, so a
+// bundle signed elsewhere afterwards must not ship as this update.
+func warnUnsignedUpdate(c *Config, target string, entries []string) {
+	app := c.executableName() + ".app"
+	if len(entries) > 0 {
+		app = entries[0]
+	}
+	warnf("%s", bold("The update for "+target+" holds "+app+" unsigned: installed copies that update to it will refuse to open")+"\n"+
+		"Code signing needs macOS, and this build runs on "+buildHost+", so signing the app afterwards leaves the update unsigned.\n"+
+		"Set macos.signCommand to a command that signs the app, e.g. with rcodesign, and mygo build signs it before writing the update:\n"+
+		`  "macos": { "signCommand": "scripts/sign-macos.sh %1" }`)
 }
 
 // writeSigned writes a file with write and returns its size and signature,

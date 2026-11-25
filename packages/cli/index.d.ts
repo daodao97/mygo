@@ -228,6 +228,13 @@ export interface MacOSConfig {
   minimumSystemVersion?: string;
   /** The identity that signs the app and its disk image, e.g. `Developer ID Application: Jane Doe (TEAMID)` (default: `-`, ad hoc). */
   signingIdentity?: string;
+  /**
+   * Instead of codesign, a command that signs the app bundle, with `%1` for
+   * its path, on any system, e.g. `scripts/sign-macos.sh %1` running
+   * rcodesign on Linux. `mygo build` runs it before the disk image and the
+   * update files take the bundle; a failing command fails the build.
+   */
+  signCommand?: string;
   /** A property list of entitlements to sign the app with. */
   entitlements?: string;
   /**

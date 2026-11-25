@@ -65,16 +65,7 @@ func signWindows(c *Config, file string) error {
 func signWindowsFile(c *Config, file string) error {
 	w := c.Windows
 	if w.SignCommand != "" {
-		// Not shown: the command may hold credentials.
-		cmd := shellCommand(c.root, strings.ReplaceAll(w.SignCommand, "%1", shellQuote(file)))
-		out, errOut := labeledOutput(cmd, "sign")
-		err := waited(cmd.Run())
-		out.flush()
-		errOut.flush()
-		if err != nil {
-			return fmt.Errorf("windows.signCommand: %w", err)
-		}
-		return nil
+		return runSignCommand(c, "windows.signCommand", w.SignCommand, file)
 	}
 	password := os.Getenv("MYGO_WINDOWS_CERTIFICATE_PASSWORD")
 	cert := c.path(w.Certificate)

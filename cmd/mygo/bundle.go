@@ -422,6 +422,31 @@ func codesign(c *Config, path, identity string, production bool) error {
 	return nil
 }
 
+// signApp signs the bundle of a build: with macos.signCommand when there
+// is one, on any system, else with codesign, which needs macOS.
+func signApp(c *Config, app, identity string) error {
+	name := filepath.Base(app)
+	if c.MacOS.SignCommand != "" {
+		t := con.start("Signing " + name)
+		return t.end(runSignCommand(c, "macos.signCommand", c.MacOS.SignCommand, app), "Signed "+name)
+	}
+	var t *task
+	if runtime.GOOS == "darwin" {
+		t = con.start("Signing " + name)
+	}
+	return t.end(codesign(c, app, identity, true), "Signed "+name)
+}
+
+// leavesAppUnsigned tells whether `mygo build` leaves the macOS bundle as
+// the Go linker signed it, ad hoc and without its resources: codesign
+// needs macOS, and no macos.signCommand signs it instead.
+func (c *Config) leavesAppUnsigned() bool {
+	return c.MacOS.SignCommand == "" && buildHost != "darwin"
+}
+
+// buildHost is the system `mygo build` runs on, which tests change.
+var buildHost = runtime.GOOS
+
 // replacePath moves src to dst, replacing what dst held. The old dst is
 // renamed away before it is removed, so a running app keeps its files.
 // Removing it is best effort: Windows keeps running executables.

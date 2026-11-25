@@ -213,6 +213,17 @@ type MacOS struct {
 	// ad hoc: the app runs on the Mac that built it, but Gatekeeper blocks
 	// it on others.
 	SigningIdentity string `json:"signingIdentity"`
+	// SignCommand signs the app bundle instead of codesign, with %1
+	// standing for its path, on any system, e.g. with rcodesign on Linux:
+	//   "scripts/sign-macos.sh %1"
+	// `mygo build` runs it where it would run codesign, once the bundle
+	// holds everything, provisioning profile included, and before the disk
+	// image and the update files take it; a failing command fails the
+	// build. It signs the whole bundle, the code among its resources
+	// included, with the entitlements it chooses, and may notarize and
+	// staple it. SigningIdentity still signs the disk image, which only
+	// macOS makes, and `mygo dev` still signs with codesign.
+	SignCommand string `json:"signCommand"`
 	// Entitlements is a plist of entitlements to sign the app with.
 	Entitlements string `json:"entitlements"`
 	// ProvisioningProfile is embedded as Contents/embedded.provisionprofile
