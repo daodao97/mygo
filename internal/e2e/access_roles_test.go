@@ -12,7 +12,7 @@ import (
 )
 
 // landmarksAndLiveRegions shows a region, a search landmark, an article,
-// a log, a timer, an alert, a tab panel, the main, banner, content information and complementary landmarks, a toolbar's rule and a table's row header, labelled to be found but for
+// a log, a timer, an alert, a tab panel, the main, banner, content information, complementary and form landmarks, a toolbar's rule and a table's row header, labelled to be found but for
 // the rule, which is the toolbar's only child but its buttons.
 func landmarksAndLiveRegions(frames *atomic.Int32) func(c *ui.Context) {
 	return func(c *ui.Context) {
@@ -53,6 +53,9 @@ func landmarksAndLiveRegions(frames *atomic.Int32) func(c *ui.Context) {
 			ui.Row(c).Role(ui.RoleContentInfo).Label("Footer").Children(func() {
 				ui.Text(c, "3 unread")
 			})
+			ui.Column(c).Role(ui.RoleForm).Label("Sign in").Children(func() {
+				ui.Text(c, "Password")
+			})
 			ui.Column(c).Role(ui.RoleTabPanel).Label("Settings panel").Children(func() {
 				ui.Text(c, "Volume")
 			})
@@ -82,13 +85,16 @@ func TestAccessLandmarksAndLiveRegions(t *testing.T) {
 		"darwin": {"Activity": "AXGroup/AXLandmarkRegion", "Site search": "AXGroup/AXLandmarkSearch",
 			"Post by Ann": "AXGroup/AXDocumentArticle", "Messages": "AXGroup/AXApplicationLog", "Time left": "AXGroup/AXApplicationTimer",
 			"Error": "AXGroup/AXApplicationAlert", "": "AXSplitter", "Apples": "AXCell", "Settings panel": "AXGroup",
-			"Top bar": "AXGroup/AXLandmarkBanner", "Messages area": "AXGroup/AXLandmarkMain", "Folders": "AXGroup/AXLandmarkComplementary", "Footer": "AXGroup/AXLandmarkContentInfo"},
+			"Top bar": "AXGroup/AXLandmarkBanner", "Messages area": "AXGroup/AXLandmarkMain", "Folders": "AXGroup/AXLandmarkComplementary", "Footer": "AXGroup/AXLandmarkContentInfo",
+			"Sign in": "AXGroup/AXLandmarkForm"},
 		"linux": {"Activity": "landmark", "Site search": "landmark", "Post by Ann": "article", "Messages": "log", "Time left": "timer", "Error": "notification", "": "separator",
 			"Apples": "row header", "Settings panel": "scroll pane",
-			"Top bar": "landmark", "Messages area": "landmark", "Folders": "landmark", "Footer": "landmark"},
+			"Top bar": "landmark", "Messages area": "landmark", "Folders": "landmark", "Footer": "landmark",
+			"Sign in": "landmark"},
 		"windows": {"Activity": "Group", "Site search": "Group", "Post by Ann": "Group", "Messages": "Group", "Time left": "Group", "Error": "Group", "": "Separator",
 			"Apples": "HeaderItem", "Settings panel": "Pane",
-			"Top bar": "Group", "Messages area": "Group", "Folders": "Group", "Footer": "Group"},
+			"Top bar": "Group", "Messages area": "Group", "Folders": "Group", "Footer": "Group",
+			"Sign in": "Group"},
 	}[runtime.GOOS]
 	if want == nil {
 		t.Skipf("no roles to expect on %s", runtime.GOOS)

@@ -8,10 +8,10 @@ import (
 )
 
 // TestRegionSeparatorRowHeader checks the roles of landmarks, a rule and
-// a row's header: a region is one only with a name, a search landmark
-// holds its field and button, an article holds its post, named or not, a
-// rule taller than wide runs up and down, and a row header is named by
-// its content.
+// a row's header: a region or form is one only with a name, a search
+// landmark holds its field and button, an article holds its post, named
+// or not, a rule taller than wide runs up and down, and a row header is
+// named by its content.
 func TestRegionSeparatorRowHeader(t *testing.T) {
 	tt := coreNewTester(func(c *context) {
 		coreColumn(c).AlignItems(Start).Children(func() {
@@ -20,6 +20,12 @@ func TestRegionSeparatorRowHeader(t *testing.T) {
 			})
 			coreColumn(c).Role(RoleRegion).Children(func() {
 				coreText(c, "Unnamed")
+			})
+			coreColumn(c).Role(RoleForm).Label("Sign in").Children(func() {
+				coreText(c, "Password")
+			})
+			coreColumn(c).Role(RoleForm).Children(func() {
+				coreText(c, "Unnamed form")
 			})
 			coreRow(c).Role(RoleSearch).Label("Site search").Children(func() {
 				coreText(c, "Query").Role(RoleTextField)
@@ -69,6 +75,15 @@ func TestRegionSeparatorRowHeader(t *testing.T) {
 	for _, n := range tree.Nodes {
 		if n.Role == platform.RoleRegion && n.Label != "Activity" {
 			t.Errorf("a region without a name is a landmark: %+v", n)
+		}
+	}
+	form := accessNode(t, tree, platform.RoleForm, "Sign in")
+	if text := accessNode(t, tree, platform.RoleText, "Password"); text.Parent < 0 || tree.Nodes[text.Parent].ID != form.ID {
+		t.Errorf("the text is not in the form")
+	}
+	for _, n := range tree.Nodes {
+		if n.Role == platform.RoleForm && n.Label != "Sign in" {
+			t.Errorf("a form without a name is a landmark: %+v", n)
 		}
 	}
 	var rules []platform.AccessNode

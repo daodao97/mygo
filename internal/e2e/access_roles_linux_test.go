@@ -46,6 +46,7 @@ func TestAccessLiveRegionAttributes(t *testing.T) {
 		{"Messages area", map[string]string{"xml-roles": "main"}},
 		{"Folders", map[string]string{"xml-roles": "complementary"}},
 		{"Footer", map[string]string{"xml-roles": "contentinfo"}},
+		{"Sign in", map[string]string{"xml-roles": "form"}},
 		{"Settings panel", map[string]string{"xml-roles": "tabpanel"}},
 		{"Error", map[string]string{"xml-roles": "alert", "live": "assertive", "atomic": "true"}},
 		{"Name is required", map[string]string{"container-live": "assertive", "container-atomic": "true"}},

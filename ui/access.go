@@ -192,6 +192,11 @@ const (
 	// when a window has several. Screen readers list it among the
 	// window's landmarks, and jump to it.
 	RoleComplementary
+	// RoleForm is the landmark holding a form, a sign-in pane or a
+	// settings sheet, as HTML's form: a landmark with a Label, and a
+	// group without one, as ARIA's rule for a form. Screen readers list
+	// it among the window's landmarks, and jump to it.
+	RoleForm
 )
 
 // tabular reports whether elements of a role hold rows of cells: tables,
@@ -599,6 +604,8 @@ func (e *node) accessRole() (platform.AccessRole, bool) {
 		return platform.RoleContentInfo, true
 	case RoleComplementary:
 		return platform.RoleComplementary, true
+	case RoleForm:
+		return platform.RoleForm, true
 	default:
 		return platform.AccessRole(e.role - RoleGroup), true
 	}
@@ -640,7 +647,8 @@ func leafRole(r platform.AccessRole) bool {
 		platform.RoleListItem, platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleHeading, platform.RoleLink, platform.RoleNavigation,
 		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleSearch,
 		platform.RoleArticle, platform.RoleGrid, platform.RoleTreeGrid, platform.RoleDeletion, platform.RoleInsertion, platform.RoleTabPanel,
-		platform.RoleMain, platform.RoleBanner, platform.RoleContentInfo, platform.RoleComplementary:
+		platform.RoleMain, platform.RoleBanner, platform.RoleContentInfo, platform.RoleComplementary,
+		platform.RoleForm:
 		return false
 	}
 	return true
@@ -963,8 +971,8 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 		// node of its own.
 		n.Label = e.text
 	}
-	if n.Role == platform.RoleRegion && n.Label == "" {
-		n.Role = platform.RoleGroup // only a region with a name is a landmark
+	if (n.Role == platform.RoleRegion || n.Role == platform.RoleForm) && n.Label == "" {
+		n.Role = platform.RoleGroup // only a region or form with a name is a landmark
 	}
 	switch e.checked {
 	case 2:

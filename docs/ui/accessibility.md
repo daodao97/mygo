@@ -676,6 +676,7 @@ WAI-ARIA's Core Accessibility API Mappings say:
 | Role | What it is | macOS | Linux (ATK) | Windows (UI Automation) |
 |---|---|---|---|---|
 | `ui.RoleRegion` | a landmark with a `Label`, as an activity feed or a panel; without one, a group | `AXGroup`, `AXLandmarkRegion` | landmark, `xml-roles:region` | Group, the custom landmark type "region" |
+| `ui.RoleForm` | the landmark of a form, a sign-in pane or a settings sheet, as HTML's `<form>`; with a `Label` a landmark, without one a group | `AXGroup`, `AXLandmarkForm` | landmark, `xml-roles:form` | Group, the form landmark type |
 | `ui.RoleSearch` | a landmark holding what searches the app or a document, as the search field and its button at the top of a window | `AXGroup`, `AXLandmarkSearch` | landmark, `xml-roles:search` | Group, the search landmark type |
 | `ui.RoleArticle` | a self-contained piece of content, as a post of a feed or a comment of a thread, named by its `Label`; no landmark | `AXGroup`, `AXDocumentArticle` | article | Group "article" |
 | `ui.RoleLog` | a live region of messages added in order, as a chat's transcript | `AXGroup`, `AXApplicationLog` | log | Group "log", `LiveSetting` polite |

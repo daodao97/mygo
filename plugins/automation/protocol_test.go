@@ -347,8 +347,8 @@ func TestMenuCaptureEvalIdle(t *testing.T) {
 }
 
 func TestNames(t *testing.T) {
-	if len(roleNames) != int(platform.RoleComplementary)+1 {
-		t.Errorf("%d role names for %d roles", len(roleNames), platform.RoleComplementary+1)
+	if len(roleNames) != int(platform.RoleForm)+1 {
+		t.Errorf("%d role names for %d roles", len(roleNames), platform.RoleForm+1)
 	}
 	if platform.AccessStates(1)<<(len(stateNames)-1) != platform.AccessHorizontal {
 		t.Errorf("%d state names", len(stateNames))

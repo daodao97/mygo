@@ -266,6 +266,9 @@ const (
 	RoleBanner
 	RoleContentInfo
 	RoleComplementary
+	// RoleForm is the landmark of a form, ARIA's form, HTML's form: a
+	// landmark only with a name, a group without one.
+	RoleForm
 )
 
 // Tabular reports whether nodes of a role hold rows of cells: tables,

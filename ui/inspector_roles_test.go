@@ -8,7 +8,8 @@ import "testing"
 // deleted and inserted content tab panels and landmarks as Chrome does.
 func TestInspectorRoleNames(t *testing.T) {
 	for r, want := range map[Role]string{RoleDeletion: "deletion", RoleInsertion: "insertion", RoleTabPanel: "tabpanel",
-		RoleMain: "main", RoleBanner: "banner", RoleContentInfo: "contentinfo", RoleComplementary: "complementary"} {
+		RoleMain: "main", RoleBanner: "banner", RoleContentInfo: "contentinfo", RoleComplementary: "complementary",
+		RoleForm: "form"} {
 		e := &node{role: r}
 		if got, seen := accessibleRole(e); got != want || !seen {
 			t.Errorf("role %d: %q, %v", r, got, seen)

@@ -345,6 +345,7 @@ func loadAccessNames() {
 		platform.RoleNavigation: {"landmark", "panel"}, platform.RoleRegion: {"landmark", "panel"},
 		platform.RoleSearch: {"landmark", "panel"}, platform.RoleMain: {"landmark", "panel"},
 		platform.RoleBanner: {"landmark", "panel"}, platform.RoleContentInfo: {"landmark", "panel"}, platform.RoleComplementary: {"landmark", "panel"},
+		platform.RoleForm: {"landmark", "panel"},
 		platform.RoleArticle: {"article", "panel"},
 		// Live regions, which their object attributes say how to read.
 		platform.RoleLog: {"log", "panel"}, platform.RoleTimer: {"timer", "panel"},
@@ -382,6 +383,7 @@ var xmlRoles = map[platform.AccessRole]string{
 	platform.RoleGrid: "grid", platform.RoleTreeGrid: "treegrid",
 	platform.RoleDeletion: "deletion", platform.RoleInsertion: "insertion", platform.RoleTabPanel: "tabpanel",
 	platform.RoleMain: "main", platform.RoleBanner: "banner", platform.RoleContentInfo: "contentinfo", platform.RoleComplementary: "complementary",
+	platform.RoleForm: "form",
 }
 
 // accessTree is what assistive technology sees of a surface.
