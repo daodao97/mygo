@@ -642,7 +642,11 @@ add kotlin` says.
 **C on Android.** A Kotlin module may bring C, or C++, which its
 `build.gradle.kts` builds with CMake (`externalNativeBuild`); the app's
 build gives it the NDK and the ABIs that Go builds for, and the Kotlin
-loads it with `System.loadLibrary`. The SQLite plugin's module,
+loads it with `System.loadLibrary`. It must link for 16 KB pages, which
+Android 15 and later devices may have: the app's build asks the NDK's
+CMake for that (`ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES`), which NDK r27 and
+later do, and for older NDKs the module's `CMakeLists.txt` adds
+`target_link_options(<library> PRIVATE "-Wl,-z,max-page-size=16384")`. The SQLite plugin's module,
 `plugins/sqlite/internal/sqlitecore`, does so: its Kotlin calls SQLite's
 amalgamation, which its CMake downloads, pinned by its SHA-256, and its
 Swift links the same SQLite as a binary framework.

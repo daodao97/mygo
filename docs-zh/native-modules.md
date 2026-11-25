@@ -453,7 +453,7 @@ private class ICUAnalyzer : Analyzer {
 
 除了纹理、返回 `*native.Buffer` 和其他模块的接口，Swift 能实现的 Kotlin 都能实现，`mygo native add kotlin` 会指出不能实现的部分。
 
-**Android 上的 C。** Kotlin 模块可以带上 C 或 C++，由它的 `build.gradle.kts` 用 CMake（`externalNativeBuild`）构建；应用的构建会给它 NDK 和 Go 所构建的 ABI，Kotlin 用 `System.loadLibrary` 加载它。SQLite 插件的模块 `plugins/sqlite/internal/sqlitecore` 就是这样：它的 Kotlin 调用 SQLite 的 amalgamation，由 CMake 下载并用 SHA-256 固定版本；它的 Swift 则以二进制 framework 链接同一个 SQLite。
+**Android 上的 C。** Kotlin 模块可以带上 C 或 C++，由它的 `build.gradle.kts` 用 CMake（`externalNativeBuild`）构建；应用的构建会给它 NDK 和 Go 所构建的 ABI，Kotlin 用 `System.loadLibrary` 加载它。它必须按 16 KB 页链接（Android 15 及以后的设备可能是 16 KB 页）：应用的构建会请 NDK 的 CMake 这样做（`ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES`），NDK r27 及以后会照做；对更早的 NDK，模块的 `CMakeLists.txt` 要加上 `target_link_options(<库> PRIVATE "-Wl,-z,max-page-size=16384")`。SQLite 插件的模块 `plugins/sqlite/internal/sqlitecore` 就是这样：它的 Kotlin 调用 SQLite 的 amalgamation，由 CMake 下载并用 SHA-256 固定版本；它的 Swift 则以二进制 framework 链接同一个 SQLite。
 
 ## 对象
 

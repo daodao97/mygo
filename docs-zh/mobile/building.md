@@ -13,6 +13,8 @@ mygo build -platform android/arm64   # one ABI: arm64, arm or amd64
 
 `.aab` 是 Google Play 接受的格式，`.apk` 供其他应用商店和设备安装。正式版用 `android.keystore` 签名，其密码来自 `MYGO_ANDROID_KEYSTORE_PASSWORD` 和 `MYGO_ANDROID_KEY_PASSWORD`；否则用调试密钥签名，而 Google Play 不接受调试密钥。`minSdk` 为 24 及以上时，构建会省掉 Android 已不再需要的 JAR 签名（v1）；有些手机的安装器仍要求它，可以用 `android.v1Signing` 加上。
 
+应用的原生库为 16 KB 页的设备构建（Android 15 及以后的设备可能是 16 KB 页）：Go 和原生模块的 C 按 16 KB 页链接，APK 也把它们存放在 16 KB 边界上。构建会像 Android 那样检查 APK，并指出其 64 位 ABI 中不符合的库，比如某个插件的依赖自带的库：在这样的设备上，应用会以页大小兼容模式运行，每次启动都弹出警告，Google Play 也不接受它。
+
 其余设置在配置的 `ios` 和 `android` 部分中（见[配置](../configuration.md)）：
 
 ```ts

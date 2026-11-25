@@ -185,8 +185,9 @@ func (t *androidToolchain) buildGo(ctx context.Context, c, dc *Config, tk *task,
 		}
 	}
 	env := []string{"GOOS=android", "GOARCH=" + a.goarch, "CGO_ENABLED=1", "CC=" + t.clang(c, abi),
-		// 16 KB pages, which new devices have and Google Play asks for.
-		"CGO_LDFLAGS=-Wl,-z,max-page-size=16384"}
+		// 16 KB pages, which new devices have and Google Play asks for,
+		// after the user's flags, which replacing them would drop.
+		"CGO_LDFLAGS=" + androidCgoLDFlags(os.Getenv("CGO_LDFLAGS"))}
 	if a.goarch == "arm" {
 		env = append(env, "GOARM=7")
 	}
@@ -636,6 +637,7 @@ func buildAndroid(c *Config, opts buildOptions, arch string) ([]string, error) {
 	if err := tk.end(err, "Built for Android"); err != nil {
 		return nil, err
 	}
+	warnAPKPageSize(filepath.Join(dir, "app", "build", "outputs", "apk", "release", "app-release.apk"))
 	out := c.path(filepath.Join(c.Out, "android"))
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return nil, err
@@ -746,10 +748,12 @@ func (s *devSession) buildAndroidDev(ctx context.Context, c, dc *Config, t *task
 		return "", err
 	}
 	apk := filepath.Join(stage, dc.slug()+".apk")
-	data, err := os.ReadFile(filepath.Join(dir, "app", "build", "outputs", "apk", "debug", "app-debug.apk"))
+	built := filepath.Join(dir, "app", "build", "outputs", "apk", "debug", "app-debug.apk")
+	data, err := os.ReadFile(built)
 	if err != nil {
 		return "", err
 	}
+	warnAPKPageSize(built)
 	if err := os.MkdirAll(apk, 0o755); err != nil {
 		return "", err
 	}
