@@ -151,7 +151,7 @@ object HostImpl : HostCalls {
             // and would hold it until one comes.
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 Os.setenv("MYGO_RESOURCES", dir, true)
-                MyGoNative.start()
+                MyGoNative.start(ctx)
             }
         }.start()
     }

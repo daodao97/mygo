@@ -150,6 +150,46 @@ ABIs the app builds, and its Swift package takes C targets, or a library
 as a binary framework. The SQLite plugin's module does both with SQLite's
 amalgamation, pinned by its hash: `plugins/sqlite/internal/sqlitecore`.
 
+### C linked into Go
+
+A C library that the app's Go code links with cgo, rather than one a native
+module wraps, may need the JVM on Android: a media library, for one, that
+attaches its threads and calls Android's audio classes. `mygo.JavaVM` returns
+the process's `JavaVM*`, and `mygo.AndroidContext` a JNI global reference to
+the application's `Context`, valid for the life of the process. Both are 0 on
+other platforms, and may be 0 before the app's `main` runs, as in `init`
+functions: call them from `main` or later.
+
+```go
+//go:build android
+
+package media
+
+/*
+#include <stdint.h>
+#include <jni.h>
+#include "media.h"
+
+static void start(uintptr_t vm, uintptr_t context) {
+	media_init((JavaVM *)vm, (jobject)context);
+}
+*/
+import "C"
+
+import "github.com/egoist/mygo"
+
+func Start() { C.start(C.uintptr_t(mygo.JavaVM()), C.uintptr_t(mygo.AndroidContext())) }
+```
+
+They are for C: Go passes them on and never dereferences them. A `JNIEnv`
+belongs to one thread, so a thread of C's gets its own with the VM's
+`AttachCurrentThread` before it calls JNI (`GetEnv` once attached), and
+detaches before it ends. A goroutine moves between threads: keep a `JNIEnv`
+only within one call into C, or lock the goroutine to its thread
+(`runtime.LockOSThread`) while C uses it. MyGo owns the context's reference:
+never delete it. `FindClass` on such a thread finds the system's classes, as
+the audio ones, but not the app's.
+
 ### Native views
 
 `PluginHost.registerView` registers a type of view, in the plugin's initializer,

@@ -17,6 +17,10 @@
 #include "_cgo_export.h"
 
 static JavaVM *vm;
+// The application's Context, a global reference for the life of the
+// process, which the host passes as Go starts: the apps' C libraries ask
+// for it (mygo.AndroidContext), as for vm (mygo.JavaVM).
+static jobject app_context;
 static jclass host;
 static jmethodID host_call;
 static int wake[2] = {-1, -1};
@@ -26,7 +30,7 @@ static jclass native;
 static jmethodID native_init, native_invoke, native_direct, native_op;
 
 JNIEXPORT jint JNI_OnLoad(JavaVM *v, void *reserved) {
-	vm = v;
+	__atomic_store_n(&vm, v, __ATOMIC_RELEASE);
 	JNIEnv *env;
 	if ((*v)->GetEnv(v, (void **)&env, JNI_VERSION_1_6) != JNI_OK) return JNI_ERR;
 	jclass c = (*env)->FindClass(env, "dev/mygo/Host");
@@ -113,12 +117,18 @@ static int on_wake(int fd, int events, void *data) {
 	return 1;
 }
 
-JNIEXPORT void JNICALL Java_dev_mygo_MyGoNative_start(JNIEnv *env, jclass c) {
+JNIEXPORT void JNICALL Java_dev_mygo_MyGoNative_start(JNIEnv *env, jclass c, jobject app) {
 	if (wake[0] >= 0) return;
+	if (app != NULL) __atomic_store_n(&app_context, (*env)->NewGlobalRef(env, app), __ATOMIC_RELEASE);
 	pipe2(wake, O_NONBLOCK | O_CLOEXEC);
 	ALooper_addFd(ALooper_forThread(), wake[0], ALOOPER_POLL_CALLBACK, ALOOPER_EVENT_INPUT, on_wake, NULL);
 	mygo_start_android();
 }
+
+// What the apps' C libraries need of the JVM, from any thread: Go reads
+// them for mygo.JavaVM and mygo.AndroidContext.
+uintptr_t mygo_android_vm(void) { return (uintptr_t)__atomic_load_n(&vm, __ATOMIC_ACQUIRE); }
+uintptr_t mygo_android_context(void) { return (uintptr_t)__atomic_load_n(&app_context, __ATOMIC_ACQUIRE); }
 
 JNIEXPORT jlong JNICALL Java_dev_mygo_MyGoNative_nativeWindow(JNIEnv *env, jclass c, jobject surface) {
 	return (jlong)(intptr_t)ANativeWindow_fromSurface(env, surface);

@@ -131,6 +131,33 @@ class TorchPlugin : MyGoPlugin {
 
 C 通过原生模块进入手机：模块的 Kotlin 用 CMake 构建 C（在它的 `build.gradle.kts` 中用 `externalNativeBuild`），使用 NDK，并为应用所构建的 ABI 构建；它的 Swift 包可以带 C target，或以二进制 framework 引入一个库。SQLite 插件的模块用 SQLite 的 amalgamation 同时做了这两件事，并用哈希固定版本：`plugins/sqlite/internal/sqlitecore`。
 
+### 链接进 Go 的 C
+
+应用的 Go 代码用 cgo 链接的 C 库（而不是由原生模块封装的库）在 Android 上可能需要 JVM，例如一个媒体库：它把自己的线程附加到 JVM，并调用 Android 的音频类。`mygo.JavaVM` 返回进程的 `JavaVM*`，`mygo.AndroidContext` 返回应用 `Context` 的 JNI 全局引用，在进程的整个生命周期内都有效。在其他平台上两者都是 0；在应用的 `main` 运行之前（例如在 `init` 函数中）也可能是 0：请在 `main` 中或之后调用它们。
+
+```go
+//go:build android
+
+package media
+
+/*
+#include <stdint.h>
+#include <jni.h>
+#include "media.h"
+
+static void start(uintptr_t vm, uintptr_t context) {
+	media_init((JavaVM *)vm, (jobject)context);
+}
+*/
+import "C"
+
+import "github.com/egoist/mygo"
+
+func Start() { C.start(C.uintptr_t(mygo.JavaVM()), C.uintptr_t(mygo.AndroidContext())) }
+```
+
+这两个值是给 C 用的：Go 只负责传递，从不解引用。`JNIEnv` 只属于一个线程，所以 C 的线程调用 JNI 之前，要先用 VM 的 `AttachCurrentThread` 取得自己的 `JNIEnv`（已附加的线程用 `GetEnv`），并在线程结束前分离。goroutine 会在线程之间移动：`JNIEnv` 只在一次 C 调用之内保留，或者在 C 使用它期间把 goroutine 锁定在它的线程上（`runtime.LockOSThread`）。`Context` 的引用归 MyGo 所有：不要删除它。在这样的线程上，`FindClass` 能找到系统的类（例如音频类），但找不到应用的类。
+
 ### 原生视图
 
 `PluginHost.registerView` 在插件的初始化方法中注册一种视图，`mygo.NewPluginView` 为显示原生 UI 的窗口创建它，由 `ui.WebView` 放置。它显示在内容之下、内容帧中留出的空洞里，与 webview 一样：在它之后绘制的内容显示在它之上，落在这些内容上的手指仍归内容所有。视图的 `ID` 在有关它的调用中指代它。`plugins/videoplayer` 是一个简短的示例，可用于地图或其他由系统绘制的东西。

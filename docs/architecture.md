@@ -1024,7 +1024,9 @@ what only it does well: the views, the web view and its delegates, the
 keyboard, accessibility, the system's dialogs and Swift-only or Java-only
 APIs. Phones' build modes need cgo to link (`c-archive` linked into the
 Swift host by swiftc, `c-shared` loaded by the Kotlin one), the only cgo of
-MyGo, in `glue_ios.go` and `glue_android.go` (with `jni_android.c`); the
+MyGo, in `glue_ios.go` and `glue_android.go` (with `jni_android.c`, which
+keeps the `JavaVM*` and a global reference to the application's `Context`
+that `mygo.JavaVM` and `mygo.AndroidContext` hand to apps' C); the
 rest of the backend builds anywhere, and its tests run on desktops with a
 fake host. Desktop files of `darwin` and `linux` exclude `ios` and
 `android`, which their constraints otherwise include.

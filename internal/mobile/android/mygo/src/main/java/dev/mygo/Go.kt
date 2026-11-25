@@ -4,6 +4,7 @@
 
 package dev.mygo
 
+import android.content.Context
 import android.os.Looper
 import android.view.Surface
 
@@ -28,8 +29,11 @@ object MyGoNative {
         if (dev != null) System.load(dev) else System.loadLibrary("mygoapp")
     }
 
-    /** Starts Go's main function on a thread of its own. UI thread, once. */
-    @JvmStatic external fun start()
+    /**
+     * Starts Go's main function on a thread of its own. UI thread, once. C keeps
+     * the application's context for the app's C libraries (mygo.AndroidContext).
+     */
+    @JvmStatic external fun start(app: Context)
 
     /** Sends an encoded event; for an event Go answers, waits for the answer. */
     @JvmStatic external fun event(msg: ByteArray, onUI: Boolean): ByteArray?

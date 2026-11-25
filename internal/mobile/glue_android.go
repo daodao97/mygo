@@ -11,6 +11,8 @@ void mygo_android_call(uint8_t *msg, size_t len, uint8_t **reply, size_t *reply_
 void mygo_android_call_here(uint8_t *msg, size_t len, uint8_t **reply, size_t *reply_len);
 void mygo_android_post(void);
 void mygo_android_log(int error, uint8_t *line, size_t len);
+uintptr_t mygo_android_vm(void);
+uintptr_t mygo_android_context(void);
 
 extern char **environ;
 static char *mygo_environ(int i) { return environ[i]; }
@@ -64,6 +66,14 @@ func hostLog(isErr bool, line []byte) {
 	}
 	C.mygo_android_log(e, (*C.uint8_t)(unsafe.Pointer(unsafe.SliceData(line))), C.size_t(len(line)))
 }
+
+// JavaVM returns the process's JavaVM*, which JNI_OnLoad keeps.
+func JavaVM() uintptr { return uintptr(C.mygo_android_vm()) }
+
+// AppContext returns a JNI global reference to the application's Context,
+// which the host passes as Go starts, before the app's main runs, and 0
+// until then.
+func AppContext() uintptr { return uintptr(C.mygo_android_context()) }
 
 //export mygo_start_android
 func mygo_start_android() {
