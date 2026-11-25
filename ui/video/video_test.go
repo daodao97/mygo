@@ -1,6 +1,7 @@
 package video
 
 import (
+	"bytes"
 	"embed"
 	"errors"
 	"image/color"
@@ -9,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -219,6 +221,56 @@ func TestStreamLoops(t *testing.T) {
 				t.Fatal("a looping stream ended")
 			}
 			return near(shows(), want)
+		})
+	}
+}
+
+// seconds.mkv is 3 s of 64×48 H.264 at 24 fps, with B-frames and a
+// keyframe each second, red, then green, then blue, and silent AAC, in
+// Matroska:
+//
+//	ffmpeg -filter_complex 'color=c=red:s=64x48:r=24:d=1[a];color=c=lime:s=64x48:r=24:d=1[b];color=c=blue:s=64x48:r=24:d=1[c];[a][b][c]concat=n=3:v=1:a=0[v]' \
+//		-f lavfi -i anullsrc=r=48000:cl=stereo -map '[v]' -map 0:a -t 3 \
+//		-c:v libx264 -g 24 -bf 3 -c:a aac seconds.mkv
+//
+//go:embed testdata/seconds.mkv
+var secondsMKV []byte
+
+// TestSeeksBackToBack checks that a video asked for two seeks back to
+// back, as a slider dragged asks for them, lands where the second asks,
+// over HTTP: GStreamer's Matroska demuxer reading a stream takes the first
+// and drops the second, when they are in different seconds of
+// seconds.mkv, which it reaches by seeking in the stream.
+func TestSeeksBackToBack(t *testing.T) {
+	for _, v := range []struct {
+		name          string
+		data          []byte
+		first, second time.Duration
+		want          color.RGBA
+	}{
+		{"rgb.mp4", rgbMP4, 500 * time.Millisecond, time.Second, blue},
+		{"seconds.mkv", secondsMKV, 500 * time.Millisecond, 1500 * time.Millisecond, green},
+	} {
+		t.Run(v.name, func(t *testing.T) {
+			if strings.HasSuffix(v.name, ".mkv") && runtime.GOOS == "darwin" {
+				t.Skip("AVFoundation does not read Matroska")
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.ServeContent(w, r, v.name, time.Time{}, bytes.NewReader(v.data))
+			}))
+			t.Cleanup(srv.Close)
+			p, tt, shows := played(t, func() (*ui.VideoPlayer, error) { return OpenURL(srv.URL + "/" + v.name) })
+			p.Pause()
+			p.Seek(v.first)
+			p.Seek(v.second)
+			wait.Until(t, "the picture at "+v.second.String(), func() bool {
+				tt.Frame()
+				checkErr(t, p)
+				return near(shows(), v.want)
+			})
+			if pos := p.Position(); pos < v.second-100*time.Millisecond || pos > v.second+100*time.Millisecond {
+				t.Errorf("sought to %v: position %v", v.second, pos)
+			}
 		})
 	}
 }
