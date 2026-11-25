@@ -93,7 +93,7 @@ func (r *Router) restoreSharing(e *routeEntry, level, layout int) {
 	if at < 0 {
 		return // the restore loop has not inserted this entry yet
 	}
-	path := pathOf(e.loc)
+	path := escapedPathOf(e.loc)
 	parts := pathParts(path)
 	for _, step := range []int{-1, 1} {
 		for i := at + step; i >= 0 && i < len(r.entries); i += step {
@@ -101,7 +101,7 @@ func (r *Router) restoreSharing(e *routeEntry, level, layout int) {
 			if level > 0 && (len(n.pages) < level || n.pages[level-1] != e.pages[level-1]) {
 				break
 			}
-			other := pathOf(n.loc)
+			other := escapedPathOf(n.loc)
 			if layout < 0 {
 				if other != path {
 					break
