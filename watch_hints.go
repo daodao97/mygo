@@ -465,6 +465,13 @@ func (s *fileWatchHints) update() ([]FileEvent, error) {
 			if _, ok := s.targets[p]; ok || s.ignores(p) {
 				continue
 			}
+			if _, ok := s.targets[path.Dir(p)]; !ok {
+				// Its directory went away or was replaced, as by a
+				// symlink through which p would be another directory,
+				// or it was enrolled with what is in it: its parent's
+				// hint covers it.
+				continue
+			}
 			info, err := s.root.Lstat(filepath.FromSlash(p))
 			if err != nil || !info.IsDir() {
 				continue // gone, or not a directory: watched through its directory

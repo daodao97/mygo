@@ -1702,6 +1702,58 @@ func TestFileWatchHintsOnlySubtree(t *testing.T) {
 	}
 }
 
+// A hints-only watch doesn't enroll a directory by a path through a symlink
+// that replaced one of the directories above it: it would watch a
+// directory that is elsewhere, and hint at what changes in it under the
+// symlink's name.
+func TestFileWatchHintsOnlyThroughSymlink(t *testing.T) {
+	dir := t.TempDir()
+	for _, p := range []string{"a/x", "d"} {
+		if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(p)), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w, err := WatchFiles(context.Background(), dir, FileWatchOptions{Recursive: true, Debounce: -1, HintsOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	native := w.native.(*fake.FileWatch)
+	// A batch waits for Next, so that the next update looks at both
+	// notices below at once.
+	if err := os.WriteFile(filepath.Join(dir, "f"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	fileWatchTestNotice(t, w, ".", platform.FileWatchNotice{Name: "f", Kind: platform.FileWatchCreate})
+	wait.Until(t, "a batch of f", w.waiting)
+	// Something made in d, then d replaced by a symlink to a, which has
+	// an x too.
+	if err := os.Remove(filepath.Join(dir, "d")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("a", filepath.Join(dir, "d")); err != nil {
+		t.Fatal(err)
+	}
+	fileWatchTestNotice(t, w, "d", platform.FileWatchNotice{Name: "x", Kind: platform.FileWatchCreate})
+	fileWatchTestNotice(t, w, ".", platform.FileWatchNotice{Name: "d", Kind: platform.FileWatchCreate})
+	wait.Until(t, "the notices taken", func() bool { return len(w.raw) == 0 })
+	for _, want := range [][]string{{"."}, {"."}} {
+		if got := fileWatchTestHints(t, w); !slices.Equal(got, want) {
+			t.Fatalf("hints %v", got)
+		}
+	}
+	var paths []string
+	for _, target := range native.Targets() {
+		if rel, err := filepath.Rel(w.root, target.Path); err == nil && !strings.HasPrefix(rel, "..") {
+			paths = append(paths, filepath.ToSlash(rel))
+		}
+	}
+	slices.Sort(paths)
+	if !slices.Equal(paths, []string{".", "a", "a/x"}) {
+		t.Fatalf("enrolled %v", paths)
+	}
+}
+
 // A hints-only watch of a file hints at it, not at the other entries of
 // its directory.
 func TestFileWatchHintsOnlyFile(t *testing.T) {
