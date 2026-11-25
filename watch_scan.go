@@ -537,9 +537,9 @@ func (s *fileWatchScan) stat(p string) error {
 	if s.inaccessible(p, err) {
 		return nil
 	}
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
+	// Gone or replaced, or a directory above it was, by a file or a symlink
+	// out of the root, through which it can't be looked at: listing the
+	// directory that has it tells, and fails with what else is wrong.
 	s.lists[path.Dir(p)] = true
 	return nil
 }
@@ -643,6 +643,9 @@ func (s *fileWatchScan) list(dir *os.Root, p string) error {
 		if s.inaccessible(p, err) {
 			return nil // what is gone is not known
 		}
+		if p != "." && errors.Is(err, fs.ErrNotExist) {
+			return s.list(nil, path.Dir(p)) // removed while it was read
+		}
 		if err != nil {
 			return err
 		}
@@ -715,12 +718,17 @@ func (s *fileWatchScan) openDir(dir *os.Root, name, p string, want fileWatchEntr
 
 // openError is what opening directory p, at name in dir, failing with err
 // says: errWatchRootChanged when it is no longer the directory want, as
-// when a symlink replaced it, which the root follows only within dir.
+// when a symlink replaced it, or a directory above it in name, which the
+// root follows only within dir.
 func (s *fileWatchScan) openError(err error, dir *os.Root, name, p string, want fileWatchEntry) error {
 	if errors.Is(err, fs.ErrNotExist) || s.inaccessible(p, err) {
 		return s.pathError(err, p)
 	}
 	checked, statErr := dir.Lstat(name)
+	if statErr != nil && name != s.base(p) {
+		// A directory between dir and p was replaced: what has p knows.
+		return &os.PathError{Op: "watch", Path: s.osPath(p), Err: errWatchRootChanged}
+	}
 	if statErr != nil {
 		return s.pathError(statErr, p)
 	}
@@ -839,6 +847,10 @@ func (s *fileWatchScan) visit(dir *os.Root, p string, info os.FileInfo) error {
 		}
 		if err == io.EOF || s.inaccessible(p, err) {
 			return nil // what it could list
+		}
+		if p != "." && errors.Is(err, fs.ErrNotExist) {
+			s.removeTree(p) // while it was read
+			return gone()
 		}
 		if err != nil {
 			return err

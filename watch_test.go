@@ -477,6 +477,116 @@ func TestFileWatchDirectoryRename(t *testing.T) {
 	}
 }
 
+// A directory that a file or a symlink replaced, after something in it
+// changed, is looked at from the directory that has it: the watch goes on.
+func TestFileWatchDirectoryReplaced(t *testing.T) {
+	outside := t.TempDir()
+	for _, notices := range [][]string{{"a/b"}, {"a/b/c"}, {"a/b/c/f"}, {"a/b", "a/b/c", "a/b/c/f"}} {
+		for _, kind := range []string{"file", "symlink out", "symlink in", "dangling symlink"} {
+			t.Run(kind+" "+strings.Join(notices, " "), func(t *testing.T) {
+				dir := t.TempDir()
+				for _, p := range []string{"a/b/c", "other"} {
+					if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(p)), 0700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.WriteFile(filepath.Join(dir, "a", "b", "c", "f"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				w, err := WatchFiles(context.Background(), dir, FileWatchOptions{Recursive: true, Debounce: -1})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer w.Close()
+				native := w.native.(*fake.FileWatch)
+				ids := map[string]uint64{}
+				for _, target := range native.Targets() {
+					ids[target.Path] = target.ID
+				}
+				a := filepath.Join(dir, "a")
+				if err := os.RemoveAll(a); err != nil {
+					t.Fatal(err)
+				}
+				switch kind {
+				case "file":
+					err = os.WriteFile(a, nil, 0600)
+				case "symlink out":
+					err = os.Symlink(outside, a)
+				case "symlink in":
+					err = os.Symlink("other", a)
+				case "dangling symlink":
+					err = os.Symlink("none", a)
+				}
+				if err != nil {
+					t.Skip(err) // Windows without the right to make symlinks
+				}
+				// The first notice may be looked at before the next ones come,
+				// whose targets are gone then.
+				for _, p := range notices {
+					id := ids[filepath.Join(w.root, filepath.FromSlash(path.Dir(p)))]
+					native.Notify(platform.FileWatchNotice{Target: id, Name: path.Base(p), Kind: platform.FileWatchWrite})
+				}
+				fileWatchTestUntil(t, w, FileEvent{Op: FileRemove, Path: "a", IsDir: true}, FileEvent{Op: FileCreate, Path: "a"})
+				// What changes next is reported.
+				if err := os.WriteFile(filepath.Join(dir, "other", "new"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				fileWatchTestNotice(t, w, "other", platform.FileWatchNotice{Name: "new", Kind: platform.FileWatchCreate})
+				fileWatchTestUntil(t, w, FileEvent{Op: FileCreate, Path: "other/new"})
+			})
+		}
+	}
+}
+
+// A directory removed while the watch reads it, as it starts or as it
+// looks again, doesn't end the watch.
+func TestFileWatchRemovedWhileRead(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a directory being read can't be removed")
+	}
+	for _, again := range []bool{false, true} {
+		t.Run(fmt.Sprintf("again=%v", again), func(t *testing.T) {
+			dir := t.TempDir()
+			sub := filepath.Join(dir, "a", "sub")
+			if err := os.MkdirAll(sub, 0700); err != nil {
+				t.Fatal(err)
+			}
+			// More than one read of the directory returns.
+			for i := range 2000 {
+				if err := os.WriteFile(filepath.Join(sub, fmt.Sprintf("file-%d", i)), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			remove := !again
+			ignore := func(p string, isDir bool) bool {
+				if remove && path.Dir(p) == "a/sub" {
+					remove = false
+					if err := os.RemoveAll(sub); err != nil {
+						t.Error(err)
+					}
+				}
+				return false
+			}
+			w, err := WatchFiles(context.Background(), dir, FileWatchOptions{Recursive: true, Debounce: -1, Ignore: ignore})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.Close()
+			if again {
+				remove = true
+				fileWatchTestNotice(t, w, "a/sub", platform.FileWatchNotice{})
+				fileWatchTestNotice(t, w, "a", platform.FileWatchNotice{Name: "sub", Kind: platform.FileWatchRemove})
+				fileWatchTestUntil(t, w, FileEvent{Op: FileRemove, Path: "a/sub", IsDir: true})
+			}
+			if err := os.WriteFile(filepath.Join(dir, "a", "new"), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			fileWatchTestNotice(t, w, "a", platform.FileWatchNotice{Name: "new", Kind: platform.FileWatchCreate})
+			fileWatchTestUntil(t, w, FileEvent{Op: FileCreate, Path: "a/new"})
+		})
+	}
+}
+
 // A backend that watches a tree with one target is given only the root,
 // and names what changes below by its path.
 func TestFileWatchSubtree(t *testing.T) {
