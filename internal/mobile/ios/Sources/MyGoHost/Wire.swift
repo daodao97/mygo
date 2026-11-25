@@ -1255,6 +1255,18 @@ public struct SetFrameRateCall {
     }
 }
 
+public struct SetTabTitleCall {
+    public var id: Int = 0
+    public var index: Int = 0
+    public var title: String = ""
+    public init() {}
+    init(_ r: inout WireReader) {
+        id = r.int()
+        index = r.int()
+        title = r.string()
+    }
+}
+
 /// The calls Go makes of the host, on the main thread.
 public protocol HostCalls: AnyObject {
     /// the app's bundle and the system's settings, asked once at start
@@ -1394,6 +1406,8 @@ public protocol HostCalls: AnyObject {
     func registerFont(_ c: RegisterFontCall) -> RegisterFontReply
     /// how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface)
     func setFrameRate(_ c: SetFrameRateCall)
+    /// a tab's title, which the bar shows
+    func setTabTitle(_ c: SetTabTitleCall)
 }
 
 /// Runs a call on h and encodes its reply, nil for a call not waited for.
@@ -1664,6 +1678,9 @@ public func dispatchCall(_ h: HostCalls, _ buf: UnsafeRawBufferPointer) -> [UInt
         return w.buf
     case 88:
         h.setFrameRate(SetFrameRateCall(&r))
+        return nil
+    case 89:
+        h.setTabTitle(SetTabTitleCall(&r))
         return nil
     default:
         return nil

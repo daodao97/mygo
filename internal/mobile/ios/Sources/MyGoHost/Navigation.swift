@@ -384,6 +384,28 @@ final class Navigation: NSObject, UINavigationControllerDelegate, UITabBarContro
         add(tbc)
     }
 
+    /// setTabTitle changes what tab index's item reads, and the title the
+    /// tab's stack shows while its window is at the root.
+    func setTabTitle(_ id: Int, index: Int, title: String) {
+        guard let tbc = tabs[id], let nav = tbc.viewControllers?[safe: index] as? UINavigationController,
+              let c = nav.viewControllers.first as? WindowController else { return }
+        nav.tabBarItem.title = title
+        c.title = title
+        c.barAtRoot = !title.isEmpty
+        if nav.topViewController === c {
+            nav.setNavigationBarHidden(!c.barAtRoot && !c.routed, animated: false)
+            // Hiding a large title lets the page reach the top again, but the
+            // window's own safeAreaInsets does not re-evaluate on the hide
+            // alone: it keeps the bar's height, and reportSize takes the max
+            // of it and the content scroll view's. Laying the window's view
+            // out readjusts it, so the page is not left pushed down by where
+            // the bar was.
+            c.view.setNeedsLayout()
+            c.view.layoutIfNeeded()
+            c.window.reportSize()
+        }
+    }
+
     func closeTabs(_ id: Int) {
         guard let tbc = tabs.removeValue(forKey: id) else { return }
         tabIDs[ObjectIdentifier(tbc)] = nil

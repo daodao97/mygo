@@ -18,6 +18,8 @@ type fakeHost struct {
 
 	mu    sync.Mutex
 	calls []uint64
+	// msgs are the raw bytes of each call, in the order of calls.
+	msgs [][]byte
 	// answer, when set, answers waited calls by number.
 	answer func(op uint64, r *wire.Reader) []byte
 	b      *Backend
@@ -39,6 +41,7 @@ func (h *fakeHost) call(msg []byte) []byte {
 	op := r.Uvarint()
 	h.mu.Lock()
 	h.calls = append(h.calls, op)
+	h.msgs = append(h.msgs, append([]byte(nil), msg...))
 	answer := h.answer
 	h.mu.Unlock()
 	if answer != nil {

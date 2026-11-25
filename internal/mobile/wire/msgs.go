@@ -92,6 +92,7 @@ const (
 	CallDrawText               = 86
 	CallRegisterFont           = 87
 	CallSetFrameRate           = 88
+	CallSetTabTitle            = 89
 )
 
 // Numbers of events.
@@ -1816,6 +1817,23 @@ func (m *SetFrameRate) Encode(w *Writer) {
 
 // Wait reports whether the caller waits for the host to run it.
 func (*SetFrameRate) Wait() bool { return false }
+
+// SetTabTitle is a tab's title, which the bar shows.
+type SetTabTitle struct {
+	ID    int
+	Index int
+	Title string
+}
+
+func (m *SetTabTitle) Encode(w *Writer) {
+	w.Uvarint(CallSetTabTitle)
+	w.Int(m.ID)
+	w.Int(m.Index)
+	w.String(m.Title)
+}
+
+// Wait reports whether the caller waits for the host to run it.
+func (*SetTabTitle) Wait() bool { return false }
 
 // ReadyEvent is the app finished launching.
 type ReadyEvent struct {

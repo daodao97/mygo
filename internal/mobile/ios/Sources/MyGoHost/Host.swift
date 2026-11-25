@@ -171,6 +171,9 @@ final class Host: NSObject, HostCalls, UNUserNotificationCenterDelegate, UIDocum
     func setTabBadge(_ c: SetTabBadgeCall) {
         Navigation.shared.tabs[c.id]?.viewControllers?[safe: c.index]?.tabBarItem.badgeValue = c.badge.isEmpty ? nil : c.badge
     }
+    func setTabTitle(_ c: SetTabTitleCall) {
+        Navigation.shared.setTabTitle(c.id, index: c.index, title: c.title)
+    }
     func closeTabs(_ c: CloseTabsCall) { Navigation.shared.closeTabs(c.id) }
     func pushWindow(_ c: PushWindowCall) {
         guard let p = windows[c.parent], let w = windows[c.child] else { return }

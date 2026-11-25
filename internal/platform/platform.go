@@ -1725,6 +1725,7 @@ type Tab struct {
 type TabBar interface {
 	Select(i int)
 	SetBadge(i int, badge string)
+	SetTitle(i int, title string)
 	Close()
 }
 

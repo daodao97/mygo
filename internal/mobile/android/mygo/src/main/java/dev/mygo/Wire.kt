@@ -1274,6 +1274,18 @@ class SetFrameRateCall(
     }
 }
 
+class SetTabTitleCall(
+    @JvmField var id: Long = 0L,
+    @JvmField var index: Long = 0L,
+    @JvmField var title: String = "",
+) {
+    constructor(r: WireReader) : this() {
+        id = r.int()
+        index = r.int()
+        title = r.string()
+    }
+}
+
 /** The calls Go makes of the host, on the UI thread. */
 interface HostCalls {
     /** the app's bundle and the system's settings, asked once at start */
@@ -1413,6 +1425,8 @@ interface HostCalls {
     fun registerFont(c: RegisterFontCall): RegisterFontReply
     /** how many Frames a second come from now on while they follow each other, a whole fraction of the display's rate, or 0 for the display's own (platform.FrameRateSurface) */
     fun setFrameRate(c: SetFrameRateCall)
+    /** a tab's title, which the bar shows */
+    fun setTabTitle(c: SetTabTitleCall)
 }
 
 /** Runs a call on h and encodes its reply, null for a call not waited for. */
@@ -1508,6 +1522,7 @@ fun dispatchCall(h: HostCalls, buf: ByteArray): ByteArray? {
         86 -> { h.drawText(DrawTextCall(r)).encode(w); return w.toByteArray() }
         87 -> { h.registerFont(RegisterFontCall(r)).encode(w); return w.toByteArray() }
         88 -> h.setFrameRate(SetFrameRateCall(r))
+        89 -> h.setTabTitle(SetTabTitleCall(r))
     }
     return null
 }
