@@ -1399,6 +1399,7 @@ func (rt *engine) routeKeys() {
 		return
 	}
 	chain := rt.focusChain()
+	wentBack := false
 	route := func(k keyEvent, retried bool) bool {
 		r := shortcutReg{mods: k.mods, key: k.key, retried: retried, repeat: k.repeat}
 		if target, found := routeKey(rt.regs, chain, k); found {
@@ -1407,6 +1408,7 @@ func (rt *engine) routeKeys() {
 			}
 			r.id = target
 			rt.delivered = append(rt.delivered, r)
+			wentBack = wentBack || goesBack(r)
 		} else {
 			rt.unrouted = append(rt.unrouted, r)
 		}
@@ -1428,6 +1430,17 @@ func (rt *engine) routeKeys() {
 	}
 	rt.retried = rt.retried[:0]
 	rt.keys = append(rt.keys[:0], later...)
+	if wentBack {
+		// A press that goes back goes back once: Android's back comes as
+		// Escape and the Back key at once, and what the one taken shows,
+		// as the page a Router went back to, takes neither.
+		rt.unrouted = slices.DeleteFunc(rt.unrouted, goesBack)
+	}
+}
+
+// goesBack reports whether r is of a key that goes back, Escape or Back.
+func goesBack(r shortcutReg) bool {
+	return r.mods == 0 && (r.key == KeyEscape || r.key == KeyBack)
 }
 
 // routeKey returns the element that takes key k by shortcuts regs, the
