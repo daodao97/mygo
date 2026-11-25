@@ -20,8 +20,9 @@ import (
 // theme option takes it ("Catppuccin Mocha", "Dracula", "Rose Pine
 // Dawn"…): a theme file of the user's in Ghostty's themes directory
 // ($XDG_CONFIG_HOME/ghostty/themes, ~/.config/ghostty/themes by
-// default), else one of the themes Ghostty ships, which the plugin
-// carries, of any case; or the theme file a path names. Each call returns
+// default, and %LOCALAPPDATA%\ghostty\themes before it on Windows),
+// else one of the themes Ghostty ships, which the plugin carries, of any
+// case; or the theme file a path names. Each call returns
 // a new Theme.
 func GhosttyTheme(name string) (*Theme, error) {
 	if filepath.IsAbs(name) {
@@ -30,7 +31,7 @@ func GhosttyTheme(name string) (*Theme, error) {
 	if name == "" || strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
 		return nil, fmt.Errorf("terminal: %q names no theme of Ghostty's", name)
 	}
-	if dir := ghosttyThemesDir(); dir != "" {
+	for _, dir := range ghosttyThemesDirs() {
 		th, err := readGhosttyTheme(filepath.Join(dir, name))
 		if !errors.Is(err, fs.ErrNotExist) {
 			return th, err
@@ -53,7 +54,7 @@ func GhosttyThemes() []string {
 	for _, t := range ghosttyThemes {
 		names = append(names, t.name)
 	}
-	if dir := ghosttyThemesDir(); dir != "" {
+	for _, dir := range ghosttyThemesDirs() {
 		entries, _ := os.ReadDir(dir)
 		for _, e := range entries {
 			if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
@@ -70,21 +71,31 @@ func GhosttyThemes() []string {
 	return slices.Compact(names)
 }
 
-// ghosttyThemesDir returns the directory of the user's themes of Ghostty,
-// as Ghostty finds it.
-func ghosttyThemesDir() string {
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" && runtime.GOOS == "windows" {
-		dir = os.Getenv("LOCALAPPDATA")
-	}
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
+// ghosttyThemesDirs returns the directories of the user's themes of
+// Ghostty, first to last: $XDG_CONFIG_HOME/ghostty/themes when it is set,
+// else ~/.config/ghostty/themes, which Windows reads after
+// %LOCALAPPDATA%\ghostty\themes.
+func ghosttyThemesDirs() []string {
+	home, _ := os.UserHomeDir()
+	return ghosttyThemesDirsOn(runtime.GOOS, os.Getenv, home)
+}
+
+func ghosttyThemesDirsOn(goos string, getenv func(string) string, home string) []string {
+	var dirs []string
+	if dir := getenv("XDG_CONFIG_HOME"); dir != "" {
+		dirs = append(dirs, dir)
+	} else {
+		if dir := getenv("LOCALAPPDATA"); dir != "" && goos == "windows" {
+			dirs = append(dirs, dir)
 		}
-		dir = filepath.Join(home, ".config")
+		if home != "" {
+			dirs = append(dirs, filepath.Join(home, ".config"))
+		}
 	}
-	return filepath.Join(dir, "ghostty", "themes")
+	for i, dir := range dirs {
+		dirs[i] = filepath.Join(dir, "ghostty", "themes")
+	}
+	return dirs
 }
 
 func readGhosttyTheme(path string) (*Theme, error) {
