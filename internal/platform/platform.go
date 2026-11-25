@@ -1416,7 +1416,8 @@ type Preferences struct {
 	// has none.
 	Accent Color
 	// ReduceMotion asks for less motion: macOS's Reduce Motion, Windows's
-	// animation effects and GNOME's animations turned off.
+	// animation effects, GNOME's animations turned off and KDE's Instant
+	// animation speed.
 	ReduceMotion bool
 	// ReduceTransparency asks for opaque surfaces in place of translucent
 	// ones: macOS's Reduce Transparency, Windows's transparency effects

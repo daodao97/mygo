@@ -88,6 +88,6 @@ loading.Ring(c, loading.Options{
 
 指示器与旋转加载指示器一样，每次绘制时都会请求下一帧（`Painter.AnimationFrame`），但仅在可见时请求：视口外的指示器不会被绘制，也不请求帧；动画无需重新构建视图。与 CSS 动画一样，每个指示器首次显示时开始计时。
 
-当桌面要求减少动效时（`ui.Preferences.ReduceMotion`：macOS 的“减弱动态效果”、Windows 的动画效果关闭或 GNOME 的动画关闭），指示器会停在 loading.dev 为减少动效设定的姿态，例如变暗的点或一圈环，并且不请求帧。
+当桌面要求减少动效时（`ui.Preferences.ReduceMotion`：macOS 的“减弱动态效果”、Windows 的动画效果关闭、GNOME 的动画关闭或 KDE 的动画速度设为“即时”），指示器会停在 loading.dev 为减少动效设定的姿态，例如变暗的点或一圈环，并且不请求帧。
 
 辅助技术会将其识别为进度不确定的进度指示器。用 `Label` 设置名称，说明正在加载什么：`loading.Ring(c).Label("Loading messages")`。

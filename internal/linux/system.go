@@ -400,9 +400,9 @@ func doubleClick() platform.DoubleClick {
 	return platform.DoubleClick{Time: time.Duration(ms) * time.Millisecond, DX: float64(distance), DY: float64(distance)}
 }
 
-// Preferences reads GTK's animations setting, the accent, contrast and
-// text size the desktop portal gives, as GNOME's and KDE's do, and the
-// seat's pointing devices.
+// Preferences reads GTK's animations setting, the reduced motion, accent,
+// contrast and text size the desktop portal gives, as GNOME's and KDE's
+// do, and the seat's pointing devices.
 func (t theme) Preferences() platform.Preferences {
 	var p platform.Preferences
 	p.Pointer, p.AnyPointer, p.NoHover, p.NoAnyHover = pointingDevices()
@@ -418,6 +418,8 @@ func (t theme) Preferences() platform.Preferences {
 		return p
 	}
 	defer gVariantUnref(all)
+	// KDE's Instant animation speed reaches the portal, not GTK.
+	p.ReduceMotion = p.ReduceMotion || portalReducesMotion(all)
 	// The accent: red, green and blue between 0 and 1, others for none.
 	if v := portalSetting(all, appearanceSettings, "accent-color", "(ddd)"); v != 0 {
 		var rgb [3]float64
@@ -445,6 +447,23 @@ func (t theme) Preferences() platform.Preferences {
 		gVariantUnref(v)
 	}
 	return p
+}
+
+// portalReducesMotion tells whether the settings portalSettings read ask
+// for less motion: the appearance's reduced-motion of 1, or, for portals
+// without it, GNOME's animations turned off.
+func portalReducesMotion(all ptr) bool {
+	if v := portalSetting(all, appearanceSettings, "reduced-motion", "u"); v != 0 {
+		defer gVariantUnref(v)
+		if gVariantGetUint32(v) == 1 {
+			return true
+		}
+	}
+	if v := portalSetting(all, gnomeInterfaceSettings, "enable-animations", "b"); v != 0 {
+		defer gVariantUnref(v)
+		return !gVariantGetBoolean(v)
+	}
+	return false
 }
 
 // GdkInputSource's sources of pointing devices, and GdkSeatCapabilities'

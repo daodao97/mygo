@@ -114,9 +114,10 @@ is not painted and asks for none, and it does not build the view again.
 Each starts its cycle as it first shows, as a CSS animation does.
 
 Where the desktop asks for less motion (`ui.Preferences.ReduceMotion`:
-macOS's Reduce Motion, Windows's animation effects or GNOME's animations
-turned off), an indicator stands still in loading.dev's pose for reduced
-motion, as dimmed dots or a ring of rings, and asks for no frames.
+macOS's Reduce Motion, Windows's animation effects, GNOME's animations
+turned off or KDE's Instant animation speed), an indicator stands still
+in loading.dev's pose for reduced motion, as dimmed dots or a ring of
+rings, and asks for no frames.
 
 Assistive technology sees a progress indicator of unknown length. Name it
 with `Label`, as what is loading: `loading.Ring(c).Label("Loading

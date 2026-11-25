@@ -186,7 +186,7 @@ ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 - **`Accent`。** 用户选择的强调色（macOS、Windows，以及通过桌面门户提供强调色的桌面环境，如 GNOME 47 和 KDE），用于主按钮、选中状态和焦点环，并配以对比鲜明的文字颜色。
 - **`HighContrast`。** macOS 的增强对比度、Windows 的对比度主题、桌面门户的更高对比度：边框和次要文本更深（深色模式下更浅），焦点环不透明。
 - **`TextScale`。** Windows 和 GNOME 的文本大小：`FontSize` 增大相应倍数。
-- **`ReduceMotion`。** macOS 的减弱动态效果、Windows 的动画效果和 GNOME 的动画被关闭：`Animate` 立即到达目标。
+- **`ReduceMotion`。** macOS 的减弱动态效果、Windows 的动画效果和 GNOME 的动画被关闭，或 KDE 的动画速度设为“即时”：`Animate` 立即到达目标。
 - **`Pointer`、`AnyPointer`、`Hover()` 和 `AnyHover()`。** 描述指向设备的能力，对应 Media Queries 4 的 `pointer`、`any-pointer`、`hover` 和 `any-hover`：`Pointer` 表示主指向设备的精度，`ui.PointerFine` 表示鼠标、触摸板或笔，`ui.PointerCoarse` 表示触摸屏，`ui.PointerNone` 表示无指向设备，`AnyPointer` 表示所有设备中的最高精度；`NoHover` 和 `NoAnyHover` 分别表示主设备不支持悬停、所有设备都不支持悬停（`Hover()` 和 `AnyHover()` 返回相反结果）。触摸优先的布局应为低精度指针提供更大的点击目标，并且仅在设备支持悬停时，才将某些内容设为悬停后显示：
 
   ```go
