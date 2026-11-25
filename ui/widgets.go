@@ -246,14 +246,14 @@ func coreCheckboxState(c *context, state *CheckState, label string) *node {
 }
 
 // checkboxFace builds the box of check box row, off (1), on (2) or mixed
-// (3), and its label.
+// (3), and its label, whose baseline the row lines up by.
 func checkboxFace(c *context, row *node, state int8, label string) {
 	t := c.theme
 	row.Children(func() {
 		box := coreBox(c).Size(t.Space(4), t.Space(4)).Radius(t.Space(1)).Shrink(0)
 		paintCheckbox(c, row, box, state)
 		if label != "" {
-			coreText(c, label)
+			coreText(c, label).baseline = true
 		}
 	})
 }
@@ -286,7 +286,7 @@ func coreRadio[T comparable](c *context, selected *T, value T, label string) *no
 			}
 		}
 		if label != "" {
-			coreText(c, label)
+			coreText(c, label).baseline = true
 		}
 	})
 	return row

@@ -415,6 +415,11 @@ type node struct {
 	// what a measuring pass resolved for its in-flow children, which a
 	// commit pass at the same size uses instead of building them again.
 	hold int32
+	// baseline marks the child whose baseline its row takes as its own
+	// (boxBaseline), as the label of a check box or a radio button rather
+	// than the bottom of the box before it. It fills the padding after
+	// hold, before layoutStyle.
+	baseline bool
 
 	// layoutStyle holds what lays the element out. What the layout reads of
 	// every child a container walks comes first in it — the text, the kind
