@@ -17,7 +17,7 @@ object Resources {
         val dir = dir(c)
         val info = c.packageManager.getPackageInfo(c.packageName, 0)
         val stamp = File(dir, ".version")
-        val version = "${info.longVersionCode}-${info.lastUpdateTime}"
+        val version = "${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info)}-${info.lastUpdateTime}"
         if (stamp.exists() && stamp.readText() == version) return dir.absolutePath
         dir.deleteRecursively()
         dir.mkdirs()

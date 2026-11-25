@@ -132,7 +132,19 @@ object Text {
         val p = set(c.family, c.size, c.weight, c.italic, c.noKern)
         val chars = c.text.toCharArray()
         val out = FloatArray(chars.size)
-        p.getTextRunAdvances(chars, 0, chars.size, 0, chars.size, c.rtl, out, 0)
+        if (Build.VERSION.SDK_INT >= 29) {
+            p.getTextRunAdvances(chars, 0, chars.size, 0, chars.size, c.rtl, out, 0)
+        } else {
+            // Before Android 10 only the pen at each offset of the run is
+            // public: the advances are their differences, which sum to the
+            // same pens at the clusters' bounds.
+            var pen = 0f
+            for (i in chars.indices) {
+                val next = p.getRunAdvance(chars, 0, chars.size, 0, chars.size, c.rtl, i + 1)
+                out[i] = next - pen
+                pen = next
+            }
+        }
         val r = TextAdvancesReply()
         r.advances = DoubleArray(out.size) { out[it].toDouble() }
         return r

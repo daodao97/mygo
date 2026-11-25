@@ -34,6 +34,15 @@ func checkEnds(t *testing.T, b *Buffer) {
 	if strings.Trim(codes, "ncr") != "" || strings.Contains(b.text.String(), "\r") {
 		t.Fatalf("codes %q, text %q", codes, b.text.String())
 	}
+	kinds := 0
+	for _, c := range "ncr" {
+		if strings.ContainsRune(codes, c) {
+			kinds++
+		}
+	}
+	if b.ends.mixed() != (kinds > 1) {
+		t.Fatalf("mixed %v for codes %q", b.ends.mixed(), codes)
+	}
 }
 
 // checkReads checks that what b writes reads back as b's text: the same
@@ -203,6 +212,100 @@ func TestLineEndsConvert(t *testing.T) {
 	b.MarkSaved()
 	if b.Modified() {
 		t.Fatal("modified after MarkSaved")
+	}
+	checkEnds(t, b)
+}
+
+// MixedLineEndings tells a text whose line breaks all end alike from one
+// whose breaks mix endings, as edits, SetLineEnding and undo change them.
+func TestLineEndsMixed(t *testing.T) {
+	for _, tc := range []struct {
+		in     string
+		mixed  bool
+		ending string
+	}{
+		{"", false, "\n"},
+		{"one line", false, "\n"},
+		{"a\n", false, "\n"},
+		{"a\nb\nc", false, "\n"},
+		{"a\r\nb\r\nc\r\n", false, "\r\n"},
+		{"a\rb\rc", false, "\r"},
+		{"a\nb\r\nc", true, "\n"},
+		{"a\r\nb\r\nc\n", true, "\r\n"},
+		{"a\nb\rc", true, "\n"},
+		{"a\r\nb\rc", true, "\r\n"},
+		{"a\nb\r\nc\rd", true, "\n"},
+	} {
+		b := NewBuffer(tc.in)
+		if b.MixedLineEndings() != tc.mixed || b.LineEnding() != tc.ending {
+			t.Errorf("%q: mixed %v, ending %q; want %v, %q", tc.in, b.MixedLineEndings(), b.LineEnding(), tc.mixed, tc.ending)
+		}
+		checkEnds(t, b)
+	}
+
+	// Deleting the one \n of a CRLF text leaves it uniform; undo mixes it
+	// again.
+	b := NewBuffer("a\r\nb\nc\r\nd")
+	if !b.MixedLineEndings() {
+		t.Fatal("a text with \\r\\n and \\n is not mixed")
+	}
+	b.Edit(Edit{Start: b.Offset(Pos{1, 0}), End: b.Offset(Pos{2, 0})}) // line b
+	if got := written(t, b); got != "a\r\nc\r\nd" || b.MixedLineEndings() {
+		t.Fatalf("written %q, mixed %v", got, b.MixedLineEndings())
+	}
+	b.Undo()
+	if got := written(t, b); got != "a\r\nb\nc\r\nd" || !b.MixedLineEndings() {
+		t.Fatalf("after undo %q, mixed %v", got, b.MixedLineEndings())
+	}
+	b.Redo()
+	if b.MixedLineEndings() {
+		t.Fatal("mixed after redo")
+	}
+
+	// Breaks pasted in a text with no breaks keep their endings: \r\n
+	// alone leaves it uniform, \n and \r\n make it mixed, and undo
+	// takes them back.
+	b = NewBuffer("ab")
+	b.Edit(Edit{Start: 1, End: 1, Text: "\r\n"})
+	if got := written(t, b); got != "a\r\nb" || b.MixedLineEndings() {
+		t.Fatalf("written %q, mixed %v", got, b.MixedLineEndings())
+	}
+	b = NewBuffer("ab")
+	b.Edit(Edit{Start: 1, End: 1, Text: "1\n2\r\n"})
+	if got := written(t, b); got != "a1\n2\r\nb" || !b.MixedLineEndings() {
+		t.Fatalf("written %q, mixed %v", got, b.MixedLineEndings())
+	}
+	b.Undo()
+	if got := written(t, b); got != "ab" || b.MixedLineEndings() {
+		t.Fatalf("after undo %q, mixed %v", got, b.MixedLineEndings())
+	}
+
+	// Deleting a break joins its line to the next, which keeps the next
+	// one's ending: the last \r\n gone, the text is uniform.
+	b = NewBuffer("a\r\nb\nc")
+	b.Edit(Edit{Start: 1, End: 2}) // a's break: ab ends as b did, \n
+	if got := written(t, b); got != "ab\nc" || b.MixedLineEndings() {
+		t.Fatalf("written %q, mixed %v", got, b.MixedLineEndings())
+	}
+	b.Undo()
+	if !b.MixedLineEndings() {
+		t.Fatal("not mixed after undo")
+	}
+
+	// SetLineEnding makes a mixed text uniform, and lines undo brings back
+	// end with its ending, so the text stays uniform.
+	b = NewBuffer("a\r\nb\nc\rd")
+	b.Edit(Edit{Start: 1, End: 2}) // a's break
+	if !b.MixedLineEndings() {
+		t.Fatal("not mixed")
+	}
+	b.SetLineEnding("\r")
+	if got := written(t, b); got != "ab\rc\rd" || b.MixedLineEndings() || b.LineEnding() != "\r" {
+		t.Fatalf("written %q, mixed %v, ending %q", got, b.MixedLineEndings(), b.LineEnding())
+	}
+	b.Undo()
+	if got := written(t, b); got != "a\rb\rc\rd" || b.MixedLineEndings() {
+		t.Fatalf("after undo %q, mixed %v", got, b.MixedLineEndings())
 	}
 	checkEnds(t, b)
 }

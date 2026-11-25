@@ -125,6 +125,12 @@ func (f *fakeApp) serve(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.accept(t, l)
+	return path
+}
+
+// accept answers the connections of l until the test ends.
+func (f *fakeApp) accept(t *testing.T, l net.Listener) {
 	t.Cleanup(func() { l.Close() })
 	go func() {
 		for {
@@ -152,7 +158,23 @@ func (f *fakeApp) serve(t *testing.T) string {
 			}()
 		}
 	}()
-	return path
+}
+
+// TestOpenTCP reaches an app that listens on a port, as a device on a
+// cable does (MYGO_AUTOMATION=tcp::9000): the address is no file's path.
+func TestOpenTCP(t *testing.T) {
+	app := &fakeApp{nodes: []map[string]any{{"id": "1", "role": "heading", "label": "Contacts"}}}
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.accept(t, l)
+	addr := "tcp:" + l.Addr().String()
+	c := cli{t, t.TempDir()}
+	c.must("opened "+addr+" (session default)\nw1 [content] \"Contacts\" focused\nw2 [page] \"Docs\" url=http://localhost/\n", "open", "--socket", addr)
+	c.must("@e1 [heading] \"Contacts\"\n", "snapshot")
+	t.Setenv("MYGO_AUTOMATION", addr)
+	c.must("opened "+addr+" (session env)\nw1 [content] \"Contacts\" focused\nw2 [page] \"Docs\" url=http://localhost/\n", "open", "--session", "env")
 }
 
 // cli runs the CLI's command lines in one directory of sessions.
