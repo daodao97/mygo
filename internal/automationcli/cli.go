@@ -260,9 +260,15 @@ func (c *cmd) open() error {
 	if path == "" {
 		return usagef("open needs --socket <path>: the path the app's MYGO_AUTOMATION names")
 	}
-	path, err := filepath.Abs(path)
-	if err != nil {
-		return err
+	// A file's path is made absolute, as sessions may run elsewhere; an
+	// address (tcp:host:port) or a name in Linux's abstract namespace
+	// (@name) is no file.
+	if !strings.HasPrefix(path, "tcp:") && !strings.HasPrefix(path, "@") {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		path = abs
 	}
 	dir, err := c.dir()
 	if err != nil {

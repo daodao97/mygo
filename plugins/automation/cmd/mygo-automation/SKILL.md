@@ -58,7 +58,10 @@ no discovery: the path is the one you gave `MYGO_AUTOMATION`.
 ## Sessions
 
 - `open [--socket <path>]` attaches a session to the app and lists its
-  windows. Without `--socket` it takes `$MYGO_AUTOMATION`. Opening again
+  windows. Without `--socket` it takes `$MYGO_AUTOMATION`. An app that
+  listens on a port (`MYGO_AUTOMATION=tcp::9000`, a phone on a cable)
+  takes `--socket tcp:<host>:<port>`, as `tcp:[fd00::1]:9000`, or
+  `tcp:localhost:9000` through `adb forward`. Opening again
   keeps the session's name but forgets what it saw: every ref given
   before goes stale.
 - `close` ends the session and forgets its refs. **The app keeps

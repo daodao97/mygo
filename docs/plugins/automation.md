@@ -69,7 +69,7 @@ adb shell "am start -n com.example.app/dev.mygo.MyGoActivity --es mygo.env 'MYGO
 adb forward tcp:9000 localabstract:app
 ```
 
-A device on a cable takes a port, `MYGO_AUTOMATION=tcp::9000` through `devicectl device process launch --environment-variables`, at the address of its tunnel (`devicectl device info details`). Anyone on the phone's networks can reach that port, so use it where you trust them. Input events take `"touch": true` to act as a finger's.
+A device on a cable takes a port, `MYGO_AUTOMATION=tcp::9000` through `devicectl device process launch --environment-variables`, at the address of its tunnel (`devicectl device info details`), which `mygo-automation open --socket 'tcp:[<address>]:9000'` reaches, as it does `tcp:localhost:9000` through `adb forward`. Anyone on the phone's networks can reach that port, so use it where you trust them. Input events take `"touch": true` to act as a finger's.
 
 ## The protocol
 

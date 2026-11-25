@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -16,10 +17,15 @@ type client struct {
 	n    int
 }
 
-// dial connects to the socket at path. A request that the app does not
-// answer by deadline fails, unless deadline is zero.
+// dial connects to the socket at path, or to the address after tcp:, as
+// the plugin listens (plugins/automation/listen.go). A request that the
+// app does not answer by deadline fails, unless deadline is zero.
 func dial(path string, deadline time.Time) (*client, error) {
-	conn, err := net.Dial("unix", path)
+	network, addr := "unix", path
+	if a, ok := strings.CutPrefix(path, "tcp:"); ok {
+		network, addr = "tcp", a
+	}
+	conn, err := net.Dial(network, addr)
 	if err != nil {
 		return nil, fmt.Errorf("cannot reach the app at %s (did it quit? is MYGO_AUTOMATION set and the plugin imported?): %v", path, err)
 	}
