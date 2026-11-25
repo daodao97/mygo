@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/internal/wait"
+	"github.com/egoist/mygo/plugins/sqlite/internal/sqlitecore"
 )
 
 // needSQLite skips a test in -short mode, and where the plugin's native
@@ -185,6 +186,64 @@ func TestCancellationAndRollback(t *testing.T) {
 	}
 	if n := query(t, db, "SELECT count(*) FROM items").Values[0][0]; n != int64(0) {
 		t.Fatal("canceled batch did not roll back", n)
+	}
+}
+
+const endlessQuery = "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) SELECT count(*) FROM n"
+
+// countedConn tells of the interruptions of a connection.
+type countedConn struct {
+	sqlitecore.Conn
+	interrupted chan struct{}
+}
+
+func (c *countedConn) Interrupt() {
+	c.Conn.Interrupt()
+	select {
+	case c.interrupted <- struct{}{}:
+	default:
+	}
+}
+
+// SQLite ignores an interruption that comes while no statement runs, as
+// between its start and the statement's: it must not be the only one.
+func TestInterruptedBeforeStatement(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		end  func(db *DB, cancel func(), closed chan<- error)
+		want error
+	}{
+		{"cancel", func(db *DB, cancel func(), closed chan<- error) { cancel(); closed <- nil }, context.Canceled},
+		{"close", func(db *DB, cancel func(), closed chan<- error) { go func() { closed <- db.Close() }() }, ErrClosed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := testDB(t, ":memory:")
+			conn := &countedConn{db.conn, make(chan struct{}, 1)}
+			db.conn = conn
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			closed, done := make(chan error, 1), make(chan error, 1)
+			go func() {
+				done <- db.operation(ctx, func(func()) error {
+					test.end(db, cancel, closed)
+					<-conn.interrupted
+					_, _, err := db.run(endlessQuery, nil, true)
+					return err
+				})
+			}()
+			select {
+			case err := <-done:
+				if !errors.Is(err, test.want) {
+					t.Fatal(err)
+				}
+			case <-time.After(wait.Guard):
+				conn.Interrupt() // the connection's Close waits for the query
+				t.Fatal("the query went on")
+			}
+			if err := <-closed; err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
