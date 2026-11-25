@@ -80,8 +80,12 @@ type WindowOptions struct {
 	// of the whole window.
 	UseContentSize bool
 	// X and Y of the top-left corner. The window is centered when both are
-	// zero.
-	X, Y                int
+	// zero, unless Position is set.
+	X, Y int
+	// Position, when set, is where the top-left corner goes, taken as
+	// given even at 0, 0: the window is not centered, and X and Y are
+	// ignored. Nil keeps the rule of X and Y.
+	Position            *Point
 	MinWidth, MinHeight int
 	MaxWidth, MaxHeight int
 	// FitContent sizes the page area to its page's content, and follows
@@ -231,8 +235,8 @@ type WindowOptions struct {
 	// PathUserData or the store of App.SetWindowStateStore, saved when
 	// the window closes and when the app quits. A window created with the
 	// same key, for example at the next launch, gets them back as long as
-	// it would show on a connected display: they override X, Y, Width,
-	// Height, UseContentSize, Maximized and FullScreen.
+	// it would show on a connected display: they override X, Y, Position,
+	// Width, Height, UseContentSize, Maximized and FullScreen.
 	// App.ClearWindowStates forgets them.
 	StateKey string
 
@@ -764,13 +768,17 @@ func newWindow(opts WindowOptions, bg, tint *background, native uintptr, flyout 
 
 func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	po := o.Page
+	x, y, center := o.X, o.Y, o.X == 0 && o.Y == 0
+	if o.Position != nil {
+		x, y, center = o.Position.X, o.Position.Y, false
+	}
 	p := &platform.WindowOptions{
 		Title:             o.Title,
-		X:                 o.X,
-		Y:                 o.Y,
+		X:                 x,
+		Y:                 y,
 		Width:             or(o.Width, 800),
 		Height:            or(o.Height, 600),
-		Center:            o.X == 0 && o.Y == 0,
+		Center:            center,
 		UseContentSize:    o.UseContentSize,
 		MinSize:           platform.Size{Width: o.MinWidth, Height: o.MinHeight},
 		MaxSize:           platform.Size{Width: o.MaxWidth, Height: o.MaxHeight},

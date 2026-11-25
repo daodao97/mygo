@@ -36,6 +36,7 @@ mygo.NewWindow(mygo.WindowOptions{Title: "Inspector", Content: ui.View(app.view)
 | `Content` | 显示 MyGo 绘制的[原生 UI](ui/README.md)，而不是页面 |
 | `Width`, `Height` | 窗口的尺寸；使用 `UseContentSize` 时则是其所显示内容的尺寸 |
 | `X`, `Y` | 左上角；两者都为 0 时窗口居中 |
+| `Position` | 左上角，0, 0 也按原样放置：窗口不会居中，并忽略 `X`、`Y` |
 | `MinWidth`, `MinHeight`, `MaxWidth`, `MaxHeight` | 调整大小的限制；0 表示没有限制 |
 | `FitContent` | 按页面内容的大小设置页面区域，并在上面的限制内跟随它，如同[浮出窗口](#让浮出窗口适应其内容) |
 | `StateKey` | 在此键下记住窗口的边界和状态，见[下文](#记住窗口的位置) |

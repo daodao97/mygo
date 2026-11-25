@@ -43,6 +43,7 @@ on the screen. Sizes and positions are in device-independent pixels.
 | `Content` | shows [native UI](ui/README.md) that MyGo draws, instead of a page |
 | `Width`, `Height` | the size of the window, or of what it shows with `UseContentSize` |
 | `X`, `Y` | the top-left corner; the window is centered when both are 0 |
+| `Position` | the top-left corner, taken as given even at 0, 0: the window is never centered, and `X`, `Y` are ignored |
 | `MinWidth`, `MinHeight`, `MaxWidth`, `MaxHeight` | limits of resizing; 0 means none |
 | `FitContent` | sizes the page area to its page's content, and follows it, within the limits above, as a [flyout's](#size-a-flyout-to-its-content) |
 | `StateKey` | remembers the window's bounds and state under this key, see [below](#remember-where-windows-were) |
