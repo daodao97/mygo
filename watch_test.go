@@ -610,13 +610,14 @@ func TestFileWatchRemovedWhileRead(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			remove := !again
+			remove, removed := !again, make(chan struct{})
 			ignore := func(p string, isDir bool) bool {
 				if remove && path.Dir(p) == "a/sub" {
 					remove = false
 					if err := os.RemoveAll(sub); err != nil {
 						t.Error(err)
 					}
+					close(removed)
 				}
 				return false
 			}
@@ -628,6 +629,8 @@ func TestFileWatchRemovedWhileRead(t *testing.T) {
 			if again {
 				remove = true
 				fileWatchTestNotice(t, w, "a/sub", platform.FileWatchNotice{})
+				// The system tells of it once it is removed, not before.
+				wait.For(t, "the removal", removed)
 				fileWatchTestNotice(t, w, "a", platform.FileWatchNotice{Name: "sub", Kind: platform.FileWatchRemove})
 				fileWatchTestUntil(t, w, FileEvent{Op: FileRemove, Path: "a/sub", IsDir: true})
 			}
