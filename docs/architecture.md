@@ -1542,8 +1542,8 @@ permissions (through `isTrusted`), new windows and the browser, downloads,
 and main-frame navigations the page starts to another origin than its
 committed page's (`Window.origin`). `serveScheme` puts the asking page in
 the request's context, under the keys of `CallerWindow` and `CallerPage`,
-so a scheme's handler knows which page sent a request: that's the channel
-of untrusted pages to the app.
+so a scheme's handler knows which page sent a request (`downloadScheme`
+does for a download): that's the channel of untrusted pages to the app.
 
 The message handler is reachable from every frame, while trust is decided
 by the main frame's URL, so an iframe of another origin must not be able to

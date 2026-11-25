@@ -417,7 +417,9 @@ func downloadScheme(h *windowHandler, rawURL string) {
 	finish := func(path string, err error) {
 		postMain(func() { h.DownloadFinished(rawURL, path, err) })
 	}
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	// As serveScheme: handlers tell the page with CallerPage(r.Context()).
+	ctx := context.WithValue(context.WithValue(context.Background(), callerKey{}, h.w.top()), pageKey{}, h.w.pg)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil || handler == nil {
 		finish("", fmt.Errorf("mygo: cannot download %s", rawURL))
 		return
