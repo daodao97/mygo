@@ -2,9 +2,9 @@
 
 本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`；2026-11-09 曾更名为 `daodao97/mygo-mobile`，2026-11-18 改回 `daodao97/mygo`，旧地址重定向）。Go 模块路径仍是 `github.com/egoist/mygo`，不随仓库更名，以便合并上游。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。用文末的命令重新统计差异。
 
-## 快照（2026-11-24）
+## 快照（2026-11-25）
 
-- fork `main` 已合并 `upstream/main` 到 `813afb80`（2026-11-24），含 #940（`6e712c6e`）。
+- fork `main` 已合并 `upstream/main` 到 `85758d80`（2026-11-25），含 #940（`6e712c6e`）。
 - 分支 `sync-940` 已于 2026-11-18 快进合入 `main`（`964d7b6f`），第二阶段的过程见「第二阶段进度（2026-11-17）」。
 - fork 独有 187 个非合并提交，与上游的增删差异约 36,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
@@ -103,6 +103,11 @@
   对照这批新增检查了 fork 代码：对话框收 Escape/返回、焦点还给打开浮层的元素、对话框里无可聚焦元素时焦点留在外面、可选文本无选区时 Copy 交给快捷键、Windows 子窗口取消 cloak、Android 11+ 相机、CLI 的 `android.abis`/`android.v1Signing`，在 fork 中都没有同功能实现。`go generate ./ui` 无差异。
 
   验证：macOS/Linux/Windows 的 `go build ./...`；`go vet . ./ui ./ui/richtext ./ui/editor ./internal/platform ./internal/mobile/... ./plugins/imagepicker/... ./cmd/mygo` 与 Windows 后端 vet；js/wasm vet；iOS（`DEVELOPER_DIR` 指向 Xcode）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet；`go test` 覆盖根包、`ui`、`ui/editor`、`ui/richtext`、`internal/platform`、`internal/mobile/...`、`internal/windows/...`、终端插件，以及 `go test -short ./cmd/mygo`，全部通过；`../Miya` 的 `go build ./...` 通过。`TestMenuAllocs` 单独运行时偶尔多 1 次分配而失败，合并前的 fork `main`（`e758299a`）和干净的 `upstream/main`（`813afb80`）上同样会失败，完整跑 `./ui` 时通过，不是本次合并引入的。**未做**：Android vet、bun 测试（本机没有 NDK 和 bun）、发布体积。
+- 2026-11-25 同步上游 62 个提交（`813afb80..85758d80`）。冲突只在手机 wire 协议：`spec.go` 两边各加了一个 call，上游 #2321 的 `SetTabTitle`（`Tabs.SetTitle`）在前，fork 的 `SetAppBadge` 仍排最后，编号由 89 变为 90；`msgs.go`、`Wire.swift`、`Wire.kt` 由 `go generate ./internal/mobile/wire` 重新生成。
+
+  git 没提示的重叠一处：上游 #2294 让 router 按转义后的路径比较和切分（`escapedPathOf`，`%2F` 留在自己那一段），`shared` 已改；fork 的 `restoreSharing`（`ui/router_state.go`，JSON 恢复时重建共享布局）是 `shared` 的镜像，仍用未转义的 `pathOf`，路径含 `%2F` 时会比 `shared` 多切一段。改为 `escapedPathOf`，与上游一致。对照这批新增检查了 fork 代码：失焦时取消按压与拖动（#2273，走核心的 `pointerCancel`，fork 的触摸扩展状态在触摸引擎里）、`Tester.DragFiles`/`DragFilesOut`（fork 的 `TestDropFileReferences` 是 macOS 测试钩子，不同层）、富文本无文字的格式让给下一个（#2259，fork 的 `OnPaste` 在它之前问）、macOS 有标题窗口的 `CornerRadius`、Shift+字母快捷键、文件监视的轮询与目录替换、documents 的各项修复、`RoleForm`、tsgen 的枚举与字节切片、Windows 应用独立安装目录、`build -version`/`-max-size`，在 fork 中都没有同功能实现。平台契约只给 `TabBar` 加了 `SetTitle`，由 #940 的 `internal/mobile` 实现。`go generate ./ui` 无差异。
+
+  验证：macOS/Linux/Windows 的 `CGO_ENABLED=0 go build ./...`；`go vet . ./ui ./ui/richtext ./internal/platform ./internal/mobile/... ./internal/darwin ./cmd/mygo` 与 Linux/Windows 后端 vet；iOS（`DEVELOPER_DIR` 指向 Xcode）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet；`go test` 覆盖根包、`ui`、`ui/editor`、`ui/richtext`、`ui/markdown/...`、`internal/text`、`internal/platform`、`internal/mobile/...`、`internal/darwin`、`internal/tsgen`、终端、preferences、sqlite 插件，全部通过；`go test -short ./cmd/mygo` 只有已知时有时无的 `TestFetchSignedRetry`（`[stall]: 4 requests, want 3`）失败；`../Miya` 的 `go build ./...` 通过。**未做**：Android vet、bun 测试、发布体积。
 
 ## 规则
 
