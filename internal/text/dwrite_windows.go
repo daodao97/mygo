@@ -101,13 +101,14 @@ const (
 	comRelease        = 2
 
 	// IDWriteFactory
-	factoryGetSystemFontCollection = 3
-	factoryRegisterFontFileLoader  = 13
-	factoryCreateRenderingParams   = 10
-	factoryCreateTextFormat        = 15
-	factoryCreateTypography        = 16
-	factoryCreateTextLayout        = 18
-	factoryCreateGlyphRunAnalysis  = 23
+	factoryGetSystemFontCollection  = 3
+	factoryRegisterFontFileLoader   = 13
+	factoryUnregisterFontFileLoader = 14
+	factoryCreateRenderingParams    = 10
+	factoryCreateTextFormat         = 15
+	factoryCreateTypography         = 16
+	factoryCreateTextLayout         = 18
+	factoryCreateGlyphRunAnalysis   = 23
 	// IDWriteFactory2
 	factory2GetSystemFontFallback  = 26
 	factory2CreateFallbackBuilder  = 27
@@ -2442,3 +2443,44 @@ func (e *dwrite) forgetFonts() {
 
 // releaseFonts releases the faces of the Fonts nothing refers to.
 func (e *dwrite) releaseFonts() { e.releaseDead(release) }
+
+// close releases what the engine holds of DirectWrite once its System is
+// unreachable (engineCloser): its text formats, font fallbacks, faces and
+// rendering parameters, the app's fonts it registered with their
+// collection and loader, which it unregisters, the system's collection
+// and its references to the factory, which DirectWrite shares.
+func (e *dwrite) close() {
+	e.forgetFonts()
+	e.closeFonts(release)
+	for _, f := range e.formats {
+		release(f)
+	}
+	clear(e.formats)
+	for _, fb := range e.fallbacks {
+		release(fb)
+	}
+	clear(e.fallbacks)
+	for _, face := range e.faces {
+		release(face.face)
+	}
+	clear(e.faces)
+	release(e.params)
+	release(e.custom)
+	for _, f := range e.app {
+		release(f.file)
+		for _, g := range f.given {
+			release(g.ref)
+		}
+	}
+	e.app = nil
+	if e.loader != 0 {
+		call(e.factory, factoryUnregisterFontFileLoader, e.loader)
+		release(e.loader)
+	}
+	release(e.system)
+	for _, f := range []uintptr{e.factory5, e.factory3, e.factory2, e.factory} {
+		release(f)
+	}
+	e.params, e.custom, e.loader, e.system = 0, 0, 0, 0
+	e.factory, e.factory2, e.factory3, e.factory5 = 0, 0, 0, 0
+}

@@ -6310,6 +6310,11 @@ either.
   (`runtime.AddCleanup`). `System.Reuse` keeps its engine, fonts and
   layouts, and starts its language and atlases anew. At most GOMAXPROCS
   wait idle; `BenchmarkTesterFirstFrame` measures a Tester's first frame.
+  A system `New` made that is no longer idle nor any Tester's becomes
+  unreachable, and its engine closes (`engineCloser`, run by a cleanup),
+  releasing what it holds of the system's text stack: on Linux a Pango
+  font map and the thread fontconfig starts for it, which a test binary
+  of hundreds of Testers otherwise kept (#1902).
   `BenchmarkFrame` in `ui` measures a frame of a large window on the CPU,
   and `BenchmarkListScroll` the frames scrolling a list of a million rows;
   `BenchmarkDiff*` the frames of a window as godiff's, two lists of texts

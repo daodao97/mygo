@@ -1827,3 +1827,40 @@ func (e *coreText) forgetFonts() {
 
 // releaseFonts releases the CTFonts of the Fonts nothing refers to.
 func (e *coreText) releaseFonts() { e.releaseDead(ct.release) }
+
+// close releases what the engine holds of Core Text and Core Graphics
+// once its System is unreachable (engineCloser): the fonts of its styles,
+// with their attributes and typesetters, its CTFonts, its paragraph
+// styles, its color space, its italic attribute's name and the
+// descriptors of the app's fonts it registered.
+func (e *coreText) close() {
+	e.forgetPrimary()
+	e.forgetFonts()
+	e.closeFonts(ct.release)
+	release := func(obj uintptr) {
+		if obj != 0 {
+			ct.release(obj)
+		}
+	}
+	for _, p := range e.tabStyles {
+		release(p)
+	}
+	clear(e.tabStyles)
+	for i, p := range e.styles {
+		release(p)
+		e.styles[i] = 0
+	}
+	release(e.srgb)
+	release(e.italic)
+	e.srgb, e.italic = 0, 0
+	// Each face is in gaveFaces once, retained once; ownFaces and
+	// registered hold the same faces.
+	for _, faces := range e.gaveFaces {
+		for _, f := range faces {
+			release(f.desc)
+		}
+	}
+	clear(e.gaveFaces)
+	clear(e.ownFaces)
+	clear(e.registered)
+}

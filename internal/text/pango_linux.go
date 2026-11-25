@@ -1694,3 +1694,22 @@ func (e *pangoEngine) forgetFonts() {
 
 // releaseFonts releases the Pango fonts of the Fonts nothing refers to.
 func (e *pangoEngine) releaseFonts() { e.releaseDead(pangoLib.gObjectUnref) }
+
+// close releases what the engine holds of Pango and cairo once its System
+// is unreachable (engineCloser): its cairo fonts, its Pango fonts, its
+// font descriptions, its context and its font map, and with it the
+// thread fontconfig started for the font map (#1902). The PangoLanguages
+// are Pango's, which keeps them for good, and the app's fonts are in
+// fontconfig's configuration, which every engine shares.
+func (e *pangoEngine) close() {
+	l := &pangoLib
+	e.forgetFonts()
+	e.closeFonts(l.gObjectUnref)
+	for _, d := range e.descs {
+		l.descFree(d)
+	}
+	clear(e.descs)
+	l.gObjectUnref(e.context)
+	l.gObjectUnref(e.fontMap)
+	e.context, e.fontMap = 0, 0
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"image"
 	"math"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -451,6 +452,10 @@ type System struct {
 	// (RegisterAppFont) itself: appFonts of them so far.
 	apart    bool
 	appFonts int
+	// closer has the engine of a System New made close once the System is
+	// unreachable (closeWhenUnreachable), so that apps that make none do
+	// not link closing engines.
+	closer func(s *System)
 	// fonts caches the font of each style.
 	fonts map[Style]*Font
 	// watchers hear of the fonts that loaded in the background, in
@@ -576,6 +581,7 @@ func Shared() *System { return shared() }
 func New() *System {
 	s := newSystem()
 	s.apart = true
+	s.closer = closeWhenUnreachable
 	return s
 }
 
@@ -689,17 +695,27 @@ func (s *System) takeAppFonts() {
 // engine starts the system's text engine on first use.
 func (s *System) engine() engine {
 	if s.eng == nil {
-		s.eng = newEngine()
-		if u, ok := s.eng.(uiFamilySetter); ok {
-			u.setUIFamily(s.uiFamily)
-		}
-		if f, ok := s.eng.(fontRenderer); ok && s.rendering != nil {
-			r := s.rendering
-			f.setFontRendering(r[0], r[1], r[2])
-		}
-		s.hearFontLoads()
+		s.start(newEngine())
 	}
 	return s.eng
+}
+
+// start makes e the system's engine. The engine of a System New made
+// closes once the System is unreachable (closer); Shared's lives as long
+// as the process.
+func (s *System) start(e engine) {
+	s.eng = e
+	if s.closer != nil {
+		s.closer(s)
+	}
+	if u, ok := e.(uiFamilySetter); ok {
+		u.setUIFamily(s.uiFamily)
+	}
+	if f, ok := e.(fontRenderer); ok && s.rendering != nil {
+		r := s.rendering
+		f.setFontRendering(r[0], r[1], r[2])
+	}
+	s.hearFontLoads()
 }
 
 // maxFonts is how many Fonts an engine keeps before the System lets them
@@ -715,6 +731,31 @@ type fontForgetter interface {
 	fontCount() int
 	forgetFonts()
 	releaseFonts()
+}
+
+// engineCloser is an engine holding what a System New made gives back
+// once unreachable: a Tester's window makes one, and a test binary
+// hundreds, which on Linux kept as many Pango font maps, each with a
+// thread of fontconfig's (#1902). close releases it on a cleanup
+// goroutine of the runtime (closeWhenUnreachable), when nothing uses the
+// engine anymore; the engine must not refer to its System, which would
+// then stay reachable for good. Layouts kept elsewhere may still hold its
+// Fonts (nativeFonts.closeFonts).
+type engineCloser interface{ close() }
+
+// closeWhenUnreachable has the engine of s closed once s is unreachable.
+func closeWhenUnreachable(s *System) {
+	if c, ok := s.eng.(engineCloser); ok {
+		runtime.AddCleanup(s, closeEngine, c)
+	}
+}
+
+// closeEngine closes an engine whose System is unreachable, one engine at
+// a time (closing).
+func closeEngine(e engineCloser) {
+	closing.Lock()
+	defer closing.Unlock()
+	e.close()
 }
 
 // shapingKeeper is an engine that keeps what shaping a text took across
