@@ -988,9 +988,9 @@ func (rt *engine) editCommandOn(s *state, name string) bool {
 	}
 	switch name {
 	case "undo":
-		return len(ed.undo) > 0
+		return ed.canTakeBack(false)
 	case "redo":
-		return len(ed.redo) > 0
+		return ed.canTakeBack(true)
 	case "cut", "copy":
 		return selected
 	case "paste", "pasteAndMatchStyle":
