@@ -165,3 +165,28 @@ func TestTrayMonospacedTitle(t *testing.T) {
 		t.Errorf("in the system's font the item is %d wide with both titles: they tell nothing", a)
 	}
 }
+
+// TestTrayKeepsPosition destroys a tray icon with an ID and checks that the
+// place the user dragged it to with ⌘ stays in the app's defaults: AppKit
+// deletes it as it removes the status item and again as it frees it, so an
+// app that destroys its icon as it quits found it back at the left (#2348).
+func TestTrayKeepsPosition(t *testing.T) {
+	const name = "e2e.position"
+	mygo.RunOnMain(func() { darwin.TestSetStatusItemPosition(name, 321) })
+	defer mygo.RunOnMain(func() { darwin.TestSetStatusItemPosition(name, -1) })
+	tray, err := mygo.NewTray(mygo.TrayOptions{ID: name, Icon: squarePNG()})
+	if err != nil {
+		t.Skip("no tray: ", err)
+	}
+	waitTrayLaidOut(tray)
+	tray.Destroy()
+	var pos int
+	var ok bool
+	mygo.RunOnMain(func() { pos, ok = darwin.TestStatusItemPosition(name) })
+	if !ok {
+		t.Fatal("destroying the tray deleted its saved position")
+	}
+	if pos != 321 {
+		t.Errorf("saved position = %d after Destroy, want 321", pos)
+	}
+}
