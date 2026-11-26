@@ -421,3 +421,31 @@ func TestMarkdownHeadingOfHashes(t *testing.T) {
 		}
 	}
 }
+
+// TestMarkdownEmptyTask reads back the empty items of a checklist that
+// Markdown writes: GitHub asks for text after [ ], but an item just added
+// has none.
+func TestMarkdownEmptyTask(t *testing.T) {
+	task := func(checked bool, indent int, text string) Paragraph {
+		p := Paragraph{Style: ParagraphStyle{List: Tasks, Checked: checked, Indent: indent}}
+		if text != "" {
+			p.Runs = []Run{{Text: text}}
+		}
+		return p
+	}
+	for _, want := range []Text{
+		TextOf(task(false, 0, "")),
+		TextOf(task(true, 0, "")),
+		TextOf(task(false, 0, "milk"), task(false, 0, "")),
+		TextOf(task(false, 0, ""), task(true, 0, "eggs")),
+		TextOf(task(false, 0, "milk"), task(false, 1, ""), task(false, 0, "eggs")),
+		TextOf(Paragraph{Style: ParagraphStyle{List: Tasks, Quote: true}}),
+		// and a bullet whose text is [ ] stays one
+		TextOf(Paragraph{Style: ParagraphStyle{List: Bullets}, Runs: []Run{{Text: "[ ]"}}}),
+	} {
+		md := want.Markdown()
+		if got := ParseMarkdown(md); dump(got) != dump(want) {
+			t.Errorf("%q reads\n%s want\n%s", md, dump(got), dump(want))
+		}
+	}
+}
