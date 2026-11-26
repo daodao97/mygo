@@ -24,12 +24,20 @@ type gifDecoder struct {
 // NewGIFDecoder returns a decoder of an animated GIF's frames, for
 // NewVideoPlayer, as browsers show them: a frame of 10 ms or less shows
 // for 100 ms. The GIF decodes into memory at once, its frames' pixels a
-// byte each, and each frame is drawn as it plays. The player's SetLoop,
-// not the GIF's loop count, says whether it plays again.
+// byte each, and each frame is drawn as it plays. A GIF that ends early,
+// with no trailer or cut off in a frame, plays the frames it has whole.
+// The player's SetLoop, not the GIF's loop count, says whether it plays
+// again.
 func NewGIFDecoder(data []byte) (VideoDecoder, error) {
 	g, err := gif.DecodeAll(bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		whole := gifWholeFrames(data)
+		if whole == nil {
+			return nil, err
+		}
+		if g, err = gif.DecodeAll(bytes.NewReader(whole)); err != nil {
+			return nil, err
+		}
 	}
 	w, h := g.Config.Width, g.Config.Height
 	if w == 0 || h == 0 {
@@ -41,6 +49,60 @@ func NewGIFDecoder(data []byte) (VideoDecoder, error) {
 		w, h = r.Max.X, r.Max.Y
 	}
 	return &gifDecoder{g: g, pic: image.NewRGBA(image.Rect(0, 0, w, h))}, nil
+}
+
+// gifWholeFrames returns a GIF's data up to the end of its last whole
+// frame, with the trailer, or nil if it has no whole frame. Image/gif
+// decodes none of a GIF that ends early, where browsers show what came.
+func gifWholeFrames(data []byte) []byte {
+	if len(data) < 13 {
+		return nil
+	}
+	// The header and logical screen, and the global color table.
+	i := 13
+	if data[10]&0x80 != 0 {
+		i += 3 << (data[10]&7 + 1)
+	}
+	// subBlocks returns where the sub-blocks from i end, or -1.
+	subBlocks := func(i int) int {
+		for i < len(data) {
+			n := int(data[i])
+			i++
+			if n == 0 {
+				return i
+			}
+			i += n
+		}
+		return -1
+	}
+	end := -1
+	for i < len(data) {
+		switch data[i] {
+		case 0x21: // an extension: its label, then sub-blocks
+			i = subBlocks(i + 2)
+		case 0x2c: // a frame: its descriptor, color table, LZW code size, then sub-blocks
+			j := i + 10
+			if j > len(data) {
+				i = -1
+				break
+			}
+			if flags := data[j-1]; flags&0x80 != 0 {
+				j += 3 << (flags&7 + 1)
+			}
+			if i = subBlocks(j + 1); i >= 0 {
+				end = i
+			}
+		default:
+			i = -1
+		}
+		if i < 0 {
+			break
+		}
+	}
+	if end < 0 {
+		return nil
+	}
+	return append(data[:end:end], 0x3b)
 }
 
 func (d *gifDecoder) Next() (VideoFrame, error) {

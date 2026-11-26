@@ -146,6 +146,44 @@ func TestGIFDecoderFrames(t *testing.T) {
 	}
 }
 
+// TestGIFDecoderEndsEarly checks that a GIF that ends early, with no
+// trailer or cut off in a frame, plays the frames it has whole, as
+// browsers do, and that one with no whole frame is an error.
+func TestGIFDecoderEndsEarly(t *testing.T) {
+	data := solidGIF(t, 10, videoRed, videoGreen, videoBlue)
+	for _, tc := range []struct {
+		name string
+		data []byte
+		want []color.RGBA
+	}{
+		{"no trailer", data[:len(data)-1], []color.RGBA{videoRed, videoGreen, videoBlue}},
+		// Without the last frame's block terminator and a byte of its
+		// pixels.
+		{"cut off in the last frame", data[:len(data)-3], []color.RGBA{videoRed, videoGreen}},
+	} {
+		d, err := NewGIFDecoder(tc.data)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		for i, want := range tc.want {
+			f, err := d.Next()
+			if err != nil {
+				t.Fatalf("%s, frame %d: %v", tc.name, i, err)
+			}
+			if got := f.Image.(*image.RGBA).RGBAAt(1, 1); got != want {
+				t.Errorf("%s, frame %d: %v, want %v", tc.name, i, got, want)
+			}
+		}
+		if _, err := d.Next(); err != io.EOF {
+			t.Errorf("%s: after %d frames, %v", tc.name, len(tc.want), err)
+		}
+	}
+	if _, err := NewGIFDecoder(data[:40]); err == nil {
+		t.Error("a GIF cut off in its first frame decoded")
+	}
+}
+
 // TestVideoPlays checks that a video shows each frame as it comes due,
 // waking the window with After rather than asking for every frame of the
 // display, and that it ends at its last frame, or plays again when it
