@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"compress/lzw"
 	"errors"
 	"image"
 	"image/color"
@@ -181,6 +182,55 @@ func TestGIFDecoderEndsEarly(t *testing.T) {
 	}
 	if _, err := NewGIFDecoder(data[:40]); err == nil {
 		t.Error("a GIF cut off in its first frame decoded")
+	}
+}
+
+// TestGIFDecoderPixelsPastColors checks that a GIF whose pixels point past
+// its color table plays, those pixels black, as Chrome draws them, where
+// image/gif decodes none of it.
+func TestGIFDecoderPixelsPastColors(t *testing.T) {
+	// A 2×2 frame of pixels 0 to 3, its color table red and green.
+	var px bytes.Buffer
+	w := lzw.NewWriter(&px, lzw.LSB, 2)
+	w.Write([]byte{0, 1, 2, 3})
+	w.Close()
+	frame := func(table []byte) []byte {
+		b := []byte{0x2c, 0, 0, 0, 0, 2, 0, 2, 0, 0}
+		if table != nil {
+			b[9] = 0x80
+			b = append(b, table...)
+		}
+		b = append(b, 2, byte(px.Len()))
+		b = append(b, px.Bytes()...)
+		return append(b, 0)
+	}
+	colors := []byte{255, 0, 0, 0, 255, 0}
+	screen := []byte("GIF89a\x02\x00\x02\x00\x00\x00\x00")
+	global := append(append([]byte{}, screen...), colors...)
+	global[10] = 0x80
+	black := color.RGBA{0, 0, 0, 255}
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{"global color table", append(append(global, frame(nil)...), 0x3b)},
+		{"local color table", append(append(append([]byte{}, screen...), frame(colors)...), 0x3b)},
+	} {
+		d, err := NewGIFDecoder(tc.data)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		f, err := d.Next()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		pic := f.Image.(*image.RGBA)
+		for i, want := range []color.RGBA{videoRed, videoGreen, black, black} {
+			if got := pic.RGBAAt(i%2, i/2); got != want {
+				t.Errorf("%s: pixel %d is %v, want %v", tc.name, i, got, want)
+			}
+		}
 	}
 }
 
