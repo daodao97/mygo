@@ -46,6 +46,12 @@ func (b *Backend) handle(msg []byte) []byte {
 					w.s.foreground()
 				}
 			}
+			// Light or dark may have changed with no window to hear it: in
+			// a process Android started without one, the app's choice sets
+			// its night mode, which only an Activity is told of.
+			if b.readTheme() {
+				b.themeChanged()
+			}
 			// Started out of sight, as for a background task or by how iOS
 			// says it launches, it's no coming back.
 			if b.startedHidden {
@@ -58,15 +64,8 @@ func (b *Backend) handle(msg []byte) []byte {
 			}
 		}
 	case wire.EventThemeChanged:
-		var t wire.ThemeReply
-		b.call(&wire.Theme{}, &t)
-		b.dark = t.Dark
-		b.h.ThemeChanged()
-		for _, w := range b.windows {
-			if w.s != nil {
-				w.s.themeChanged()
-			}
-		}
+		b.readTheme()
+		b.themeChanged()
 	case wire.EventLocaleChanged:
 		b.forgetInfo()
 		b.h.LocaleChanged()
@@ -348,4 +347,24 @@ func (s *schemeRequest) end() bool {
 	delete(s.b.schemes, s.req)
 	s.cancel()
 	return true
+}
+
+// readTheme asks the host whether the system is dark and reports whether
+// that changed.
+func (b *Backend) readTheme() bool {
+	var t wire.ThemeReply
+	b.call(&wire.Theme{}, &t)
+	changed := t.Dark != b.dark
+	b.dark = t.Dark
+	return changed
+}
+
+// themeChanged tells the app and its windows that the theme changed.
+func (b *Backend) themeChanged() {
+	b.h.ThemeChanged()
+	for _, w := range b.windows {
+		if w.s != nil {
+			w.s.themeChanged()
+		}
+	}
 }
