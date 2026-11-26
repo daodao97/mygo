@@ -368,7 +368,10 @@ jobs:
         if: steps.sqlitecore-cache.outputs.cache-hit == 'true'
         shell: bash
         run: touch "${{ steps.sqlitecore.outputs.path }}"
-      - run: go test ./...
+      # internal/nativegen builds Rust crates and Zig packages, with Zig
+      # emulated here, which takes it seven to eight minutes and, on a slow
+      # runner, past go test's ten: the same tests, more time.
+      - run: go test -timeout 20m ./...
       - name: Test without the inspector, as production builds
         if: runner.os == 'Linux'
         run: go test -tags mygo_noinspector ./ui .
