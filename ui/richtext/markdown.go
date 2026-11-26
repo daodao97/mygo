@@ -81,11 +81,12 @@ func (t Text) Markdown() string {
 			b.WriteString(quote)
 		}
 		if st.Heading > 0 {
-			// A heading's closing #s are not its text: escape them.
+			// A heading's closing #s are not its text: escape them, unless
+			// a backslash already does, as before a heading of #s alone.
 			var h strings.Builder
 			writeMarkdownRuns(&h, p.Runs)
 			s := h.String()
-			if k := len(strings.TrimRight(s, "#")); k < len(s) {
+			if k := len(strings.TrimRight(s, "#")); k < len(s) && (k-len(strings.TrimRight(s[:k], "\\")))%2 == 0 {
 				s = s[:k] + "\\" + s[k:]
 			}
 			b.WriteString(s)
