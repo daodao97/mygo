@@ -16,6 +16,8 @@ type RenderState struct {
 	cells uintptr // the cells of the iterator's row
 	// raw holds the cells of the row read last.
 	raw []Cell
+	// cell is the style CellStyle reads into, taken each call.
+	cell style
 }
 
 // Render state data (GhosttyRenderStateData and its row and cell kinds).
@@ -353,9 +355,17 @@ func (s Style) SGR() string {
 
 // CellStyle returns the style of cell x of the row RowCells read.
 func (r *RenderState) CellStyle(x int) Style {
-	s := style{size: unsafe.Sizeof(style{})}
+	// The style the read goes into is the state's own, not one of the
+	// call's: what a frame paints reads a cell's style once for every
+	// cell whose style it has not seen, and the read's copy would be
+	// heap space every time, for what goes into the pointer the FFI
+	// takes. One call reads it at a time: the paint holds the
+	// terminal's update for the whole pass, and a mirror keeps a state
+	// of its own.
+	s := &r.cell
+	*s = style{size: unsafe.Sizeof(style{})}
 	if ok(call(fnRowCellsSelect, r.cells, uintptr(x))) {
-		call(fnRowCellsGet, r.cells, cellDataStyle, uintptr(unsafe.Pointer(&s)))
+		call(fnRowCellsGet, r.cells, cellDataStyle, uintptr(unsafe.Pointer(s)))
 	}
 	return Style{
 		FG: s.fg.color(), BG: s.bg.color(), UnderlineColor: s.underlineColor.color(),
