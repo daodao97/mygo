@@ -597,6 +597,10 @@ mygo.NewWindow(mygo.WindowOptions{
 
 WebKitGTK 和 WebView2 默认开启捏合，WebView2 还默认开启滑动：除非页面要求，MyGo 会关闭它们。
 
+### 表单自动填充
+
+WebView2 会记住输入到页面字段里的内容，并在字段聚焦时给出建议。MyGo 会关掉这项（`ICoreWebView2Settings4` 的 `IsGeneralAutofillEnabled`），因为 WKWebView 和 WebKitGTK 不保留表单历史。这个设置属于会话，所以同一个会话里的每个页面都是关着的，窗口页面和 [web view](ui/web-view.md) 页面都一样。没有 Settings4 的 WebView2 Runtime（1.0.902.49 之前）保持它自己的行为，即开启。密码保存保持关闭，这已经是 WebView2 的默认值。
+
 ### 用户的缩放
 
 页面按应用的缩放而缩放：通过 `ZoomFactor` 和 `SetZoomFactor`，或“视图”菜单中的缩放菜单项（`RoleZoomIn`、`RoleZoomOut` 和 `RoleResetZoom`，macOS 默认菜单中的也是），而不像在浏览器中那样随用户缩放，这与桌面应用的惯例一致：页面就是其界面的应用，会让页面保持它布局时的大小。`ZoomControl` 让用户也能缩放页面，窗口页面和 [web view](ui/web-view.md) 页面均适用：

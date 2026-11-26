@@ -240,6 +240,15 @@ func (w *window) setUp(controller uintptr) {
 		comCall(s6, set6PutIsSwipeNavigationEnabled, boolArg(o.SwipeNavigation))
 		release(s6)
 	}
+	// WebView2 saves what is typed into fields and suggests it later.
+	// WKWebView and WebKitGTK keep no form history, so this is off. The
+	// value lives on the profile, and every web view of a session shares
+	// it. A runtime without Settings4 keeps its own behavior. Password
+	// autosave stays at WebView2's default, which is off.
+	if s4 := queryInterface(s, &iidICoreWebView2Settings4); s4 != 0 {
+		comCall(s4, set4PutIsGeneralAutofillEnabled, 0)
+		release(s4)
+	}
 	if o.UserAgent != "" || o.UserAgentSuffix != "" {
 		w.setUpUserAgent()
 	}

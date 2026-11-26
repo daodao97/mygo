@@ -78,6 +78,11 @@ const (
 	set3GetAreBrowserAcceleratorKeysEnabled = 23
 	set3PutAreBrowserAcceleratorKeysEnabled = 24
 
+	// ICoreWebView2Settings4. Password autosave is 25 and 26, and stays at
+	// WebView2's default, which is off.
+	set4GetIsGeneralAutofillEnabled = 27
+	set4PutIsGeneralAutofillEnabled = 28
+
 	// ICoreWebView2Settings5, ICoreWebView2Settings6
 	set5GetIsPinchZoomEnabled       = 29
 	set5PutIsPinchZoomEnabled       = 30
@@ -172,6 +177,7 @@ var (
 	iidICoreWebView2Controller2                  = guid("c979903e-d4ca-4228-92eb-47ee3fa96eab")
 	iidICoreWebView2Settings2                    = guid("ee9a0f68-f46c-4e32-ac23-ef8cac224d2a")
 	iidICoreWebView2Settings3                    = guid("fdb5ab74-af33-4854-84f0-0a631deb5eba")
+	iidICoreWebView2Settings4                    = guid("cb56846c-4168-4d53-b04f-03b6d6796ff2")
 	iidICoreWebView2Settings5                    = guid("183e7052-1d03-43a0-ab99-98e043b66b39")
 	iidICoreWebView2Settings6                    = guid("11cb3acd-9bc8-43b8-83bf-f40753714f87")
 	iidICoreWebView2WebMessageReceivedEventArgs2 = guid("06fc7ab7-c90c-4297-9389-33ca01cf6d5e")
