@@ -302,7 +302,8 @@ func newEngine(s source) (media.Engine, error) {
 		}
 		e.loader = lastLoader.Add(1)
 		loaders.Store(e.loader, s.data)
-		url := send(class("NSURL"), "URLWithString:", nsString("mygo-video://data/"+itoa(e.loader)+".mp4"))
+		_, ext := container(s.data)
+		url := send(class("NSURL"), "URLWithString:", nsString("mygo-video://data/"+itoa(e.loader)+ext))
 		asset = send(send(class("AVURLAsset"), "alloc"), "initWithURL:options:", url, objc.ID(0))
 		e.delegate = send(send(objc.ID(loaderClass), "alloc"), "init")
 		send(send(asset, "resourceLoader"), "setDelegate:queue:", e.delegate, loaderQueue)
@@ -754,7 +755,8 @@ func answerLoading(self objc.ID, _ objc.SEL, loader, req objc.ID) bool {
 	}
 	data := v.([]byte)
 	if info := send(req, "contentInformationRequest"); info != 0 {
-		send(info, "setContentType:", nsString(contentType(data)))
+		uti, _ := container(data)
+		send(info, "setContentType:", nsString(uti))
 		send(info, "setContentLength:", int64(len(data)))
 		msgSetBool(info, sel("setByteRangeAccessSupported:"), true)
 	}
@@ -774,10 +776,40 @@ func answerLoading(self objc.ID, _ objc.SEL, loader, req objc.ID) bool {
 	return true
 }
 
-// contentType is the UTI of a video's bytes, as their container says.
-func contentType(b []byte) string {
-	if len(b) >= 12 && string(b[4:8]) == "ftyp" && string(b[8:12]) == "qt  " {
-		return "com.apple.quicktime-movie"
+// container is the UTI of a video's bytes, as their container says, and
+// the extension of the URL they load from: AVFoundation reads them as
+// the container the UTI names, and MPEG-TS only from a URL with its
+// extension. Bytes of another container than they are said to be, it
+// cannot open.
+func container(b []byte) (uti, ext string) {
+	switch {
+	case len(b) >= 12 && string(b[4:8]) == "ftyp" && string(b[8:12]) == "qt  ":
+		return "com.apple.quicktime-movie", ".mov"
+	case len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "AVI ":
+		return "public.avi", ".avi"
+	case len(b) >= 4 && b[0] == 0 && b[1] == 0 && b[2] == 1 && b[3] == 0xba:
+		// A pack header, of an MPEG program stream (MPEG-1 or 2).
+		return "public.mpeg", ".mpg"
+	case transportStream(b, 0, 188):
+		return "public.mpeg-2-transport-stream", ".ts"
+	case transportStream(b, 4, 192):
+		// Each packet after a 4-byte time, as Blu-ray and AVCHD's .m2ts.
+		return "public.avchd-mpeg-2-transport-stream", ".m2ts"
 	}
-	return "public.mpeg-4"
+	return "public.mpeg-4", ".mp4"
+}
+
+// transportStream is whether b starts with MPEG-TS packets of the size,
+// each with its sync byte at off: it reads the first three, or as many
+// as b holds, at least one.
+func transportStream(b []byte, off, size int) bool {
+	if len(b) < off+size {
+		return false
+	}
+	for i := off; i < len(b) && i < off+3*size; i += size {
+		if b[i] != 0x47 {
+			return false
+		}
+	}
+	return true
 }

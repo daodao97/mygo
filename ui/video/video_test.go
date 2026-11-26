@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -363,4 +365,79 @@ func colorName(c color.RGBA) string {
 		return "green"
 	}
 	return "blue"
+}
+
+// testdata/rgb.ts, rgb.m2ts, rgb.mpg and rgb.avi are rgb.mp4 in MPEG-TS,
+// in MPEG-TS of 192-byte packets (as Blu-ray's), in an MPEG-2 program
+// stream (MPEG-2 video at 25 fps, MP2) and in AVI (MJPEG, no sound),
+// made with ffmpeg.
+//
+//go:embed testdata/rgb.ts testdata/rgb.m2ts testdata/rgb.mpg testdata/rgb.avi
+var containers embed.FS
+
+// TestOpenDataContainers checks that OpenData plays a video of each
+// container that Open plays: AVFoundation read every video in memory as
+// MP4, and could not open MPEG-TS, an MPEG program stream or AVI from
+// bytes.
+func TestOpenDataContainers(t *testing.T) {
+	for _, name := range []string{"rgb.ts", "rgb.m2ts", "rgb.mpg", "rgb.avi"} {
+		t.Run(name, func(t *testing.T) {
+			data, err := containers.ReadFile("testdata/" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), name)
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if name == "rgb.avi" && macOSBefore(27) {
+				// It loads, its MJPEG track decodable, and plays to its end
+				// without a picture, from a file too: no error to wait for.
+				t.Skip("AVFoundation before macOS 27 shows no picture of rgb.avi")
+			}
+			if err := opens(t, path); err != nil {
+				t.Skip("the system does not play the file:", err)
+			}
+			_, _, shows := played(t, func() (*ui.VideoPlayer, error) { return OpenData(data) })
+			if c := shows(); !near(c, red) {
+				t.Errorf("the first picture shows %v, want red", c)
+			}
+		})
+	}
+}
+
+// opens opens the file with Open, and returns the error it fails with,
+// or nil once it shows its first picture.
+func opens(t *testing.T, path string) error {
+	t.Helper()
+	p, err := Open(path)
+	if errors.Is(err, ErrUnsupported) {
+		t.Skip(err)
+	}
+	if err != nil {
+		return err
+	}
+	defer p.Close()
+	p.SetMuted(true)
+	tt := ui.NewTester(func(c *ui.Context) { ui.Video(c, p).Size(64, 48) }, 64, 48)
+	wait.Until(t, "a picture or an error", func() bool {
+		tt.Frame()
+		return p.Ready() || p.Err() != nil
+	})
+	return p.Err()
+}
+
+// macOSBefore is whether the system is macOS older than the major
+// version.
+func macOSBefore(major int) bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	out, err := exec.Command("sw_vers", "-productVersion").Output()
+	if err != nil {
+		return false
+	}
+	v, _, _ := strings.Cut(strings.TrimSpace(string(out)), ".")
+	n, err := strconv.Atoi(v)
+	return err == nil && n < major
 }
