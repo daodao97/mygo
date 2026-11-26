@@ -197,6 +197,33 @@ but HLS, is buffered in a file in the user's cache directory, at most
 32 MB of it, which GStreamer removes as it stops: it seeks in it where it
 asks, as in a file on disk.
 
+What plays where, as `TestFormatMatrix` checks it on CI's systems
+(macOS 26, Windows Server 2025, Windows 11 on Arm, Ubuntu 24.04 with
+GStreamer's base, good, bad and libav plugins) and in iOS's simulator,
+opening each sample from a file, from bytes and over HTTP: "plays" is its
+pictures, after seeks too, and its end; "no" fails with `Err`. "Seeks
+miss" are bugs to fix: a seek shows another picture than the one asked
+for. Windows Server has no HEVC, VP9, AV1 or MPEG-2 decoder; Windows 11
+plays them with the Store's video extensions installed. Linux needs
+`gstreamer1.0-plugins-bad` for MPEG-TS, MPEG-PS, HLS and AV1.
+
+| Container: video                    | macOS                    | iOS (simulator) | Windows                                 | Linux                                      |
+| ----------------------------------- | ------------------------ | --------------- | --------------------------------------- | ------------------------------------------ |
+| MP4, M4V, 3GP, MOV: H.264           | plays                    | plays           | plays                                   | plays                                      |
+| Fragmented MP4: H.264               | plays                    | plays           | plays                                   | plays                                      |
+| MP4: HEVC                           | plays                    | plays           | with its extension                      | plays                                      |
+| MP4: VP9                            | no                       | no              | with its extension; seeks miss          | plays                                      |
+| Fragmented MP4: AV1                 | Apple M3 and later       | no              | with its extension                      | plays                                      |
+| Matroska: H.264                     | no                       | no              | plays                                   | plays                                      |
+| Matroska: HEVC                      | no                       | no              | with its extension                      | plays                                      |
+| WebM: VP9, with Opus                | no                       | no              | with its extension; VP9's seeks miss    | plays                                      |
+| WebM: AV1, with Opus                | no                       | no              | with its extension                      | plays                                      |
+| MPEG-TS, M2TS: H.264                | plays                    | no              | plays; seeks miss                       | plays; seeks miss                          |
+| MPEG-TS: HEVC                       | no                       | no              | with its extension; seeks miss          | plays; seeks miss                          |
+| MPEG-PS: MPEG-2                     | plays                    | no              | Windows 11; seeks miss                  | plays; seeks miss                          |
+| AVI: MJPEG                          | macOS 27                 | plays           | plays                                   | plays                                      |
+| HLS: fragmented MP4 or MPEG-TS      | plays                    | plays           | plays                                   | plays                                      |
+
 Windows on Arm's MPEG-4 reader ignores a track's edit list. An H.264
 video with B-frames (x264's default) has one that takes back its
 reordering delay, so there each picture shows that much late, up to a few

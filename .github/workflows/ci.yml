@@ -35,8 +35,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
-      # GStreamer's plugins play the videos of ui/video's tests.
-      LINUX_PACKAGES: libwebkit2gtk-4.1-0 libayatana-appindicator3-1 xvfb xauth dbus-x11 libgl1-mesa-dri libglx-mesa0 libegl-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
+      # GStreamer's plugins play the videos of ui/video's tests: -bad has
+      # the demuxers of MPEG-TS, MPEG-PS and HLS, and an AV1 decoder, which
+      # TestFormatMatrix plays.
+      LINUX_PACKAGES: libwebkit2gtk-4.1-0 libayatana-appindicator3-1 xvfb xauth dbus-x11 libgl1-mesa-dri libglx-mesa0 libegl-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
     strategy:
       fail-fast: false
       matrix:
@@ -476,6 +478,18 @@ jobs:
           done
           grep 'roundtrip:' log.txt || true
           grep -q 'roundtrip: PASS$' log.txt
+          echo "SIMULATOR=$udid" >> "$GITHUB_ENV"
+      # ui/video's tests, TestFormatMatrix's iOS column among them, on the
+      # simulator booted above, without an app: the test binary, linked
+      # with Xcode's clang, runs in it as a process of its own.
+      - name: ui/video's tests on the iOS simulator
+        if: runner.os == 'macOS'
+        run: |
+          sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          min="-isysroot $sdk -mios-simulator-version-min=16.0"
+          GOOS=ios GOARCH=arm64 CGO_ENABLED=1 CC="$(xcrun --sdk iphonesimulator --find clang) -arch arm64 $min" \
+            CGO_CFLAGS="$min" CGO_LDFLAGS="$min" go test -c -o "$RUNNER_TEMP/video.test" ./ui/video
+          xcrun simctl spawn "$SIMULATOR" "$RUNNER_TEMP/video.test" -test.v -test.timeout 15m
       - name: Enable KVM
         if: runner.os == 'Linux'
         run: |
