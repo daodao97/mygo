@@ -233,9 +233,14 @@ func (r *rtfReader) control(word string, num int, hasNum bool) {
 		st.list = true
 		r.listed = true
 	case "ls":
-		r.listed = true
+		// The list tables say \ls too, before the text.
+		if !st.skip {
+			r.listed = true
+		}
 	case "ilvl":
-		r.level = max(0, num)
+		if !st.skip {
+			r.level = max(0, num)
+		}
 	case "par", "line", "sect", "page":
 		if !st.skip && !st.list && st.field != "inst" {
 			r.endParagraph(true)

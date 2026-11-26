@@ -179,6 +179,27 @@ func TestParseRTF(t *testing.T) {
 	}
 }
 
+// TestRTFListTable checks that the list tables TextEdit writes before the
+// text make no paragraph an item: only the paragraphs that say \\ls are.
+func TestRTFListTable(t *testing.T) {
+	rtf := `{\rtf1\ansi\ansicpg1252\cocoartf2908
+{\fonttbl\f0\froman\fcharset0 Times-Roman;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}}
+\pard\pardeftab720\sa240\partightenfactor0
+\f0\fs24 \cf0 Title\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls1\ilvl0\cf0 {\listtext	\uc0\u8226 	}item\
+}`
+	var got []string
+	for _, p := range ParseRTF([]byte(rtf)).Paragraphs() {
+		got = append(got, fmt.Sprintf("%d:%s", p.Style.List, plainOf(p)))
+	}
+	if want := "0:Title|1:item"; strings.Join(got, "|") != want {
+		t.Errorf("got %q, want %q", strings.Join(got, "|"), want)
+	}
+}
+
 // TestMarkdownEscapes checks that what Markdown would read as more than
 // text stays text: block starts in items and headings, a heading's
 // closing #s, indentation, entities, images and backticks in code.
