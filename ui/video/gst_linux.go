@@ -80,6 +80,10 @@ var (
 	gValueSetObject          func(v *gValue, obj uintptr)
 	gValueSetDouble          func(v *gValue, d float64)
 	gValueSetBoolean         func(v *gValue, b bool)
+	gValueSetUint64          func(v *gValue, n uint64)
+	gValueGetFlags           func(v *gValue) uint32
+	gValueSetFlags           func(v *gValue, f uint32)
+	gTypeFromName            func(name string) uintptr
 	gErrorFree               func(err uintptr)
 	gFree                    func(p uintptr)
 )
@@ -107,6 +111,7 @@ const (
 
 	gTypeBoolean = 5 << 2
 	gTypeInt     = 6 << 2
+	gTypeUint64  = 11 << 2
 	gTypeDouble  = 15 << 2
 	gTypeString  = 16 << 2
 	gTypeObject  = 20 << 2
@@ -200,6 +205,10 @@ func loadGStreamer() error {
 		purego.RegisterLibFunc(&gValueSetObject, gobject, "g_value_set_object")
 		purego.RegisterLibFunc(&gValueSetDouble, gobject, "g_value_set_double")
 		purego.RegisterLibFunc(&gValueSetBoolean, gobject, "g_value_set_boolean")
+		purego.RegisterLibFunc(&gValueSetUint64, gobject, "g_value_set_uint64")
+		purego.RegisterLibFunc(&gValueGetFlags, gobject, "g_value_get_flags")
+		purego.RegisterLibFunc(&gValueSetFlags, gobject, "g_value_set_flags")
+		purego.RegisterLibFunc(&gTypeFromName, gobject, "g_type_from_name")
 		purego.RegisterLibFunc(&gErrorFree, glib, "g_error_free")
 		purego.RegisterLibFunc(&gFree, glib, "g_free")
 		gstInit(0, 0)
@@ -215,6 +224,37 @@ func setProperty(obj uintptr, name string, t uintptr, set func(*gValue)) {
 	set(&v)
 	gObjectSetProperty(obj, name, &v)
 	gValueUnset(&v)
+}
+
+// gstPlayFlagDownload is playbin's flag that buffers a progressive
+// stream in a file (GST_PLAY_FLAG_DOWNLOAD), and downloadRing the most of
+// the stream that file holds, as a ring.
+const (
+	gstPlayFlagDownload = 1 << 7
+	downloadRing        = 32 << 20
+)
+
+// downloads has the playbin buffer a video over HTTP in a file, of at
+// most downloadRing bytes, which its demuxer then reads where it asks
+// (pull mode), rather than as it comes (push mode). Reading it as it came,
+// GStreamer's Matroska demuxer failed the first seek in a short WebM now
+// and then, "Could not demultiplex stream": it seeks for the index at the
+// file's end, and seeks again for the picture before the first seek has
+// flushed. Its MP4 demuxer did not seek in a fragmented MP4 at all. The
+// playbin buffers so a file, in the user's cache directory, which it
+// removes as it stops, not HLS, which it streams as before.
+func (e *gstEngine) downloads() {
+	t := gTypeFromName("GstPlayFlags")
+	if t == 0 {
+		return
+	}
+	var v gValue
+	gValueInit(&v, t)
+	gObjectGetProperty(e.pipe, "flags", &v)
+	gValueSetFlags(&v, gValueGetFlags(&v)|gstPlayFlagDownload)
+	gObjectSetProperty(e.pipe, "flags", &v)
+	gValueUnset(&v)
+	setProperty(e.pipe, "ring-buffer-max-size", gTypeUint64, func(v *gValue) { gValueSetUint64(v, downloadRing) })
 }
 
 // gstEngine plays a video with a playbin.
@@ -302,6 +342,9 @@ func newEngine(s source) (media.Engine, error) {
 		setProperty(e.pipe, "audio-filter", gTypeObject, func(v *gValue) { gValueSetObject(v, st) })
 	}
 	setProperty(e.pipe, "uri", gTypeString, func(v *gValue) { gValueSetString(v, uri) })
+	if strings.HasPrefix(uri, "http://") || strings.HasPrefix(uri, "https://") {
+		e.downloads()
+	}
 	e.bus = gstElementGetBus(e.pipe)
 	gstElementSetState(e.pipe, gstStatePaused)
 	e.done.Add(2)
