@@ -272,7 +272,7 @@ func (s *GridState) cell(c *context, grid *node, i, n int, height float32, item 
 	if s.Reorder != nil {
 		cell.dragFrom(func() any {
 			items := s.dragged(i, n)
-			return countedDrag{&itemDrag{s: s, items: items}, len(items)}
+			return countedDrag{value: &itemDrag{s: s, items: items}, n: len(items)}
 		})
 		if cell.Dragging() {
 			cell.Opacity(0.4)

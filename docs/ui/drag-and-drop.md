@@ -72,7 +72,8 @@ See [List](list.md#reordering) and [Grid view](grid-view.md).
 
 A list's rows can also leave it, as files dragged into a folder: with
 `ListState.DragRows` they drag a value of the app's, for `ui.Drop` to take
-anywhere. See [List](list.md#dragging-rows-out).
+anywhere, and with `ListState.DragLabel` a label naming them follows the
+pointer in place of the copy. See [List](list.md#dragging-rows-out).
 
 Files dragged from other apps are [dropped files](input.md#dropped-files).
 

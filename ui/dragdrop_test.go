@@ -253,6 +253,169 @@ func TestListDragRows(t *testing.T) {
 	}
 }
 
+// Rows dragged out with a DragLabel show it beside the pointer in place
+// of a copy of the row, which would cover the row they are dragged onto;
+// near the window's edge, on the other side of the pointer, not over it.
+// Rows it names "" keep the copy, and rows that do not drag, or a list
+// that reorders, never ask for a label.
+func TestListDragLabel(t *testing.T) {
+	items := []string{"a", "b", "c", "d", "e"}
+	red := RGB(220, 30, 30)
+	var asked []string
+	s := ListState{
+		DragRows: func(rows []int) any {
+			if items[rows[0]] == "e" {
+				return nil
+			}
+			return items[rows[0]]
+		},
+		DragLabel: func(rows []int) string {
+			asked = append(asked, items[rows[0]])
+			if items[rows[0]] == "c" {
+				return ""
+			}
+			return "row " + items[rows[0]]
+		},
+	}
+	var surface Color
+	tt := coreNewTester(func(c *context) {
+		surface = c.theme.Surface
+		coreList(c, &s, len(items), func(i int) {
+			row := coreRow(c).Height(40).Children(func() { coreText(c, items[i]) })
+			if items[i] == "d" {
+				row.Background(red)
+				coreDrop[string](row)
+			} else {
+				row.Background(RGB(30, 30, 220))
+			}
+		}).Height(300)
+	}, 300, 400)
+	rowY := func(label string) float32 {
+		r, _ := tt.Find(label)
+		return r.Y + r.H/2
+	}
+	isRed := func(x, y float32) bool {
+		c := tt.Image().RGBAAt(int(x), int(y))
+		return c.R > 200 && c.G < 60 && c.B < 60
+	}
+	isSurface := func(x, y float32) bool {
+		c, want := tt.Image().RGBAAt(int(x), int(y)), surface
+		near := func(a, b uint8) bool { return a+6 >= b && b+6 >= a }
+		return near(c.R, want.R) && near(c.G, want.G) && near(c.B, want.B)
+	}
+	// dragOnto presses row from at x, moves onto d's row there, and
+	// returns where the pointer is, still pressed.
+	dragOnto := func(from string, x float32) (float32, float32) {
+		y0, y := rowY(from), rowY("d")
+		tt.Press(x, y0)
+		for k := 1; k <= 4; k++ {
+			tt.Move(x, y0+(y-y0)*float32(k)/4)
+		}
+		return x, y
+	}
+
+	x, y := dragOnto("b", 150)
+	if dr := tt.rt.drag; dr == nil || dr.label != "row b" {
+		t.Fatalf("the drag is %+v", dr)
+	}
+	if !isRed(x-40, y) {
+		t.Error("the row under the pointer is covered")
+	}
+	if !isSurface(x+20, y+16) {
+		t.Errorf("no label below and to the right of the pointer: %v", tt.Image().RGBAAt(int(x)+20, int(y)+16))
+	}
+	tt.Release(x, y)
+
+	// Near the right edge, it goes to the left of the pointer.
+	x, y = dragOnto("b", 290)
+	if !isRed(x-4, y+16) || !isSurface(x-20, y+16) {
+		t.Errorf("at the edge, the label is not left of the pointer: %v under it, %v left of it",
+			tt.Image().RGBAAt(int(x)-4, int(y)+16), tt.Image().RGBAAt(int(x)-20, int(y)+16))
+	}
+	tt.Release(x, y)
+
+	// Named "", the row keeps its copy, which covers the row it is over.
+	x, y = dragOnto("c", 150)
+	if dr := tt.rt.drag; dr == nil || dr.label != "" {
+		t.Fatalf("the drag of c is %+v", dr)
+	}
+	if isRed(x-40, y) {
+		t.Error("no copy of c under the pointer")
+	}
+	tt.Release(x, y)
+
+	// A row that does not drag is never named.
+	asked = asked[:0]
+	x, y = dragOnto("e", 150)
+	tt.Release(x, y)
+	if len(asked) != 0 {
+		t.Errorf("DragLabel asked for rows that do not drag: %q", asked)
+	}
+
+	// A list that reorders never asks for a label.
+	asked = asked[:0]
+	s.DragRows, s.Reorder = nil, func([]int, int) {}
+	x, y = dragOnto("b", 150)
+	if dr := tt.rt.drag; dr == nil || dr.label != "" {
+		t.Errorf("a reorder drag has a label: %+v", dr)
+	}
+	tt.Release(x, y)
+	if len(asked) != 0 {
+		t.Errorf("DragLabel asked while reordering: %q", asked)
+	}
+}
+
+// A label in a right to left script draws within its box, which is as
+// wide as the text, not at the right of the width it wraps at.
+func TestListDragLabelRTL(t *testing.T) {
+	items := []string{"a", "b", "c", "d"}
+	s := ListState{
+		DragRows:  func(rows []int) any { return items[rows[0]] },
+		DragLabel: func([]int) string { return "قاعدة البيانات" },
+	}
+	var surface Color
+	tt := coreNewTester(func(c *context) {
+		surface = c.theme.Surface
+		coreList(c, &s, len(items), func(i int) {
+			coreRow(c).Height(40).Children(func() { coreText(c, items[i]) })
+		}).Height(300)
+	}, 500, 400)
+	from, _ := tt.Find("a")
+	to, _ := tt.Find("d")
+	x, y0, y := float32(40), from.Y+from.H/2, to.Y+to.H/2
+	tt.Press(x, y0)
+	for k := 1; k <= 4; k++ {
+		tt.Move(x, y0+(y-y0)*float32(k)/4)
+	}
+	defer tt.Release(x, y)
+	img := tt.Image()
+	isSurface := func(px int) bool {
+		c := img.RGBAAt(px, int(y)+16)
+		near := func(a, b uint8) bool { return a+6 >= b && b+6 >= a }
+		return near(c.R, surface.R) && near(c.G, surface.G) && near(c.B, surface.B)
+	}
+	right := int(x) + 20
+	for right < 500 && isSurface(right+1) {
+		right++
+	}
+	inked := func(from, to int) bool {
+		for px := from; px < to; px++ {
+			for py := int(y) + 10; py < int(y)+40; py++ {
+				if c := img.RGBAAt(px, py); c.R < 100 && c.G < 100 && c.B < 100 {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if !inked(int(x)+14, right) {
+		t.Error("no text in the label")
+	}
+	if inked(right+4, 500) {
+		t.Errorf("text right of the label, which ends at %d", right)
+	}
+}
+
 func TestListDragRowsAndReorder(t *testing.T) {
 	s := ListState{Reorder: func([]int, int) {}, DragRows: func([]int) any { return nil }}
 	defer func() {
