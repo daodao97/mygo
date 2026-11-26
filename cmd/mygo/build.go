@@ -66,7 +66,7 @@ The platform web (or js/wasm) builds an app of native UI for browsers into
 <out>/web: index.html, which loads the app, Go's wasm_exec.js and the app's
 WebAssembly, named by its content: a static site, to serve from anywhere.`)
 	platforms := flags.String("platform", runtime.GOOS+"/"+runtime.GOARCH, "comma separated GOOS/GOARCH targets, e.g. darwin/universal,linux/amd64,windows/amd64, or web for browsers")
-	debug := flags.Bool("debug", false, "keep development features such as the web inspector")
+	debug := flags.Bool("debug", false, "keep development features such as the web inspector, and make Android's APK debuggable")
 	skipBuildCommand := flags.Bool("skip-build-command", false, "do not run buildCommand")
 	skipDMG := flags.Bool("skip-dmg", false, "do not create a disk image for macOS")
 	skipNotarize := flags.Bool("skip-notarize", false, "do not notarize even when macos.notarize is set")

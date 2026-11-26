@@ -487,8 +487,9 @@ func (o Android) versionCode(version string) int {
 
 // gradle builds the app with the host's project in dir: tasks such as
 // :app:assembleRelease, with the app's Go libraries in jniLibs and its
-// resources, manifest and icons in work.
-func (t *androidToolchain) gradle(ctx context.Context, c, dc *Config, dir, work, jniLibs string, tasks ...string) error {
+// resources, manifest and icons in work. A debug build is debuggable, a
+// release one too (mygo build -debug).
+func (t *androidToolchain) gradle(ctx context.Context, c, dc *Config, dir, work, jniLibs string, debug bool, tasks ...string) error {
 	res := filepath.Join(work, "res")
 	os.RemoveAll(res)
 	hasIcon, err := androidIcons(dc, res)
@@ -523,7 +524,6 @@ func (t *androidToolchain) gradle(ctx context.Context, c, dc *Config, dir, work,
 	if err := copyResources(list, filepath.Join(assets, "resources")); err != nil {
 		return err
 	}
-	debug := slices.Contains(tasks, ":app:assembleDebug")
 	mods, err := c.phoneModules("android", debug)
 	if err != nil {
 		return err
@@ -545,6 +545,9 @@ func (t *androidToolchain) gradle(ctx context.Context, c, dc *Config, dir, work,
 	}
 	if hasIcon {
 		props["mygoIcon"] = "@mipmap/ic_launcher"
+	}
+	if debug {
+		props["mygoDebuggable"] = "true"
 	}
 	dc.Android.packagingProps(props)
 	if ks := dc.Android.Keystore; ks != "" {
@@ -633,7 +636,7 @@ func buildAndroid(c *Config, opts buildOptions, arch string) ([]string, error) {
 			}
 		}
 		tk.set("building the APK and the bundle (Gradle)")
-		return t.gradle(context.Background(), c, c, dir, work, jniLibs, ":app:assembleRelease", ":app:bundleRelease")
+		return t.gradle(context.Background(), c, c, dir, work, jniLibs, opts.debug, ":app:assembleRelease", ":app:bundleRelease")
 	}()
 	if err := tk.end(err, "Built for Android"); err != nil {
 		return nil, err
@@ -745,7 +748,7 @@ func (s *devSession) buildAndroidDev(ctx context.Context, c, dc *Config, t *task
 	s.androidHost = key
 	s.installedOn = s.device.id
 	t.set("building the APK (Gradle)")
-	if err := tc.gradle(ctx, c, dc, dir, opts.work, jniLibs, ":app:assembleDebug"); err != nil {
+	if err := tc.gradle(ctx, c, dc, dir, opts.work, jniLibs, true, ":app:assembleDebug"); err != nil {
 		return "", err
 	}
 	apk := filepath.Join(stage, dc.slug()+".apk")

@@ -177,7 +177,7 @@ content so that it can be cached for good, and the icon. See
 | Flag | |
 |---|---|
 | `-platform` | comma separated `GOOS/GOARCH` targets, e.g. `darwin/universal,windows/amd64,linux/amd64`, or `web` (default: this machine's) |
-| `-debug` | keeps development features, such as the web inspector and the [inspector of native UI](ui/inspector.md) |
+| `-debug` | keeps development features, such as the web inspector and the [inspector of native UI](ui/inspector.md), and makes Android's APK debuggable (`adb shell run-as`, a debugger), signed as a release build |
 | `-o` | the output directory (default: `out` of the configuration) |
 | `-sign` | the macOS signing identity (default: `macos.signingIdentity`) |
 | `-skip-build-command` | does not run `buildCommand` |

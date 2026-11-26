@@ -519,3 +519,17 @@ func TestAndroidIdentifier(t *testing.T) {
 		}
 	}
 }
+
+// mygo build -debug makes the release build debuggable, through a property
+// of the host's Gradle build, so that run-as and a debugger reach an app
+// signed as the releases are.
+func TestAndroidDebuggable(t *testing.T) {
+	src, err := fs.ReadFile(androidHost.Files, "app/build.gradle.kts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := string(src)[strings.Index(string(src), "release {"):]
+	if want := `isDebuggable = prop("mygoDebuggable") == "true"`; !strings.Contains(release[:strings.Index(release, "\n        }")], want) {
+		t.Errorf("the release build type has no %s", want)
+	}
+}

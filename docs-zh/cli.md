@@ -104,7 +104,7 @@ mygo build [flags] [dir]
 | 标志 | |
 |---|---|
 | `-platform` | 以逗号分隔的 `GOOS/GOARCH` 目标，例如 `darwin/universal,windows/amd64,linux/amd64`，或 `web`（默认：本机的） |
-| `-debug` | 保留开发功能，例如 Web 检查器和[原生 UI 的检查器](ui/inspector.md) |
+| `-debug` | 保留开发功能，例如 Web 检查器和[原生 UI 的检查器](ui/inspector.md)，并让 Android 的 APK 可调试（`adb shell run-as`、调试器），仍按发布版签名 |
 | `-o` | 输出目录（默认：配置中的 `out`） |
 | `-sign` | macOS 签名身份（默认：`macos.signingIdentity`） |
 | `-skip-build-command` | 不运行 `buildCommand` |
