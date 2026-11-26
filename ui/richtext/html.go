@@ -367,9 +367,14 @@ func ParseHTML(s string) Text {
 		return Text{}
 	}
 	// Leading and trailing empty paragraphs are the document's margins,
-	// but for the lines of a block of code.
+	// but for the lines of a block of code and the items of a list, as
+	// Markdown keeps them.
 	paras := b.paras
-	for len(paras) > 1 && len(paras[len(paras)-1].Runs) == 0 && !paras[len(paras)-1].Style.CodeBlock {
+	for len(paras) > 1 {
+		last := paras[len(paras)-1]
+		if len(last.Runs) > 0 || last.Style.CodeBlock || last.Style.List != NoList {
+			break
+		}
 		paras = paras[:len(paras)-1]
 	}
 	return TextOf(paras...)
@@ -568,12 +573,17 @@ func (b *htmlBuilder) node(n *xhtml.Node, a Attributes) {
 			b.style.Align = ui.End
 		}
 	}
+	paras := len(b.paras)
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		b.node(c, a)
 	}
 	if block {
 		if n.DataAtom == atom.P && !b.started && !b.br && b.pre == 0 {
 			// An empty paragraph shows as one; <p><br></p> as one too.
+			b.begin()
+		}
+		if n.DataAtom == atom.Li && !b.started && len(b.paras) == paras {
+			// An empty item too, but not one holding only a list.
 			b.begin()
 		}
 		b.flush()
