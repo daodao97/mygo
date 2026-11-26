@@ -101,15 +101,23 @@ func writeBlocks(b *strings.Builder, paras []Paragraph) {
 			writeRuns(b, p.Runs)
 		case st.CodeBlock:
 			b.WriteString("<pre><code>")
+			empty := false
 			for ; i < len(paras) && paras[i].Style.CodeBlock; i++ {
+				empty = true
 				for _, r := range paras[i].Runs {
 					b.WriteString(html.EscapeString(r.Text))
+					empty = empty && r.Text == ""
 				}
 				if i+1 < len(paras) && paras[i+1].Style.CodeBlock {
 					b.WriteByte('\n')
 				}
 			}
 			i--
+			// A last line that is empty shows only with a line break
+			// after it.
+			if empty {
+				b.WriteByte('\n')
+			}
 			b.WriteString("</code></pre>")
 		default:
 			tag := blockTag(st)
@@ -358,9 +366,10 @@ func ParseHTML(s string) Text {
 	if len(b.paras) == 0 {
 		return Text{}
 	}
-	// Leading and trailing empty paragraphs are the document's margins.
+	// Leading and trailing empty paragraphs are the document's margins,
+	// but for the lines of a block of code.
 	paras := b.paras
-	for len(paras) > 1 && len(paras[len(paras)-1].Runs) == 0 {
+	for len(paras) > 1 && len(paras[len(paras)-1].Runs) == 0 && !paras[len(paras)-1].Style.CodeBlock {
 		paras = paras[:len(paras)-1]
 	}
 	return TextOf(paras...)

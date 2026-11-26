@@ -318,12 +318,18 @@ func TestHTMLBlankParagraphs(t *testing.T) {
 	blank := Paragraph{}
 	a := Paragraph{Runs: []Run{{Text: "a"}}}
 	b := Paragraph{Runs: []Run{{Text: "b"}}}
+	code := Paragraph{Style: ParagraphStyle{CodeBlock: true}}
+	x := Paragraph{Style: ParagraphStyle{CodeBlock: true}, Runs: []Run{{Text: "x"}}}
 	for _, in := range []Text{
 		TextOf(a, blank, b),
 		TextOf(a, blank, blank, blank, b),
 		TextOf(blank, a),
 		TextOf(a, Paragraph{Style: ParagraphStyle{Heading: 2}}, b),
 		TextOf(a, Paragraph{Style: ParagraphStyle{Quote: true}}, b),
+		TextOf(a, code, b),
+		TextOf(x, code, b),
+		TextOf(a, x, code),
+		TextOf(code),
 	} {
 		html := in.HTML()
 		out := ParseHTML(html)
