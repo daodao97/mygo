@@ -191,7 +191,8 @@ is the system's: H.264 and AAC in MP4 play on all of them. Linux needs
 `gstreamer1.0-plugins-base`, and `gstreamer1.0-libav` (or another H.264
 decoder) for H.264; a missing decoder shows as `Err`. So does a video
 whose picture the system cannot decode or read, as VP9, or HEVC in
-MPEG-TS, on macOS, rather than play its sound alone.
+MPEG-TS, on macOS, rather than play its sound alone; one whose picture
+it decodes and never shows fails at its end.
 
 Windows on Arm's MPEG-4 reader ignores a track's edit list. An H.264
 video with B-frames (x264's default) has one that takes back its

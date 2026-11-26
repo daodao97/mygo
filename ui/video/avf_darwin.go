@@ -287,6 +287,10 @@ type avEngine struct {
 	// picture (videoTrack): the video fails.
 	noPicture error
 	rate      float32
+	// pictured is whether the output had a picture for Frame, which sets
+	// it before taking the picture, out of mu: a video that played to its
+	// end without one fails (poll).
+	pictured atomic.Bool
 }
 
 func newEngine(s source) (media.Engine, error) {
@@ -419,9 +423,23 @@ func (e *avEngine) poll() {
 	default:
 		return // loading
 	}
+	if e.state == media.Failed {
+		// It stays failed, its player paused: no picture comes.
+		return
+	}
 	if e.noPicture != nil && e.state == media.Loading {
 		// Its sound plays, and no picture comes.
 		e.state, e.err = media.Failed, e.noPicture
+		send(e.player, "pause")
+		return
+	}
+	if e.state == media.Loading && e.ends.Load() != e.endsSeen && !e.outputHasPicture() && !e.pictured.Load() {
+		// It played to its end, and the output never had a picture of
+		// it: AVFoundation plays H.264 in AVI tagged avc1 so on macOS 27,
+		// and MJPEG in AVI on macOS 26, their tracks decodable. The
+		// output is asked first: Frame, which may take its picture
+		// meanwhile, said so before taking it.
+		e.state, e.err = media.Failed, errors.New("video: the system played the video to its end without a picture")
 		send(e.player, "pause")
 		return
 	}
@@ -457,6 +475,14 @@ func (e *avEngine) poll() {
 	}
 }
 
+// outputHasPicture is whether the output has a picture for now that Frame
+// did not take, as one of a short video it played to its end before a
+// frame took it.
+func (e *avEngine) outputHasPicture() bool {
+	at := msgItemTimeForHostTime(e.output, sel("itemTimeForHostTime:"), caCurrentMediaTime())
+	return msgHasNewBuffer(e.output, sel("hasNewPixelBufferForItemTime:"), at)
+}
+
 func (e *avEngine) SetWake(wake func()) {
 	e.mu.Lock()
 	e.wake = wake
@@ -476,6 +502,7 @@ func (e *avEngine) Frame(t time.Time) (media.Picture, bool, bool) {
 		return media.Picture{}, false, false
 	}
 	if msgHasNewBuffer(e.output, sel("hasNewPixelBufferForItemTime:"), at) {
+		e.pictured.Store(true)
 		if buf := msgCopyBuffer(e.output, sel("copyPixelBufferForItemTime:itemTimeForDisplay:"), at, 0); buf != 0 {
 			// What drew the last one holds it still (the renderer's
 			// textures): the surface no longer shows it.
@@ -619,6 +646,9 @@ func (e *avEngine) Position() time.Duration {
 func (e *avEngine) Play() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.state == media.Failed {
+		return // its player stays paused
+	}
 	e.playing = true
 	if e.state == media.Ended {
 		e.state = media.Ready
@@ -660,7 +690,7 @@ func (e *avEngine) SetRate(r float64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.rate = float32(r)
-	if e.playing && e.state != media.Ended {
+	if e.playing && e.state != media.Ended && e.state != media.Failed {
 		msgSetFloat32(e.player, sel("setRate:"), e.rate)
 	}
 }

@@ -9,10 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -287,19 +285,26 @@ var (
 	vp9MP4 []byte
 	//go:embed testdata/hevc.ts
 	hevcTS []byte
+	// h264.avi is rgb.mp4 in AVI, its H.264 tagged avc1 (libx264 at
+	// 10 fps, -vtag avc1), as a remux of MP4 without -vtag tags it:
+	// AVFoundation, which takes avc1 for length-prefixed NAL units, and
+	// gets AVI's start codes, plays it to its end without a picture.
+	//go:embed testdata/h264.avi
+	h264AVI []byte
 )
 
-// TestNoPicture checks that a video the system gives no picture for,
-// whose sound it decodes, fails rather than stay loading for good, from
-// a file and from bytes: GStreamer without an AV1 decoder plays the
-// sound of av1.mp4, and AVFoundation that of vp9.mp4, for which it has
-// no decoder, and of hevc.ts, whose HEVC its MPEG-TS demuxer leaves out,
-// with no picture. Where the system plays one, it plays.
+// TestNoPicture checks that a video the system gives no picture for
+// fails rather than stay loading for good, from a file and from bytes:
+// GStreamer without an AV1 decoder plays the sound of av1.mp4, and
+// AVFoundation that of vp9.mp4, for which it has no decoder, and of
+// hevc.ts, whose HEVC its MPEG-TS demuxer leaves out, with no picture;
+// AVFoundation plays h264.avi to its end without one. Where the system
+// plays one, it plays.
 func TestNoPicture(t *testing.T) {
 	for _, v := range []struct {
 		name string
 		data []byte
-	}{{"av1.mp4", av1MP4}, {"vp9.mp4", vp9MP4}, {"hevc.ts", hevcTS}} {
+	}{{"av1.mp4", av1MP4}, {"vp9.mp4", vp9MP4}, {"hevc.ts", hevcTS}, {"h264.avi", h264AVI}} {
 		t.Run(v.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), v.name)
 			if err := os.WriteFile(path, v.data, 0o644); err != nil {
@@ -390,11 +395,8 @@ func TestOpenDataContainers(t *testing.T) {
 			if err := os.WriteFile(path, data, 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if name == "rgb.avi" && macOSBefore(27) {
-				// It loads, its MJPEG track decodable, and plays to its end
-				// without a picture, from a file too: no error to wait for.
-				t.Skip("AVFoundation before macOS 27 shows no picture of rgb.avi")
-			}
+			// A file the system does not play, as macOS 26 rgb.avi, which
+			// it plays to its end without a picture, fails, and is skipped.
 			if err := opens(t, path); err != nil {
 				t.Skip("the system does not play the file:", err)
 			}
@@ -425,19 +427,4 @@ func opens(t *testing.T, path string) error {
 		return p.Ready() || p.Err() != nil
 	})
 	return p.Err()
-}
-
-// macOSBefore is whether the system is macOS older than the major
-// version.
-func macOSBefore(major int) bool {
-	if runtime.GOOS != "darwin" {
-		return false
-	}
-	out, err := exec.Command("sw_vers", "-productVersion").Output()
-	if err != nil {
-		return false
-	}
-	v, _, _ := strings.Cut(strings.TrimSpace(string(out)), ".")
-	n, err := strconv.Atoi(v)
-	return err == nil && n < major
 }
