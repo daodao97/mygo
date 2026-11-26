@@ -487,3 +487,35 @@ func TestAndroidV1Signing(t *testing.T) {
 		t.Errorf("build.gradle.kts has no %s", want)
 	}
 }
+
+// android.identifier is the Android app's package, in place of the
+// identifier, for an app whose package was settled before it moved to
+// MyGo: Android builds, their development app and Google Play's uploads
+// use it, every other platform the identifier.
+func TestAndroidIdentifier(t *testing.T) {
+	dir := t.TempDir()
+	writeBytes(t, filepath.Join(dir, jsonConfig), []byte(`{"identifier": "dev.example.app", "android": {"identifier": "com.example.app_old"}}`))
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.forAndroid().Identifier; got != "com.example.app_old" {
+		t.Errorf("Android's identifier %q", got)
+	}
+	if got := devConfig(c.forAndroid()).Identifier; got != "com.example.app_old.dev" {
+		t.Errorf("Android's development identifier %q", got)
+	}
+	if c.Identifier != "dev.example.app" {
+		t.Errorf("the other platforms' identifier became %q", c.Identifier)
+	}
+	c.Android.Identifier = ""
+	if got := c.forAndroid().Identifier; got != "dev.example.app" {
+		t.Errorf("without android.identifier, Android's is %q", got)
+	}
+	for _, id := range []string{"app", "com.1example", "com.example-app", "com..example", "com.example."} {
+		writeBytes(t, filepath.Join(dir, jsonConfig), []byte(`{"android": {"identifier": "`+id+`"}}`))
+		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "android.identifier") {
+			t.Errorf("%s: %v", id, err)
+		}
+	}
+}

@@ -177,6 +177,7 @@ See [Linux](distribution.md#linux).
 
 | Field | Default | |
 |---|---|---|
+| `identifier` | `identifier` | the Android app's package, for one settled before, as an app moving to MyGo that updates the one it replaces: Android builds, their development app and Google Play's uploads use it, the other platforms `identifier` |
 | `minSdk` | `26` | the oldest Android API level the app runs on |
 | `versionCode` | from `version` | the integer version Google Play orders uploads by: major × 10000 + minor × 100 + patch |
 | `permissions` | | permissions the manifest declares besides INTERNET and notifications, as `CAMERA` |

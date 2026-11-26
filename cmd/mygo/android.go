@@ -605,6 +605,7 @@ func abisIn(jniLibs string) []string {
 // buildAndroid builds the app for Android: an .apk and an .aab for Google
 // Play, for every ABI, or one (android/arm64, android/arm, android/amd64).
 func buildAndroid(c *Config, opts buildOptions, arch string) ([]string, error) {
+	c = c.forAndroid()
 	t, err := newAndroidToolchain()
 	if err != nil {
 		return nil, err

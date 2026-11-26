@@ -62,7 +62,7 @@ mygo build -platform android && mygo publish -platform android -track beta
 
 **Android** 通过 Google Play 的 Android Publisher API 上传 `.aab`：创建一次编辑，上传应用包，在轨道上创建发布，然后提交；任何一步失败都会删除这次编辑。`MYGO_PLAY_SERVICE_ACCOUNT` 是服务账号 JSON 密钥的路径，也可以是 JSON 本身，便于在 CI 的密钥中使用；该账号需要在 Play 管理中心中有应用的访问权限。`-track` 默认是 `internal`，也可以是 `alpha`、`beta`、`production` 或某个封闭测试轨道的名称。应用的第一次上传只能在 Google Play 管理中心中完成；尚未经过审核的应用只接受 `-status draft` 的发布。
 
-上传的目标包就是应用的 `identifier`。
+上传的目标包就是应用的 `identifier`；设置了 `android.identifier` 时是它：这是 Android 的包名，用于包名在迁到 MyGo 之前就已定下、新版本必须作为原应用更新安装的应用。
 
 ## 链接、图标和启动画面
 

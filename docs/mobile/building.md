@@ -105,7 +105,9 @@ needs access to the app in Play Console. `-track` is `internal` by default, or
 takes the first upload of an app in its console only, and an app it has not
 reviewed yet takes releases only with `-status draft`.
 
-The app's `identifier` is the package it uploads to.
+The app's `identifier` is the package it uploads to, or `android.identifier`
+when it is set: Android's package, for an app whose package was settled before
+it moved to MyGo, which must update the app it replaces.
 
 ## Links, icons and launch screens
 

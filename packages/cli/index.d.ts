@@ -368,6 +368,8 @@ export interface IOSLaunchScreen {
 
 /** The Android app. */
 export interface AndroidConfig {
+  /** The Android app's package, in place of `identifier`, for an app whose package was settled before: Android builds, their development app and Google Play's uploads use it (default: `identifier`). */
+  identifier?: string;
   /** The oldest Android API level the app runs on (default: `26`, Android 8.0). */
   minSdk?: number;
   /** The integer version Google Play orders uploads by (default: from the version, major×10000 + minor×100 + patch). */
