@@ -300,3 +300,50 @@ func TestLineWidths(t *testing.T) {
 		}
 	}
 }
+
+// The reproduction of #2382: Shift turns a mouse's wheel sideways, as it
+// does in scroll containers, both ways; the wheel alone still scrolls
+// down, and a sideways or diagonal move with Shift keeps its own axes.
+func TestShiftWheelScrollsSideways(t *testing.T) {
+	st, tt := newScrollTest(strings.Repeat(strings.Repeat("x", 500)+"\n", 100))
+	if _, horizontal := st.ed.scrollbars(); !horizontal {
+		t.Fatal("setup: expected a horizontal scrollbar")
+	}
+	tt.HoldModifiers(ui.Shift)
+	tt.Scroll(250, 200, 0, 60)
+	if st.ed.scrollX != 60 || st.ed.scrollY != 0 {
+		t.Fatalf("Shift and the wheel down scrolled to (%v, %v), want (60, 0)", st.ed.scrollX, st.ed.scrollY)
+	}
+	tt.Scroll(250, 200, 0, -20)
+	if st.ed.scrollX != 40 || st.ed.scrollY != 0 {
+		t.Errorf("Shift and the wheel up scrolled to (%v, %v), want (40, 0)", st.ed.scrollX, st.ed.scrollY)
+	}
+	tt.Scroll(250, 200, 10, 30)
+	if st.ed.scrollX != 50 || st.ed.scrollY != 30 {
+		t.Errorf("Shift and a diagonal move scrolled to (%v, %v), want (50, 30)", st.ed.scrollX, st.ed.scrollY)
+	}
+	tt.HoldModifiers(0)
+	tt.Scroll(250, 200, 0, 30)
+	if st.ed.scrollX != 50 || st.ed.scrollY != 60 {
+		t.Errorf("the wheel alone scrolled to (%v, %v), want (50, 60)", st.ed.scrollX, st.ed.scrollY)
+	}
+}
+
+// With its lines wrapped, an editor has nothing to scroll sideways: Shift
+// and the wheel go on to the containers around it, which may.
+func TestShiftWheelPassesOnWhenWrapped(t *testing.T) {
+	st := &State{Buffer: NewBuffer(strings.Repeat(strings.Repeat("x", 500)+"\n", 100)), SoftWrap: true}
+	outer := &ui.ScrollState{}
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.ScrollHorizontal(c).TrackScroll(outer).Size(600, 400).Children(func() {
+			View(c, st).Size(1200, 400)
+		})
+	}, 600, 400)
+	tt.Frame()
+	tt.HoldModifiers(ui.Shift)
+	tt.Scroll(250, 200, 0, 60)
+	tt.Frame()
+	if st.ed.scrollY != 0 || outer.X == 0 {
+		t.Errorf("Shift and the wheel scrolled the editor to %v and its container to %v, want 0 and more", st.ed.scrollY, outer.X)
+	}
+}

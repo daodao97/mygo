@@ -436,6 +436,11 @@ func (ed *editor) pointerMove(ev ui.InputEvent) bool {
 
 func (ed *editor) wheel(ev ui.InputEvent) bool {
 	ed.hover.close()
+	// Shift turns the wheel sideways, as it does scroll containers, which
+	// do so only for the input their handlers leave.
+	if ev.Mods&ui.Shift != 0 && ev.DX == 0 {
+		ev.DX, ev.DY = ev.DY, 0
+	}
 	moved := false
 	if ev.DY != 0 && !ed.o.fitContent {
 		before := ed.scrollY
