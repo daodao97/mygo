@@ -18,6 +18,22 @@ type RenderState struct {
 	raw []Cell
 	// cell is the style CellStyle reads into, taken each call.
 	cell style
+	// The row reads' places, as cell is the style's. A row is asked of
+	// several times over on a frame's path — the paint walks the rows,
+	// the scrollback's mirror reads them — and what a read lands in a
+	// local, the call's pointer moves to the heap at every read; what it
+	// lands here takes no room. args is those reads' arguments, which a
+	// call of discrete ones builds its slice anew for, every read: the
+	// pointers it holds name fields of this state, which outlives the
+	// call. One caller's at a time, as cell is: the paint holds the
+	// update, and the mirrors own their state.
+	bit    bool   // a row's one-bit answers: dirty, wrapped
+	handle uint64 // the row's handle, its parts are asked of
+	prompt RowPrompt
+	id     RowID
+	sel    rowSelection
+	view   cellsView
+	args   [3]uintptr
 }
 
 // Render state data (GhosttyRenderStateData and its row and cell kinds).
@@ -166,56 +182,63 @@ func (r *RenderState) Cursor() Cursor {
 func (r *RenderState) Rows() { r.get(rsDataRowIterator, unsafe.Pointer(&r.rows)) }
 
 // NextRow moves to the next row, and reports whether there is one.
-func (r *RenderState) NextRow() bool { return cbool(call(fnRowIteratorNext, r.rows)) }
+func (r *RenderState) NextRow() bool {
+	r.args[0] = r.rows
+	return cbool(callv(fnRowIteratorNext, r.args[:1]))
+}
 
 func (r *RenderState) rowGet(data int, out unsafe.Pointer) bool {
-	return ok(call(fnRowGet, r.rows, uintptr(data), uintptr(out)))
+	r.args[0], r.args[1], r.args[2] = r.rows, uintptr(data), uintptr(out)
+	return ok(callv(fnRowGet, r.args[:3]))
+}
+
+// rowDataAsk asks the row's handle for one of the things fnRowData
+// answers of it: whether it wraps, its prompt.
+func (r *RenderState) rowDataAsk(handle uint64, data int, out unsafe.Pointer) bool {
+	r.args[0], r.args[1], r.args[2] = uintptr(handle), uintptr(data), uintptr(out)
+	return ok(callv(fnRowData, r.args[:3]))
 }
 
 // RowDirty reports whether the row changed since the last Clean.
 func (r *RenderState) RowDirty() bool {
-	var v bool
-	return r.rowGet(rowDataDirty, unsafe.Pointer(&v)) && v
+	return r.rowGet(rowDataDirty, unsafe.Pointer(&r.bit)) && r.bit
 }
 
 // RowWrapped reports whether the row soft-wraps into the next.
 func (r *RenderState) RowWrapped() bool {
-	var raw uint64
-	if !r.rowGet(rowDataRaw, unsafe.Pointer(&raw)) {
+	if !r.rowGet(rowDataRaw, unsafe.Pointer(&r.handle)) {
 		return false
 	}
-	var v bool
-	return ok(call(fnRowData, uintptr(raw), rowDataWrap, uintptr(unsafe.Pointer(&v)))) && v
+	return r.rowDataAsk(r.handle, rowDataWrap, unsafe.Pointer(&r.bit)) && r.bit
 }
 
 // RowPrompt returns how the row belongs to a shell's prompt.
 func (r *RenderState) RowPrompt() RowPrompt {
-	var raw uint64
-	if !r.rowGet(rowDataRaw, unsafe.Pointer(&raw)) {
+	if !r.rowGet(rowDataRaw, unsafe.Pointer(&r.handle)) {
 		return NoPrompt
 	}
-	v := NoPrompt
-	if !ok(call(fnRowData, uintptr(raw), rowDataSemanticPrompt, uintptr(unsafe.Pointer(&v)))) {
+	r.prompt = NoPrompt
+	if !r.rowDataAsk(r.handle, rowDataSemanticPrompt, unsafe.Pointer(&r.prompt)) {
 		return NoPrompt
 	}
-	return v
+	return r.prompt
 }
 
 // RowID returns the identity of the row, which it keeps as it scrolls.
 func (r *RenderState) RowID() RowID {
-	var id RowID
-	r.rowGet(rowDataID, unsafe.Pointer(&id))
-	return id
+	r.id = RowID{}
+	r.rowGet(rowDataID, unsafe.Pointer(&r.id))
+	return r.id
 }
 
 // RowSelection returns the selected columns of the row, from start to end
 // inclusive.
 func (r *RenderState) RowSelection() (start, end int, ok bool) {
-	s := rowSelection{size: unsafe.Sizeof(rowSelection{})}
-	if !r.rowGet(rowDataSelection, unsafe.Pointer(&s)) {
+	r.sel = rowSelection{size: unsafe.Sizeof(rowSelection{})}
+	if !r.rowGet(rowDataSelection, unsafe.Pointer(&r.sel)) {
 		return 0, 0, false
 	}
-	return int(s.startX), int(s.endX), true
+	return int(r.sel.startX), int(r.sel.endX), true
 }
 
 // Wide is how wide a cell's character is.
@@ -252,11 +275,11 @@ type Cell struct {
 
 // RowCells returns the cells of the row, valid until the next update.
 func (r *RenderState) RowCells() []Cell {
-	var v cellsView
-	if !r.rowGet(rowDataCellsRaw, unsafe.Pointer(&v)) || v.ptr == 0 {
+	r.view = cellsView{}
+	if !r.rowGet(rowDataCellsRaw, unsafe.Pointer(&r.view)) || r.view.ptr == 0 {
 		return nil
 	}
-	raw := unsafe.Slice((*uint64)(mem(v.ptr)), v.len)
+	raw := unsafe.Slice((*uint64)(mem(r.view.ptr)), r.view.len)
 	r.raw = r.raw[:0]
 	for _, c := range raw {
 		var out Cell
