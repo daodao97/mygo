@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,5 +84,45 @@ func TestShortWebMSeeksOverHTTP(t *testing.T) {
 			return near(shows(), green)
 		})
 		p.Close()
+	}
+}
+
+// sound.mp4 is 0.5 s of silent AAC in MP4, with no video, made with
+// ffmpeg from lavfi's anullsrc.
+//
+//go:embed testdata/sound.mp4
+var soundMP4 []byte
+
+// TestEndsWithoutPicture checks that a video that plays to its end
+// without a picture reaching the sink, as one of sound alone, fails,
+// rather than end without ever being ready, or play again for good when
+// it loops, and stays failed when played again.
+func TestEndsWithoutPicture(t *testing.T) {
+	for _, loop := range []bool{false, true} {
+		t.Run(map[bool]string{false: "once", true: "looping"}[loop], func(t *testing.T) {
+			p, err := OpenData(soundMP4)
+			if err != nil {
+				t.Skip(err)
+			}
+			t.Cleanup(p.Close)
+			p.SetMuted(true)
+			p.SetLoop(loop)
+			tt := ui.NewTester(func(c *ui.Context) { ui.Video(c, p).Size(64, 48) }, 64, 48)
+			wait.Until(t, "an error", func() bool {
+				tt.Frame()
+				if p.Ready() {
+					t.Fatal("a video of sound alone is ready")
+				}
+				return p.Err() != nil
+			})
+			if !strings.Contains(p.Err().Error(), "without a picture") {
+				t.Fatalf("error %v, want one of no picture", p.Err())
+			}
+			p.Play()
+			tt.Frame()
+			if p.Playing() || p.Ended() {
+				t.Errorf("after Play: playing %v, ended %v", p.Playing(), p.Ended())
+			}
+		})
 	}
 }

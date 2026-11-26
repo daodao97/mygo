@@ -415,6 +415,17 @@ func (e *gstEngine) pull() {
 	}
 }
 
+// sinkHadPicture is whether a picture reached the sink, which pull may
+// not have taken yet, as the last of a short video that ended meanwhile.
+func (e *gstEngine) sinkHadPicture() bool {
+	s := lastSample(e.sink)
+	if s == 0 {
+		return false
+	}
+	gstMiniObjectUnref(s)
+	return true
+}
+
 // lastSample returns a reference to the sample a sink holds last, or 0.
 func lastSample(sink uintptr) uintptr {
 	var v gValue
@@ -573,6 +584,15 @@ func (e *gstEngine) handle(msg uintptr, kind uint32) {
 			e.seekLocked(e.seekTo)
 		}
 	case gstMessageEOS:
+		if e.state == media.Loading && !e.sinkHadPicture() {
+			// It played to its end, and no picture reached the sink, as
+			// for a file of sound alone, or one whose frames GStreamer's AVI
+			// demuxer dropped: it never was ready, and fails, as with
+			// AVFoundation. One that loops would play again with none.
+			e.state, e.err = media.Failed, errors.New("video: the system played the video to its end without a picture")
+			e.applyState()
+			break
+		}
 		if e.loop {
 			e.seekLocked(0)
 		} else {
