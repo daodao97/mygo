@@ -728,6 +728,38 @@ func TestCodeEditorComposition(t *testing.T) {
 	ct.want("a|b\nc|d")
 }
 
+// A composition the input method cancels leaves no step behind: the
+// first Cmd+Z takes back the edit before it.
+func TestCodeEditorCompositionCancelLeavesNoUndoStep(t *testing.T) {
+	ct := newEditorTest(t, "", "|")
+	ct.typ("a")
+	ct.tt.Compose("に", 1)
+	ct.tt.Compose("", 0)
+	ct.want("a|")
+	ct.key(ui.Cmd, ui.KeyZ)
+	ct.want("|")
+
+	// Over a selection, the composition took the text away, which Undo
+	// puts back.
+	ct = newEditorTest(t, "", "a[bc]|\nd|")
+	ct.tt.Compose("に", 1)
+	ct.tt.Compose("", 0)
+	ct.want("a|\nd|")
+	ct.key(ui.Cmd, ui.KeyZ)
+	ct.want("a[bc]\nd|")
+
+	// A committed composition's step lets go of the text it found.
+	ct = newEditorTest(t, "", "a|")
+	ct.tt.Compose("に", 1)
+	ct.tt.Type("日")
+	ct.want("a日|")
+	if u := ct.st.Buffer.undo; len(u) != 1 || !u[0].before.Same(rope.Text{}) || !u[0].beforeEnds.Same(rope.Text{}) {
+		t.Fatalf("a committed composition keeps the text it found: %d steps", len(u))
+	}
+	ct.key(ui.Cmd, ui.KeyZ)
+	ct.want("a|")
+}
+
 // Enter while an input method composes is its own, as choosing a
 // candidate: the editor breaks no line and leaves the composition to the
 // input method, which commits it (#1815).

@@ -761,6 +761,9 @@ func (ed *editor) setMarkedText(r *ui.TextInputRange, s string, selected ui.Text
 	// Selected counts UTF-16 units of s.
 	sa, sz := utf16ByteOffset(s, selected.Start), utf16ByteOffset(s, selected.End)
 	ed.replaceRanges(ts, s, editCompose, sa, sz)
+	if b := ed.buf(); b != nil && s == "" {
+		b.dropCompose(ed)
+	}
 	ed.markedActive = s != ""
 	ed.marked = ed.marked[:0]
 	switch {
