@@ -97,11 +97,11 @@ func TestATesterDrawsRegisteredFonts(t *testing.T) {
 	}
 }
 
-// The text system of a Tester's window, its own, becomes unreachable once
-// the Tester is and the Testers keep no more idle (testerTexts), which
-// closes its engine: a test binary of a thousand Testers otherwise kept a
-// thousand, each with a Pango font map and a thread of fontconfig's on
-// Linux (#1902).
+// The text system of a Tester's window, its own, closes and becomes
+// unreachable once the Tester is and the next Tester starts, when the
+// Testers keep no more idle (testerTexts): a test binary of a thousand
+// Testers otherwise kept a thousand, each with a Pango font map and a
+// thread of fontconfig's on Linux (#1902).
 func TestTesterTextSystemUnreachable(t *testing.T) {
 	// Keep none idle, so that each Tester's goes once it ends.
 	testerTexts.mu.Lock()
@@ -127,8 +127,20 @@ func TestTesterTextSystemUnreachable(t *testing.T) {
 		}
 		systems = append(systems, weak.Make(tt.h.text))
 	}
+	wait.Until(t, "the text systems of the Testers dropped idle", func() bool {
+		runtime.GC()
+		return !slices.ContainsFunc(systems, func(w weak.Pointer[text.System]) bool {
+			s := w.Value()
+			return s != nil && !testerTextIdle(s)
+		})
+	})
+	next := NewTester(func(c *Context) { Text(c, "next") }, 300, 200)
 	wait.Until(t, "the text systems of the Testers dropped unreachable", func() bool {
 		runtime.GC()
-		return !slices.ContainsFunc(systems, func(w weak.Pointer[text.System]) bool { return w.Value() != nil })
+		return !slices.ContainsFunc(systems, func(w weak.Pointer[text.System]) bool {
+			s := w.Value()
+			return s != nil && s != next.h.text
+		})
 	})
+	runtime.KeepAlive(next)
 }

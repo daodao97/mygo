@@ -454,8 +454,10 @@ type System struct {
 	appFonts int
 	// closer has the engine of a System New made close once the System is
 	// unreachable (closeWhenUnreachable), so that apps that make none do
-	// not link closing engines.
-	closer func(s *System)
+	// not link closing engines; closeNow closes it at once instead
+	// (CloseEngine).
+	closer   func(s *System)
+	closeNow func()
 	// fonts caches the font of each style.
 	fonts map[Style]*Font
 	// watchers hear of the fonts that loaded in the background, in
@@ -746,7 +748,26 @@ type engineCloser interface{ close() }
 // closeWhenUnreachable has the engine of s closed once s is unreachable.
 func closeWhenUnreachable(s *System) {
 	if c, ok := s.eng.(engineCloser); ok {
-		runtime.AddCleanup(s, closeEngine, c)
+		left := runtime.AddCleanup(s, closeEngine, c)
+		s.closeNow = func() {
+			left.Stop()
+			closeEngine(c)
+		}
+	}
+}
+
+// CloseEngine closes the engine of a System New made at once, on the
+// caller's goroutine, rather than once the System is unreachable on a
+// cleanup goroutine of the runtime, as package ui does with the text
+// systems of ended Testers it doesn't keep. Nothing may use the System
+// after.
+func (s *System) CloseEngine() {
+	s.mu.Lock()
+	f := s.closeNow
+	s.closeNow = nil
+	s.mu.Unlock()
+	if f != nil {
+		f()
 	}
 }
 

@@ -2126,6 +2126,7 @@ type closingEngine struct {
 type closeRecord struct {
 	mu       sync.Mutex
 	closed   bool
+	closes   int
 	released map[uintptr]bool
 }
 
@@ -2148,7 +2149,29 @@ func (e *closingEngine) close() {
 	e.closeFonts(e.rec.release)
 	e.rec.mu.Lock()
 	e.rec.closed = true
+	e.rec.closes++
 	e.rec.mu.Unlock()
+}
+
+// TestSystemCloseClosesEngineAtOnce closes a System New made, as package
+// ui does with the text systems of ended Testers it doesn't keep: its
+// engine closes as CloseEngine returns, on the caller's goroutine, and once
+// however many times CloseEngine is called.
+func TestSystemCloseClosesEngineAtOnce(t *testing.T) {
+	rec := &closeRecord{released: map[uintptr]bool{}}
+	s := New()
+	s.start(&closingEngine{rec: rec})
+	s.Layout(Params{Text: "Hi", Style: Style{Size: 13}})
+	s.CloseEngine()
+	if closed, _ := rec.read(); !closed {
+		t.Fatal("the engine didn't close as CloseEngine returned")
+	}
+	s.CloseEngine()
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.closes != 1 {
+		t.Fatalf("the engine closed %d times; want once", rec.closes)
+	}
 }
 
 // TestNewSystemClosesEngine drops a System New made, as a Tester's
