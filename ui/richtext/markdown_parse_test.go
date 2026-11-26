@@ -376,3 +376,28 @@ func TestParseMarkdownInvalidUTF8(t *testing.T) {
 		}
 	}
 }
+
+// A code span keeps its spaces, one of spaces alone too, and does not turn
+// the marks beside it into HTML.
+func TestMarkdownBlankCodeSpan(t *testing.T) {
+	for _, c := range []struct {
+		runs []Run
+		md   string
+	}{
+		{[]Run{{Text: " ", Attributes: Attributes{Code: true}}, {Text: "0", Attributes: Attributes{Italic: true}}}, "` `*0*"},
+		{[]Run{{Text: "a "}, {Text: "  ", Attributes: Attributes{Code: true}}, {Text: " b"}}, "a `  ` b"},
+		{[]Run{{Text: " ", Attributes: Attributes{Code: true}}}, "` `"},
+		// and its spaces at its ends stay in it
+		{[]Run{{Text: "0", Attributes: Attributes{Strikethrough: true}}, {Text: " 0", Attributes: Attributes{Code: true}}}, "~~0~~` 0`"},
+		{[]Run{{Text: "a"}, {Text: " b ", Attributes: Attributes{Code: true}}}, "a`  b  `"},
+	} {
+		want := TextOf(Paragraph{Runs: c.runs})
+		md := want.Markdown()
+		if md != c.md {
+			t.Errorf("%s as Markdown is %q, want %q", dump(want), md, c.md)
+		}
+		if got := ParseMarkdown(md); dump(got) != dump(want) {
+			t.Errorf("%q reads\n%s want\n%s", md, dump(got), dump(want))
+		}
+	}
+}
