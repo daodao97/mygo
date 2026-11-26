@@ -43,6 +43,16 @@ func TestViewLinks(t *testing.T) {
 	}
 }
 
+// TestViewFootnoteDefinedTwice shows a footnote defined twice once, as
+// its first definition has it, which is the one its reference reaches.
+func TestViewFootnoteDefinedTwice(t *testing.T) {
+	const src = "A claim.[^1]\n\n[^1]: First.\n\n[^1]: Second.\n"
+	tt := ui.NewTester(func(c *ui.Context) { View(c, src, nil) }, 600, 400)
+	if got, want := tt.Texts(), []string{"A claim.[1]", "[1]", "1.", "First."}; !slices.Equal(got, want) {
+		t.Errorf("texts %q, want %q", got, want)
+	}
+}
+
 // TestViewTableHeaderLinks reaches a link in a table's header, which
 // shows what is inside it as a cell does, still named by its text.
 func TestViewTableHeaderLinks(t *testing.T) {
