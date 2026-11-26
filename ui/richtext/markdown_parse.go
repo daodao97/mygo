@@ -189,7 +189,8 @@ func (m *mdReader) block(i int, st ParagraphStyle, depth int) {
 	case parser.Paragraph:
 		m.inlinePara(st, m.d.Inlines(i))
 	case parser.Heading:
-		st.Heading = b.Level
+		// A heading is no item, as SetHeading and ParseHTML make it.
+		st.Heading, st.List, st.Checked = b.Level, NoList, false
 		m.inlinePara(st, m.d.Inlines(i))
 	case parser.CodeBlock:
 		st.CodeBlock, st.Heading = true, 0
