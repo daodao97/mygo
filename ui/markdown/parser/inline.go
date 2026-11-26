@@ -551,7 +551,9 @@ func (ip *inlineParser) scanCloseBackticks(n int) int {
 			j++
 		}
 		m := j - i
-		if m <= maxBackticks {
+		// Once a scan reached the end, each length's last run is known;
+		// a scan that stops sooner must not take it back.
+		if m <= maxBackticks && !ip.scannedBackticks {
 			ip.backticks[m] = i
 		}
 		if m == n {
