@@ -398,6 +398,70 @@ func TestVideoStopsWhileHidden(t *testing.T) {
 	}
 }
 
+// TestVideoDropsSuspendedTime checks that a video whose window built no
+// frame for well past the one it asked for, as when the process stops
+// with the window showing (App Nap, the machine asleep), shows the frame
+// that came due and goes on from it at its own pace, rather than racing
+// through frames to where the clock puts it; that a frame built a little
+// late still counts its time; and that a window slower than the video
+// still moves it on a frame each time it builds one.
+func TestVideoDropsSuspendedTime(t *testing.T) {
+	p := newVideo(t, videoRed, videoGreen, videoBlue).SetLoop(true)
+	tt, shows := videoTester(p, nil)
+	decodedAhead(t, p, 2)
+	tt.Advance(150 * time.Millisecond)
+	if got := shows(); got != videoGreen {
+		t.Fatalf("playing: %v", got)
+	}
+	// The frame asked for at 200 ms comes a minute late, with no
+	// SurfaceHidden or SurfaceShown between.
+	suspend := func(d time.Duration) {
+		tt.now = tt.now.Add(d)
+		tt.h.afterAt = time.Time{}
+		tt.Frame()
+	}
+	decodedAhead(t, p, 2)
+	tt.now = tt.now.Add(time.Minute)
+	if pos := p.Position(); pos != 200*time.Millisecond {
+		t.Fatalf("suspended: at %v, want the end of the frame it shows, 200ms", pos)
+	}
+	suspend(0)
+	resumed := tt.Now()
+	if got, pos := shows(), p.Position(); got != videoBlue || pos != 200*time.Millisecond || tt.FramePending() || !tt.h.afterAt.Equal(resumed.Add(100*time.Millisecond)) {
+		t.Fatalf("after the suspension: %v at %v, asked for a frame %v, After due %v after it: want blue at 200ms, only After, 100ms",
+			got, pos, tt.FramePending(), tt.h.afterAt.Sub(resumed))
+	}
+	tt.Advance(99 * time.Millisecond)
+	if got := shows(); got != videoBlue {
+		t.Fatalf("after the suspension, before the next frame is due: %v", got)
+	}
+	tt.Advance(time.Millisecond)
+	if got := shows(); got != videoRed {
+		t.Fatalf("after the suspension, the next frame: %v", got)
+	}
+
+	// A frame 30 ms late, as one waiting for the display, counts the 30
+	// ms: the next is due 70 ms after it.
+	decodedAhead(t, p, 2)
+	tt.Advance(99 * time.Millisecond)
+	suspend(31 * time.Millisecond)
+	late := tt.Now()
+	if got := shows(); got != videoGreen || !tt.h.afterAt.Equal(late.Add(70*time.Millisecond)) {
+		t.Fatalf("a frame 30ms late: %v, After due %v after it: want green, 70ms", got, tt.h.afterAt.Sub(late))
+	}
+
+	// Each frame 150 ms late, as a main thread busy that long: each shows
+	// the next frame of the video.
+	for i, want := range []color.RGBA{videoBlue, videoRed, videoGreen, videoBlue} {
+		decodedAhead(t, p, 2)
+		tt.now = tt.h.afterAt
+		suspend(150 * time.Millisecond)
+		if got := shows(); got != want {
+			t.Fatalf("frame %d, 150ms late: %v, want %v", i, got, want)
+		}
+	}
+}
+
 // TestNewVideoPlayerErrors checks that a video of no frames, or whose
 // first frame does not decode, makes no player.
 func TestNewVideoPlayerErrors(t *testing.T) {
