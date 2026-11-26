@@ -320,6 +320,21 @@ func (sb *splitBuild) acc() {
 	if sb.second && sb.total > 0 {
 		room := sb.total - sb.gap
 		at, lo, hi = room-at, room-hi, room-lo
+		// The first pane, whose limits are l's second, keeps within them
+		// where the room can't hold both panes': at its minimum when the
+		// room is smaller than both minimums, the second overflowing the
+		// end of the split, and at its maximum when the room is larger
+		// than both maximums, the rest of the room after the second. The
+		// divider stays there.
+		firstMin := max(l.SecondMin, sb.minPane)
+		within := func(v float32) float32 {
+			v = max(v, firstMin)
+			if l.SecondMax > 0 {
+				v = min(v, max(l.SecondMax, firstMin))
+			}
+			return v
+		}
+		at, lo, hi = within(at), within(lo), within(hi)
 	}
 	sb.div.accRange = [3]float64{float64(lo), float64(hi), float64(at)}
 }
