@@ -432,10 +432,20 @@ func loadConfig(root string) (*Config, error) {
 
 // readConfig returns the configuration of the project in root as JSON, and
 // the file it comes from: mygo.json, or mygo.config.ts, which a JavaScript
-// runtime evaluates. Without either it returns nothing.
+// runtime evaluates. Without either it returns nothing. A configuration
+// that cannot be looked at is not one that is not there: carrying on would
+// build an app the project did not configure, so the failure is said.
 func readConfig(root string) (data []byte, file string, err error) {
 	jsonFile, tsFile := filepath.Join(root, jsonConfig), filepath.Join(root, tsConfig)
-	switch hasJSON, hasTS := fileExists(jsonFile), fileExists(tsFile); {
+	_, jsonErr := os.Stat(jsonFile)
+	if jsonErr != nil && !os.IsNotExist(jsonErr) {
+		return nil, jsonFile, fmt.Errorf("looking for a configuration: %w", jsonErr)
+	}
+	_, tsErr := os.Stat(tsFile)
+	if tsErr != nil && !os.IsNotExist(tsErr) {
+		return nil, tsFile, fmt.Errorf("looking for a configuration: %w", tsErr)
+	}
+	switch hasJSON, hasTS := jsonErr == nil, tsErr == nil; {
 	case hasJSON && hasTS:
 		return nil, "", fmt.Errorf("%s configures the project too; keep one of them", jsonConfig)
 	case hasTS:
