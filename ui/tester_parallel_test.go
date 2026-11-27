@@ -2,8 +2,13 @@ package ui
 
 import (
 	"fmt"
+	"runtime"
+	"slices"
 	"testing"
+	"weak"
 
+	"github.com/egoist/mygo/internal/text"
+	"github.com/egoist/mygo/internal/wait"
 	"golang.org/x/image/font/gofont/gomono"
 )
 
@@ -90,4 +95,52 @@ func TestATesterDrawsRegisteredFonts(t *testing.T) {
 	if i.W < m.W-0.5 || i.W > m.W+0.5 {
 		t.Fatalf("the registered font isn't drawn: %v wide, %v in Go Mono", i.W, m.W)
 	}
+}
+
+// The text system of a Tester's window, its own, closes and becomes
+// unreachable once the Tester is and the next Tester starts, when the
+// Testers keep no more idle (testerTexts): a test binary of a thousand
+// Testers otherwise kept a thousand, each with a Pango font map and a
+// thread of fontconfig's on Linux (#1902).
+func TestTesterTextSystemUnreachable(t *testing.T) {
+	// Keep none idle, so that each Tester's goes once it ends.
+	testerTexts.mu.Lock()
+	max := maxIdleTesterTexts
+	maxIdleTesterTexts = func() int { return 0 }
+	testerTexts.mu.Unlock()
+	t.Cleanup(func() {
+		testerTexts.mu.Lock()
+		maxIdleTesterTexts = max
+		testerTexts.mu.Unlock()
+	})
+	var systems []weak.Pointer[text.System]
+	for i := range 8 {
+		tt := NewTester(func(c *Context) {
+			Column(c).Children(func() {
+				Text(c, fmt.Sprintf("tester %d", i))
+				TextInput(c, new(string)).Placeholder("Name")
+			})
+		}, 300, 200)
+		tt.Frame()
+		if tt.h.text == nil {
+			t.Fatal("the Tester's window has no text system of its own")
+		}
+		systems = append(systems, weak.Make(tt.h.text))
+	}
+	wait.Until(t, "the text systems of the Testers dropped idle", func() bool {
+		runtime.GC()
+		return !slices.ContainsFunc(systems, func(w weak.Pointer[text.System]) bool {
+			s := w.Value()
+			return s != nil && !testerTextIdle(s)
+		})
+	})
+	next := NewTester(func(c *Context) { Text(c, "next") }, 300, 200)
+	wait.Until(t, "the text systems of the Testers dropped unreachable", func() bool {
+		runtime.GC()
+		return !slices.ContainsFunc(systems, func(w weak.Pointer[text.System]) bool {
+			s := w.Value()
+			return s != nil && s != next.h.text
+		})
+	})
+	runtime.KeepAlive(next)
 }

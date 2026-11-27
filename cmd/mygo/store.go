@@ -496,6 +496,7 @@ func readPlayServiceAccount() (*playServiceAccount, error) {
 
 // publishGooglePlay uploads the .aab to a track of the app.
 func publishGooglePlay(c *Config, file, track, status string) error {
+	c = c.forAndroid()
 	aab, err := storeArtifact(c, file, "android", ".aab", "mygo build -platform android")
 	if err != nil {
 		return err

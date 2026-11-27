@@ -602,10 +602,12 @@ func (u *updater) run(s *session) {
 // the place of r. It returns the release offered last.
 func (u *updater) offer(s *session, r *release, automatic bool) (*release, response) {
 	t := s.t
-	s.set(t.availableView(r, automatic))
-	s.show()
+	// Offering before the window shows the offer: CheckForUpdates as soon
+	// as it does checks again, rather than only bringing it to the front.
 	s.setOffering(true)
 	defer s.setOffering(false)
+	s.set(t.availableView(r, automatic))
+	s.show()
 	for {
 		select {
 		case resp := <-s.responses:

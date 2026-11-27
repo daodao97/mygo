@@ -2577,9 +2577,11 @@ func Spinner(c *Context) Element {
 // divider keeps 40 DIPs from either edge. With less room than that, first
 // gives way, keeping *size for when there is room again. Changed reports a
 // move. Right to left (Direction), first is on the right. SplitReset makes
-// a double click on the divider put first back at a size the app chooses.
-// SplitGap spaces the panes apart by a number of DIPs without drawing the
-// 1 DIP divider line, including 0 for flush panes.
+// a double click on the divider put first back at a size the app chooses,
+// and SplitSecond makes *size the width of second instead, as a panel at
+// the end of a window takes. SplitGap spaces the panes apart by a number
+// of DIPs without drawing the 1 DIP divider line, including 0 for flush
+// panes, and SplitLimits gives either pane a minimum and a maximum size.
 //
 //	ui.Split(c, &app.sidebar, app.files, app.editor).Fill()
 func Split(c *Context, size *float32, first func(), second func()) Element {
@@ -6844,6 +6846,14 @@ func (_handle Element) NoShadow() Element {
 
 // NoWrap keeps each line of the element's text whole, breaking it only at
 // newlines, even where it overflows the element.
+//
+// On a TextArea (TextAreaBase, TextAreaBuffer), it keeps each line the
+// user types whole too, as a list of URLs or a code snippet holds one
+// item a line: a line wider than the area scrolls sideways, with the
+// wheel (Shift and the wheel with a mouse), the touchpad and a horizontal
+// scroll bar, and the caret stays in view as the user types, moves it or
+// drags a selection past a side. Without it, a text area wraps its lines
+// at its width. A TextInput keeps its line whole anyway.
 func (_handle Element) NoWrap() Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -8367,12 +8377,47 @@ func (_handle Element) SplitGap(v float32) Element {
 	return wrapElement(_node.SplitGap(v))
 }
 
+// SplitLimits gives the panes of a Split a minimum and a maximum size, in
+// DIPs whichever the split's unit: the divider stops where a pane would
+// leave its limits, as it stops 40 DIPs from either edge, both as the user
+// drags it and as the arrows move it, and the panes keep within them as
+// the room changes. Where the limits can't all hold, or don't fill the
+// room:
+//
+//   - a pane's minimum wins over its maximum;
+//   - when the room is smaller than both minimums together, both panes
+//     keep them and overflow the end of the split, which the window, or
+//     a Clip around it, cuts: give the window a minimum size that holds
+//     them;
+//   - when the room is larger than both maximums together, both panes
+//     keep them and the rest of the room, after the second, stays empty.
+//
+// A size outside the limits is kept, and shown within them, until the
+// user moves the divider. As with SplitReset, the input applies the limits
+// of the build before, and the layout those of this build.
+//
+//	// A side panel between 280 and 480 DIPs wide, after a chat no
+//	// narrower than 360.
+//	ui.Split(c, &app.chatWidth, app.chat, app.panel).SplitLimits(ui.SplitLimits{
+//		FirstMin: 360, SecondMin: 280, SecondMax: 480,
+//	})
+func (_handle Element) SplitLimits(l SplitLimits) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	_node.markStateRead()
+	return wrapElement(_node.SplitLimits(l))
+}
+
 // SplitReset makes a double click on the divider of a Split put the first
-// pane at v, in the split's own unit: DIPs for Split and SplitVertical, a
-// percentage for SplitPercent and SplitVerticalPercent. A split without it
-// keeps its size on a double click. The value is kept even when the window
-// is too small to show it, so the pane takes it back when there is room
-// again.
+// pane at v, or the second with SplitSecond, in the split's own unit: DIPs
+// for Split and SplitVertical, a percentage for SplitPercent and
+// SplitVerticalPercent. A split without it keeps its size on a double
+// click. The value is kept even when the window is too small to show it,
+// so the pane takes it back when there is room again.
 //
 //	ui.Split(c, &app.sidebar, app.files, app.editor).SplitReset(220)
 func (_handle Element) SplitReset(v float32) Element {
@@ -8384,6 +8429,29 @@ func (_handle Element) SplitReset(v float32) Element {
 	_ = _ctx
 	_node.markStateRead()
 	return wrapElement(_node.SplitReset(v))
+}
+
+// SplitSecond makes *size of a Split the size of its second pane rather
+// than its first's, the pane on the right of Split (on the left right to
+// left) and at the bottom of SplitVertical, as a chat's list of members or
+// an inspector at the end of a window, or a terminal under an editor: the
+// first pane then takes the rest of the room. The divider, its arrows and
+// the 40 DIPs it keeps from either edge stay as they are; with less room,
+// the first pane gives way down to its 40 DIPs, then the second, keeping
+// *size for when there is room again. SplitReset puts the second pane at
+// its value. Of SplitPercent and SplitVerticalPercent, *p is the second
+// pane's percentage of the room.
+//
+//	ui.Split(c, &app.membersWidth, app.chat, app.members).SplitSecond().Fill()
+func (_handle Element) SplitSecond() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	_node.markStateRead()
+	return wrapElement(_node.SplitSecond())
 }
 
 // Spring returns a value following target with a spring, as AnimateTo
@@ -8998,6 +9066,31 @@ func (_handle Element) TruncateStart() Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.TruncateStart())
+}
+
+// Truncated reports whether the previous frame cut the element's text
+// with an ellipsis, as MaxLines and SingleLine do when it does not fit,
+// or text inside it, as a Button's label: as Bounds, it is false for an
+// element the previous frame lacked. Its full text can show as a
+// tooltip only when it is cut, as the web's title with text-overflow:
+// ellipsis:
+//
+//	t := ui.Text(c, name).MaxLines(1)
+//	if t.Truncated() {
+//		t.Tooltip(name)
+//	}
+//
+// Text that NoWrap lets overflow, or a clip hides, is not cut; nor is a
+// text input's, or a popup's attached to the element.
+func (_handle Element) Truncated() bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	_node.markStateRead()
+	return _node.Truncated()
 }
 
 // Underline underlines text.

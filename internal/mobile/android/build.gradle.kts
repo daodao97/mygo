@@ -23,6 +23,9 @@ subprojects {
                 // C, which a module builds with externalNativeBuild, builds
                 // for the ABIs that Go does, with the NDK that builds Go.
                 providers.gradleProperty("mygoAbis").orNull?.let { ndk { abiFilters += it.split(',').filter { a -> a.isNotEmpty() } } }
+                // Linked for 16 KB pages, which Android 15 and later devices
+                // may have: what NDK r28 does by default, and r27 when asked.
+                externalNativeBuild { cmake { arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON" } }
             }
             providers.gradleProperty("mygoNdk").orNull?.let { dir ->
                 ndkPath = dir

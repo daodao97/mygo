@@ -448,7 +448,10 @@ app.code.SetDiagnostics(buf.Version(), app.lsp.Diagnostics())
   top left of the editor's box as the last frame laid it out, and whether
   its line shows (a line a fold hides does not). An app draws what belongs
   to a range of the text from the `Rect` of its first and last offsets, as a
-  frame around it, in an element's `DrawOver`.
+  frame around it, in an element's `DrawOver`. `TextX` is where the text
+  starts, right of the gutter; unlike a `Rect`, it stays as the text
+  scrolls sideways, for what belongs beside a line rather than in it, as a
+  mark by its number.
 
 ## Replacing ranges
 

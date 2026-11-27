@@ -83,3 +83,11 @@ func signingTeam(identity string) string {
 	}
 	return identity[i+1 : len(identity)-1]
 }
+
+// identityKind returns the kind of an identity, as "Apple Development" of
+// "Apple Development: Jane Doe (AAAA)": logs show it instead of the name and
+// team, which they can be shared with.
+func identityKind(name string) string {
+	kind, _, _ := strings.Cut(name, ": ")
+	return kind
+}

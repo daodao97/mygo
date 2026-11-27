@@ -296,6 +296,21 @@ func TestInputRegion(t *testing.T) {
 	}
 }
 
+func TestWindowPosition(t *testing.T) {
+	_, fw := testWindow(t, WindowOptions{Position: &Point{}})
+	if o := fw.Opts; o.X != 0 || o.Y != 0 || o.Center {
+		t.Errorf("at %d,%d, centered %v; want 0,0 as given", o.X, o.Y, o.Center)
+	}
+	_, fw = testWindow(t, WindowOptions{X: 10, Y: 20, Position: &Point{X: 30, Y: 40}})
+	if o := fw.Opts; o.X != 30 || o.Y != 40 || o.Center {
+		t.Errorf("at %d,%d, centered %v; want Position over X and Y", o.X, o.Y, o.Center)
+	}
+	_, fw = testWindow(t, WindowOptions{})
+	if o := fw.Opts; !o.Center {
+		t.Error("the zero value is not centered")
+	}
+}
+
 func TestWindowOptions(t *testing.T) {
 	parent, _ := testWindow(t, WindowOptions{})
 	_, fw := testWindow(t, WindowOptions{

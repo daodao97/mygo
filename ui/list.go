@@ -131,6 +131,11 @@ type ListState struct {
 	// itself takes nothing and shows no place between the rows. Return nil
 	// for rows that do not drag. A list cannot both DragRows and Reorder.
 	DragRows func(rows []int) any
+	// DragLabel, with DragRows, names the rows dragged, as "report.pdf":
+	// while they are dragged within the window, the name follows the
+	// pointer in place of a copy of the row, which would cover the row
+	// they are dragged onto. Return "" for rows that keep the copy.
+	DragLabel func(rows []int) string
 	// DragSelect, with Selection, chooses rows as the pointer drags over
 	// them from the row it pressed: those from that row to the one under
 	// the pointer, as a Shift-click on it would, and with Cmd (Ctrl on
@@ -992,7 +997,11 @@ func (f *listFrame) dragValue(i int) any {
 	if f.s.DragRows != nil {
 		v = f.s.DragRows(rows)
 	}
-	return countedDrag{v, len(rows)}
+	label := ""
+	if f.s.DragRows != nil && v != nil && f.s.DragLabel != nil {
+		label = f.s.DragLabel(rows)
+	}
+	return countedDrag{value: v, n: len(rows), label: label}
 }
 
 // dragged returns the rows a drag from row i moves: those chosen when it
@@ -1018,8 +1027,7 @@ func (f *listFrame) reorder() {
 	if s.Reorder == nil {
 		return
 	}
-	e.flags |= flagValueDrop
-	e.st.accepts = func(v any) bool { d, ok := v.(*rowDrag); return ok && d.s == s }
+	e.takes(func(v any) bool { d, ok := v.(*rowDrag); return ok && d.s == s })
 	rt := f.c.rt
 	var d *rowDrag
 	dropped, y := false, rt.pointerY
@@ -1028,7 +1036,7 @@ func (f *listFrame) reorder() {
 		// Where the rows dropped, which the pointer may have left since,
 		// as when Windows moves it back to the mouse after a test's drag.
 		d, _ = e.st.droppedValue.(*rowDrag)
-		e.st.hasDropped, dropped, y = false, true, e.st.dropY
+		dropped, y = true, e.st.dropY
 	case rt.drag != nil && !rt.drag.canceled && rt.drag.over == e.id:
 		d, _ = rt.drag.value.(*rowDrag)
 	}
@@ -1037,7 +1045,8 @@ func (f *listFrame) reorder() {
 	}
 	x := rt.pointerX
 	if dropped {
-		x = e.st.dropX
+		// Only the list's own rows: other values are the app's Drop's.
+		e.st.hasDropped, x = false, e.st.dropX
 	}
 	_, y = e.st.local(x, y)
 	y += e.st.y

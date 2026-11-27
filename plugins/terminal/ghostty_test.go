@@ -105,3 +105,27 @@ func TestGhosttyTheme(t *testing.T) {
 		t.Errorf("%d names, want %d", n, len(ghosttyThemes)+2)
 	}
 }
+
+func TestGhosttyThemesDirs(t *testing.T) {
+	env := func(vars map[string]string) func(string) string {
+		return func(k string) string { return vars[k] }
+	}
+	home := filepath.Join("h", "me")
+	for _, c := range []struct {
+		goos string
+		vars map[string]string
+		home string
+		want []string
+	}{
+		{"darwin", nil, home, []string{filepath.Join(home, ".config", "ghostty", "themes")}},
+		{"linux", map[string]string{"XDG_CONFIG_HOME": "x"}, home, []string{filepath.Join("x", "ghostty", "themes")}},
+		{"linux", map[string]string{"LOCALAPPDATA": "l"}, home, []string{filepath.Join(home, ".config", "ghostty", "themes")}},
+		{"windows", map[string]string{"LOCALAPPDATA": "l"}, home, []string{filepath.Join("l", "ghostty", "themes"), filepath.Join(home, ".config", "ghostty", "themes")}},
+		{"windows", map[string]string{"LOCALAPPDATA": "l", "XDG_CONFIG_HOME": "x"}, home, []string{filepath.Join("x", "ghostty", "themes")}},
+		{"windows", nil, "", nil},
+	} {
+		if got := ghosttyThemesDirsOn(c.goos, env(c.vars), c.home); !slices.Equal(got, c.want) {
+			t.Errorf("%s %v %q: %q, want %q", c.goos, c.vars, c.home, got, c.want)
+		}
+	}
+}

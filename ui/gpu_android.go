@@ -23,12 +23,19 @@ func newGPURenderer(n platform.SurfaceNative) (gpuRenderer, error) {
 		w.Release()
 		return nil, err
 	}
+	// A frame that changes nothing, as after Window.Invalidate, draws
+	// nothing and is not swapped: the surface keeps showing the last
+	// one, and the GPU, which the views' frames share, stays free (#2339).
+	r.Unchanged = true
 	return &windowRenderer{Renderer: r, w: w}, nil
 }
 
 // windowRenderer draws a frame and shows it: an EGL window's buffers keep
-// nothing from one frame to the next, so frames draw whole. It outlives
-// the SurfaceView's surface (renewableRenderer): as the app goes to the
+// nothing from one frame to the next, so frames draw whole, but for one
+// the same as the last, which draws nothing and is not swapped
+// (gl.Renderer.Unchanged); the first frame on a new EGL surface, after a
+// resize or the background, draws (Invalidate). It outlives the
+// SurfaceView's surface (renewableRenderer): as the app goes to the
 // background and comes back, the EGL context and the renderer's
 // programs, atlases and textures stay, and only the EGL surface is made
 // anew, in milliseconds rather than the second making them again took,
@@ -42,6 +49,9 @@ func (r *windowRenderer) Render(s *scene.Scene) error {
 	r.w.MakeCurrent()
 	if err := r.Renderer.Render(s); err != nil {
 		return err
+	}
+	if !r.Drew() {
+		return nil
 	}
 	return r.w.Swap()
 }

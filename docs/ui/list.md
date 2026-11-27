@@ -361,6 +361,21 @@ if paths, ok := ui.Drop[[]string](row); ok {
 Return nil for rows that do not drag. A list cannot both `Reorder` and
 `DragRows`.
 
+A copy of the row follows the pointer, and covers the row it is over. With
+`DragLabel`, a label naming what is dragged follows below and to the right
+of the pointer instead, leaving the row it would drop on readable, as in a
+tree of folders. Several rows dragged show their number on its corner.
+Return "" for rows that keep the copy:
+
+```go
+app.files.DragLabel = func(rows []int) string {
+	return app.names[rows[0]] // the first of them, with the number on its corner
+}
+```
+
+The label shows while the rows are dragged within the window; a drag
+leaving it with `DragData` shows the system's drag image.
+
 See [drag and drop](drag-and-drop.md).
 
 ## The focus

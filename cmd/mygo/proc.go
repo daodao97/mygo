@@ -24,6 +24,23 @@ func shellCommand(dir, line string, env ...string) *exec.Cmd {
 	return cmd
 }
 
+// runSignCommand runs the sign command of the configuration's field
+// (windows.signCommand, macos.signCommand) in the project directory, with
+// %1 standing for path, quoted for the shell. A command that fails fails
+// the signing.
+func runSignCommand(c *Config, field, line, path string) error {
+	// Not shown: the command may hold credentials.
+	cmd := shellCommand(c.root, strings.ReplaceAll(line, "%1", shellQuote(path)))
+	out, errOut := labeledOutput(cmd, "sign")
+	err := waited(cmd.Run())
+	out.flush()
+	errOut.flush()
+	if err != nil {
+		return fmt.Errorf("%s: %w", field, err)
+	}
+	return nil
+}
+
 // command runs a tool quietly; its output becomes part of the error when
 // it fails.
 func command(name string, args ...string) error {

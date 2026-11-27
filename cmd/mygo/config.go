@@ -213,6 +213,17 @@ type MacOS struct {
 	// ad hoc: the app runs on the Mac that built it, but Gatekeeper blocks
 	// it on others.
 	SigningIdentity string `json:"signingIdentity"`
+	// SignCommand signs the app bundle instead of codesign, with %1
+	// standing for its path, on any system, e.g. with rcodesign on Linux:
+	//   "scripts/sign-macos.sh %1"
+	// `mygo build` runs it where it would run codesign, once the bundle
+	// holds everything, provisioning profile included, and before the disk
+	// image and the update files take it; a failing command fails the
+	// build. It signs the whole bundle, the code among its resources
+	// included, with the entitlements it chooses, and may notarize and
+	// staple it. SigningIdentity still signs the disk image, which only
+	// macOS makes, and `mygo dev` still signs with codesign.
+	SignCommand string `json:"signCommand"`
 	// Entitlements is a plist of entitlements to sign the app with.
 	Entitlements string `json:"entitlements"`
 	// ProvisioningProfile is embedded as Contents/embedded.provisionprofile
@@ -236,6 +247,19 @@ type MacOS struct {
 	// notary service and staples the tickets to both. It needs a Developer
 	// ID signing identity.
 	Notarize *Notarize `json:"notarize"`
+	// Extensions are app extensions built apart, as a share extension built
+	// with Xcode, which the app carries in Contents/PlugIns, each signed
+	// with the app's identity before the app, keeping its entitlements.
+	// mygo dev leaves them out.
+	Extensions []MacOSExtension `json:"extensions"`
+}
+
+// MacOSExtension is a prebuilt app extension of the macOS app.
+type MacOSExtension struct {
+	// Path is the .appex, signed with its own entitlements, which hold the
+	// App Sandbox: macOS loads an app extension only in it. Its identifier
+	// starts with the app's and a dot, as com.example.app.share.
+	Path string `json:"path"`
 }
 
 // IOS configures the iOS app (mygo build -platform ios, ios/simulator).
@@ -310,6 +334,12 @@ type IOSLaunchScreen struct {
 
 // Android configures the Android app (mygo build -platform android).
 type Android struct {
+	// Identifier is the Android app's package, in place of the identifier
+	// (default: the identifier): for an app whose package was settled
+	// before, as one moving to MyGo that must update the app it replaces.
+	// Android builds, their development app ("<identifier>.dev") and
+	// Google Play's uploads use it; the other platforms the identifier.
+	Identifier string `json:"identifier"`
 	// MinSdk is the oldest Android API level supported (default 26,
 	// Android 8.0).
 	MinSdk int `json:"minSdk"`
@@ -402,10 +432,20 @@ func loadConfig(root string) (*Config, error) {
 
 // readConfig returns the configuration of the project in root as JSON, and
 // the file it comes from: mygo.json, or mygo.config.ts, which a JavaScript
-// runtime evaluates. Without either it returns nothing.
+// runtime evaluates. Without either it returns nothing. A configuration
+// that cannot be looked at is not one that is not there: carrying on would
+// build an app the project did not configure, so the failure is said.
 func readConfig(root string) (data []byte, file string, err error) {
 	jsonFile, tsFile := filepath.Join(root, jsonConfig), filepath.Join(root, tsConfig)
-	switch hasJSON, hasTS := fileExists(jsonFile), fileExists(tsFile); {
+	_, jsonErr := os.Stat(jsonFile)
+	if jsonErr != nil && !os.IsNotExist(jsonErr) {
+		return nil, jsonFile, fmt.Errorf("looking for a configuration: %w", jsonErr)
+	}
+	_, tsErr := os.Stat(tsFile)
+	if tsErr != nil && !os.IsNotExist(tsErr) {
+		return nil, tsFile, fmt.Errorf("looking for a configuration: %w", tsErr)
+	}
+	switch hasJSON, hasTS := jsonErr == nil, tsErr == nil; {
 	case hasJSON && hasTS:
 		return nil, "", fmt.Errorf("%s configures the project too; keep one of them", jsonConfig)
 	case hasTS:
@@ -466,6 +506,17 @@ func (c *Config) validate() error {
 		if name == "" || file == "" {
 			return fmt.Errorf("macos.helperEntitlements maps the path of code among the resources to a property list of entitlements, not %q to %q", name, file)
 		}
+	}
+	extensions := map[string]bool{}
+	for i, e := range c.MacOS.Extensions {
+		if !strings.HasSuffix(strings.TrimRight(e.Path, `/\`), ".appex") {
+			return fmt.Errorf("macos.extensions[%d].path: %q is not an app extension, as build/ShareExtension.appex", i, e.Path)
+		}
+		name := filepath.Base(e.Path)
+		if extensions[name] {
+			return fmt.Errorf("macos.extensions[%d].path: another extension is %s, which Contents/PlugIns holds one of", i, name)
+		}
+		extensions[name] = true
 	}
 	if c.Windows.Certificate != "" && c.Windows.SignCommand != "" {
 		return errors.New("windows.certificate and windows.signCommand exclude each other")
@@ -586,6 +637,9 @@ func (c *Config) validateMobile() error {
 			return fmt.Errorf("android.adaptiveIcon.background: %w", err)
 		}
 	}
+	if id := c.Android.Identifier; id != "" && !packageRe.MatchString(id) {
+		return fmt.Errorf("android.identifier: %q is not a package, as com.example.app (two or more names of letters, digits and _, each starting with a letter)", id)
+	}
 	if c.Android.Splash != "" {
 		if _, err := parseHexColor(c.Android.Splash); err != nil {
 			return fmt.Errorf("android.splash: %w", err)
@@ -625,7 +679,20 @@ var (
 	slugRe   = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	schemeRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*$`)
 	extRe    = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_+-]*$`)
+	// packageRe matches an Android package, as Android's build takes it.
+	packageRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$`)
 )
+
+// forAndroid is the configuration of the Android app: its identifier is
+// android.identifier, when it is set.
+func (c *Config) forAndroid() *Config {
+	if c.Android.Identifier == "" {
+		return c
+	}
+	d := *c
+	d.Identifier = c.Android.Identifier
+	return &d
+}
 
 func (c *Config) applyDefaults() {
 	if c.Name == "" {

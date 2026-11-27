@@ -25,6 +25,14 @@ refuses. From `minSdk` 24 the build leaves out the JAR signature (v1),
 which Android needs no more; `android.v1Signing` adds it for the phones
 whose installers still ask for it.
 
+The app's native libraries are built for devices with 16 KB pages, which
+Android 15 and later may have: Go and native modules' C link for them, and
+the APK stores them on 16 KB boundaries. The build checks the APK as
+Android does, and names any library of its 64-bit ABIs that is not, such
+as one a plugin's dependency ships: on those devices the app would run in
+page size compatibility mode, with a warning on every launch, and Google
+Play refuses it.
+
 The configuration's `ios` and `android` sections set the rest (see
 [Configuration](../configuration.md)):
 
@@ -97,7 +105,9 @@ needs access to the app in Play Console. `-track` is `internal` by default, or
 takes the first upload of an app in its console only, and an app it has not
 reviewed yet takes releases only with `-status draft`.
 
-The app's `identifier` is the package it uploads to.
+The app's `identifier` is the package it uploads to, or `android.identifier`
+when it is set: Android's package, for an app whose package was settled before
+it moved to MyGo, which must update the app it replaces.
 
 ## Links, icons and launch screens
 

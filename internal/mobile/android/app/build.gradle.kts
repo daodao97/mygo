@@ -45,6 +45,9 @@ android {
             // Go's libraries are stripped; its stack traces need no symbols.
             ndk { debugSymbolLevel = "NONE" }
             signingConfig = if (prop("mygoKeystore") != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
+            // mygo build -debug: run-as and a debugger reach the app, signed
+            // as a release, so that it can update one installed.
+            isDebuggable = prop("mygoDebuggable") == "true"
         }
     }
     sourceSets {

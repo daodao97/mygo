@@ -114,9 +114,30 @@ func (f *frames) Rewind() error { f.next = 0; return nil }
 | Linux    | GStreamer 1.x（`playbin`），在安装了 VA-API 的地方用它解码 | NV12 平面，每像素 1.5 字节，OpenGL 按原样上传，由着色器转换                               |
 | 浏览器 | video 元素                                             | 该元素，由 WebGL 在 GPU 之间上传                                                                            |
 
-`video.Open` 打开文件，`video.OpenURL` 打开 `file:`、`http:` 或 `https:` URL 或 HLS 播放列表，`video.OpenData` 打开内存中的字节，例如嵌入的文件，而无需写入文件。`video.ErrUnsupported` 报告系统没有可播放视频的框架，例如没有 GStreamer 及其基础插件的 Linux，或没有 Media Foundation 功能的 Windows Server，以便应用改为显示 GIF。能播放哪些格式取决于系统：MP4 中的 H.264 和 AAC 在所有这些系统上都能播放。Linux 需要 `gstreamer1.0-plugins-base`，H.264 还需要 `gstreamer1.0-libav`（或其他 H.264 解码器）；缺少解码器时会出现 `Err`。
+`video.Open` 打开文件，`video.OpenURL` 打开 `file:`、`http:` 或 `https:` URL 或 HLS 播放列表，`video.OpenData` 打开内存中的字节，例如嵌入的文件，而无需写入文件。`video.ErrUnsupported` 报告系统没有可播放视频的框架，例如没有 GStreamer 及其基础插件的 Linux，或没有 Media Foundation 功能的 Windows Server，以便应用改为显示 GIF。能播放哪些格式取决于系统：MP4 中的 H.264 和 AAC 在所有这些系统上都能播放。Linux 需要 `gstreamer1.0-plugins-base`，H.264 还需要 `gstreamer1.0-libav`（或其他 H.264 解码器）；缺少解码器时会出现 `Err`。系统无法解码或读取画面的视频（例如 macOS 上的 VP9，或 MPEG-TS 中的 HEVC）同样会出现 `Err`，而不是只播放声音；一直播放到结尾都没有画面的视频（例如 Linux 上只有声音的文件），会在播放到结尾时失败。在 Linux 上，通过 HTTP 播放的视频（HLS 除外）会缓存到用户缓存目录下的一个文件里，最多缓存 32 MB，停止播放时 GStreamer 会删除它：这样 seek 时可以像读本地文件一样随意读取。
+
+下表是各格式在各系统上的播放情况，由 `TestFormatMatrix` 在 CI 的系统（macOS 26、Windows Server 2025、Windows 11 on Arm、装有 GStreamer base、good、bad 和 libav 插件的 Ubuntu 24.04）和 iOS 模拟器上检查，每个样本分别从文件、从内存中的字节和通过 HTTP 打开：“能播放”指画面正确（seek 之后也正确）并能播放到结尾；“不能”指以 `Err` 失败。“seek 不准”是待修复的 bug：seek 后显示的不是所请求时间的画面。Windows Server 没有 HEVC、VP9、AV1 和 MPEG-2 解码器；Windows 11 装有应用商店的相应视频扩展后可以播放。Linux 播放 MPEG-TS、MPEG-PS、HLS 和 AV1 需要 `gstreamer1.0-plugins-bad`。
+
+| 容器：视频编码 | macOS | iOS（模拟器） | Windows | Linux |
+| --- | --- | --- | --- | --- |
+| MP4、M4V、3GP、MOV：H.264 | 能播放 | 能播放 | 能播放 | 能播放 |
+| 分片 MP4：H.264 | 能播放 | 能播放 | 能播放 | 能播放 |
+| MP4：HEVC | 能播放 | 能播放 | 需要相应扩展 | 能播放 |
+| MP4：VP9 | 不能 | 不能 | 需要相应扩展；seek 不准 | 能播放 |
+| 分片 MP4：AV1 | Apple M3 及更新的芯片 | 不能 | 需要相应扩展 | 能播放 |
+| Matroska：H.264 | 不能 | 不能 | 能播放 | 能播放 |
+| Matroska：HEVC | 不能 | 不能 | 需要相应扩展 | 能播放 |
+| WebM：VP9，含 Opus | 不能 | 不能 | 需要相应扩展；VP9 的 seek 不准 | 能播放 |
+| WebM：AV1，含 Opus | 不能 | 不能 | 需要相应扩展 | 能播放 |
+| MPEG-TS、M2TS：H.264 | 能播放 | 不能 | 能播放；seek 不准 | 能播放；seek 不准 |
+| MPEG-TS：HEVC | 不能 | 不能 | 需要相应扩展；seek 不准 | 能播放；seek 不准 |
+| MPEG-PS：MPEG-2 | 能播放 | 不能 | Windows 11；seek 不准 | 能播放；seek 不准 |
+| AVI：MJPEG | macOS 27 | 能播放 | 能播放 | 能播放 |
+| HLS：分片 MP4 或 MPEG-TS | 能播放 | 能播放 | 能播放 | 能播放 |
 
 Windows on Arm 的 MPEG-4 读取器会忽略轨道的编辑列表。带 B 帧的 H.264 视频（x264 的默认设置）通过编辑列表补偿帧重排延迟；该列表被忽略后，画面会相应延后，最多比声音落后几帧。如果需要避免这一问题，可编码为不带 B 帧的视频（`-x264-params bframes=0`），示例中的预告片就是如此。
+
+在 macOS 上，如果 MP4 中的 AV1 视频带有 `sdtp` 盒子，并把一些帧标为不被其他帧引用（ffmpeg 对 SVT-AV1 编码的帧就是这样标注的），那么调用 `Seek` 后，直到下一个关键帧之前都不会显示画面：AVFoundation 在解码到目标时间的过程中可能跳过这类帧，在此之前不再给出画面。如果需要 seek，可将这类文件封装为分片 MP4（`-movflags +frag_keyframe+empty_moov+default_base_moof`），它不含 `sdtp` 盒子。
 
 在浏览器中，有声音的视频可能无法在用户与页面交互之前播放：此时它会静音播放，如浏览器所允许。
 

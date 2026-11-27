@@ -251,6 +251,11 @@ type mfEngine struct {
 	ring  [ringSize]sharedFrame
 	shown int
 	w, h  int
+	// pictured tells a new picture came since the last seek; reseek
+	// that Frame seeks again, to what Seek asked for, once the step it
+	// took is done, and resought how often it did since Seek.
+	pictured, reseek bool
+	resought         int
 
 	mu        sync.Mutex
 	wake      func()
@@ -262,7 +267,9 @@ type mfEngine struct {
 	// landed tells a seek landed (eventSeeked) with no picture since
 	// it, for Frame to step to the picture there if the engine has none.
 	landed bool
-	closed bool
+	// stepped tells a frame step completed since Frame took one.
+	stepped bool
+	closed  bool
 }
 
 // sharedFrame is a texture of the ring, and its surface.
@@ -415,7 +422,9 @@ func (e *mfEngine) event(event uint32, param1 uintptr, param2 uint32) {
 	case eventSeeked:
 		e.seekSince = time.Time{}
 		e.landed = true
-	case eventLoadedMetadata, eventLoadedData, eventDurationChange, eventFrameStepCompleted:
+	case eventFrameStepCompleted:
+		e.stepped = true
+	case eventLoadedMetadata, eventLoadedData, eventDurationChange:
 	default:
 		e.mu.Unlock()
 		return
@@ -438,21 +447,38 @@ func (e *mfEngine) Frame(time.Time) (media.Picture, bool, bool) {
 	var pts int64
 	fresh := call(e.engine, engineOnVideoStreamTick, uintptr(unsafe.Pointer(&pts))) == 0 // S_OK: a new picture
 	e.mu.Lock()
-	landed := e.landed
+	landed, to, stepped := e.landed, e.seekTo, e.stepped
 	e.mu.Unlock()
 	if landed && (fresh || call(e.engine, engineIsSeeking) == 0) {
 		e.mu.Lock()
 		e.landed = false
 		e.mu.Unlock()
-		if !fresh && pts == math.MinInt64 && e.ex != 0 && call(e.engine, engineIsPaused) != 0 {
+		if !fresh && !e.pictured && e.ex != 0 && call(e.engine, engineIsPaused) != 0 {
 			// A seek of a paused video landed with no picture, which then
 			// never comes (Media Foundation on Windows on Arm, about one
 			// seek in three): a step forward shows the one there, and
-			// keeps the position.
+			// keeps the position. A seek just after a pause, as the video
+			// starts playing, may also land where the video was (about one
+			// in ten), and seeking again at once lands there too: once the
+			// step is done, Frame seeks again, up to three times, and
+			// shows none of the pictures from where the video was.
+			if at := callGetDouble(e.engine, engineGetCurrentTime); e.resought < 3 && math.Abs(at-to.Seconds()) > 0.001 {
+				e.reseek = true
+				e.resought++
+			}
+			e.mu.Lock()
+			e.stepped, stepped = false, false
+			e.mu.Unlock()
 			call(e.ex, engineExFrameStep, 1)
 		}
 	}
-	if fresh {
+	if e.reseek {
+		if stepped {
+			e.reseek = false
+			e.seek(to)
+		}
+	} else if fresh {
+		e.pictured = true
 		var w, h uint32
 		call(e.engine, engineGetNativeVideoSize, uintptr(unsafe.Pointer(&w)), uintptr(unsafe.Pointer(&h)))
 		if w > 0 && h > 0 {
@@ -635,12 +661,18 @@ func (e *mfEngine) Play() {
 func (e *mfEngine) Pause() { call(e.engine, enginePause) }
 
 func (e *mfEngine) Seek(d time.Duration) {
+	e.reseek, e.resought = false, 0
+	e.seek(d)
+}
+
+func (e *mfEngine) seek(d time.Duration) {
 	e.mu.Lock()
 	if e.state == media.Ended {
 		e.state = media.Ready
 	}
 	e.seekTo, e.seekSince, e.landed = d, time.Now(), false
 	e.mu.Unlock()
+	e.pictured = false
 	callSetDouble(e.engine, engineSetCurrentTime, d.Seconds())
 }
 

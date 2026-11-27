@@ -203,6 +203,9 @@ type nativeFonts struct {
 type deadFonts struct {
 	mu     sync.Mutex
 	native []uintptr
+	// release, once the engine closed (closeFonts), releases the native
+	// font of each Font found unreachable since, as it is found.
+	release func(native uintptr)
 }
 
 // own has the native font of f released once f is unreachable.
@@ -213,12 +216,21 @@ func (n *nativeFonts) own(f *Font) {
 	runtime.AddCleanup(f, n.dead.add, f.native)
 }
 
-// add runs on the runtime's cleanup goroutine: the native font waits for
-// releaseDead, as engines run with the System's lock held.
+// add runs on a cleanup goroutine of the runtime: the native font waits
+// for releaseDead, as engines run with the System's lock held, until the
+// engine closed (closeFonts), when nothing runs it anymore.
 func (d *deadFonts) add(native uintptr) {
 	d.mu.Lock()
-	d.native = append(d.native, native)
+	release := d.release
+	if release == nil {
+		d.native = append(d.native, native)
+	}
 	d.mu.Unlock()
+	if release != nil {
+		closing.Lock()
+		defer closing.Unlock()
+		release(native)
+	}
 }
 
 // releaseDead releases the native fonts of the Fonts found unreachable
@@ -235,6 +247,32 @@ func (n *nativeFonts) releaseDead(release func(native uintptr)) {
 		release(native)
 	}
 }
+
+// closeFonts releases the native fonts of the Fonts found unreachable as
+// the engine closes (engineCloser), and has those of the Fonts found
+// unreachable later released as they are found: layouts kept elsewhere
+// may still hold Fonts of the engine, but no engine draws with them
+// anymore. closing is held.
+func (n *nativeFonts) closeFonts(release func(native uintptr)) {
+	if n.dead == nil {
+		return // no Font was made
+	}
+	n.dead.mu.Lock()
+	dead := n.dead.native
+	n.dead.native = nil
+	n.dead.release = release
+	n.dead.mu.Unlock()
+	for _, native := range dead {
+		release(native)
+	}
+}
+
+// closing is held while closed engines release what they held, one at a
+// time: cleanups run in parallel, and each running a native call would
+// take a thread of its own, as many as the Systems found unreachable at
+// once. It also keeps the native fonts of a closed engine's Fonts from
+// being released while the engine closes.
+var closing sync.Mutex
 
 // generic names the families "system-ui", "sans-serif", "serif" and
 // "monospace" stand for, and their aliases: "" when family is none.

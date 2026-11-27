@@ -573,8 +573,9 @@ term, err := terminal.New(terminal.Options{
 ```
 
 As in Ghostty, a theme file of the user's in Ghostty's themes directory
-(`$XDG_CONFIG_HOME/ghostty/themes`, `~/.config/ghostty/themes` by default)
-comes first, and an absolute path names a theme file.
+(`$XDG_CONFIG_HOME/ghostty/themes`, `~/.config/ghostty/themes` by default,
+with `%LOCALAPPDATA%\ghostty\themes` read before it on Windows) comes
+first, and an absolute path names a theme file.
 `terminal.GhosttyThemes()` lists the names, the user's themes with
 Ghostty's, for a picker, and `terminal.ParseGhosttyTheme` reads a theme in
 Ghostty's format from bytes:

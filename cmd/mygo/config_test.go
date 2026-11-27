@@ -140,6 +140,7 @@ func TestConfigTypes(t *testing.T) {
 		"S3Config":            reflect.TypeFor[S3](),
 		"MacOSConfig":         reflect.TypeFor[MacOS](),
 		"NotarizeConfig":      reflect.TypeFor[Notarize](),
+		"MacOSExtension":      reflect.TypeFor[MacOSExtension](),
 		"WindowsConfig":       reflect.TypeFor[Windows](),
 		"LinuxConfig":         reflect.TypeFor[Linux](),
 		"LinuxDepends":        reflect.TypeFor[linuxDepends](),
@@ -282,5 +283,33 @@ func TestWindowsInstallDirName(t *testing.T) {
 		if _, err := load(string(config)); err == nil || !strings.Contains(err.Error(), "windows.installDirName") {
 			t.Errorf("installDirName %q loads: %v", name, err)
 		}
+	}
+}
+
+// A configuration that cannot be looked at is not one that is not there:
+// carrying on built an app the project did not configure, with no word
+// about it.
+func TestReadConfigSaysWhenItCannotLook(t *testing.T) {
+	root := t.TempDir()
+	loop := filepath.Join(root, tsConfig)
+	if err := os.Symlink(loop, loop); err != nil {
+		t.Skipf("a self symlink cannot be made here: %v", err)
+	}
+	data, file, err := readConfig(root)
+	if err == nil {
+		t.Fatalf("a configuration that cannot be looked at read as none: %q %q", data, file)
+	}
+	if !strings.Contains(err.Error(), "configuration") {
+		t.Errorf("the error is %v, want the looking named", err)
+	}
+	// loadConfig's error names the file it could not look at.
+	if _, err := loadConfig(root); err == nil || !strings.HasPrefix(err.Error(), tsConfig+":") {
+		t.Errorf("loadConfig = %v, want it to name %s", err, tsConfig)
+	}
+
+	// Without either file it is still nothing, and no error.
+	data, file, err = readConfig(t.TempDir())
+	if data != nil || file != "" || err != nil {
+		t.Errorf("readConfig of an empty project = %q %q %v", data, file, err)
 	}
 }

@@ -487,3 +487,49 @@ func TestAndroidV1Signing(t *testing.T) {
 		t.Errorf("build.gradle.kts has no %s", want)
 	}
 }
+
+// android.identifier is the Android app's package, in place of the
+// identifier, for an app whose package was settled before it moved to
+// MyGo: Android builds, their development app and Google Play's uploads
+// use it, every other platform the identifier.
+func TestAndroidIdentifier(t *testing.T) {
+	dir := t.TempDir()
+	writeBytes(t, filepath.Join(dir, jsonConfig), []byte(`{"identifier": "dev.example.app", "android": {"identifier": "com.example.app_old"}}`))
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.forAndroid().Identifier; got != "com.example.app_old" {
+		t.Errorf("Android's identifier %q", got)
+	}
+	if got := devConfig(c.forAndroid()).Identifier; got != "com.example.app_old.dev" {
+		t.Errorf("Android's development identifier %q", got)
+	}
+	if c.Identifier != "dev.example.app" {
+		t.Errorf("the other platforms' identifier became %q", c.Identifier)
+	}
+	c.Android.Identifier = ""
+	if got := c.forAndroid().Identifier; got != "dev.example.app" {
+		t.Errorf("without android.identifier, Android's is %q", got)
+	}
+	for _, id := range []string{"app", "com.1example", "com.example-app", "com..example", "com.example."} {
+		writeBytes(t, filepath.Join(dir, jsonConfig), []byte(`{"android": {"identifier": "`+id+`"}}`))
+		if _, err := loadConfig(dir); err == nil || !strings.Contains(err.Error(), "android.identifier") {
+			t.Errorf("%s: %v", id, err)
+		}
+	}
+}
+
+// mygo build -debug makes the release build debuggable, through a property
+// of the host's Gradle build, so that run-as and a debugger reach an app
+// signed as the releases are.
+func TestAndroidDebuggable(t *testing.T) {
+	src, err := fs.ReadFile(androidHost.Files, "app/build.gradle.kts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := string(src)[strings.Index(string(src), "release {"):]
+	if want := `isDebuggable = prop("mygoDebuggable") == "true"`; !strings.Contains(release[:strings.Index(release, "\n        }")], want) {
+		t.Errorf("the release build type has no %s", want)
+	}
+}

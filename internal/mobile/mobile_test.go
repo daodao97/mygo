@@ -2,6 +2,7 @@ package mobile
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -78,6 +79,8 @@ type app struct {
 	ready chan struct{}
 	mu    sync.Mutex
 	posts []func()
+	// themes counts ThemeChanged.
+	themes atomic.Int32
 }
 
 func (a *app) Ready() { close(a.ready) }
@@ -99,7 +102,7 @@ func (a *app) DidResignActive()                                  {}
 func (a *app) OpenURLs([]string)                                 {}
 func (a *app) OpenFiles([]string)                                {}
 func (a *app) MenuItemClicked(int)                               {}
-func (a *app) ThemeChanged()                                     {}
+func (a *app) ThemeChanged()                                     { a.themes.Add(1) }
 func (a *app) DisplaysChanged()                                  {}
 func (a *app) LocaleChanged()                                    {}
 func (a *app) PowerEvent(string)                                 {}
@@ -112,6 +115,12 @@ func (a *app) MemoryWarning()                                    {}
 // startBackend runs a backend with a fake host, its loop on a goroutine of its
 // own, the main thread, and returns them once the app is ready.
 func startBackend(t *testing.T) (*Backend, *fakeHost) {
+	b, h, _ := startBackendApp(t)
+	return b, h
+}
+
+// startBackendApp is startBackend, with the app's handler.
+func startBackendApp(t *testing.T) (*Backend, *fakeHost, *app) {
 	h := newFakeHost(t)
 	theHost = h
 	t.Cleanup(func() { theHost = nil })
@@ -132,7 +141,7 @@ func startBackend(t *testing.T) (*Backend, *fakeHost) {
 	}
 	wait.For(t, "the app to be ready", a.ready)
 	t.Cleanup(b.Quit)
-	return b, h
+	return b, h, a
 }
 
 // onMain runs f on the backend's main thread and waits for it.

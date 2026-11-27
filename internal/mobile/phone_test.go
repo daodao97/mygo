@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/egoist/mygo/internal/mobile/wire"
@@ -442,5 +443,49 @@ func TestResizeRenewsSurface(t *testing.T) {
 			t.Fatalf("android %v: %d renewals after a rotation, want %d", android, n, want)
 		}
 		renewsOnResize = was
+	}
+}
+
+// A change of light or dark that came while the app was in the background
+// with no window to hear it, as the app's own choice in a process Android
+// started without one (an always-on VPN), is told as the app comes back.
+func TestThemeChangedInBackground(t *testing.T) {
+	b, h, a := startBackendApp(t)
+	var dark atomic.Bool
+	h.answer = func(op uint64, r *wire.Reader) []byte {
+		if op != wire.CallTheme {
+			return nil
+		}
+		var w wire.Writer
+		w.Bool(dark.Load())
+		w.Int(0)
+		w.Bool(false)
+		w.Bool(false)
+		w.Bool(false)
+		w.Float(1)
+		return w.Buf
+	}
+	bg := func(on bool) {
+		h.onUI(func() {
+			deliver(encodeEvent(func(wr *wire.Writer) {
+				wr.Uvarint(wire.EventBackground)
+				wr.Bool(on)
+			}), true)
+		})
+		settle(h)
+	}
+	bg(true)
+	dark.Store(true)
+	bg(false)
+	var isDark bool
+	onMain(b, func() { isDark = b.Theme().IsDark() })
+	if !isDark || a.themes.Load() != 1 {
+		t.Fatalf("dark %v, told %d times", isDark, a.themes.Load())
+	}
+	// Coming back with no change tells nothing.
+	bg(true)
+	bg(false)
+	if n := a.themes.Load(); n != 1 {
+		t.Errorf("told %d times", n)
 	}
 }

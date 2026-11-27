@@ -78,15 +78,15 @@ func TestBinaryPlist(t *testing.T) {
 }
 
 func TestPackagingArgs(t *testing.T) {
-	if got := codesignArgs("A.app", "-", "", true); !slices.Equal(got, []string{"--force", "--deep", "--sign", "-", "A.app"}) {
+	if got := codesignArgs("A.app", "-", "", true, true); !slices.Equal(got, []string{"--force", "--deep", "--sign", "-", "A.app"}) {
 		t.Errorf("ad hoc: %q", got)
 	}
-	got := codesignArgs("A.app", "Developer ID Application: X", "e.plist", true)
+	got := codesignArgs("A.app", "Developer ID Application: X", "e.plist", true, true)
 	want := []string{"--force", "--deep", "--sign", "Developer ID Application: X", "--options", "runtime", "--timestamp", "--entitlements", "e.plist", "A.app"}
 	if !slices.Equal(got, want) {
 		t.Errorf("production: %q", got)
 	}
-	if got := codesignArgs("A.app", "Apple Development: X", "", false); slices.Contains(got, "--timestamp") {
+	if got := codesignArgs("A.app", "Apple Development: X", "", false, true); slices.Contains(got, "--timestamp") {
 		t.Errorf("development builds need no timestamp: %q", got)
 	}
 	for _, fs := range []string{"HFS+", "APFS"} {

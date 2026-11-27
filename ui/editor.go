@@ -267,5 +267,11 @@ func (ed *editor) process(c *context, e *node) {
 		rt := c.rt
 		x, y := st.local(rt.pointerX, rt.pointerY)
 		ed.drag(x, y)
+		if a := ed.area; a != nil && a.noWrap && (x < ed.originX || x > ed.originX+ed.contentW) {
+			// Past a side of a text area scrolling sideways, the
+			// selection goes on there frame after frame, as far as the
+			// pointer is out, with the pointer still.
+			rt.animating = true
+		}
 	}
 }

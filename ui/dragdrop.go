@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/egoist/mygo/internal/scene"
+	"github.com/egoist/mygo/internal/text"
 	"github.com/egoist/mygo/transfer"
 )
 
@@ -35,6 +36,9 @@ type valueDrag struct {
 	// count is how many things the value stands for, as rows dragged
 	// (countedDrag), for the badge beside the pointer.
 	count int
+	// label, when set (ListState.DragLabel), is what follows the pointer
+	// in place of a copy of the element.
+	label string
 }
 
 // Drag makes the element the source of value, dragged within the window
@@ -99,8 +103,7 @@ func (e *node) Dragging() bool {
 //	}
 func coreDrop[T any](e *node) (T, bool) {
 	var zero T
-	e.flags |= flagValueDrop
-	e.st.accepts = func(v any) bool { _, ok := v.(T); return ok }
+	e.takes(func(v any) bool { _, ok := v.(T); return ok })
 	if v, ok := e.st.droppedValue.(T); ok && e.st.hasDropped {
 		e.c.rt.consumed = true
 		return v, true
@@ -113,8 +116,7 @@ func coreDrop[T any](e *node) (T, bool) {
 // take it.
 func coreDragOver[T any](e *node) (T, bool) {
 	var zero T
-	e.flags |= flagValueDrop
-	e.st.accepts = func(v any) bool { _, ok := v.(T); return ok }
+	e.takes(func(v any) bool { _, ok := v.(T); return ok })
 	if in := e.c.rt.incoming; in != nil && e.c.rt.dataOver == e.id {
 		v, ok := in.Local.(T)
 		return v, ok
@@ -125,6 +127,18 @@ func coreDragOver[T any](e *node) (T, bool) {
 	}
 	v, ok := d.value.(T)
 	return v, ok
+}
+
+// takes makes e take the values accepts takes, as well as those it took
+// already this pass: one element takes several types, as a folder takes
+// files and a favorite moved among others.
+func (e *node) takes(accepts func(any) bool) {
+	e.flags |= flagValueDrop
+	if prev := e.st.accepts; prev != nil {
+		e.st.accepts = func(v any) bool { return prev(v) || accepts(v) }
+		return
+	}
+	e.st.accepts = accepts
 }
 
 // valueTarget returns the innermost element at (x, y) taking value.
@@ -144,10 +158,10 @@ func (rt *engine) dragMove(x, y float32) {
 	if s == nil || rt.pressButton != 0 {
 		return
 	}
-	var value any
-	count, handed := 0, false
+	var v countedDrag
+	handed := false
 	if !s.drags() {
-		if s, value, count = rt.handPress(x, y); s == nil {
+		if s, v = rt.handPress(x, y); s == nil {
 			return
 		}
 		handed = true
@@ -160,12 +174,12 @@ func (rt *engine) dragMove(x, y float32) {
 			return
 		}
 		if !handed {
-			value, count = s.valueToDrag()
+			v = s.valueToDrag()
 		}
-		if value == nil && s.dataSource == nil {
+		if v.value == nil && s.dataSource == nil {
 			return
 		}
-		d = &valueDrag{src: s.id, value: value, offX: s.pressX, offY: s.pressY, count: count}
+		d = &valueDrag{src: s.id, value: v.value, offX: s.pressX, offY: s.pressY, count: v.n, label: v.label}
 		rt.drag = d
 		if src := s.dataSource; src != nil {
 			d.native = true
@@ -188,7 +202,7 @@ func (rt *engine) dragMove(x, y float32) {
 					done(result)
 				}
 			}
-			if err := rt.host.startDataDrag(src.data(), value, options, x*rt.zoomFactor(), y*rt.zoomFactor()); err != nil {
+			if err := rt.host.startDataDrag(src.data(), v.value, options, x*rt.zoomFactor(), y*rt.zoomFactor()); err != nil {
 				options.Done(transfer.Result{Err: err})
 			}
 			return
@@ -204,25 +218,28 @@ func (rt *engine) dragMove(x, y float32) {
 	rt.requestFrame()
 }
 
-// valueToDrag is the value a press on the element drags, and how many
-// things it stands for: nil for none, as for a row DragRows leaves out.
-func (s *state) valueToDrag() (any, int) {
-	value, count := s.dragValue, 0
+// valueToDrag is the value a press on the element drags, with how many
+// things it stands for and its label: a nil value for none, as for a row
+// DragRows leaves out.
+func (s *state) valueToDrag() countedDrag {
+	value := s.dragValue
 	if s.dragFn != nil {
 		value = s.dragFn()
 	}
 	if c, ok := value.(countedDrag); ok {
-		value, count = c.value, c.n
+		return c
 	}
-	return value, count
+	return countedDrag{value: value}
 }
 
 // countedDrag is a value a source drags with how many things it stands
-// for, as a list's rows or a grid's items: the drag carries the value
-// alone, and shows the number.
+// for, as a list's rows or a grid's items, and what names them
+// (ListState.DragLabel): the drag carries the value alone, and shows the
+// number and the label.
 type countedDrag struct {
 	value any
 	n     int
+	label string
 }
 
 // drags reports whether the element drags a value (Drag, a list's rows,
@@ -259,26 +276,26 @@ func pressDragger(rt *engine, chain []uint64, target *state) uint64 {
 // value it drags, or nil. An element with nothing to drag from there, as
 // a row DragRows leaves out, leaves the element pressed its press, and
 // its click.
-func (rt *engine) handPress(x, y float32) (*state, any, int) {
+func (rt *engine) handPress(x, y float32) (*state, countedDrag) {
 	s, a := rt.pressed, rt.states[rt.pressDragger]
 	if a == nil || rt.drag != nil || !a.drags() {
-		return nil, nil, 0
+		return nil, countedDrag{}
 	}
 	px, py := s.world.Point(s.x+s.pressX, s.y+s.pressY)
 	if dx, dy := x-px, y-py; dx*dx+dy*dy < dragStart*dragStart {
-		return nil, nil, 0
+		return nil, countedDrag{}
 	}
-	value, count := a.valueToDrag()
-	if value == nil && a.dataSource == nil {
+	v := a.valueToDrag()
+	if v.value == nil && a.dataSource == nil {
 		rt.pressDragger = 0
-		return nil, nil, 0
+		return nil, countedDrag{}
 	}
 	rt.pressed, rt.pressDragger = a, 0
 	s.pressed = false
 	a.pressed, a.pressButton, a.pressMods, a.pressPending = true, s.pressButton, s.pressMods, true
 	a.pressX, a.pressY = a.local(px, py)
 	a.drag.reset(rt.now(), px, py)
-	return a, value, count
+	return a, v
 }
 
 // retarget makes the element taking the value dragged under a pointer
@@ -368,7 +385,8 @@ func (rt *engine) dragScroll() {
 }
 
 // paintDrag paints a copy of the element dragging its value under the
-// pointer, above the rest.
+// pointer, above the rest, or the label of the rows a list drags
+// (ListState.DragLabel) beside it.
 func (rt *engine) paintDrag(p *Painter, w, h float32) {
 	d := rt.drag
 	if d == nil || d.canceled || d.native {
@@ -379,6 +397,10 @@ func (rt *engine) paintDrag(p *Painter, w, h float32) {
 		e = d.ghost
 	}
 	if e == nil || e.c == nil {
+		return
+	}
+	if d.label != "" {
+		rt.paintDragLabel(p, e, d, w, h)
 		return
 	}
 	px, py := e.world.Point(e.x+d.offX, e.y+d.offY)
@@ -396,17 +418,7 @@ func (rt *engine) paintDrag(p *Painter, w, h float32) {
 	p.opacity, p.clip, p.theme, e.opacitySet, p.copying = 0.75, Rect{0, 0, w, h}, e.theme(), false, true
 	p.element(e)
 	p.opacity = 1
-	// How many go with it, as several rows dragged.
-	if n := d.count; n > 1 {
-		t := p.Theme()
-		label := Span{Text: itoa(n), Size: t.FontSize - 2, Weight: 600, Color: t.AccentText}
-		tw, th := p.MeasureText(0, label)
-		bw := max(tw+10, th+4)
-		// Beside the pointer, as the copy may be wider than the window.
-		x, y := rt.pointerX+10, rt.pointerY-th-14
-		p.Fill(Rect{x, y, bw, th + 4}, t.Accent, (th+4)/2)
-		p.RichText(x+(bw-tw)/2, y+2, 0, label)
-	}
+	rt.paintDragCount(p, d, nil)
 	p.opacity, p.clip, p.theme, e.opacitySet, p.copying = saved, savedClip, savedTheme, dimmed, copying
 	if affine {
 		restoreVisual(e)
@@ -487,4 +499,59 @@ func shift(e *node, dx, dy float32) {
 	for ch := e.first; ch != nil; ch = ch.next {
 		shift(ch, dx, dy)
 	}
+}
+
+// paintDragCount paints how many go with what is dragged, as several
+// rows: beside the pointer, as the copy may be wider than the window, or
+// with a label (ListState.DragLabel) on its corner, at.
+func (rt *engine) paintDragCount(p *Painter, d *valueDrag, at *Rect) {
+	n := d.count
+	if n <= 1 {
+		return
+	}
+	t := p.Theme()
+	label := Span{Text: itoa(n), Size: t.FontSize - 2, Weight: 600, Color: t.AccentText}
+	tw, th := p.MeasureText(0, label)
+	bw, bh := max(tw+10, th+4), th+4
+	x, y := rt.pointerX+10, rt.pointerY-th-14
+	if at != nil {
+		x, y = max(at.X+at.W-bw/2-2, 0), max(at.Y-bh/2, 0)
+	}
+	p.Fill(Rect{x, y, bw, bh}, t.Accent, bh/2)
+	p.RichText(x+(bw-tw)/2, y+2, 0, label)
+}
+
+// paintDragLabel paints the label of rows a list drags out
+// (ListState.DragLabel) below and to the right of the pointer, clear of
+// its arrow, so that it hides neither the row under the pointer nor its
+// name: on one line, as wide as a tooltip at most. Near the window's
+// right or bottom edge, w by h, it goes to the other side of the pointer,
+// as a tooltip does, rather than over it. Several rows show their number
+// on its corner.
+func (rt *engine) paintDragLabel(p *Painter, e *node, d *valueDrag, w, h float32) {
+	saved := p.theme
+	p.theme = e.theme()
+	t := p.Theme()
+	padX, padY, radius := t.Space(2), t.Space(1.25), t.Space(1.25)
+	// No wider than the window either, and aligned to the left of its
+	// box, which is as wide as the text: right to left text would align
+	// to the right of the width it wraps at, outside the box.
+	m := rt.richSpans(t, max(min(t.Space(80), w-2*padX), t.Space(10)), []Span{{Text: d.label, Size: t.FontSize - 1}})
+	params := m.p
+	params.MaxLines, params.Align = 1, text.Left
+	l := rt.text.Layout(params)
+	r := Rect{rt.pointerX + 14, rt.pointerY + 10, l.Width + 2*padX, l.Height + 2*padY}
+	if r.X+r.W > w {
+		r.X = rt.pointerX - 14 - r.W
+	}
+	if r.Y+r.H > h {
+		r.Y = rt.pointerY - 10 - r.H
+	}
+	r.X, r.Y = max(r.X, 0), max(r.Y, 0)
+	p.Shadow(r, radius, 0, 2, 8, 0, RGBA(0, 0, 0, 0.2))
+	p.Fill(r, t.Surface, radius)
+	p.Stroke(r, t.Border, radius, 1)
+	p.textLayout(l, r.X+padX, r.Y+padY, t.Text, textStyle{size: t.FontSize}, m.paint)
+	rt.paintDragCount(p, d, &r)
+	p.theme = saved
 }

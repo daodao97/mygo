@@ -105,7 +105,10 @@ panics where the second key was given, as apps only log it.
   advance the clock. `Advance` runs only the frames the view asks for:
   after changing what the view shows from outside it, call `tt.Frame`
   first. The undo steps of an `editor.Buffer` and a `richtext.Document`
-  use the system's clock.
+  use the system's clock. The clock starts at the system's time, or at
+  `ui.TesterOptions{Now: t}` given to `NewTesterWith`, the same in every
+  run, so that a drawing that reads the time (`Painter.Now`) draws the
+  same pixels each time.
 
   ```go
   tt := ui.NewTester(app.view, 320, 240)

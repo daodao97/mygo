@@ -35,8 +35,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
-      # GStreamer's plugins play the videos of ui/video's tests.
-      LINUX_PACKAGES: libwebkit2gtk-4.1-0 libayatana-appindicator3-1 xvfb xauth dbus-x11 libgl1-mesa-dri libglx-mesa0 libegl-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
+      # GStreamer's plugins play the videos of ui/video's tests: -bad has
+      # the demuxers of MPEG-TS, MPEG-PS and HLS, and an AV1 decoder, which
+      # TestFormatMatrix plays.
+      LINUX_PACKAGES: libwebkit2gtk-4.1-0 libayatana-appindicator3-1 xvfb xauth dbus-x11 libgl1-mesa-dri libglx-mesa0 libegl-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
     strategy:
       fail-fast: false
       matrix:
@@ -303,12 +305,36 @@ jobs:
       # Zig 0.16's aarch64 Windows build crashes running zig build (the
       # build runner segfaults at once), so this job uses its x86_64
       # build, which Windows runs emulated and which cross-compiles the
-      # arm64 library just the same.
-      - name: Install Zig (x86_64)
+      # arm64 library just the same. Installing it with Invoke-WebRequest
+      # and Expand-Archive took 9 to 17 of the job's 30 minutes, so it is
+      # cached, and a miss downloads it with curl and unpacks it with
+      # Windows' tar (libarchive's, which reads zips), minutes faster.
+      - name: Restore Zig (x86_64)
+        id: zig
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}\zig-x86_64-windows-${{ env.ZIG_VERSION }}
+          key: zig-x86_64-windows-${{ env.ZIG_VERSION }}
+      - name: Download Zig (x86_64)
+        if: steps.zig.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          Invoke-WebRequest "https://ziglang.org/download/$env:ZIG_VERSION/zig-x86_64-windows-$env:ZIG_VERSION.zip" -OutFile "$env:RUNNER_TEMP\zig.zip"
-          Expand-Archive "$env:RUNNER_TEMP\zig.zip" -DestinationPath "$env:RUNNER_TEMP"
+          curl.exe -fsSL --retry 3 -o "$env:RUNNER_TEMP\zig.zip" "https://ziglang.org/download/$env:ZIG_VERSION/zig-x86_64-windows-$env:ZIG_VERSION.zip"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & "$env:SystemRoot\System32\tar.exe" -xf "$env:RUNNER_TEMP\zig.zip" -C "$env:RUNNER_TEMP"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Remove-Item "$env:RUNNER_TEMP\zig.zip"
+      - name: Save Zig (x86_64)
+        if: steps.zig.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}\zig-x86_64-windows-${{ env.ZIG_VERSION }}
+          key: ${{ steps.zig.outputs.cache-primary-key }}
+      - name: Put Zig on the PATH
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP\zig-x86_64-windows-$env:ZIG_VERSION\zig.exe" version
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           "$env:RUNNER_TEMP\zig-x86_64-windows-$env:ZIG_VERSION" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
       # As in the job above. The emulated build takes five or six minutes,
       # and twice it ran past 25, until the job's limit canceled it: one
@@ -344,7 +370,10 @@ jobs:
         if: steps.sqlitecore-cache.outputs.cache-hit == 'true'
         shell: bash
         run: touch "${{ steps.sqlitecore.outputs.path }}"
-      - run: go test ./...
+      # internal/nativegen builds Rust crates and Zig packages, with Zig
+      # emulated here, which takes it seven to eight minutes and, on a slow
+      # runner, past go test's ten: the same tests, more time.
+      - run: go test -timeout 20m ./...
       - name: Test without the inspector, as production builds
         if: runner.os == 'Linux'
         run: go test -tags mygo_noinspector ./ui .
@@ -449,6 +478,18 @@ jobs:
           done
           grep 'roundtrip:' log.txt || true
           grep -q 'roundtrip: PASS$' log.txt
+          echo "SIMULATOR=$udid" >> "$GITHUB_ENV"
+      # ui/video's tests, TestFormatMatrix's iOS column among them, on the
+      # simulator booted above, without an app: the test binary, linked
+      # with Xcode's clang, runs in it as a process of its own.
+      - name: ui/video's tests on the iOS simulator
+        if: runner.os == 'macOS'
+        run: |
+          sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          min="-isysroot $sdk -mios-simulator-version-min=16.0"
+          GOOS=ios GOARCH=arm64 CGO_ENABLED=1 CC="$(xcrun --sdk iphonesimulator --find clang) -arch arm64 $min" \
+            CGO_CFLAGS="$min" CGO_LDFLAGS="$min" go test -c -o "$RUNNER_TEMP/video.test" ./ui/video
+          xcrun simctl spawn "$SIMULATOR" "$RUNNER_TEMP/video.test" -test.v -test.timeout 15m
       - name: Enable KVM
         if: runner.os == 'Linux'
         run: |

@@ -497,6 +497,30 @@ func TestCodeEditorMultiCursor(t *testing.T) {
 	ct.want("[a] b [a] c [a]")
 }
 
+// A columnar selection (Alt+Shift drag) goes on as the wheel scrolls the
+// view under the held pointer, to the lines that come under it.
+func TestCodeEditorColumnSelectWheel(t *testing.T) {
+	ct := newEditorTest(t, "", strings.Repeat("abcdefghij\n", 200))
+	ed := &ct.st.ed
+	lh := ed.view.lineHeight
+	x0, x1 := ed.textX+ed.view.charWidth*2, ed.textX+ed.view.charWidth*5
+	ed.input(ui.InputEvent{Kind: ui.InputPointerDown, X: x0, Y: lh / 2, Mods: ui.Alt | ui.Shift, Clicks: 1})
+	ed.input(ui.InputEvent{Kind: ui.InputPointerMove, X: x1, Y: lh*3 + lh/2})
+	if n := len(ed.sels); n != 4 {
+		t.Fatalf("dragged over 4 lines, selected %d", n)
+	}
+	ed.input(ui.InputEvent{Kind: ui.InputScroll, DY: lh * 2})
+	ed.input(ui.InputEvent{Kind: ui.InputPointerUp, X: x1, Y: lh*3 + lh/2})
+	if n := len(ed.sels); n != 6 {
+		t.Fatalf("after scrolling 2 lines, %d selected, want 6", n)
+	}
+	for _, s := range ed.sels {
+		if s.end()-s.start() != 3 {
+			t.Fatalf("selection %+v isn't the 3 columns dragged over", s)
+		}
+	}
+}
+
 func TestCodeEditorLines(t *testing.T) {
 	ct := newEditorTest(t, "go", "one\ntw|o\nthree")
 	ct.key(ui.Alt, ui.KeyUp)
@@ -702,6 +726,38 @@ func TestCodeEditorComposition(t *testing.T) {
 	ct.want("a日本|b\nc日本|d")
 	ct.key(ui.Cmd, ui.KeyZ)
 	ct.want("a|b\nc|d")
+}
+
+// A composition the input method cancels leaves no step behind: the
+// first Cmd+Z takes back the edit before it.
+func TestCodeEditorCompositionCancelLeavesNoUndoStep(t *testing.T) {
+	ct := newEditorTest(t, "", "|")
+	ct.typ("a")
+	ct.tt.Compose("に", 1)
+	ct.tt.Compose("", 0)
+	ct.want("a|")
+	ct.key(ui.Cmd, ui.KeyZ)
+	ct.want("|")
+
+	// Over a selection, the composition took the text away, which Undo
+	// puts back.
+	ct = newEditorTest(t, "", "a[bc]|\nd|")
+	ct.tt.Compose("に", 1)
+	ct.tt.Compose("", 0)
+	ct.want("a|\nd|")
+	ct.key(ui.Cmd, ui.KeyZ)
+	ct.want("a[bc]\nd|")
+
+	// A committed composition's step lets go of the text it found.
+	ct = newEditorTest(t, "", "a|")
+	ct.tt.Compose("に", 1)
+	ct.tt.Type("日")
+	ct.want("a日|")
+	if u := ct.st.Buffer.undo; len(u) != 1 || !u[0].before.Same(rope.Text{}) || !u[0].beforeEnds.Same(rope.Text{}) {
+		t.Fatalf("a committed composition keeps the text it found: %d steps", len(u))
+	}
+	ct.key(ui.Cmd, ui.KeyZ)
+	ct.want("a|")
 }
 
 // Enter while an input method composes is its own, as choosing a

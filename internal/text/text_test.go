@@ -2,14 +2,17 @@ package text
 
 import (
 	"image"
+	"maps"
 	"math"
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode"
 	"unicode/utf16"
+	"weak"
 
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/wait"
@@ -2110,6 +2113,134 @@ func TestFontOfKeptLayoutOutlivesFlush(t *testing.T) {
 		s.EndFrame()
 		return e.released[native]
 	})
+}
+
+// closingEngine is a releasingEngine that closes, as the system's engines
+// do (engineCloser), recording in rec, which the cleanup goroutines that
+// close it and release its fonts write.
+type closingEngine struct {
+	releasingEngine
+	rec *closeRecord
+}
+
+type closeRecord struct {
+	mu       sync.Mutex
+	closed   bool
+	closes   int
+	released map[uintptr]bool
+}
+
+func (r *closeRecord) release(native uintptr) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.released[native] = true
+}
+
+func (r *closeRecord) read() (closed bool, released map[uintptr]bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.closed, maps.Clone(r.released)
+}
+
+func (e *closingEngine) releaseFonts() { e.releaseDead(e.rec.release) }
+
+func (e *closingEngine) close() {
+	e.forgetFonts()
+	e.closeFonts(e.rec.release)
+	e.rec.mu.Lock()
+	e.rec.closed = true
+	e.rec.closes++
+	e.rec.mu.Unlock()
+}
+
+// TestSystemCloseClosesEngineAtOnce closes a System New made, as package
+// ui does with the text systems of ended Testers it doesn't keep: its
+// engine closes as CloseEngine returns, on the caller's goroutine, and once
+// however many times CloseEngine is called.
+func TestSystemCloseClosesEngineAtOnce(t *testing.T) {
+	rec := &closeRecord{released: map[uintptr]bool{}}
+	s := New()
+	s.start(&closingEngine{rec: rec})
+	s.Layout(Params{Text: "Hi", Style: Style{Size: 13}})
+	s.CloseEngine()
+	if closed, _ := rec.read(); !closed {
+		t.Fatal("the engine didn't close as CloseEngine returned")
+	}
+	s.CloseEngine()
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if rec.closes != 1 {
+		t.Fatalf("the engine closed %d times; want once", rec.closes)
+	}
+}
+
+// TestNewSystemClosesEngine drops a System New made, as a Tester's
+// window does (#1902): its engine closes once the System is unreachable,
+// and the native fonts of its Fonts go with it, or once nothing refers to
+// them, those it forgot before as those it held; a layout kept past the
+// System keeps its Font's until it goes too.
+func TestNewSystemClosesEngine(t *testing.T) {
+	rec := &closeRecord{released: map[uintptr]bool{}}
+	var kept *Layout
+	var made int
+	func() {
+		s, e := New(), &closingEngine{rec: rec}
+		s.start(e)
+		defer func() { made = int(e.made) }()
+		kept = s.Layout(Params{Text: "Kept", Style: Style{Size: 13}})
+		for i := 0; e.fontCount() <= maxFonts; i++ {
+			s.Layout(Params{Text: "Hi", Style: Style{Size: 20 + float32(i)/10}})
+		}
+		s.EndFrame()
+		// A font the engine holds as it closes.
+		s.Layout(Params{Text: "Held", Style: Style{Size: 14}})
+	}()
+	native := kept.Lines[0].Glyphs[0].Font.native
+	wait.Until(t, "the engine of the unreachable System closed", func() bool {
+		runtime.GC()
+		closed, _ := rec.read()
+		return closed
+	})
+	wait.Until(t, "the fonts nothing refers to released", func() bool {
+		runtime.GC()
+		_, released := rec.read()
+		return len(released) == made-1
+	})
+	if _, released := rec.read(); released[native] {
+		t.Fatal("the font of the layout kept past its System was released")
+	}
+	runtime.KeepAlive(kept)
+	wait.Until(t, "the kept layout's font released", func() bool {
+		runtime.GC()
+		_, released := rec.read()
+		return released[native]
+	})
+}
+
+// TestNewSystemsUnreachable drops Systems New made that laid out text and
+// rasterized glyphs with the system's engine: each becomes unreachable,
+// and its cleanup closes the engine, which must not refer to it (#1902);
+// a layout kept past its System keeps its Fonts.
+func TestNewSystemsUnreachable(t *testing.T) {
+	var systems []weak.Pointer[System]
+	var kept []*Layout
+	for range 8 {
+		s := New()
+		l := s.Layout(Params{Text: "Hello, world", Style: Style{Size: 13}})
+		g := l.Lines[0].Glyphs[0]
+		s.Glyph(g.Font, g.ID, 2, 0, 0, false)
+		systems = append(systems, weak.Make(s))
+		kept = append(kept, l)
+	}
+	wait.Until(t, "the Systems New made unreachable", func() bool {
+		runtime.GC()
+		return !slices.ContainsFunc(systems, func(w weak.Pointer[System]) bool { return w.Value() != nil })
+	})
+	for _, l := range kept {
+		if f := l.Lines[0].Glyphs[0].Font; f == nil || f.Ascent <= 0 {
+			t.Fatalf("the font of a layout kept past its System is %+v", f)
+		}
+	}
 }
 
 // TestPlacement checks that glyphs go to the positions within a pixel the

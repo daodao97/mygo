@@ -379,8 +379,9 @@ theme follows and a frame follows the changes of:
   (lighter in the dark), and the focus ring opaque.
 - **`TextScale`.** Windows's and GNOME's text size: `FontSize` is that many
   times larger.
-- **`ReduceMotion`.** macOS's Reduce Motion, Windows's animation effects and
-  GNOME's animations turned off: `Animate` goes to its target at once.
+- **`ReduceMotion`.** macOS's Reduce Motion, Windows's animation effects,
+  GNOME's animations turned off and KDE's Instant animation speed:
+  `Animate` goes to its target at once.
 - **`Pointer`, `AnyPointer`, `Hover()` and `AnyHover()`.** What the
   pointing devices can do, as Media Queries 4's `pointer`, `any-pointer`,
   `hover` and `any-hover`: `Pointer` is how accurately the primary one

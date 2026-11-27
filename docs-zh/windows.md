@@ -36,6 +36,7 @@ mygo.NewWindow(mygo.WindowOptions{Title: "Inspector", Content: ui.View(app.view)
 | `Content` | 显示 MyGo 绘制的[原生 UI](ui/README.md)，而不是页面 |
 | `Width`, `Height` | 窗口的尺寸；使用 `UseContentSize` 时则是其所显示内容的尺寸 |
 | `X`, `Y` | 左上角；两者都为 0 时窗口居中 |
+| `Position` | 左上角，0, 0 也按原样放置：窗口不会居中，并忽略 `X`、`Y` |
 | `MinWidth`, `MinHeight`, `MaxWidth`, `MaxHeight` | 调整大小的限制；0 表示没有限制 |
 | `FitContent` | 按页面内容的大小设置页面区域，并在上面的限制内跟随它，如同[浮出窗口](#让浮出窗口适应其内容) |
 | `StateKey` | 在此键下记住窗口的边界和状态，见[下文](#记住窗口的位置) |
@@ -595,6 +596,10 @@ mygo.NewWindow(mygo.WindowOptions{
 | Windows | 触摸屏上的滑动（`IsSwipeNavigationEnabled`） | 触摸屏的捏合（`IsPinchZoomEnabled`）；没有 `ICoreWebView2Settings5` 的 WebView2 Runtime 总是缩放 |
 
 WebKitGTK 和 WebView2 默认开启捏合，WebView2 还默认开启滑动：除非页面要求，MyGo 会关闭它们。
+
+### 表单自动填充
+
+WebView2 会记住输入到页面字段里的内容，并在字段聚焦时给出建议。MyGo 会关掉这项（`ICoreWebView2Settings4` 的 `IsGeneralAutofillEnabled`），因为 WKWebView 和 WebKitGTK 不保留表单历史。这个设置属于会话，所以同一个会话里的每个页面都是关着的，窗口页面和 [web view](ui/web-view.md) 页面都一样。没有 Settings4 的 WebView2 Runtime（1.0.902.49 之前）保持它自己的行为，即开启。密码保存保持关闭，这已经是 WebView2 的默认值。
 
 ### 用户的缩放
 

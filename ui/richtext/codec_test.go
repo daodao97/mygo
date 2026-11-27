@@ -179,6 +179,27 @@ func TestParseRTF(t *testing.T) {
 	}
 }
 
+// TestRTFListTable checks that the list tables TextEdit writes before the
+// text make no paragraph an item: only the paragraphs that say \\ls are.
+func TestRTFListTable(t *testing.T) {
+	rtf := `{\rtf1\ansi\ansicpg1252\cocoartf2908
+{\fonttbl\f0\froman\fcharset0 Times-Roman;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}}
+\pard\pardeftab720\sa240\partightenfactor0
+\f0\fs24 \cf0 Title\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls1\ilvl0\cf0 {\listtext	\uc0\u8226 	}item\
+}`
+	var got []string
+	for _, p := range ParseRTF([]byte(rtf)).Paragraphs() {
+		got = append(got, fmt.Sprintf("%d:%s", p.Style.List, plainOf(p)))
+	}
+	if want := "0:Title|1:item"; strings.Join(got, "|") != want {
+		t.Errorf("got %q, want %q", strings.Join(got, "|"), want)
+	}
+}
+
 // TestMarkdownEscapes checks that what Markdown would read as more than
 // text stays text: block starts in items and headings, a heading's
 // closing #s, indentation, entities, images and backticks in code.
@@ -318,12 +339,26 @@ func TestHTMLBlankParagraphs(t *testing.T) {
 	blank := Paragraph{}
 	a := Paragraph{Runs: []Run{{Text: "a"}}}
 	b := Paragraph{Runs: []Run{{Text: "b"}}}
+	code := Paragraph{Style: ParagraphStyle{CodeBlock: true}}
+	x := Paragraph{Style: ParagraphStyle{CodeBlock: true}, Runs: []Run{{Text: "x"}}}
+	task := Paragraph{Style: ParagraphStyle{List: Tasks}}
 	for _, in := range []Text{
 		TextOf(a, blank, b),
 		TextOf(a, blank, blank, blank, b),
 		TextOf(blank, a),
 		TextOf(a, Paragraph{Style: ParagraphStyle{Heading: 2}}, b),
 		TextOf(a, Paragraph{Style: ParagraphStyle{Quote: true}}, b),
+		TextOf(a, code, b),
+		TextOf(x, code, b),
+		TextOf(a, x, code),
+		TextOf(code),
+		TextOf(Paragraph{Style: ParagraphStyle{Heading: 1}, Runs: []Run{{Text: "a"}}}, task),
+		TextOf(a, task),
+		TextOf(a, b, Paragraph{Style: ParagraphStyle{List: Bullets}}),
+		TextOf(a, Paragraph{Style: ParagraphStyle{List: Numbers}}),
+		TextOf(a, Paragraph{Style: ParagraphStyle{List: Tasks, Checked: true, Indent: 1}}),
+		TextOf(Paragraph{Style: ParagraphStyle{List: Bullets}, Runs: []Run{{Text: "a"}}}, Paragraph{Style: ParagraphStyle{List: Bullets}},
+			Paragraph{Style: ParagraphStyle{List: Bullets}, Runs: []Run{{Text: "b"}}}),
 	} {
 		html := in.HTML()
 		out := ParseHTML(html)

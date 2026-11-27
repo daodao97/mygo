@@ -18,6 +18,14 @@ func call(fn uintptr, args ...uintptr) uintptr {
 	return r
 }
 
+// callv calls fn with args, which the caller keeps and fills: a call of
+// discrete arguments builds its variadic slice anew at every call, which
+// a read made for every row of every frame need not. As with call, what
+// the pointers among args name must outlive it.
+func callv(fn uintptr, args []uintptr) uintptr {
+	return call(fn, args...)
+}
+
 func registerFunc(fptr any, addr uintptr) { purego.RegisterFunc(fptr, addr) }
 
 func newCallback(fn any) uintptr { return purego.NewCallback(fn) }

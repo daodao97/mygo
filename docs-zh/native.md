@@ -249,7 +249,7 @@ p.TextScale          // how many times larger text should be; 1 is the usual siz
 
 强调色是带非预乘 alpha 的 8 位 sRGB；`ui.RGB(p.Accent.R, p.Accent.G, p.Accent.B)` 把它变成 `ui.Color`，供你自己的绘制使用。
 
-`ReduceMotion` 对应 macOS 的“减弱动态效果”、Windows 关闭动画效果，以及 GNOME 关闭动画；`ReduceTransparency` 对应 macOS 的“降低透明度”和 Windows 关闭透明效果——Linux 桌面没有这些，因此在那里为 false；`HighContrast` 对应 macOS 的“增强对比度”、Windows 的对比度主题，以及 Linux 上设置门户提供的更高对比度（或 HighContrast GTK 主题）。macOS 没有文本缩放，因此那里的 `TextScale` 为 1。在设置门户不提供强调色的 Linux 桌面上，以及浏览器中，没有强调色。
+`ReduceMotion` 对应 macOS 的“减弱动态效果”、Windows 关闭动画效果、GNOME 关闭动画，以及 KDE 的动画速度设为“即时”（设置门户的减少动效）；`ReduceTransparency` 对应 macOS 的“降低透明度”和 Windows 关闭透明效果——Linux 桌面没有这些，因此在那里为 false；`HighContrast` 对应 macOS 的“增强对比度”、Windows 的对比度主题，以及 Linux 上设置门户提供的更高对比度（或 HighContrast GTK 主题）。macOS 没有文本缩放，因此那里的 `TextScale` 为 1。在设置门户不提供强调色的 Linux 桌面上，以及浏览器中，没有强调色。
 
 `Theme.OnUpdated` 在桌面改变其中任何一项时触发，调用 `SetSource` 时也是如此。读取这些设置可能需要请求桌面（Linux 上是设置门户），因此 MyGo 只读取一次，并一直保留到下次变化。包 `ui` 的默认主题已经会跟随强调色、对比度和文本缩放，`Animate` 则跟随减弱动态效果。与其他需要应用正在运行的调用一样，在 `App.Run` 之前的 `main` 中调用 `Preferences` 会 panic；从其他 goroutine 调用则会等待应用启动。
 

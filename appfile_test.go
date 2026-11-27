@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-	"time"
 )
 
 // TestAppFileReadDoesNotBlockReplace: a file of the app, open as
@@ -41,7 +40,8 @@ func TestAppFileReadDoesNotBlockReplace(t *testing.T) {
 
 // TestAppFileInUse: a file of the app that another program has open, as
 // antivirus software scanning it, is replaced once it lets go, and read
-// while it is being replaced.
+// while it is being replaced. Nothing here depends on timing: the scan
+// ends in the replace's wait for a retry, not on a timer.
 func TestAppFileInUse(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("only Windows keeps open files from being replaced")
@@ -56,13 +56,20 @@ func TestAppFileInUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.Close() })
-	time.AfterFunc(500*time.Millisecond, func() { f.Close() })
+	wait := inUseWait
+	defer func() { inUseWait = wait }()
+	waits := 0
+	inUseWait = func(int) { waits++; f.Close() } // the scan ends
 	if err := writeAppFile(path, func(w io.Writer) error { _, err := io.WriteString(w, "new"); return err }); err != nil {
 		t.Fatal(err)
+	}
+	if waits == 0 {
+		t.Error("the file another program had open was replaced at once")
 	}
 	if b, err := readAppFile(path); err != nil || string(b) != "new" {
 		t.Errorf("read %q, %v after the replace", b, err)
 	}
+	inUseWait = wait
 	// Reads while it is replaced over and over.
 	done := make(chan struct{})
 	go func() {

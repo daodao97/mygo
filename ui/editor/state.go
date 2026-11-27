@@ -382,6 +382,13 @@ func (st *State) LineTop(line int) float64 {
 	return st.ed.view.heights.top(line)
 }
 
+// TextX returns where the text starts in the editor's box, right of the
+// gutter, in DIPs, as the last frame laid it out. Unlike a Rect, it stays
+// as the text scrolls sideways: what belongs to a line rather than to a
+// place in it, as a mark beside its number, is drawn left of TextX at the
+// Y of the line's Rect.
+func (st *State) TextX() float32 { return st.ed.textX }
+
 // Rect returns where the caret at byte offset off shows, in DIPs from the
 // top left of the editor's box, as the last frame laid it out, and whether
 // its line shows: a line a fold hides doesn't. It is as high as a row; the

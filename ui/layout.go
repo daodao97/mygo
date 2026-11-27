@@ -1397,9 +1397,9 @@ func byBaselineItem(c *node, self Align, e *node, autoCross bool) bool {
 
 // boxBaseline returns how far below the top of an element laid out its
 // first baseline is, as CSS's: that of its first line of text, or that of
-// its first child (in a row, of the first child aligned by its baseline),
-// which a child without one takes from its bottom; false for an element
-// with neither text nor children.
+// its first child (in a row, of the first child aligned by its baseline
+// or marked baseline), which a child without one takes from its
+// bottom; false for an element with neither text nor children.
 func boxBaseline(e *node) (float32, bool) {
 	switch e.kind {
 	case kindText:
@@ -1432,7 +1432,7 @@ func boxBaseline(e *node) (float32, bool) {
 		if !e.row || e.grid {
 			break
 		}
-		if byBaseline(ch, align, e) {
+		if byBaseline(ch, align, e) || ch.baseline {
 			first = ch
 			break
 		}

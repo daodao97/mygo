@@ -238,10 +238,17 @@ func (up *Update) Install(ctx context.Context, progress func(downloaded, total i
 	if err := installUpdate(ctx, get, up.manifest, up.key, up.current, target, progress); err != nil {
 		return fmt.Errorf("mygo: installing the update: %w", err)
 	}
-	if runtime.GOOS == "linux" {
+	switch runtime.GOOS {
+	case "linux":
 		// install.sh registered the desktop entry of the version it installed.
 		if err := update.RefreshDesktopEntry(target, filepath.Base(startExe)); err != nil {
 			log.Printf("mygo: registering the desktop entry of the update: %v", err)
+		}
+	case "windows":
+		// The installer registered the version it installed in Settings > Apps.
+		info, _ := packageInfo()
+		if err := update.RefreshUninstallEntry(target, info.Identifier, up.Version); err != nil {
+			log.Printf("mygo: registering the version of the update in Settings > Apps: %v", err)
 		}
 	}
 	return nil

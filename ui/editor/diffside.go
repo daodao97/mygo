@@ -82,20 +82,29 @@ func (s *diffSide) lineStyle(line int) lineLook {
 	if s.old {
 		side = DiffOld
 	}
-	if d.hasSel && d.selected.Side == side && line >= d.selected.Start && line <= d.selected.End {
-		m := ed.theme.Modified
-		bg := st.bg
-		if bg.A == 0 {
-			bg = ed.theme.Background
-		}
-		st.bg = mixLab(bg, m, 0.18)
-		g := st.gutter
-		if g.A == 0 {
-			g = ed.theme.Background
-		}
-		st.gutter = mixLab(g, m, 0.3)
-		st.number = m
+	return s.selectedLook(ed, side, line, st)
+}
+
+// selectedLook returns st tinted as a line selected by its number
+// (LineSelection) when the line of side is, or else st: a line of a
+// side's text, or a deleted line of a unified view.
+func (s *diffSide) selectedLook(ed *editor, side DiffSide, line int, st lineLook) lineLook {
+	d := s.d
+	if !d.hasSel || d.selected.Side != side || line < d.selected.Start || line > d.selected.End {
+		return st
 	}
+	m := ed.theme.Modified
+	bg := st.bg
+	if bg.A == 0 {
+		bg = ed.theme.Background
+	}
+	st.bg = mixLab(bg, m, 0.18)
+	g := st.gutter
+	if g.A == 0 {
+		g = ed.theme.Background
+	}
+	st.gutter = mixLab(g, m, 0.3)
+	st.number = m
 	return st
 }
 
@@ -219,9 +228,16 @@ func (s *diffSide) paintDeleted(p *ui.Painter, ed *editor, b *block, r ui.Rect) 
 		}
 	}
 	for _, pl := range lines {
+		look := lineLook{number: dc.deleted}
 		if !d.NoBackground {
-			p.Fill(ui.Rect{X: text.X, Y: pl.y, W: text.W, H: pl.h}, dc.deletedLine, 0)
-			p.Fill(ui.Rect{X: r.X, Y: pl.y, W: ed.gutterW, H: pl.h}, dc.deletedGutter, 0)
+			look.bg, look.gutter = dc.deletedLine, dc.deletedGutter
+		}
+		look = s.selectedLook(ed, DiffOld, pl.line, look)
+		if look.bg.A != 0 {
+			p.Fill(ui.Rect{X: text.X, Y: pl.y, W: text.W, H: pl.h}, look.bg, 0)
+		}
+		if look.gutter.A != 0 {
+			p.Fill(ui.Rect{X: r.X, Y: pl.y, W: ed.gutterW, H: pl.h}, look.gutter, 0)
 		}
 		if !d.NoLineNumbers {
 			n := pl.line + 1
@@ -232,7 +248,7 @@ func (s *diffSide) paintDeleted(p *ui.Painter, ed *editor, b *block, r ui.Rect) 
 			lay := ed.view.shaped.get(num, ed.view.style)
 			nr := rowLayout{pieces: []rowPiece{{to: len(num), l: lay, ascii: true, width: lay.Width}}, to: len(num)}
 			var nc runColors
-			col := dc.deleted
+			col := look.number
 			ed.view.paintRow(p, &lineLayout{disp: num}, &nr, r.X+ed.gutterW-4-ed.view.charWidth*0.5-lay.Width, pl.y, &nc, func(int, ui.Color) ui.Color { return col })
 		}
 		if d.Indicators == DiffBars {
@@ -296,11 +312,7 @@ func (s *diffSide) blockInput(ed *editor, b *block, ev ui.InputEvent, r ui.Rect)
 		case blockDeleted:
 			// Lines of the old text: their numbers select them.
 			if ev.X < ed.gutterW && d.LineSelection && ev.Kind == ui.InputPointerDown {
-				// The line by the tops of the lines, its annotations its own.
-				tops := d.deletedTops[b.hunk]
-				i := sort.Search(len(tops), func(i int) bool { return tops[i] > float64(ev.Y-r.Y) })
-				line := b.from + min(max(i-1, 0), b.to-b.from-1)
-				d.selectLine(DiffOld, line, ev.Mods&ui.Shift != 0)
+				s.pressLine(ed, DiffOld, d.deletedLineAt(b, float64(ev.Y-r.Y)), ev.Mods)
 				return true
 			}
 			return true
@@ -314,10 +326,42 @@ func (s *diffSide) blockInput(ed *editor, b *block, ev ui.InputEvent, r ui.Rect)
 	_, cy := ed.toContent(ev.X, ev.Y)
 	line := ed.view.heights.lineAt(cy)
 	if d.LineSelection && !s.empty() {
-		d.selectLine(side, line, ev.Mods&ui.Shift != 0)
+		s.pressLine(ed, side, line, ev.Mods)
 		return true
 	}
 	return false
+}
+
+// pressLine selects the line whose number is pressed, or extends the
+// selection to it with Shift, and has the drag that follows select the
+// lines it goes over (dragLine).
+func (s *diffSide) pressLine(ed *editor, side DiffSide, line int, mods ui.Modifiers) {
+	d := s.d
+	d.selectLine(side, line, mods&ui.Shift != 0)
+	if d.hasSel {
+		ed.startDrag(func(_ float32, cy float64) { s.dragLine(ed, cy) })
+	}
+}
+
+// dragLine extends the lines selected to the line at height y of the
+// content: a deleted line of a unified view, or a line of the side's
+// text. Blocks that hold no line, as annotations, leave them be.
+func (s *diffSide) dragLine(ed *editor, y float64) {
+	d := s.d
+	if b, r, ok := ed.blockAt(y); ok {
+		if b.kind == blockDeleted {
+			d.dragLine(DiffOld, d.deletedLineAt(b, y-ed.scrollY-float64(r.Y)))
+		}
+		return
+	}
+	if s.empty() {
+		return
+	}
+	side := DiffNew
+	if s.old {
+		side = DiffOld
+	}
+	d.dragLine(side, ed.view.heights.lineAt(y))
 }
 
 // buildBlocks builds what blocks hold of elements in view: annotations,

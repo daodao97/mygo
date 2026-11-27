@@ -147,3 +147,75 @@ func TestPartialFramesApart(t *testing.T) {
 		})
 	}
 }
+
+// TestUnchangedFramesDrawNothing checks that a renderer drawing frames
+// whole into buffers that keep nothing, as an EGL window surface's on
+// Android, draws nothing for a frame the same as the last one, leaving the
+// framebuffer as it was so the surface is not swapped and keeps showing
+// the last frame drawn (Unchanged), and that what shows is always the
+// frame drawn whole; after Invalidate it draws (#2339).
+func TestUnchangedFramesDrawNothing(t *testing.T) {
+	for _, api := range apis {
+		t.Run(api.name, func(t *testing.T) {
+			read := offscreen(t, api.es, 320, 240)
+			m := gputest.NewChanging(3)
+			s := m.Scene()
+			r, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Release()
+			r.Unchanged = true
+			whole, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer whole.Release()
+			// shown is what the surface shows: the last frame drawn.
+			var shown []byte
+			drew := 0
+			for step := range 16 {
+				what := "first"
+				switch {
+				case step%4 == 1:
+					what = "the same"
+				case step%4 == 3:
+					what = "the same, invalidated"
+					r.Invalidate()
+				case step > 0:
+					what = m.Change(s)
+				}
+				// The buffer drawn into holds what no frame draws.
+				glClearColor(1, 0, 1, 1)
+				glClear(glColorBufferBit)
+				before := read()
+				if err := r.Render(s); err != nil {
+					t.Fatal(err)
+				}
+				got := read()
+				switch {
+				case r.Drew():
+					drew++
+					shown = got
+				case !bytes.Equal(got, before):
+					t.Fatalf("step %d (%s): drew into the framebuffer, though Drew says not", step, what)
+				case step == 0 || step%4 == 3:
+					// A change may change nothing that shows; these must draw.
+					t.Fatalf("step %d (%s): drew nothing", step, what)
+				}
+				if step%4 == 1 && r.Drew() {
+					t.Fatalf("step %d (%s): drew the frame again", step, what)
+				}
+				if err := whole.Render(s); err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(shown, read()) {
+					t.Fatalf("step %d (%s): what shows differs from the frame drawn whole", step, what)
+				}
+			}
+			if drew > 12 {
+				t.Errorf("drew %d frames of 16", drew)
+			}
+		})
+	}
+}

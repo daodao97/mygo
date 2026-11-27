@@ -1766,6 +1766,9 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		clip = rt.lift()
 	}
 	s.x, s.y, s.w, s.h = e.x, e.y, e.w, e.h
+	// Its own text cut, unless hidden; text inside it adds to it as it
+	// commits below.
+	s.truncated = e.kind == kindText && e.tl != nil && e.tl.Truncated && !rt.commitHidden
 	if e.parent != nil {
 		s.parent = e.parent.id
 	} else {
@@ -1970,6 +1973,12 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	}
 	if lifting {
 		rt.lift()
+	}
+	if s.truncated && e.parent != nil && e != e.c.overlay {
+		// Text cut inside the element, as a button's label, cuts its own
+		// (Truncated); an overlay's popups are no part of what they are
+		// attached to.
+		e.parent.st.truncated = true
 	}
 	e.setInk(vis)
 	if e.hidden {

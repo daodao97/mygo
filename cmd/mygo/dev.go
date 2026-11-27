@@ -87,6 +87,7 @@ keep it: the app's own setting is left as it is.`)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	con.startBanner("dev")
 	s := &devSession{root: c.root, sign: *sign, name: devConfig(c).Name, env: []string{"MYGO_ENV=development"}}
 	switch *platform {
 	case "":
@@ -129,7 +130,6 @@ keep it: the app's own setting is left as it is.`)
 		os.Exit(130)
 	}()
 
-	con.startBanner("dev")
 	// The accessors of the catalogs and the TypeScript client come first:
 	// the app and the frontend import them.
 	if err := generateI18n(c); err != nil {
@@ -237,6 +237,7 @@ func devSign(c *Config, sign string) string {
 	if runtime.GOOS != "darwin" || c.MacOS.ProvisioningProfile != "" {
 		return "-"
 	}
+	t := con.start("Finding the signing identity")
 	out, _ := exec.Command("security", "find-identity", "-v", "-p", "codesigning").Output()
 	team := signingTeam(c.MacOS.SigningIdentity)
 	var teams map[string]string
@@ -246,10 +247,11 @@ func devSign(c *Config, sign string) string {
 	}
 	hash, name := developmentIdentity(string(out), teams, team)
 	if hash == "" {
+		t.stop()
 		warnf("Signing the development app ad hoc: macOS asks again for its permissions and Keychain items after each build. An Apple Development certificate keeps them; Xcode makes one for an Apple ID, free, in Settings > Accounts > Manage Certificates")
 		return "-"
 	}
-	logf("Signing the development app as %s", name)
+	t.done("Signing the development app as " + identityKind(name))
 	return hash
 }
 
@@ -580,12 +582,15 @@ func devHelp() string {
 // devConfig configures the development app: "<Name> Dev" with the
 // identifier "<identifier>.dev", so that its data, preferences and single
 // instance lock stay apart from the production app's, and the icon's -dev
-// sibling for its icon, when there is one, to tell it from the app's.
+// sibling for its icon, when there is one, to tell it from the app's. It
+// carries no macOS app extensions, which the system would offer a second
+// copy of.
 func devConfig(c *Config) *Config {
 	d := *c
 	d.deps = nil // a build of its own, which lists its packages anew
 	d.Name += " Dev"
 	d.Identifier += ".dev"
+	d.MacOS.Extensions = nil
 	if d.Slug != "" {
 		d.Slug += "-dev"
 	}

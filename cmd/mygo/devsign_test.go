@@ -26,6 +26,18 @@ func TestDevelopmentIdentity(t *testing.T) {
 	}
 }
 
+func TestIdentityKind(t *testing.T) {
+	for in, want := range map[string]string{
+		"Apple Development: Jane Doe (AAAA)":         "Apple Development",
+		"Apple Development: jane@example.com (BBBB)": "Apple Development",
+		"Mac Developer: Jane Doe (OLD)":              "Mac Developer",
+	} {
+		if got := identityKind(in); got != want {
+			t.Errorf("identityKind(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestSigningTeam(t *testing.T) {
 	for in, want := range map[string]string{
 		"Developer ID Application: Jane Doe (AAAA)": "AAAA",

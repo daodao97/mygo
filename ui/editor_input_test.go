@@ -102,6 +102,46 @@ func TestWidgetCompositionCancel(t *testing.T) {
 	}
 }
 
+// A cancelled composition changed nothing: undo takes back the edit
+// before it at once, not a step of its own that changes nothing.
+func TestWidgetCompositionCancelLeavesNoUndoStep(t *testing.T) {
+	for _, multiline := range []bool{false, true} {
+		s := "さくら"
+		tt := inputTester(&s, multiline)
+		c := tt.h.ime.Client
+		var order platform.InputComposition
+		tt.Type("!")
+		c.SetMarkedText(nil, "にほｎ", TextInputRange{Start: 3, End: 3})
+		tt.Frame()
+		order.Cancel(c)
+		order.End(c)
+		tt.Frame()
+		tt.Key(Cmd, KeyZ)
+		if s != "さくら" {
+			t.Fatalf("multiline %v: undo after a cancelled composition: %q", multiline, s)
+		}
+		tt.Key(Cmd|Shift, KeyZ)
+		if s != "さくら!" {
+			t.Fatalf("multiline %v: redo: %q", multiline, s)
+		}
+		tt.rt.close()
+
+		// With nothing before it, Undo has nothing to take back.
+		s = "さくら"
+		tt = inputTester(&s, multiline)
+		c = tt.h.ime.Client
+		c.SetMarkedText(nil, "にほｎ", TextInputRange{Start: 3, End: 3})
+		tt.Frame()
+		order.Cancel(c)
+		order.End(c)
+		tt.Frame()
+		if tt.rt.event(platform.SurfaceEvent{Kind: platform.SurfaceCommandEnabled, Text: "undo"}) {
+			t.Errorf("multiline %v: Undo is enabled after a cancelled composition alone", multiline)
+		}
+		tt.rt.close()
+	}
+}
+
 func TestWidgetInputPrivacyAndReadonly(t *testing.T) {
 	s := "secret😀"
 	readonly := false

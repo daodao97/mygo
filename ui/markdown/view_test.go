@@ -43,6 +43,16 @@ func TestViewLinks(t *testing.T) {
 	}
 }
 
+// TestViewFootnoteDefinedTwice shows a footnote defined twice once, as
+// its first definition has it, which is the one its reference reaches.
+func TestViewFootnoteDefinedTwice(t *testing.T) {
+	const src = "A claim.[^1]\n\n[^1]: First.\n\n[^1]: Second.\n"
+	tt := ui.NewTester(func(c *ui.Context) { View(c, src, nil) }, 600, 400)
+	if got, want := tt.Texts(), []string{"A claim.[1]", "[1]", "1.", "First."}; !slices.Equal(got, want) {
+		t.Errorf("texts %q, want %q", got, want)
+	}
+}
+
 // TestViewTableHeaderLinks reaches a link in a table's header, which
 // shows what is inside it as a cell does, still named by its text.
 func TestViewTableHeaderLinks(t *testing.T) {
@@ -420,5 +430,34 @@ func TestRevealBySentence(t *testing.T) {
 	tt.Advance(100 * time.Millisecond)
 	if got := strings.Join(tt.Texts(), ""); got != text {
 		t.Errorf("done, shows %q", got)
+	}
+}
+
+// A selection starting or ending with a space inside emphasis copies as
+// Markdown with the space outside the delimiters, which open and close
+// nothing next to it: "**bold **" shows its asterisks.
+func TestViewCopyMarkdownSpaceInEmphasis(t *testing.T) {
+	for _, c := range []struct {
+		src  string
+		a, z int
+		want string
+	}{
+		{"Some **bold text** here", 5, 10, "**bold** "},
+		{"Some **bold text** here", 9, 14, " **text**"},
+		{"Some *very important* point", 4, 10, " *very* "},
+		{"Some ~~old text~~ here", 5, 9, "~~old~~ "},
+		{"Some *a **b c** d* here", 7, 9, "***b*** "},
+		{"Some **bold text** here", 9, 10, " "},
+		{"Some `a b` here", 5, 7, "`a `"},
+		{"Some [the guide](u) here", 5, 9, "[the ](u)"},
+	} {
+		src := c.src
+		_, get := rvView(&src, nil)
+		st := get()
+		text := rvParaText(st, 1)
+		part := rvPart(st, rvElemOf(t, st, 1), text, c.a, c.z)
+		if got := st.copyMarkdown([]ui.SelectedText{part}); got != c.want {
+			t.Errorf("%q, %q selected: copied as Markdown %q, want %q", c.src, runeSlice(text, c.a, c.z), got, c.want)
+		}
 	}
 }

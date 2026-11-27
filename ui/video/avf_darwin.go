@@ -5,6 +5,7 @@ package video
 import (
 	"errors"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,6 +46,7 @@ var (
 	msgBool                func(obj objc.ID, s objc.SEL) bool
 
 	caCurrentMediaTime          func() float64
+	cmMediaSubType              func(desc uintptr) uint32
 	cvBufferRelease             func(buf uintptr)
 	cvBufferRetain              func(buf uintptr) uintptr
 	cvBufferGetAttachment       func(buf, key, mode uintptr) uintptr
@@ -64,7 +66,12 @@ var (
 	// and passes.
 	cvMatrixKey, cvMatrix709, cvMatrix601, cvMatrix2020 uintptr
 	cvPixelFormatKey, cvMetalCompatibilityKey           uintptr
-	avMediaTypeVideo                                    uintptr
+	avMediaTypeVideo, avPlayedToEnd                     uintptr
+
+	// endObserver is told that an item played to its end, for every
+	// engine: items has the engine of each item.
+	endObserver objc.ID
+	items       sync.Map // objc.ID → *avEngine
 
 	// loaderClass is the class of the delegates answering for bytes in
 	// memory; loaders their sources, by the number in their URL.
@@ -164,6 +171,7 @@ func loadAVFoundation() error {
 		cv := open("/System/Library/Frameworks/CoreVideo.framework/CoreVideo")
 		cf := open("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
 		qc := open("/System/Library/Frameworks/QuartzCore.framework/QuartzCore")
+		cm := open("/System/Library/Frameworks/CoreMedia.framework/CoreMedia")
 		sys := open("/usr/lib/libSystem.B.dylib")
 		sym := func(lib uintptr, name string) uintptr {
 			p, err := purego.Dlsym(lib, name)
@@ -189,6 +197,7 @@ func loadAVFoundation() error {
 		purego.RegisterFunc(&msgInt, msgSend)
 		purego.RegisterFunc(&msgBool, msgSend)
 		purego.RegisterLibFunc(&caCurrentMediaTime, qc, "CACurrentMediaTime")
+		purego.RegisterLibFunc(&cmMediaSubType, cm, "CMFormatDescriptionGetMediaSubType")
 		purego.RegisterLibFunc(&cvBufferRelease, cv, "CVBufferRelease")
 		purego.RegisterLibFunc(&cvBufferRetain, cv, "CVBufferRetain")
 		purego.RegisterLibFunc(&cvBufferGetAttachment, cv, "CVBufferGetAttachment")
@@ -210,9 +219,16 @@ func loadAVFoundation() error {
 		cvPixelFormatKey = constant(cv, "kCVPixelBufferPixelFormatTypeKey")
 		cvMetalCompatibilityKey = constant(cv, "kCVPixelBufferMetalCompatibilityKey")
 		avMediaTypeVideo = constant(av, "AVMediaTypeVideo")
+		avPlayedToEnd = constant(av, "AVPlayerItemDidPlayToEndTimeNotification")
 		if class("AVPlayer") == 0 || class("AVPlayerItemVideoOutput") == 0 {
 			panic("no AVPlayer")
 		}
+		cls, err := objc.RegisterClass("MyGoVideoEndObserver", objc.GetClass("NSObject"), nil, nil,
+			[]objc.MethodDef{{Cmd: sel("itemPlayedToEnd:"), Fn: itemPlayedToEnd}})
+		if err != nil {
+			panic(err)
+		}
+		endObserver = send(send(objc.ID(cls), "alloc"), "init")
 	})
 	return avfErr
 }
@@ -254,6 +270,11 @@ type avEngine struct {
 	// interval is Interval's, which the watching goroutine reads once
 	// the item is ready to play: 0 until it has.
 	interval atomic.Int64
+	// ends counts the times AVFoundation said the item played to its end
+	// (itemPlayedToEnd), and endsSeen, under mu, those the watching
+	// goroutine took, or a seek passed over.
+	ends     atomic.Uint64
+	endsSeen uint64
 
 	mu    sync.Mutex
 	wake  func()
@@ -262,7 +283,14 @@ type avEngine struct {
 	// playing is whether the app plays it, loop whether it plays again
 	// at its end, which the watching goroutine sees.
 	playing, loop, closed bool
-	rate                  float32
+	// noPicture is why the item plays the video's sound and gives no
+	// picture (videoTrack): the video fails.
+	noPicture error
+	rate      float32
+	// pictured is whether the output had a picture for Frame, which sets
+	// it before taking the picture, out of mu: a video that played to its
+	// end without one fails (poll).
+	pictured atomic.Bool
 }
 
 func newEngine(s source) (media.Engine, error) {
@@ -278,7 +306,8 @@ func newEngine(s source) (media.Engine, error) {
 		}
 		e.loader = lastLoader.Add(1)
 		loaders.Store(e.loader, s.data)
-		url := send(class("NSURL"), "URLWithString:", nsString("mygo-video://data/"+itoa(e.loader)+".mp4"))
+		_, ext := container(s.data)
+		url := send(class("NSURL"), "URLWithString:", nsString("mygo-video://data/"+itoa(e.loader)+ext))
 		asset = send(send(class("AVURLAsset"), "alloc"), "initWithURL:options:", url, objc.ID(0))
 		e.delegate = send(send(objc.ID(loaderClass), "alloc"), "init")
 		send(send(asset, "resourceLoader"), "setDelegate:queue:", e.delegate, loaderQueue)
@@ -297,9 +326,12 @@ func newEngine(s source) (media.Engine, error) {
 	e.output = send(send(class("AVPlayerItemVideoOutput"), "alloc"), "initWithPixelBufferAttributes:", attrs)
 	send(e.item, "addOutput:", e.output)
 	e.player = send(send(class("AVPlayer"), "alloc"), "initWithPlayerItem:", e.item)
-	// The player pauses at the end, rather than stand at the end playing,
-	// for the goroutine to see; it loops by a seek.
+	// The player does nothing at the end, for the goroutine to see the
+	// item played to it and pause it; it loops by a seek.
 	send(e.player, "setActionAtItemEnd:", avActionAtEndNone)
+	items.Store(e.item, e)
+	send(send(class("NSNotificationCenter"), "defaultCenter"), "addObserver:selector:name:object:",
+		endObserver, sel("itemPlayedToEnd:"), objc.ID(avPlayedToEnd), e.item)
 	msgSetBool(e.player, sel("setPreventsDisplaySleepDuringVideoPlayback:"), true)
 	go e.watch()
 	return e, nil
@@ -350,7 +382,13 @@ func (e *avEngine) watch() {
 		ready := msgInt(e.item, sel("status")) == avStatusReadyToPlay
 		if ready && e.interval.Load() == 0 {
 			// Out of mu: State, on the main thread, never waits for it.
-			e.interval.Store(int64(e.frameInterval()))
+			interval, noPicture := e.videoTrack()
+			e.interval.Store(int64(interval))
+			if noPicture != nil {
+				e.mu.Lock()
+				e.noPicture = noPicture
+				e.mu.Unlock()
+			}
 		}
 		if ready && loading && time.Since(wokeFirst) >= 250*time.Millisecond {
 			// The output has the first picture once it has one for now,
@@ -385,13 +423,37 @@ func (e *avEngine) poll() {
 	default:
 		return // loading
 	}
+	if e.state == media.Failed {
+		// It stays failed, its player paused: no picture comes.
+		return
+	}
+	if e.noPicture != nil && e.state == media.Loading {
+		// Its sound plays, and no picture comes.
+		e.state, e.err = media.Failed, e.noPicture
+		send(e.player, "pause")
+		return
+	}
+	if e.state == media.Loading && e.ends.Load() != e.endsSeen && !e.outputHasPicture() && !e.pictured.Load() {
+		// It played to its end, and the output never had a picture of
+		// it: AVFoundation plays H.264 in AVI tagged avc1 so on macOS 27,
+		// and MJPEG in AVI on macOS 26, their tracks decodable. The
+		// output is asked first: Frame, which may take its picture
+		// meanwhile, said so before taking it.
+		e.state, e.err = media.Failed, errors.New("video: the system played the video to its end without a picture")
+		send(e.player, "pause")
+		return
+	}
 	if e.state == media.Loading && e.buf == 0 {
 		// Ready once its first picture shows (Frame).
 		return
 	}
-	cur, _ := msgCMTime(e.item, sel("currentTime")).duration()
-	dur, known := msgCMTime(e.item, sel("duration")).duration()
-	if known && cur >= dur-time.Millisecond && e.playing {
+	// The end is where AVFoundation says the item played to, not its
+	// duration: a file's time runs on past it, and a stream's stops short
+	// of it, at the end of its media, as its playlist may give more time
+	// than its segments hold. An end said as the player paused waits for
+	// it to play again.
+	if n := e.ends.Load(); n != e.endsSeen && e.playing {
+		e.endsSeen = n
 		if e.loop {
 			e.seek(0)
 			msgSetFloat32(e.player, sel("setRate:"), e.rate)
@@ -413,6 +475,14 @@ func (e *avEngine) poll() {
 	}
 }
 
+// outputHasPicture is whether the output has a picture for now that Frame
+// did not take, as one of a short video it played to its end before a
+// frame took it.
+func (e *avEngine) outputHasPicture() bool {
+	at := msgItemTimeForHostTime(e.output, sel("itemTimeForHostTime:"), caCurrentMediaTime())
+	return msgHasNewBuffer(e.output, sel("hasNewPixelBufferForItemTime:"), at)
+}
+
 func (e *avEngine) SetWake(wake func()) {
 	e.mu.Lock()
 	e.wake = wake
@@ -432,6 +502,7 @@ func (e *avEngine) Frame(t time.Time) (media.Picture, bool, bool) {
 		return media.Picture{}, false, false
 	}
 	if msgHasNewBuffer(e.output, sel("hasNewPixelBufferForItemTime:"), at) {
+		e.pictured.Store(true)
 		if buf := msgCopyBuffer(e.output, sel("copyPixelBufferForItemTime:itemTimeForDisplay:"), at, 0); buf != 0 {
 			// What drew the last one holds it still (the renderer's
 			// textures): the surface no longer shows it.
@@ -499,21 +570,50 @@ func pixelBufferRGBA(s *scene.Surface, dst []byte, w, h int) []byte {
 	return planes.RGBA(dst, w, h)
 }
 
-// frameInterval is half the time a picture shows at the video's
-// nominal rate, or 1/60 s for none. It reads the asset's tracks, which
-// for an AVURLAsset loads them, over the network for a URL, until the
-// item is ready to play: only the watching goroutine calls it, once the
-// item is.
-func (e *avEngine) frameInterval() time.Duration {
-	tracks := send(send(e.item, "asset"), "tracksWithMediaType:", avMediaTypeVideo)
-	if tracks != 0 && msgInt(tracks, sel("count")) > 0 {
-		if fps := msgFloat32(send(tracks, "firstObject"), sel("nominalFrameRate")); fps > 1 {
-			// Asked for twice as often, so that a frame shows at the
-			// refresh after it came due, not up to one later.
-			return time.Duration(float64(time.Second) / float64(fps) / 2)
+// videoTrack reads the video track: the interval, half the time a
+// picture shows at its nominal rate, or 1/60 s for none, and why the item
+// gives no picture, when it plays the video's sound without one: the
+// system has no decoder for the video, or AVFoundation reads none of its
+// tracks as video, as HEVC in MPEG-TS, which its demuxer leaves out. A
+// stream's asset has no tracks at all, only its item, which this leaves
+// to it. It reads the asset's tracks, which for an AVURLAsset loads them,
+// over the network for a URL, until the item is ready to play: only the
+// watching goroutine calls it, once the item is.
+func (e *avEngine) videoTrack() (interval time.Duration, noPicture error) {
+	interval = time.Second / 60
+	asset := send(e.item, "asset")
+	tracks := send(asset, "tracksWithMediaType:", avMediaTypeVideo)
+	if tracks == 0 || msgInt(tracks, sel("count")) == 0 {
+		if all := send(asset, "tracks"); all != 0 && msgInt(all, sel("count")) > 0 {
+			return interval, errors.New("video: the system reads no video track in the video")
+		}
+		return interval, nil
+	}
+	track := send(tracks, "firstObject")
+	if fps := msgFloat32(track, sel("nominalFrameRate")); fps > 1 {
+		// Asked for twice as often, so that a frame shows at the
+		// refresh after it came due, not up to one later.
+		interval = time.Duration(float64(time.Second) / float64(fps) / 2)
+	}
+	if !msgBool(track, sel("isDecodable")) {
+		codec := "its codec"
+		if descs := send(track, "formatDescriptions"); descs != 0 && msgInt(descs, sel("count")) > 0 {
+			codec = fourCC(cmMediaSubType(uintptr(send(descs, "firstObject"))))
+		}
+		return interval, errors.New("video: the system has no decoder for the video (" + codec + ")")
+	}
+	return interval, nil
+}
+
+// fourCC is the text of a four-character code, as "vp09".
+func fourCC(v uint32) string {
+	b := []byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}
+	for i, c := range b {
+		if c < ' ' || c > '~' {
+			b[i] = '?'
 		}
 	}
-	return time.Second / 60
+	return strings.TrimRight(string(b), " ")
 }
 
 // Interval is 1/60 s until the watching goroutine read the video's rate,
@@ -546,6 +646,9 @@ func (e *avEngine) Position() time.Duration {
 func (e *avEngine) Play() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.state == media.Failed {
+		return // its player stays paused
+	}
 	e.playing = true
 	if e.state == media.Ended {
 		e.state = media.Ready
@@ -570,8 +673,9 @@ func (e *avEngine) Seek(d time.Duration) {
 	e.seek(d)
 }
 
-// seek seeks to d exactly, under mu.
+// seek seeks to d exactly, under mu: an end said before is passed over.
 func (e *avEngine) seek(d time.Duration) {
+	e.endsSeen = e.ends.Load()
 	zero := cmTime{Flags: cmTimeValid, Timescale: 1}
 	msgSeek(e.player, sel("seekToTime:toleranceBefore:toleranceAfter:"), cmTimeOf(d), zero, zero)
 }
@@ -586,7 +690,7 @@ func (e *avEngine) SetRate(r float64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.rate = float32(r)
-	if e.playing && e.state != media.Ended {
+	if e.playing && e.state != media.Ended && e.state != media.Failed {
 		msgSetFloat32(e.player, sel("setRate:"), e.rate)
 	}
 }
@@ -609,6 +713,9 @@ func (e *avEngine) Close() error {
 	close(e.quit)
 	<-e.done
 	pop := pooled()
+	send(send(class("NSNotificationCenter"), "defaultCenter"), "removeObserver:name:object:",
+		endObserver, objc.ID(avPlayedToEnd), e.item)
+	items.Delete(e.item)
 	send(e.player, "pause")
 	send(e.player, "replaceCurrentItemWithPlayerItem:", objc.ID(0))
 	send(e.item, "removeOutput:", e.output)
@@ -626,6 +733,15 @@ func (e *avEngine) Close() error {
 		runtime.AddCleanup(e.surface, func(b uintptr) { cvBufferRelease(b) }, buf)
 	}
 	return nil
+}
+
+// itemPlayedToEnd takes AVPlayerItemDidPlayToEndTimeNotification, on the
+// thread that posted it, for the watching goroutine to see: it takes no
+// lock, as AVFoundation may post it while the engine holds mu.
+func itemPlayedToEnd(self objc.ID, _ objc.SEL, note objc.ID) {
+	if v, ok := items.Load(send(note, "object")); ok {
+		v.(*avEngine).ends.Add(1)
+	}
 }
 
 // loadDelegate registers the class of the delegates that answer an
@@ -669,7 +785,8 @@ func answerLoading(self objc.ID, _ objc.SEL, loader, req objc.ID) bool {
 	}
 	data := v.([]byte)
 	if info := send(req, "contentInformationRequest"); info != 0 {
-		send(info, "setContentType:", nsString(contentType(data)))
+		uti, _ := container(data)
+		send(info, "setContentType:", nsString(uti))
 		send(info, "setContentLength:", int64(len(data)))
 		msgSetBool(info, sel("setByteRangeAccessSupported:"), true)
 	}
@@ -689,10 +806,40 @@ func answerLoading(self objc.ID, _ objc.SEL, loader, req objc.ID) bool {
 	return true
 }
 
-// contentType is the UTI of a video's bytes, as their container says.
-func contentType(b []byte) string {
-	if len(b) >= 12 && string(b[4:8]) == "ftyp" && string(b[8:12]) == "qt  " {
-		return "com.apple.quicktime-movie"
+// container is the UTI of a video's bytes, as their container says, and
+// the extension of the URL they load from: AVFoundation reads them as
+// the container the UTI names, and MPEG-TS only from a URL with its
+// extension. Bytes of another container than they are said to be, it
+// cannot open.
+func container(b []byte) (uti, ext string) {
+	switch {
+	case len(b) >= 12 && string(b[4:8]) == "ftyp" && string(b[8:12]) == "qt  ":
+		return "com.apple.quicktime-movie", ".mov"
+	case len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "AVI ":
+		return "public.avi", ".avi"
+	case len(b) >= 4 && b[0] == 0 && b[1] == 0 && b[2] == 1 && b[3] == 0xba:
+		// A pack header, of an MPEG program stream (MPEG-1 or 2).
+		return "public.mpeg", ".mpg"
+	case transportStream(b, 0, 188):
+		return "public.mpeg-2-transport-stream", ".ts"
+	case transportStream(b, 4, 192):
+		// Each packet after a 4-byte time, as Blu-ray and AVCHD's .m2ts.
+		return "public.avchd-mpeg-2-transport-stream", ".m2ts"
 	}
-	return "public.mpeg-4"
+	return "public.mpeg-4", ".mp4"
+}
+
+// transportStream is whether b starts with MPEG-TS packets of the size,
+// each with its sync byte at off: it reads the first three, or as many
+// as b holds, at least one.
+func transportStream(b []byte, off, size int) bool {
+	if len(b) < off+size {
+		return false
+	}
+	for i := off; i < len(b) && i < off+3*size; i += size {
+		if b[i] != 0x47 {
+			return false
+		}
+	}
+	return true
 }

@@ -1014,6 +1014,9 @@ func (st *viewState) footnotes(c *ui.Context) {
 		if b.Kind != parser.FootnoteDefinition {
 			continue
 		}
+		if first, _ := d.Footnote(b.Label()); first != i {
+			continue // a label defined again: the first definition holds
+		}
 		num := st.notes[parser.NormalizeLabel(b.Label())]
 		row := ui.Row(c).AlignItems(ui.Start).Margin(th.em(0.25), 0, 0, 0)
 		if st.scrollTo == i {

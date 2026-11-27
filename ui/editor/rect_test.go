@@ -53,6 +53,23 @@ func TestStateRect(t *testing.T) {
 	}
 }
 
+// TextX is where an unscrolled line starts, and stays there as the text
+// scrolls sideways.
+func TestStateTextX(t *testing.T) {
+	ct := newEditorTest(t, "", strings.Repeat("x", 400)+"\n|")
+	st := ct.st
+	st.ed.scrollX = 0
+	r, _ := st.Rect(0)
+	if x := st.TextX(); x <= 0 || r.X != x {
+		t.Fatalf("TextX %v, want the unscrolled start of a line %v, right of the gutter", x, r.X)
+	}
+	st.ed.scrollX = 100
+	r, _ = st.Rect(0)
+	if x := st.TextX(); r.X != x-100 {
+		t.Fatalf("scrolled 100 right, TextX %v and the start of a line %v", x, r.X)
+	}
+}
+
 // Scrolled, a Rect moves with the text, left and up.
 func TestStateRectScrolled(t *testing.T) {
 	ct := newEditorTest(t, "", strings.Repeat("x", 400)+"\n"+strings.Repeat("y\n", 60)+"|")

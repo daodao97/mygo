@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"compress/lzw"
 	"errors"
 	"image"
 	"image/color"
@@ -143,6 +144,93 @@ func TestGIFDecoderFrames(t *testing.T) {
 
 	if _, err := NewGIFDecoder([]byte("GIF89a, not quite")); err == nil {
 		t.Error("data that is no GIF decoded")
+	}
+}
+
+// TestGIFDecoderEndsEarly checks that a GIF that ends early, with no
+// trailer or cut off in a frame, plays the frames it has whole, as
+// browsers do, and that one with no whole frame is an error.
+func TestGIFDecoderEndsEarly(t *testing.T) {
+	data := solidGIF(t, 10, videoRed, videoGreen, videoBlue)
+	for _, tc := range []struct {
+		name string
+		data []byte
+		want []color.RGBA
+	}{
+		{"no trailer", data[:len(data)-1], []color.RGBA{videoRed, videoGreen, videoBlue}},
+		// Without the last frame's block terminator and a byte of its
+		// pixels.
+		{"cut off in the last frame", data[:len(data)-3], []color.RGBA{videoRed, videoGreen}},
+	} {
+		d, err := NewGIFDecoder(tc.data)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		for i, want := range tc.want {
+			f, err := d.Next()
+			if err != nil {
+				t.Fatalf("%s, frame %d: %v", tc.name, i, err)
+			}
+			if got := f.Image.(*image.RGBA).RGBAAt(1, 1); got != want {
+				t.Errorf("%s, frame %d: %v, want %v", tc.name, i, got, want)
+			}
+		}
+		if _, err := d.Next(); err != io.EOF {
+			t.Errorf("%s: after %d frames, %v", tc.name, len(tc.want), err)
+		}
+	}
+	if _, err := NewGIFDecoder(data[:40]); err == nil {
+		t.Error("a GIF cut off in its first frame decoded")
+	}
+}
+
+// TestGIFDecoderPixelsPastColors checks that a GIF whose pixels point past
+// its color table plays, those pixels black, as Chrome draws them, where
+// image/gif decodes none of it.
+func TestGIFDecoderPixelsPastColors(t *testing.T) {
+	// A 2×2 frame of pixels 0 to 3, its color table red and green.
+	var px bytes.Buffer
+	w := lzw.NewWriter(&px, lzw.LSB, 2)
+	w.Write([]byte{0, 1, 2, 3})
+	w.Close()
+	frame := func(table []byte) []byte {
+		b := []byte{0x2c, 0, 0, 0, 0, 2, 0, 2, 0, 0}
+		if table != nil {
+			b[9] = 0x80
+			b = append(b, table...)
+		}
+		b = append(b, 2, byte(px.Len()))
+		b = append(b, px.Bytes()...)
+		return append(b, 0)
+	}
+	colors := []byte{255, 0, 0, 0, 255, 0}
+	screen := []byte("GIF89a\x02\x00\x02\x00\x00\x00\x00")
+	global := append(append([]byte{}, screen...), colors...)
+	global[10] = 0x80
+	black := color.RGBA{0, 0, 0, 255}
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{"global color table", append(append(global, frame(nil)...), 0x3b)},
+		{"local color table", append(append(append([]byte{}, screen...), frame(colors)...), 0x3b)},
+	} {
+		d, err := NewGIFDecoder(tc.data)
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		f, err := d.Next()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		pic := f.Image.(*image.RGBA)
+		for i, want := range []color.RGBA{videoRed, videoGreen, black, black} {
+			if got := pic.RGBAAt(i%2, i/2); got != want {
+				t.Errorf("%s: pixel %d is %v, want %v", tc.name, i, got, want)
+			}
+		}
 	}
 }
 
@@ -395,6 +483,70 @@ func TestVideoStopsWhileHidden(t *testing.T) {
 	tt.Advance(time.Millisecond)
 	if got := shows(); got != videoGreen {
 		t.Fatalf("shown again, the second frame: %v", got)
+	}
+}
+
+// TestVideoDropsSuspendedTime checks that a video whose window built no
+// frame for well past the one it asked for, as when the process stops
+// with the window showing (App Nap, the machine asleep), shows the frame
+// that came due and goes on from it at its own pace, rather than racing
+// through frames to where the clock puts it; that a frame built a little
+// late still counts its time; and that a window slower than the video
+// still moves it on a frame each time it builds one.
+func TestVideoDropsSuspendedTime(t *testing.T) {
+	p := newVideo(t, videoRed, videoGreen, videoBlue).SetLoop(true)
+	tt, shows := videoTester(p, nil)
+	decodedAhead(t, p, 2)
+	tt.Advance(150 * time.Millisecond)
+	if got := shows(); got != videoGreen {
+		t.Fatalf("playing: %v", got)
+	}
+	// The frame asked for at 200 ms comes a minute late, with no
+	// SurfaceHidden or SurfaceShown between.
+	suspend := func(d time.Duration) {
+		tt.now = tt.now.Add(d)
+		tt.h.afterAt = time.Time{}
+		tt.Frame()
+	}
+	decodedAhead(t, p, 2)
+	tt.now = tt.now.Add(time.Minute)
+	if pos := p.Position(); pos != 200*time.Millisecond {
+		t.Fatalf("suspended: at %v, want the end of the frame it shows, 200ms", pos)
+	}
+	suspend(0)
+	resumed := tt.Now()
+	if got, pos := shows(), p.Position(); got != videoBlue || pos != 200*time.Millisecond || tt.FramePending() || !tt.h.afterAt.Equal(resumed.Add(100*time.Millisecond)) {
+		t.Fatalf("after the suspension: %v at %v, asked for a frame %v, After due %v after it: want blue at 200ms, only After, 100ms",
+			got, pos, tt.FramePending(), tt.h.afterAt.Sub(resumed))
+	}
+	tt.Advance(99 * time.Millisecond)
+	if got := shows(); got != videoBlue {
+		t.Fatalf("after the suspension, before the next frame is due: %v", got)
+	}
+	tt.Advance(time.Millisecond)
+	if got := shows(); got != videoRed {
+		t.Fatalf("after the suspension, the next frame: %v", got)
+	}
+
+	// A frame 30 ms late, as one waiting for the display, counts the 30
+	// ms: the next is due 70 ms after it.
+	decodedAhead(t, p, 2)
+	tt.Advance(99 * time.Millisecond)
+	suspend(31 * time.Millisecond)
+	late := tt.Now()
+	if got := shows(); got != videoGreen || !tt.h.afterAt.Equal(late.Add(70*time.Millisecond)) {
+		t.Fatalf("a frame 30ms late: %v, After due %v after it: want green, 70ms", got, tt.h.afterAt.Sub(late))
+	}
+
+	// Each frame 150 ms late, as a main thread busy that long: each shows
+	// the next frame of the video.
+	for i, want := range []color.RGBA{videoBlue, videoRed, videoGreen, videoBlue} {
+		decodedAhead(t, p, 2)
+		tt.now = tt.h.afterAt
+		suspend(150 * time.Millisecond)
+		if got := shows(); got != want {
+			t.Fatalf("frame %d, 150ms late: %v, want %v", i, got, want)
+		}
 	}
 }
 

@@ -79,6 +79,9 @@ func (s *devSession) buildAndLaunchMobile(ctx context.Context, t *task, running 
 	if err != nil {
 		return nil, sum, err
 	}
+	if s.device.platform == "android" {
+		c = c.forAndroid()
+	}
 	dc := devConfig(c)
 	dir := filepath.Join(s.root, ".mygo", "dev", s.device.platform)
 	work := filepath.Join(dir, "work")

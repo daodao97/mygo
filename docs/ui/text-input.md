@@ -130,6 +130,18 @@ scrolls, as a message field grows with what is typed:
 ui.TextArea(c, &app.draft).Lines(1, 8)
 ```
 
+A text area wraps its lines at its width. `NoWrap` keeps each line whole
+instead, broken only where the text has a newline, for text that holds an
+item a line, as a list of URLs, a fragment of a configuration file or a
+snippet of code. A line wider than the area scrolls sideways, with the
+touchpad, Shift and a mouse's wheel, and a horizontal scroll bar, and the
+caret stays in view as the user types, moves it, or drags a selection past
+a side:
+
+```go
+ui.TextArea(c, &app.urls).NoWrap().Height(160)
+```
+
 A text area lays out only the paragraphs in view and keeps their layouts
 until they change, so that it holds texts of hundreds of thousands of
 lines, as a log or a source file, and stays as quick to type in.

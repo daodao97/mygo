@@ -71,6 +71,37 @@ func TestTestersReuseTextSystems(t *testing.T) {
 	runtime.KeepAlive(tt)
 }
 
+// The text systems of ended Testers over those the Testers keep stay idle
+// until the next Tester starts, which closes them: let go, they would
+// close once unreachable, on the runtime's cleanup goroutine, while
+// another Tester may be counting a frame's allocations, as
+// TestLocalCloserFrameAllocs does (testing.AllocsPerRun counts the
+// process's), and closing an engine allocates.
+func TestTesterTextsOverMaxWaitForTheNextTester(t *testing.T) {
+	testerTexts.mu.Lock()
+	max := maxIdleTesterTexts
+	maxIdleTesterTexts = func() int { return 0 }
+	testerTexts.mu.Unlock()
+	t.Cleanup(func() {
+		testerTexts.mu.Lock()
+		maxIdleTesterTexts = max
+		testerTexts.mu.Unlock()
+	})
+
+	a, b := coreNewTester(textHeavyView, 300, 200), coreNewTester(textHeavyView, 300, 200)
+	a.Frame()
+	b.Frame()
+	a.end()
+	b.end()
+	if !testerTextIdle(a.h.text) || !testerTextIdle(b.h.text) {
+		t.Fatal("the text systems of ended Testers over those kept were let go; want them idle until the next Tester starts")
+	}
+	coreNewTester(textHeavyView, 300, 200)
+	if testerTextIdle(a.h.text) || testerTextIdle(b.h.text) {
+		t.Fatal("a Tester started and left idle more text systems than the Testers keep")
+	}
+}
+
 // Testers that run at the same time, as parallel tests do, each have a
 // text system of their own (#1722): an idle one goes to one Tester only.
 func TestConcurrentTestersHaveTheirOwnTextSystems(t *testing.T) {

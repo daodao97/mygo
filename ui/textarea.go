@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,6 +21,12 @@ import (
 // the scroll bar move the state's offset, which the area keeps by a
 // paragraph and how far into it the view starts (anchor, anchorOff), so
 // that the view stays put as the heights above it are measured.
+//
+// An area that keeps its lines whole (NoWrap) scrolls sideways too, as a
+// single-line input does, by the editor's scrollX: the x in the layouts at
+// the left of the view, 0 where they start. Lines wider than the view go
+// past its right, or its left where they align to the right, as far as
+// the paragraphs measured so far reach (ext).
 type area struct {
 	hs heights
 	// params are those of the layouts, without their text; version is
@@ -45,6 +52,21 @@ type area struct {
 	wrappedParams  text.Params
 	wrappedVersion uint64
 	wrappedCompose string
+
+	// noWrap is the layouts': the lines break only at newlines. ext holds
+	// how far left and right of the view's edges at 0 the lines of each
+	// paragraph laid out reach, lo and hi the farthest of them while
+	// extOK, as a scroll bar knows the heights measured.
+	noWrap bool
+	ext    [][2]float32
+	lo, hi float32
+	extOK  bool
+	// lastScrollX is the state's horizontal offset after the last
+	// layout, which counted it from xFrom, xMax DIPs from the far end
+	// right to left.
+	lastScrollX float64
+	xFrom, xMax float32
+	rtlScrollX  bool
 }
 
 // wrappedHeight returns the height of the text, with an input method's
@@ -110,6 +132,7 @@ func (a *area) edited(b *buffer, first int, old []paragraph, after int) {
 	}
 	if a.version+1 == b.version {
 		a.version = b.version
+		a.editedExt(first, len(old), after, len(b.paras))
 		if len(old) == after {
 			for k, o := range old {
 				if o.h > 0 {
@@ -138,7 +161,9 @@ func (a *area) sync(ed *editor, b *buffer, params text.Params) {
 		}
 		a.laid = 0
 		a.params = params
+		a.noWrap = params.NoWrap
 		a.version = 0
+		a.ext = a.ext[:0]
 		empty := params
 		empty.Text = ""
 		a.line = ed.sys.Layout(empty).Lines[0]
@@ -146,10 +171,22 @@ func (a *area) sync(ed *editor, b *buffer, params text.Params) {
 	if a.version != b.version || len(a.hs.measured) != len(b.paras)+1 {
 		if a.version != b.version {
 			a.laid = 0 // a new text: its paragraphs have no layouts
+			a.ext = a.ext[:0]
 		}
 		a.hs.reset(b.paras)
 		a.version = b.version
 		a.anchor = min(a.anchor, len(b.paras)-1)
+	}
+	if a.noWrap && len(a.ext) != len(b.paras) {
+		// Measured anew as they are laid out.
+		a.ext = slices.Grow(a.ext[:0], len(b.paras))[:len(b.paras)]
+		clear(a.ext)
+		for i := range b.paras {
+			if l := b.paras[i].layout; l != nil {
+				a.ext[i] = lineExtent(l)
+			}
+		}
+		a.extOK = false
 	}
 	m, unknown := a.hs.totals()
 	if n := len(b.paras) - unknown; n > 0 {
@@ -194,7 +231,74 @@ func (a *area) paraLayout(ed *editor, p int) *text.Layout {
 		a.hs.add(p, float64(l.Height), -1)
 	}
 	pr.layout, pr.compose, pr.spans, pr.h = l, compose, spans, l.Height
+	if a.noWrap && p < len(a.ext) {
+		a.measureX(p, l)
+	}
 	return l
+}
+
+// lineExtent returns how far left of 0 and right of it the lines of l go.
+func lineExtent(l *text.Layout) [2]float32 {
+	var x [2]float32
+	for i := range l.Lines {
+		line := &l.Lines[i]
+		x[0], x[1] = min(x[0], line.X), max(x[1], line.X+line.Width)
+	}
+	return x
+}
+
+// measureX keeps how far the lines of paragraph p, laid out as l, reach.
+func (a *area) measureX(p int, l *text.Layout) {
+	x, was := lineExtent(l), a.ext[p]
+	a.ext[p] = x
+	if !a.extOK {
+		return
+	}
+	if was[0] == a.lo && x[0] > was[0] || was[1] == a.hi && x[1] < was[1] {
+		a.extOK = false // it was the widest, and is no longer
+		return
+	}
+	a.lo, a.hi = min(a.lo, x[0]), max(a.hi, x[1])
+}
+
+// editedExt follows an edit for the extents of the paragraphs: n paragraphs
+// from first, now after others, unmeasured, of total.
+func (a *area) editedExt(first, n, after, total int) {
+	if !a.noWrap {
+		return
+	}
+	if len(a.ext) != total-after+n {
+		a.ext = a.ext[:0] // sync measures them anew
+		return
+	}
+	for _, x := range a.ext[first : first+n] {
+		if x[0] < 0 && x[0] == a.lo || x[1] > 0 && x[1] == a.hi {
+			a.extOK = false
+		}
+	}
+	// The after paragraphs in place of the n, unmeasured, the rest moved
+	// along (by hand rather than slices.Replace, which grows every app).
+	old := len(a.ext)
+	end := old - n + after
+	if end > old {
+		a.ext = slices.Grow(a.ext, end-old)[:end]
+	}
+	copy(a.ext[first+after:end], a.ext[first+n:old])
+	clear(a.ext[first : first+after])
+	a.ext = a.ext[:end]
+}
+
+// extents returns how far left and right of the view's edges at 0 the
+// lines of the paragraphs measured reach.
+func (a *area) extents() (lo, hi float32) {
+	if !a.extOK {
+		a.lo, a.hi = 0, 0
+		for _, x := range a.ext {
+			a.lo, a.hi = min(a.lo, x[0]), max(a.hi, x[1])
+		}
+		a.extOK = true
+	}
+	return a.lo, a.hi
 }
 
 // local returns where rune i of paragraph p is in its layout, which holds
@@ -329,6 +433,7 @@ func (a *area) layout(e *node, cw, ch float32) {
 	if st.scrollY != a.lastScroll {
 		a.setScroll(st.scrollY) // the wheel or the scroll bar
 	}
+	reveal := a.reveal
 	// The text shows through the padding, inside the border.
 	above, below := e.pad[0], e.pad[2]
 	a.place(ed, ch, above, below)
@@ -357,12 +462,60 @@ func (a *area) layout(e *node, cw, ch float32) {
 		a.place(ed, ch, above, below)
 		total = a.hs.top(len(b.paras))
 	}
-	st.scrollTo(st.scrollX, a.scroll)
+	scrollX, contentW := 0.0, float64(e.w)
+	if a.noWrap {
+		scrollX, contentW = a.layoutX(e, ed, cw, reveal)
+	} else {
+		ed.scrollX, a.lastScrollX = 0, 0
+	}
+	st.scrollTo(scrollX, a.scroll)
 	a.lastScroll = a.scroll
-	e.contentW, e.contentH = float64(e.w), total+float64(e.padY())
+	e.contentW, e.contentH = contentW, total+float64(e.padY())
 	if a.laid > maxLaid+a.last-a.first {
 		a.forget(b)
 	}
+}
+
+// layoutX keeps the view of a text area whose lines are whole on the
+// caret, sideways, as layout does down, when it is to be revealed, and
+// returns the state's horizontal offset and the content's width. The
+// state counts the offset from the content's left, or right to left from
+// its right, as a scroll container's.
+func (a *area) layoutX(e *node, ed *editor, cw float32, reveal bool) (float64, float64) {
+	st := e.st
+	if st.scrollX != a.lastScrollX {
+		// The wheel, the scroll bar or ScrollTo, by the last layout's
+		// content.
+		x := float32(st.scrollX)
+		if a.rtlScrollX {
+			x = a.xMax - x
+		}
+		ed.scrollX = a.xFrom + x
+	}
+	if reveal {
+		// As a single-line input, the caret's column stays in view at
+		// the right.
+		switch x, _, _ := a.caretAt(ed, ed.caret, ed.composeCaret); {
+		case x < ed.scrollX:
+			ed.scrollX = x
+		case x > ed.scrollX+cw-1:
+			ed.scrollX = x - cw + 1
+		}
+	}
+	lo, hi := a.extents()
+	// The view's edges, and the caret's room after a line longer than it.
+	right := cw
+	if hi > cw {
+		right = hi + 1
+	}
+	ed.scrollX = max(lo, min(ed.scrollX, right-cw))
+	a.xFrom, a.xMax, a.rtlScrollX = lo, right-lo-cw, e.rtl()
+	x := ed.scrollX - lo
+	if a.rtlScrollX {
+		x = a.xMax - x
+	}
+	a.lastScrollX = float64(x)
+	return a.lastScrollX, float64(right - lo + e.padX())
 }
 
 // place lays out the paragraphs in view, from the anchor down, with those

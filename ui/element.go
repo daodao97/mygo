@@ -415,6 +415,11 @@ type node struct {
 	// what a measuring pass resolved for its in-flow children, which a
 	// commit pass at the same size uses instead of building them again.
 	hold int32
+	// baseline marks the child whose baseline its row takes as its own
+	// (boxBaseline), as the label of a check box or a radio button rather
+	// than the bottom of the box before it. It fills the padding after
+	// hold, before layoutStyle.
+	baseline bool
 
 	// layoutStyle holds what lays the element out. What the layout reads of
 	// every child a container walks comes first in it — the text, the kind
@@ -2048,7 +2053,30 @@ func (e *node) SingleLine() *node { e.single = true; e.maxLines = 1; return e }
 
 // NoWrap keeps each line of the element's text whole, breaking it only at
 // newlines, even where it overflows the element.
-func (e *node) NoWrap() *node { e.noWrap = true; return e }
+//
+// On a TextArea (TextAreaBase, TextAreaBuffer), it keeps each line the
+// user types whole too, as a list of URLs or a code snippet holds one
+// item a line: a line wider than the area scrolls sideways, with the
+// wheel (Shift and the wheel with a mouse), the touchpad and a horizontal
+// scroll bar, and the caret stays in view as the user types, moves it or
+// drags a selection past a side. Without it, a text area wraps its lines
+// at its width. A TextInput keeps its line whole anyway.
+func (e *node) NoWrap() *node { e.setNoWrap(true); return e }
+
+// setNoWrap sets NoWrap, and has a text area, which then scrolls
+// sideways, scroll that way too.
+func (e *node) setNoWrap(on bool) {
+	e.noWrap = on
+	// By the control it is, not its state, so that Key may follow.
+	if e.kind != kindInput || e.widget != "TextArea" && e.widget != "TextAreaBuffer" {
+		return
+	}
+	if on {
+		e.flags |= flagScrollX
+	} else {
+		e.flags &^= flagScrollX
+	}
+}
 
 // Balance wraps the element's text in lines of about the same length, as
 // CSS's text-wrap: balance does: a heading or a short callout that takes
@@ -2317,6 +2345,22 @@ func (e *node) Bounds() Rect {
 	s := e.st
 	return transformRect(s.world, Rect{s.x, s.y, s.w, s.h})
 }
+
+// Truncated reports whether the previous frame cut the element's text
+// with an ellipsis, as MaxLines and SingleLine do when it does not fit,
+// or text inside it, as a Button's label: as Bounds, it is false for an
+// element the previous frame lacked. Its full text can show as a
+// tooltip only when it is cut, as the web's title with text-overflow:
+// ellipsis:
+//
+//	t := ui.Text(c, name).MaxLines(1)
+//	if t.Truncated() {
+//		t.Tooltip(name)
+//	}
+//
+// Text that NoWrap lets overflow, or a clip hides, is not cut; nor is a
+// text input's, or a popup's attached to the element.
+func (e *node) Truncated() bool { return e.hasState() && e.st.truncated }
 
 // add appends a child.
 func (e *node) add(child *node) {

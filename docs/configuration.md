@@ -118,9 +118,11 @@ Signed [auto-updates](updates.md). `publicKey` and one of `github` and
 | `icon` | | the icon as an asset catalog, an `Assets.car` or an Icon Composer `.icon`, beside the `.icns` of `icon`; or an `.icns` in its place. See [the icon](distribution.md#name-icon-and-version) |
 | `minimumSystemVersion` | `12.0` | the oldest macOS the app runs on |
 | `signingIdentity` | `-`, ad hoc | the identity that signs the app and its disk image, e.g. `Developer ID Application: Jane Doe (TEAMID)` |
+| `signCommand` | | instead of `codesign`, a command that signs the app bundle, with `%1` for its path, on any system, e.g. with rcodesign on Linux. See [signing off a Mac](distribution.md#signing-off-a-mac) |
 | `entitlements` | | a property list of entitlements to sign the app with |
 | `provisioningProfile` | | a profile embedded as `Contents/embedded.provisionprofile` before signing; must match the app's identifier, entitlements and signing identity; cannot be used with ad-hoc signing. See [provisioning profiles](distribution.md#provisioning-profiles) |
 | `helperEntitlements` | | property lists of entitlements for code among the resources, by its path there, e.g. `{ "bin/server": "server.entitlements.plist" }`; other code keeps the entitlements it is signed with. See [helper executables](distribution.md#helper-executables) |
+| `extensions` | | prebuilt app extensions, as a share extension, each `path`, its `.appex`, signed with its own entitlements: copied into `Contents/PlugIns/` and signed with the app's identity, keeping those entitlements; `mygo dev` leaves them out. See [app extensions](distribution.md#app-extensions) |
 | `infoPlist` | | keys added to the app's `Info.plist`, replacing MyGo's, e.g. `NSCameraUsageDescription` |
 | `dmgTitle` | `name` | the volume name of the disk image |
 | `notarize` | | notarizes the app and the disk image of production builds: `keychainProfile`, the profile of `xcrun notarytool store-credentials`, and optionally `keychain`, the keychain holding it |
@@ -136,7 +138,7 @@ See [macOS](distribution.md#macos).
 | `certificate` | | a code signing certificate (`.pfx`) for the executable, the unsigned executables and libraries among the resources, and the installer; its password comes from `MYGO_WINDOWS_CERTIFICATE_PASSWORD` |
 | `signCommand` | | instead of `certificate`, a command that signs a file, with `%1` for its path |
 | `timestampUrl` | `http://timestamp.digicert.com` | the time stamping server of `certificate` |
-| `installerInclude` | | an NSIS script that the installer includes, e.g. `build/installer.nsh`, whose `customInit`, `customInstall` and `customUnInstall` macros run when the installer starts, at the end of the install, and in the uninstall before the app's folder is removed. See [installer hooks](distribution.md#installer-hooks) |
+| `installerInclude` | | an NSIS script that the installer includes, e.g. `build/installer.nsh`, whose `customInit`, `customInstall` and `customUnInstall` macros run when the installer starts, at the end of the install, and in the uninstall before the app's folder is removed; `customUnPage` adds an uninstaller page before the confirm page, and `customUnConfirmShow` and `customUnConfirmLeave` run on the confirm page. See [installer hooks](distribution.md#installer-hooks) |
 
 See [Windows](distribution.md#windows).
 
@@ -175,6 +177,7 @@ See [Linux](distribution.md#linux).
 
 | Field | Default | |
 |---|---|---|
+| `identifier` | `identifier` | the Android app's package, for one settled before, as an app moving to MyGo that updates the one it replaces: Android builds, their development app and Google Play's uploads use it, the other platforms `identifier` |
 | `minSdk` | `26` | the oldest Android API level the app runs on |
 | `versionCode` | from `version` | the integer version Google Play orders uploads by: major × 10000 + minor × 100 + patch |
 | `permissions` | | permissions the manifest declares besides INTERNET and notifications, as `CAMERA` |

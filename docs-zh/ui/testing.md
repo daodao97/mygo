@@ -30,7 +30,7 @@ func TestCounter(t *testing.T) {
 - **它显示的内容。** `tt.Texts`、`tt.HasText`、`tt.Find`（文本所在的盒子）、`tt.Focused`、`tt.Cursor`、`tt.Clipboard`、`tt.OpenedURLs` 和 `tt.Announcements`，即视图请求屏幕阅读器朗读的内容（[实时区域与播报](#实时区域与播报)）；`tt.FailOpenURL` 让它打开的链接失败，如同没有任何应用能打开它们，`tt.FailClipboard` 让它向剪贴板写入文本失败，如同浏览器拒绝该操作（`WriteClipboardThen`）。
 - **辅助技术看到什么。** `tt.Access` 和 `tt.AccessByRole` 读取元素的角色、名称、值和状态，`tt.AccessAll` 则读取所有元素的这些信息（[见下文](#辅助技术看到什么)）。
 - **帧。** `tt.Frame` 绘制一帧，用于视图之外发生变化时，`tt.Image()` 是最后一帧，用于快照；`ui.Render` 在给定缩放下绘制一次视图。输入和 `tt.Frame` 会运行视图请求的帧，直到它不再请求，或运行 20 帧：`tt.FramePending` 说明它是否仍在请求，例如一个动画不停或永远无法稳定的视图。
-- **时间。** 测试器使用独立时钟 `tt.Now()`，只有调用 `tt.Advance(d)` 才会前进 `d`，并按预定时间运行期间到期的帧：动画进行时每次刷新一帧，`c.After` 和 `Painter.After` 请求的帧到期时运行。所有依赖时间的行为都使用该时钟，包括动画、`Context.After`、`Context.Now`、双击判定、连续输入的撤销分组、插入符闪烁、工具提示和短暂提示。这样，无论机器繁忙还是运行很快，测试结果都一致：不要用睡眠等待，而应推进时钟。`Advance` 只运行视图请求的帧；从视图外部修改显示内容后，应先调用 `tt.Frame`。`editor.Buffer` 和 `richtext.Document` 的撤销分组使用系统时钟。
+- **时间。** 测试器使用独立时钟 `tt.Now()`，只有调用 `tt.Advance(d)` 才会前进 `d`，并按预定时间运行期间到期的帧：动画进行时每次刷新一帧，`c.After` 和 `Painter.After` 请求的帧到期时运行。所有依赖时间的行为都使用该时钟，包括动画、`Context.After`、`Context.Now`、双击判定、连续输入的撤销分组、插入符闪烁、工具提示和短暂提示。这样，无论机器繁忙还是运行很快，测试结果都一致：不要用睡眠等待，而应推进时钟。`Advance` 只运行视图请求的帧；从视图外部修改显示内容后，应先调用 `tt.Frame`。`editor.Buffer` 和 `richtext.Document` 的撤销分组使用系统时钟。时钟从系统时间开始，或者从传给 `NewTesterWith` 的 `ui.TesterOptions{Now: t}` 开始，每次运行都相同，这样读取时间的绘制（`Painter.Now`）每次都画出相同的像素。
 
   ```go
   tt := ui.NewTester(app.view, 320, 240)

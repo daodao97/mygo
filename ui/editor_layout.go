@@ -25,7 +25,7 @@ func (ed *editor) lineHeight() float32 {
 func (ed *editor) caretRect(st *state) Rect {
 	if a := ed.area; a != nil && a.version != 0 {
 		x, y, h := a.caretAt(ed, ed.caret, ed.composeCaret)
-		return Rect{st.x + ed.originX + x, st.y + ed.originY + float32(y-a.scroll), 1, h}
+		return Rect{st.x + ed.originX + x - ed.scrollX, st.y + ed.originY + float32(y-a.scroll), 1, h}
 	}
 	if ed.layout == nil {
 		return Rect{st.x, st.y, 1, st.h}
@@ -177,7 +177,7 @@ func (e *node) paintInput(p *Painter) {
 		p.textLayout(pl, e.x+e.contentX(), oy, color, ts, nil)
 	}
 	if ed.area != nil {
-		ed.area.paint(e, p, e.x+ed.originX, e.y+ed.originY)
+		ed.area.paint(e, p, ox, e.y+ed.originY)
 		p.popClip()
 		p.clip = saved
 		return

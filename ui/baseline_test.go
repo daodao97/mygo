@@ -158,3 +158,39 @@ func TestBaselineInvisible(t *testing.T) {
 		}
 	}
 }
+
+// A check box or a radio button with a label lines up the label's
+// baseline, not the bottom of its box, and one without a label keeps the
+// bottom of its box.
+func TestBaselineCheckboxLabel(t *testing.T) {
+	for _, name := range []string{"check box", "radio button"} {
+		var checked bool
+		var choice int
+		var text, plain *node
+		tt := coreNewTester(func(c *context) {
+			coreRow(c).AlignItems(Baseline).Gap(6).Children(func() {
+				text = coreText(c, "M").FontSize(12)
+				if name == "check box" {
+					coreCheckbox(c, &checked, "Viewed").FontSize(12)
+					plain = coreCheckbox(c, &checked, "")
+				} else {
+					coreRadio(c, &choice, 1, "Viewed").FontSize(12)
+					plain = coreRadio(c, &choice, 2, "")
+				}
+			})
+		}, 300, 60)
+		tt.Frame()
+		m, _ := tt.Find("M")
+		v, ok := tt.Find("Viewed")
+		if !ok {
+			t.Fatalf("the %s's label is not found", name)
+		}
+		if math.Abs(float64(m.Y-v.Y)) > 0.01 {
+			t.Errorf("the %s's label is at %v, want %v, the text's", name, v.Y, m.Y)
+		}
+		mb := text.y + text.contentY() + text.tl.Lines[0].Baseline
+		if bottom := plain.y + plain.h; math.Abs(float64(bottom-mb)) > 0.01 {
+			t.Errorf("the %s without a label ends at %v, want the baseline %v", name, bottom, mb)
+		}
+	}
+}

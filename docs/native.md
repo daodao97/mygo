@@ -370,7 +370,8 @@ The accent is 8-bit sRGB with straight alpha; `ui.RGB(p.Accent.R, p.Accent.G, p.
 makes it a `ui.Color` for drawing of your own.
 
 `ReduceMotion` is macOS's Reduce Motion, Windows's animation effects and
-GNOME's animations turned off; `ReduceTransparency` macOS's Reduce
+GNOME's animations turned off, and KDE's Instant animation speed (the
+settings portal's reduced motion); `ReduceTransparency` macOS's Reduce
 Transparency and Windows's transparency effects turned off, which Linux
 desktops do not have, so it is false there; `HighContrast` macOS's
 Increase Contrast, Windows's contrast themes and the higher contrast of

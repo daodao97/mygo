@@ -324,9 +324,12 @@ func TestUIAGrid(t *testing.T) {
 	if v.Val != 50028 {
 		t.Errorf("the grid's control type %d", v.Val)
 	}
-	get := func(e *uiaElement, iface, method int, args ...uintptr) int32 {
+	// The pointer is converted in the call itself, so go:uintptrescapes
+	// puts n on the heap: on the stack, a callback that grows it would
+	// write where n was before the stack moved.
+	get := func(e *uiaElement, iface, method int) int32 {
 		var n int32
-		if hr := comCall(e.ptr(iface), method, append(args, uintptr(unsafe.Pointer(&n)))...); hr != sOK {
+		if hr := comCall(e.ptr(iface), method, uintptr(unsafe.Pointer(&n))); hr != sOK {
 			t.Errorf("method %d of interface %d: %#x", method, iface, hr)
 		}
 		return n

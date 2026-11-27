@@ -271,6 +271,12 @@ itself, so the app asks for them once, as the user turns the setting on.
 `WasOpenedAtLogin` does not tell such a launch apart: give the task's
 command an argument of the app's own for that.
 
+The uninstaller that `mygo build` makes on Windows deletes the Run entry,
+and Task Manager's state of it, for the user who uninstalls, so that
+Windows lists no startup app that is gone. A task the app registered
+itself is the app's to remove, e.g. in the `customUnInstall` macro of
+[installer hooks](distribution.md#installer-hooks).
+
 ## Directories
 
 `App.Path` returns well-known directories:

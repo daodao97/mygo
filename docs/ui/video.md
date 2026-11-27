@@ -189,7 +189,40 @@ GStreamer and its base plugins or a Windows Server without its Media
 Foundation feature, for the app to show a GIF instead. What formats play
 is the system's: H.264 and AAC in MP4 play on all of them. Linux needs
 `gstreamer1.0-plugins-base`, and `gstreamer1.0-libav` (or another H.264
-decoder) for H.264; a missing decoder shows as `Err`.
+decoder) for H.264; a missing decoder shows as `Err`. So does a video
+whose picture the system cannot decode or read, as VP9, or HEVC in
+MPEG-TS, on macOS, rather than play its sound alone; one that plays to
+its end without a picture, as one of sound alone on Linux, fails then. On Linux a video over HTTP,
+but HLS, is buffered in a file in the user's cache directory, at most
+32 MB of it, which GStreamer removes as it stops: it seeks in it where it
+asks, as in a file on disk.
+
+What plays where, as `TestFormatMatrix` checks it on CI's systems
+(macOS 26, Windows Server 2025, Windows 11 on Arm, Ubuntu 24.04 with
+GStreamer's base, good, bad and libav plugins) and in iOS's simulator,
+opening each sample from a file, from bytes and over HTTP: "plays" is its
+pictures, after seeks too, and its end; "no" fails with `Err`. "Seeks
+miss" are bugs to fix: a seek shows another picture than the one asked
+for. Windows Server has no HEVC, VP9, AV1 or MPEG-2 decoder; Windows 11
+plays them with the Store's video extensions installed. Linux needs
+`gstreamer1.0-plugins-bad` for MPEG-TS, MPEG-PS, HLS and AV1.
+
+| Container: video                    | macOS                    | iOS (simulator) | Windows                                 | Linux                                      |
+| ----------------------------------- | ------------------------ | --------------- | --------------------------------------- | ------------------------------------------ |
+| MP4, M4V, 3GP, MOV: H.264           | plays                    | plays           | plays                                   | plays                                      |
+| Fragmented MP4: H.264               | plays                    | plays           | plays                                   | plays                                      |
+| MP4: HEVC                           | plays                    | plays           | with its extension                      | plays                                      |
+| MP4: VP9                            | no                       | no              | with its extension; seeks miss          | plays                                      |
+| Fragmented MP4: AV1                 | Apple M3 and later       | no              | with its extension                      | plays                                      |
+| Matroska: H.264                     | no                       | no              | plays                                   | plays                                      |
+| Matroska: HEVC                      | no                       | no              | with its extension                      | plays                                      |
+| WebM: VP9, with Opus                | no                       | no              | with its extension; VP9's seeks miss    | plays                                      |
+| WebM: AV1, with Opus                | no                       | no              | with its extension                      | plays                                      |
+| MPEG-TS, M2TS: H.264                | plays                    | no              | plays; seeks miss                       | plays; seeks miss                          |
+| MPEG-TS: HEVC                       | no                       | no              | with its extension; seeks miss          | plays; seeks miss                          |
+| MPEG-PS: MPEG-2                     | plays                    | no              | Windows 11; seeks miss                  | plays; seeks miss                          |
+| AVI: MJPEG                          | macOS 27                 | plays           | plays                                   | plays                                      |
+| HLS: fragmented MP4 or MPEG-TS      | plays                    | plays           | plays                                   | plays                                      |
 
 Windows on Arm's MPEG-4 reader ignores a track's edit list. An H.264
 video with B-frames (x264's default) has one that takes back its
@@ -197,6 +230,14 @@ reordering delay, so there each picture shows that much late, up to a few
 frames behind its sound. Encode a clip without B-frames
 (`-x264-params bframes=0`) where that matters, as the example's trailer
 is.
+
+On macOS, an AV1 video in MP4 whose `sdtp` box marks frames as ones no
+other frame refers to, as ffmpeg marks SVT-AV1's, shows no picture after
+a `Seek` until its next keyframe: AVFoundation, which can pass over such
+frames as it decodes up to the time sought, gives none until then. Where
+seeking matters, make such a file fragmented MP4
+(`-movflags +frag_keyframe+empty_moov+default_base_moof`), which has no
+`sdtp` box.
 
 In browsers a video with sound may not play before the user interacted
 with the page: it then plays muted, as the browser allows.

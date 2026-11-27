@@ -2,7 +2,9 @@ package mygo
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -186,10 +188,23 @@ func (s *recoveryStore) claim() (orphans []orphan, done func(restored map[string
 			continue
 		}
 		c := claimedRecovery{dir: dir, lock: lock}
-		if data, err := readAppFile(filepath.Join(dir, "index.json")); err == nil {
-			if err := json.Unmarshal(data, &c.entries); err != nil {
-				log.Printf("mygo: documents: %s: %v", dir, err)
+		data, err := readAppFile(filepath.Join(dir, "index.json"))
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				// The index is there and cannot be read: what the session
+				// holds is unknown, not nothing. Claiming it would report
+				// no copies to restore and remove the directory, dropping
+				// the user's unsaved work. Leave it for a later launch.
+				log.Printf("mygo: documents: cannot read the recovery index of %s: %v", dir, err)
+				lock.Close()
+				continue
 			}
+		} else if err := json.Unmarshal(data, &c.entries); err != nil {
+			// An index that cannot be parsed tells neither what it holds
+			// nor that it holds nothing.
+			log.Printf("mygo: documents: cannot read the recovery index of %s: %v", dir, err)
+			lock.Close()
+			continue
 		}
 		claimed = append(claimed, c)
 		for _, e := range c.entries {
@@ -299,7 +314,13 @@ func (k *docKind) restore() int {
 		b.ops.restore(v)
 		if e.Path != "" {
 			b.path, b.stamp = e.Path, e.Stamp
-			switch now, exists, _ := statStamp(e.Path); {
+			switch now, exists, err := statStamp(e.Path); {
+			case err != nil:
+				// The look of the file failed — a parent that cannot be
+				// entered, say. It did not answer that the file is gone:
+				// the document says neither deleted nor in conflict, and
+				// the next look of the disk says what it really is, as
+				// checkDisk does.
 			case !exists:
 				b.deleted = true
 			case !now.same(e.Stamp):

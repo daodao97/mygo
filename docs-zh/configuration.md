@@ -109,9 +109,11 @@ export default defineConfig({
 | `icon` | | 以资源目录（asset catalog）、`Assets.car` 或 Icon Composer 的 `.icon` 提供图标，放在 `icon` 指定的 `.icns` 旁边；也可用另一个 `.icns` 替代原图标。见[图标](distribution.md#名称图标与版本) |
 | `minimumSystemVersion` | `12.0` | 应用支持的最旧 macOS 版本 |
 | `signingIdentity` | `-`，临时签名 | 签署应用及其磁盘映像的身份，例如 `Developer ID Application: Jane Doe (TEAMID)` |
+| `signCommand` | | 代替 `codesign` 为应用包签名的命令，`%1` 表示应用包路径，可在任何系统上运行，例如在 Linux 上用 rcodesign。见[在 Mac 以外签名](distribution.md#在-mac-以外签名) |
 | `entitlements` | | 用于签署应用的权限（entitlements）属性列表 |
 | `provisioningProfile` | | 在签名前作为 `Contents/embedded.provisionprofile` 嵌入的描述文件；必须与应用标识符、权限和签名身份匹配；不能与临时签名一起使用。见[描述文件](distribution.md#描述文件) |
 | `helperEntitlements` | | 资源中代码的权限属性列表，按它在资源中的路径，例如 `{ "bin/server": "server.entitlements.plist" }`；其他代码保持签署它时使用的权限。见[辅助可执行文件](distribution.md#辅助可执行文件) |
+| `extensions` | | 预先构建的应用扩展，如共享扩展，每个是 `path`，即它的 `.appex`，已用它自己的权限签名：复制进 `Contents/PlugIns/`，用应用的签名身份签名，并保留这些权限；`mygo dev` 不带上它们。见[应用扩展](distribution.md#应用扩展) |
 | `infoPlist` | | 添加到应用 `Info.plist` 的键，替换 MyGo 的，例如 `NSCameraUsageDescription` |
 | `dmgTitle` | `name` | 磁盘映像的卷名 |
 | `notarize` | | 对生产构建的应用和磁盘映像进行公证：`keychainProfile`，即 `xcrun notarytool store-credentials` 的钥匙串描述文件，以及可选的 `keychain`，存放该描述文件的钥匙串 |
@@ -127,7 +129,7 @@ export default defineConfig({
 | `certificate` | | 用于可执行文件、资源中未签名的可执行文件和库，以及安装程序的代码签名证书（`.pfx`）；密码来自 `MYGO_WINDOWS_CERTIFICATE_PASSWORD` |
 | `signCommand` | | 代替 `certificate` 的签名命令，`%1` 表示文件路径 |
 | `timestampUrl` | `http://timestamp.digicert.com` | `certificate` 的时间戳服务器 |
-| `installerInclude` | | 安装程序会包含的 NSIS 脚本，例如 `build/installer.nsh`，其 `customInit`、`customInstall` 和 `customUnInstall` 宏分别在安装程序启动时、安装结束时，以及卸载时、移除应用文件夹之前运行。见[安装程序钩子](distribution.md#安装程序钩子) |
+| `installerInclude` | | 安装程序会包含的 NSIS 脚本，例如 `build/installer.nsh`，其 `customInit`、`customInstall` 和 `customUnInstall` 宏分别在安装程序启动时、安装结束时，以及卸载时、移除应用文件夹之前运行；`customUnPage` 在确认页之前添加一个卸载程序页面，`customUnConfirmShow` 和 `customUnConfirmLeave` 在确认页上运行。见[安装程序钩子](distribution.md#安装程序钩子) |
 
 见 [Windows](distribution.md#windows)。
 

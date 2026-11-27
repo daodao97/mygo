@@ -101,15 +101,23 @@ func writeBlocks(b *strings.Builder, paras []Paragraph) {
 			writeRuns(b, p.Runs)
 		case st.CodeBlock:
 			b.WriteString("<pre><code>")
+			empty := false
 			for ; i < len(paras) && paras[i].Style.CodeBlock; i++ {
+				empty = true
 				for _, r := range paras[i].Runs {
 					b.WriteString(html.EscapeString(r.Text))
+					empty = empty && r.Text == ""
 				}
 				if i+1 < len(paras) && paras[i+1].Style.CodeBlock {
 					b.WriteByte('\n')
 				}
 			}
 			i--
+			// A last line that is empty shows only with a line break
+			// after it.
+			if empty {
+				b.WriteByte('\n')
+			}
 			b.WriteString("</code></pre>")
 		default:
 			tag := blockTag(st)
@@ -358,9 +366,15 @@ func ParseHTML(s string) Text {
 	if len(b.paras) == 0 {
 		return Text{}
 	}
-	// Leading and trailing empty paragraphs are the document's margins.
+	// Leading and trailing empty paragraphs are the document's margins,
+	// but for the lines of a block of code and the items of a list, as
+	// Markdown keeps them.
 	paras := b.paras
-	for len(paras) > 1 && len(paras[len(paras)-1].Runs) == 0 {
+	for len(paras) > 1 {
+		last := paras[len(paras)-1]
+		if len(last.Runs) > 0 || last.Style.CodeBlock || last.Style.List != NoList {
+			break
+		}
 		paras = paras[:len(paras)-1]
 	}
 	return TextOf(paras...)
@@ -559,12 +573,17 @@ func (b *htmlBuilder) node(n *xhtml.Node, a Attributes) {
 			b.style.Align = ui.End
 		}
 	}
+	paras := len(b.paras)
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		b.node(c, a)
 	}
 	if block {
 		if n.DataAtom == atom.P && !b.started && !b.br && b.pre == 0 {
 			// An empty paragraph shows as one; <p><br></p> as one too.
+			b.begin()
+		}
+		if n.DataAtom == atom.Li && !b.started && len(b.paras) == paras {
+			// An empty item too, but not one holding only a list.
 			b.begin()
 		}
 		b.flush()

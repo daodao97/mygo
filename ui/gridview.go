@@ -244,8 +244,7 @@ func (s *GridState) reorder(e *node, n int, gap float32) {
 	if s.Reorder == nil {
 		return
 	}
-	e.flags |= flagValueDrop
-	e.st.accepts = func(v any) bool { d, ok := v.(*itemDrag); return ok && d.s == s }
+	e.takes(func(v any) bool { d, ok := v.(*itemDrag); return ok && d.s == s })
 	rt := e.c.rt
 	var d *itemDrag
 	dropped, x, y := false, rt.pointerX, rt.pointerY
@@ -253,12 +252,16 @@ func (s *GridState) reorder(e *node, n int, gap float32) {
 	case e.st.hasDropped:
 		// Where the items dropped, which the pointer may have left since.
 		d, _ = e.st.droppedValue.(*itemDrag)
-		e.st.hasDropped, dropped, x, y = false, true, e.st.dropX, e.st.dropY
+		dropped, x, y = true, e.st.dropX, e.st.dropY
 	case rt.drag != nil && !rt.drag.canceled && rt.drag.over == e.id:
 		d, _ = rt.drag.value.(*itemDrag)
 	}
 	if d == nil || d.s != s {
+		// Another value, for the app's Drop after the grid builds.
 		return
+	}
+	if dropped {
+		e.st.hasDropped = false
 	}
 	x, y = e.st.local(x, y)
 	x += e.st.x
@@ -337,7 +340,7 @@ func (s *GridState) cell(c *context, grid *node, i, n int, height float32, item 
 	if s.Reorder != nil {
 		cell.dragFrom(func() any {
 			items := s.dragged(i, n)
-			return countedDrag{&itemDrag{s: s, items: items}, len(items)}
+			return countedDrag{value: &itemDrag{s: s, items: items}, n: len(items)}
 		})
 		if cell.Dragging() {
 			cell.Opacity(0.4)

@@ -189,7 +189,8 @@ func (m *mdReader) block(i int, st ParagraphStyle, depth int) {
 	case parser.Paragraph:
 		m.inlinePara(st, m.d.Inlines(i))
 	case parser.Heading:
-		st.Heading = b.Level
+		// A heading is no item, as SetHeading and ParseHTML make it.
+		st.Heading, st.List, st.Checked = b.Level, NoList, false
 		m.inlinePara(st, m.d.Inlines(i))
 	case parser.CodeBlock:
 		st.CodeBlock, st.Heading = true, 0
@@ -230,6 +231,8 @@ func (m *mdReader) block(i int, st ParagraphStyle, depth int) {
 			ist := ParagraphStyle{List: kind, Indent: depth + 1, Quote: st.Quote, QuoteDepth: st.QuoteDepth}
 			if task := m.d.Block(it).Task; task != parser.NoTask {
 				ist.List, ist.Checked = Tasks, task == parser.Checked
+			} else if checked, ok := m.bareTask(it); ok {
+				ist.List, ist.Checked = Tasks, checked
 			}
 			m.item(it, ist, depth+1)
 		}
@@ -273,6 +276,10 @@ func (m *mdReader) item(i int, ist ParagraphStyle, depth int) {
 		b := m.d.Block(k)
 		if first {
 			first = false
+			if _, ok := m.bareTask(i); ok {
+				m.b.start(ist)
+				continue
+			}
 			if b.Kind == parser.Paragraph || b.Kind == parser.Heading {
 				m.block(k, ist, depth)
 				continue
@@ -286,6 +293,28 @@ func (m *mdReader) item(i int, ist ParagraphStyle, depth int) {
 	if first {
 		m.b.start(ist)
 	}
+}
+
+// bareTask reports whether list item i is an empty task, [ ] or [x] with
+// nothing after, as Markdown writes one: GitHub reads it as text, as it
+// asks for text after the check box.
+func (m *mdReader) bareTask(i int) (checked, ok bool) {
+	if m.d.Block(i).Task != parser.NoTask {
+		return false, false
+	}
+	for k := range m.d.Children(i) {
+		if m.d.Block(k).Kind != parser.Paragraph || m.d.LineCount(k) != 1 {
+			return false, false
+		}
+		switch line, _ := m.d.Line(k, 0); strings.TrimSpace(line) {
+		case "[ ]":
+			return false, true
+		case "[x]", "[X]":
+			return true, true
+		}
+		return false, false
+	}
+	return false, false
 }
 
 // inlinePara adds a paragraph of inlines in style st; a hard line break

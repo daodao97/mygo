@@ -1,12 +1,15 @@
 package editor
 
 import (
+	"fmt"
+	"image/color"
 	"math"
 	"math/rand/v2"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/internal/diff"
 	"github.com/egoist/mygo/internal/wait"
@@ -272,6 +275,177 @@ func TestDiffViewerLineSelection(t *testing.T) {
 	tt.ClickAtWith(ui.Shift, ed.gutterW-8, float32(ed.view.heights.geometry(2).rows)+lh/2)
 	if r, _ := d.SelectedLines(); r != (DiffLineRange{DiffNew, 1, 2}) {
 		t.Fatalf("extended %+v", r)
+	}
+}
+
+// Dragging over the numbers of lines selects the lines it goes over,
+// from the one pressed, back above it too, and reports each change.
+func TestDiffViewerLineSelectionDrag(t *testing.T) {
+	var got []DiffLineRange
+	d := &DiffState{Old: NewBuffer("a\nb\nc\nd\ne\n"), New: NewBuffer("a\nB\nC\nD\ne\n"), Layout: DiffSplit, ExpandUnchanged: true,
+		LineSelection: true, OnLineSelection: func(r DiffLineRange) { got = append(got, r) }}
+	// What the app sees of the drag as it builds each frame.
+	dragging := false
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill(); dragging = d.DraggingLines() }, 800, 400)
+	tt.Frame()
+	ed := &d.eds[1]
+	mid := func(line int) float32 {
+		return float32(ed.view.heights.geometry(line).rows-ed.scrollY) + ed.view.lineHeight/2
+	}
+	x := ed.r.X + ed.gutterW - 8
+	tt.Press(x, mid(2))
+	tt.Move(x, mid(4))
+	if r, ok := d.SelectedLines(); !ok || r != (DiffLineRange{DiffNew, 2, 4}) {
+		t.Fatalf("dragged down to %+v %v, want new lines 2 to 4", r, ok)
+	}
+	if !dragging {
+		t.Fatal("DraggingLines is false while the drag is held")
+	}
+	tt.Move(x, mid(0))
+	tt.Release(x, mid(0))
+	if r, _ := d.SelectedLines(); r != (DiffLineRange{DiffNew, 0, 2}) {
+		t.Fatalf("dragged back up to %+v, want new lines 0 to 2", r)
+	}
+	if dragging {
+		t.Fatal("the frame of the release still sees DraggingLines")
+	}
+	if want := []DiffLineRange{{DiffNew, 2, 2}, {DiffNew, 2, 4}, {DiffNew, 0, 2}}; !slices.Equal(got, want) {
+		t.Fatalf("reported %+v, want %+v", got, want)
+	}
+	// The pointer moving after the release selects nothing more.
+	tt.Move(x, mid(4))
+	if r, _ := d.SelectedLines(); r != (DiffLineRange{DiffNew, 0, 2}) {
+		t.Fatalf("a move after the release selected %+v", r)
+	}
+	// The old side's numbers drag the same way.
+	old := &d.eds[0]
+	tt.Press(old.r.X+old.gutterW-8, mid(1))
+	tt.Move(old.r.X+old.gutterW-8, mid(3))
+	tt.Release(old.r.X+old.gutterW-8, mid(3))
+	if r, _ := d.SelectedLines(); r != (DiffLineRange{DiffOld, 1, 3}) {
+		t.Fatalf("old side dragged to %+v, want old lines 1 to 3", r)
+	}
+}
+
+// Shift-click moves an end, and a drag from there keeps the other end.
+func TestDiffViewerLineSelectionShiftDrag(t *testing.T) {
+	d := &DiffState{Old: NewBuffer("a\nb\nc\nd\ne\nf\n"), New: NewBuffer("A\nB\nC\nD\nE\nF\n"), Layout: DiffSplit, ExpandUnchanged: true, LineSelection: true}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 400)
+	tt.Frame()
+	ed := &d.eds[1]
+	mid := func(line int) float32 {
+		return float32(ed.view.heights.geometry(line).rows-ed.scrollY) + ed.view.lineHeight/2
+	}
+	x := ed.r.X + ed.gutterW - 8
+	tt.ClickAt(x, mid(2))
+	// The editor's own events, as the tester presses with no modifiers.
+	shiftDrag := func(from, to int) {
+		lx := ed.gutterW - 8
+		ed.input(ui.InputEvent{Kind: ui.InputPointerDown, X: lx, Y: mid(from), Mods: ui.Shift, Clicks: 1})
+		ed.input(ui.InputEvent{Kind: ui.InputPointerMove, X: lx, Y: mid(to)})
+		ed.input(ui.InputEvent{Kind: ui.InputPointerUp, X: lx, Y: mid(to)})
+	}
+	shiftDrag(4, 5)
+	if r, _ := d.SelectedLines(); r != (DiffLineRange{DiffNew, 2, 5}) {
+		t.Fatalf("selected %+v, want new lines 2 to 5", r)
+	}
+	shiftDrag(0, 3)
+	if r, _ := d.SelectedLines(); r != (DiffLineRange{DiffNew, 3, 5}) {
+		t.Fatalf("selected %+v, want new lines 3 to 5", r)
+	}
+}
+
+// A unified view's deleted lines show their selection as the lines of
+// the text do: their background and gutter tinted.
+func TestDiffViewerLineSelectionPaintsDeleted(t *testing.T) {
+	d := &DiffState{Old: NewBuffer("a\nb\nc\nd\ne\n"), New: NewBuffer("a\nX\nY\ne\n"), Layout: DiffUnified, ExpandUnchanged: true, LineSelection: true}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 600, 400)
+	tt.Frame()
+	ed := &d.eds[1]
+	lh := ed.view.lineHeight
+	top := float32(ed.view.heights.geometry(1).top - ed.scrollY)
+	// The colors of old line i's text, past its characters, and gutter.
+	colors := func(i int) (text, gutter color.RGBA) {
+		img := tt.Image()
+		s := float32(img.Bounds().Dx()) / 600
+		y := int((top + lh*(float32(i-1)+0.5)) * s)
+		return img.RGBAAt(int(400*s), y), img.RGBAAt(int(4*s)+int(8*s), y)
+	}
+	t1, g1 := colors(1)
+	t2, g2 := colors(2)
+	if t1 != t2 || g1 != g2 {
+		t.Fatalf("unselected deleted lines differ: %v %v, %v %v", t1, g1, t2, g2)
+	}
+	tt.ClickAt(ed.gutterW-8, top+lh/2) // old line 1, "b"
+	if r, ok := d.SelectedLines(); !ok || r != (DiffLineRange{DiffOld, 1, 1}) {
+		t.Fatalf("selected %+v %v, want old line 1", r, ok)
+	}
+	s1, sg1 := colors(1)
+	if s1 == t1 || sg1 == g1 {
+		t.Fatalf("selected deleted line painted %v %v, as unselected %v %v", s1, sg1, t1, g1)
+	}
+	if c, g := colors(2); c != t2 || g != g2 {
+		t.Fatalf("the line below changed to %v %v", c, g)
+	}
+}
+
+// In a unified view a drag from a deleted line selects the deleted lines
+// it goes over, and the added lines below them leave the selection be.
+func TestDiffViewerLineSelectionDragDeleted(t *testing.T) {
+	d := &DiffState{Old: NewBuffer("a\nb\nc\nd\ne\n"), New: NewBuffer("a\nX\nY\ne\n"), Layout: DiffUnified, ExpandUnchanged: true, LineSelection: true}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 600, 400)
+	tt.Frame()
+	ed := &d.eds[1]
+	above, _ := ed.view.heights.blocksOf(1)
+	if len(above) == 0 || above[0].kind != blockDeleted {
+		t.Fatalf("no deleted block: %+v", above)
+	}
+	lh := ed.view.lineHeight
+	top := float32(ed.view.heights.geometry(1).top - ed.scrollY)
+	x := ed.gutterW - 8
+	tt.Press(x, top+lh/2)  // old line 1, "b"
+	tt.Move(x, top+lh*2.5) // old line 3, "d"
+	if r, ok := d.SelectedLines(); !ok || r != (DiffLineRange{DiffOld, 1, 3}) {
+		t.Fatalf("dragged to %+v %v, want old lines 1 to 3", r, ok)
+	}
+	tt.Move(x, float32(ed.view.heights.geometry(2).rows-ed.scrollY)+lh/2) // new line 2, "Y"
+	tt.Release(x, float32(ed.view.heights.geometry(2).rows-ed.scrollY)+lh/2)
+	if r, _ := d.SelectedLines(); r != (DiffLineRange{DiffOld, 1, 3}) {
+		t.Fatalf("an added line changed the selection to %+v", r)
+	}
+}
+
+// A drag held below the view scrolls it and selects the lines that come
+// into view, and only up and down.
+func TestDiffViewerLineSelectionDragAutoscroll(t *testing.T) {
+	var old, nw strings.Builder
+	for i := range 200 {
+		fmt.Fprintf(&old, "line %d %s\n", i, strings.Repeat("x", 200))
+		if i == 100 {
+			fmt.Fprintf(&nw, "changed %s\n", strings.Repeat("x", 200))
+			continue
+		}
+		fmt.Fprintf(&nw, "line %d %s\n", i, strings.Repeat("x", 200))
+	}
+	d := &DiffState{Old: NewBuffer(old.String()), New: NewBuffer(nw.String()), Layout: DiffUnified, ExpandUnchanged: true, LineSelection: true}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 600, 300)
+	tt.Frame()
+	ed := &d.eds[1]
+	ed.scrollX = 40
+	y := float32(ed.view.heights.geometry(0).rows-ed.scrollY) + ed.view.lineHeight/2
+	x := ed.gutterW - 8
+	tt.Press(x, y)
+	tt.Move(x, 340)
+	tt.Advance(time.Second)
+	tt.Release(x, 340)
+	if ed.scrollY <= 0 {
+		t.Fatal("holding the drag below the view did not scroll")
+	}
+	if ed.scrollX != 40 {
+		t.Fatalf("the drag scrolled sideways to %v", ed.scrollX)
+	}
+	if r, _ := d.SelectedLines(); r.Side != DiffNew || r.Start != 0 || r.End < 20 {
+		t.Fatalf("selected %+v, want new lines from 0 past the first view", r)
 	}
 }
 

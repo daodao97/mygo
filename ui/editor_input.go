@@ -365,7 +365,7 @@ func (w *widgetTextInput) IndexForPoint(p Point) (int, bool) {
 	}
 	var position text.CaretPosition
 	if a := w.ed.area; a != nil {
-		position = a.documentPositionAt(w.ed, p.X-w.ed.originX, float64(p.Y-w.ed.originY)+a.scroll)
+		position = a.documentPositionAt(w.ed, p.X-w.ed.originX+w.ed.scrollX, float64(p.Y-w.ed.originY)+a.scroll)
 	} else {
 		l := w.layout()
 		position = l.PositionAt(p.X-w.ed.originX+w.ed.scrollX, p.Y-w.ed.originY)

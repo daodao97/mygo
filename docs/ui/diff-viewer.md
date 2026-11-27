@@ -130,7 +130,11 @@ keystroke. Cmd+F8 and Shift+Cmd+F8 go to the next and previous changes
 - `LineSelection` lets the numbers of lines be clicked, and dragged or
   Shift-clicked, to select lines, which `OnLineSelection` reports and
   `SelectedLines` and `SetSelectedLines` read and set, as a link to lines
-  of a review does.
+  of a review does. A drag selects from the line pressed to the one under
+  the pointer, on the side it started on, and scrolls the view while it is
+  held above or below it. `OnLineSelection` reports each change as the
+  drag goes; `DraggingLines` reports the drag, so that an app staging the
+  lines, say, acts once it is released.
 - `OnGutterButton` shows a + on the gutter of the line under the pointer,
   as to comment on it, and is called with the line when it is clicked.
 - `Annotations` leave room under lines for what `RenderAnnotation` builds

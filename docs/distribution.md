@@ -34,7 +34,8 @@ mygo build -platform darwin/universal,windows/amd64,windows/arm64,linux/amd64,li
 `darwin/universal` combines arm64 and amd64 in one app. MyGo needs no cgo,
 so any machine compiles for every platform. Some steps need the tools of a
 platform, and are skipped with a note elsewhere: macOS apps are signed and
-put in disk images on macOS only, and Windows installers are made on other
+put in disk images on macOS only, unless a command of yours
+[signs them](#signing-off-a-mac), and Windows installers are made on other
 systems only where [NSIS](#the-installer) is installed.
 
 The CLI defaults to `CGO_ENABLED=0`. If an app's dependencies need cgo,
@@ -345,6 +346,46 @@ security unlock-keychain ~/Library/Keychains/login.keychain-db
 security set-key-partition-list -S apple-tool:,apple: -s ~/Library/Keychains/login.keychain-db
 ```
 
+### Signing off a Mac
+
+`codesign` needs macOS: elsewhere `mygo build` leaves the app as the Go
+linker signed it, which no other Mac opens. To ship Mac apps from Linux,
+such as from one CI runner that builds every platform, sign them with a
+command of your own, in which `%1` is the app bundle, for example with
+[rcodesign](https://github.com/indygreg/apple-platform-rs):
+
+```ts
+export default defineConfig({
+  macos: { signCommand: "scripts/sign-macos.sh %1" },
+});
+```
+
+```sh
+#!/bin/sh
+# scripts/sign-macos.sh: sign the app with a Developer ID, then notarize
+# it with an App Store Connect API key and staple the ticket.
+set -e
+rcodesign sign --p12-file "$MACOS_CERTIFICATE_FILE" --p12-password "$MACOS_CERTIFICATE_PASSWORD" \
+  --code-signature-flags runtime "$1"
+rcodesign notary-submit --api-key-path "$APP_STORE_CONNECT_KEY_FILE" --staple "$1"
+```
+
+`mygo build` runs the command, on any system and in place of `codesign`,
+once the bundle holds everything, [provisioning
+profile](#provisioning-profiles) included, and before anything takes it:
+the [update](updates.md) archive, its delta updates and its manifest hold
+the app as the command signed it, and on a Mac the disk image too. A
+command that fails fails the build. The command signs the whole bundle,
+with the code among its resources, and gives it the entitlements it needs:
+`entitlements` and `helperEntitlements` are what `codesign` signs with.
+`signingIdentity` still signs the disk image, which only macOS makes, and
+`mygo dev` still signs with `codesign`.
+
+Without `signCommand`, a build off a Mac that writes updates warns that
+the update holds the unsigned app: installed copies that update to it
+would no longer open, and signing the app after the build leaves the
+update as it was.
+
 ### Info.plist and entitlements
 
 `macos.infoPlist` adds keys to the app's `Info.plist`, or replaces MyGo's,
@@ -419,6 +460,41 @@ watches the profile and rebuilds when it changes.
 Keep profiles out of version control and provide their paths through the
 build environment. See Apple's
 [Inside code signing: provisioning profiles](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles).
+
+### App extensions
+
+An app extension, as a share extension that puts the app in the Share
+menu of other apps, is a bundle of its own in the app's
+`Contents/PlugIns`. macOS loads an app extension only in the App Sandbox,
+so it has entitlements of its own, which the app need not share. Build it
+apart, with Xcode or a script, sign it with its entitlements (ad hoc is
+enough), and name it in `macos.extensions`:
+
+```ts
+export default defineConfig({
+  identifier: "com.example.app",
+  macos: {
+    signingIdentity: "Developer ID Application: Jane Doe (TEAMID)",
+    extensions: [{ path: "build/ShareExtension.appex" }],
+  },
+});
+```
+
+`mygo build` copies each into `Contents/PlugIns` and signs it before the
+app with `signingIdentity`, with the hardened runtime and a timestamp for
+a Developer ID, keeping the entitlements it was signed with. The app is
+then signed from the inside out, not with `codesign --deep`, which would
+give the extensions the app's entitlements in place of their own. The
+identifier of an extension must start with the app's and a dot, as
+`com.example.app.share`. Build the extension for release: notarization
+refuses the `com.apple.security.get-task-allow` entitlement that Xcode
+gives debug builds, and the extension keeps it. Builds on other systems,
+which sign nothing, read its `Info.plist` only as XML.
+
+`mygo dev` leaves the extensions out, so that the development app never
+adds a second copy of them to the Share menu. Once the built app has run,
+`pluginkit -m -i com.example.app.share` shows whether macOS found the
+extension.
 
 ## Windows
 
@@ -539,11 +615,51 @@ itself. [Updates](updates.md) replace the app's files without the
 installer, so they run none of the macros. Functions that
 `customUnInstall` calls are the uninstaller's, named with `un.`.
 
+The script can also ask the user something in the uninstaller. A
+`customUnPage` macro makes a page of its own, shown before the
+uninstaller's confirm page, which it creates with
+[nsDialogs](https://nsis.sourceforge.io/Docs/nsDialogs/Readme.html), and
+`customUnPageLeave` runs when the user leaves it; without `customUnPage`
+there is no such page. `customUnConfirmShow` and `customUnConfirmLeave` run
+as the confirm page shows and as the user leaves it, as Modern UI's
+`MUI_PAGE_CUSTOMFUNCTION_SHOW` and `_LEAVE` functions do; `Abort` in a
+`Leave` macro keeps the user on the page. A silent uninstall (`/S`) shows no
+pages, so the variables the pages set keep their defaults. The page below
+lets the user remove the data that the app keeps outside its folder,
+unchecked by default, and `customUnInstall` reads the choice:
+
+```nsis
+; build/installer.nsh
+!include "nsDialogs.nsh"
+Var RemoveData
+Var RemoveDataBox
+
+!macro customUnPage
+  !insertmacro MUI_HEADER_TEXT "Uninstall My App" "Choose what to remove."
+  nsDialogs::Create 1018
+  Pop $0
+  ${NSD_CreateCheckbox} 0 0 100% 12u "Also remove my data and settings"
+  Pop $RemoveDataBox
+  nsDialogs::Show
+!macroend
+
+!macro customUnPageLeave
+  ${NSD_GetState} $RemoveDataBox $RemoveData
+!macroend
+
+!macro customUnInstall
+  ${If} $RemoveData == ${BST_CHECKED}
+    RMDir /r "$LOCALAPPDATA\My App"
+  ${EndIf}
+!macroend
+```
+
 The installer installs for the current user without administrator rights,
 so that the app can update itself: the hooks should keep to what the user
 can write, such as `$LOCALAPPDATA` and `HKCU`. The installer already lets
-the user choose the folder, and the uninstaller removes the app's folder
-only, keeping the app's data. Signing applies to the installer and its
+the user choose the folder, and the uninstaller removes the app's folder,
+keeping the app's data, and the user's
+[start at login](app.md#start-at-login) entry. Signing applies to the installer and its
 uninstaller as it does without hooks.
 
 ### Code signing
@@ -852,7 +968,8 @@ as Cloudflare R2, with the credentials in `AWS_ACCESS_KEY_ID` and
 
 Build on each platform in CI and upload to the same release: macOS runners
 sign, notarize and make the disk images; any runner compiles and packages
-Windows and Linux apps. Keep the signing secrets in CI secrets:
+Windows and Linux apps, and macOS apps that
+[`macos.signCommand`](#signing-off-a-mac) signs. Keep the signing secrets in CI secrets:
 `MYGO_WINDOWS_CERTIFICATE_PASSWORD`, `MYGO_UPDATER_PRIVATE_KEY`, and the
 notary credentials in a keychain of the macOS runner.
 [GitHub Actions](github-actions.md) has a workflow that does it all.

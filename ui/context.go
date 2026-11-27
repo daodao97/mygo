@@ -725,6 +725,9 @@ type state struct {
 	// invisible tells that the element showed nothing in the last frame,
 	// wherever it was: invisible, inert or hidden (InViewMargin).
 	invisible bool
+	// truncated tells that MaxLines or SingleLine cut the element's text
+	// in the last frame, or text inside it (Truncated).
+	truncated bool
 	// view is what InView and its kin read, once an element asks for it
 	// (watchView), for the frame that rebuilds the view when it changes.
 	view *viewWatch

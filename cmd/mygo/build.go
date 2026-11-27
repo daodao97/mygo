@@ -54,6 +54,8 @@ out.
 
 Set macos.signingIdentity in mygo.json (or -sign) to a Developer ID to ship
 outside the Mac App Store, and macos.notarize to notarize the app and the disk image.
+Off a Mac, macos.signCommand signs the app instead, e.g. with rcodesign,
+before the update files take it.
 
 With updates in mygo.json and the key of mygo keygen in
 MYGO_UPDATER_PRIVATE_KEY, each platform also gets a signed update archive,
@@ -64,7 +66,7 @@ The platform web (or js/wasm) builds an app of native UI for browsers into
 <out>/web: index.html, which loads the app, Go's wasm_exec.js and the app's
 WebAssembly, named by its content: a static site, to serve from anywhere.`)
 	platforms := flags.String("platform", runtime.GOOS+"/"+runtime.GOARCH, "comma separated GOOS/GOARCH targets, e.g. darwin/universal,linux/amd64,windows/amd64, or web for browsers")
-	debug := flags.Bool("debug", false, "keep development features such as the web inspector")
+	debug := flags.Bool("debug", false, "keep development features such as the web inspector, and make Android's APK debuggable")
 	skipBuildCommand := flags.Bool("skip-build-command", false, "do not run buildCommand")
 	skipDMG := flags.Bool("skip-dmg", false, "do not create a disk image for macOS")
 	skipNotarize := flags.Bool("skip-notarize", false, "do not notarize even when macos.notarize is set")
@@ -112,7 +114,7 @@ WebAssembly, named by its content: a static site, to serve from anywhere.`)
 	if c.MacOS.Notarize != nil && !opts.skipNotarize && opts.sign == "-" {
 		return fmt.Errorf("notarization needs a Developer ID signing identity: set macos.signingIdentity or pass -sign")
 	}
-	if c.MacOS.ProvisioningProfile != "" && opts.sign == "-" && slices.ContainsFunc(targets, func(p string) bool { return strings.HasPrefix(p, "darwin/") }) {
+	if c.MacOS.ProvisioningProfile != "" && c.MacOS.SignCommand == "" && opts.sign == "-" && slices.ContainsFunc(targets, func(p string) bool { return strings.HasPrefix(p, "darwin/") }) {
 		// Before building anything, as codesign would.
 		return errProfileAdHoc
 	}
@@ -354,11 +356,9 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		if slices.ContainsFunc(res, inProject) {
 			logf("Made universal binaries of the code in %s and %s", filepath.Join(resourcesDir, "darwin-arm64"), filepath.Join(resourcesDir, "darwin-amd64"))
 		}
-		var t *task
-		if runtime.GOOS == "darwin" {
-			t = con.start("Signing " + filepath.Base(app))
-		}
-		if err := t.end(codesign(c, app, opts.sign, true), "Signed "+filepath.Base(app)); err != nil {
+		// Before the disk image and the update files, which take the
+		// bundle as signed.
+		if err := signApp(c, app, opts.sign); err != nil {
 			return nil, err
 		}
 		artifacts = append(artifacts, app)

@@ -323,9 +323,45 @@ func (st *viewState) ownMarkdown(parts []ui.SelectedText) string {
 	if b < a {
 		a, b = b, a
 	}
+	body := d.Source()[a:b]
 	prefix := st.openAt(fi.block, a)
 	suffix := st.closeAt(li.block, b)
-	return prefix + d.Source()[a:b] + suffix
+	// Emphasis's delimiters open and close nothing next to whitespace,
+	// as **bold **: what the selection has at its ends goes outside them.
+	var lead, trail string
+	if st.inEmphasis(fi.block, a) {
+		rest := strings.TrimLeftFunc(body, unicode.IsSpace)
+		lead, body = body[:len(body)-len(rest)], rest
+	}
+	if st.inEmphasis(li.block, b) {
+		rest := strings.TrimRightFunc(body, unicode.IsSpace)
+		trail, body = body[len(rest):], rest
+	}
+	if body == "" {
+		return lead + trail
+	}
+	return lead + prefix + body + suffix + trail
+}
+
+// inEmphasis reports whether the innermost span of block i whose syntax
+// copying completes, that offset at falls inside, is emphasis, strong or
+// strikethrough.
+func (st *viewState) inEmphasis(i, at int) bool {
+	in := st.doc.Inlines(i)
+	inner := -1
+	for k := range in {
+		if n := &in[k]; n.Start < at && at < n.End && st.openSyntax(in, k) != "" {
+			inner = k
+		}
+	}
+	if inner == -1 {
+		return false
+	}
+	switch in[inner].Kind {
+	case parser.Emphasis, parser.Strong, parser.Strikethrough:
+		return true
+	}
+	return false
 }
 
 func lineEndOf(src string, off int) int {

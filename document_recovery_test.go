@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -219,4 +220,81 @@ func TestDocumentRecoveryFollowsRename(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An index that cannot be read or parsed is not one that holds nothing:
+// the copies it names are the user's unsaved work, and removing the
+// session would drop it. They stay for a later launch.
+func TestDocumentRecoveryKeepsSessionWhoseIndexCannotBeRead(t *testing.T) {
+	cases := []struct {
+		name   string
+		damage func(dir string)
+		skip   string
+	}{
+		{"unreadable", func(dir string) {
+			if err := os.Chmod(filepath.Join(dir, "index.json"), 0o000); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.Chmod(filepath.Join(dir, "index.json"), 0o600) })
+		}, "root reads every file; a mode is no bar on Windows"},
+		{"unparseable", func(dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "index.json"), []byte("{"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.skip != "" && (runtime.GOOS == "windows" || os.Geteuid() == 0) {
+				t.Skip(c.skip)
+			}
+			ds := recoveryDocs(t)
+			dir := writeRecoveryOrphan(t, ds, c.name, []recoveryEntry{{ID: "unsaved", Name: "Untitled"}}, map[string]string{"unsaved": "unsaved changes"})
+			c.damage(dir)
+
+			if n := ds.kind.restore(); n != 0 {
+				t.Fatalf("restored %d documents, want none", n)
+			}
+			if got := readString(t, filepath.Join(dir, "unsaved")); got != "unsaved changes" {
+				t.Fatalf("recovery copy = %q, want unsaved changes", got)
+			}
+		})
+	}
+}
+
+// A restored document whose file cannot be looked at is not a deleted
+// one: the look failed, it did not answer that the file is gone. The
+// document says neither deleted nor in conflict, and the next look of
+// the disk (a focus, a save) tells what it really is, as checkDisk
+// does.
+func TestDocumentRecoveryDoesNotSayDeletedWhenItCannotLook(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("a directory with no permission needs a user who is not root")
+	}
+	ds := recoveryDocs(t)
+	outer := t.TempDir()
+	if err := os.Chmod(outer, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(outer, 0o700) })
+	path := filepath.Join(outer, "doc.txt")
+	writeRecoveryOrphan(t, ds, "cannot-look",
+		[]recoveryEntry{{ID: "unsaved", Path: path, Stamp: fileStamp{ModTime: 1, Size: 4}}},
+		map[string]string{"unsaved": "saved work"})
+
+	if n := ds.kind.restore(); n != 1 {
+		t.Fatalf("restored %d documents, want one", n)
+	}
+	for _, b := range allDocuments() {
+		if b.path != path {
+			continue
+		}
+		if st := b.State(); st.Deleted {
+			t.Errorf("the document whose file cannot be looked at says deleted")
+		} else if st.Conflict {
+			t.Errorf("the document whose file cannot be looked at says in conflict")
+		}
+		return
+	}
+	t.Fatalf("the document of %s was not restored", path)
 }

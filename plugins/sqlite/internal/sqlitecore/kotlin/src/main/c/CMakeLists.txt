@@ -35,3 +35,6 @@ target_compile_definitions(sqlitecore PRIVATE
   SQLITE_OMIT_DEPRECATED=1
   SQLITE_OMIT_SHARED_CACHE=1)
 target_link_libraries(sqlitecore PRIVATE m)
+# Linked for 16 KB pages, which Android 15 and later devices may have,
+# with any NDK: before r28 the NDK links for 4 KB pages by default.
+target_link_options(sqlitecore PRIVATE "-Wl,-z,max-page-size=16384")

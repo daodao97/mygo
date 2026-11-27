@@ -380,12 +380,7 @@ func (ed *editor) pointerMove(ev ui.InputEvent) bool {
 		return true
 	}
 	if ed.gesture.active && ev.Button == 0 {
-		cx, cy := ed.toContent(ev.X, ev.Y)
-		if ed.gesture.mode == 3 {
-			ed.columnSelect(cx, cy)
-			return true
-		}
-		ed.extendGesture(ed.offsetAt(cx, cy))
+		ed.dragTo(ed.toContent(ev.X, ev.Y))
 		return true
 	}
 	// Hovering: the region, which the cursor shows, a line's gutter, and
@@ -441,6 +436,11 @@ func (ed *editor) pointerMove(ev ui.InputEvent) bool {
 
 func (ed *editor) wheel(ev ui.InputEvent) bool {
 	ed.hover.close()
+	// Shift turns the wheel sideways, as it does scroll containers, which
+	// do so only for the input their handlers leave.
+	if ev.Mods&ui.Shift != 0 && ev.DX == 0 {
+		ev.DX, ev.DY = ev.DY, 0
+	}
 	moved := false
 	if ev.DY != 0 && !ed.o.fitContent {
 		before := ed.scrollY
@@ -456,8 +456,7 @@ func (ed *editor) wheel(ev ui.InputEvent) bool {
 		moved = moved || ed.scrollX != before
 	}
 	if moved && ed.gesture.active {
-		cx, cy := ed.toContent(ed.pointer.X, ed.pointer.Y)
-		ed.extendGesture(ed.offsetAt(cx, cy))
+		ed.dragTo(ed.toContent(ed.pointer.X, ed.pointer.Y))
 	}
 	return moved
 }
@@ -762,6 +761,9 @@ func (ed *editor) setMarkedText(r *ui.TextInputRange, s string, selected ui.Text
 	// Selected counts UTF-16 units of s.
 	sa, sz := utf16ByteOffset(s, selected.Start), utf16ByteOffset(s, selected.End)
 	ed.replaceRanges(ts, s, editCompose, sa, sz)
+	if b := ed.buf(); b != nil && s == "" {
+		b.dropCompose(ed)
+	}
 	ed.markedActive = s != ""
 	ed.marked = ed.marked[:0]
 	switch {
@@ -888,7 +890,8 @@ func (ed *editor) autoscroll() bool {
 	}
 	dy := past(ed.pointer.Y, 0, ed.viewH)
 	before := ed.scrollX
-	if !ed.view.wrap {
+	// A drag of the editor's owner (startDrag) scrolls only up and down.
+	if !ed.view.wrap && ed.gesture.drag == nil {
 		// The vertical scroll bar's column counts as past the right edge, so
 		// that an editor at the screen's edge still scrolls right.
 		if dx := past(ed.pointer.X, ed.textX, ed.r.W-ed.trackWidth()); dx != 0 {
@@ -906,13 +909,30 @@ func (ed *editor) autoscroll() bool {
 	if dy != 0 {
 		ed.setScrollShared(ed.scrollY + float64(edgeSpeed(dy)))
 	}
-	cx, cy := ed.toContent(ed.pointer.X, ed.pointer.Y)
-	if ed.gesture.mode == 3 {
+	ed.dragTo(ed.toContent(ed.pointer.X, ed.pointer.Y))
+	return true
+}
+
+// startDrag has the drag a press begins, until its release, report the
+// points of the content it goes over to drag, in place of selecting
+// text: as the pointer moves, as the view scrolls under it with the wheel,
+// and as it scrolls the view, only up and down, held past its top or
+// bottom. A decor's blockInput calls it for a drag of its own.
+func (ed *editor) startDrag(drag func(cx float32, cy float64)) {
+	ed.gesture = gesture{active: true, drag: drag}
+}
+
+// dragTo extends the gesture to the point (cx, cy) of the content: the
+// owner's drag (startDrag), or the columns or text it selects.
+func (ed *editor) dragTo(cx float32, cy float64) {
+	switch {
+	case ed.gesture.drag != nil:
+		ed.gesture.drag(cx, cy)
+	case ed.gesture.mode == 3:
 		ed.columnSelect(cx, cy)
-	} else {
+	default:
 		ed.extendGesture(ed.offsetAt(cx, cy))
 	}
-	return true
 }
 
 // past returns how far v lies outside [lo, hi]: negative below lo,

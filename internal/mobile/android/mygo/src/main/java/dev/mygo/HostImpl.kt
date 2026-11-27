@@ -151,7 +151,7 @@ object HostImpl : HostCalls {
             // and would hold it until one comes.
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 Os.setenv("MYGO_RESOURCES", dir, true)
-                MyGoNative.start()
+                MyGoNative.start(ctx)
             }
         }.start()
     }
@@ -255,7 +255,7 @@ object HostImpl : HostCalls {
     override fun theme(): ThemeReply {
         val r = ThemeReply()
         val c = (activity ?: app).resources.configuration
-        r.dark = c.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        r.dark = (if (nightMode != 0) nightMode else c.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val accent = if (Build.VERSION.SDK_INT >= 31) app.getColor(android.R.color.system_accent1_600) else themeColor(android.R.attr.colorAccent)
         r.accent = argbToRGBA(accent)
         r.reduceMotion = Settings.Global.getFloat(app.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
@@ -266,8 +266,27 @@ object HostImpl : HostCalls {
         return r
     }
 
+    /**
+     * Below Android 12, the night mode the app chose
+     * (Configuration.UI_MODE_NIGHT_YES or _NO), or 0 to follow the system's.
+     * UiModeManager.setApplicationNightMode does it from Android 12 on.
+     */
+    var nightMode = 0
+
     override fun setAppearance(c: SetAppearanceCall) {
-        if (Build.VERSION.SDK_INT < 31) return
+        if (Build.VERSION.SDK_INT < 31) {
+            nightMode = when (c.source) {
+                "dark" -> Configuration.UI_MODE_NIGHT_YES
+                "light" -> Configuration.UI_MODE_NIGHT_NO
+                else -> 0
+            }
+            // After the call, as the system's change would come.
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                val a = activity as? MyGoActivity
+                if (a != null) a.nightModeChanged() else Go.send(Event.themeChanged())
+            }
+            return
+        }
         val ui = app.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
         ui.setApplicationNightMode(
             when (c.source) {
@@ -677,6 +696,29 @@ object HostImpl : HostCalls {
         r.charging = bm.isCharging
         r.lowPower = (app.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode
         return r
+    }
+
+    /**
+     * Gives the configuration of a's resources the night mode the app chose,
+     * below Android 12, as AppCompat's setDefaultNightMode does there: the
+     * Activity takes changes of uiMode itself, so it is not made again.
+     * Returns whether the mode changed.
+     */
+    fun applyNightMode(a: Activity): Boolean {
+        if (Build.VERSION.SDK_INT >= 31) return false
+        val res = a.resources
+        val now = res.configuration
+        // The system's own resources keep the system's mode.
+        val want = if (nightMode != 0) nightMode else android.content.res.Resources.getSystem().configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        if (now.uiMode and Configuration.UI_MODE_NIGHT_MASK == want) return false
+        val c = Configuration(now)
+        c.uiMode = want or (now.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv())
+        @Suppress("DEPRECATION")
+        res.updateConfiguration(c, res.displayMetrics)
+        // The theme resolved its DayNight parent in the old mode.
+        val style = a.packageManager.getActivityInfo(a.componentName, 0).themeResource
+        if (style != 0) a.theme.applyStyle(style, true)
+        return true
     }
 
     // The system's bars and the screen.
