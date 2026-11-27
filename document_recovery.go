@@ -314,7 +314,13 @@ func (k *docKind) restore() int {
 		b.ops.restore(v)
 		if e.Path != "" {
 			b.path, b.stamp = e.Path, e.Stamp
-			switch now, exists, _ := statStamp(e.Path); {
+			switch now, exists, err := statStamp(e.Path); {
+			case err != nil:
+				// The look of the file failed — a parent that cannot be
+				// entered, say. It did not answer that the file is gone:
+				// the document says neither deleted nor in conflict, and
+				// the next look of the disk says what it really is, as
+				// checkDisk does.
 			case !exists:
 				b.deleted = true
 			case !now.same(e.Stamp):
