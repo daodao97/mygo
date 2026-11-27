@@ -2,11 +2,11 @@
 
 本仓库是 `egoist/mygo`（上游，remote `upstream`）的 fork，`daodao97/mygo`（remote `origin`；2026-11-09 曾更名为 `daodao97/mygo-mobile`，2026-11-18 改回 `daodao97/mygo`，旧地址重定向）。Go 模块路径仍是 `github.com/egoist/mygo`，不随仓库更名，以便合并上游。本文件记录两者的差异、处理规则和进行中的工作，供维护 fork 的 agent 先读。用文末的命令重新统计差异。
 
-## 快照（2026-11-25）
+## 快照（2026-11-27）
 
-- fork `main` 已合并 `upstream/main` 到 `ccb010db`（2026-11-25），含 #940（`6e712c6e`）。
+- fork `main` 已合并 `upstream/main` 到 `aea7eeb9`（2026-11-27），含 #940（`6e712c6e`）。
 - 分支 `sync-940` 已于 2026-11-18 快进合入 `main`（`964d7b6f`），第二阶段的过程见「第二阶段进度（2026-11-17）」。
-- fork 独有 191 个非合并提交，与上游的增删差异约 36,000 行。
+- fork 独有 192 个非合并提交，与上游的增删差异约 36,000 行。
 - 2026-11-08 同步了上游 26 个提交（`1dfa5a1f..80013ac3`）。冲突只有两处：`go.mod` 取上游新增的 flac/aac 依赖，保留 fork 的 `Heyana/typesetting-go`；`ui/layoutcache_test.go` 的字段清单两边都保留（上游的 `popupSet`、fork 的触摸/输入字段）。上游新增的 `Window.SetInputRegion` 是可选接口 `platform.InputRegionWindow`，iOS/Android 不需要实现；`ListRow.Hovered`/`Pressed`/`PointerPosition`、终端 `Options.OnDrop` 在 fork 中没有对应实现，没有需要按规则 1 处理的重叠。
 - 2026-11-09 同步了上游 39 个提交（到 `6a730f12`）。冲突：`docs/architecture.md` 两边都保留（fork 的 iOS 段落、上游的 `ffi`）；`ui/runtime.go` 两边都保留（fork 的帧计时、上游的 `sweepVideos`）；`ui/layoutcache_test.go` 字段清单取并集；`internal/gpu/gl/load_linux.go` 只取上游新增的 `uploadElement`，`setShaderSource`/`shaderLog`/`programLog`/`infoLog` 在 fork 已移到 `load_common.go`（与 Android 共用）；终端 `urlPattern` 按规则 1 改用上游 #1481（URL 在第一个非 ASCII 字符处结束），fork 的写法删除；shader 二进制取上游后重新 `go generate`。上游 #1476 给 `platform.Clipboard.WriteData` 加了 `concealed` 参数，iOS/Android 后端已跟上签名，但还没有标记机密内容（iOS 的 `UIPasteboard` localOnly、Android 的 `EXTRA_IS_SENSITIVE`）。
   合并后对照上游这批新增（`RowClicked`、`WindowDoubleClicked`、`ui/video` 与 `Bitmap.UpdateYUV`、`Power.KeepRunning`、`App.ChosenLocale`、`ClipboardOptions.Concealed`、`ffi`/native modules、文本框的 `ReadOnly`/`Multiline` 无障碍状态、新的 landmark/tabpanel 角色）检查了 fork 新增代码，没有按规则 1 需要删除的重复实现。容易误判的两处：fork 的 `platform` 文本输入状态里的 `ReadOnly`/`Multiline` 是移动端键盘和原生选区的配置，上游 #1493 的是无障碍状态（`AccessReadOnly`/`AccessMultiline`），两者不同层；`ui/text_input_client.go` 的 `TextInputClient` 是上游的，fork 只在其上加了 UTF-16 适配。`desktopcontrol` 用 `purego.Dlopen` 加载的是系统框架，不属于 `ffi` 规定的应用自带库。iOS 还没有为新的 landmark/tabpanel 角色单独映射（落到默认处理）。
@@ -111,6 +111,10 @@
 - 2026-11-25 第二次同步上游 6 个提交（`85758d80..ccb010db`），无冲突。#2338（Android 用 minSdk 之后的 API 前先查版本，CI 对 Kotlin 跑 `NewApi` lint）和 #2340（Android 10/11 把隐藏 tab 的 surface 移出屏幕）改的是与 #940 共用的 Kotlin；fork 在这些文件里只有 `SurfaceWindow.kt` 的 `ascii` 键盘两行，不重叠，没有按规则 1 需要删除的实现。其余是 watch 的 hints-only（#2331、#2334）、`mygo-automation` 拨 `tcp:` 地址（#2179）和 `ui/editor` 的混合行尾（#1810），fork 都没有对应实现。
 
   验证：本机（Linux，无 Go/JDK 工具链）没有跑构建和测试，交给 CI；`NewApi` lint 会第一次检查 fork 独有的 Kotlin（插件和 `internal/mobile/android`），CI 失败时按 #2338 的写法补版本检查。
+
+- 2026-11-27 同步上游 73 个提交（`ccb010db..aea7eeb9`），无冲突。平台契约只改了一处注释，手机后端不用补方法；wire 协议没有变化。两边都改过的 30 个文件逐一对照：`ListState.DragLabel`、一个元素接多种类型的拖放、`SplitSecond`/`SplitLimits`、`TesterOptions.Now`、文本框 `NoWrap`、`Element.Truncated`、`WindowOptions.Position`、Linux 设置门户的减弱动态效果、Android 空帧不绘制（#2341）、后台期间的深浅色变化（#2403）、给 C 的 `JavaVM`/`AndroidContext`（#1987）、编辑器 `TextX`、CLI 的 `android.identifier`/`macos.extensions`/`macos.signCommand`/`-debug`，在 fork 中都没有同功能实现。fork 的 `Tester.SetRefreshRate`、`GridState.Visible`/`CellSize`、富文本 `SetSelection`/`OnInput`/`OnCopy` 与这批不重叠。`go generate ./ui` 无差异。
+
+  验证：macOS/Linux/Windows 的 `go build ./...`；`go vet . ./ui ./ui/editor ./ui/richtext ./internal/platform ./internal/mobile/... ./internal/darwin ./cmd/mygo ./plugins/terminal/...` 与 Linux/Windows 后端 vet；iOS（`DEVELOPER_DIR` 指向 Xcode）与 Android（Homebrew 的 `android-ndk` 30，`ANDROID_NDK_HOME=/opt/homebrew/share/android-ndk`）对 `. ./ui ./internal/mobile/... ./plugins/...` 的 vet；`go test` 覆盖根包、`ui`、`ui/editor`、`ui/richtext`、`ui/markdown/...`、`ui/video`、`internal/text`、`internal/platform`、`internal/mobile/...`、`internal/darwin`、终端与 updater 插件，全部通过；`../Miya` 的 `go build ./...` 通过。`go test -short ./cmd/mygo` 只有 `TestFetchSignedRetry`（`[429 ok]: 3 requests, want 2`）失败，合并前的 fork `main` 和上游 `aea7eeb9` 上同样稳定失败，不是这次合并引入的。
 
 ## 规则
 
@@ -359,7 +363,7 @@ printf 'go 1.27.3\n\nuse %s\n\nreplace github.com/egoist/mygo => %s\n' "$APP" "$
 
 ## 工作流程
 
-环境：非登录 shell 的 PATH 里没有 `go` 和 `gh`，命令前加 `export PATH=/opt/homebrew/bin:$PATH`。zsh 中不加引号的 `$VAR` 不会分词；`ls` 是 `lsd` 的别名，脚本里用 `/bin/ls`。
+环境：非登录 shell 的 PATH 里没有 `go` 和 `gh`，命令前加 `export PATH=/opt/homebrew/bin:$PATH`。zsh 中不加引号的 `$VAR` 不会分词；`ls` 是 `lsd` 的别名，脚本里用 `/bin/ls`。Android NDK 由 Homebrew 安装（`brew install --cask android-ndk`），`NDK=/opt/homebrew/share/android-ndk`。
 
 ### 同步上游
 
