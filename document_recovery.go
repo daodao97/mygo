@@ -2,7 +2,9 @@ package mygo
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -186,10 +188,23 @@ func (s *recoveryStore) claim() (orphans []orphan, done func(restored map[string
 			continue
 		}
 		c := claimedRecovery{dir: dir, lock: lock}
-		if data, err := readAppFile(filepath.Join(dir, "index.json")); err == nil {
-			if err := json.Unmarshal(data, &c.entries); err != nil {
-				log.Printf("mygo: documents: %s: %v", dir, err)
+		data, err := readAppFile(filepath.Join(dir, "index.json"))
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				// The index is there and cannot be read: what the session
+				// holds is unknown, not nothing. Claiming it would report
+				// no copies to restore and remove the directory, dropping
+				// the user's unsaved work. Leave it for a later launch.
+				log.Printf("mygo: documents: cannot read the recovery index of %s: %v", dir, err)
+				lock.Close()
+				continue
 			}
+		} else if err := json.Unmarshal(data, &c.entries); err != nil {
+			// An index that cannot be parsed tells neither what it holds
+			// nor that it holds nothing.
+			log.Printf("mygo: documents: cannot read the recovery index of %s: %v", dir, err)
+			lock.Close()
+			continue
 		}
 		claimed = append(claimed, c)
 		for _, e := range c.entries {
